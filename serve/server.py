@@ -372,6 +372,24 @@ class StrataEngine:
             self.proc.kill()
 
 
+class GlmEngine(StrataEngine):
+    """Experimental GLM resident process; greedy text requests only."""
+
+    @staticmethod
+    def sampling_keys(sampling):
+        neutral = {"temperature": 0, "top_p": 1, "top_k": 0, "min_p": 0,
+                   "repetition_penalty": 1, "frequency_penalty": 0, "presence_penalty": 0}
+        for key, value in (sampling or {}).items():
+            if value is not None and (key not in neutral or value != neutral[key]):
+                raise ValueError(f"GLM currently supports greedy decoding only; unsupported setting {key}")
+        return ""
+
+    def generate(self, ids, max_new, sampling, cancel, embeddings=None):
+        if embeddings is not None:
+            raise ValueError("GLM currently supports text input only")
+        yield from super().generate(ids, max_new, sampling, cancel)
+
+
 class Vision:
     """The resident image encoder: `strata-vision` (llama.cpp mtmd + the mmproj file) reads `ENC <image> <out>`
     lines and writes each image's embeddings; results are cached by the image's hash, so a conversation that
@@ -553,7 +571,7 @@ class Detokenizer:
 class Service:
     def __init__(self, engine: Engine, tokenizer, template: ChatTemplate, model_name: str = "qwen3.8-flash-next",
                  vision: Vision | None = None, sampling_defaults: dict | None = None,
-                 fit_max_tokens: bool = False):
+                 fit_max_tokens: bool = False, stop_ids: set[int] | None = None):
         self.engine, self.tok, self.template, self.model, self.vision = engine, tokenizer, template, model_name, vision
         self.fit_max_tokens = fit_max_tokens          # --fit-max-tokens: clamp the output cap instead of 400
         self.sampling_defaults = dict(sampling_defaults or {})   # the run config's `sampling` block
@@ -573,8 +591,8 @@ class Service:
         self.started_at = time.time()
         self.status_lock = threading.Lock()
         self.mcp = None                                  # serve/mcp.py's McpHub when MCP servers are configured
-        self.stop_ids = set(tokenizer.encode(IM_END, parse_special=True) +
-                            tokenizer.encode("<|endoftext|>", parse_special=True))
+        self.stop_ids = set(stop_ids) if stop_ids is not None else set(
+            tokenizer.encode(IM_END, parse_special=True) + tokenizer.encode("<|endoftext|>", parse_special=True))
 
     def set_shared(self, defaults) -> dict:
         """The Chat settings every client gets for what it leaves out; {} / None = clients use their own again."""
@@ -712,6 +730,8 @@ class Service:
     def prepare(self, messages, tools, kwargs, max_new=None):
         """-> (ids, thinking, max_new). An unset or non-positive max_new (some clients send -1) means "unlimited":
         the rest of the context."""
+        if isinstance(self.engine, GlmEngine) and tools:
+            raise ValueError("GLM tool-call parsing is not implemented; use text requests")
         prompt = self.template.render(messages, tools=tools, **kwargs)
         ids = self.tok.encode(prompt, parse_special=True)
         self.embeddings.path = None
@@ -1648,7 +1668,7 @@ def sampling_defaults_from_config(cfg: dict) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--engine", choices=["mock", "strata"], default="mock")
+    ap.add_argument("--engine", choices=["mock", "strata", "glm"], default="mock")
     ap.add_argument("--config", help="strata engine config (JSON: exe, args, cwd, tokenizer, model_name), "
                                      "written by setup.py")
     ap.add_argument("--host", default=None,
@@ -1684,10 +1704,22 @@ def main() -> int:
     if cfg.get("tokenizer"):
         a.tokenizer = cfg["tokenizer"]
     tok = ByteTokenizer()
+    glm_metadata = None
     tpath = Path(a.tokenizer)
     if a.engine == "strata" and not (tpath / "vocab.json").exists():
         ap.error(f"the model's tokenizer is missing ({tpath / 'vocab.json'}); run setup again")
-    if (tpath / "vocab.json").exists():
+    if a.engine == "glm":
+        if not cfg.get("model") or not cfg.get("exe"):
+            ap.error("--engine glm needs a config with exe and model (any GLM GGUF shard)")
+        from glm_generate import metadata_shard
+        from gguf_reader import GGUFFile
+        from strata_tokenizer import Tokenizer
+        shard = metadata_shard(Path(cfg["model"]))
+        glm_metadata = GGUFFile(shard).metadata
+        if glm_metadata.get("general.architecture") != "glm5next":
+            ap.error("--engine glm requires a glm5next GGUF")
+        tok = Tokenizer.from_gguf(shard)
+    elif (tpath / "vocab.json").exists():
         import strata_tokenizer as ST
         vocab = json.loads((tpath / "vocab.json").read_text(encoding="utf-8"))
         tokens = [None] * len(vocab)
@@ -1697,7 +1729,18 @@ def main() -> int:
         types = json.loads((tpath / "token_type.json").read_text())
         tok = ST.Tokenizer(tokens, merges, types)
     hub = hub_from_config(cfg, a.mcp_config)            # before the minutes of loading: a bad entry stops here
-    if a.engine == "strata":
+    if a.engine == "glm":
+        if cfg.get("decode_experts", "cpu") not in ("cpu", "gpu"):
+            ap.error("GLM decode_experts must be cpu or gpu")
+        context = int(cfg.get("context", 4096))
+        args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
+                str(cfg.get("threads", 6)), str(cfg.get("expert_cache_mib", 0)),
+                str(cfg.get("prefill_batch", 8)), ",".join(str(glm_metadata[k]) for k in
+                    ("tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id")
+                    if k in glm_metadata), str(cfg.get("gpu_budget_mib", 12288)), str(cfg.get("lookup_depth", 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu"))]
+        engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
+        vision, sampling_defaults = None, {}
+    elif a.engine == "strata":
         if not cfg:
             ap.error("--engine strata needs --config")
         vision = None
@@ -1720,10 +1763,15 @@ def main() -> int:
             "Thinking about it.</think>\n\nHello from the mock engine."]), None, {}
     # the model's own chat template (exported with its tokenizer), else the original model's
     tpl = tpath / "chat_template.jinja"
-    svc = Service(engine, tok, ChatTemplate(tpl if tpl.exists() else ROOT / "serve/chat_template.jinja"),
-                  model_name=cfg.get("model_name", "qwen3.8-flash-next"), vision=vision,
+    template = ChatTemplate(source=glm_metadata["tokenizer.chat_template"]) if glm_metadata else ChatTemplate(
+        tpl if tpl.exists() else ROOT / "serve/chat_template.jinja")
+    svc = Service(engine, tok, template,
+                  model_name=cfg.get("model_name", "glm-5.3-flash" if glm_metadata else "qwen3.8-flash-next"), vision=vision,
                   sampling_defaults=sampling_defaults,
-                  fit_max_tokens=a.fit_max_tokens or cfg.get("fit_max_tokens") is True)
+                  fit_max_tokens=a.fit_max_tokens or cfg.get("fit_max_tokens") is True,
+                  stop_ids={int(glm_metadata[k]) for k in ("tokenizer.ggml.eos_token_id",
+                      "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id") if k in glm_metadata}
+                      if glm_metadata else None)
     svc.api_key = a.api_key or cfg.get("api_key", "")
     svc.gpu_index = (gpu_list(cfg) or [0])[0]           # the Monitor reads the card the engine runs on (issue #51)
     svc.gpu_indices = gpu_list(cfg)                     # ... or every card of a layer split (issue #112)

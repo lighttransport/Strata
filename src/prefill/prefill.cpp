@@ -50,11 +50,12 @@ size_t matrix_bytes(int, int64_t, int64_t) { return 0; }
 size_t q8_bytes(int64_t, int64_t) { return 0; }
 void quantize(const float*, const int32_t*, void*, int, int64_t, int64_t, int64_t, void*) {}
 Context::Context() {}
+Context::Context(void*, size_t) {}
 Context::~Context() {}
 void Context::run(const Product&, void*) {}
 void gather_native(const void*, const void*, size_t, const void*, size_t, void*, void*, void*) {}
 void gather_strata_q2(const uint8_t*, void*, void*, void*) {}
-void swiglu(const float*, float*, int64_t, int64_t, bool, void*) {}
+void swiglu(const float*, float*, int64_t, int64_t, bool, void*, float) {}
 void iota(int32_t*, int64_t, void*) {}
 }  // namespace strata::prefill::mmq
 #endif

@@ -13,6 +13,13 @@ of a word): faster than you can read.
 
 - **Free and open source.**
 
+An experimental native GGUF backend for **GLM-5.3-Flash** is available for CUDA builds.
+See [build instructions, validation and current limitations](docs/GLM53_FLASH.md).
+On the DDR4 / RTX 5060 Ti test machine, warm 4096-token GPU prefill measured
+112.4 tok/s median. Zero-copy CPU decode reached 3.23 tok/s with 16 workers;
+prompt lookup measured 2.12 tok/s on that coding prefix. See
+[configuration and measurements](docs/GLM53_FLASH_PERFORMANCE.md).
+
 > **Jump to:** [How fast?](#how-fast-is-it) · [Which model?](#which-model-should-i-pick) · [Install](#install) ·
 > [Using it](#using-it) · [Problems?](#something-went-wrong) · [How it works](#how-does-it-work) ·
 > [All the details](docs/DETAILS.md)

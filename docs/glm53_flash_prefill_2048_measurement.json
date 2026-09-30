@@ -1,0 +1,48 @@
+{
+  "model": "/path/to/models/glm53f/iq3/GLM-5.3-Flash-UD-IQ3_XXS-00001-of-00004.gguf",
+  "text": "bench/fixtures/glm53_coding_prefix.txt",
+  "tokens": 2048,
+  "requested_batch": "2048",
+  "actual_batch": 2048,
+  "context": 8192,
+  "gpu_budget_mib": 12288,
+  "warm_weights": true,
+  "untimed_warmup": true,
+  "milliseconds": [
+    30080.8,
+    27313.9,
+    29616.0
+  ],
+  "tokens_per_second": [
+    68.0832,
+    74.9802,
+    69.1519
+  ],
+  "median_tokens_per_second": 69.1519,
+  "peak_allocated_mib": 9739.36,
+  "runtime_reserve_mib": 1024,
+  "startup_warmup_and_runs_seconds": 147.45583927002735,
+  "decode_token_ids": [
+    "11",
+    "9647"
+  ],
+  "prompt_token_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+  "page_faults": [
+    {
+      "trial": 0,
+      "major": 0,
+      "minor": 46284
+    },
+    {
+      "trial": 1,
+      "major": 0,
+      "minor": 51546
+    },
+    {
+      "trial": 2,
+      "major": 0,
+      "minor": 53762
+    }
+  ],
+  "decoder_log": "GPU prefill chunk=2048 staging_workers=2 numa_cpus=8,9\nGPU allocated_MiB=9739.36 reserved_runtime_MiB=1024 budget_MiB=12288\nmain weights prefaulted checksum=160\nPREFILL trial=0 tokens=2048 batch=2048 ms=30080.8 tok_s=68.0832\nFAULTS trial=0 major=0 minor=46284\nGPU peak_allocated_MiB=9739.36 native_expert_bytes=109867696128 expert_groups=756 staging_ms=22999.2\nPREFILL trial=1 tokens=2048 batch=2048 ms=27313.9 tok_s=74.9802\nFAULTS trial=1 major=0 minor=51546\nGPU peak_allocated_MiB=9739.36 native_expert_bytes=109867696128 expert_groups=756 staging_ms=20128.7\nPREFILL trial=2 tokens=2048 batch=2048 ms=29616 tok_s=69.1519\nFAULTS trial=2 major=0 minor=53762\nGPU peak_allocated_MiB=9739.36 native_expert_bytes=109867696128 expert_groups=756 staging_ms=22510.2\n"
+}

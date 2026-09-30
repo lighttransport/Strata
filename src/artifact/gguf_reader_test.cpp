@@ -60,6 +60,18 @@ std::filesystem::path write_gguf(const std::vector<std::string>& names) {
 int main() {
     std::printf("gguf_reader_test\n");
     {
+        const auto path = write_gguf({});
+        // Metadata-only split shards need not contain padding to the aligned data start.
+        std::filesystem::resize_file(path, 24);
+        bool accepted = false;
+        try {
+            strata::GgufFile g(path.string());
+            accepted = g.tensors().empty() && g.data_start() == 32;
+        } catch (const std::exception&) {}
+        std::filesystem::remove(path);
+        check(accepted, "metadata-only shard without data alignment padding opens");
+    }
+    {
         const auto path = write_gguf({"blk.0.attn_q.weight", "blk.0.attn_k.weight"});
         std::string err;
         size_t n = 0;

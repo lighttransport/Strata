@@ -6,7 +6,9 @@
 // (ggml-cpu vec_dot with its quantized activations), (c) the GPU path (`native_expert_grouped`, q8_1
 // activations).  (b) and (c) each differ from (a) by their activation rounding only (a few 1e-3 relative).
 #include "strata/artifact/gguf_reader.hpp"
+#include "strata/core/model.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
+#include "strata/kernels/cpu/pool.hpp"
 #include "strata/kernels/cpu/expert.hpp"
 #include "strata/kernels/cpu/iq_avx512.hpp"
 #include "strata/kernels/cpu/iq_avx2.hpp"
@@ -37,31 +39,39 @@ static double rel(const std::vector<float>& a, const std::vector<float>& b) {
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);   // keep the trail on a crash
     if (argc < 2) { std::fprintf(stderr, "usage: native_expert_parity <shard1.gguf> [layer ...]\n"); return 2; }
-    strata::GgufFile gguf(argv[1]);
+    strata::core::ModelArtifact artifact(argv[1]);
+    const auto& model = artifact.descriptor();
     std::vector<int> layers;
     for (int i = 2; i < argc; ++i) layers.push_back(std::atoi(argv[i]));
-    if (layers.empty()) layers = {0, 1, 2, 3, 20, 47};
+    if (layers.empty()) layers = model.architecture == "glm5next" ? std::vector<int>{3, 11, 44, 45}
+                                                               : std::vector<int>{0, 1, 2, 3, 20, 47};
     const int NT = 3, E = 7;
-    const int64_t H = 2560, FF = 640;
+    const int64_t H = model.hidden;
     int failures = 0;
     cudaStream_t s;
     cudaStreamCreate(&s);
     for (int l : layers) {
+        const auto& layer = l < (int) model.layers.size() ? model.layers.at(l)
+                           : model.draft_layers.at(l - model.layers.size());
+        const int64_t FF = layer.intermediate;
         const strata::TensorInfo* t[3] = {};
         const char* roles[3] = {"gate", "up", "down"};
-        for (const auto& ti : gguf.tensors())
+        for (const auto& [name, tensor] : artifact.tensors()) {
+            const auto& ti = *tensor.tensor;
             for (int r = 0; r < 3; ++r)
                 if (ti.name == "blk." + std::to_string(l) + ".ffn_" + roles[r] + "_exps.weight") t[r] = &ti;
+        }
         if (!t[0] || !t[1] || !t[2]) { std::printf("layer %d: no expert tensors\n", l); ++failures; continue; }
         cpu::NativeFmt f;
         std::string err;
         if (!cpu::native_fmt((int) t[0]->type, (int) t[2]->type, H, FF, f, err)) {
             std::printf("layer %d: %s\n", l, err.c_str()); ++failures; continue;
         }
+        f.swiglu_limit = layer.swiglu_limit;
         std::vector<uint8_t> blob(f.bytes);
-        std::memcpy(blob.data(), gguf.tensor_data(*t[0]) + (size_t) E * f.up_off, f.up_off);
-        std::memcpy(blob.data() + f.up_off, gguf.tensor_data(*t[1]) + (size_t) E * f.up_off, f.up_off);
-        std::memcpy(blob.data() + f.down_off, gguf.tensor_data(*t[2]) + (size_t) E * (f.bytes - f.down_off),
+        std::memcpy(blob.data(), artifact.at(t[0]->name).data() + (size_t) E * f.up_off, f.up_off);
+        std::memcpy(blob.data() + f.up_off, artifact.at(t[1]->name).data() + (size_t) E * f.up_off, f.up_off);
+        std::memcpy(blob.data() + f.down_off, artifact.at(t[2]->name).data() + (size_t) E * (f.bytes - f.down_off),
                     f.bytes - f.down_off);
         // (a) the float reference
         const auto* tg = ggml_get_type_traits((ggml_type) f.gu_type);
@@ -82,6 +92,10 @@ int main(int argc, char** argv) {
             for (int64_t r = 0; r < FF; ++r) {
                 double g = 0, u = 0;
                 for (int64_t i = 0; i < H; ++i) { g += (double) G[r * H + i] * x[k * H + i]; u += (double) U[r * H + i] * x[k * H + i]; }
+                if (f.swiglu_limit > 0) {
+                    g = std::min(g, (double) f.swiglu_limit);
+                    u = std::clamp(u, -(double) f.swiglu_limit, (double) f.swiglu_limit);
+                }
                 h[r] = (float) (g / (1.0 + std::exp(-g)) * u);
             }
             for (int64_t r = 0; r < H; ++r) {
@@ -105,7 +119,14 @@ int main(int argc, char** argv) {
                 ffp[k] = ff[k].data();
             }
             cpu::native_gu_rows(f, blob.data(), a, NT, ffp, 0, (int) FF);
-            if (cpu::iq512_supported(f.gu_type)) {
+            if (f.swiglu_limit > 0) {
+                for (int k = 0; k < NT; ++k) {
+                    std::vector<float> single(FF); float* row = single.data();
+                    cpu::native_gu_rows(f, blob.data(), a + k, 1, &row, 0, (int)FF);
+                    if (single != ff[k]) { std::printf("clamped single/multi GU mismatch\n"); ++failures; }
+                }
+            }
+            if (f.swiglu_limit == 0 && cpu::iq512_supported(f.gu_type)) {
                 // ggml's own vec_dot, same Q8_K activations: the reference for both multi-token kernels
                 // (float-order differences only)
                 const auto* tc = ggml_get_type_traits_cpu((ggml_type) f.gu_type);
@@ -163,6 +184,29 @@ int main(int argc, char** argv) {
                 op[k] = got_c.data() + k * H;
             }
             cpu::native_down_rows(f, blob.data(), hp, NT, op, 0, (int) H);
+            if (f.swiglu_limit > 0) {
+                for (int k = 0; k < NT; ++k) {
+                    std::vector<float> single(H); float* row = single.data();
+                    cpu::native_down_rows(f, blob.data(), hp + k, 1, &row, 0, (int)H);
+                    if (!std::equal(single.begin(), single.end(), op[k])) {
+                        std::printf("clamped single/multi down mismatch\n"); ++failures;
+                    }
+                }
+            }
+            if (model.architecture == "glm5next") {
+                cpu::ExpertPool pool(2, false, true);
+                cpu::ExpertJobMulti job;
+                job.blob = artifact.at(t[0]->name).data() + (size_t)E * f.up_off;
+                job.native_up = artifact.at(t[1]->name).data() + (size_t)E * f.up_off;
+                job.native_down = artifact.at(t[2]->name).data() + (size_t)E * (f.bytes - f.down_off);
+                job.nt = NT;
+                std::vector<float> pooled((size_t) NT * H);
+                for (int k = 0; k < NT; ++k) {job.nact[k]=a[k];job.out[k]=pooled.data()+k*H;}
+                pool.run_split_multi_native(f, &job, 1);
+                const double e = rel(pooled, got_c);
+                std::printf("          dynamic CPU pool vs direct: rel %.2e\n", e);
+                if (!std::isfinite(e) || e > 1e-6) ++failures;
+            }
             if (f.d_type == 42) {
                 // (b2) the GGUF-layout Q2_0 kernel the pool uses for Q2_0 down projections - the AVX-512 one
                 // where the CPU has it, the AVX-2 one (q2_avx2.cpp) where it does not.  Calling the AVX-512
@@ -218,7 +262,8 @@ int main(int argc, char** argv) {
         }
         // (c) the GPU: one group holding the NT entries
         {
-            const auto L = strata::kernels::native_expert_layout(f.gu_type, f.d_type, H, FF);
+            auto L = strata::kernels::native_expert_layout(f.gu_type, f.d_type, H, FF);
+            L.swiglu_limit = f.swiglu_limit;
             void *dblob, *dx, *dxq, *dscr;
             float* dout;
             unsigned long long* dptr;

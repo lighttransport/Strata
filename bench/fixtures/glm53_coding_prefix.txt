@@ -1,0 +1,304 @@
+// Review this C++ inference code.
+// Correctness-first GLM decode path. Layer-batched prefill, CPU routed experts,
+// native CUDA dense projections; no speculative decoding or graph capture.
+#include "ggml.h"
+#include "strata/core/expert_cache.hpp"
+#include "strata/core/model.hpp"
+#include "strata/kernels/cpu/pool.hpp"
+#include "strata/kernels/glm.hpp"
+#include "strata/kernels/glm_prefill.hpp"
+#include "strata/prefill/gemm.hpp"
+#include "strata/prefill/moe_mmq.hpp"
+#include "strata/kernels/iq_kernels.hpp"
+#include "strata/kernels/native_mmvq.hpp"
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <condition_variable>
+#include <cublas_v2.h>
+#include <cuda_runtime.h>
+#include <deque>
+#include <fstream>
+#include <functional>
+#include <limits>
+#ifdef __linux__
+#include <sched.h>
+#endif
+#include <iostream>
+#include <list>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <thread>
+#include <vector>
+
+namespace {
+namespace k = strata::kernels;
+namespace cpu = k::cpu;
+void check(cudaError_t e) {
+    if (e != cudaSuccess)
+        throw std::runtime_error(cudaGetErrorString(e));
+}
+void check(cublasStatus_t e) {
+    if (e != CUBLAS_STATUS_SUCCESS)
+        throw std::runtime_error("GLM: cuBLAS failure " + std::to_string(e));
+}
+struct Device {
+    void *p = nullptr;
+    size_t bytes;
+    bool owned = true;
+    static inline size_t live = 0, peak = 0, limit = SIZE_MAX;
+    Device(void *view, size_t bytes) : p(view), bytes(bytes), owned(false) {}
+    explicit Device(size_t n, bool zero = false) : bytes(n) {
+        if (n > limit - live) throw std::runtime_error("GLM: GPU allocation budget exceeded");
+        check(cudaMalloc(&p, n));
+        live += n; peak = std::max(peak, live);
+        if (zero)
+            check(cudaMemset(p, 0, n));
+    }
+    ~Device() { if (owned) { cudaFree(p); live -= bytes; } }
+    Device(const Device &) = delete;
+    Device &operator=(const Device &) = delete;
+    float *f(size_t offset = 0) const { return (float *)p + offset; }
+    void put(const void *x, size_t n) {
+        if (n > bytes)
+            throw std::runtime_error("GLM: upload exceeds buffer");
+        check(cudaMemcpy(p, x, n, cudaMemcpyHostToDevice));
+    }
+    std::vector<float> floats(size_t n) const {
+        if (n * 4 > bytes)
+            throw std::runtime_error("GLM: read exceeds buffer");
+        std::vector<float> x(n);
+        check(cudaMemcpy(x.data(), p, n * 4, cudaMemcpyDeviceToHost));
+        return x;
+    }
+};
+constexpr size_t MiB = 1024 * 1024;
+namespace mmq = strata::prefill::mmq;
+struct Pinned {
+    void *p = nullptr;
+    explicit Pinned(size_t bytes) { check(cudaMallocHost(&p, bytes)); }
+    ~Pinned() { cudaFreeHost(p); }
+};
+struct GpuLocality {
+    std::vector<int> cpus;
+#ifdef __linux__
+    cpu_set_t previous;
+    bool changed = false;
+#endif
+    GpuLocality() {
+#ifdef __linux__
+        int dev; check(cudaGetDevice(&dev)); char pci[32]; check(cudaDeviceGetPCIBusId(pci, sizeof(pci), dev));
+        std::ifstream node_file(std::string("/sys/bus/pci/devices/") + pci + "/numa_node"); int node = -1; node_file >> node;
+        std::ifstream list_file("/sys/devices/system/node/node" + std::to_string(node) + "/cpulist"); std::string list; list_file >> list;
+        sched_getaffinity(0, sizeof(previous), &previous);
+        std::istringstream parts(list); std::string part;
+        while (std::getline(parts, part, ',')) {
+            auto dash = part.find('-'); int a = std::stoi(part), b = dash == std::string::npos ? a : std::stoi(part.substr(dash+1));
+            for (int i=a; i<=b; ++i) if (i < CPU_SETSIZE && CPU_ISSET(i, &previous)) cpus.push_back(i);
+        }
+        if (!cpus.empty()) { cpu_set_t set; CPU_ZERO(&set); for(int c:cpus) CPU_SET(c,&set); changed = sched_setaffinity(0,sizeof(set),&set)==0; }
+#endif
+    }
+    ~GpuLocality() {
+#ifdef __linux__
+        if (changed) sched_setaffinity(0, sizeof(previous), &previous);
+#endif
+    }
+};
+class ExpertStager {
+    std::mutex mutex;
+    std::condition_variable work, finished;
+    std::function<void(int)> job;
+    std::vector<std::thread> workers;
+    int generation = 0, pending = 0;
+    bool stop = false;
+public:
+    explicit ExpertStager(const std::vector<int>& cpus) {
+        for(int id=0;id<2;++id) workers.emplace_back([this,id,cpus] {
+#ifdef __linux__
+            if(!cpus.empty()){cpu_set_t set;CPU_ZERO(&set);CPU_SET(cpus[id%cpus.size()],&set);pthread_setaffinity_np(pthread_self(),sizeof(set),&set);}
+#endif
+            int seen=0;
+            for(;;){std::unique_lock lock(mutex);work.wait(lock,[&]{return stop||generation!=seen;});if(stop)return;seen=generation;auto fn=job;lock.unlock();fn(id);lock.lock();if(!--pending)finished.notify_one();}
+        });
+    }
+    ~ExpertStager(){ {std::lock_guard lock(mutex);stop=true;} work.notify_all();for(auto& w:workers)w.join(); }
+    void run(std::function<void(int)> fn){std::unique_lock lock(mutex);job=std::move(fn);pending=2;++generation;work.notify_all();finished.wait(lock,[&]{return !pending;});}
+};
+struct GpuPrefill {
+    static constexpr size_t slot_bytes = 208 * MiB;
+    int chunk;
+    size_t cursor = 0;
+    std::unique_ptr<Device> arena, dq, blas_workspace, mmq_workspace, slots[2];
+    std::unique_ptr<Pinned> pinned[2], counts;
+    std::unique_ptr<ExpertStager> stager;
+    strata::prefill::Gemm gemm;
+    std::unique_ptr<mmq::Context> context;
+    cudaStream_t copy = nullptr;
+    cudaEvent_t ready[2] = {}, done[2] = {};
+    uint64_t transferred = 0, groups = 0;
+    double stage_ms = 0;
+    explicit GpuPrefill(int width, void* stream) : chunk(width) {
+        GpuLocality locality;
+        arena = std::make_unique<Device>((size_t)width * 512 * 1024);
+        dq = std::make_unique<Device>(128 * MiB);
+        blas_workspace = std::make_unique<Device>(32 * MiB);
+        mmq_workspace = std::make_unique<Device>(128 * MiB);
+        for(int i=0;i<2;++i){slots[i]=std::make_unique<Device>(slot_bytes);pinned[i]=std::make_unique<Pinned>(slot_bytes);}
+        counts=std::make_unique<Pinned>(289*4);
+        stager=std::make_unique<ExpertStager>(locality.cpus);
+        std::string error;
+        if(!gemm.init_external(stream,(uint16_t*)dq->p,dq->bytes/2,blas_workspace->p,blas_workspace->bytes,error))throw std::runtime_error(error);
+        context=std::make_unique<mmq::Context>(mmq_workspace->p,mmq_workspace->bytes);
+        check(cudaStreamCreateWithFlags(&copy,cudaStreamNonBlocking));
+        for(int i=0;i<2;++i){check(cudaEventCreateWithFlags(&ready[i],cudaEventDisableTiming));check(cudaEventCreateWithFlags(&done[i],cudaEventDisableTiming));check(cudaEventRecord(ready[i],copy));check(cudaEventRecord(done[i],(cudaStream_t)stream));}
+        std::cerr << "GPU prefill chunk=" << chunk << " staging_workers=2 numa_cpus=";
+        for(size_t i=0;i<std::min<size_t>(2,locality.cpus.size());++i)std::cerr<<(i?",":"")<<locality.cpus[i];
+        std::cerr<<'\n';
+    }
+    ~GpuPrefill(){if(copy)cudaStreamSynchronize(copy);for(int i=0;i<2;++i){if(ready[i])cudaEventDestroy(ready[i]);if(done[i])cudaEventDestroy(done[i]);}if(copy)cudaStreamDestroy(copy);}
+    std::unique_ptr<Device> allocate(size_t bytes){size_t offset=(cursor+255)/256*256;if(bytes>arena->bytes-offset)throw std::runtime_error("GLM: prefill scratch exhausted");cursor=offset+bytes;return std::make_unique<Device>((char*)arena->p+offset,bytes);}
+    void upload(const strata::core::ArtifactTensor&G,const strata::core::ArtifactTensor&U,const strata::core::ArtifactTensor&D,int start,int n,int slot,void* stream){
+        size_t gh=G.bytes/288, db=D.bytes/288, bytes=n*(2*gh+db);
+        if(bytes+16384>slot_bytes)throw std::runtime_error("GLM: native expert group exceeds ring slot");
+        check(cudaEventSynchronize(ready[slot]));auto begin=std::chrono::steady_clock::now();
+        stager->run([&](int worker){for(int j=worker;j<n;j+=2){auto* p=(uint8_t*)pinned[slot]->p;std::memcpy(p+j*2*gh,G.data()+(start+j)*gh,gh);std::memcpy(p+j*2*gh+gh,U.data()+(start+j)*gh,gh);std::memcpy(p+n*2*gh+j*db,D.data()+(start+j)*db,db);}});
+        std::memset((char*)pinned[slot]->p+bytes,0,16384);
+        stage_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-begin).count();
+        check(cudaEventSynchronize(done[slot]));check(cudaMemcpyAsync(slots[slot]->p,pinned[slot]->p,bytes+16384,cudaMemcpyHostToDevice,copy));check(cudaEventRecord(ready[slot],copy));check(cudaStreamWaitEvent((cudaStream_t)stream,ready[slot],0));transferred+=bytes;++groups;
+    }
+};
+
+struct LayerState {
+    std::unique_ptr<Device> recurrent, conv_q, conv_k, conv_v, cache, keys, gates, pooled;
+};
+class Decoder {
+    strata::core::ModelArtifact artifact;
+    const strata::core::ModelDescriptor &m;
+    cudaStream_t stream = nullptr;
+    cublasHandle_t blas = nullptr;
+    cpu::ExpertPool pool;
+    size_t capacity, budget, resident = 0;
+    int position = 0;
+    int batch_tokens = 1;
+    bool fast = false, profile = false;
+    std::unique_ptr<GpuPrefill> gpu;
+    std::map<std::string, std::unique_ptr<Device>> phase;
+    std::function<bool()> cancelled;
+    bool cache_frozen = false;
+    uint64_t cache_hits = 0, cache_entries = 0;
+    std::vector<std::unique_ptr<strata::core::ExpertCache>> expert_cache;
+    std::vector<LayerState> states;
+    std::map<std::string, std::unique_ptr<Device>> scratch;
+    struct Weight {
+        std::unique_ptr<Device> data;
+        std::list<std::string>::iterator order;
+    };
+    std::map<std::string, Weight> weights;
+    std::list<std::string> lru;
+    void check_stop() { if (cancelled && cancelled()) throw std::runtime_error("cancelled"); }
+    void reset_phase() { if (gpu) { phase.clear(); gpu->cursor = 0; } }
+    Device &buf(const std::string &name, size_t floats) {
+        bool main = name == "streams" || name == "collapsed" || name == "x" || name == "y" || name == "hc_coeff" || name == "output";
+        if (gpu && !main) {
+            auto& p = phase[name];
+            if (!p || p->bytes < floats * 4) p = gpu->allocate(floats * 4);
+            return *p;
+        }
+        auto &p = scratch[name];
+        if (!p || p->bytes < floats * 4)
+            p = std::make_unique<Device>(floats * 4);
+        return *p;
+    }
+    static std::vector<float> dequant(const strata::core::ArtifactTensor &tensor) {
+        const auto &t = *tensor.tensor;
+        const auto *traits = ggml_get_type_traits((ggml_type)t.type);
+        if (!traits || !traits->to_float)
+            throw std::runtime_error("GLM: no dequantizer for " + t.name);
+        size_t rows = 1;
+        for (size_t i = 1; i < t.shape.size(); ++i)
+            rows *= t.shape[i];
+        std::vector<float> out(rows * t.shape[0]);
+        const size_t row = tensor.bytes / rows;
+        for (size_t i = 0; i < rows; ++i)
+            traits->to_float(tensor.data() + i * row, out.data() + i * t.shape[0], t.shape[0]);
+        return out;
+    }
+    Device &weight(const std::string &name, bool floating = false) {
+        const std::string key = name + (floating ? ":fp32" : ":raw");
+        auto it = weights.find(key);
+        if (it != weights.end()) {
+            lru.splice(lru.begin(), lru, it->second.order);
+            return *it->second.data;
+        }
+        if (gpu) throw std::runtime_error("GLM: fixed GPU weight missing: " + key);
+        const auto &t = artifact.at(name);
+        std::vector<float> values;
+        if (floating && t.tensor->type != 0)
+            values = dequant(t);
+        const size_t bytes = values.empty() ? t.bytes : values.size() * 4;
+        if (bytes > budget)
+            throw std::runtime_error("GLM: weight exceeds dense cache budget: " + name);
+        while (resident + bytes > budget && !lru.empty()) {
+            // Previous kernels may still hold a pointer to an evicted weight.
+            check(cudaStreamSynchronize(stream));
+            const auto old = lru.back();
+            resident -= weights.at(old).data->bytes;
+            weights.erase(old);
+            lru.pop_back();
+        }
+        auto data = std::make_unique<Device>(bytes);
+        data->put(values.empty() ? (const void *)t.data() : values.data(), bytes);
+        resident += bytes;
+        lru.push_front(key);
+        auto [inserted, ok] = weights.emplace(key, Weight{std::move(data), lru.begin()});
+        (void)ok;
+        return *inserted->second.data;
+    }
+    void mat(const std::string &name, const float *x, float *y, bool floating = false, int nt = 0) {
+        if (!nt)
+            nt = batch_tokens;
+        const auto &t = *artifact.at(name).tensor;
+        if (t.shape.size() != 2)
+            throw std::runtime_error("GLM: matrix must have two dimensions: " + name);
+        const int in = (int)t.shape[0], out = (int)t.shape[1];
+        auto &W = weight(name, floating);
+        const float one = 1, zero = 0;
+        if (fast && name != "output.weight") {
+            if (t.type == 0 || floating) {
+                check(cublasSgemm(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, nt, in, &one, W.f(), in, x, in, &zero, y, out));
+            } else {
+                auto& half = buf("mat_f16", (size_t)gpu->chunk * 16384 / 2);
+                k::glm_f16(x, (uint16_t*)half.p, (int64_t)nt * in, stream);
+                gpu->gemm.native((uint16_t*)half.p, t.type, W.p, y, nt, out, in);
+            }
+            return;
+        }
+        if (t.type == 0 || floating) {
+            for (int t = 0; t < nt; ++t)
+                check(cublasSgemv(blas, CUBLAS_OP_T, in, out, &one, W.f(), in, x + t * in, 1, &zero,
+                                  y + t * out, 1));
+            return;
+        }
+        auto &q = buf("q8", k::native_q8_1_bytes(in, nt) / 4);
+        k::native_quantize_q8_1(x, q.p, in, nt, stream);
+        if (t.type == 14)
+            k::native_q6_k_mmvq(W.p, q.p, y, in, out, nt, stream);
+        else if (t.type == 8)
+            k::native_q8_0_mmvq(W.p, q.p, y, in, out, nt, stream);
+        else
+            throw std::runtime_error("GLM: unsupported dense quantization: " + name);
+    }
+    void norm(const std::string &name, const float *x, float *y, int width) {
+        auto &W = weight(name);
+        k::glm_rms_norm(x, W.f(), y, width, batch_tokens, m.rms_epsilon, stream);
+    }
+    void hc_read(const std::string &p, const std::string &kind, const float *r, float *x, float *c) {
+        auto &normalized = buf("hc_normalized", m.hidden * 4 * batch_tokens);
+        auto &projected = buf("hc_projected", 24 * batch_tokens);
+        k::glm_rms_norm(r, nullptr, normalized.f(), m.hidden * 4, batch_tokens, m.rms_epsilon, stream);
+        mat(p + "hc_" + kind + "_fn.weight", normalized.f(), projected.f(), true);

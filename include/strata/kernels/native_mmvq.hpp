@@ -4,7 +4,7 @@
 
 namespace strata::kernels {
 
-// Native GGUF Q2_0, Q4_0, Q5_0, Q8_0, Q3_K, Q4_K, Q5_K, Q6_K, IQ4_NL
+// Native GGUF Q2_0, Q4_0, Q5_0, Q8_0, Q2_K, Q3_K, Q4_K, Q5_K, Q6_K, IQ4_NL
 // and IQ4_XS / CUDA Q8_1 adapters, pinned to llama.cpp
 // 3cf03257f219afbe7334045ff7c6a06ac68c627d, sm_120 generic MMVQ.
 // All pointers are device pointers, at least 4-byte aligned, with no overlap.

@@ -1,0 +1,50 @@
+{
+  "date": "2026-09-30",
+  "hardware": "Threadripper 1950X, 160 GB DDR4, RTX 5060 Ti 16 GB, PCIe Gen3 x8",
+  "context": 8192,
+  "tokens": 4096,
+  "batch": 4096,
+  "threads": 6,
+  "gpu_budget_mib": 12288,
+  "peak_explicit_allocated_mib": 10987.5,
+  "runtime_reserve_mib": 1024,
+  "untimed_warmup": true,
+  "weights_prefaulted": true,
+  "milliseconds": [
+    36448.7,
+    39700.9,
+    36031.0
+  ],
+  "tokens_per_second": [
+    112.377,
+    103.171,
+    113.68
+  ],
+  "median_tokens_per_second": 112.377,
+  "token_csv_sha256": "0ece8b433ccdccf16e7fe50753a6b0cd06c8381000fb1938f1f93e848496929f",
+  "decode_ids": [
+    286,
+    595
+  ],
+  "decoder_log": "GPU prefill chunk=4096 staging_workers=2 numa_cpus=8,9\nGPU allocated_MiB=10987.5 reserved_runtime_MiB=1024 budget_MiB=12288\nmain weights prefaulted checksum=160\nPREFILL trial=0 tokens=4096 batch=4096 ms=36448.7 tok_s=112.377\nFAULTS trial=0 major=0 minor=91734\nGPU peak_allocated_MiB=10987.5 native_expert_bytes=109867696128 expert_groups=756 staging_ms=22847.7\nPREFILL trial=1 tokens=4096 batch=4096 ms=39700.9 tok_s=103.171\nFAULTS trial=1 major=0 minor=92159\nGPU peak_allocated_MiB=10987.5 native_expert_bytes=109867696128 expert_groups=756 staging_ms=26469\nPREFILL trial=2 tokens=4096 batch=4096 ms=36031 tok_s=113.68\nFAULTS trial=2 major=0 minor=89918\nGPU peak_allocated_MiB=10987.5 native_expert_bytes=109867696128 expert_groups=756 staging_ms=22765\n",
+  "scope": "Final fixed projection tiles, warm full-model prefill; CPU-only compilation overlapped some trials.",
+  "chunk_consistency": "2048 vs 4096: all state/logit normalized L2 <= 0.02; greedy token 286",
+  "nvml_process_sample_mib": 11870,
+  "page_faults": [
+    {
+      "trial": 0,
+      "major": 0,
+      "minor": 91734
+    },
+    {
+      "trial": 1,
+      "major": 0,
+      "minor": 92159
+    },
+    {
+      "trial": 2,
+      "major": 0,
+      "minor": 89918
+    }
+  ]
+}

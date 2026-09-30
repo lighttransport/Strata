@@ -13,10 +13,11 @@
 
 namespace strata::kernels::cpu {
 
-/// Bytes of the largest quantized activation any native layer uses (2560 values as Q8_K: 10 x 292).
-inline constexpr size_t kNativeActBytes = 4096;
-/// Bytes of the largest quantized down activation (640 values as Q8_0: 20 x 34, or Q8_K 3 x 292).
-inline constexpr size_t kNativeHBytes = 1024;
+/// Scratch capacity includes GLM's 4096 values as Q8_K (16 x 292 bytes).
+inline constexpr size_t kNativeActBytes = 8192;
+/// Scratch capacity includes GLM's 2048 values as Q8_K (8 x 292 bytes).
+inline constexpr size_t kNativeHBytes = 4096;
+inline constexpr int kNativeFF = 2048;
 
 /// One layer's native expert geometry.
 struct NativeFmt {
@@ -27,6 +28,7 @@ struct NativeFmt {
     size_t up_off = 0, down_off = 0;    ///< inside the blob
     size_t bytes = 0;                   ///< the whole blob
     size_t act_bytes = 0, h_bytes = 0;  ///< quantized activation sizes (n_embd of gu_act, n_ff of d_act)
+    float swiglu_limit = 0;           ///< 0 preserves the Qwen contract; GLM uses 10
 };
 
 /// Whether this build has the ggml-cpu path.
@@ -41,9 +43,9 @@ void native_quant_h(const NativeFmt& f, const float* h, void* dst);
 
 /// ff[t][r] = silu(gate_r . a[t]) * (up_r . a[t]) for rows r in [r0, r1), `nt` tokens.
 void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* act, int nt, float* const* ff,
-                    int r0, int r1);
+                    int r0, int r1, const uint8_t* separate_up = nullptr);
 /// out[t][r] = down_r . hq[t] for rows r in [r0, r1).
 void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const* hq, int nt, float* const* out,
-                      int r0, int r1);
+                      int r0, int r1, const uint8_t* separate_down = nullptr);
 
 }  // namespace strata::kernels::cpu

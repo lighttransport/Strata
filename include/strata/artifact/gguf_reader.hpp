@@ -440,7 +440,9 @@ private:
             if (a->u) align = a->u;
         alignment_ = align;
         data_start_ = (c.pos() + align - 1) / align * align;
-        if (data_start_ > size_) throw std::runtime_error("GGUF: data section starts past EOF");
+        // A metadata-only split shard may end before the unused data alignment padding.
+        if (!tensors_.empty() && data_start_ > size_)
+            throw std::runtime_error("GGUF: data section starts past EOF");
     }
 
     std::string path_;

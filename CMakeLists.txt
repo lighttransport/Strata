@@ -117,6 +117,8 @@ target_link_libraries(strata_artifact INTERFACE strata_warnings)
 
 add_executable(strata-gguf src/artifact/gguf_reader.cpp)
 target_link_libraries(strata-gguf PRIVATE strata_artifact)
+add_executable(strata-model-inspect src/artifact/model_inspect.cpp)
+target_link_libraries(strata-model-inspect PRIVATE strata_artifact)
 
 add_executable(strata-dequant src/artifact/dequant.cpp)
 target_link_libraries(strata-dequant PRIVATE strata_artifact)
@@ -127,6 +129,9 @@ if(STRATA_BUILD_TESTS)
   add_executable(gguf_reader_test src/artifact/gguf_reader_test.cpp)
   target_link_libraries(gguf_reader_test PRIVATE strata_artifact)
   add_test(NAME gguf_reader_test COMMAND gguf_reader_test)
+  add_executable(model_test src/artifact/model_test.cpp)
+  target_link_libraries(model_test PRIVATE strata_artifact)
+  add_test(NAME model_test COMMAND model_test)
 endif()
 
 # ---- strata_plan ----------------------------------------------------------
@@ -192,6 +197,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/shared_expert.cu
                           src/kernels/cuda/gr.cu
                           src/kernels/cuda/gdn.cu
+                          src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu
                           src/kernels/cuda/qsa.cu
                           src/kernels/cuda/elementwise.cu
                           src/kernels/cuda/bf16_gemv.cu
@@ -226,6 +232,14 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/ngram/ple_reader.cpp
                           src/platform/direct_file.cpp)
   target_link_libraries(strata_kernels PUBLIC strata_core strata_artifact)
+  if(STRATA_ENABLE_CUDA AND STRATA_BUILD_TESTS)
+    add_executable(glm_parity src/kernels/glm_parity.cpp)
+    target_link_libraries(glm_parity PRIVATE strata_kernels CUDA::cudart)
+    add_test(NAME glm_parity COMMAND glm_parity)
+    add_executable(glm_prefill_parity src/kernels/glm_prefill_parity.cpp)
+    target_link_libraries(glm_prefill_parity PRIVATE strata_kernels CUDA::cudart CUDA::cublas)
+    add_test(NAME glm_prefill_parity COMMAND glm_prefill_parity)
+  endif()
   # perf-review D-1: the tensor-core prompt attention vs the FP32 kernel and FP64 (GPU, synthetic, no model); with
   # the tests, or alone with -DSTRATA_PARITY_PROMPT_ATTN=ON
   if(STRATA_BUILD_TESTS OR STRATA_PARITY_PROMPT_ATTN)
@@ -495,7 +509,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   add_test(NAME cvec_parity COMMAND cvec_parity)
 
   # Plan v0.3 P3: native MMVQ for 1..8 tokens (bitwise selftest + --bench timing); synthetic data, no model.
-  if(STRATA_BUILD_TESTS)
+  if(STRATA_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/micro/native_mmvq_multi.cpp")
   add_executable(native_mmvq_multi bench/micro/native_mmvq_multi.cpp)
   target_include_directories(native_mmvq_multi PRIVATE ${_strata_gpu_include_directories})
   target_link_libraries(native_mmvq_multi PRIVATE strata_kernels ${_strata_gpu_runtime_target})
@@ -723,12 +737,22 @@ if(STRATA_NATIVE_EXPERTS)
     add_executable(native_expert_parity src/kernels/native_expert_parity.cpp)
     target_include_directories(native_expert_parity PRIVATE ${_strata_gpu_include_directories})
     target_link_libraries(native_expert_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact ${_strata_gpu_runtime_target})
+    if(STRATA_ENABLE_CUDA)
+      add_executable(strata-glm-decode src/program/glm_decode.cpp)
+      target_link_libraries(strata-glm-decode PRIVATE strata_engine strata_spec strata_prefill strata_kernels strata_kernels_cpu strata_artifact CUDA::cudart CUDA::cublas)
+      if(STRATA_BUILD_TESTS)
+        add_executable(glm_quant_parity src/kernels/glm_quant_parity.cpp)
+        target_link_libraries(glm_quant_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact CUDA::cudart)
+      endif()
+    endif()
   endif()
 endif()
 
 if(STRATA_ENABLE_CUDA AND STRATA_BUILD_TESTS)
-  add_executable(hit_cpu_order_parity bench/micro/hit_cpu_order_parity.cu)
-  target_link_libraries(hit_cpu_order_parity PRIVATE strata_kernels strata_kernels_cpu ${_strata_gpu_runtime_target})
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/micro/hit_cpu_order_parity.cu")
+    add_executable(hit_cpu_order_parity bench/micro/hit_cpu_order_parity.cu)
+    target_link_libraries(hit_cpu_order_parity PRIVATE strata_kernels strata_kernels_cpu ${_strata_gpu_runtime_target})
+  endif()
 endif()
 
 if(STRATA_BUILD_TESTS)

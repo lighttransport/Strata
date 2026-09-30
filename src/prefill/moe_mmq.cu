@@ -9,6 +9,8 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
+#include <vector>
 
 namespace strata::prefill::mmq {
 namespace {
@@ -69,13 +71,15 @@ __global__ void strata_q2_kernel(const uint8_t* __restrict__ blob, uint16_t* __r
 }
 
 __global__ void swiglu_kernel(const float* __restrict__ gu, float* __restrict__ h, int64_t rows, int64_t n_ff,
-                              bool interleaved) {
+                              bool interleaved, float limit) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= rows * n_ff) return;
     const int64_t r = i / n_ff, k = i % n_ff;
     const float* row = gu + r * 2 * n_ff;
-    const float g = interleaved ? row[2 * k] : row[k], u = interleaved ? row[2 * k + 1] : row[n_ff + k];
-    h[i] = g / (1.0f + __expf(-g)) * u;
+    float g = interleaved ? row[2 * k] : row[k], u = interleaved ? row[2 * k + 1] : row[n_ff + k];
+    float up = u;
+    if (limit > 0) { g = fminf(g, limit); up = fmaxf(-limit, fminf(up, limit)); }
+    h[i] = g / (1.0f + __expf(-g)) * up;
 }
 
 __global__ void iota_kernel(int32_t* dst, int64_t n) {
@@ -119,6 +123,31 @@ Context::Context() {
     int dev = 0;
     cudaGetDevice(&dev);
     ctx_ = new ggml_backend_cuda_context(dev);
+}
+namespace {
+struct ExternalPool : ggml_cuda_pool {
+    struct Buffer { void* p; size_t bytes; bool used; };
+    char* data;
+    size_t capacity, cursor = 0;
+    std::vector<Buffer> buffers;
+    ExternalPool(void* p, size_t n) : data((char*)p), capacity(n) {}
+    void* alloc(size_t bytes, size_t* actual) override {
+        for (auto& b : buffers) if (!b.used && b.bytes >= bytes) { b.used = true; *actual = b.bytes; return b.p; }
+        bytes = (bytes + 255) / 256 * 256;
+        if (cursor + bytes > capacity) {
+            for (const auto& b : buffers) if (b.used) throw std::runtime_error("MMQ: external scratch exhausted");
+            buffers.clear(); cursor = 0;
+        }
+        if (bytes > capacity) throw std::runtime_error("MMQ: external scratch exhausted");
+        void* p = data + cursor; cursor += bytes;
+        buffers.push_back({p, bytes, true}); *actual = bytes; return p;
+    }
+    void free(void* p, size_t) override { for (auto& b : buffers) if (b.p == p) { b.used = false; return; } }
+};
+}
+Context::Context(void* scratch, size_t bytes) : Context() {
+    auto& context = *(ggml_backend_cuda_context*)ctx_;
+    context.pools[context.device][0] = std::make_unique<ExternalPool>(scratch, bytes);
 }
 Context::~Context() { delete (ggml_backend_cuda_context*) ctx_; }
 
@@ -173,9 +202,9 @@ void gather_strata_q2(const uint8_t* blob, void* gu_dst, void* d_dst, void* stre
     ck(cudaGetLastError(), "gather_strata_q2");
 }
 
-void swiglu(const float* gu, float* h, int64_t rows, int64_t n_ff, bool interleaved, void* stream) {
+void swiglu(const float* gu, float* h, int64_t rows, int64_t n_ff, bool interleaved, void* stream, float limit) {
     if (rows <= 0) return;
-    swiglu_kernel<<<blocks(rows * n_ff), 256, 0, (cudaStream_t) stream>>>(gu, h, rows, n_ff, interleaved);
+    swiglu_kernel<<<blocks(rows * n_ff), 256, 0, (cudaStream_t) stream>>>(gu, h, rows, n_ff, interleaved, limit);
     ck(cudaGetLastError(), "swiglu");
 }
 

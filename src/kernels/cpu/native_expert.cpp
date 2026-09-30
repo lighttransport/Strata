@@ -1,6 +1,6 @@
 // src/kernels/cpu/native_expert.cpp - plan v0.3 P6: native (GGUF-form) experts on the CPU through ggml-cpu.
-// See the header.  Nothing here is Strata arithmetic: the activation quantizers and the row dot products are
-// ggml-cpu's, so an IQ expert computes what llama.cpp's CPU backend computes for it.
+// Uses ggml activation quantizers and optional shared AVX dot kernels.
+// Shared kernels can change float reduction order relative to ggml-cpu.
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/kernels/cpu/expert.hpp"
 #include "strata/kernels/cpu/iq_avx512.hpp"
@@ -30,6 +30,11 @@ bool native_experts_available() noexcept { return true; }
 
 bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt& f, std::string& err) {
     init_once();
+    if (gu_type < 0 || gu_type >= GGML_TYPE_COUNT || d_type < 0 || d_type >= GGML_TYPE_COUNT ||
+        n_embd <= 0 || n_ff <= 0 || n_ff > kNativeFF) {
+        err = "native experts: unsupported type or geometry";
+        return false;
+    }
     const ggml_type_traits_cpu* tg = traits(gu_type);
     const ggml_type_traits_cpu* td = traits(d_type);
     if (tg == nullptr || tg->vec_dot == nullptr || td == nullptr || td->vec_dot == nullptr) {
@@ -76,7 +81,7 @@ void native_quant_h(const NativeFmt& f, const float* h, void* dst) {
 }
 
 void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* act, int nt, float* const* ff,
-                    int r0, int r1) {
+                    int r0, int r1, const uint8_t* separate_up) {
     // the multi-token kernels decode the weights once for all tokens: 2.0-2.4x ggml-cpu at three tokens, no faster
     // at one (all are bound by the codebook lookups, ~5 GB/s per core), measured by native_expert_parity.  AVX-512
     // first, then the AVX-2 one (Zen 2/3, Intel 12th-14th gen).  STRATA_NO_IQ512 drops an AVX-512 CPU to the
@@ -84,7 +89,12 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
     // both set (and on a CPU without AVX-512, STRATA_NO_IQ512 changes nothing).
     static const bool avx512 = cpu_avx512_ok() && std::getenv("STRATA_NO_IQ512") == nullptr;
     static const bool avx2 = std::getenv("STRATA_NO_IQ256") == nullptr;
-    if (nt >= 2 && iq512_supported(f.gu_type)) {   // one token: ggml-cpu is as fast or faster
+    if (f.swiglu_limit > 0 && avx2 && iq256_supported(f.gu_type)) {
+        iq256_gu_rows_clamped(f.gu_type, blob, f.gu_row, f.up_off, (int)f.n_embd,
+                             act, nt, ff, r0, r1, f.swiglu_limit, separate_up);
+        return;
+    }
+    if (nt >= 2 && !separate_up && f.swiglu_limit == 0 && iq512_supported(f.gu_type)) {
         if (avx512) {
             iq512_gu_rows(f.gu_type, blob, f.gu_row, f.up_off, (int) f.n_embd, act, nt, ff, r0, r1);
             return;
@@ -98,29 +108,37 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
     const int n = (int) f.n_embd;
     for (int r = r0; r < r1; ++r) {
         const uint8_t* gr = blob + (size_t) r * f.gu_row;
-        const uint8_t* ur = blob + f.up_off + (size_t) r * f.gu_row;
+        const uint8_t* ur = (separate_up ? separate_up : blob + f.up_off) + (size_t) r * f.gu_row;
         for (int t = 0; t < nt; ++t) {
             float g = 0.f, u = 0.f;
             dot(n, &g, 0, gr, 0, act[t], 0, 1);
             dot(n, &u, 0, ur, 0, act[t], 0, 1);
+            if (f.swiglu_limit > 0) {
+                g = std::fmin(g, f.swiglu_limit);
+                u = std::fmax(-f.swiglu_limit, std::fmin(u, f.swiglu_limit));
+            }
             ff[t][r] = (g / (1.f + std::exp(-g))) * u;
         }
     }
 }
 
 void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const* hq, int nt, float* const* out,
-                      int r0, int r1) {
+                      int r0, int r1, const uint8_t* separate_down) {
     // IQ4_NL down rows: the AVX-2 multi-token kernel decodes the nibbles and absolutises the weights once per
     // block instead of once per token; ggml-cpu's dot is single-token.  STRATA_NO_IQ4NL falls back to it.
     static const bool iq4nl_mt = std::getenv("STRATA_NO_IQ4NL") == nullptr;
     if (nt >= 2 && f.d_type == 20 && iq4nl_mt) {
-        iq4nl256_down_rows(blob + f.down_off, f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);
+        iq4nl256_down_rows((separate_down ? separate_down : blob + f.down_off), f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);
+        return;
+    }
+    if (f.swiglu_limit > 0 && std::getenv("STRATA_NO_IQ256") == nullptr && iq256_supported(f.d_type)) {
+        iq256_rows(f.d_type, (separate_down ? separate_down : blob + f.down_off), f.d_row, (int)f.n_ff, hq, nt, out, r0, r1);
         return;
     }
     const ggml_vec_dot_t dot = traits(f.d_type)->vec_dot;
     const int n = (int) f.n_ff;
     for (int r = r0; r < r1; ++r) {
-        const uint8_t* dr = blob + f.down_off + (size_t) r * f.d_row;
+        const uint8_t* dr = (separate_down ? separate_down : blob + f.down_off) + (size_t) r * f.d_row;
         for (int t = 0; t < nt; ++t) {
             float s = 0.f;
             dot(n, &s, 0, dr, 0, hq[t], 0, 1);
