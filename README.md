@@ -1,4 +1,4 @@
-# Strata: GLM5.3Flash on a desktop PC
+# Strata-GLM53F: GLM5.3Flash on a desktop PC
 
 This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
 
