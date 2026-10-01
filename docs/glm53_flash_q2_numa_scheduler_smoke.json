@@ -1,0 +1,186 @@
+{
+  "prompt_tokens": 64,
+  "generated_tokens": 17,
+  "greedy_ids_identical": true,
+  "limitations": "Short correctness/rollback check; not a throughput acceptance benchmark.",
+  "runs": [
+    {
+      "enabled": false,
+      "measurement": {
+        "token_ids": [
+          1067,
+          330,
+          495,
+          459,
+          5320,
+          14,
+          30330,
+          1506,
+          717,
+          13536,
+          6453,
+          698,
+          1067,
+          330,
+          495,
+          459,
+          5320
+        ],
+        "trials": [
+          {
+            "decode_steps": 16,
+            "milliseconds": 10166.0,
+            "tokens_per_second": 1.57387,
+            "step_milliseconds": [
+              635.363,
+              681.811,
+              705.879,
+              621.465,
+              642.498,
+              620.089,
+              595.94,
+              631.032,
+              630.997,
+              675.018,
+              693.047,
+              629.976,
+              578.685,
+              671.944,
+              554.415,
+              588.641
+            ],
+            "cpu_expert_milliseconds": {
+              "gate_up": 5195.43,
+              "quantize": 52.994,
+              "down": 3901.94
+            },
+            "cpu_expert_bytes": 44015026176
+          },
+          {
+            "decode_steps": 16,
+            "milliseconds": 9973.06,
+            "tokens_per_second": 1.60432,
+            "step_milliseconds": [
+              592.974,
+              622.494,
+              607.495,
+              599.457,
+              643.893,
+              633.659,
+              567.295,
+              588.907,
+              597.616,
+              620.719,
+              651.398,
+              644.523,
+              650.212,
+              637.101,
+              614.106,
+              690.648
+            ],
+            "cpu_expert_milliseconds": {
+              "gate_up": 5056.4,
+              "quantize": 46.7871,
+              "down": 3864.66
+            },
+            "cpu_expert_bytes": 44015026176
+          }
+        ],
+        "decoder_log": "GPU prefill chunk=128 staging_workers=2 numa_cpus=\nGPU allocated_MiB=8205.03 reserved_runtime_MiB=1024 budget_MiB=12288\nmain weights prefaulted checksum=61\nPREFILL trial=0 tokens=64 batch=128 ms=27851.4 tok_s=2.29791\nFAULTS trial=0 major=0 minor=98895\nCPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 bytes=0\nGPU peak_allocated_MiB=8205.03 native_expert_bytes=99033808896 expert_groups=756 staging_ms=25514.1\nCHECKPOINT MiB=145.605\nVERIFY_HISTORY slots=7 MiB=1019.24\nVERIFY retained prefixes and next-token logits identical\nVERIFY sequential logits and device rollback identical\nDECODE_TRIAL index=0\nDECODE_STEP index=1 ms=635.363\nDECODE_STEP index=2 ms=681.811\nDECODE_STEP index=3 ms=705.879\nDECODE_STEP index=4 ms=621.465\nDECODE_STEP index=5 ms=642.498\nDECODE_STEP index=6 ms=620.089\nDECODE_STEP index=7 ms=595.94\nDECODE_STEP index=8 ms=631.032\nDECODE_STEP index=9 ms=630.997\nDECODE_STEP index=10 ms=675.018\nDECODE_STEP index=11 ms=693.047\nDECODE_STEP index=12 ms=629.976\nDECODE_STEP index=13 ms=578.685\nDECODE_STEP index=14 ms=671.944\nDECODE_STEP index=15 ms=554.415\nDECODE_STEP index=16 ms=588.641\nDECODE steps=16 ms=10166 tok_s=1.57387\nCPU_EXPERT gu_ms=5195.43 quant_ms=52.994 down_ms=3901.94 bytes=44015026176\nGPU peak_allocated_MiB=9374.01 native_expert_bytes=0 expert_groups=0 staging_ms=0\nDECODE_TRIAL index=1\nDECODE_STEP index=1 ms=592.974\nDECODE_STEP index=2 ms=622.494\nDECODE_STEP index=3 ms=607.495\nDECODE_STEP index=4 ms=599.457\nDECODE_STEP index=5 ms=643.893\nDECODE_STEP index=6 ms=633.659\nDECODE_STEP index=7 ms=567.295\nDECODE_STEP index=8 ms=588.907\nDECODE_STEP index=9 ms=597.616\nDECODE_STEP index=10 ms=620.719\nDECODE_STEP index=11 ms=651.398\nDECODE_STEP index=12 ms=644.523\nDECODE_STEP index=13 ms=650.212\nDECODE_STEP index=14 ms=637.101\nDECODE_STEP index=15 ms=614.106\nDECODE_STEP index=16 ms=690.648\nDECODE steps=16 ms=9973.06 tok_s=1.60432\nCPU_EXPERT gu_ms=5056.4 quant_ms=46.7871 down_ms=3864.66 bytes=44015026176\nGPU peak_allocated_MiB=9374.01 native_expert_bytes=0 expert_groups=0 staging_ms=0\n",
+        "actual_decode_cache": null,
+        "tokens_per_second": 1.589095,
+        "milliseconds": 10069.529999999999,
+        "peak_allocated_mib": 9374.01
+      }
+    },
+    {
+      "enabled": true,
+      "measurement": {
+        "token_ids": [
+          1067,
+          330,
+          495,
+          459,
+          5320,
+          14,
+          30330,
+          1506,
+          717,
+          13536,
+          6453,
+          698,
+          1067,
+          330,
+          495,
+          459,
+          5320
+        ],
+        "trials": [
+          {
+            "decode_steps": 16,
+            "milliseconds": 2991.31,
+            "tokens_per_second": 5.34883,
+            "step_milliseconds": [
+              193.896,
+              173.176,
+              197.101,
+              187.681,
+              193.955,
+              236.165,
+              178.192,
+              200.894,
+              167.821,
+              195.634,
+              169.991,
+              177.503,
+              180.478,
+              162.958,
+              199.632,
+              172.964
+            ],
+            "cpu_expert_milliseconds": {
+              "gate_up": 1294.57,
+              "quantize": 32.0349,
+              "down": 963.306
+            },
+            "cpu_expert_bytes": 44015026176
+          },
+          {
+            "decode_steps": 16,
+            "milliseconds": 4582.64,
+            "tokens_per_second": 3.49143,
+            "step_milliseconds": [
+              267.993,
+              171.002,
+              213.744,
+              176.617,
+              200.272,
+              229.39,
+              229.647,
+              173.261,
+              231.87,
+              223.2,
+              269.227,
+              296.769,
+              174.312,
+              173.409,
+              646.533,
+              895.345
+            ],
+            "cpu_expert_milliseconds": {
+              "gate_up": 2138.51,
+              "quantize": 52.0221,
+              "down": 1621.49
+            },
+            "cpu_expert_bytes": 44015026176
+          }
+        ],
+        "decoder_log": "GPU prefill chunk=128 staging_workers=2 numa_cpus=\nGPU allocated_MiB=8205.03 reserved_runtime_MiB=1024 budget_MiB=12288\nmain weights prefaulted checksum=61\nPREFILL trial=0 tokens=64 batch=128 ms=27275.3 tok_s=2.34644\nFAULTS trial=0 major=0 minor=97380\nCPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 bytes=0\nGPU peak_allocated_MiB=8205.03 native_expert_bytes=99033808896 expert_groups=756 staging_ms=24919.3\nCHECKPOINT MiB=145.605\nNATIVE_NUMA phase=down tasks0=30 tasks1=18 known_pages=144 total_pages=144 query_only=1\nVERIFY_HISTORY slots=7 MiB=1019.24\nVERIFY retained prefixes and next-token logits identical\nVERIFY sequential logits and device rollback identical\nDECODE_TRIAL index=0\nDECODE_STEP index=1 ms=193.896\nDECODE_STEP index=2 ms=173.176\nDECODE_STEP index=3 ms=197.101\nDECODE_STEP index=4 ms=187.681\nDECODE_STEP index=5 ms=193.955\nDECODE_STEP index=6 ms=236.165\nDECODE_STEP index=7 ms=178.192\nDECODE_STEP index=8 ms=200.894\nDECODE_STEP index=9 ms=167.821\nDECODE_STEP index=10 ms=195.634\nDECODE_STEP index=11 ms=169.991\nDECODE_STEP index=12 ms=177.503\nDECODE_STEP index=13 ms=180.478\nDECODE_STEP index=14 ms=162.958\nDECODE_STEP index=15 ms=199.632\nDECODE_STEP index=16 ms=172.964\nDECODE steps=16 ms=2991.31 tok_s=5.34883\nCPU_EXPERT gu_ms=1294.57 quant_ms=32.0349 down_ms=963.306 bytes=44015026176\nGPU peak_allocated_MiB=9374.01 native_expert_bytes=0 expert_groups=0 staging_ms=0\nDECODE_TRIAL index=1\nDECODE_STEP index=1 ms=267.993\nDECODE_STEP index=2 ms=171.002\nDECODE_STEP index=3 ms=213.744\nDECODE_STEP index=4 ms=176.617\nDECODE_STEP index=5 ms=200.272\nDECODE_STEP index=6 ms=229.39\nDECODE_STEP index=7 ms=229.647\nDECODE_STEP index=8 ms=173.261\nDECODE_STEP index=9 ms=231.87\nDECODE_STEP index=10 ms=223.2\nDECODE_STEP index=11 ms=269.227\nDECODE_STEP index=12 ms=296.769\nDECODE_STEP index=13 ms=174.312\nDECODE_STEP index=14 ms=173.409\nDECODE_STEP index=15 ms=646.533\nDECODE_STEP index=16 ms=895.345\nDECODE steps=16 ms=4582.64 tok_s=3.49143\nCPU_EXPERT gu_ms=2138.51 quant_ms=52.0221 down_ms=1621.49 bytes=44015026176\nGPU peak_allocated_MiB=9374.01 native_expert_bytes=0 expert_groups=0 staging_ms=0\n",
+        "actual_decode_cache": null,
+        "tokens_per_second": 4.42013,
+        "milliseconds": 3786.9750000000004,
+        "peak_allocated_mib": 9374.01
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "model": "GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+  "experts_per_layer": 8,
+  "row_chunk": 128,
+  "samples_per_matrix_chunk": 3,
+  "page_node_counts": {
+    "1": 38904,
+    "0": 25608
+  },
+  "chunk_sample_classification": {
+    "gate_up:mixed": 2124,
+    "down:one_node": 10537,
+    "gate_up:one_node": 3252,
+    "down:mixed": 215
+  },
+  "migration_performed": false,
+  "limitations": "Sparse first/middle/last row-page samples; not proof of whole-chunk residency, current worker locality, or decode throughput. No page migration or private model copy."
+}

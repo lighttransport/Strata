@@ -28,6 +28,7 @@ struct NativeFmt {
     size_t up_off = 0, down_off = 0;    ///< inside the blob
     size_t bytes = 0;                   ///< the whole blob
     size_t act_bytes = 0, h_bytes = 0;  ///< quantized activation sizes (n_embd of gu_act, n_ff of d_act)
+    bool lossless = false;          ///< direct magnitude planes for IQ2_S/IQ3_S
     float swiglu_limit = 0;           ///< 0 preserves the Qwen contract; GLM uses 10
 };
 

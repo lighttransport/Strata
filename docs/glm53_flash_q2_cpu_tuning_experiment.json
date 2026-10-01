@@ -1,0 +1,8 @@
+{
+  "baseline_flags": "-O3 -mavx2 -mfma -mf16c",
+  "alternative_extra_flags": "-mtune=znver1",
+  "arithmetic_source_identical": true,
+  "scope": "Real layer-11 expert slices, one CPU thread, warm weights, 5 paired trials of 10 iterations; not a full decode benchmark.",
+  "raw_measurements": "type=17 nt=1 baseline_us=959.8 single_us=950.2 speedup=1.010 bitwise=1\ntype=17 nt=2 baseline_us=1237.6 single_us=1215.2 speedup=1.018 bitwise=1\ntype=17 nt=3 baseline_us=1478.8 single_us=1863.2 speedup=0.794 bitwise=1\ntype=17 nt=4 baseline_us=2216.4 single_us=2281.7 speedup=0.971 bitwise=1\ntype=17 nt=8 baseline_us=4422.4 single_us=4555.1 speedup=0.971 bitwise=1\ntype=18 nt=1 baseline_us=1026.9 single_us=1021.9 speedup=1.005 bitwise=1\ntype=18 nt=2 baseline_us=1312.0 single_us=1322.2 speedup=0.992 bitwise=1\ntype=18 nt=3 baseline_us=1566.0 single_us=1601.9 speedup=0.978 bitwise=1\ntype=18 nt=4 baseline_us=1969.7 single_us=1964.0 speedup=1.003 bitwise=1\ntype=18 nt=8 baseline_us=3941.1 single_us=3923.8 speedup=1.004 bitwise=1\n",
+  "invalidated": "Slices were parsed with incorrect quantization formats. Numerical parity and timing conclusions are invalid; retained for audit only."
+}

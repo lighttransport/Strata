@@ -1732,12 +1732,18 @@ def main() -> int:
     if a.engine == "glm":
         if cfg.get("decode_experts", "cpu") not in ("cpu", "gpu"):
             ap.error("GLM decode_experts must be cpu or gpu")
+        if cfg.get("speculative", "none") not in ("none", "lookup", "mtp"):
+            ap.error("GLM speculative must be none, lookup or mtp")
+        if cfg.get("cpu_affinity", "none") not in ("none", "auto"):
+            ap.error("GLM cpu_affinity must be none or auto")
+        if not 1 <= int(cfg.get("draft_depth", 3)) <= 7:
+            ap.error("GLM draft_depth must be 1..7")
         context = int(cfg.get("context", 4096))
         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
                 str(cfg.get("threads", 6)), str(cfg.get("expert_cache_mib", 0)),
                 str(cfg.get("prefill_batch", 8)), ",".join(str(glm_metadata[k]) for k in
                     ("tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id")
-                    if k in glm_metadata), str(cfg.get("gpu_budget_mib", 12288)), str(cfg.get("lookup_depth", 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu"))]
+                    if k in glm_metadata), str(cfg.get("gpu_budget_mib", 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "none"), str(cfg.get("cpu_prepack_mib", 0))]
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
         vision, sampling_defaults = None, {}
     elif a.engine == "strata":

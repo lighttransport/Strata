@@ -1,0 +1,96 @@
+{
+  "model": "GLM-5.3-Flash-UD-Q2_K_XL",
+  "weights": [
+    "blk.11.ffn_gate_exps.weight expert 7",
+    "blk.11.ffn_down_exps.weight expert 7"
+  ],
+  "baseline_source_sha256": "b6444f858609a791245d16f38be4c91e5f9765bb00ba5ea038281dd8fa862082",
+  "variant": "Replace two alternating integer accumulator vectors per token with one in row_dot and row_dot_iq2xs; retain block float FMA and reduction order.",
+  "method": "Isolated single-thread warm expert row dots; random Q8_K activations, seed 53; median of five paired trials, ten invocations each, alternating variant order.",
+  "compiler_flags": "-std=c++17 -O3 -mavx2 -mfma -mf16c",
+  "decision": "Do not apply: preferred MTP depth 1 verifies at most two tokens, with no meaningful consistent gain in those sizes.",
+  "limitations": "Small warm-cache microbenchmark; does not measure whole-model throughput or full DDR4 expert streaming. Tests selected real expert slices only.",
+  "results": [
+    {
+      "ggml_type": 17,
+      "tokens": 1,
+      "baseline_microseconds": 933.5,
+      "single_accumulator_microseconds": 929.5,
+      "speedup": 1.004,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 17,
+      "tokens": 2,
+      "baseline_microseconds": 1219.4,
+      "single_accumulator_microseconds": 1231.8,
+      "speedup": 0.99,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 17,
+      "tokens": 3,
+      "baseline_microseconds": 1483.2,
+      "single_accumulator_microseconds": 1463.5,
+      "speedup": 1.013,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 17,
+      "tokens": 4,
+      "baseline_microseconds": 2180.3,
+      "single_accumulator_microseconds": 2038.1,
+      "speedup": 1.07,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 17,
+      "tokens": 8,
+      "baseline_microseconds": 4359.5,
+      "single_accumulator_microseconds": 4042.3,
+      "speedup": 1.078,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 18,
+      "tokens": 1,
+      "baseline_microseconds": 1000.9,
+      "single_accumulator_microseconds": 1021.8,
+      "speedup": 0.98,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 18,
+      "tokens": 2,
+      "baseline_microseconds": 1300.6,
+      "single_accumulator_microseconds": 1249.9,
+      "speedup": 1.041,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 18,
+      "tokens": 3,
+      "baseline_microseconds": 1569.1,
+      "single_accumulator_microseconds": 1558.9,
+      "speedup": 1.007,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 18,
+      "tokens": 4,
+      "baseline_microseconds": 1975.9,
+      "single_accumulator_microseconds": 1915.9,
+      "speedup": 1.031,
+      "bitwise_equal": true
+    },
+    {
+      "ggml_type": 18,
+      "tokens": 8,
+      "baseline_microseconds": 3923.4,
+      "single_accumulator_microseconds": 3820.3,
+      "speedup": 1.027,
+      "bitwise_equal": true
+    }
+  ],
+  "invalidated": "Slices were parsed with incorrect quantization formats. Numerical parity and timing conclusions are invalid; retained for audit only."
+}

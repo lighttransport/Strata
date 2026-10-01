@@ -1,0 +1,14 @@
+{
+  "scope": "Real expert slices, one CPU thread, warm weights, 5 paired trials of 10 iterations. Dot rows only; no gate/up fusion timing or full decode claim.",
+  "runs": [
+    {
+      "rows_ahead": 1,
+      "raw_measurements": "type=17 nt=1 baseline_us=958.4 single_us=960.0 speedup=0.998 bitwise=1\ntype=17 nt=2 baseline_us=1233.0 single_us=1245.3 speedup=0.990 bitwise=1\ntype=17 nt=3 baseline_us=1492.7 single_us=1505.8 speedup=0.991 bitwise=1\ntype=17 nt=4 baseline_us=2213.2 single_us=2212.1 speedup=1.000 bitwise=1\ntype=17 nt=8 baseline_us=4353.7 single_us=4413.8 speedup=0.986 bitwise=1\ntype=18 nt=1 baseline_us=1020.3 single_us=1035.9 speedup=0.985 bitwise=1\ntype=18 nt=2 baseline_us=1301.1 single_us=1304.9 speedup=0.997 bitwise=1\ntype=18 nt=3 baseline_us=1555.3 single_us=1567.1 speedup=0.992 bitwise=1\ntype=18 nt=4 baseline_us=1952.5 single_us=1967.0 speedup=0.993 bitwise=1\ntype=18 nt=8 baseline_us=3946.3 single_us=3955.5 speedup=0.998 bitwise=1\n"
+    },
+    {
+      "rows_ahead": 4,
+      "raw_measurements": "type=17 nt=1 baseline_us=962.6 single_us=939.1 speedup=1.025 bitwise=1\ntype=17 nt=2 baseline_us=1242.4 single_us=1236.1 speedup=1.005 bitwise=1\ntype=17 nt=3 baseline_us=1478.4 single_us=1487.0 speedup=0.994 bitwise=1\ntype=17 nt=4 baseline_us=2200.1 single_us=2207.9 speedup=0.996 bitwise=1\ntype=17 nt=8 baseline_us=4418.6 single_us=4427.3 speedup=0.998 bitwise=1\ntype=18 nt=1 baseline_us=1026.0 single_us=1043.3 speedup=0.983 bitwise=1\ntype=18 nt=2 baseline_us=1310.1 single_us=1320.9 speedup=0.992 bitwise=1\ntype=18 nt=3 baseline_us=1581.0 single_us=1589.4 speedup=0.995 bitwise=1\ntype=18 nt=4 baseline_us=1983.6 single_us=1997.5 speedup=0.993 bitwise=1\ntype=18 nt=8 baseline_us=3987.6 single_us=4006.5 speedup=0.995 bitwise=1\n"
+    }
+  ],
+  "invalidated": "Slices were parsed with incorrect quantization formats. Numerical parity and timing conclusions are invalid; retained for audit only."
+}

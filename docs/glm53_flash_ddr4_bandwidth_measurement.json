@@ -1,0 +1,22 @@
+{
+  "cpu": "AMD Ryzen Threadripper 1950X",
+  "threads": 16,
+  "arrays_mib": 1536,
+  "parallel_first_touch": true,
+  "omp_places": "cores",
+  "omp_proc_bind": "spread",
+  "compiler_flags": [
+    "-std=c++17",
+    "-O3",
+    "-mavx2",
+    "-mfma",
+    "-ffast-math",
+    "-fopenmp"
+  ],
+  "logical_bandwidth_gigabytes_per_second": {
+    "read": 50.7009,
+    "triad": 35.33
+  },
+  "raw_measurements": "threads=16 arrays_mib=1536\nmode=read trial=0 logical_gbps=51.0403\nmode=read trial=1 logical_gbps=51.1617\nmode=read trial=2 logical_gbps=50.4821\nmode=read trial=3 logical_gbps=50.7009\nmode=read trial=4 logical_gbps=50.2976\nmode=read median_logical_gbps=50.7009\nmode=triad trial=0 logical_gbps=35.3300\nmode=triad trial=1 logical_gbps=35.3633\nmode=triad trial=2 logical_gbps=35.3787\nmode=triad trial=3 logical_gbps=35.2263\nmode=triad trial=4 logical_gbps=34.3112\nmode=triad median_logical_gbps=35.3300\nchecksum=11.0\n",
+  "limitations": "Anonymous arrays with parallel first touch; not the same access pattern or arithmetic as expert kernels. Triad logical bytes exclude write-allocation traffic. This is not a strict decode throughput bound."
+}

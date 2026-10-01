@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cerrno>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -18,6 +19,10 @@
 #else
 #include <pthread.h>
 #include <sched.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 #endif
 
 namespace strata::kernels::cpu {
@@ -175,6 +180,30 @@ void ExpertPool::diag(std::FILE* f) const {
 }
 
 ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works) : host_works_(host_works) {
+    if (const char* e = std::getenv("STRATA_NATIVE_NUMA_LOCAL")) {
+        if (std::string(e) != "0" && std::string(e) != "1")
+            throw std::invalid_argument("STRATA_NATIVE_NUMA_LOCAL must be 0 or 1");
+#if defined(__linux__)
+        native_local_enabled_ = *e == '1' && access("/sys/devices/system/node/node1", F_OK) == 0 &&
+                                access("/sys/devices/system/node/node2", F_OK) != 0;
+        if (native_local_enabled_) {
+            cpu_nodes_.assign(CPU_SETSIZE, -1);
+            for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu)
+                for (int node = 0; node < 2; ++node) {
+                    char path[96];
+                    std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/node%d", cpu, node);
+                    if (access(path, F_OK) == 0) cpu_nodes_[cpu] = node;
+                }
+        }
+#endif
+    }
+    if (const char* e = std::getenv("STRATA_NATIVE_TASKS_PER_THREAD")) {
+        char* end = nullptr;
+        const long value = std::strtol(e, &end, 10);
+        if (end == e || *end || value < 1 || value > 16)
+            throw std::invalid_argument("STRATA_NATIVE_TASKS_PER_THREAD must be 1..16");
+        native_tasks_per_thread_ = (int) value;
+    }
     if (const char* e = std::getenv("STRATA_POOL_SPIN_US"))   // a test knob; see kSpinBeforeSleep
         spin_before_sleep_ = std::chrono::microseconds((std::max)(0, std::atoi(e)));
     const std::vector<int> cores = physical_cores(true);
@@ -270,8 +299,22 @@ void ExpertPool::worker(int id) {
     }
 }
 
-int ExpertPool::claim(uint32_t epoch) {
+int ExpertPool::claim(uint32_t epoch, int node) {
     uint64_t h = head_.load(std::memory_order_acquire);
+    if ((uint32_t)(h >> 32) != epoch) return -1;
+    if (native_local_phase_ && mode_ == 6) {
+        node = node == 1 ? 1 : 0;
+        for (int pass = 0; pass < 2; ++pass) {
+            const int q = node ^ pass;
+            auto& next = q ? local_next1_ : local_next0_;
+            const uint32_t i = next.fetch_add(1, std::memory_order_relaxed);
+            if (i < local_tasks_[q].size()) {
+                head_.fetch_add(1, std::memory_order_relaxed);
+                return local_tasks_[q][i];
+            }
+        }
+        return -1;
+    }
     for (;;) {
         if ((uint32_t) (h >> 32) != epoch) return -1;               // not the batch this thread woke for
         const uint32_t n = (uint32_t) (h >> 16) & 0xffffu, i = (uint32_t) h & 0xffffu;
@@ -339,8 +382,15 @@ void ExpertPool::wait_done(int n) {
 
 void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
     (void) id;
+    int node = -1;
+#if defined(__linux__)
+    if (native_local_phase_) {
+        const int cpu = sched_getcpu();
+        if (cpu >= 0 && cpu < (int)cpu_nodes_.size()) node = cpu_nodes_[cpu];
+    }
+#endif
     for (;;) {
-        const int ci = claim(epoch);
+        const int ci = claim(epoch, node);
         if (ci < 0) break;
         const uint32_t i = (uint32_t) ci;
         if (id >= 0) wstate_[(size_t) id].store(ci, std::memory_order_relaxed);
@@ -417,10 +467,71 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
     }
 }
 
+void ExpertPool::prepare_native_local_tasks(int n_tasks) {
+    native_local_phase_ = false;
+#if defined(__linux__) && defined(SYS_move_pages)
+    if (!native_local_enabled_ || mode_ != 6) return;
+    std::vector<void*> pages;
+    std::vector<int> task_ids;
+    const size_t page_size = (size_t)sysconf(_SC_PAGESIZE);
+    const int per = (int)nfmt_->n_embd;
+    for (int task = 0; task < n_tasks; ++task) {
+        const int64_t begin = mrows_ * task / mtasks_, end = mrows_ * (task + 1) / mtasks_;
+        for (int64_t row = begin; row < end;) {
+            const int expert = (int)(row / per), r0 = (int)(row % per);
+            const int r1 = (int)std::min<int64_t>(per, r0 + end - row);
+            const auto& job = mjobs_[expert];
+            const uint8_t* weights = job.native_down ? job.native_down : job.blob + nfmt_->down_off;
+            for (int r : {r0, (r0 + r1 - 1) / 2, r1 - 1}) {
+                const uintptr_t address = (uintptr_t)(weights + (size_t)r * nfmt_->d_row);
+                pages.push_back((void*)(address / page_size * page_size));
+                task_ids.push_back(task);
+            }
+            row += r1 - r0;
+        }
+    }
+    std::vector<int> status(pages.size()), votes0(n_tasks), votes1(n_tasks);
+    // NULL targets and flags 0 query placement; this never requests migration.
+    if (syscall(SYS_move_pages, 0, pages.size(), pages.data(), nullptr, status.data(), 0) < 0) {
+        if (!native_local_reported_)
+            std::fprintf(stderr, "NATIVE_NUMA query_failed errno=%d fallback=global\n", errno);
+        native_local_reported_ = true;
+        return;
+    }
+    for (size_t i = 0; i < status.size(); ++i) {
+        if (status[i] == 0) ++votes0[task_ids[i]];
+        if (status[i] == 1) ++votes1[task_ids[i]];
+    }
+    local_tasks_[0].clear();
+    local_tasks_[1].clear();
+    for (int task = 0; task < n_tasks; ++task) {
+        const int node = votes0[task] == votes1[task] ? task % 2 : votes1[task] > votes0[task];
+        local_tasks_[node].push_back(task);
+    }
+    local_next0_.store(0, std::memory_order_relaxed);
+    local_next1_.store(0, std::memory_order_relaxed);
+    native_local_phase_ = true;
+    if (!native_local_reported_) {
+        int known = 0;
+        for (int value : status) known += value == 0 || value == 1;
+        std::fprintf(stderr, "NATIVE_NUMA phase=down tasks0=%zu tasks1=%zu known_pages=%d total_pages=%zu query_only=1\n",
+                     local_tasks_[0].size(), local_tasks_[1].size(), known, pages.size());
+        native_local_reported_ = true;
+    }
+#endif
+}
+
 void ExpertPool::run_phase(int mode, int n_tasks) {
     wait_parked("before a phase");
     mode_ = mode;
     njobs_ = n_tasks;
+    if (native_local_enabled_ && mode == 6) {
+        const auto start = std::chrono::steady_clock::now();
+        prepare_native_local_tasks(n_tasks);
+        ms_native_local_prepare += std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        ++native_local_queries;
+    } else prepare_native_local_tasks(n_tasks);
     const uint32_t e = begin_batch(n_tasks);
     if (host_works_) drain(-1, host_scratch_, e);
     wait_done(n_tasks);
@@ -499,7 +610,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         mjobs_ = jobs + b0;
         nfmt_ = &f;
         const int threads = n_ + (host_works_ ? 1 : 0);
-        mtasks_ = 3 * threads;
+        mtasks_ = native_tasks_per_thread_ * threads;
         mrows_ = (int64_t) nb * f.n_ff;
         const auto a = std::chrono::steady_clock::now();
         run_phase(5, mtasks_);

@@ -46,6 +46,10 @@ def main():
     parser.add_argument("--gpu-budget-mib", type=int, default=12288)
     parser.add_argument("--decode-experts", choices=("cpu", "gpu"), default="cpu")
     parser.add_argument("--lookup-depth", type=int, default=0, help="0 disables speculation; 1-7 prompt-lookup drafts")
+    parser.add_argument("--speculative", choices=("none", "lookup", "mtp"), default="none")
+    parser.add_argument("--draft-depth", type=int, choices=range(1, 8), default=3)
+    parser.add_argument("--cpu-prepack-mib", type=int, default=0)
+    parser.add_argument("--cpu-affinity", choices=("none", "auto"), default="none")
     parser.add_argument("--system")
     parser.add_argument("--raw", action="store_true", help="tokenize the prompt without a chat template")
     parser.add_argument("--dry-run", action="store_true", help="print prompt token IDs without running the network")
@@ -69,6 +73,8 @@ def main():
                str(args.tokens), str(args.dense_cache_mib), str(args.threads),
                f"--prefill-batch={args.prefill_batch}", f"--gpu-budget-mib={args.gpu_budget_mib}", f"--lookup-depth={args.lookup_depth}", f"--decode-experts={args.decode_experts}", f"--expert-cache-mib={args.expert_cache_mib}",
                f"--stop-ids={','.join(map(str, sorted(stops)))}"]
+    if args.speculative != "none": command.append(f"--speculative={args.speculative}")
+    command.extend((f"--draft-depth={args.draft_depth}", f"--cpu-affinity={args.cpu_affinity}", f"--cpu-prepack-mib={args.cpu_prepack_mib}"))
     # Read only the token-ID protocol from stdout; decoder failures use stderr.
     with subprocess.Popen(command, stdout=subprocess.PIPE, text=True) as process:
         generated, shown = [], ""

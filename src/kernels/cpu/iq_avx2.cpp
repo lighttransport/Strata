@@ -31,10 +31,9 @@ inline uint64_t u64(const uint8_t* p) { uint64_t v; std::memcpy(&v, p, 8); retur
 
 // 32 sign bits -> 32 bytes of -1 (bit set) / +1: ggml's bit_selector pattern, shared by all tokens.
 inline __m256i sgn_vec(uint32_t m) {
-    const __m128i bm = _mm_set1_epi32((int) m);
-    const __m128i lo = _mm_shuffle_epi8(bm, _mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1));
-    const __m128i hi = _mm_shuffle_epi8(bm, _mm_setr_epi8(2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3));
-    const __m256i bits = _mm256_inserti128_si256(_mm256_castsi128_si256(lo), hi, 1);
+    const __m256i bits = _mm256_shuffle_epi8(_mm256_set1_epi32((int)m),
+        _mm256_setr_epi8(0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1,
+                         2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3));
     const __m256i sel = _mm256_setr_epi8(1, 2, 4, 8, 16, 32, 64, (char) 0x80,
                                          1, 2, 4, 8, 16, 32, 64, (char) 0x80,
                                          1, 2, 4, 8, 16, 32, 64, (char) 0x80,
@@ -159,29 +158,112 @@ template <> struct Fmt32<21> {   // IQ3_S: d, qs[64], qh[8], signs[32], scales[4
     }
 };
 
+// Direct magnitude planes preserve the codebook values without a lookup in the dot loop.
+inline __m256i magnitude_codes(const uint8_t *q) {
+    const __m128i packed = _mm_loadl_epi64((const __m128i *)q), mask = _mm_set1_epi8(3);
+    const __m128i a = _mm_and_si128(packed, mask), b = _mm_and_si128(_mm_srli_epi16(packed, 2), mask);
+    const __m128i c = _mm_and_si128(_mm_srli_epi16(packed, 4), mask), d = _mm_and_si128(_mm_srli_epi16(packed, 6), mask);
+    return _mm256_inserti128_si256(_mm256_castsi128_si256(_mm_unpacklo_epi64(a, b)), _mm_unpacklo_epi64(c, d), 1);
+}
+template <> struct Fmt32<122> {
+    static constexpr int bytes = 106;
+    static constexpr float K = .125f;
+    static void decode(const uint8_t *b, int j, int half, __m256i &g, __m256i &sign, __m256i &scale) {
+        const int h = 2 * j + half;
+        const __m256i lut = _mm256_setr_epi8(8,25,43,0,8,25,43,0,8,25,43,0,8,25,43,0,
+                                            8,25,43,0,8,25,43,0,8,25,43,0,8,25,43,0);
+        g = _mm256_shuffle_epi8(lut, magnitude_codes(b + 2 + h * 8));
+        sign = sgn_vec(u32(b + 66 + h * 4));
+        const int s = b[98 + h];
+        scale = sc16(2 * (s & 15) + 1, 2 * (s >> 4) + 1);
+    }
+};
+template <> struct Fmt32<121> {
+    static constexpr int bytes = 134;
+    static constexpr float K = 1.f;
+    static void decode(const uint8_t *b, int j, int half, __m256i &g, __m256i &sign, __m256i &scale) {
+        const int h = 2 * j + half;
+        __m256i codes = _mm256_or_si256(magnitude_codes(b + 2 + h * 8),
+            _mm256_and_si256(sgn_vec(u32(b + 66 + h * 4)), _mm256_set1_epi8(4)));
+        g = _mm256_add_epi8(_mm256_add_epi8(codes, codes), _mm256_set1_epi8(1));
+        sign = sgn_vec(u32(b + 98 + h * 4));
+        const int s = b[130 + j];
+        scale = sc32(2 * (half ? s >> 4 : s & 15) + 1);
+    }
+};
+template <int TY> void prepare_rows(const uint8_t *src, uint8_t *dst, int n, int rows) {
+    for (int r = 0; r < rows; ++r)
+        for (int i = 0; i < n / 256; ++i) {
+            const uint8_t *b = src + ((size_t)r * (n / 256) + i) * Fmt32<TY>::bytes;
+            uint8_t *out = dst + ((size_t)r * (n / 256) + i) * Fmt32<TY + 100>::bytes;
+            std::memcpy(out, b, 2);
+            if constexpr (TY == 22) {
+                std::memcpy(out + 66, b + 34, 32); std::memcpy(out + 98, b + 74, 8);
+            } else {
+                std::memcpy(out + 98, b + 74, 32); std::memcpy(out + 130, b + 106, 4);
+            }
+            for (int h = 0; h < 8; ++h) {
+                __m256i g, sign, scale;
+                Fmt32<TY>::decode(b, h / 2, h % 2, g, sign, scale);
+                __m256i codes;
+                if constexpr (TY == 22)
+                    codes = _mm256_sub_epi8(_mm256_setzero_si256(), _mm256_add_epi8(
+                        _mm256_cmpgt_epi8(g, _mm256_set1_epi8(8)), _mm256_cmpgt_epi8(g, _mm256_set1_epi8(25))));
+                else {
+                    codes = _mm256_and_si256(_mm256_srli_epi16(g, 1), _mm256_set1_epi8(7));
+                    const uint32_t high = (uint32_t)_mm256_movemask_epi8(_mm256_slli_epi16(codes, 5));
+                    std::memcpy(out + 66 + 4 * h, &high, 4);
+                }
+                codes = _mm256_and_si256(codes, _mm256_set1_epi8(3));
+                const __m128i lo = _mm256_castsi256_si128(codes), hi = _mm256_extracti128_si256(codes, 1);
+                __m128i packed = _mm_or_si128(lo, _mm_slli_epi16(_mm_srli_si128(lo, 8), 2));
+                packed = _mm_or_si128(packed, _mm_slli_epi16(hi, 4));
+                packed = _mm_or_si128(packed, _mm_slli_epi16(_mm_srli_si128(hi, 8), 6));
+                _mm_storel_epi64((__m128i *)(out + 2 + 8 * h), packed);
+            }
+        }
+}
+struct ScaleShuffle {
+    alignas(32) uint8_t v[8][32]{};
+    constexpr ScaleShuffle() {
+        for (int h = 0; h < 8; ++h)
+            for (int i = 0; i < 32; ++i) v[h][i] = 2 * h + i % 2;
+    }
+};
+static constexpr ScaleShuffle scale_shuffle;
+
 template <int TY, int NT>
 inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
     __m256 accf[NT];
     for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
     for (int i = 0; i < nblocks; ++i) {
         const uint8_t* blk = row + (size_t) i * Fmt32<TY>::bytes;
-        __m256i acci[NT];
-        for (int t = 0; t < NT; ++t) acci[t] = _mm256_setzero_si256();
+        __m256i scales;
+        if constexpr (TY == 22) {
+            const uint64_t packed = u64(blk + 74);
+            const __m128i nibbles = _mm_and_si128(_mm_set_epi64x(packed >> 4, packed), _mm_set1_epi8(15));
+            scales = _mm256_cvtepi8_epi16(_mm_add_epi8(_mm_add_epi8(nibbles, nibbles), _mm_set1_epi8(1)));
+        }
+        __m256i acci[NT][2];
+        for (int t = 0; t < NT; ++t)
+            acci[t][0] = acci[t][1] = _mm256_setzero_si256();
         for (int j = 0; j < 4; ++j) {
             for (int half = 0; half < 2; ++half) {
                 __m256i g, sgn, sc;
                 Fmt32<TY>::decode(blk, j, half, g, sgn, sc);
+                if constexpr (TY == 22)
+                    sc = _mm256_shuffle_epi8(scales, _mm256_load_si256((const __m256i *)scale_shuffle.v[2 * j + half]));
                 const int off = 64 * j + 32 * half;
                 for (int t = 0; t < NT; ++t) {
                     const __m256i yv = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + off));
                     const __m256i ys = _mm256_sign_epi8(yv, sgn);
-                    acci[t] = _mm256_add_epi32(acci[t], _mm256_madd_epi16(_mm256_maddubs_epi16(g, ys), sc));
+                    acci[t][half] = _mm256_add_epi32(acci[t][half], _mm256_madd_epi16(_mm256_maddubs_epi16(g, ys), sc));
                 }
             }
         }
         const float dx = h2f(u16(blk)) * Fmt32<TY>::K;
         for (int t = 0; t < NT; ++t)
-            accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * y[t][i].d), _mm256_cvtepi32_ps(acci[t]), accf[t]);
+            accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * y[t][i].d), _mm256_cvtepi32_ps(_mm256_add_epi32(acci[t][0], acci[t][1])), accf[t]);
     }
     for (int t = 0; t < NT; ++t) res[t] = hsum8(accf[t]);
 }
@@ -339,6 +421,14 @@ void dot_rows_nt(int nt, const uint8_t* w, size_t row_bytes, int n, const void* 
 
 }  // namespace
 
+size_t iq256_prepared_row_bytes(int type, int n) {
+    if (n < 1 || n % 256 || (type != 21 && type != 22)) return 0;
+    return (size_t)(n / 256) * (type == 21 ? 134 : 106);
+}
+void iq256_prepare_rows(int type, const uint8_t *src, uint8_t *dst, int n, int rows) {
+    if (type == 21) prepare_rows<21>(src, dst, n, rows);
+    else if (type == 22) prepare_rows<22>(src, dst, n, rows);
+}
 bool iq256_supported(int type) noexcept {
     return type == 16 || type == 17 || type == 18 || type == 21 || type == 22;
 }
@@ -350,6 +440,8 @@ void iq256_gu_rows_clamped(int type, const uint8_t* blob, size_t gu_row, size_t 
         case 17: gu_rows_nt<17>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 18: gu_rows_nt<18>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 21: gu_rows_nt<21>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
+        case 121: gu_rows_nt<121>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
+        case 122: gu_rows_nt<122>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 22: gu_rows_nt<22>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         default: break;
     }
@@ -367,6 +459,8 @@ void iq256_rows(int type, const uint8_t* w, size_t row_bytes, int n, const void*
         case 17: dot_rows_nt<17>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 18: dot_rows_nt<18>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 21: dot_rows_nt<21>(nt, w, row_bytes, n, act, out, r0, r1); break;
+        case 121: dot_rows_nt<121>(nt, w, row_bytes, n, act, out, r0, r1); break;
+        case 122: dot_rows_nt<122>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 22: dot_rows_nt<22>(nt, w, row_bytes, n, act, out, r0, r1); break;
         default: break;
     }

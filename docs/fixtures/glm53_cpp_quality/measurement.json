@@ -1,0 +1,40 @@
+{
+  "model": "GLM-5.3-Flash-UD-Q2_K_XL",
+  "input_tokens": 4096,
+  "max_output_tokens": 512,
+  "reasoning_effort": "low",
+  "prefill_batch": 2048,
+  "threads": 15,
+  "cpu_affinity": "auto",
+  "gpu_budget_mib": 12288,
+  "context": 8192,
+  "runs": {
+    "single": {
+      "exit_code": 0,
+      "output_tokens": 393,
+      "ended_on_stop": true,
+      "wall_seconds": 249.7411489210208,
+      "prefill_tok_s": 84.4755,
+      "decode_tok_s": 2.15077,
+      "peak_gpu_allocated_mib": 9055.21
+    },
+    "mtp": {
+      "exit_code": 0,
+      "output_tokens": 398,
+      "ended_on_stop": true,
+      "wall_seconds": 266.19865335302893,
+      "prefill_tok_s": 84.2103,
+      "decode_tok_s": 2.11979,
+      "peak_gpu_allocated_mib": 10149.9
+    }
+  },
+  "greedy_ids_identical": false,
+  "first_differing_token_zero_based": 96,
+  "quality": {
+    "complete_answers": true,
+    "test_cases_per_output": 400532,
+    "compiler": "g++ C++17 -Wall -Wextra -Werror",
+    "sanitizers": "ASan and UBSan; leak detection disabled for sandbox ptrace compatibility",
+    "scope": "one strict unsigned-decimal parsing task; not a broad coding evaluation"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "scope": "Current native kernel vs ggml CPU vec_dot, same expert slices and Q8_K activations, one CPU thread, 5 paired trials of 10 iterations. Relative RMS error <=1e-5 required. Not full decode.",
+  "raw_measurements": "parity type=17 nt=1 relative_error=5.13380213e-08\ntype=17 nt=1 baseline_us=936.3 ggml_us=958.0 speedup=0.977 parity_passed=1\nparity type=17 nt=2 relative_error=5.00729709e-08\ntype=17 nt=2 baseline_us=1224.1 ggml_us=1900.3 speedup=0.644 parity_passed=1\nparity type=17 nt=3 relative_error=4.92656945e-08\ntype=17 nt=3 baseline_us=1465.2 ggml_us=2863.3 speedup=0.512 parity_passed=1\nparity type=17 nt=4 relative_error=4.94194413e-08\ntype=17 nt=4 baseline_us=2142.0 ggml_us=3899.9 speedup=0.549 parity_passed=1\nparity type=17 nt=8 relative_error=4.92480976e-08\ntype=17 nt=8 baseline_us=4283.9 ggml_us=7583.3 speedup=0.565 parity_passed=1\nparity type=18 nt=1 relative_error=4.92228849e-08\ntype=18 nt=1 baseline_us=1000.5 ggml_us=1070.0 speedup=0.935 parity_passed=1\nparity type=18 nt=2 relative_error=4.92991054e-08\ntype=18 nt=2 baseline_us=1252.4 ggml_us=2099.4 speedup=0.597 parity_passed=1\nparity type=18 nt=3 relative_error=4.90146534e-08\ntype=18 nt=3 baseline_us=1505.5 ggml_us=3117.5 speedup=0.483 parity_passed=1\nparity type=18 nt=4 relative_error=4.93006952e-08\ntype=18 nt=4 baseline_us=1964.5 ggml_us=4346.7 speedup=0.452 parity_passed=1\nparity type=18 nt=8 relative_error=4.97143765e-08\ntype=18 nt=8 baseline_us=3784.1 ggml_us=8510.6 speedup=0.445 parity_passed=1\n",
+  "verified_slices": [
+    {
+      "tensor": "blk.3.ffn_down_exps.weight",
+      "type_id": 18,
+      "shape": [
+        2048,
+        4096,
+        288
+      ],
+      "expert": 7,
+      "bytes": 3211264,
+      "all_scales_finite": true
+    },
+    {
+      "tensor": "blk.3.ffn_gate_exps.weight",
+      "type_id": 17,
+      "shape": [
+        4096,
+        2048,
+        288
+      ],
+      "expert": 7,
+      "bytes": 2424832,
+      "all_scales_finite": true
+    }
+  ],
+  "finite_outputs_required": true
+}

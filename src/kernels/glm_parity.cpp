@@ -102,6 +102,29 @@ int main() {
         for (int i = 0; i < 8; ++i)
             if (did.get()[i] != i)
                 throw std::runtime_error("routing tie failure");
+        // Warp boundaries and the serial fallback must retain first-index ties.
+        for (int ne : {1, 31, 32, 33, 127, 128, 287, 288, 511, 512, 513}) {
+            const int count = std::min(8, ne);
+            auto scores = random(ne), correction = random(ne);
+            Buffer<float> input(scores), bias_input(correction), output_weights(count);
+            Buffer<int> output_ids(count);
+            std::vector<int> expected_ids(count);
+            std::vector<float> expected_weights(count);
+            for (int equal = 0; equal < 2; ++equal) {
+                if (equal) {
+                    std::fill(scores.begin(), scores.end(), 0);
+                    std::fill(correction.begin(), correction.end(), 0);
+                    input.put(scores); bias_input.put(correction);
+                }
+                ref::router(scores.data(), correction.data(), ne, count, 2.5,
+                            expected_ids.data(), expected_weights.data());
+                k::glm_router(input.p, bias_input.p, output_ids.p, output_weights.p,
+                              ne, count, 2.5, nullptr);
+                if (output_ids.get() != expected_ids)
+                    throw std::runtime_error("routing boundary/tie IDs differ");
+                near("routing boundary weights", output_weights.get(), expected_weights);
+            }
+        }
         auto streams = random(4 * H), projected = random(24), base = random(24);
         std::vector<float> scales = {.1, .2, .3}, coeff(24), collapsed(H), mixed(4 * H);
         Buffer<float> ds(streams), dp(projected), dbase(base), dscale(scales), dcoeff(24);

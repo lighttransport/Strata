@@ -79,6 +79,44 @@ __global__ void route(const float *logits, const float *bias, int *ids, float *w
     for (int j = 0; j < k; ++j)
         weights[j] *= scale / (sum + 1e-20f);
 }
+// One warp caches each expert score once. Ties choose the first expert, as
+// in the serial scan; lane zero retains the original normalization order.
+__global__ void route_warp(const float *logits, const float *bias, int *ids, float *weights,
+                           int ne, int k, float scale) {
+    const int lane = threadIdx.x;
+    float scores[16];
+    for (int i = 0; i < 16; ++i) {
+        const int e = lane + 32 * i;
+        scores[i] = e < ne ? sig(logits[e]) + bias[e] : -INFINITY;
+    }
+    float sum = 0;
+    for (int j = 0; j < k; ++j) {
+        float best = -INFINITY;
+        int id = 0x7fffffff;
+        for (int i = 0; i < 16; ++i) {
+            const int e = lane + 32 * i;
+            if (e < ne && scores[i] > best) { best = scores[i]; id = e; }
+        }
+        for (int offset = 16; offset; offset /= 2) {
+            const float other = __shfl_down_sync(0xffffffff, best, offset);
+            const int other_id = __shfl_down_sync(0xffffffff, id, offset);
+            if (other > best || (other == best && other_id < id)) {
+                best = other; id = other_id;
+            }
+        }
+        const int selected = __shfl_sync(0xffffffff, id, 0);
+        if (lane == 0) {
+            ids[j] = selected;
+            weights[j] = sig(logits[selected]);
+            sum += weights[j];
+        }
+        for (int i = 0; i < 16; ++i)
+            if (lane + 32 * i == selected) scores[i] = -INFINITY;
+    }
+    if (lane == 0)
+        for (int j = 0; j < k; ++j) weights[j] *= scale / (sum + 1e-20f);
+}
+
 __global__ void mhc_coeff(const float *p, const float *base, const float *scale, float *c, int iters,
                           float eps) {
     if (threadIdx.x)
@@ -371,7 +409,10 @@ void glm_swiglu(const float *g, const float *u, float *y, int n, float limit, vo
 void glm_router(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale, void *s) {
     if (ne < 1 || k < 1 || k > ne)
         throw std::invalid_argument("GLM: invalid routing geometry");
-    route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale);
+    if (ne <= 512)
+        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale);
+    else
+        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale);
     check();
 }
 void glm_mhc_read(const float *r, const float *p, const float *b, const float *scale, float *c, float *x,

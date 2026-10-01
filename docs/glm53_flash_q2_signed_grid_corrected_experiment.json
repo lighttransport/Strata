@@ -1,0 +1,33 @@
+{
+  "lookup_table_kib": 512,
+  "baseline": "Original vector-parity production kernel",
+  "scope": "Real expert slices, one CPU thread, warm weights, 5 paired trials of 10 iterations; bitwise equality checks. Not full decode or multithreaded lookup contention evidence.",
+  "raw_measurements": "type=17 nt=1 baseline_us=937.2 single_us=926.5 speedup=1.012 bitwise=1\ntype=17 nt=2 baseline_us=1196.5 single_us=1239.6 speedup=0.965 bitwise=1\ntype=17 nt=3 baseline_us=1429.6 single_us=1657.6 speedup=0.862 bitwise=1\ntype=17 nt=4 baseline_us=2161.5 single_us=2221.1 speedup=0.973 bitwise=1\ntype=17 nt=8 baseline_us=4423.6 single_us=4527.7 speedup=0.977 bitwise=1\ntype=18 nt=1 baseline_us=1024.8 single_us=1024.4 speedup=1.000 bitwise=1\ntype=18 nt=2 baseline_us=1312.4 single_us=1318.5 speedup=0.995 bitwise=1\ntype=18 nt=3 baseline_us=1563.2 single_us=1564.4 speedup=0.999 bitwise=1\ntype=18 nt=4 baseline_us=1947.0 single_us=1946.6 speedup=1.000 bitwise=1\ntype=18 nt=8 baseline_us=3900.5 single_us=3887.0 speedup=1.003 bitwise=1\n",
+  "verified_slices": [
+    {
+      "tensor": "blk.3.ffn_down_exps.weight",
+      "type_id": 18,
+      "shape": [
+        2048,
+        4096,
+        288
+      ],
+      "expert": 7,
+      "bytes": 3211264,
+      "all_scales_finite": true
+    },
+    {
+      "tensor": "blk.3.ffn_gate_exps.weight",
+      "type_id": 17,
+      "shape": [
+        4096,
+        2048,
+        288
+      ],
+      "expert": 7,
+      "bytes": 2424832,
+      "all_scales_finite": true
+    }
+  ],
+  "finite_outputs_required": true
+}

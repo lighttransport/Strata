@@ -1,0 +1,32 @@
+{
+  "alternative": "IQ2_XS even_signs table lookup instead of vector parity reconstruction; scales and arithmetic unchanged",
+  "scope": "Layer-11 expert slices, one CPU thread, warm weights, 5 paired trials of 10 iterations; not a full decode benchmark. IQ3_XXS unchanged control.",
+  "raw_measurements": "type=17 nt=1 baseline_us=936.3 single_us=880.3 speedup=1.064 bitwise=1\ntype=17 nt=2 baseline_us=1211.7 single_us=1257.5 speedup=0.964 bitwise=1\ntype=17 nt=3 baseline_us=1446.0 single_us=1729.9 speedup=0.836 bitwise=1\ntype=17 nt=4 baseline_us=2160.1 single_us=2217.3 speedup=0.974 bitwise=1\ntype=17 nt=8 baseline_us=4353.0 single_us=4345.2 speedup=1.002 bitwise=1\ntype=18 nt=1 baseline_us=1028.9 single_us=1029.7 speedup=0.999 bitwise=1\ntype=18 nt=2 baseline_us=1312.1 single_us=1565.4 speedup=0.838 bitwise=1\ntype=18 nt=3 baseline_us=1563.4 single_us=1565.5 speedup=0.999 bitwise=1\ntype=18 nt=4 baseline_us=1965.2 single_us=1968.2 speedup=0.998 bitwise=1\ntype=18 nt=8 baseline_us=3932.9 single_us=3939.3 speedup=0.998 bitwise=1\n",
+  "verified_slices": [
+    {
+      "tensor": "blk.3.ffn_down_exps.weight",
+      "type_id": 18,
+      "shape": [
+        2048,
+        4096,
+        288
+      ],
+      "expert": 7,
+      "bytes": 3211264,
+      "all_scales_finite": true
+    },
+    {
+      "tensor": "blk.3.ffn_gate_exps.weight",
+      "type_id": 17,
+      "shape": [
+        4096,
+        2048,
+        288
+      ],
+      "expert": 7,
+      "bytes": 2424832,
+      "all_scales_finite": true
+    }
+  ],
+  "finite_outputs_required": true
+}

@@ -1,5 +1,7 @@
 # GLM-5.3-Flash experimental backend
 
+For the current Q2 setup, accepted performance and C++ output validation, see [the GLM guide](README_GLM53_FLASH.md). The initial implementation notes below predate later optimizations; GPU MTP drafting and verification are now implemented. Exact single/speculative greedy equality did not pass the latest C++ prompt, although both outputs passed behavioral tests.
+
 This implements the model-loading and numerical foundations of the GLM port,
 plus a separate experimental decoder with GPU batched prefill. The existing `strata` executable remains the Qwen engine;
 `strata-glm-decode` is the experimental GLM entry point.
@@ -151,12 +153,12 @@ token's prediction logits as little-endian float32 vocabulary order. With one
 generated token, this records the final prompt token's logits. These checks do
 not establish end-to-end numerical parity or model-quality benchmarks.
 
-## Work still required by the full port plan
+## Historical full-port status before MTP implementation
 
-Captured layer graphs, MTP draft-block execution and speculative verification,
+At this initial stage, captured layer graphs, MTP draft-block execution and speculative verification,
 broader independent full-model logit comparisons, and performance
-and quality benchmarks remain unimplemented. Snapshot support and draft-format
-parity provide foundations for MTP; the current decoder never executes block 45.
+and quality benchmarks were unimplemented. Snapshot support and draft-format
+parity provided foundations for MTP; the decoder at that stage did not execute block 45. Later updates implemented GPU and CPU MTP draft execution and verification. Broader independent model-quality evaluation remains outstanding.
 The correctness baseline does not substantiate the earlier architectural speed
 estimates.
 

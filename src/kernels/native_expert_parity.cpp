@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
                     if (single != ff[k]) { std::printf("clamped single/multi GU mismatch\n"); ++failures; }
                 }
             }
-            if (f.swiglu_limit == 0 && cpu::iq512_supported(f.gu_type)) {
+            if (cpu::iq512_supported(f.gu_type)) {
                 // ggml's own vec_dot, same Q8_K activations: the reference for both multi-token kernels
                 // (float-order differences only)
                 const auto* tc = ggml_get_type_traits_cpu((ggml_type) f.gu_type);
@@ -163,7 +163,11 @@ int main(int argc, char** argv) {
                     }
                     float* f1[1] = {ffp[0]};
                     const int it = 50;
-                    const auto gu = is512 ? cpu::iq512_gu_rows : cpu::iq256_gu_rows;
+                    auto gu = [&](int type, const uint8_t *data, size_t row, size_t up, int n,
+                                  const void *const *acts, int nt, float *const *outputs, int r0, int r1) {
+                        if (is512) cpu::iq512_gu_rows(type, data, row, up, n, acts, nt, outputs, r0, r1);
+                        else cpu::iq256_gu_rows_clamped(type, data, row, up, n, acts, nt, outputs, r0, r1, f.swiglu_limit);
+                    };
                     auto t0 = std::chrono::steady_clock::now();
                     for (int i = 0; i < it; ++i) gu(f.gu_type, blob.data(), f.gu_row, f.up_off, (int) H, a, 1, f1, 0, (int) FF);
                     auto t1 = std::chrono::steady_clock::now();
@@ -175,7 +179,7 @@ int main(int argc, char** argv) {
                                 tag, us1, 2.0 * f.up_off / us1 / 1e3, usg, 2.0 * f.up_off / usg / 1e3);
                     std::printf("          gate+up %d tokens one thread: %s %.0f us vs ggml %d x %.0f us\n", NT, tag, usn, NT, usg);
                 };
-                if (cpu::cpu_avx512_ok()) check("avx512", true);   // guarded: the binary runs on AVX-2 CPUs too
+                if (!f.swiglu_limit && cpu::cpu_avx512_ok()) check("avx512", true);   // guarded: the binary runs on AVX-2 CPUs too
                 check("avx2", false);
             }
             for (int k = 0; k < NT; ++k) {
@@ -206,6 +210,34 @@ int main(int argc, char** argv) {
                 const double e = rel(pooled, got_c);
                 std::printf("          dynamic CPU pool vs direct: rel %.2e\n", e);
                 if (!std::isfinite(e) || e > 1e-6) ++failures;
+            }
+            if (f.gu_type == 21 || f.gu_type == 22) {
+                auto prepared = f; prepared.lossless = true;
+                prepared.gu_row = cpu::iq256_prepared_row_bytes(f.gu_type, H);
+                const size_t down_row = cpu::iq256_prepared_row_bytes(f.d_type, FF);
+                if (down_row) prepared.d_row = down_row;
+                prepared.up_off = prepared.gu_row * FF;
+                prepared.down_off = 2 * prepared.up_off;
+                prepared.bytes = prepared.down_off + prepared.d_row * H;
+                std::vector<uint8_t> packed(prepared.bytes);
+                cpu::iq256_prepare_rows(f.gu_type, blob.data(), packed.data(), H, FF);
+                cpu::iq256_prepare_rows(f.gu_type, blob.data() + f.up_off, packed.data() + prepared.up_off, H, FF);
+                if (down_row) cpu::iq256_prepare_rows(f.d_type, blob.data() + f.down_off, packed.data() + prepared.down_off, FF, H);
+                else std::memcpy(packed.data() + prepared.down_off, blob.data() + f.down_off, f.bytes - f.down_off);
+                for (int nt : {1, 2, 4, 8}) {
+                    const void *acts[8], *hs[8]; float *original[8], *converted[8];
+                    std::vector<float> aout(nt * FF), bout(nt * FF);
+                    for (int j = 0; j < nt; ++j) { acts[j] = a[j % NT]; hs[j] = hp[j % NT]; original[j] = aout.data() + j * FF; converted[j] = bout.data() + j * FF; }
+                    cpu::native_gu_rows(f, blob.data(), acts, nt, original, 0, FF);
+                    cpu::native_gu_rows(prepared, packed.data(), acts, nt, converted, 0, FF);
+                    if (aout != bout) { std::printf("lossless GU mismatch nt=%d\n", nt); ++failures; }
+                    aout.resize(nt * H); bout.resize(nt * H);
+                    for (int j = 0; j < nt; ++j) { original[j] = aout.data() + j * H; converted[j] = bout.data() + j * H; }
+                    cpu::native_down_rows(f, blob.data(), hs, nt, original, 0, H);
+                    cpu::native_down_rows(prepared, packed.data(), hs, nt, converted, 0, H);
+                    if (aout != bout) { std::printf("lossless down mismatch nt=%d\n", nt); ++failures; }
+                }
+                std::printf("          lossless IQ planes checked at widths 1,2,4,8\n");
             }
             if (f.d_type == 42) {
                 // (b2) the GGUF-layout Q2_0 kernel the pool uses for Q2_0 down projections - the AVX-512 one

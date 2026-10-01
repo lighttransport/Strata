@@ -1,0 +1,79 @@
+{
+  "model": "GLM-5.3-Flash-UD-IQ3_XXS-00001-of-00004.gguf",
+  "trace_positions": 255,
+  "training_positions": 128,
+  "evaluation_positions": 127,
+  "plans": [
+    {
+      "cache_mib": 512,
+      "held_out": {
+        "slots": 59,
+        "allocated_bytes": 532414464,
+        "byte_hit_fraction": 0.07688308148476802,
+        "selection_hit_fraction": 0.07735751781027371,
+        "optimistic_tokens_per_second": 5.424099712061698
+      },
+      "oracle": {
+        "slots": 59,
+        "allocated_bytes": 534118400,
+        "byte_hit_fraction": 0.08447928826797355,
+        "selection_hit_fraction": 0.0848331458567679,
+        "optimistic_tokens_per_second": 5.452904089118986
+      }
+    },
+    {
+      "cache_mib": 1024,
+      "held_out": {
+        "slots": 119,
+        "allocated_bytes": 1073676288,
+        "byte_hit_fraction": 0.12133200859770557,
+        "selection_hit_fraction": 0.12202380952380952,
+        "optimistic_tokens_per_second": 5.597104674863467
+      },
+      "oracle": {
+        "slots": 118,
+        "allocated_bytes": 1065549824,
+        "byte_hit_fraction": 0.12981997708541027,
+        "selection_hit_fraction": 0.13053055868016497,
+        "optimistic_tokens_per_second": 5.631404356194631
+      }
+    },
+    {
+      "cache_mib": 2048,
+      "held_out": {
+        "slots": 237,
+        "allocated_bytes": 2139947008,
+        "byte_hit_fraction": 0.17554635199461088,
+        "selection_hit_fraction": 0.17650918635170604,
+        "optimistic_tokens_per_second": 5.823663014422255
+      },
+      "oracle": {
+        "slots": 237,
+        "allocated_bytes": 2140078080,
+        "byte_hit_fraction": 0.19678005375595015,
+        "selection_hit_fraction": 0.19788151481064867,
+        "optimistic_tokens_per_second": 5.917476369331401
+      }
+    },
+    {
+      "cache_mib": 3072,
+      "held_out": {
+        "slots": 355,
+        "allocated_bytes": 3218669568,
+        "byte_hit_fraction": 0.21471504882539055,
+        "selection_hit_fraction": 0.21550431196100486,
+        "optimistic_tokens_per_second": 5.999102700322614
+      },
+      "oracle": {
+        "slots": 356,
+        "allocated_bytes": 3219718144,
+        "byte_hit_fraction": 0.24955479549337384,
+        "selection_hit_fraction": 0.2507264716910386,
+        "optimistic_tokens_per_second": 6.1642797912656215
+      }
+    }
+  ],
+  "scope": "coverage only; oracle uses future routes and is not a deployable predictor",
+  "baseline_tokens_per_second": 5.14882,
+  "bound_assumptions": "expert time scales with cached bytes; zero GPU-hit cost, fill cost and extra synchronization"
+}

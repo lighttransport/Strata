@@ -1,3 +1,20 @@
+# Strata: GLM5.3Flash on a desktop PC
+
+This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
+
+- **Accepted best decode benchmark: 7.54 tok/s median**, with GPU MTP at depth 1. This is workload-specific, and 10 tok/s has not been measured on this PC.
+- **C++ output validation:** a 4,096-token chat prompt and 512-token generation cap produced two complete, coherent answers. Each generated C++17 function compiled and passed **400,532 test cases** under ASan/UBSan.
+- **That C++ task measured ~84 tok/s prefill and ~2.1 tok/s decode**, finishing naturally at 393/398 output tokens. Single and speculative answers were both correct, but their tokens differed.
+- **Desktop memory budget:** 12 GiB total GPU budget, with a physical free-memory guard to leave room for the display and other apps.
+
+Read the **[GLM5.3Flash guide: setup, measurements and hardware forecasts for 10+ tok/s](docs/README_GLM53_FLASH.md)**, the **[C++ validation report and generated code](docs/fixtures/glm53_cpp_quality/README.md)**, and the **[full performance record](docs/GLM53_FLASH_PERFORMANCE.md)**. Earlier Q3 prefill reached 112.4 tok/s on a different benchmark; rates vary with the prompt, quantization and configuration.
+
+## Original Strata README: Qwen3.8-Flash-Next
+
+The existing README is preserved below. Its Qwen installation flow, performance claims and model requirements describe the original engine; its earlier GLM paragraph is historical. Use the GLM guide above for this fork's current GLM configuration and results.
+
+---
+
 <h1 align="center">Strata</h1>
 
 <p align="center"><b>Run a 125-billion-parameter AI model on a normal gaming PC</b><br>

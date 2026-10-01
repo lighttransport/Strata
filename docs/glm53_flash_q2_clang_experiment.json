@@ -1,0 +1,36 @@
+{
+  "compilers": {
+    "g++": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "clang++": "Ubuntu clang version 21.1.8 (++20251221032922+2078da43e25a-1~exp1~20251221153059.70)"
+  },
+  "flags": "-std=c++20 -O3 -mavx2 -mfma -mf16c",
+  "verified_slices": [
+    {
+      "tensor": "blk.3.ffn_down_exps.weight",
+      "type_id": 18,
+      "shape": [
+        2048,
+        4096,
+        288
+      ],
+      "expert": 7,
+      "bytes": 3211264,
+      "all_scales_finite": true
+    },
+    {
+      "tensor": "blk.3.ffn_gate_exps.weight",
+      "type_id": 17,
+      "shape": [
+        4096,
+        2048,
+        288
+      ],
+      "expert": 7,
+      "bytes": 2424832,
+      "all_scales_finite": true
+    }
+  ],
+  "finite_outputs_required": true,
+  "scope": "Identical current kernel source, real correctly typed layer-3 expert-7 slices, one thread, 5 paired trials of 10 iterations, bitwise equality. Not full decode.",
+  "raw_measurements": "type=17 nt=1 baseline_us=963.4 clang_us=1053.7 speedup=0.914 bitwise=1\ntype=17 nt=2 baseline_us=1295.7 clang_us=1406.9 speedup=0.921 bitwise=1\ntype=17 nt=3 baseline_us=1576.8 clang_us=1797.4 speedup=0.877 bitwise=1\ntype=17 nt=4 baseline_us=2328.8 clang_us=2201.6 speedup=1.058 bitwise=1\ntype=17 nt=8 baseline_us=4632.2 clang_us=4437.6 speedup=1.044 bitwise=1\ntype=18 nt=1 baseline_us=1082.9 clang_us=1022.6 speedup=1.059 bitwise=1\ntype=18 nt=2 baseline_us=1346.1 clang_us=1269.0 speedup=1.061 bitwise=1\ntype=18 nt=3 baseline_us=1671.8 clang_us=1812.7 speedup=0.922 bitwise=1\ntype=18 nt=4 baseline_us=2084.6 clang_us=2276.1 speedup=0.916 bitwise=1\ntype=18 nt=8 baseline_us=4205.9 clang_us=4562.6 speedup=0.922 bitwise=1\n"
+}

@@ -133,6 +133,8 @@ public:
     static constexpr int kMaxSplitMulti = 96;
     /// run_split_multi's phases, accumulated ms: gate/up rows, the intermediate quantization, down rows.
     double ms_multi_gu = 0, ms_multi_q = 0, ms_multi_down = 0;
+    double ms_native_local_prepare = 0;
+    int64_t native_local_queries = 0;
     int64_t multi_bytes = 0;
 
     /// Total `_mm_pause` iterations spent waiting, over all workers, is no longer counted - see the note on the
@@ -170,7 +172,8 @@ private:
     void drain(int id, ExpertScratch& scratch, uint32_t epoch);
     void run_phase(int mode, int n_tasks);
     /// Claim the next job of batch `epoch`, or -1 (that batch is exhausted, or it is not the current one).
-    int claim(uint32_t epoch);
+    int claim(uint32_t epoch, int node = -1);
+    void prepare_native_local_tasks(int n_tasks);
     /// Publish the batch whose description the caller has just written: reset `done`, then `head`, then the epoch.
     uint32_t begin_batch(int n);
     /// The host's waits, bounded by `kStall`.
@@ -181,6 +184,13 @@ private:
 
     int n_ = 0;
     bool host_works_ = true;
+    int native_tasks_per_thread_ = 3;
+    bool native_local_enabled_ = false, native_local_phase_ = false;
+    bool native_local_reported_ = false;
+    std::vector<int> cpu_nodes_;
+    std::vector<int> local_tasks_[2];
+    alignas(64) std::atomic<uint32_t> local_next0_{0};
+    alignas(64) std::atomic<uint32_t> local_next1_{0};
     ExpertJob* jobs_ = nullptr;
     int njobs_ = 0;
     /// The host's own scratch when `host_works_`.  A separate object rather than a share of `scratch_[i]`,
