@@ -3,20 +3,21 @@
 This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
 
 <p align="center"><img src="docs/media/glm53-live-decode.gif" width="900" alt="GLM-5.3-Flash Q2 generating C++ live in Strata's terminal chat, with a decode-speed counter"><br>
-<sub>GLM-5.3-Flash UD-Q2_K_XL on Threadripper 1950X (16 cores), 160 GB DDR4 and RTX 5060 Ti 16 GB; 15 CPU workers, single decode, 12 GiB GPU budget. This short C++ demo measured 5.27 tok/s overall. The 8-second clip plays at original speed with prefill omitted.</sub></p>
+<sub>GLM-5.3-Flash UD-Q2_K_XL on Threadripper 1950X (16 cores), 160 GB DDR4 and RTX 5060 Ti 16 GB; 15 CPU workers, single decode, 12 GiB GPU budget. This short C++ demo measured 7.51 decode tok/s. The 8-second clip plays at original speed with prefill omitted.</sub></p>
 
-- **Accepted best decode benchmark: 7.54 tok/s median**, with GPU MTP at depth 1. This is workload-specific, and 10 tok/s has not been measured on this PC.
+- **Initial short-chat decode: 7.33 tok/s median** (7.324, 7.334, 7.327), with identical outputs across three single-decode trials. The earlier source-prefix benchmark reached 7.54 tok/s with GPU MTP depth 1.
 - **C++ output validation:** a 4,096-token chat prompt and 512-token generation cap produced two complete, coherent answers. Each generated C++17 function compiled and passed **400,532 test cases** under ASan/UBSan.
-- **That C++ task measured ~84 tok/s prefill and ~2.1 tok/s decode**, finishing naturally at 393/398 output tokens. Single and speculative answers were both correct, but their tokens differed.
+- **Initial 4K C++ decode: 7.26 tok/s single, 8.35 tok/s GPU MTP**, medians of three trials each. Outputs matched across all six runs, ending at 393 tokens including stop.
+- **Initial warm 4K prefill: 98.29 tok/s at batch 2048; 158.25 tok/s at batch 4096**, medians of three trials after an untimed warmup.
 - **Desktop memory budget:** 12 GiB total GPU budget, with a physical free-memory guard to leave room for the display and other apps.
 
-Read the **[GLM5.3Flash guide: setup, measurements and hardware forecasts for 10+ tok/s](docs/README_GLM53_FLASH.md)**, the **[C++ validation report and generated code](docs/fixtures/glm53_cpp_quality/README.md)**, and the **[full performance record](docs/GLM53_FLASH_PERFORMANCE.md)**. Earlier Q3 prefill reached 112.4 tok/s on a different benchmark; rates vary with the prompt, quantization and configuration.
+Read the **[GLM5.3Flash guide: setup, measurements and hardware upgrade scenarios](docs/README_GLM53_FLASH.md)**, the **[C++ validation report and generated code](docs/fixtures/glm53_cpp_quality/README.md)**, and the **[full performance record](docs/GLM53_FLASH_PERFORMANCE.md)**. Earlier Q3 prefill reached 112.4 tok/s on a different benchmark; rates vary with the prompt, quantization and configuration.
 
 For a live terminal demonstration, use the [simple ASCII chat with a decode-speed counter](demos/glm53_chat/README.md).
 
 ## Original Strata README: Qwen3.8-Flash-Next
 
-The existing README is preserved below. Its Qwen installation flow, performance claims and model requirements describe the original engine; its earlier GLM paragraph is historical. Use the GLM guide above for this fork's current GLM configuration and results.
+The existing README is preserved below. Its Qwen installation flow, performance claims and model requirements describe the original engine. Use the GLM guide above for this fork's current GLM configuration and results.
 
 ---
 
@@ -36,11 +37,8 @@ of a word): faster than you can read.
 - **Free and open source.**
 
 An experimental native GGUF backend for **GLM-5.3-Flash** is available for CUDA builds.
-See [build instructions, validation and current limitations](docs/GLM53_FLASH.md).
-On the DDR4 / RTX 5060 Ti test machine, warm 4096-token GPU prefill measured
-112.4 tok/s median. Zero-copy CPU decode reached 3.23 tok/s with 16 workers;
-prompt lookup measured 2.12 tok/s on that coding prefix. See
-[configuration and measurements](docs/GLM53_FLASH_PERFORMANCE.md).
+The initial Q2 measurements are approximately 7-8 tok/s decode on the DDR4 / RTX 5060 Ti test machine.
+See [build instructions and current measurements](docs/README_GLM53_FLASH.md).
 
 > **Jump to:** [How fast?](#how-fast-is-it) · [Which model?](#which-model-should-i-pick) · [Install](#install) ·
 > [Using it](#using-it) · [Problems?](#something-went-wrong) · [How it works](#how-does-it-work) ·

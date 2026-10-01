@@ -33,8 +33,10 @@ asciinema play recordings/glm53-chat.cast
 
 `recordings/` is ignored by git. The recording contains actual terminal output and actual elapsed time; nothing is uploaded. You can use `asciinema play --speed 2` for faster viewing, but playback speed is not inference speed. Runtime engine logs remain under a temporary directory rather than appearing in the UI.
 
-This is a short coding example, not the earlier 4096-token benchmark. Rates depend on prompt, routing and machine load. See the [GLM guide](../../docs/README_GLM53_FLASH.md) for the accepted 7.54 tok/s benchmark and the separate C++ validation at approximately 2.1 tok/s.
+This is a short coding example, not the 4096-token benchmark. Initial measurements are 7.33 tok/s median for short chat and 7.26 single / 8.35 GPU MTP on the 4K coding prompt. Rates depend on prompt, routing and machine load; see the [GLM guide](../../docs/README_GLM53_FLASH.md).
 
 ## Captured demo
 
-The local `recordings/glm53-chat.cast` contains a completed live run (about 68 seconds, including startup and the final display pause). The backend measured **5.27 decode tok/s**, generating **133 tokens including stop** from a **53-token prompt**. Prefill took **26.83 seconds** and decode **25.25 seconds**. The generated primality function compiled with C++17 warnings treated as errors and passed checks for every input from 0 through 9999 plus two boundary inputs near UINT32_MAX. These are short-prompt demo results, not a replacement for the 4096-token measurements. The recording was validated as output-only asciicast v2 and passed a credential scan.
+The refreshed local `recordings/glm53-chat-initial.cast` contains a completed live run. The backend measured **7.51 decode tok/s**, generating **133 tokens including stop** from a **53-token prompt**. Prefill/prime took **23.35 seconds** and decode **17.71 seconds**. This is a short-prompt demo, separate from the initial three-trial decode medians above.
+
+The [README animation](../../docs/media/glm53-live-decode.gif) shows eight seconds of actual live decoding at original speed, starting about five seconds after the first live token. Startup and prefill are skipped. Local GIF and WebM exports are in `recordings/glm53-live-decode.gif` and `recordings/glm53-live-decode.webm`; recordings remain outside Git. The source cast is output-only asciicast v2. See the [demo measurement](measurement.json).

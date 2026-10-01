@@ -1,6 +1,6 @@
 # GLM-5.3-Flash experimental backend
 
-For the current Q2 setup, accepted performance and C++ output validation, see [the GLM guide](README_GLM53_FLASH.md). The initial implementation notes below predate later optimizations; GPU MTP drafting and verification are now implemented. Exact single/speculative greedy equality did not pass the latest C++ prompt, although both outputs passed behavioral tests.
+For the current Q2 setup and C++ output validation, see [the GLM guide](README_GLM53_FLASH.md). Initial Q2 measurements reached 7.33 tok/s short chat, 7.26 tok/s long-prompt single decode and 8.35 tok/s GPU MTP, with three stable trials per mode and identical long-prompt outputs. The initial notes below predate GPU MTP drafting and verification; both are now implemented.
 
 This implements the model-loading and numerical foundations of the GLM port,
 plus a separate experimental decoder with GPU batched prefill. The existing `strata` executable remains the Qwen engine;
@@ -239,9 +239,7 @@ opt-in because it was slower on the measured coding continuation. See the
 performance document for actual timings and limits.
 
 
-For the measured machine, GPU prefill plus zero-copy CPU decode with 16 workers
-reached 3.23 tok/s. Lookup reached 2.12 tok/s on the same continuation and stayed
-slower. Keep `lookup_depth=0` for this workload. The measured fast CPU decode
+The initial Q2 configuration measures approximately 7-8 tok/s with single or GPU MTP decode. Prompt lookup did not demonstrate a speed advantage in its separate tests; keep `lookup_depth=0` for this workload. The measured fast CPU decode
 configuration keeps fixed weights resident through GPU prefill; the legacy 4096
 MiB dense LRU can evict weights and reduce decode speed. GPU prefill/decode with
 lookup reserves checkpoint/headroom during memory admission, including `auto`

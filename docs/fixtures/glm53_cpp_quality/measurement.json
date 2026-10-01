@@ -1,40 +1,165 @@
 {
-  "model": "GLM-5.3-Flash-UD-Q2_K_XL",
+  "model": "GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
   "input_tokens": 4096,
   "max_output_tokens": 512,
-  "reasoning_effort": "low",
-  "prefill_batch": 2048,
-  "threads": 15,
-  "cpu_affinity": "auto",
-  "gpu_budget_mib": 12288,
-  "context": 8192,
+  "repetitions": 3,
+  "result_stage": "initial Q2 measurements",
   "runs": {
     "single": {
+      "input_tokens": 4096,
+      "output_cap": 512,
+      "speculative": "none",
       "exit_code": 0,
-      "output_tokens": 393,
+      "wall_seconds": 223.80121197499102,
+      "trials": [
+        {
+          "output_tokens_including_stop": 393,
+          "decode_ms": 53971.5,
+          "decode_tok_s": 7.26309
+        },
+        {
+          "output_tokens_including_stop": 393,
+          "decode_ms": 53797.1,
+          "decode_tok_s": 7.28664
+        },
+        {
+          "output_tokens_including_stop": 393,
+          "decode_ms": 54023.3,
+          "decode_tok_s": 7.25613
+        }
+      ],
+      "median_decode_tok_s": 7.26309,
+      "repeat_ids_identical": true,
       "ended_on_stop": true,
-      "wall_seconds": 249.7411489210208,
-      "prefill_tok_s": 84.4755,
-      "decode_tok_s": 2.15077,
-      "peak_gpu_allocated_mib": 9055.21
+      "prompt_token_sha256": "81f514ae71a9ce6652444936d18c347ed6b614678e71a0b0c6730c4e99effd63",
+      "foreign_cpu_percent_of_one_core": {
+        "decode_mean": 58.787907676889375,
+        "decode_peak": 102.04243992064332,
+        "all_mean": 57.39564978008186,
+        "top_process_peak": [
+          [
+            "claude",
+            63.61583673156461
+          ],
+          [
+            "gnome-terminal-",
+            20.48790704554172
+          ],
+          [
+            "gnome-shell",
+            17.56199309556837
+          ],
+          [
+            "Xorg",
+            17.5501101134805
+          ],
+          [
+            "tailscaled",
+            12.078533644570294
+          ],
+          [
+            "codex",
+            8.299942495378987
+          ],
+          [
+            "tracker-miner-f",
+            6.646430703297796
+          ],
+          [
+            "synergy-core",
+            5.5612779353580715
+          ]
+        ]
+      },
+      "major_page_faults": [
+        1
+      ],
+      "prefill": [
+        "PREFILL trial=0 tokens=4096 batch=2048 ms=43654.9 tok_s=93.8269"
+      ],
+      "peak_gpu_allocated_mib": 9055.21,
+      "output_token_sha256": "8ac53c5c1a21afebba316d8638c837e8ba90fcac500b5e885a6a13f91954fa78"
     },
     "mtp": {
+      "input_tokens": 4096,
+      "output_cap": 512,
+      "speculative": "mtp",
       "exit_code": 0,
-      "output_tokens": 398,
+      "wall_seconds": 210.67285464302404,
+      "trials": [
+        {
+          "output_tokens_including_stop": 393,
+          "decode_ms": 46880.6,
+          "decode_tok_s": 8.36166
+        },
+        {
+          "output_tokens_including_stop": 393,
+          "decode_ms": 46960.4,
+          "decode_tok_s": 8.34745
+        },
+        {
+          "output_tokens_including_stop": 393,
+          "decode_ms": 47198.2,
+          "decode_tok_s": 8.30541
+        }
+      ],
+      "median_decode_tok_s": 8.34745,
+      "repeat_ids_identical": true,
       "ended_on_stop": true,
-      "wall_seconds": 266.19865335302893,
-      "prefill_tok_s": 84.2103,
-      "decode_tok_s": 2.11979,
-      "peak_gpu_allocated_mib": 10149.9
+      "prompt_token_sha256": "81f514ae71a9ce6652444936d18c347ed6b614678e71a0b0c6730c4e99effd63",
+      "foreign_cpu_percent_of_one_core": {
+        "decode_mean": 38.172922108902675,
+        "decode_peak": 85.59026612889123,
+        "all_mean": 33.79589165214959,
+        "top_process_peak": [
+          [
+            "ChatGPT",
+            46.93659755455329
+          ],
+          [
+            "gnome-shell",
+            15.665210176036032
+          ],
+          [
+            "gnome-terminal-",
+            15.665210176036032
+          ],
+          [
+            "Xorg",
+            13.82224427297297
+          ],
+          [
+            "tailscaled",
+            10.092314649701041
+          ],
+          [
+            "kcompactd0",
+            8.291672187357886
+          ],
+          [
+            "udisksd",
+            7.5835859693134235
+          ],
+          [
+            "claude",
+            7.57532763311648
+          ]
+        ]
+      },
+      "major_page_faults": [
+        0
+      ],
+      "prefill": [
+        "PREFILL trial=0 tokens=4096 batch=2048 ms=42481.2 tok_s=96.4191"
+      ],
+      "peak_gpu_allocated_mib": 10149.9,
+      "output_token_sha256": "8ac53c5c1a21afebba316d8638c837e8ba90fcac500b5e885a6a13f91954fa78"
     }
   },
-  "greedy_ids_identical": false,
-  "first_differing_token_zero_based": 96,
+  "greedy_ids_identical": true,
   "quality": {
-    "complete_answers": true,
-    "test_cases_per_output": 400532,
-    "compiler": "g++ C++17 -Wall -Wextra -Werror",
-    "sanitizers": "ASan and UBSan; leak detection disabled for sandbox ptrace compatibility",
-    "scope": "one strict unsigned-decimal parsing task; not a broad coding evaluation"
+    "cpp_cases": 400532,
+    "single_mtp_cpp_identical": true,
+    "cpp_compiler": "C++17 -Wall -Wextra -Werror, ASan/UBSan (leak detection disabled in sandbox)"
   }
 }

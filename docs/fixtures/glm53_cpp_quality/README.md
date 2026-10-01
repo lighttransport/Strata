@@ -1,58 +1,27 @@
-# GLM Q2 C++ output validation
+# GLM Q2 C++ output validation: initial results
 
-The user accepted the earlier best median of **7.54 tok/s** and requested
-quality validation instead of further decode optimization. That earlier
-benchmark rate is workload-specific; this new task ran more slowly.
+The model received a **4096-token** prompt using its embedded chat template with low reasoning effort. The task was to implement a strict C++17 `parse_u64` function with overflow rejection, ASCII-only digits, leading zeroes and unchanged output on failure. Generation used a **512-token cap** and ended naturally at **393 tokens including stop**.
 
-The model received a **4,096-token** prompt using its embedded chat template
-with `reasoning_effort=low`. The task was to implement a strict C++17
-`parse_u64` function in a telemetry service, with representative protocol
-records, overflow rejection, ASCII-only digits, leading zeroes, and preservation
-of the caller's output on failure. Generation used a **512-token cap**.
+| Mode | Decode trial tok/s | Decode median |
+| --- | --- | ---: |
+| Single | 7.263, 7.287, 7.256 | **7.26 tok/s** |
+| GPU MTP depth 1 | 8.362, 8.347, 8.305 | **8.35 tok/s** |
 
-| Mode | Prefill tok/s | Decode tok/s | Output tokens including stop | Peak owned GPU MiB |
-| --- | ---: | ---: | ---: | ---: |
-| Single | 84.48 | 2.15 | 393 | 9055.21 |
-| GPU MTP, depth 1 | 84.21 | 2.12 | 398 | 10149.90 |
+All six outputs are token-identical. The generated parser compiled with C++17 `-Wall -Wextra -Werror` and passed **400,532 cases** against an independent `std::from_chars` oracle under ASan/UBSan. Tests cover UINT64_MAX boundaries, overflow, all 256 byte values, embedded NUL, leading zeroes, long inputs and deterministic random data. Leak detection was disabled for sandbox compatibility. This validates one coding task, not broad coding quality or universal numerical equivalence.
 
-Both answers reached their stop token before the cap, contain complete functions,
-and provide coherent explanations. Each generated function compiled as C++17
-with `-Wall -Wextra -Werror` and passed **400,532 cases** against a `std::from_chars`
-oracle, including UINT64_MAX boundaries, overflow, all 256 byte values, embedded
-NUL, long inputs, leading zeroes, and deterministic random inputs. ASan/UBSan
-reported no errors; leak detection was disabled because the sandbox uses ptrace.
+Competing CPU activity was sampled once per second without stopping other processes. Decode averages were 0.59 core for single and 0.38 core for MTP, with no individual competing process consuming a full core. Within-mode rate spreads were below 0.7%. Each mode prefills once and repeats decode three times from the same state; prefill and MTP priming are excluded from decode timing. Separate three-trial warm prefill medians are **98.29 tok/s at batch 2048** and **158.25 tok/s at batch 4096**, using this same prompt. See the [prefill benchmark and raw results](../../README_GLM53_FLASH.md#initial-warm-4k-prefill).
 
-**Quality passes for this task. Exact greedy token equality does not pass.**
-Outputs first differ at token index 96 (zero-based): `HI_REM` versus `LO_DIGIT`.
-Other differences are comments and explanatory text. Both use the same correct
-algorithm. This does not establish lossless speculative decoding on general
-prompts, nor broad coding quality. No inference-kernel fix was made in this
-validation task, and no cause is assigned to the token divergence without
-further controlled investigation.
+Configuration: Q2_K_XL four-shard model, Threadripper 1950X with 15 worker threads plus the host and automatic physical-core affinity, 160 GB DDR4, RTX 5060 Ti 16 GB, CPU main experts, GPU fixed layers, optional GPU MTP draft, prefill batch 2048, context 8192, dense cache 4096 MiB, total GPU budget 12288 MiB and physical free-memory guard. No main expert cache, CPU prepacking or experimental NUMA scheduling is enabled. MTP priming took 8.87 seconds.
 
-Configuration: Q2_K_XL four-shard model, 15 worker threads with automatic physical
-core affinity, CPU main experts, GPU fixed layers and GPU MTP draft experts,
-2048-token prefill batches, 8192 context, 4096 MiB dense cache,
-12288 MiB total GPU budget, 2 GiB physical display-headroom guard,
-no main expert cache, no CPU weight prepacking, NUMA scheduling disabled.
-MTP priming took 10.23 seconds and is excluded from its decode rate; startup,
-weight prefaulting, and prefill are also excluded. One run per mode was used.
+Artifacts: [prompt](prompt.txt), [rendered chat](chat_prompt.txt), [single answer](single_output.md), [MTP answer](mtp_output.md), [single C++](generated.cpp), [MTP C++](generated_mtp.cpp), [test harness](test_generated.cpp), [quality measurement](measurement.json), and [initial decode measurements](../../glm53_flash_q2_initial_decode_measurement.json).
 
-Artifacts: [prompt](prompt.txt), [rendered chat](chat_prompt.txt),
-[single answer](single_output.md), [speculative answer](mtp_output.md),
-[single C++](generated.cpp), [speculative C++](generated_mtp.cpp),
-[test harness](test_generated.cpp), and [measurement](measurement.json).
-
-To regenerate outputs from the repository root (Python dependencies: regex and
-jinja2):
+To repeat the measurements from the repository root on Linux (Python dependencies: `regex` and `jinja2`):
 
 ```sh
-python3 tools/glm_cpp_quality.py "$GLM_Q2_MODEL" --decoder build-glm/strata-glm-decode
+python3 tools/glm_decode_stability.py "$GLM_Q2_MODEL" --output /tmp/glm-stability.json
 ```
 
-The runner reports token equality separately. To extract fresh generated functions,
-copy only the fenced C++ blocks into `generated.cpp` and `generated_mtp.cpp` before
-rerunning the harness. The saved harness uses independent parsing as its oracle.
+Runtime answers and logs remain in the printed temporary directory. Extract the fenced C++ blocks into `generated.cpp` and `generated_mtp.cpp` before testing freshly generated output.
 
 ```sh
 g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \

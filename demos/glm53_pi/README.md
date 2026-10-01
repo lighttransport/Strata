@@ -25,7 +25,7 @@ The launcher creates a fresh `PI_CODING_AGENT_DIR` under `/tmp`, disables startu
 
 The server defaults to single decode with CPU main experts, 15 workers with automatic physical-core affinity, 2048-token GPU prefill, context 8192 and no CPU prepacking. This short TUI prompt is **not** the earlier 4096-token quality benchmark. The UI may take time before the first token while prefill runs. Optional `--speculative mtp` enables GPU drafting at depth 1, but requires more free VRAM; desktop pressure caused an initial MTP attempt to be rejected by the display-headroom guard. This recording is a demonstration, not a new performance claim.
 
-For measured rates, generated-code tests and hardware forecasts, see the [GLM guide](../../docs/README_GLM53_FLASH.md). Full edit-and-test agent operation requires implementing and validating GLM tool-call parsing first.
+For repeated measured rates (7.33 tok/s short chat; 7.26 single / 8.35 GPU MTP on the 4K coding prompt), generated-code tests and hardware scenarios, see the [GLM guide](../../docs/README_GLM53_FLASH.md). Full edit-and-test agent operation requires implementing and validating GLM tool-call parsing first.
 
 ## Captured run
 

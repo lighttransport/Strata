@@ -1,0 +1,50 @@
+{
+  "model": "GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+  "text": "docs/fixtures/glm53_cpp_quality/chat_prompt.txt",
+  "tokens": 4096,
+  "threads": 15,
+  "cpu_affinity": "auto",
+  "requested_batch": "2048",
+  "actual_batch": 2048,
+  "context": 8192,
+  "gpu_budget_mib": 12288,
+  "warm_weights": true,
+  "untimed_warmup": true,
+  "milliseconds": [
+    41593.3,
+    41676.4,
+    41672.9
+  ],
+  "tokens_per_second": [
+    98.4775,
+    98.2811,
+    98.2893
+  ],
+  "median_tokens_per_second": 98.2893,
+  "peak_allocated_mib": 9055.21,
+  "runtime_reserve_mib": 1024,
+  "startup_warmup_and_runs_seconds": 184.0780348679982,
+  "decode_token_ids": [
+    "154842",
+    "73022"
+  ],
+  "prompt_token_sha256": "81f514ae71a9ce6652444936d18c347ed6b614678e71a0b0c6730c4e99effd63",
+  "page_faults": [
+    {
+      "trial": 0,
+      "major": 0,
+      "minor": 85566
+    },
+    {
+      "trial": 1,
+      "major": 0,
+      "minor": 86253
+    },
+    {
+      "trial": 2,
+      "major": 0,
+      "minor": 87455
+    }
+  ],
+  "decoder_log": "GPU prefill chunk=2048 staging_workers=2 numa_cpus=\nGPU allocated_MiB=9055.21 reserved_runtime_MiB=1024 budget_MiB=12288\nmain weights prefaulted checksum=61\nPREFILL trial=0 tokens=4096 batch=2048 ms=41593.3 tok_s=98.4775\nFAULTS trial=0 major=0 minor=85566\nCPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 bytes=0\nGPU peak_allocated_MiB=9055.21 native_expert_bytes=198067617792 expert_groups=1512 staging_ms=29652.7\nPREFILL trial=1 tokens=4096 batch=2048 ms=41676.4 tok_s=98.2811\nFAULTS trial=1 major=0 minor=86253\nCPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 bytes=0\nGPU peak_allocated_MiB=9055.21 native_expert_bytes=198067617792 expert_groups=1512 staging_ms=29688.3\nPREFILL trial=2 tokens=4096 batch=2048 ms=41672.9 tok_s=98.2893\nFAULTS trial=2 major=0 minor=87455\nCPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 bytes=0\nGPU peak_allocated_MiB=9055.21 native_expert_bytes=198067617792 expert_groups=1512 staging_ms=29648.7\nDECODE_TRIAL index=0\nDECODE_STEP index=1 ms=165.742\nDECODE steps=1 ms=165.989 tok_s=6.02449\nCPU_EXPERT gu_ms=58.871 quant_ms=1.51282 down_ms=45.1382 bytes=2750939136\nGPU peak_allocated_MiB=9055.21 native_expert_bytes=0 expert_groups=0 staging_ms=0\n"
+}

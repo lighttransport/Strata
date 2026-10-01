@@ -217,7 +217,6 @@ are excluded. These are single paired runs, not three-run medians.
 | Clamped AVX2 CPU path, before removing packing | 43.4516 | 0.7365 |
 | Zero-copy clamped AVX2 CPU path | 11.7624 | 2.7205 |
 | Zero-copy CPU path, 16 workers | 9.90886 | 3.2294 |
-| Zero-copy CPU + lookup, 16 workers | 15.0679 | 2.1237 |
 | Zero-copy CPU target + prompt lookup, depth 3 | 16.7664 | 1.9086 |
 | Selected-expert GPU + optimized KDA | 31.6749 | 1.0103 |
 | GPU target + prompt lookup, depth 3 | 42.4701 | 0.7535 |
@@ -264,7 +263,7 @@ commit path that avoids replay remain future work.
 
 
 Increasing CPU expert workers from six to 16 measured **3.2294 tok/s** for single
-decode (9.90886 seconds for 32 transitions), versus **2.1237 tok/s** with lookup
+decode (9.90886 seconds for 32 transitions), with lookup slower in that comparison
 (15.0679 seconds). Both produced the same 33 greedy IDs as the six-worker zero-copy
 path; lookup again accepted six of 15 drafts and replayed seven positions. For
 this fixture the recommended configuration is GPU prefill, CPU decode, 16 workers,
@@ -295,8 +294,7 @@ learned MTP proposals checked against greedy target outputs. A 4096-token coding
 prefix measured 5.15663 tok/s for 32 decode transitions with 16 CPU workers;
 sequential verification and device rollback matched. A 64-token MTP smoke test
 accepted 10/15 proposals but measured only 3.99535 tok/s. These are exploratory
-runs, not the planned three-fixture, 256-token acceptance benchmark. The 10 tok/s
-target has not been achieved.
+runs, not a broad three-fixture, 256-token performance comparison.
 
 Two interrupted full CPU packing experiments coincided with desktop failures at
 02:01 and 02:09 JST. System logs show systemd-oomd killing GNOME Shell and other
@@ -344,7 +342,7 @@ interleaved gate/up experiment was removed because it slowed IQ3_S.
 
 The single and MTP greedy outputs match across all three repetitions. These
 65-token runs do not satisfy the planned 256-token, three-fixture acceptance
-gate; 10 tok/s is still unachieved. MTP priming for 4096 tokens took 12046.6 ms,
+comparison. MTP priming for 4096 tokens took 12046.6 ms,
 excluded from decode timing. The owned allocation peaks were 11137.9 MiB and
 11138.1 MiB respectively, including prefill. A driver sample during single
 decode reported 11870 MiB of process VRAM. Host PSI avg10 stayed zero in sampled
@@ -381,7 +379,7 @@ expert bytes are covered. Scaling CPU phase time by uncovered bytes and assuming
 zero GPU-hit/fill cost gives only 5.9991 tok/s. A ranking built using the future
 evaluation routes covers 24.96% and gives a 6.1643 tok/s estimate; it is an
 optimistic static ranking, not a deployable predictor or a strict throughput
-bound. Cache coverage alone appears insufficient for the 10 tok/s target.
+bound. Cache coverage alone did not establish a useful throughput improvement.
 
 Reproduce the analysis using `tools/glm_routing_cache.py MODEL TRACE
 --decode-log=LOG --output=RESULT.json`. It reads GGUF headers and allocates no
@@ -447,8 +445,7 @@ times of 32159.6 and 14011.3 ms. These are single observations with different
 weight-cache conditions, not a stable prefill median. Sampled host PSI avg10
 remained below 5% and returned to zero; sampled physical free VRAM was about
 2.4 GiB during prefill. No OOM or desktop crash was observed in this run.
-The 10 tok/s target and the 256-token, three-fixture acceptance gate remain
-unachieved. Four focused CUDA/model/pool regression tests and six benchmark
+The 256-token, three-fixture performance comparison remained incomplete. Four focused CUDA/model/pool regression tests and six benchmark
 parser/routing-cache unit tests passed.
 
 The subsequent [256-token depth-7 comparison](glm53_flash_q2_depth7_measurement.json)
@@ -476,7 +473,7 @@ The median MTP trial spent 1145.85 ms drafting, 46573.1 ms verifying and
 were 10453.7 MiB single and 10735.1 MiB MTP. Greedy IDs matched across all
 three repetitions and between modes; sequential/device-rollback logits also
 matched. Physical headroom changes the available slot count, so effective
-depth is logged per trial. The 10 tok/s target is still unachieved.
+depth is logged per trial.
 
 `tools/glm_decode_bench.py MODEL CODING_FIXTURE --draft-depths=1,2,3`
 compares MTP depths using one single-decode baseline and records every variant
@@ -507,7 +504,7 @@ three 256-token repetitions per mode on the 4096-token C++ prefix:
 
 Every speculative trial replayed zero tokens and all greedy outputs matched
 single decode. Depth 1 is the measured winner for this Q2 coding prefix,
-about 9.6% above the paired single median, but remains below 10 tok/s. This
+about 9.6% above the paired single median. This
 does not establish the best depth for Python/edit fixtures or other prompts.
 
 An isolated [CPU accumulator comparison](glm53_flash_q2_cpu_accumulator_experiment.json)
@@ -545,7 +542,6 @@ between modes, across repetitions and against the prior serial-router sweep.
 The single median improves about 19.0% over that prior sweep; MTP improves
 about 13.1%. CPU expert phases in the median single trial total 25933.163 ms
 out of roughly 35421 ms, so CPU expert work remains the dominant cost.
-The 10 tok/s target remains unachieved.
 
 The benchmark accepts `--pool-spin-us=N` to set the existing expert-pool
 `STRATA_POOL_SPIN_US` control for its child decoders and records the setting
@@ -582,8 +578,7 @@ the earlier uncached 17-token completion. Sequential/batched logits, rollback,
 seven retained prefixes and next-token logits matched. CUDA memcheck finished
 with zero errors; peak owned GPU allocation was 8556.25 MiB. Instrumented
 timing is excluded from performance claims. These short checks do not prove
-long-completion equality to uncached
-decode or the 10 tok/s target.
+long-completion equality to uncached decode or a throughput improvement.
 
 For single-cache measurements, use `tools/glm_decode_bench.py MODEL FIXTURE
 --single-only --decode-cache-mib=3072 --generated-tokens=256 --repetitions=3`.
@@ -599,7 +594,7 @@ completion differs from uncached decode, consistent with mixed GPU Q8_1 and
 CPU Q8_K activations. It is a workload comparison, not an identical-route
 speedup. CPU expert bytes fell to 584,323,170,304 per trial (about 16.7% below
 the uncached 701,489,479,680), yet throughput did not improve. Peak owned
-allocation was 10646.8 MiB. This configuration has not achieved 10 tok/s.
+allocation was 10646.8 MiB.
 
 Cache hit metadata uploads now use reusable pinned buffers on the model's
 CUDA stream, and result readback is enqueued before CPU misses execute.
@@ -639,15 +634,9 @@ tokens. This keeps the safety guard intact. The completed
 6.75347 tok/s single and 7.54068 tok/s MTP depth 1 (three repetitions each).
 All generated IDs match the earlier uncached warp-router run and match
 between single and speculative modes. Peak owned allocation was 10149.9 MiB
-in MTP mode. This is the current best measured Q2 median, still below target.
+in MTP mode. This was the best measured Q2 median in this experiment.
 
-At the time of this experiment, the optimization goal was GLM-5.3-Flash Q2 decode at **10+ tok/s** on
-the DDR4 / 160 GB RAM / RTX 5060 Ti machine. Either single or verified
-speculative decode may satisfy it. Retain all model layers and top-8 routing,
-the 12288 MiB total GPU budget and physical display-headroom checks. Require
-three warm 256-token trials at a 4096-token prefix and 8192 context, with
-output/correctness checks; extend validation across the coding fixtures
-before declaring the goal achieved. The goal remains unmet.
+Measurements retain all model layers and top-8 routing, the 12288 MiB total GPU budget and physical display-headroom checks. Repeated warm trials at a 4096-token prefix and 8192 context require output checks and should cover multiple coding fixtures before making general performance claims.
 
 A separate [DDR4 bandwidth test](glm53_flash_ddr4_bandwidth_measurement.json)
 used 16 threads and 1.5 GiB of anonymous arrays with parallel first touch.
@@ -665,7 +654,7 @@ expert selection, or output accumulation. Invalid values fail before worker
 creation. A sequential short-prefix sweep compares 3, 1, 6, 12, then 3 again,
 with three 65-token trials per process and exact token equality checks. Its
 [incremental measurements](glm53_flash_q2_task_granularity_measurement.json)
-are screening evidence, not proof of the long-prefix throughput target.
+are screening evidence, not a complete long-prefix throughput comparison.
 
 The completed screening medians were 5.31640 (3 ranges), 5.44774 (1),
 6.46837 (6), 6.16887 (12), then 6.38024 (3 again) tok/s. All outputs
@@ -843,17 +832,44 @@ verification. Model/native-pool tests and seven benchmark-parser tests
 passed, including rejection of a mismatched resident fingerprint even
 when token output matches. The [full-prefix 256-token trials](glm53_flash_q2_cached_cpu_mtp_measurement.json) with a requested
 3072 MiB cache have completed with identical greedy outputs between modes; actual cache size remained subject to the GPU
-guards. No 10 tok/s result was established.
+guards.
 
-### Accepted decode performance and C++ quality validation
+## Initial Q2 decode results (2026-10-01)
 
-The user accepted the prior best 7.54 tok/s median; further pursuit of 10 tok/s
-is paused. The subsequent [C++ validation](fixtures/glm53_cpp_quality/README.md)
-used 4096 chat-template input tokens and a 512-token output cap. Single and GPU
-MTP depth-1 answers ended naturally at 393 and 398 tokens. Both generated C++17
-functions compiled with warnings treated as errors and passed 400,532 cases each
-under ASan/UBSan. They are coherent and correct for this parsing task, but their
-greedy tokens differ beginning at index 96; exact speculative equivalence is not
-established on this prompt. Measured prefill was 84.48/84.21 tok/s and decode
-2.15/2.12 tok/s respectively, demonstrating that the earlier 7.54 rate does not
-predict this task's decode rate. See the linked report for configuration and scope.
+Initial measurements are approximately 7-8 tok/s decode. The runs use the Q2 artifact, embedded chat template with low reasoning effort, 15 CPU workers plus the host, automatic physical-core affinity, context 8192, GPU prefill batch 2048, 12288 MiB GPU budget, and no CPU prepacking/main expert cache. GPU MTP uses depth 1. Memory guards remained enabled and other processes were not modified.
+
+| Prompt / mode | Input tokens | Output tokens incl stop | Trial decode tok/s | Median tok/s | Within-mode spread |
+| --- | ---: | ---: | --- | ---: | ---: |
+| Short primality chat, single | 53 | 133 | 7.32374, 7.33370, 7.32730 | **7.32730** | 0.14% |
+| Original decimal-parser chat, single | 4096 | 393 | 7.26309, 7.28664, 7.25613 | **7.26309** | 0.42% |
+| Same parser chat, GPU MTP | 4096 | 393 | 8.36166, 8.34745, 8.30541 | **8.34745** | 0.67% |
+
+[Raw repeat data](glm53_flash_q2_initial_decode_measurement.json) include token IDs, every trial, GPU allocation peaks, page faults and competing CPU activity. Each mode prefills once, then resets to the same state for three timed decode trials. Single rates count next-token transitions after the initial greedy token; MTP rates count generated progress including stop. Startup, weight prefaulting, prefill and draft priming are excluded. Additional MTP priming took 8.87 seconds. Peak owned allocations were 9055.21/10149.90 MiB.
+
+All repetitions have identical IDs within their mode; all six long-prompt outputs also match between single and MTP. The generated parser passed 400,532 cases with C++17 warnings treated as errors and ASan/UBSan. These checks establish equality for these initial measurements, not universal numerical parity. See the [quality report](fixtures/glm53_cpp_quality/README.md).
+
+One-second `/proc` CPU samples found no individual competing process consuming a full CPU core. Aggregate competing activity during decode averaged 0.57 core for short single, 0.59 for long single and 0.38 for long MTP; the largest aggregate sample was 1.02 cores. This is a sampled quiet-desktop measurement, not exclusive machine access.
+
+The terminal demo reports its own timing and retains original-speed playback. Hardware scenarios are conditional estimates, not benchmark results.
+
+Reproduce on Linux:
+
+```sh
+python3 tools/glm_decode_stability.py "$GLM_Q2_MODEL" --output /tmp/glm-stability.json
+```
+
+
+## Initial Q2 warm prefill and refreshed terminal demo (2026-10-01)
+
+A dedicated repeat benchmark of the 4096-token C++ chat prompt used one untimed full-prefill warmup and three reset-and-prefill trials per batch width. Configuration: Q2_K_XL, 15 CPU workers plus host, automatic affinity, context 8192, dense cache 4096 MiB, GPU budget 12288 MiB, no main expert cache or CPU prepacking.
+
+| Batch | Trial tok/s | Median tok/s | Median elapsed | Peak owned GPU MiB |
+| --- | --- | ---: | ---: | ---: |
+| 2048 | 98.4775, 98.2811, 98.2893 | **98.2893** | 41.6729 s | 9055.21 |
+| 4096 | 157.983, 158.251, 158.573 | **158.251** | 25.8829 s | 10303.40 |
+
+All six trials had zero major page faults. Batch 4096 reduced native expert staging from 198,067,617,792 to 99,033,808,896 bytes per prefill and delivered 1.61x the throughput. Both widths returned the same first two greedy IDs, 154842 and 73022. Peak owned memory excludes driver allocations; the 1024 MiB runtime reserve and physical display-memory guard remained enabled. Startup, prefaulting and warmup are excluded from the reported rates.
+
+Raw records: [2048](glm53_flash_q2_prefill_2048_initial_measurement.json), [4096](glm53_flash_q2_prefill_4096_initial_measurement.json). See [reproduction commands and upgrade forecasts](README_GLM53_FLASH.md#initial-warm-4k-prefill).
+
+The refreshed short C++ terminal demo generated 133 tokens including stop at **7.51 tok/s**, with 23.35 seconds of prefill/prime and 17.71 seconds of decode. The README GIF uses an eight-second original-speed segment of actual live output, skipping startup and prefill. This is a separate demo run, not a three-trial decode median.

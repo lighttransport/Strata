@@ -1,0 +1,22 @@
+{
+  "generated": 133,
+  "prompt_tokens": 53,
+  "prompt_ms": 23354.2,
+  "decode_ms": 17713.4,
+  "finish": "stop",
+  "drafts_accepted": 0,
+  "drafts_offered": 0,
+  "reused": 0,
+  "speculative": "none",
+  "worker_threads": 15,
+  "gpu_budget_mib": 12288,
+  "error": null,
+  "model": "GLM-5.3-Flash-UD-Q2_K_XL",
+  "cpu": "Threadripper 1950X",
+  "ram": "160 GB DDR4",
+  "gpu": "RTX 5060 Ti 16 GB",
+  "decode_tokens_per_second": 7.508439938125938,
+  "clip_start_seconds": 31.95,
+  "clip_duration_seconds": 8,
+  "clip_speed": 1
+}

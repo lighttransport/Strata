@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--gpu-budget-mib", type=int, default=12288)
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--threads", type=int, default=6)
+    parser.add_argument("--cpu-affinity", choices=("none", "auto"), default="none")
     parser.add_argument("--output", type=pathlib.Path)
     args = parser.parse_args()
     if args.tokens < 1 or args.context < args.tokens + 2 or args.repetitions < 1:
@@ -38,7 +39,7 @@ def main():
         token_file.write_text(",".join(map(str, ids)))
         command = [str(args.decoder.resolve()), str(args.model.resolve()), f"@{token_file}", "2", "4096",
                    str(args.threads), f"--prefill-batch={args.batch}", f"--context={args.context}",
-                   f"--gpu-budget-mib={args.gpu_budget_mib}", f"--bench={args.repetitions}", "--warm-weights"]
+                   f"--gpu-budget-mib={args.gpu_budget_mib}", f"--bench={args.repetitions}", f"--cpu-affinity={args.cpu_affinity}", "--warm-weights"]
         start = time.monotonic()
         completed = subprocess.run(command, text=True, capture_output=True)
         elapsed = time.monotonic() - start
@@ -49,7 +50,7 @@ def main():
         raise SystemExit("decoder did not report all measurements\n" + completed.stderr)
     peaks = re.findall(r"GPU peak_allocated_MiB=([\d.]+)", completed.stderr)
     result = {"model": str(args.model.resolve()), "text": str(args.text.resolve()), "tokens": args.tokens,
-              "requested_batch": args.batch, "actual_batch": int(rows[0][2]), "context": args.context,
+              "threads": args.threads, "cpu_affinity": args.cpu_affinity, "requested_batch": args.batch, "actual_batch": int(rows[0][2]), "context": args.context,
               "gpu_budget_mib": args.gpu_budget_mib, "warm_weights": True,
               "untimed_warmup": args.repetitions > 1,
               "milliseconds": [float(row[3]) for row in rows],

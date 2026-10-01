@@ -2,22 +2,53 @@
 
 This fork runs GLM-5.3-Flash GGUF weights through the experimental `strata-glm-decode` backend. The current reference model is the mixed-quantization **UD-Q2_K_XL**, with all four shards. It runs on a Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB, keeping fixed projections on GPU and executing routed decode experts directly from RAM.
 
-The accepted best decode benchmark is **7.54 tok/s median** with GPU MTP depth 1. A separate C++ task produced correct, coherent code at **about 2.1 tok/s**. **10+ tok/s remains a hardware/implementation forecast, not an achieved result or a general coding-speed claim.**
+Initial Q2 measurements are **approximately 7-8 tok/s decode**: 7.33 tok/s median for short chat, 7.26 tok/s single decode and 8.35 tok/s GPU MTP for a 4096-token C++ task. Each mode used three stable trials; all six long-prompt outputs were token-identical. Rates describe these prompts and this hardware configuration.
 
-## Measured results
+## Initial measured results
 
-| Workload | Model / mode | Input / output | Prefill | Decode |
-| --- | --- | --- | ---: | ---: |
-| Earlier warm source-prefix prefill | Q3, GPU batch 4096 | 4096 / 2 tokens | 112.38 tok/s median | Not a decode measurement |
-| Optimized source-prefix benchmark | Q2, GPU MTP depth 1 | 4096 / 256 generated tokens | See raw record | **7.54 tok/s median**, 3 trials |
-| C++ strict decimal parser | Q2, single | 4096 / 393 tokens including stop | 84.48 tok/s | 2.15 tok/s |
-| Same C++ task | Q2, GPU MTP depth 1 | 4096 / 398 tokens including stop | 84.21 tok/s | 2.12 tok/s |
+| Workload | Model / mode | Input / output | Decode |
+| --- | --- | --- | ---: |
+| Short chat | Q2, single | 53 / 133 tokens including stop | **7.33 tok/s median**, 3 trials |
+| C++ strict decimal parser | Q2, single | 4096 / 393 tokens including stop | **7.26 tok/s median**, 3 trials |
+| Same C++ task | Q2, GPU MTP depth 1 | 4096 / 393 tokens including stop | **8.35 tok/s median**, 3 trials |
 
-Sources: [Q3 prefill measurement](glm53_flash_prefill_measurement.json), [best Q2 decode measurement](glm53_flash_q2_physical_core_measurement.json), and [C++ validation measurement](fixtures/glm53_cpp_quality/measurement.json). The C++ rows are one run each, with a 512-token cap; both ended naturally. Startup, weight loading and MTP priming are excluded from throughput. The earlier decode fixture and the chat-template task are different workloads.
+Source: [initial decode measurements](glm53_flash_q2_initial_decode_measurement.json). Each mode repeats decode three times after one prefill, with a 512-token cap for the long prompt; answers ended naturally. Startup, weight loading, prefill and MTP priming are excluded from decode throughput. A fresh [terminal demo](../demos/glm53_chat/README.md) measured **7.51 tok/s** for the short C++ task; the README animation shows eight seconds at original speed with prefill skipped.
+
+### Initial warm 4K prefill
+
+The same 4096-token C++ chat prompt was benchmarked separately with an untimed full-prefill warmup followed by three reset-and-prefill trials:
+
+| GPU batch | Trial tok/s | Median tok/s | Median elapsed | Peak owned GPU memory |
+| --- | --- | ---: | ---: | ---: |
+| 2048 | 98.478, 98.281, 98.289 | **98.29** | 41.673 s | 9055.21 MiB |
+| 4096 | 157.983, 158.251, 158.573 | **158.25** | 25.883 s | 10303.40 MiB |
+
+Sources: [batch 2048](glm53_flash_q2_prefill_2048_initial_measurement.json) and [batch 4096](glm53_flash_q2_prefill_4096_initial_measurement.json). Both use Q2, 15 workers, automatic affinity, context 8192, dense cache 4096 MiB and total GPU budget 12288 MiB. All six timed trials had zero major page faults. Peak owned allocation plus the 1024 MiB runtime reserve fits the budget; owned allocation is not a measurement of total driver VRAM use. The physical free-memory guard remained enabled. Both batch widths returned the same first two greedy token IDs; this is a limited output sanity check.
+
+Batch 4096 was **1.61x faster** on this prompt. It streams each routed expert set once instead of twice, reducing measured native expert staging from about 198 GB to 99 GB per prefill. These warm results exclude model loading, weight prefaulting and the untimed warmup; cold startup and tiny prompts have different costs.
+
+```sh
+PYTHONPATH=tools python3 tools/glm_prefill_bench.py "$GLM_Q2_MODEL" \
+  docs/fixtures/glm53_cpp_quality/chat_prompt.txt \
+  --tokens 4096 --batch 4096 --context 8192 --threads 15 --cpu-affinity auto \
+  --gpu-budget-mib 12288 --repetitions 3 --output /tmp/glm-prefill.json
+```
+
+Use `--batch 2048` for the smaller workspace.
 
 Both generated C++17 parsers compiled with warnings treated as errors and passed **400,532 cases each** against an independent `std::from_chars` oracle. Tests covered overflow, UINT64_MAX, invalid bytes, NUL, signs, whitespace, leading zeroes, unchanged output on failure and randomized inputs. ASan/UBSan checks passed; leak detection was disabled for sandbox compatibility. See the [answers, generated code, test harness and report](fixtures/glm53_cpp_quality/README.md).
 
-Single and speculative outputs first differ at token index 96, in a variable name, followed by comments and explanatory wording. Both are correct on this task. Exact speculative token equivalence is **not established** for general prompts, and one parsing task does not establish broad coding quality.
+Single and speculative outputs are token-identical in these initial measurements. The generated parser passed 400,532 cases under ASan/UBSan. These checks validate this prompt, not general lossless speculation or broad coding quality.
+
+The trial rates were 7.324 / 7.334 / 7.327 for short chat; 7.263 / 7.287 / 7.256 for long single decode; and 8.362 / 8.347 / 8.305 for long GPU MTP. Within-mode spreads were 0.14%, 0.42% and 0.67%. One-second samples found no competing process using a full CPU core; aggregate competing activity averaged about 0.57 / 0.59 / 0.38 of one core during decode, with a brief aggregate peak of 1.02 cores in the long single run. This is a quiet-desktop check, not CPU isolation. No other process was stopped or modified.
+
+Reproduce on Linux with the model environment variable from the setup section:
+
+```sh
+python3 tools/glm_decode_stability.py "$GLM_Q2_MODEL" --output /tmp/glm-stability.json
+```
+
+The helper records three snapshot-reset decode trials per prompt/mode and samples competing CPU usage from `/proc`. Runtime logs and answers remain in the printed temporary directory. The terminal demo reports its own backend timing; playback retains the original generation speed.
 
 ## Terminal demo
 
@@ -79,33 +110,35 @@ Reference long-prompt settings: **15 workers plus the host**, automatic physical
 
 The original `strata` executable and installer remain the Qwen engine. GLM uses a separate experimental entry point. See [backend and API setup](GLM53_FLASH.md) for integration; do not assume the original README's Qwen speeds, model menu, multimodal features or multi-GPU support apply to GLM. The current GLM text API is greedy-only and does not reuse conversation prefixes.
 
-## Forecast: CPU, RAM, motherboard and GPU combinations
+## Forecast from the initial measurements: CPU, RAM, motherboard and GPU combinations
+
+The initial prefill baseline is **98.29/158.25 tok/s** at batch 2048/4096 on the existing GPU and Gen3 x8 link. Faster PCIe can reduce streaming cost, but these measurements do not isolate transfer latency from staging and GPU work. No numeric prefill forecast for upgraded platforms has been validated; a fourfold link-speed increase does not establish a fourfold prefill gain.
 
 The practical upgrade target is faster **native CPU expert execution with enough resident RAM**, alongside a GPU that fits fixed layers and the draft. Increasing PCIe speed helps GPU prefill and streamed-expert experiments, but CPU decode misses do not transfer all their weights to GPU.
 
-The table gives **conditional planning scenarios**, not benchmarks of these machines. `G` is the required speedup of the current CPU-dominated portion of decode, combining CPU arithmetic, effective memory bandwidth and scheduling. No measurements establish that a listed machine achieves its assigned `G`.
+The table gives **conditional planning scenarios**, not benchmarks of these machines. Every forecast cell is in tok/s. `G` is the required speedup of the current CPU-dominated portion of decode, combining CPU arithmetic, effective memory bandwidth and scheduling. No measurements establish that a listed machine achieves its assigned `G`.
 
-| CPU / motherboard class | RAM population | GPU combination | Assumed CPU-phase gain G | Earlier benchmark forecast | C++ task forecast |
+| CPU / motherboard class | RAM population | GPU combination | Assumed CPU-phase gain G | Single forecast | MTP forecast |
 | --- | --- | --- | --- | ---: | ---: |
-| Existing 1950X / X399 | Existing 160 GB DDR4 | RTX 5060 Ti 16 GB | Reference | **7.54 measured** | **2.12 measured** |
-| Ryzen 9 9950X / AM5 board supporting the chosen high-capacity kit and CPU-connected Gen5 GPU slot | 192 GB, 4x48 GB DDR5 UDIMM; actual stable speed must be measured | Keep RTX 5060 Ti 16 GB | 2-3x, hypothetical | **13-17 tok/s** | **4-6 tok/s** |
-| Threadripper 9960X / TRX50 with compatible BIOS | 256 GB, 4x64 GB ECC RDIMM; populate all four channels | 5060 Ti 16 GB; optional NVIDIA 24-32 GB card for additional workspace | 4-6x, hypothetical | **21-26 tok/s** | **7.5-10.5 tok/s** |
-| Threadripper PRO 9965WX-class / WRX90 with compatible BIOS | 256 GB, 8x32 GB ECC RDIMM; populate all eight channels | NVIDIA 24-32 GB card; a true x16 interface benefits streaming experiments | 6-10x, hypothetical | **26-32 tok/s** | **10.5-15.5 tok/s** |
+| Existing 1950X / X399 | Existing 160 GB DDR4 | RTX 5060 Ti 16 GB | Reference | **7.26 measured** | **8.35 measured** |
+| Ryzen 9 9950X / AM5 board supporting the chosen kit and CPU-connected Gen5 GPU slot | 192 GB, 4x48 GB DDR5 UDIMM; actual stable speed must be measured | Keep RTX 5060 Ti 16 GB | 2-3x, hypothetical | **12.7-16.9 tok/s** | **14.3-18.8 tok/s** |
+| Threadripper 9960X / TRX50 with compatible BIOS | 256 GB, 4x64 GB ECC RDIMM; populate all four channels | 5060 Ti 16 GB; optional NVIDIA 24-32 GB card for workspace | 4-6x, hypothetical | **20.2-25.2 tok/s** | **22.2-27.3 tok/s** |
+| Threadripper PRO 9965WX-class / WRX90 with compatible BIOS | 256 GB, 8x32 GB ECC RDIMM; populate all eight channels | NVIDIA 24-32 GB card; true x16 benefits streaming experiments | 6-10x, hypothetical | **25.2-31.5 tok/s** | **27.3-33.4 tok/s** |
 
-### How the forecast is calculated
+### How the scenarios are calculated
 
 Use a simple latency model with **20 ms/token of fixed GPU/other cost**, chosen as a planning allowance rather than a measurement:
 
 ```text
 T_new = 0.020 + (T_reference - 0.020) / G
-forecast tok/s = 1 / T_new
-T_reference = 1 / 7.54068 for the earlier benchmark
-T_reference = 1 / 2.11979 for the C++ MTP task
+illustrative tok/s = 1 / T_new
+T_reference = 1 / 7.26309 for single decode
+T_reference = 1 / 8.34745 for GPU MTP
 ```
 
-GPU cache benefits and speculative improvements are not added again; the reference already uses depth-1 MTP. This model does not isolate actual phase times or predict different routing, thermals, CPU ISA dispatch, cache behavior or platform contention. The older benchmark crosses 10 tok/s at approximately **1.41x** CPU-phase gain. The C++ task needs approximately **5.65x**. This is why 10+ on a modern desktop is plausible for the favorable benchmark, while sustained 10+ on varied coding prompts remains a larger and unverified goal.
+The assumed gains are not CPU benchmark results. This model does not isolate actual phase times or predict different routing, thermals, CPU ISA dispatch, cache behavior or platform contention. GPU cache and speculative gains are not added automatically. Each column uses its own initial measured reference, so MTP is not added as an extra multiplier. Keeping acceptance and expert reuse constant while scaling CPU work is itself an assumption; the MTP column is conditional, not a proven hardware speedup.
 
-RAM bandwidth alone gives the loose Q2 expert-read ceiling `R / 2.751`, with decimal GB/s. At assumed sustained 60-75 GB/s this is 21.8-27.3 tok/s; at hypothetical 120-180 GB/s it is 43.6-65.4; at hypothetical 180-280 GB/s it is 65.4-101.8. These exclude CPU quantized-dot work and all other execution, and the higher ranges are scenario inputs, not measured platform bandwidth. They must not be presented as achievable end-to-end rates. The current machine measured 50.70 GB/s in a separate streaming-read test, yet the C++ task decoded at only 2.1 tok/s.
+RAM bandwidth alone gives the loose Q2 expert-read ceiling `R / 2.751`, with decimal GB/s. At assumed sustained 60-75 GB/s this is 21.8-27.3 tok/s; at hypothetical 120-180 GB/s it is 43.6-65.4; at hypothetical 180-280 GB/s it is 65.4-101.8. These exclude CPU quantized-dot work and all other execution, and the higher ranges are scenario inputs, not measured platform bandwidth. They must not be presented as achievable end-to-end rates. The current machine measured 50.70 GB/s in a separate streaming-read test; the initial coding rate is 7.26 tok/s.
 
 ### Platform constraints and source evidence
 
@@ -115,12 +148,12 @@ RAM bandwidth alone gives the loose Q2 expert-read ceiling `R / 2.751`, with dec
 - **The 5060 Ti is Gen5 x8.** A Gen5 x16 motherboard slot still gives this GPU at most an x8 link: about 31.5 GB/s theoretical per direction. A true Gen5 x16 GPU has about 63 GB/s theoretical per direction, before overhead. See [MSI's GPU specification](https://www.msi.com/Graphics-Card/GeForce-RTX-5060-Ti-16G-GAMING/Specification). The existing machine negotiated Gen3 x8, about 7.9 GB/s theoretical.
 - A 24-32 GB NVIDIA GPU provides more room for resident experts, workspace and desktop use, but a main-cache experiment has not established a decode speedup here. The forecasts above give it no automatic speed multiplier. Raising the GPU budget needs fresh admission and output validation; GLM multi-GPU execution is not a validated upgrade path.
 
-For a cost-conscious upgrade, the 9950X/AM5 scenario is a candidate for exceeding 10 tok/s on the earlier benchmark while keeping the existing GPU. For a **10+ tok/s varied-coding target**, a four- or eight-channel workstation is the stronger experimental direction because it increases both CPU resources and memory supply. Benchmark the real native expert kernel and multiple coding prompts before treating either as a purchase guarantee.
+The AM5 scenario keeps the existing GPU while upgrading CPU execution and memory. Four- or eight-channel workstation platforms provide more memory supply and CPU resources, but need platform-specific measurements. Benchmark the real native expert kernel and multiple coding prompts before treating any scenario as a purchase guarantee.
 
 A roughly 1 GB/s NVMe SSD is adequate for loading but cannot sustain decode from cold experts: `1 / 2.751` is only about 0.36 tok/s before random-access and compute costs. Faster SSDs shorten startup and recovery; enough RAM should keep disk reads out of steady-state decode.
 
 ## What to validate on upgraded hardware
 
-Measure the actual DIMM operating speed and sustained read bandwidth, negotiated PCIe width, native mixed-quantization expert throughput and GPU headroom. Then rerun both the 4096-prefix/256-output repeated benchmark and the chat-template C++ quality task. Report cold/warm state, output token count, MTP priming time, single/speculative rates and output checks separately. A claim of general 10+ tok/s needs multiple realistic coding prompts, not only the favorable source-prefix fixture.
+Measure the actual DIMM operating speed and sustained read bandwidth, negotiated PCIe width, native mixed-quantization expert throughput and GPU headroom. Then rerun both the 4096-prefix/256-output repeated benchmark and the chat-template C++ quality task. Report cold/warm state, output token count, MTP priming time, single/speculative rates and output checks separately. General throughput claims need multiple realistic coding prompts and sampled competing CPU activity, not only the favorable source-prefix fixture.
 
 The [full performance record](GLM53_FLASH_PERFORMANCE.md) retains earlier experiments and theoretical estimates. Its historical sections describe implementations and targets at the time of measurement; this guide summarizes the current accepted configuration and known quality limitations.

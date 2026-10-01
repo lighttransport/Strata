@@ -7,7 +7,7 @@ bool parse_u64(std::string_view text, std::uint64_t& out) noexcept
 {
     constexpr std::uint64_t MAX = std::numeric_limits<std::uint64_t>::max();
     constexpr std::uint64_t HI = MAX / 10;          // 1844674407370955161
-    constexpr std::uint64_t LO_DIGIT = MAX % 10;    // 5
+    constexpr std::uint64_t HI_REM = MAX % 10;      // 5
 
     if (text.empty())
         return false;
@@ -17,11 +17,11 @@ bool parse_u64(std::string_view text, std::uint64_t& out) noexcept
     {
         const unsigned char b = static_cast<unsigned char>(c);
         if (b < '0' || b > '9')
-            return false;   // rejects signs, whitespace, NUL, non-ASCII
+            return false;               // rejects signs, spaces, NUL, non-ASCII
         const std::uint64_t d = static_cast<std::uint64_t>(b - '0');
 
         // Overflow check before multiply/add:
-        if (value > HI || (value == HI && d > LO_DIGIT))
+        if (value > HI || (value == HI && d > HI_REM))
             return false;
 
         value = value * 10 + d;
@@ -32,6 +32,4 @@ bool parse_u64(std::string_view text, std::uint64_t& out) noexcept
 }
 ```
 
-Overflow: `value > 1844674407370955161` always overflows after ×10; at exactly that limit, only a final digit ≤ 5 fits (UINT64_MAX ends in 5). Checked before any multiply/add, so no wraparound occurs.
-
-Failure: empty input, any byte outside `0`–`9` (covers `+`, spaces, NUL, high-bit bytes), or overflow all return `false` with `out` untouched — the caller retains its previous counter value. Leading zeroes are accepted; `"0"` parses to 0. Constant space, linear time, no allocation, no exceptions.
+Overflow: `value > 1844674407370955161` always overflows on `*10`; at exactly that value, a digit above 5 overflows on `+d`. Both checks occur before any arithmetic, so `out` is only assigned after a fully successful parse. Failure behavior: any empty input, non-digit byte (including `+`, space, NUL, high-bit/non-ASCII bytes), or overflow returns `false` with `out` untouched, preserving the caller's previous counter value. The loop is linear-time, uses constant auxiliary space, performs no allocations, and throws nothing.
