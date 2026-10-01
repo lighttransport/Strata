@@ -19,6 +19,10 @@ Both generated C++17 parsers compiled with warnings treated as errors and passed
 
 Single and speculative outputs first differ at token index 96, in a variable name, followed by comments and explanatory wording. Both are correct on this task. Exact speculative token equivalence is **not established** for general prompts, and one parsing task does not establish broad coding quality.
 
+## Terminal demo
+
+Use the [simple ASCII chat + speed counter](../demos/glm53_chat/README.md) for a direct terminal demo with live and final decode tok/s. The [Pi + asciinema setup](../demos/glm53_pi/README.md) records GLM code generation in Pi's TUI. It uses an isolated profile and disables agent tools because GLM tool-call parsing is not implemented.
+
 ## Model size and memory
 
 The inspected Q2 artifact has 45 main layers, 34 KDA and 11 sparse MLA layers, three dense FFNs and 42 MoE FFNs. Each MoE layer selects 8 of 288 experts. Hidden width is 4096 and expert intermediate width is 2048.

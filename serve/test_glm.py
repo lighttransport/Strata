@@ -16,6 +16,14 @@ class GlmBoundary(unittest.TestCase):
             list(engine.generate([1], 2, {}, threading.Event(), embeddings="image"))
         self.assertEqual(GlmEngine.sampling_keys({"temperature": 0, "top_p": 1}), "")
 
+    def test_chat_request_metadata_is_not_sampling(self):
+        request = {"model": "glm-5.3-flash-q2", "messages": [{"role": "user", "content": "hello"}],
+                   "stream": True, "max_tokens": 512, "reasoning_effort": "low", "temperature": 0}
+        self.assertEqual(GlmEngine.sampling_keys(request), "")
+        for field, value in (("top_p", 0.9), ("seed", 42), ("frequency_penalty", 0.5)):
+            with self.assertRaisesRegex(ValueError, "greedy"):
+                GlmEngine.sampling_keys({**request, field: value})
+
     def test_gguf_template_and_stop_ids(self):
         engine = GlmEngine.__new__(GlmEngine)
         engine.max_context = 128

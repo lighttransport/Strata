@@ -1,0 +1,5 @@
+Write a complete C++17 function:
+
+bool parse_u64(std::string_view text, std::uint64_t& out) noexcept;
+
+Accept only nonempty ASCII decimal digits, including leading zeroes. Reject signs, whitespace, NUL, non-ASCII bytes and overflow above UINT64_MAX. Leave out unchanged on failure. Use constant space, no allocations and check overflow before multiplication/addition. Return one cpp code block with includes and the function, then a brief explanation. Keep the entire reply within 512 tokens. No tests or main function.

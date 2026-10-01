@@ -47,3 +47,6 @@ build-vision.bat
 *.done
 /third_party/*.zip
 
+
+# Local terminal demos: recordings and isolated runtime files are not source.
+/recordings/

@@ -2,12 +2,17 @@
 
 This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
 
+<p align="center"><img src="docs/media/glm53-live-decode.gif" width="900" alt="GLM-5.3-Flash Q2 generating C++ live in Strata's terminal chat, with a decode-speed counter"><br>
+<sub>GLM-5.3-Flash UD-Q2_K_XL on Threadripper 1950X (16 cores), 160 GB DDR4 and RTX 5060 Ti 16 GB; 15 CPU workers, single decode, 12 GiB GPU budget. This short C++ demo measured 5.27 tok/s overall. The 8-second clip plays at original speed with prefill omitted.</sub></p>
+
 - **Accepted best decode benchmark: 7.54 tok/s median**, with GPU MTP at depth 1. This is workload-specific, and 10 tok/s has not been measured on this PC.
 - **C++ output validation:** a 4,096-token chat prompt and 512-token generation cap produced two complete, coherent answers. Each generated C++17 function compiled and passed **400,532 test cases** under ASan/UBSan.
 - **That C++ task measured ~84 tok/s prefill and ~2.1 tok/s decode**, finishing naturally at 393/398 output tokens. Single and speculative answers were both correct, but their tokens differed.
 - **Desktop memory budget:** 12 GiB total GPU budget, with a physical free-memory guard to leave room for the display and other apps.
 
 Read the **[GLM5.3Flash guide: setup, measurements and hardware forecasts for 10+ tok/s](docs/README_GLM53_FLASH.md)**, the **[C++ validation report and generated code](docs/fixtures/glm53_cpp_quality/README.md)**, and the **[full performance record](docs/GLM53_FLASH_PERFORMANCE.md)**. Earlier Q3 prefill reached 112.4 tok/s on a different benchmark; rates vary with the prompt, quantization and configuration.
+
+For a live terminal demonstration, use the [simple ASCII chat with a decode-speed counter](demos/glm53_chat/README.md).
 
 ## Original Strata README: Qwen3.8-Flash-Next
 

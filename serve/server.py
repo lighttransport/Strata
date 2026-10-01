@@ -379,7 +379,12 @@ class GlmEngine(StrataEngine):
     def sampling_keys(sampling):
         neutral = {"temperature": 0, "top_p": 1, "top_k": 0, "min_p": 0,
                    "repetition_penalty": 1, "frequency_penalty": 0, "presence_penalty": 0}
-        for key, value in (sampling or {}).items():
+        # The caller passes the entire API request, including model/messages/stream.
+        settings = sampling or {}
+        sampling_fields = (*neutral, "seed", "penalty_last_n", "typical_p", "mirostat",
+                           "dyn_temp_range", "repeat_penalty")
+        for key in sampling_fields:
+            value = settings.get(key)
             if value is not None and (key not in neutral or value != neutral[key]):
                 raise ValueError(f"GLM currently supports greedy decoding only; unsupported setting {key}")
         return ""
