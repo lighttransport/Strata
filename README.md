@@ -1,6 +1,6 @@
 # Strata-GLM53F: GLM-5.3-Flash on desktops and budget servers
 
-This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
+This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **budget server with two Xeon Gold 6240 CPUs, 160 GiB RAM and two Tesla V100 32 GB GPUs**, or a **Threadripper 1950X desktop with 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
 
 <p align="center">
 <a href="docs/media/glm53-v100-live-decode.gif"><img src="docs/media/glm53-v100-live-decode.gif" width="400" align="top" alt="Old server: approximately 29 decode tok/s on Xeon Gold and two Tesla V100 GPUs"></a>
