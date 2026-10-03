@@ -31,6 +31,8 @@ import time
 import urllib.error
 import urllib.request
 
+from serve.winjob import contain
+
 PROTOCOL = "2025-06-18"               # the MCP revision Strata asks for; the server's answer is used as given
 DEFAULTS = {"timeout_s": 60.0, "max_result_chars": 20000, "max_rounds": 8, "start_timeout_s": 120.0}
 
@@ -105,8 +107,10 @@ class StdioTransport:
                                          env=env, **extra)
         except OSError as e:
             raise McpError(f"could not start {command!r}: {e}") from None
+        contain(self.proc)                              # ends with the server, however it ends (Windows)
+        self._err_reader = threading.Thread(target=self._read_stderr, daemon=True)
+        self._err_reader.start()
         threading.Thread(target=self._read, daemon=True).start()
-        threading.Thread(target=self._read_stderr, daemon=True).start()
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None and not getattr(self, "ended", False)
@@ -141,6 +145,9 @@ class StdioTransport:
                 if isinstance(m, dict):
                     self._dispatch(m)
         self.ended = True
+        # the server's last log line says why it stopped: let the stderr reader take it first (the pipe closes with
+        # the process), or the error raced it and said only "the server stopped"
+        self._err_reader.join(1.0)
         code = self.proc.poll()
         err = McpError(f"the server stopped{f' (exit code {code})' if code is not None else ''}{self._tail()}")
         with self.lock:

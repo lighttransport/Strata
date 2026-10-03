@@ -24,14 +24,212 @@ __global__ void poison_kernel(float* p, uint64_t n_floats) {
     if (i < n_floats) p[i] = __int_as_float(0x7fc00000);
 }
 
+#if defined(STRATA_USE_HIP)
+#if !defined(STRATA_HIP_ARCHS)
+#error "STRATA_HIP_ARCHS (the compiled HIP architectures) is set by cmake/hip_backend.cmake"
+#endif
+// "gfx1201:sramecc-:xnack-" -> "gfx1201"
+std::string base_arch(const char* gcn_arch_name) {
+    std::string arch(gcn_arch_name);
+    const size_t colon = arch.find(':');
+    if (colon != std::string::npos) arch.resize(colon);
+    return arch;
+}
+
+bool compiled_for(const std::string& arch) {
+    const std::string list = STRATA_HIP_ARCHS;
+    size_t a = 0;
+    while (a <= list.size()) {
+        size_t b = list.find(',', a);
+        if (b == std::string::npos) b = list.size();
+        if (!arch.empty() && list.compare(a, b - a, arch) == 0 && b - a == arch.size()) return true;
+        a = b + 1;
+    }
+    return false;
+}
+
+std::string arch_problem(const cudaDeviceProp& p, int ordinal) {
+    const std::string arch = base_arch(p.gcnArchName);
+    const std::string card = "GPU " + std::to_string(ordinal) + " (" + p.name + ", " + arch + ")";
+    if (!compiled_for(arch)) {
+        return card + " is not an architecture this Strata engine was compiled for (" + STRATA_HIP_ARCHS +
+               "); compile it for this card (./setup.sh --backend hip, or -DCMAKE_HIP_ARCHITECTURES=" + arch +
+               ", docs/AMD_HIP.md) or choose another GPU with HIP_VISIBLE_DEVICES";
+    }
+    if (p.warpSize != 32) {
+        return card + " runs wave" + std::to_string(p.warpSize) + "; Strata's HIP kernels need wave32";
+    }
+    return "";
+}
+#endif
+
 }  // namespace
+
+const char* compiled_gpu_archs() {
+#if defined(STRATA_USE_HIP)
+    return STRATA_HIP_ARCHS;
+#else
+    return "";
+#endif
+}
+
+int device_count() {
+    int count = 0;
+    if (cudaGetDeviceCount(&count) != cudaSuccess) {   // HIP without a usable device reports an error, not 0
+        cudaGetLastError();
+        return 0;
+    }
+    return count < 0 ? 0 : count;
+}
+
+bool device_summary(int ordinal, std::string& name, std::string& detail) {
+    cudaDeviceProp p{};
+    if (ordinal < 0 || ordinal >= device_count() || cudaGetDeviceProperties(&p, ordinal) != cudaSuccess) {
+        cudaGetLastError();
+        return false;
+    }
+    char buf[160];
+#if defined(STRATA_USE_HIP)
+    std::snprintf(buf, sizeof(buf), "arch %s, %.1f GiB, wave%d", base_arch(p.gcnArchName).c_str(),
+                  (double) p.totalGlobalMem / (1024.0 * 1024 * 1024), p.warpSize);
+#else
+    std::snprintf(buf, sizeof(buf), "compute capability %d.%d, %.1f GiB", p.major, p.minor,
+                  (double) p.totalGlobalMem / (1024.0 * 1024 * 1024));
+#endif
+    name = p.name;
+    detail = buf;
+    return true;
+}
+
+}  // namespace strata::core
+
+#if defined(STRATA_USE_HIP) && defined(_WIN32)
+// The free VRAM figure on Windows HIP (include/strata/hip_compat/cuda_runtime.h maps cudaMemGetInfo here).
+//
+// hipMemGetInfo (ROCclr's PAL backend, Device::globalFreeMemory) is the card's size minus this process's own
+// allocations: it asks Windows for this process's usage only, never for what the desktop and other programs hold.
+// So on a card that also drives the desktop the engine counted ~930 MiB that was not there, the expert cache filled
+// the card, and WDDM moved memory out to system RAM: decode at 30 tok/s instead of 41 (RX 6800, HIP SDK 7.2).
+// Windows itself gives each process a video memory budget (DXGI QueryVideoMemoryInfo) that does account for the
+// others.  Measured on that card: the budget sits 0.8 GiB below the card's size while this process is small and
+// 1.8 GiB below once it holds 11 GiB; allocations past it still succeed, and are what Windows moves out.  The
+// free figure here is hipMemGetInfo's lowered by what the budget withholds (the card's size minus the budget).
+// Subtracting from HIP's own figure, rather than taking the budget minus DXGI's usage, keeps memory the HIP runtime
+// has freed and holds in its cache counted as free, as hipMemGetInfo counts it.  dxgi.dll is loaded at run time, so
+// nothing new is linked; when it or the card's adapter cannot be found, hipMemGetInfo's figure stands.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <dxgi1_4.h>
+#include <atomic>
+#include <cstdlib>
+#include <mutex>
+
+namespace strata::hip_compat {
+namespace {
+IDXGIAdapter3* budget_adapter(int device) {
+    constexpr int kMaxDevices = 16;
+    static std::mutex mu;
+    static IDXGIAdapter3* adapters[kMaxDevices] = {};
+    static bool tried[kMaxDevices] = {};
+    if (device < 0 || device >= kMaxDevices) return nullptr;
+    std::lock_guard<std::mutex> lock(mu);
+    if (tried[device]) return adapters[device];
+    tried[device] = true;
+    hipDeviceProp_t p{};
+    if (hipGetDeviceProperties(&p, device) != hipSuccess) {
+        (void) hipGetLastError();
+        return nullptr;
+    }
+    LUID luid{};
+    std::memcpy(&luid, p.luid, sizeof luid);
+    using CreateFactory = HRESULT(WINAPI*)(REFIID, void**);
+    static HMODULE dxgi = LoadLibraryW(L"dxgi.dll");   // kept for the process' lifetime, like the adapters
+    const auto create = dxgi ? (CreateFactory) (void*) GetProcAddress(dxgi, "CreateDXGIFactory1") : nullptr;
+    IDXGIFactory4* factory = nullptr;
+    if (create == nullptr || FAILED(create(__uuidof(IDXGIFactory4), (void**) &factory))) return nullptr;
+    IDXGIAdapter3* adapter = nullptr;
+    if (FAILED(factory->EnumAdapterByLuid(luid, __uuidof(IDXGIAdapter3), (void**) &adapter))) adapter = nullptr;
+    factory->Release();
+    adapters[device] = adapter;
+    return adapter;
+}
+}  // namespace
+
+hipError_t mem_get_info(size_t* free_bytes, size_t* total_bytes) {
+    const hipError_t e = hipMemGetInfo(free_bytes, total_bytes);
+    static const bool off = [] {
+        const char* v = std::getenv("STRATA_WDDM_BUDGET");
+        return v != nullptr && std::atoi(v) == 0;
+    }();
+    if (e != hipSuccess || off || free_bytes == nullptr || total_bytes == nullptr) return e;
+    int device = 0;
+    if (hipGetDevice(&device) != hipSuccess) {
+        (void) hipGetLastError();
+        return e;
+    }
+    IDXGIAdapter3* adapter = budget_adapter(device);
+    DXGI_QUERY_VIDEO_MEMORY_INFO local{};
+    if (adapter == nullptr || FAILED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local)) ||
+        local.Budget == 0 || local.Budget >= *total_bytes)
+        return e;
+    const size_t withheld = *total_bytes - (size_t) local.Budget;   // the desktop's and other programs' share
+    static std::atomic<bool> said{false};
+    if (!said.exchange(true)) {
+        std::fprintf(stderr, "strata: Windows budgets %llu of this card's %llu MiB for this process; free VRAM is "
+                             "counted within that (STRATA_WDDM_BUDGET=0: off)\n",
+                     (unsigned long long) (local.Budget >> 20), (unsigned long long) (*total_bytes >> 20));
+    }
+    *free_bytes = *free_bytes > withheld ? *free_bytes - withheld : 0;
+    return e;
+}
+}  // namespace strata::hip_compat
+#endif
+
+namespace strata::core {
+
+std::string gpu_arch_problem(int ordinal) {
+#if defined(STRATA_USE_HIP)
+    int count = 0;
+    if (cudaGetDeviceCount(&count) != cudaSuccess || ordinal < 0 || ordinal >= count) {
+        cudaGetLastError();
+        return "";
+    }
+    cudaDeviceProp p{};
+    if (cudaGetDeviceProperties(&p, ordinal) != cudaSuccess) {
+        cudaGetLastError();
+        return "";
+    }
+    return arch_problem(p, ordinal);
+#else
+    (void) ordinal;
+    return "";
+#endif
+}
+
+std::string device_code_error() {
+#if defined(STRATA_USE_HIP)
+    return "";   // gpu_arch_problem() checks the HIP architectures against STRATA_HIP_ARCHS, before this point
+#else
+    // every .cu of the engine is compiled for the same CMAKE_CUDA_ARCHITECTURES, so this kernel stands for all
+    cudaFuncAttributes a{};
+    const cudaError_t e = cudaFuncGetAttributes(&a, poison_kernel);
+    if (e == cudaSuccess) return {};
+    cudaGetLastError();
+    return cudaGetErrorString(e);
+#endif
+}
 
 DeviceInfo device_info(int ordinal) {
     int count = 0;
     check(cudaGetDeviceCount(&count), "cudaGetDeviceCount");
     if (count == 0) {
 #if defined(STRATA_USE_HIP)
-        throw CudaError("no HIP device is present; this backend targets gfx1100 wave32", -1);
+        throw CudaError(std::string("no HIP device is present; this engine was compiled for ") + STRATA_HIP_ARCHS, -1);
 #else
         throw CudaError("no CUDA device is present; Strata needs an NVIDIA GPU (RTX 20 series or newer)", -1);
 #endif
@@ -64,16 +262,23 @@ DeviceInfo device_info(int ordinal) {
     // fp32-FMA fallback below sm_80, the tensor-core prompt kernels refuse and fall back).  Compiling for a
     // supported arch is enforced by CMake; RUNNING on an older card is caught here, because a binary can be carried
     // to a machine with an older card and would otherwise silently take whatever path the driver chose.  The HIP
-    // backend is validated on gfx1100 (wave32) only.
+    // backend checks the card against the architectures the binary was compiled for (and wave32).
 #if defined(STRATA_USE_HIP)
-    if (std::strncmp(p.gcnArchName, "gfx1100", 7) != 0 || p.warpSize != 32) {
-        throw CudaError("HIP backend requires validated gfx1100 wave32 hardware", -1);
-    }
+    d.arch = base_arch(p.gcnArchName);
+    if (const std::string why = arch_problem(p, ordinal); !why.empty()) throw CudaError(why, -1);
 #else
-    if (d.cc_major * 10 + d.cc_minor < 75) {
+    // #236: the experimental build (-DSTRATA_EXPERIMENTAL_SM60=ON: Pascal sm_60, Volta sm_70) runs on the cards it
+    // was built for - refusing them below 7.5 there made the flag useless; the release engine keeps 7.5
+#if defined(STRATA_EXPERIMENTAL_SM60)
+    constexpr int kMinCc = 60;
+    const char* const kNeed = "6.0 or newer (this is the experimental Pascal / Volta build)";
+#else
+    constexpr int kMinCc = 75;
+    const char* const kNeed = "7.5 or newer (RTX 20 / 30 / 40 / 50 series)";
+#endif
+    if (d.cc_major * 10 + d.cc_minor < kMinCc) {
         throw CudaError("device " + d.name + " reports compute capability " + std::to_string(d.cc_major) +
-                            "." + std::to_string(d.cc_minor) +
-                            "; Strata needs compute capability 7.5 or newer (RTX 20 / 30 / 40 / 50 series)",
+                            "." + std::to_string(d.cc_minor) + "; Strata needs compute capability " + kNeed,
                         -1);
     }
 #endif

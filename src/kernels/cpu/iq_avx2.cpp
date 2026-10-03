@@ -9,7 +9,7 @@
 // with one, `vpsignb`.  The arithmetic is ggml's (ggml-cpu/quants.c, the `_generic` references) - only the
 // order of the float additions differs.
 //
-// Formats: IQ2_XXS (16), IQ2_XS (17), IQ3_XXS (18), IQ3_S (21), IQ2_S (22).  IQ1_M stays on ggml-cpu.
+// Formats: IQ2_XXS (16), IQ2_XS (17), IQ3_XXS (18), IQ3_S (21), IQ2_S (22), IQ4_XS (23).  IQ1_M stays on ggml-cpu.
 #include "strata/kernels/cpu/iq_avx2.hpp"
 
 #define GGML_COMMON_DECL_CPP
@@ -19,6 +19,7 @@
 #include <immintrin.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 namespace strata::kernels::cpu {
@@ -74,6 +75,23 @@ inline float hsum8(__m256 v) {
     s = _mm_hadd_ps(s, s);
     s = _mm_hadd_ps(s, s);
     return _mm_cvtss_f32(s);
+}
+
+// E-2 (iq_avx512.cpp) on the AVX-2 path: the pool streams the expert rows from DRAM at ~25 GB/s (4 KB pages
+// when large pages are refused), so ask for the bytes a few blocks before the decode needs them - 2048 B is
+// two gate/up rows ahead, a row is ~1 KB.  Same switch as the AVX-512 kernels: STRATA_IQ_PREFETCH is the
+// distance in bytes, 0 = off, default 2048.  Measured on a Zen 3 5700X3D (no AVX-512) on IQ3_S decode: -4% on
+// the gate/up phase, +1.0 GB/s over the rows, -1.3% ms/round end to end.  The non-temporal hint measured
+// worse than T0 at the same distance, so this keeps T0.
+const int prefetch_ahead = [] {
+    const char* v = std::getenv("STRATA_IQ_PREFETCH");
+    return v ? std::atoi(v) : 2048;
+}();
+
+inline void rows_ahead(const uint8_t* p) {
+    if (prefetch_ahead <= 0) return;
+    _mm_prefetch((const char*) p, _MM_HINT_T0);
+    _mm_prefetch((const char*) p + 64, _MM_HINT_T0);
 }
 
 // ---- per format: one 32-value half (values 64*j + 32*half .. +31) -> grid magnitudes, sign vector, scales
@@ -231,6 +249,27 @@ struct ScaleShuffle {
     }
 };
 static constexpr ScaleShuffle scale_shuffle;
+template <> struct Fmt32<23> {   // IQ4_XS: d, scales_h, scales_l[4], qs[128] - 136 B, 8 signed sub-scales
+    // ggml's ggml_vec_dot_iq4_xs_q8_K: the same 16-value codebook as IQ4_NL, but each of the eight 32-value
+    // sub-blocks carries its own 6-bit scale, read as two nibbles of scales_l[p] plus two bits of scales_h, and
+    // used SIGNED as (ls - 32).  The scale therefore folds into the int16 operand of madd_epi16 instead of
+    // becoming a float multiply per sub-block, and the codebook sign is carried the way iq4nl_rows does it.
+    static constexpr int bytes = 136;
+    static constexpr float K = 1.0f;
+    static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
+        const int H = 2 * j + half;   // the eight 32-value sub-blocks, in the order the activation bytes come
+        const __m128i values = _mm_loadu_si128((const __m128i*) kvalues_iq4nl);
+        const __m128i bits = _mm_loadu_si128((const __m128i*) (b + 8 + 16 * H));
+        const __m128i m4 = _mm_set1_epi8(0x0f);
+        const __m256i q4 = _mm256_inserti128_si256(
+            _mm256_castsi128_si256(_mm_shuffle_epi8(values, _mm_and_si128(bits, m4))),
+            _mm_shuffle_epi8(values, _mm_and_si128(_mm_srli_epi16(bits, 4), m4)), 1);
+        g   = _mm256_sign_epi8(q4, q4);                       // |w|, the unsigned operand of maddubs
+        sgn = _mm256_sign_epi8(_mm256_set1_epi8(1), q4);      // w's sign, applied to the activation
+        const int ls = ((b[4 + (H >> 1)] >> (4 * (H & 1))) & 0xf) | (((u16(b + 2) >> (2 * H)) & 3) << 4);
+        sc = _mm256_set1_epi16((short) (ls - 32));
+    }
+};
 
 template <int TY, int NT>
 inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
@@ -238,6 +277,7 @@ inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y,
     for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
     for (int i = 0; i < nblocks; ++i) {
         const uint8_t* blk = row + (size_t) i * Fmt32<TY>::bytes;
+        rows_ahead(blk + prefetch_ahead);
         __m256i scales;
         if constexpr (TY == 22) {
             const uint64_t packed = u64(blk + 74);
@@ -311,6 +351,7 @@ inline void row_dot_iq2xs(const uint8_t* row, int nblocks, const block_q8_K* con
     for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
     for (int i = 0; i < nblocks; ++i) {
         const uint8_t* blk = row + (size_t) i * 74;
+        rows_ahead(blk + prefetch_ahead);
         // the 8 scale bytes -> 16 half-scales of 2*s+1, interleaved [a0, b0, a1, b1, ...] (ggml's unpack)
         __m128i st = _mm_set1_epi64x((long long) u64(blk + 66));
         st = _mm_unpacklo_epi8(_mm_and_si128(st, m4), _mm_and_si128(_mm_srli_epi16(st, 4), m4));
@@ -430,7 +471,7 @@ void iq256_prepare_rows(int type, const uint8_t *src, uint8_t *dst, int n, int r
     else if (type == 22) prepare_rows<22>(src, dst, n, rows);
 }
 bool iq256_supported(int type) noexcept {
-    return type == 16 || type == 17 || type == 18 || type == 21 || type == 22;
+    return type == 16 || type == 17 || type == 18 || type == 21 || type == 22 || type == 23;
 }
 
 void iq256_gu_rows_clamped(int type, const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act, int nt,
@@ -443,6 +484,7 @@ void iq256_gu_rows_clamped(int type, const uint8_t* blob, size_t gu_row, size_t 
         case 121: gu_rows_nt<121>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 122: gu_rows_nt<122>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         case 22: gu_rows_nt<22>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
+        case 23: gu_rows_nt<23>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
         default: break;
     }
 }
@@ -462,6 +504,7 @@ void iq256_rows(int type, const uint8_t* w, size_t row_bytes, int n, const void*
         case 121: dot_rows_nt<121>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 122: dot_rows_nt<122>(nt, w, row_bytes, n, act, out, r0, r1); break;
         case 22: dot_rows_nt<22>(nt, w, row_bytes, n, act, out, r0, r1); break;
+        case 23: dot_rows_nt<23>(nt, w, row_bytes, n, act, out, r0, r1); break;
         default: break;
     }
 }
@@ -484,6 +527,7 @@ void iq4nl_rows(const uint8_t* w, size_t row_bytes, int n, const block_q8_0* con
         for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
         for (int ib = 0; ib < nb; ++ib) {
             const uint8_t* blk = row + (size_t) ib * sizeof(block_iq4_nl);
+            rows_ahead(blk + prefetch_ahead);
             const __m128i bits = _mm_loadu_si128((const __m128i*) (blk + 2));
             const __m128i lo = _mm_and_si128(bits, m4b);                      // values 0..15
             const __m128i hi = _mm_and_si128(_mm_srli_epi16(bits, 4), m4b);    // values 16..31
