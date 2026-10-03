@@ -1,9 +1,16 @@
-# Strata-GLM53F: GLM5.3Flash on a desktop PC
+# Strata-GLM53F: GLM-5.3-Flash on desktops and budget servers
 
 This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
 
-<p align="center"><img src="docs/media/glm53-live-decode.gif" width="900" alt="GLM-5.3-Flash Q2 generating C++ live in Strata's terminal chat, with a decode-speed counter"><br>
-<sub>GLM-5.3-Flash UD-Q2_K_XL on Threadripper 1950X (16 cores), 160 GB DDR4 and RTX 5060 Ti 16 GB; 15 CPU workers, single decode, 12 GiB GPU budget. This short C++ demo measured 7.51 decode tok/s. The 8-second clip plays at original speed with prefill omitted.</sub></p>
+<p align="center">
+<a href="docs/media/glm53-v100-live-decode.gif"><img src="docs/media/glm53-v100-live-decode.gif" width="400" align="top" alt="Old server: approximately 29 decode tok/s on Xeon Gold and two Tesla V100 GPUs"></a>
+<a href="docs/media/glm53-live-decode.gif"><img src="docs/media/glm53-live-decode.gif" width="400" align="top" alt="Desktop: approximately 7 decode tok/s on Threadripper 1950X and RTX 5060 Ti"></a>
+</p>
+
+**Old server. New model. ~29 tok/s.** Server on the left, Threadripper desktop on the right; on narrow screens, server above desktop. Click either animation to view it at full size. Both eight-second clips play at original speed with loading and prefill omitted.
+
+- **Server — ~29 decode tok/s:** 2017-era Volta architecture, 2019 Xeon Gold 6240 CPUs, 160 GiB RAM and 2× Tesla V100 PCIe 32 GB. The 4K C++ benchmark measured **29.06 tok/s median**; the live capture measured **28.17 tok/s** over 512 tokens with MTP depth 1 and 35 CPU workers. Warmup is omitted from playback. [Hardware measurements](docs/GLM53_V100.md) · [Demo timing](demos/glm53_chat/v100_measurement.json).
+- **Threadripper desktop — ~7 decode tok/s:** Threadripper 1950X (16 cores), 160 GB DDR4 and RTX 5060 Ti 16 GB; 15 CPU workers, single decode, 12 GiB GPU budget. This short C++ demo measured **7.51 tok/s**. [Desktop measurements](docs/README_GLM53_FLASH.md) · [Demo timing](demos/glm53_chat/measurement.json).
 
 - **Initial short-chat decode: 7.33 tok/s median** (7.324, 7.334, 7.327), with identical outputs across three single-decode trials. The earlier source-prefix benchmark reached 7.54 tok/s with GPU MTP depth 1.
 - **C++ output validation:** a 4,096-token chat prompt and 512-token generation cap produced two complete, coherent answers. Each generated C++17 function compiled and passed **400,532 test cases** under ASan/UBSan.

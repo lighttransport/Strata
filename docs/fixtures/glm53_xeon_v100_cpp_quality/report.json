@@ -49,6 +49,48 @@
       "source_sha256": "ad6f499f718313a1885f56c133fc69c322810359856d3c4cead502961a6e8c2e",
       "oracle_cases": 400532,
       "passed": true
+    },
+    {
+      "configuration": "dual_socket_1gpu_16384m_35w",
+      "source_file": "generated-1b19910611aa.cpp",
+      "source_sha256": "1b19910611aaedf65f233b5147fdace671082bab7a306049bd9e794e0c60ddd5",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "dual_socket_2gpu_16384m_35w",
+      "source_file": "generated-37e10472970d.cpp",
+      "source_sha256": "37e10472970ddb931768d3fc183e22ed4175e7ed16ab857c35a1fbb9de1ed147",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "dual_socket_1gpu_16384m_71w",
+      "source_file": "generated-1b19910611aa.cpp",
+      "source_sha256": "1b19910611aaedf65f233b5147fdace671082bab7a306049bd9e794e0c60ddd5",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "dual_socket_2gpu_16384m_71w",
+      "source_file": "generated-37e10472970d.cpp",
+      "source_sha256": "37e10472970ddb931768d3fc183e22ed4175e7ed16ab857c35a1fbb9de1ed147",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "dual_socket_1gpu_15360m_35w",
+      "source_file": "generated-ad6f499f7183.cpp",
+      "source_sha256": "ad6f499f718313a1885f56c133fc69c322810359856d3c4cead502961a6e8c2e",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "dual_socket_2gpu_15360m_35w",
+      "source_file": "generated-2ef575b2bc16.cpp",
+      "source_sha256": "2ef575b2bc16936ee5f6da3425f47959f6073290d11060bb60f95d3467a68d9c",
+      "oracle_cases": 400532,
+      "passed": true
     }
   ]
 }
