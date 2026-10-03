@@ -32,10 +32,19 @@ public:
     /// Y = X . W^T with both in FP16 (bits).
     void f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_t N, int64_t K, int64_t ldy = 0,
              float beta = 0.0f);
+    /// Independent contiguous expert matrices: X[B,T,K], W[B,N,K], Y[B,T,N].
+    void f16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches);
+
+    /// Column-major contiguous batches: C[M,N] (fp32) = A[M,K] . B[K,N], both FP16.
+    void f16_batched_nn(const uint16_t* A, const uint16_t* B, float* C, int M, int N, int K, int batches);
 
     /// W given as native GGUF blocks of `ggml_type`, dequantized to FP16 in the scratch, X in FP16.
     void native(const uint16_t* X, int ggml_type, const void* W_blocks, float* Y, int64_t T, int64_t N, int64_t K,
                 int64_t ldy = 0, float beta = 0.0f);
+
+    /// native() over consecutive `chunk`-token products, dequantizing each weight slice once for all of them.
+    void native_chunked(const uint16_t* X, int ggml_type, const void* W_blocks, float* Y, int64_t T, int64_t N,
+                        int64_t K, int64_t chunk);
 
     /// Caller-owned buffers only: the scratch and workspace moved (the prompt path laid its buffers out again).
     void rebind(uint16_t* scratch, int64_t scratch_elems, void* workspace, size_t ws_bytes);

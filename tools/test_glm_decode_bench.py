@@ -20,7 +20,7 @@ class DecodeMeasurementTest(unittest.TestCase):
             return measure(self.command)
 
     def test_speculative_median_and_repeated_ids(self):
-        log = "GPU peak_allocated_MiB=9000\n"
+        log = "GPU peak_allocated_MiB=9000\nPREFILL trial=0 tokens=2 batch=4096 ms=1200 tok_s=1.6\nRESPONSE_PREPARE kind=cpu ms=50\nMTP_PRIME ms=300\n"
         for i, rate in enumerate((4, 12, 6)):
             log += (f"DECODE_TRIAL index={i}\n"
                     f"SPECULATIVE source=mtp generated=3 rounds=1 proposed=2 "
@@ -31,6 +31,7 @@ class DecodeMeasurementTest(unittest.TestCase):
         self.assertEqual(result["peak_allocated_mib"], 9000)
         self.assertEqual(len(result["trials"]), 3)
         self.assertEqual(result["trials"][0]["replayed"], 0)
+        self.assertEqual(result["response_milliseconds"], 1650)
 
     def test_changed_greedy_ids_are_rejected(self):
         log = "".join(f"DECODE_TRIAL index={i}\nDECODE steps=2 ms=100 tok_s=20\n" for i in range(2))
@@ -59,11 +60,21 @@ class DecodeMeasurementTest(unittest.TestCase):
             return json.loads(output.getvalue())
 
     def test_sweep_selects_measured_winner(self):
-        runs = [dict(token_ids=[1, 2, 3], tokens_per_second=rate) for rate in (6, 8, 7)]
+        runs = [dict(token_ids=[1, 2, 3], tokens_per_second=rate, response_milliseconds=ms)
+                for rate, ms in ((6, 2000), (8, 1800), (7, 1600))]
         result = self.run_sweep(runs)
-        self.assertEqual(result["draft_depth"], 1)
-        self.assertEqual(result["speculative"]["tokens_per_second"], 8)
+        self.assertEqual(result["draft_depth"], 3)
+        self.assertEqual(result["speculative"]["tokens_per_second"], 7)
+        self.assertEqual(result["response_speedup"], 1.25)
+        self.assertEqual(result["recommended_mode"], "mtp")
         self.assertEqual(len(result["mtp_depth_sweep"]), 2)
+
+    def test_priming_cost_can_make_single_decode_preferable(self):
+        runs = [dict(token_ids=[1, 2, 3], tokens_per_second=rate, response_milliseconds=ms)
+                for rate, ms in ((6, 2000), (8, 3000), (7, 2800))]
+        result = self.run_sweep(runs)
+        self.assertEqual(result["recommended_mode"], "single")
+        self.assertIsNone(result["recommended_draft_depth"])
 
     def test_sweep_rejects_incorrect_losing_variant(self):
         runs = [dict(token_ids=[1, 2, 3], tokens_per_second=rate) for rate in (6, 8, 7)]
@@ -81,7 +92,7 @@ class DecodeMeasurementTest(unittest.TestCase):
 
     def test_cached_cpu_mtp_requires_identical_resident_set(self):
         cache = dict(slots=32, allocated_mib=251.375, fingerprint="12345")
-        runs = [dict(token_ids=[1, 2, 3], tokens_per_second=rate,
+        runs = [dict(token_ids=[1, 2, 3], tokens_per_second=rate, response_milliseconds=2000 / rate,
                      actual_decode_cache=cache.copy()) for rate in (6, 8)]
         flags = ["--decode-cache-mib=256", "--mtp-experts=cpu", "--draft-depth=1"]
         result = self.run_sweep(runs, flags)

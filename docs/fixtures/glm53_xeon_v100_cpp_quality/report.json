@@ -1,0 +1,54 @@
+{
+  "compiler": "GCC 12",
+  "language": "C++17",
+  "flags": [
+    "-Wall",
+    "-Wextra",
+    "-Werror"
+  ],
+  "oracle": "independent std::from_chars reference",
+  "checks": [
+    {
+      "configuration": "single_gpu_32768m_17w",
+      "source_file": "generated-4f20ed5b0ced.cpp",
+      "source_sha256": "4f20ed5b0ced63a6ee975649aa227a90aeba4d82b770ebab61b6447d8d1f7d80",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "single_gpu_32768m_35w",
+      "source_file": "generated-4f20ed5b0ced.cpp",
+      "source_sha256": "4f20ed5b0ced63a6ee975649aa227a90aeba4d82b770ebab61b6447d8d1f7d80",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "single_gpu_16384m_17w",
+      "source_file": "generated-1b19910611aa.cpp",
+      "source_sha256": "1b19910611aaedf65f233b5147fdace671082bab7a306049bd9e794e0c60ddd5",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "single_gpu_16384m_35w",
+      "source_file": "generated-1b19910611aa.cpp",
+      "source_sha256": "1b19910611aaedf65f233b5147fdace671082bab7a306049bd9e794e0c60ddd5",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "single_gpu_15360m_17w",
+      "source_file": "generated-ad6f499f7183.cpp",
+      "source_sha256": "ad6f499f718313a1885f56c133fc69c322810359856d3c4cead502961a6e8c2e",
+      "oracle_cases": 400532,
+      "passed": true
+    },
+    {
+      "configuration": "single_gpu_15360m_35w",
+      "source_file": "generated-ad6f499f7183.cpp",
+      "source_sha256": "ad6f499f718313a1885f56c133fc69c322810359856d3c4cead502961a6e8c2e",
+      "oracle_cases": 400532,
+      "passed": true
+    }
+  ]
+}

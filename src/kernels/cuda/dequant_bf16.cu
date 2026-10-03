@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace strata::kernels {
 namespace {
@@ -174,6 +175,35 @@ __global__ void dequant_kernel(const uint8_t* __restrict__ blocks, int64_t row_b
     group32<TYPE>(blocks + (row0 + r) * row_bytes, (int) gi, out + r * groups_per_row * 32 + gi * 32);
 }
 
+// Preserve group32 arithmetic, then reorder only the stores. The extra shared
+// element per group prevents bank conflicts between threads writing their groups.
+template <int TYPE, typename T>
+__global__ void dequant_coalesced(const uint8_t* __restrict__ blocks, int64_t row_bytes, int64_t row0,
+                                 int64_t rows, int64_t groups_per_row, T* __restrict__ out) {
+    __shared__ T tile[256 * 33];
+    const int64_t first = (int64_t)blockIdx.x * 256;
+    const int64_t total = rows * groups_per_row;
+    const int64_t g = first + threadIdx.x;
+    if (g < total)
+        group32<TYPE>(blocks + (row0 + g / groups_per_row) * row_bytes,
+                      (int)(g % groups_per_row), tile + threadIdx.x * 33);
+    __syncthreads();
+#pragma unroll
+    for (int j = 0; j < 32; ++j) {
+        const int i = threadIdx.x + j * 256;
+        if (first * 32 + i < total * 32)
+            out[first * 32 + i] = tile[(i / 32) * 33 + i % 32];
+    }
+}
+
+bool coalesced_stores() {
+    const char* value = std::getenv("STRATA_GLM_DEQUANT_COALESCED");
+    if (!value || std::strcmp(value, "0") == 0) return false;
+    if (std::strcmp(value, "1") == 0) return true;
+    std::fprintf(stderr, "STRATA_GLM_DEQUANT_COALESCED must be 0 or 1\n");
+    std::exit(1);
+}
+
 bool geometry(int type, int& block_elems, int& block_bytes) {
     switch (type) {
     case 2: block_elems = 32; block_bytes = 18; return true;
@@ -203,7 +233,11 @@ void launch(int type, const void* blocks, int64_t row0, int64_t rows, int64_t co
     const unsigned grid = (unsigned) ((total + 255) / 256);
     const uint8_t* p = (const uint8_t*) blocks;
     cudaStream_t st = (cudaStream_t) stream;
-#define STRATA_DQ(TY) dequant_kernel<TY, T><<<grid, 256, 0, st>>>(p, row_bytes, row0, rows, gpr, out); break
+    const bool coalesced = coalesced_stores();
+#define STRATA_DQ(TY) \
+    if (coalesced) dequant_coalesced<TY, T><<<grid, 256, 0, st>>>(p, row_bytes, row0, rows, gpr, out); \
+    else dequant_kernel<TY, T><<<grid, 256, 0, st>>>(p, row_bytes, row0, rows, gpr, out); \
+    break
     switch (type) {
     case 2: STRATA_DQ(2);
     case 6: STRATA_DQ(6);
@@ -231,7 +265,8 @@ bool dequant_bf16_supported(int ggml_type) noexcept {
 
 namespace {
 // plan v0.3 P6: the i-quant formats (llama.cpp's dequantizers, iq_kernels.cu)
-bool iq_only(int t) { return t == 16 || t == 17 || t == 18 || t == 21 || t == 22 || t == 29; }
+// Q2_K (10) has no generic geometry here; iq_kernels.cu carries llama.cpp's dequantize_block_q2_K.
+bool iq_only(int t) { return t == 16 || t == 17 || t == 18 || t == 21 || t == 22 || t == 29 || t == 10; }
 }  // namespace
 
 void dequant_bf16(int ggml_type, const void* blocks, int64_t row0, int64_t rows, int64_t cols, uint16_t* out,

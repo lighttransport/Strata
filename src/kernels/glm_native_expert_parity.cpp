@@ -323,6 +323,51 @@ int main(int argc, char** argv) {
             strata::kernels::native_expert_grouped(L, dptr, dstart, dn, ddst, dtok, 1, NT, dxq, dscr, dout, s);
             cudaStreamSynchronize(s);
             cudaMemcpy(got_g.data(), dout, got_g.size() * 4, cudaMemcpyDeviceToHost);
+            // One/two/three active rows share fixed capacity; inactive output
+            // rows are guards. Compare against the original singleton selector.
+            cudaEvent_t begin, end;
+            cudaEventCreate(&begin); cudaEventCreate(&end);
+            for (int active : {1, 2, NT}) {
+                const int32_t bounds[2] = {0, active};
+                cudaMemcpy(dstart, bounds, sizeof(bounds), cudaMemcpyHostToDevice);
+                std::vector<float> reference;
+                for (int variant : {1, active}) {
+                    std::vector<float> guarded(got_g.size(), 999.f);
+                    cudaMemcpy(dout, guarded.data(), guarded.size() * 4, cudaMemcpyHostToDevice);
+                    strata::kernels::native_expert_grouped(L, dptr, dstart, dn, ddst, dtok, 1, NT,
+                                                         dxq, dscr, dout, s, 0, variant);
+                    cudaStreamSynchronize(s);
+                    cudaMemcpy(guarded.data(), dout, guarded.size() * 4, cudaMemcpyDeviceToHost);
+                    if (reference.empty()) reference = guarded;
+                    else if (std::memcmp(reference.data(), guarded.data(), guarded.size() * 4)) {
+                        std::printf("layer %d active=%d multi2 expert reuse differs from singleton bits\n", l, active);
+                        ++failures;
+                    }
+                    for (size_t i = (size_t)active * H; i < guarded.size(); ++i)
+                        if (guarded[i] != 999.f) { ++failures; break; }
+                    cudaEventRecord(begin, s);
+                    for (int repeat = 0; repeat < 48; ++repeat)
+                        strata::kernels::native_expert_grouped(L, dptr, dstart, dn, ddst, dtok, 1, NT,
+                                                             dxq, dscr, dout, s, 0, variant);
+                    cudaEventRecord(end, s); cudaEventSynchronize(end);
+                    float ms; cudaEventElapsedTime(&ms, begin, end);
+                    std::printf("          resident reuse layer=%d active=%d selector=%d mean_ms=%.6f\n", l, active, variant, ms / 48);
+                }
+            }
+            cudaEventDestroy(begin); cudaEventDestroy(end);
+            // The fused clamp/quantizer must preserve every output bit of the
+            // two-kernel activation reference on these actual model weights.
+            strata::kernels::native_grouped_set_v1(true);
+            strata::kernels::native_expert_grouped(L, dptr, dstart, dn, ddst, dtok, 1, NT, dxq, dscr, dout, s);
+            cudaStreamSynchronize(s);
+            std::vector<float> original(got_g.size());
+            cudaMemcpy(original.data(), dout, original.size() * 4, cudaMemcpyDeviceToHost);
+            strata::kernels::native_grouped_set_v1(false);
+            if (std::memcmp(original.data(), got_g.data(), got_g.size() * 4)) {
+                std::printf("layer %d fused activation differs from reference bits\n", l);
+                ++failures;
+            }
+
             cudaFree(dblob); cudaFree(dx); cudaFree(dxq); cudaFree(dscr); cudaFree(dout); cudaFree(dptr);
             cudaFree(dstart); cudaFree(dn); cudaFree(ddst); cudaFree(dtok);
         }

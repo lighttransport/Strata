@@ -27,6 +27,7 @@ td.log
 
 # created by setup.py on the user's machine
 /.venv/
+/.venv-glm/
 /build/
 /third_party/llama.cpp
 /models/
@@ -54,3 +55,13 @@ build-vision.bat
 # Local terminal demos: recordings and isolated runtime files are not source.
 /recordings/
 /.rocm-win/
+
+# Local coding-agent handoff; keep out of version control.
+/resume.md
+
+# Local GPU operator tooling and raw runs; publish generic measurement summaries.
+/slurm-gpu/
+/bench/results/2026-10-02-glm-v100*/
+/bench/results/2026-10-03-glm-v100*/
+/docs/glm53_flash_v100*_measurement.json
+/docs/fixtures/glm53_v100_cpp_quality/

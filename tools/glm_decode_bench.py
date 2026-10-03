@@ -51,7 +51,19 @@ def measure(command, environment=None):
         raise RuntimeError("greedy output changed across repetitions")
     peaks = re.findall(r"GPU peak_allocated_MiB=([\d.]+)", completed.stderr)
     cache = re.search(r"DECODE_CACHE prefix_trained=1 slots=(\d+) MiB=([\d.]+)(?: fingerprint=(\d+))?", completed.stderr)
+    prefill_ms = [float(ms) for ms in re.findall(r"PREFILL trial=\d+ tokens=\d+ batch=\d+ ms=([\d.]+)", completed.stderr)]
+    prime = re.search(r"MTP_PRIME ms=([\d.]+)", completed.stderr)
+    priming_ms = float(prime[1]) if prime else 0.0
+    prepare_ms = sum(map(float, re.findall(r"RESPONSE_PREPARE kind=\w+ ms=([\d.eE+-]+)", completed.stderr)))
     return dict(token_ids=outputs[0], trials=trials, decoder_log=completed.stderr,
+                prefill_milliseconds=prefill_ms, mtp_priming_milliseconds=priming_ms,
+                decode_preparation_milliseconds=prepare_ms,
+                response_milliseconds=(prefill_ms[-1] + prepare_ms + priming_ms + statistics.median(t["milliseconds"] for t in trials)) if prefill_ms else None,
+                host_peak_rss_mib=max(map(float, re.findall(r"HOST_RSS peak_MiB=([\d.]+)", completed.stderr)), default=None),
+                device_measurements=[dict(device=int(d), peak_allocated_mib=float(p), live_mib=float(l),
+                    native_expert_bytes=int(b), staging_ms=float(s), cache_hits=int(h), cache_hit_bytes=int(c))
+                    for d, p, l, b, s, h, c in re.findall(
+                    r"GPU_DEVICE device=(\d+) peak_allocated_MiB=([\d.]+) live_MiB=([\d.]+) native_expert_bytes=(\d+) staging_ms=([\d.]+) cache_hits=(\d+) cache_hit_bytes=(\d+)", completed.stderr)],
                 actual_decode_cache=dict(slots=int(cache[1]), allocated_mib=float(cache[2]), fingerprint=cache[3]) if cache else None,
                 tokens_per_second=statistics.median(t["tokens_per_second"] for t in trials),
                 milliseconds=statistics.median(t["milliseconds"] for t in trials),
@@ -66,11 +78,15 @@ def main():
     parser.add_argument("--prompt-tokens", type=int, default=4096)
     parser.add_argument("--generated-tokens", type=int, default=256)
     parser.add_argument("--context", type=int, default=8192)
-    parser.add_argument("--prefill-batch", choices=("2048", "4096", "auto"), default="4096")
+    parser.add_argument("--prefill-batch", choices=("2048", "4096", "8192", "auto"), default="4096")
     parser.add_argument("--decode-experts", choices=("cpu", "gpu"), default="cpu")
+    parser.add_argument("--decode-prefill-cache", action="store_true")
     parser.add_argument("--threads", type=int, default=16)
     parser.add_argument("--lookup-depth", type=int, choices=range(1, 8), default=3)
     parser.add_argument("--gpu-budget-mib", type=int, default=12288)
+    parser.add_argument("--gpu-devices")
+    parser.add_argument("--lock-weights", action="store_true")
+    parser.add_argument("--prefill-expert-cache-mib", default="0")
     parser.add_argument("--check-verify", action="store_true")
     parser.add_argument("--speculative", choices=("lookup", "mtp"), default="mtp")
     parser.add_argument("--mtp-experts", choices=("gpu", "cpu"), default="gpu")
@@ -120,6 +136,11 @@ def main():
                    "4096", str(args.threads), f"--prefill-batch={args.prefill_batch}", f"--context={args.context}",
                    f"--gpu-budget-mib={args.gpu_budget_mib}", f"--decode-experts={args.decode_experts}",
                    f"--decode-bench={args.repetitions}", f"--cpu-affinity={args.cpu_affinity}", f"--cpu-prepack-mib={args.cpu_prepack_mib}", "--warm-weights"]
+        if args.lock_weights: command.append("--lock-weights")
+        if args.decode_prefill_cache: command.append("--decode-prefill-cache")
+        if args.gpu_devices is not None: command.append(f"--gpu-devices={args.gpu_devices}")
+        if args.prefill_expert_cache_mib != "0":
+            command.append(f"--prefill-expert-cache-mib={args.prefill_expert_cache_mib}")
         if args.decode_cache_mib:
             command.append(f"--decode-cache-mib={args.decode_cache_mib}")
         single = measure(command + (["--check-verify"] if args.check_verify else []), environment)
@@ -142,23 +163,31 @@ def main():
             print(f"BENCH_PROGRESS source={args.speculative} requested_depth={depth} "
                   f"median_tok_s={measured['tokens_per_second']} greedy_ids_identical=1",
                   file=sys.stderr, flush=True)
-        best = max(sweep, key=lambda entry: entry["measurement"]["tokens_per_second"]) if sweep else None
+        best = min(sweep, key=lambda entry: entry["measurement"]["response_milliseconds"]) if sweep else None
         speculative = best["measurement"] if best else None
     result = {"model": args.model.name, "prompt_tokens": len(ids), "generated_tokens": args.generated_tokens,
               "prompt_token_sha256": hashlib.sha256(encoded.encode()).hexdigest(), "context": args.context,
               "decode_experts": args.decode_experts, "threads": args.threads, "lookup_depth": args.lookup_depth,
+              "decode_prefill_cache": args.decode_prefill_cache,
               "speculative_source": args.speculative if best else None, "draft_depth": best["draft_depth"] if best else None,
               "decode_cache_mib": args.decode_cache_mib,
               "native_numa_local_requested": os.environ.get("STRATA_NATIVE_NUMA_LOCAL", "0") == "1",
               "mtp_experts": args.mtp_experts if best and args.speculative == "mtp" else None,
-              "cpu_prepack_mib": args.cpu_prepack_mib, "repetitions": args.repetitions, "cpu_affinity": args.cpu_affinity, "gpu_budget_mib": args.gpu_budget_mib, "runtime_reserve_mib": 1024,
+              "cpu_prepack_mib": args.cpu_prepack_mib, "repetitions": args.repetitions, "cpu_affinity": args.cpu_affinity, "gpu_budget_mib": args.gpu_budget_mib, "gpu_devices": args.gpu_devices,
+              "prefill_expert_cache_mib": args.prefill_expert_cache_mib, "lock_weights": args.lock_weights,
+              "selection_metric": "prefill plus decode preparation plus MTP priming plus median decode milliseconds", "runtime_reserve_mib": 1024,
+              "response_timing_scope": "includes prefill, cache and CPU preparation, MTP priming and median decode; excludes cold initialization, warmup and benchmark-only snapshot/restore",
               "timing_scope": "excludes prefill, MTP priming, expert-cache preparation, state-buffer allocation and first greedy token; includes drafting, verify, checkpoint copies and restore/replay",
               "single": single, "speculative": speculative,
               "speedup": speculative["tokens_per_second"] / single["tokens_per_second"] if best else None,
+              "response_speedup": single["response_milliseconds"] / speculative["response_milliseconds"] if best else None,
               "greedy_ids_identical": True,
               "greedy_comparison_scope": "between modes and repetitions" if best else "between repetitions only"}
     if args.draft_depths is not None:
         result["mtp_depth_sweep"] = sweep
+    prefer_speculative = bool(best and speculative["response_milliseconds"] < single["response_milliseconds"])
+    result["recommended_mode"] = args.speculative if prefer_speculative else "single"
+    result["recommended_draft_depth"] = best["draft_depth"] if prefer_speculative else None
     result["cpu_pool_spin_us"] = (args.pool_spin_us if args.pool_spin_us is not None
                                    else os.environ.get("STRATA_POOL_SPIN_US", "default:20000"))
     output = json.dumps(result, indent=2) + "\n"

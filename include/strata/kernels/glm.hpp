@@ -20,6 +20,9 @@ void glm_mhc_read(const float *streams, const float *projected, const float *bas
 void glm_mhc_write(const float *streams, const float *coefficients, const float *y, float *out, int width,
                    void *stream);
 void glm_hyper_head(const float *streams, float *out, int width, void *stream);
+// FP32 24-row mHC projection; caller supplies 24*32 partial sums.
+void glm_hc_project(const float *x, const float *weight, float *out, float *scratch,
+                    int width, void *stream);
 
 // Convolution history is [channel][kernel-1], oldest first. KDA state is [head][key][value].
 void glm_conv(const float *x, const float *weight, float *history, float *y, int channels, int kernel,

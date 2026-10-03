@@ -411,6 +411,26 @@ void Gemm::f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_
     STRATA_ABSORB_HIPBLAS_STICKY("cublasGemmEx f16");
 }
 
+void Gemm::f16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches) {
+    if (T <= 0 || N <= 0 || batches <= 0) return;
+    const float alpha = 1.f, beta = 0.f;
+    ck(cublasGemmStridedBatchedEx((cublasHandle_t)handle_, CUBLAS_OP_T, CUBLAS_OP_N,
+        N, T, K, &alpha, W, CUDA_R_16F, K, (long long)N * K,
+        X, CUDA_R_16F, K, (long long)T * K, &beta,
+        Y, CUDA_R_32F, N, (long long)T * N, batches, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT),
+        "cublasGemmStridedBatchedEx f16");
+}
+
+void Gemm::f16_batched_nn(const uint16_t* A, const uint16_t* B, float* C, int M, int N, int K, int batches) {
+    if (M <= 0 || N <= 0 || K <= 0 || batches <= 0) return;
+    const float alpha = 1.f, beta = 0.f;
+    ck(cublasGemmStridedBatchedEx((cublasHandle_t)handle_, CUBLAS_OP_N, CUBLAS_OP_N,
+        M, N, K, &alpha, A, CUDA_R_16F, M, (long long)M * K,
+        B, CUDA_R_16F, K, (long long)K * N, &beta,
+        C, CUDA_R_32F, M, (long long)M * N, batches, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT),
+        "cublasGemmStridedBatchedEx f16 nn");
+}
+
 void Gemm::native(const uint16_t* X, int ggml_type, const void* W_blocks, float* Y, int64_t T, int64_t N, int64_t K,
                   int64_t ldy, float beta) {
     if (N * K > scratch_elems_) {
@@ -427,6 +447,19 @@ void Gemm::native(const uint16_t* X, int ggml_type, const void* W_blocks, float*
     }
     strata::kernels::dequant_f16(ggml_type, W_blocks, 0, N, K, scratch_, stream_);
     f16(X, scratch_, Y, T, N, K, ldy, beta);
+}
+
+void Gemm::native_chunked(const uint16_t* X, int ggml_type, const void* W_blocks, float* Y, int64_t T, int64_t N,
+                          int64_t K, int64_t chunk) {
+    // The same dequantization and product shapes as native() per chunk; each weight slice is dequantized once.
+    int64_t rows = N * K > scratch_elems_ ? scratch_elems_ / K : N;
+    if (rows <= 0) { std::fprintf(stderr, "prefill gemm: scratch too small for K=%lld\n", (long long) K); std::exit(1); }
+    for (int64_t r0 = 0; r0 < N; r0 += rows) {
+        const int64_t n = (N - r0 < rows) ? N - r0 : rows;
+        strata::kernels::dequant_f16(ggml_type, W_blocks, r0, n, K, scratch_, stream_);
+        for (int64_t t0 = 0; t0 < T; t0 += chunk)
+            f16(X + t0 * K, scratch_, Y + t0 * N + r0, (T - t0 < chunk) ? T - t0 : chunk, n, K, N, 0.0f);
+    }
 }
 
 }  // namespace strata::prefill

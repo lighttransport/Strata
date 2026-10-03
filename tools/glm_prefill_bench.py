@@ -19,9 +19,12 @@ def main():
     parser.add_argument("text", type=pathlib.Path, help="UTF-8 coding prompt with enough tokens")
     parser.add_argument("--decoder", type=pathlib.Path, default=pathlib.Path("build-glm/strata-glm-decode"))
     parser.add_argument("--tokens", type=int, default=4096)
-    parser.add_argument("--batch", choices=("2048", "4096", "auto"), default="4096")
+    parser.add_argument("--batch", choices=("2048", "4096", "8192", "auto"), default="4096")
     parser.add_argument("--context", type=int, default=8192)
     parser.add_argument("--gpu-budget-mib", type=int, default=12288)
+    parser.add_argument("--gpu-devices")
+    parser.add_argument("--lock-weights", action="store_true")
+    parser.add_argument("--prefill-expert-cache-mib", default="0")
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--threads", type=int, default=6)
     parser.add_argument("--cpu-affinity", choices=("none", "auto"), default="none")
@@ -40,6 +43,10 @@ def main():
         command = [str(args.decoder.resolve()), str(args.model.resolve()), f"@{token_file}", "2", "4096",
                    str(args.threads), f"--prefill-batch={args.batch}", f"--context={args.context}",
                    f"--gpu-budget-mib={args.gpu_budget_mib}", f"--bench={args.repetitions}", f"--cpu-affinity={args.cpu_affinity}", "--warm-weights"]
+        if args.lock_weights: command.append("--lock-weights")
+        if args.gpu_devices is not None: command.append(f"--gpu-devices={args.gpu_devices}")
+        if args.prefill_expert_cache_mib != "0":
+            command.append(f"--prefill-expert-cache-mib={args.prefill_expert_cache_mib}")
         start = time.monotonic()
         completed = subprocess.run(command, text=True, capture_output=True)
         elapsed = time.monotonic() - start
@@ -51,8 +58,9 @@ def main():
     peaks = re.findall(r"GPU peak_allocated_MiB=([\d.]+)", completed.stderr)
     result = {"model": str(args.model.resolve()), "text": str(args.text.resolve()), "tokens": args.tokens,
               "threads": args.threads, "cpu_affinity": args.cpu_affinity, "requested_batch": args.batch, "actual_batch": int(rows[0][2]), "context": args.context,
-              "gpu_budget_mib": args.gpu_budget_mib, "warm_weights": True,
-              "untimed_warmup": args.repetitions > 1,
+              "gpu_budget_mib": args.gpu_budget_mib, "gpu_devices": args.gpu_devices,
+              "prefill_expert_cache_mib": args.prefill_expert_cache_mib, "warm_weights": True,
+              "untimed_warmup": args.repetitions > 1, "lock_weights": args.lock_weights,
               "milliseconds": [float(row[3]) for row in rows],
               "tokens_per_second": [float(row[4]) for row in rows],
               "median_tokens_per_second": statistics.median(float(row[4]) for row in rows),
@@ -61,6 +69,11 @@ def main():
               "decode_token_ids": completed.stdout.split(), "prompt_token_sha256": hashlib.sha256(",".join(map(str, ids)).encode()).hexdigest(),
               "page_faults": [{"trial": int(t), "major": int(a), "minor": int(b)}
                               for t, a, b in re.findall(r"FAULTS trial=(\d+) major=(\d+) minor=(\d+)", completed.stderr)],
+              "device_measurements": [dict(device=int(d), peak_allocated_mib=float(p), live_mib=float(l),
+                  native_expert_bytes=int(b), staging_ms=float(s), cache_hits=int(h), cache_hit_bytes=int(c))
+                  for d, p, l, b, s, h, c in re.findall(
+                  r"GPU_DEVICE device=(\d+) peak_allocated_MiB=([\d.]+) live_MiB=([\d.]+) native_expert_bytes=(\d+) staging_ms=([\d.]+) cache_hits=(\d+) cache_hit_bytes=(\d+)", completed.stderr)],
+              "host_peak_rss_mib": max(map(float, re.findall(r"HOST_RSS peak_MiB=([\d.]+)", completed.stderr)), default=None),
               "decoder_log": completed.stderr}
     encoded = json.dumps(result, indent=2)
     if args.output:

@@ -4,9 +4,8 @@
 # `strata-pack` are added when their sources exist - a target with no sources would make the build graph
 # claim something the tree does not have, which is worse than an absent target.
 #
-# CUDA targets arrive in Phase 2.  The kernels need sm_80 or newer (tf32 mma, bf16 math) and the guard
-# below refuses anything older: silently building for a pre-Ampere arch would produce a binary that runs
-# and is wrong about its own performance, which is the worst of both outcomes.
+# CUDA kernels retain capability checks for newer instructions. The experimental
+# GLM backend also supports SM70 through native integer experts and FP16 projections.
 cmake_minimum_required(VERSION 3.24)
 project(strata VERSION 0.1.38 LANGUAGES CXX)
 add_compile_definitions(STRATA_VERSION="${PROJECT_VERSION}")
@@ -81,7 +80,9 @@ if(STRATA_ENABLE_CUDA)
     string(REGEX REPLACE "-.*$" "" _base "${_a}")     # 120-real / 120-virtual are still 120
     # Turing port: developed and measured on sm_120 (RTX 50); the tf32 mma in the QSA scorer has a
     # portable fp32-FMA fallback, so RTX 20 (75), 30 (86), RTX 40 (89) and RTX 50 (120) build too.
-    # Pre-sm_75 is refused.
+    # SM70 is supported by the experimental GLM backend using native DP4A
+    # experts and FP16 cuBLAS projections. Newer-only kernels retain their
+    # runtime capability guards; this does not enable BF16 Qwen execution.
     if(_base STREQUAL "native" OR _base STREQUAL "all" OR _base STREQUAL "all-major")
       continue()
     endif()
@@ -91,7 +92,7 @@ if(STRATA_ENABLE_CUDA)
     # bit-exact for the first and merely a shorter pause for the second (sm_70 has both).  Community-tested,
     # not in the ready-made engine; RTX 20/30/40/50 cards must use the release engine instead.  It needs a CUDA
     # 12.x toolkit: CUDA 13 dropped sm_60 and sm_70 (nvcc fails CMake's compiler test with "compute_70").
-    if(_base LESS 75 AND NOT STRATA_EXPERIMENTAL_SM60)
+    if(_base LESS 75 AND NOT STRATA_EXPERIMENTAL_SM60 AND NOT _base EQUAL 70)
       message(FATAL_ERROR
         "Strata needs an NVIDIA GPU of compute capability 7.5 or newer (RTX 20 / 30 / 40 / 50 series), but "
         "CMAKE_CUDA_ARCHITECTURES is '${CMAKE_CUDA_ARCHITECTURES}'.  (A Pascal sm_60 or Volta sm_70 build is "
@@ -280,6 +281,9 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     add_executable(glm_prefill_parity src/kernels/glm_prefill_parity.cpp)
     target_link_libraries(glm_prefill_parity PRIVATE strata_kernels CUDA::cudart CUDA::cublas)
     add_test(NAME glm_prefill_parity COMMAND glm_prefill_parity)
+    add_executable(glm_kda_column_tiles_parity src/kernels/glm_kda_column_tiles_parity.cpp)
+    target_link_libraries(glm_kda_column_tiles_parity PRIVATE strata_kernels CUDA::cudart)
+    add_test(NAME glm_kda_column_tiles_parity COMMAND glm_kda_column_tiles_parity)
   endif()
   # perf-review D-1: the tensor-core prompt attention vs the FP32 kernel and FP64 (GPU, synthetic, no model); with
   # the tests, or alone with -DSTRATA_PARITY_PROMPT_ATTN=ON.  CUDA only: HIP compiles the tensor-core kernel out.
@@ -1025,6 +1029,8 @@ if(STRATA_NATIVE_EXPERTS)
       if(STRATA_BUILD_TESTS)
         add_executable(glm_quant_parity src/kernels/glm_quant_parity.cpp)
         target_link_libraries(glm_quant_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact CUDA::cudart)
+        add_executable(glm_cache_parity src/kernels/glm_cache_parity.cpp)
+        target_link_libraries(glm_cache_parity PRIVATE strata_prefill strata_kernels strata_artifact CUDA::cudart)
       endif()
     endif()
     if(STRATA_BUILD_TESTS AND STRATA_ENABLE_CUDA)

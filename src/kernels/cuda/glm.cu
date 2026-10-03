@@ -2,6 +2,7 @@
 // https://github.com/huggingface/transformers/tree/main/src/transformers/models/glm5_next
 #include "strata/kernels/glm.hpp"
 #include <cmath>
+#include <cstdlib>
 #include <cuda_runtime.h>
 #include <stdexcept>
 
@@ -153,6 +154,58 @@ __global__ void mhc_coeff(const float *p, const float *base, const float *scale,
                 c[8 + i * 4 + j] /= sum;
         }
     }
+}
+// One warp evaluates the 4x4 Sinkhorn matrix. Shuffle sums keep the
+// serial row/column order, including epsilon, for identical FP32 results.
+__global__ void mhc_coeff_warp(const float *p, const float *base, const float *scale, float *c,
+                               int iters, float eps) {
+    const int lane = threadIdx.x, row = lane / 4, col = lane % 4;
+    if (lane < 4) {
+        c[lane] = sig(p[lane] * scale[0] + base[lane]) + eps;
+        c[4 + lane] = 2 * sig(p[4 + lane] * scale[1] + base[4 + lane]);
+    }
+    const float projected = lane < 16 ? p[8 + lane] * scale[2] + base[8 + lane] : 0.f;
+    float mx = -INFINITY;
+    for (int j = 0; j < 4; ++j)
+        mx = fmaxf(mx, __shfl_sync(0xffffffff, projected, row * 4 + j));
+    float value = expf(projected - mx), sum = 0;
+    for (int j = 0; j < 4; ++j) sum += __shfl_sync(0xffffffff, value, row * 4 + j);
+    value = value / sum + eps;
+    for (int n = 0; n < iters; ++n) {
+        if (n > 0) {
+            sum = eps;
+            for (int j = 0; j < 4; ++j) sum += __shfl_sync(0xffffffff, value, row * 4 + j);
+            value /= sum;
+        }
+        sum = eps;
+        for (int i = 0; i < 4; ++i) sum += __shfl_sync(0xffffffff, value, i * 4 + col);
+        value /= sum;
+    }
+    if (lane < 16) c[8 + lane] = value;
+}
+__global__ void hc_project_partial(const float *x, const float *w, float *partial, int width) {
+    const int row = blockIdx.x, slice = blockIdx.y, lane = threadIdx.x;
+    float sum = 0.f;
+    for (int i = slice * 256 + lane; i < width; i += 32 * 256)
+        sum = fmaf(x[i], w[(int64_t)row * width + i], sum);
+    for (int delta = 16; delta; delta >>= 1)
+        sum += __shfl_down_sync(0xffffffff, sum, delta);
+    __shared__ float warp[8];
+    if ((lane & 31) == 0) warp[lane / 32] = sum;
+    __syncthreads();
+    if (lane < 32) {
+        sum = lane < 8 ? warp[lane] : 0.f;
+        for (int delta = 16; delta; delta >>= 1)
+            sum += __shfl_down_sync(0xffffffff, sum, delta);
+        if (lane == 0) partial[row * 32 + slice] = sum;
+    }
+}
+__global__ void hc_project_reduce(const float *partial, float *out) {
+    const int lane = threadIdx.x;
+    float sum = partial[blockIdx.x * 32 + lane];
+    for (int delta = 16; delta; delta >>= 1)
+        sum += __shfl_down_sync(0xffffffff, sum, delta);
+    if (lane == 0) out[blockIdx.x] = sum;
 }
 __global__ void hc_read(const float *r, const float *c, float *x, int n) {
     const int d = blockIdx.x * blockDim.x + threadIdx.x;
@@ -415,11 +468,19 @@ void glm_router(const float *l, const float *b, int *ids, float *w, int ne, int 
         route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale);
     check();
 }
+void glm_hc_project(const float *x, const float *w, float *out, float *scratch, int width, void *s) {
+    if (width < 1) throw std::invalid_argument("GLM: invalid HC projection width");
+    hc_project_partial<<<dim3(24, 32), 256, 0, (cudaStream_t)s>>>(x, w, scratch, width);
+    hc_project_reduce<<<24, 32, 0, (cudaStream_t)s>>>(scratch, out);
+    check();
+}
 void glm_mhc_read(const float *r, const float *p, const float *b, const float *scale, float *c, float *x,
                   int n, int it, float eps, void *s) {
     width(n);
     width(it);
-    mhc_coeff<<<1, 1, 0, (cudaStream_t)s>>>(p, b, scale, c, it, eps);
+    static const bool serial = std::getenv("STRATA_GLM_SERIAL_MHC") != nullptr;
+    if (serial) mhc_coeff<<<1, 1, 0, (cudaStream_t)s>>>(p, b, scale, c, it, eps);
+    else mhc_coeff_warp<<<1, 32, 0, (cudaStream_t)s>>>(p, b, scale, c, it, eps);
     hc_read<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(r, c, x, n);
     check();
 }

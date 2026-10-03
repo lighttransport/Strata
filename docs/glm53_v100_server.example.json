@@ -1,0 +1,29 @@
+{
+  "exe": "/path/to/Strata/build-glm-v100/strata-glm-decode",
+  "cwd": "/path/to/Strata",
+  "model": "/path/to/models/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+  "model_name": "glm-5.3-flash-ud-q2-k-xl-v100",
+  "host": "127.0.0.1",
+  "port": 8080,
+  "context": 131072,
+  "threads": 17,
+  "cpu_affinity": "auto",
+  "dense_cache_mib": 4096,
+  "expert_cache_mib": 0,
+  "gpu_devices": [
+    0,
+    1
+  ],
+  "gpu_budget_mib": 32768,
+  "prefill_batch": 4096,
+  "prefill_expert_cache_mib": "auto",
+  "lock_weights": true,
+  "decode_experts": "cpu",
+  "decode_prefill_cache": true,
+  "decode_cache_mib": "extend",
+  "decode_cache_window": 256,
+  "decode_cache_adapt": true,
+  "decode_graphs": true,
+  "speculative": "none",
+  "cpu_prepack_mib": 0
+}

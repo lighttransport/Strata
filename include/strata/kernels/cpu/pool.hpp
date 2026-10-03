@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <mutex>
 #include <thread>
+#include <stdexcept>
 #include <vector>
 
 namespace strata::kernels::cpu {
@@ -156,6 +157,11 @@ public:
     void run_split_multi(ExpertJobMulti* jobs, int n);
     /// Plan v0.3 P6: the same for a native pack's layer (ggml-cpu arithmetic, `nact` activations).
     void run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs, int n);
+    // Diagnostic tuning between completed batches; the host owns scheduling.
+    void set_native_tasks_per_thread(int count) {
+        if (count < 1 || count > 16) throw std::invalid_argument("native tasks per thread must be 1..16");
+        native_tasks_per_thread_ = count;
+    }
     static constexpr int kMaxSplitMulti = 96;
     /// run_split_multi's phases, accumulated ms: gate/up rows, the intermediate quantization, down rows.
     double ms_multi_gu = 0, ms_multi_q = 0, ms_multi_down = 0;

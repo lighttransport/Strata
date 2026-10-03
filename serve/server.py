@@ -2943,6 +2943,11 @@ def main() -> int:
                 str(cfg.get("prefill_batch", 8)), ",".join(str(glm_metadata[k]) for k in
                     ("tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id")
                     if k in glm_metadata), str(cfg.get("gpu_budget_mib", 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "none"), str(cfg.get("cpu_prepack_mib", 0))]
+        devices = cfg.get("gpu_devices", "0")
+        if isinstance(devices, list): devices = ",".join(map(str, devices))
+        args.extend((str(devices), str(cfg.get("prefill_expert_cache_mib", 0)), str(int(bool(cfg.get("lock_weights", False)))),
+                     str(int(bool(cfg.get("decode_prefill_cache", False)))), str(cfg.get("decode_cache_mib", 0)), str(int(bool(cfg.get("decode_graphs", False)))), str(cfg.get("decode_cache_window", 256)),
+                     str(int(bool(cfg.get("decode_cache_adapt", False))))))
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
         vision, sampling_defaults = None, {}
     elif a.engine == "strata":
