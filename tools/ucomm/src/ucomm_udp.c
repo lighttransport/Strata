@@ -71,6 +71,7 @@ typedef struct {
 typedef struct {
   int fd;
   int mtu;       /* payload bytes per datagram */
+  int spin_us;   /* busy-poll this long before sleeping in poll() (UCOMM_SPIN_US) */
   uint32_t rwnd; /* our receive window in fragments */
   upeer peer[UCOMM_MAX_WORLD];
   uint8_t *rxbuf; /* BATCH * (HDR_SZ + FIRST_SZ + mtu) */
@@ -410,6 +411,8 @@ static ucomm_status udp_progress(ucomm_t *c, int timeout_ms) {
   struct mmsghdr mm[BATCH];
   struct iovec iov[BATCH];
   int blocked = 0;
+  uint64_t spin_until = 0;
+  int got = 0;
   for (int round = 0;; round++) {
     for (int i = 0; i < BATCH; i++) {
       iov[i].iov_base = u->rxbuf + (size_t)i * u->rxslot;
@@ -420,6 +423,7 @@ static ucomm_status udp_progress(ucomm_t *c, int timeout_ms) {
     }
     int n = recvmmsg(u->fd, mm, BATCH, MSG_DONTWAIT, NULL);
     for (int i = 0; i < n; i++) on_packet(c, u, iov[i].iov_base, mm[i].msg_len);
+    if (n > 0) got = 1;
 
     uint64_t now = uc_now_us();
     int busy = 0;
@@ -434,7 +438,12 @@ static ucomm_status udp_progress(ucomm_t *c, int timeout_ms) {
       if (u->peer[pi].sq || u->peer[pi].una != u->peer[pi].nxt) busy = 1;
     }
     if (n > 0) continue; /* keep draining while packets flow */
-    if (timeout_ms <= 0 || round > 0) break;
+    if (timeout_ms <= 0 || got) break; /* traffic handled: let the caller re-check its request */
+    if (u->spin_us > 0) { /* busy-poll first: a sleeping receiver adds a scheduler wakeup to every round trip */
+      if (!spin_until) spin_until = now + (uint64_t)u->spin_us;
+      if (now < spin_until) continue;
+    }
+    if (round > 0 && !u->spin_us) break;
     /* nothing arrived: sleep until traffic, writability or the next retransmit deadline */
     int wait = timeout_ms;
     if (busy) {
@@ -484,6 +493,8 @@ ucomm_status uc_udp_init(ucomm_t *c) {
   if (u->mtu > 65000) u->mtu = 65000;
   const char *d = getenv("UCOMM_UDP_DROP");
   u->drop = d ? atof(d) : 0;
+  const char *sp = getenv("UCOMM_SPIN_US");
+  u->spin_us = sp ? atoi(sp) : 0;
   u->rng = 0x9e3779b97f4a7c15ull ^ (uint64_t)c->rank * 0x100000001b3ull ^ uc_now_us();
   u->fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
   if (u->fd < 0) goto fail;

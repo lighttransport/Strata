@@ -29,7 +29,8 @@ int main(int argc, char **argv) {
   ucomm_config cfg;
   ucomm_config_default(&cfg);
   int iters = 1000, opt;
-  while ((opt = getopt(argc, argv, "r:w:a:b:n:v")) != -1) {
+  size_t rt_req = 0, rt_rep = 0; /* -p REQ:REP: asymmetric round trips only (expert-TP pattern) */
+  while ((opt = getopt(argc, argv, "r:w:a:b:n:vp:")) != -1) {
     switch (opt) {
       case 'r': cfg.rank = atoi(optarg); break;
       case 'w': cfg.world = atoi(optarg); break;
@@ -41,6 +42,7 @@ int main(int argc, char **argv) {
         break;
       case 'n': iters = atoi(optarg); break;
       case 'v': cfg.verbose = 1; break;
+      case 'p': rt_req = strtoul(optarg, &optarg, 10); rt_rep = strtoul(optarg + 1, NULL, 10); break;
       default:
         fprintf(stderr, "usage: %s -r RANK -w WORLD -a HOST:PORT [-b auto|ib|udp] [-n ITERS] [-v]\n", argv[0]);
         return 2;
@@ -57,6 +59,34 @@ int main(int argc, char **argv) {
   ucomm_mr_t *mr;
   OK(ucomm_mr_reg(c, buf, maxsz, &mr));
 
+  if (rt_req && W >= 2 && me < 2) {
+    int peer = 1 - me;
+    double *lat = malloc(sizeof(double) * (size_t)iters);
+    for (int i = -iters / 10; i < iters; i++) {
+      double t0 = now_s();
+      if (me == 0) {
+        OK(ucomm_send(c, peer, 5, buf, rt_req));
+        OK(ucomm_recv(c, peer, 6, buf, rt_rep, NULL));
+      } else {
+        OK(ucomm_recv(c, peer, 5, buf, rt_req, NULL));
+        OK(ucomm_send(c, peer, 6, buf, rt_rep));
+      }
+      if (i >= 0) lat[i] = (now_s() - t0) * 1e6;
+    }
+    if (me == 0) {
+      double sum = 0;
+      for (int i = 0; i < iters; i++) sum += lat[i];
+      for (int i = 1; i < iters; i++) /* insertion sort is fine for a bench */
+        for (int j = i; j > 0 && lat[j] < lat[j - 1]; j--) { double t = lat[j]; lat[j] = lat[j - 1]; lat[j - 1] = t; }
+      printf("roundtrip %zu B -> %zu B: mean %.1f us, p50 %.1f, p99 %.1f\n", rt_req, rt_rep, sum / iters,
+             lat[iters / 2], lat[iters * 99 / 100]);
+    }
+    free(lat);
+    ucomm_mr_dereg(mr);
+    ucomm_finalize(c);
+    free(buf);
+    return 0;
+  }
   if (W >= 2 && me < 2) {
     int peer = 1 - me;
     /* latency: ping-pong */

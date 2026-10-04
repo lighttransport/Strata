@@ -1117,6 +1117,8 @@ struct RemoteTp {
     std::map<int, int> split; // layer -> rows kept here
     std::vector<uint8_t> request;
     std::vector<float> reply;
+    std::vector<uint8_t> wire;
+    uint32_t reply_format = strata::net::kReplyF16;
     ucomm_req_t *sending = nullptr, *receiving = nullptr;
     double wait_ms = 0;
     int64_t calls = 0;
@@ -1125,7 +1127,8 @@ struct RemoteTp {
     }
     void start(int nt) {
         reply.resize((size_t)nt * hidden);
-        ok(ucomm_irecv(comm, 1, strata::net::kTagReply, reply.data(), reply.size() * sizeof(float), &receiving), "receive");
+        wire.resize(strata::net::tp_reply_bytes(reply_format, nt, hidden));
+        ok(ucomm_irecv(comm, 1, strata::net::kTagReply, wire.data(), wire.size(), &receiving), "receive");
         ok(ucomm_isend(comm, 1, strata::net::kTagRequest, request.data(), request.size(), &sending), "send");
     }
     void finish(float *sum) {
@@ -1135,7 +1138,19 @@ struct RemoteTp {
         sending = receiving = nullptr;
         wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         ++calls;
-        for (size_t i = 0; i < reply.size(); ++i) sum[i] += reply[i];
+        const int nt = (int)(reply.size() / hidden);
+        if (reply_format == strata::net::kReplyF16) {
+            for (int t = 0; t < nt; ++t) {
+                const uint8_t *src = wire.data() + (size_t)t * (4 + 2 * (size_t)hidden);
+                float scale;
+                std::memcpy(&scale, src, 4);
+                ggml_fp16_to_fp32_row((const ggml_fp16_t *)(src + 4), reply.data() + (size_t)t * hidden, hidden);
+                for (int i = 0; i < hidden; ++i) sum[(size_t)t * hidden + i] += scale * reply[(size_t)t * hidden + i];
+            }
+        } else {
+            std::memcpy(reply.data(), wire.data(), reply.size() * sizeof(float));
+            for (size_t i = 0; i < reply.size(); ++i) sum[i] += reply[i];
+        }
     }
     ~RemoteTp() {
         if (!comm) return;
@@ -4042,8 +4057,9 @@ class Decoder {
     void set_decode_graphs(bool enabled) { decode_graphs = enabled; }
     // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
     // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
-    void enable_remote_tp(const std::string &address, double share, int pool_mib) {
+    void enable_remote_tp(const std::string &address, double share, bool reply_f16) {
         auto tp = std::make_unique<RemoteTp>();
+        tp->reply_format = reply_f16 ? strata::net::kReplyF16 : strata::net::kReplyF32;
         tp->hidden = (int)m.hidden;
         ucomm_config cfg;
         ucomm_config_default(&cfg);
@@ -4069,14 +4085,14 @@ class Decoder {
             const auto *b = (const uint8_t *)&spec;
             setup.insert(setup.end(), b, b + sizeof spec);
         }
-        strata::net::TpSetup head{strata::net::kTpMagic, (uint32_t)tp->split.size(), (uint32_t)m.hidden, (uint32_t)pool_mib};
+        strata::net::TpSetup head{strata::net::kTpMagic, (uint32_t)tp->split.size(), (uint32_t)m.hidden, tp->reply_format};
         std::memcpy(setup.data(), &head, sizeof head);
         RemoteTp::ok(ucomm_send(tp->comm, 1, strata::net::kTagSetup, setup.data(), setup.size()), "setup");
         strata::net::TpReady ready{};
         RemoteTp::ok(ucomm_recv(tp->comm, 1, strata::net::kTagReady, &ready, sizeof ready, nullptr), "ready");
         std::cerr << "REMOTE_TP connected backend=" << ucomm_backend_name(tp->comm) << " layers=" << tp->split.size()
                   << " rows_here=" << tp->split.begin()->second << "/" << m.layers[tp->split.begin()->first].intermediate
-                  << " worker_slots=" << ready.slots << '\n';
+                  << " worker_slots=" << ready.slots << " reply=" << (reply_f16 ? "f16" : "f32") << '\n';
         remote_tp = std::move(tp);
     }
     bool uses_device_experts() const { return device_resident_experts; }
@@ -5276,7 +5292,7 @@ int main(int argc, char **argv) {
                      "[--gpu-budget-mib=12288] [--check-prefill] "
                      "[--gpu-devices=0|0,1] [--prefill-expert-cache-mib=auto|N] [--lock-weights] [--check-gpu-split] "
                      "[--decode-prefill-cache] [--profile-decode] [--profile-prefill] "
-                     "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
+                     "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
         return 2;
     }
     try {
@@ -5311,6 +5327,7 @@ int main(int argc, char **argv) {
         std::string gpu_devices_text = "0";
         std::string remote_tp_address;
         double remote_tp_share = 0.5;
+        std::string remote_tp_reply = "f16";
         std::string dump, routing_trace_path;
         std::vector<int> stops;
         for (int i = 6; i < argc; ++i) {
@@ -5324,6 +5341,7 @@ int main(int argc, char **argv) {
             else if (flag == "--decode-graphs") { decode_graphs = true; force_gpu = true; }
             else if (flag.starts_with("--remote-tp=")) remote_tp_address = flag.substr(12);
             else if (flag.starts_with("--remote-tp-share=")) remote_tp_share = std::stod(flag.substr(18));
+            else if (flag == "--remote-tp-reply=f32" || flag == "--remote-tp-reply=f16") remote_tp_reply = flag.substr(18);
             else if (flag == "--decode-prefill-cache") { decode_prefill_cache = true; force_gpu = true; }
             else if (flag.starts_with("--gpu-devices=")) { gpu_devices_text = flag.substr(14); force_gpu = true; }
             else if (flag.starts_with("--prefill-expert-cache-mib=")) {
@@ -5445,7 +5463,7 @@ int main(int argc, char **argv) {
         if (!remote_tp_address.empty()) {
             if (!(remote_tp_share > 0 && remote_tp_share < 1))
                 throw std::invalid_argument("--remote-tp-share must be between 0 and 1");
-            decoder.enable_remote_tp(remote_tp_address, remote_tp_share, 0);
+            decoder.enable_remote_tp(remote_tp_address, remote_tp_share, remote_tp_reply != "f32");
         }
         if (decode_cache_adapt && (replay || check_verify || decode_repetitions > 1))
             throw std::invalid_argument("GLM: adaptive cache benchmarks require independent serve requests");

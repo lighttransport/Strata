@@ -211,6 +211,27 @@ int main(int argc, char **argv) {
         ok(ucomm_send(c, 0, net::kTagReady, &ready, sizeof ready), "ready");
 
         std::vector<float> outs, reply;
+        std::vector<uint8_t> wire;
+        // fp16 reply: each token's values divided by a scale that maps its largest magnitude to 60000
+        auto send_reply = [&](int nt) {
+            if (setup.reply != net::kReplyF16) {
+                ok(ucomm_send(c, 0, net::kTagReply, reply.data(), reply.size() * sizeof(float)), "reply");
+                return;
+            }
+            wire.resize(net::tp_reply_bytes(setup.reply, nt, H));
+            std::vector<float> scaled(H);
+            for (int t = 0; t < nt; ++t) {
+                const float *v = reply.data() + (size_t)t * H;
+                float peak = 0;
+                for (int i = 0; i < H; ++i) peak = std::max(peak, std::fabs(v[i]));
+                const float scale = peak > 0 ? peak / 60000.f : 1.f;
+                for (int i = 0; i < H; ++i) scaled[i] = v[i] / scale;
+                uint8_t *dst = wire.data() + (size_t)t * (4 + 2 * (size_t)H);
+                std::memcpy(dst, &scale, 4);
+                ggml_fp32_to_fp16_row(scaled.data(), (ggml_fp16_t *)(dst + 4), H);
+            }
+            ok(ucomm_send(c, 0, net::kTagReply, wire.data(), wire.size()), "reply");
+        };
         std::vector<cpu::ExpertJobMulti> jobs;
         int64_t requests = 0;
         double busy_ms = 0;
@@ -222,7 +243,7 @@ int main(int argc, char **argv) {
             if (null_compute) {
                 reply.assign((size_t)rq.nt * H, 0.f);
                 ++requests;
-                ok(ucomm_send(c, 0, net::kTagReply, reply.data(), reply.size() * sizeof(float)), "reply");
+                send_reply(rq.nt);
                 continue;
             }
             const auto t0 = std::chrono::steady_clock::now();
@@ -258,7 +279,7 @@ int main(int argc, char **argv) {
             }
             busy_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
             ++requests;
-            ok(ucomm_send(c, 0, net::kTagReply, reply.data(), reply.size() * sizeof(float)), "reply");
+            send_reply(rq.nt);
         }
         std::fprintf(stderr, "TP_WORKER done requests=%lld compute_ms=%.1f (%.3f ms/request)\n", (long long)requests,
                      busy_ms, requests ? busy_ms / requests : 0.0);
