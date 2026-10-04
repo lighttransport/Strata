@@ -14,6 +14,8 @@
 #include "strata/prefill/moe_mmq.hpp"
 #include "strata/kernels/iq_kernels.hpp"
 #include "strata/kernels/native_mmvq.hpp"
+#include "strata/net/expert_tp.hpp"
+#include "ucomm.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -97,9 +99,9 @@ struct Device {
     static size_t physical_reserve() {
         int device;
         check(cudaGetDevice(&device));
-        cudaDeviceProp props{};
-        check(cudaGetDeviceProperties(&props, device));
-        return size_t(props.kernelExecTimeoutEnabled ? 2048 : 512) * 1024 * 1024;
+        int timeout = 0; // CUDA 13 dropped cudaDeviceProp::kernelExecTimeoutEnabled; the attribute works in 12 and 13
+        check(cudaDeviceGetAttribute(&timeout, cudaDevAttrKernelExecTimeout, device));
+        return size_t(timeout ? 2048 : 512) * 1024 * 1024;
     }
     void *p = nullptr;
     size_t bytes;
@@ -1107,6 +1109,43 @@ struct SecondaryPrefill {
         if (stream) cudaStreamDestroy(stream);
     }
 };
+// Rank 0 of cross-node expert tensor parallelism (include/strata/net/expert_tp.hpp): the remote worker computes
+// FFN rows [split, n_ff) of every CPU-routed expert and returns one router-weighted sum per token.
+struct RemoteTp {
+    ucomm_t *comm = nullptr;
+    int hidden = 0;
+    std::map<int, int> split; // layer -> rows kept here
+    std::vector<uint8_t> request;
+    std::vector<float> reply;
+    ucomm_req_t *sending = nullptr, *receiving = nullptr;
+    double wait_ms = 0;
+    int64_t calls = 0;
+    static void ok(ucomm_status s, const char *what) {
+        if (s != UCOMM_OK) throw std::runtime_error(std::string("GLM remote TP ") + what + ": " + ucomm_strerror(s));
+    }
+    void start(int nt) {
+        reply.resize((size_t)nt * hidden);
+        ok(ucomm_irecv(comm, 1, strata::net::kTagReply, reply.data(), reply.size() * sizeof(float), &receiving), "receive");
+        ok(ucomm_isend(comm, 1, strata::net::kTagRequest, request.data(), request.size(), &sending), "send");
+    }
+    void finish(float *sum) {
+        const auto t0 = std::chrono::steady_clock::now();
+        ok(ucomm_wait(sending, nullptr), "send");
+        ok(ucomm_wait(receiving, nullptr), "reply");
+        sending = receiving = nullptr;
+        wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        ++calls;
+        for (size_t i = 0; i < reply.size(); ++i) sum[i] += reply[i];
+    }
+    ~RemoteTp() {
+        if (!comm) return;
+        strata::net::TpRequest quit{-1, 0, 0, 0};
+        ucomm_send(comm, 1, strata::net::kTagRequest, &quit, sizeof quit);
+        std::cerr << "REMOTE_TP backend=" << ucomm_backend_name(comm) << " calls=" << calls << " wait_ms=" << wait_ms
+                  << " wait_ms_per_call=" << (calls ? wait_ms / calls : 0.0) << '\n';
+        ucomm_finalize(comm);
+    }
+};
 class Decoder {
     strata::core::ModelArtifact artifact;
     const strata::core::ModelDescriptor &m;
@@ -1115,6 +1154,7 @@ class Decoder {
     cudaEvent_t moe_ready = nullptr, mla_ready = nullptr;
     cublasHandle_t blas = nullptr;
     cpu::ExpertPool pool;
+    std::unique_ptr<RemoteTp> remote_tp;
     size_t capacity, budget, resident = 0;
     int position = 0;
     int batch_tokens = 1;
@@ -2396,6 +2436,27 @@ class Decoder {
             job.nact[slot] = quant[t].data();
             job.out[slot] = results.data() + j * m.hidden;
         }
+        // Cross-node TP: send the remote rows' work before the local pool starts, collect after the host sum.
+        cpu::NativeFmt local_f = f;
+        const bool remote = remote_tp && !jobs.empty() && !direct && !cache && prepared == prepared_experts.end() &&
+                            remote_tp->split.count(l);
+        if (remote) {
+            const int keep = remote_tp->split.at(l);
+            local_f.n_ff = keep;   // gate/up rows [0, keep) and the first keep columns of each down row
+            local_f.h_bytes = ggml_row_size((ggml_type)f.d_act, keep);
+            auto &rq = remote_tp->request;
+            std::vector<strata::net::TpJob> list;
+            for (size_t j = 0; j < selected.size(); ++j)
+                if (groups.count(selected[j])) list.push_back({selected[j], (int32_t)(j / m.top_k), routing[j]});
+            strata::net::TpRequest head{l, nt, (int32_t)list.size(), (int32_t)f.act_bytes};
+            rq.resize(sizeof head + list.size() * sizeof(strata::net::TpJob) + (size_t)nt * f.act_bytes);
+            std::memcpy(rq.data(), &head, sizeof head);
+            std::memcpy(rq.data() + sizeof head, list.data(), list.size() * sizeof(strata::net::TpJob));
+            for (int t = 0; t < nt; ++t)
+                std::memcpy(rq.data() + sizeof head + list.size() * sizeof(strata::net::TpJob) + (size_t)t * f.act_bytes,
+                            quant[t].data(), f.act_bytes);
+            remote_tp->start(nt);
+        }
         if (!direct && !remote_hits.empty()) {
             pending = secondary->worker->submit([&] {
                 auto &other = *secondary;
@@ -2413,7 +2474,7 @@ class Decoder {
                 for (int t = 0; t < nt; ++t)
                     cpu::native_quant_act(f, activation + t * m.hidden, quant[t].data());
             // Both GPUs execute resident experts while CPU workers handle misses.
-            pool.run_split_multi_native(f, jobs.data(), jobs.size());
+            pool.run_split_multi_native(remote ? local_f : f, jobs.data(), jobs.size());
             if (!(direct && device_reduction)) check(cudaStreamSynchronize(stream));
         } catch (...) {
             if (pending.valid()) pending.wait();
@@ -2473,6 +2534,7 @@ class Decoder {
         for (size_t j = 0; j < selected.size(); ++j)
             for (int i = 0; i < m.hidden; ++i)
                 sum[(j / m.top_k) * m.hidden + i] += routing[j] * results[j * m.hidden + i];
+        if (remote) remote_tp->finish(sum.data());
         auto &routed = buf("moe_sum", m.hidden * nt);
         routed.put(sum.data(), sum.size() * 4);
         const float one = 1;
@@ -3978,6 +4040,45 @@ class Decoder {
         }
     }
     void set_decode_graphs(bool enabled) { decode_graphs = enabled; }
+    // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
+    // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
+    void enable_remote_tp(const std::string &address, double share, int pool_mib) {
+        auto tp = std::make_unique<RemoteTp>();
+        tp->hidden = (int)m.hidden;
+        ucomm_config cfg;
+        ucomm_config_default(&cfg);
+        cfg.rank = 0;
+        cfg.world = 2;
+        cfg.root_addr = address.c_str();
+        cfg.timeout_ms = 0; // the worker may still be filling its dummy weights
+        RemoteTp::ok(ucomm_init(&cfg, &tp->comm), "connect");
+        std::vector<uint8_t> setup(sizeof(strata::net::TpSetup));
+        for (size_t l = 0; l < m.layers.size(); ++l) {
+            if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+            const std::string p = "blk." + std::to_string(l) + ".";
+            const auto &G = artifact.at(p + "ffn_gate_exps.weight");
+            const auto &D = artifact.at(p + "ffn_down_exps.weight");
+            const int ff = m.layers[l].intermediate;
+            const int block = std::max<int>(256, (int)ggml_blck_size((ggml_type)D.tensor->type));
+            int keep = (int)std::lround(share * ff / block) * block;
+            keep = std::clamp(keep, block, ff - block);
+            if (ff % block) throw std::invalid_argument("GLM remote TP: expert width is not whole blocks");
+            tp->split[(int)l] = keep;
+            strata::net::TpLayer spec{(int32_t)l, (int32_t)G.tensor->type, (int32_t)D.tensor->type, ff, keep,
+                                      (int32_t)m.experts, m.layers[l].swiglu_limit, 0};
+            const auto *b = (const uint8_t *)&spec;
+            setup.insert(setup.end(), b, b + sizeof spec);
+        }
+        strata::net::TpSetup head{strata::net::kTpMagic, (uint32_t)tp->split.size(), (uint32_t)m.hidden, (uint32_t)pool_mib};
+        std::memcpy(setup.data(), &head, sizeof head);
+        RemoteTp::ok(ucomm_send(tp->comm, 1, strata::net::kTagSetup, setup.data(), setup.size()), "setup");
+        strata::net::TpReady ready{};
+        RemoteTp::ok(ucomm_recv(tp->comm, 1, strata::net::kTagReady, &ready, sizeof ready, nullptr), "ready");
+        std::cerr << "REMOTE_TP connected backend=" << ucomm_backend_name(tp->comm) << " layers=" << tp->split.size()
+                  << " rows_here=" << tp->split.begin()->second << "/" << m.layers[tp->split.begin()->first].intermediate
+                  << " worker_slots=" << ready.slots << '\n';
+        remote_tp = std::move(tp);
+    }
     bool uses_device_experts() const { return device_resident_experts; }
     void prepare_mtp_history(int depth) { if (batched_resident) enable_verify_history(depth); }
     void set_device_experts(bool enabled) { device_resident_experts = enabled; }
@@ -5175,7 +5276,7 @@ int main(int argc, char **argv) {
                      "[--gpu-budget-mib=12288] [--check-prefill] "
                      "[--gpu-devices=0|0,1] [--prefill-expert-cache-mib=auto|N] [--lock-weights] [--check-gpu-split] "
                      "[--decode-prefill-cache] [--profile-decode] [--profile-prefill] "
-                     "[--expert-cache-mib=N] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
+                     "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
         return 2;
     }
     try {
@@ -5208,6 +5309,8 @@ int main(int argc, char **argv) {
         size_t cpu_prepack_mib = 0, prefill_cache_bytes = 0;
         bool prefill_cache_auto = false, check_gpu_split = false, tensor_experts = false, tensor_batches = false;
         std::string gpu_devices_text = "0";
+        std::string remote_tp_address;
+        double remote_tp_share = 0.5;
         std::string dump, routing_trace_path;
         std::vector<int> stops;
         for (int i = 6; i < argc; ++i) {
@@ -5219,6 +5322,8 @@ int main(int argc, char **argv) {
             else if (flag == "--check-decode-graphs") { check_decode_graphs = true; force_gpu = true; }
             else if (flag.starts_with("--decode-cache-window=")) decode_cache_window = std::stoi(flag.substr(22));
             else if (flag == "--decode-graphs") { decode_graphs = true; force_gpu = true; }
+            else if (flag.starts_with("--remote-tp=")) remote_tp_address = flag.substr(12);
+            else if (flag.starts_with("--remote-tp-share=")) remote_tp_share = std::stod(flag.substr(18));
             else if (flag == "--decode-prefill-cache") { decode_prefill_cache = true; force_gpu = true; }
             else if (flag.starts_with("--gpu-devices=")) { gpu_devices_text = flag.substr(14); force_gpu = true; }
             else if (flag.starts_with("--prefill-expert-cache-mib=")) {
@@ -5337,6 +5442,11 @@ int main(int argc, char **argv) {
         decoder.set_decode_cache_auto(decode_cache_auto, decode_cache_extend);
         decoder.set_decode_graphs(decode_graphs);
         decoder.set_decode_cache_window(decode_cache_window);
+        if (!remote_tp_address.empty()) {
+            if (!(remote_tp_share > 0 && remote_tp_share < 1))
+                throw std::invalid_argument("--remote-tp-share must be between 0 and 1");
+            decoder.enable_remote_tp(remote_tp_address, remote_tp_share, 0);
+        }
         if (decode_cache_adapt && (replay || check_verify || decode_repetitions > 1))
             throw std::invalid_argument("GLM: adaptive cache benchmarks require independent serve requests");
         decoder.set_decode_cache_adapt(decode_cache_adapt);
