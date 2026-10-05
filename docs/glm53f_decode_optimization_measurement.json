@@ -1,0 +1,254 @@
+{
+  "date": "2026-10-05",
+  "hardware": {
+    "cpu": "AMD Threadripper 1950X, 16 physical cores / 32 threads",
+    "numa_nodes": 2,
+    "ram_gib_usable": 125,
+    "gpu": "NVIDIA RTX 5060 Ti 16 GB",
+    "driver": "615.71.09"
+  },
+  "scope": "Isolated single GPU, 15 physical-core workers across two NUMA nodes; no speculation; no profiler in throughput trials.",
+  "common": {
+    "context": 8192,
+    "prefill_batch": 256,
+    "dense_cache_mib": 4096,
+    "cpu_affinity": "numa",
+    "decode_experts": "cpu",
+    "decode_bench": 3
+  },
+  "q2": {
+    "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "prompt_tokens": 53,
+    "output_tokens_per_trial": 133,
+    "numa_launch": "numactl --interleave=all",
+    "gpu_budget_mib": 12288,
+    "common_env": {
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000"
+    },
+    "baseline": {
+      "log": "build-q2-remeasure/baseline.log",
+      "trials": [
+        {
+          "steps": 132,
+          "ms": 15477.3,
+          "tok_s": 8.52863
+        },
+        {
+          "steps": 132,
+          "ms": 14905.7,
+          "tok_s": 8.8557
+        },
+        {
+          "steps": 132,
+          "ms": 14793.6,
+          "tok_s": 8.92279
+        }
+      ],
+      "median_tok_s": 8.8557,
+      "warm_selected_experts_median_tok_s": null,
+      "peak_host_rss_mib": 102511.0,
+      "peak_engine_gpu_mib": 8219.04,
+      "stdout_sha256": "15d8b2279d14026021074fb141a0f61347b586ba988f5b9818cf25af83590f5b"
+    },
+    "graphs_and_shared_quantization": {
+      "log": "build-q2-remeasure/optimized-q2.log",
+      "trials": [
+        {
+          "steps": 132,
+          "ms": 14225.3,
+          "tok_s": 9.27926
+        },
+        {
+          "steps": 132,
+          "ms": 14276.9,
+          "tok_s": 9.24572
+        },
+        {
+          "steps": 132,
+          "ms": 14370.7,
+          "tok_s": 9.18538
+        }
+      ],
+      "median_tok_s": 9.24572,
+      "warm_selected_experts_median_tok_s": null,
+      "peak_host_rss_mib": 102553.0,
+      "peak_engine_gpu_mib": 8364.65,
+      "stdout_sha256": "15d8b2279d14026021074fb141a0f61347b586ba988f5b9818cf25af83590f5b"
+    },
+    "table_signs_graphs_and_shared_quantization": {
+      "log": "build-q2-remeasure/table-q2.log",
+      "trials": [
+        {
+          "steps": 132,
+          "ms": 14144.4,
+          "tok_s": 9.33231
+        },
+        {
+          "steps": 132,
+          "ms": 13605.7,
+          "tok_s": 9.70185
+        },
+        {
+          "steps": 132,
+          "ms": 13642.9,
+          "tok_s": 9.67539
+        }
+      ],
+      "median_tok_s": 9.67539,
+      "warm_selected_experts_median_tok_s": null,
+      "peak_host_rss_mib": 102553.0,
+      "peak_engine_gpu_mib": 8219.04,
+      "stdout_sha256": "15d8b2279d14026021074fb141a0f61347b586ba988f5b9818cf25af83590f5b"
+    },
+    "optimized_env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_IQ2_TABLE_SIGNS": "1"
+    },
+    "optimized_flags": [
+      "--decode-graphs",
+      "--warm-weights"
+    ],
+    "validation": {
+      "all_three_full_token_streams_identical": true,
+      "graph_eight_sequential_logits_and_rollback_bitwise_identical": true,
+      "generated_cpp_independent_cases": 400538,
+      "synthetic_iq2_rows_old_and_new_bitwise_hash": 3250015108704121731,
+      "clean_reverse_control_tokens_identical": true,
+      "real_weight_expert_parity_layers": [
+        3,
+        11,
+        44,
+        45
+      ],
+      "real_weight_expert_parity_failures": 0
+    },
+    "clean_reverse_control_graphs_and_shared_quantization": {
+      "log": "build-q2-remeasure/clean-control-q2.log",
+      "trials": [
+        {
+          "steps": 132,
+          "ms": 14073.4,
+          "tok_s": 9.37937
+        },
+        {
+          "steps": 132,
+          "ms": 14082.3,
+          "tok_s": 9.37348
+        },
+        {
+          "steps": 132,
+          "ms": 14077.1,
+          "tok_s": 9.37696
+        }
+      ],
+      "median_tok_s": 9.37696,
+      "warm_selected_experts_median_tok_s": null,
+      "peak_host_rss_mib": 102553.0,
+      "peak_engine_gpu_mib": 8219.04,
+      "stdout_sha256": "15d8b2279d14026021074fb141a0f61347b586ba988f5b9818cf25af83590f5b"
+    },
+    "table_sign_gain_over_clean_control_percent": 3.1825879602771057
+  },
+  "exl3": {
+    "model": "/mnt/nvme01/models/glm53f/glm53f-exl",
+    "prompt_tokens": 18,
+    "output_tokens_per_trial": 4,
+    "numa_launch": "Normal local policy; worker-local first touch. No inherited interleave.",
+    "gpu_budget_mib": 10240,
+    "scalar_lru": {
+      "log": "build-q2-remeasure/exl-scalar-lru.log",
+      "trials": [
+        {
+          "steps": 3,
+          "ms": 24535.7,
+          "tok_s": 0.122271
+        },
+        {
+          "steps": 3,
+          "ms": 18724.5,
+          "tok_s": 0.160218
+        },
+        {
+          "steps": 3,
+          "ms": 19388.7,
+          "tok_s": 0.154729
+        }
+      ],
+      "median_tok_s": 0.154729,
+      "warm_selected_experts_median_tok_s": 0.1574735,
+      "peak_host_rss_mib": 37476.5,
+      "peak_engine_gpu_mib": 4815.06,
+      "stdout_sha256": "28c559e29a5968d1f8b62fe86ab45deeaf4528a400a279c07630e762c48e5dde"
+    },
+    "avx2_persistent_cache": {
+      "log": "build-q2-remeasure/exl-avx-pinned.log",
+      "trials": [
+        {
+          "steps": 3,
+          "ms": 15829.7,
+          "tok_s": 0.189517
+        },
+        {
+          "steps": 3,
+          "ms": 12907.8,
+          "tok_s": 0.232419
+        },
+        {
+          "steps": 3,
+          "ms": 12775.6,
+          "tok_s": 0.234823
+        }
+      ],
+      "median_tok_s": 0.232419,
+      "warm_selected_experts_median_tok_s": 0.233621,
+      "peak_host_rss_mib": 37478.1,
+      "peak_engine_gpu_mib": 4815.03,
+      "stdout_sha256": "28c559e29a5968d1f8b62fe86ab45deeaf4528a400a279c07630e762c48e5dde"
+    },
+    "avx2_persistent_cache_host_bf16": {
+      "log": "build-q2-remeasure/exl-cpu-dense.log",
+      "trials": [
+        {
+          "steps": 3,
+          "ms": 8508.8,
+          "tok_s": 0.352576
+        },
+        {
+          "steps": 3,
+          "ms": 5913.96,
+          "tok_s": 0.507275
+        },
+        {
+          "steps": 3,
+          "ms": 5873.01,
+          "tok_s": 0.510812
+        }
+      ],
+      "median_tok_s": 0.507275,
+      "warm_selected_experts_median_tok_s": 0.5090435,
+      "peak_host_rss_mib": 37445.8,
+      "peak_engine_gpu_mib": 4815.15,
+      "stdout_sha256": "28c559e29a5968d1f8b62fe86ab45deeaf4528a400a279c07630e762c48e5dde"
+    },
+    "optimized_env": {
+      "STRATA_EXL3_CPU_DENSE": "1"
+    },
+    "validation": {
+      "three_short_output_streams_identical": true,
+      "real_expert_projection_bitwise_parity_count": 27,
+      "random_tile_bitwise_parity_count": 256,
+      "bf16_eight_lane_scalar_and_double_reference": true,
+      "full_model_cpu_dense_vs_gpu_prefill_state_logits_relative_l2_threshold": 0.02,
+      "full_model_prefill_next_token_actual": 2282,
+      "full_model_prefill_next_token_reference": 2282
+    },
+    "limitations": "Only three decode steps per trial. Trial 0 includes lazy selected-expert loading; warm median excludes it. Host BF16 reduction differs from GPU: full logits are tolerance-tested, not claimed bitwise identical. No long-generation, full-resident-model or 1M-context throughput claim."
+  },
+  "discarded_runs": [
+    {
+      "log": "build-q2-remeasure/control-q2.log",
+      "reason": "CPU compilation overlapped this control; excluded from speed comparisons."
+    }
+  ]
+}

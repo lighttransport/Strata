@@ -1,0 +1,31 @@
+both nodes, local allocation, 16 physical cores
+$ numactl --localalloc tools/membw/membw --threads 16 --mib 2048 --repeats 20
+Threads: 16; eligible NUMA nodes: 0 1; worker CPUs: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+Array size: 2048 MiB each (two arrays); worker first-touch placement
+Read: median 85.2552, best 86.3806, min 84.2579 GB/s (decimal), 20 passes; validation OK
+Copy (non-temporal stores): median 80.7977, best 82.2354, min 79.8378 GB/s (decimal), 20 passes; validation OK
+Large anonymous buffer placement (4 KiB pages): {'N0': 524288, 'N1': 524288}
+
+node 0, CPU and memory bound, 8 physical cores
+$ numactl --cpunodebind=0 --membind=0 tools/membw/membw --threads 8 --mib 2048 --repeats 20
+Threads: 8; eligible NUMA nodes: 0; worker CPUs: 0 1 2 3 4 5 6 7
+Array size: 2048 MiB each (two arrays); worker first-touch placement
+Read: median 42.4963, best 43.9731, min 41.9297 GB/s (decimal), 20 passes; validation OK
+Copy (non-temporal stores): median 40.3674, best 41.4576, min 39.7994 GB/s (decimal), 20 passes; validation OK
+Large anonymous buffer placement (4 KiB pages): {'N0': 1048576}
+
+node 1, CPU and memory bound, 8 physical cores
+$ numactl --cpunodebind=1 --membind=1 tools/membw/membw --threads 8 --mib 2048 --repeats 20
+Threads: 8; eligible NUMA nodes: 1; worker CPUs: 8 9 10 11 12 13 14 15
+Array size: 2048 MiB each (two arrays); worker first-touch placement
+Read: median 43.4115, best 43.8506, min 41.8194 GB/s (decimal), 20 passes; validation OK
+Copy (non-temporal stores): median 40.8422, best 41.4067, min 40.5497 GB/s (decimal), 20 passes; validation OK
+Large anonymous buffer placement (4 KiB pages): {'N1': 1048576}
+
+both nodes, local allocation, 32 SMT threads
+$ numactl --localalloc tools/membw/membw --threads 32 --mib 2048 --repeats 20
+Threads: 32; eligible NUMA nodes: 0 1; worker CPUs: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+Array size: 2048 MiB each (two arrays); worker first-touch placement
+Read: median 80.678, best 84.4212, min 68.8671 GB/s (decimal), 20 passes; validation OK
+Copy (non-temporal stores): median 75.6553, best 78.5924, min 73.3795 GB/s (decimal), 20 passes; validation OK
+Large anonymous buffer placement (4 KiB pages): {'N1': 524288, 'N0': 524288}

@@ -36,7 +36,7 @@ def chat_prompt(metadata, prompt, system=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("model", type=pathlib.Path, help="any shard of the GLM GGUF")
+    parser.add_argument("model", type=pathlib.Path, help="GLM GGUF shard or native EXL3 model directory")
     parser.add_argument("prompt", nargs="?")
     parser.add_argument("--prompt-file", type=pathlib.Path, help="UTF-8 prompt, avoiding shell argument limits")
     parser.add_argument("--decoder", type=pathlib.Path, default=pathlib.Path("build/strata-glm-decode"))
@@ -64,7 +64,8 @@ def main():
     parser.add_argument("--speculative", choices=("none", "lookup", "mtp"), default="none")
     parser.add_argument("--draft-depth", type=int, choices=range(1, 8), default=3)
     parser.add_argument("--cpu-prepack-mib", type=int, default=0)
-    parser.add_argument("--cpu-affinity", choices=("none", "auto"), default="none")
+    parser.add_argument("--cpu-affinity", choices=("none", "auto", "numa"), default="none")
+    parser.add_argument("--weight-pages", choices=("4k", "huge"), default="4k", help="EXL3 routed weight page advice (huge uses Linux THP)")
     parser.add_argument("--system")
     parser.add_argument("--raw", action="store_true", help="tokenize the prompt without a chat template")
     parser.add_argument("--dry-run", action="store_true", help="print prompt token IDs without running the network")
@@ -73,10 +74,24 @@ def main():
         parser.error("provide either a prompt or --prompt-file")
     text = args.prompt_file.read_text(encoding="utf-8") if args.prompt_file else args.prompt
     shard = metadata_shard(args.model)
-    metadata = GGUFFile(shard).metadata
+    native = args.model.is_dir()
+    if native:
+        from glm_artifact import NativeTokenizer, load_metadata
+        metadata = load_metadata(args.model)
+        tokenizer = NativeTokenizer(args.model)
+        if args.speculative != "none" or args.lookup_depth or args.decode_experts != "cpu":
+            parser.error("native EXL3 requires CPU decode experts and speculative=none")
+        def specified(name): return any(x == name or x.startswith(name + "=") for x in sys.argv[1:])
+        if not specified("--threads"): args.threads = 15
+        if not specified("--prefill-batch"): args.prefill_batch = "256"
+        if not specified("--gpu-budget-mib"): args.gpu_budget_mib = 10240
+        if not specified("--context"): args.context = 8192
+        if "--cpu-affinity" not in sys.argv and not any(x.startswith("--cpu-affinity=") for x in sys.argv): args.cpu_affinity = "numa"
+    else:
+        metadata = GGUFFile(shard).metadata
+        tokenizer = Tokenizer.from_gguf(shard)
     if metadata.get("general.architecture") != "glm5next":
         parser.error("expected a glm5next artifact")
-    tokenizer = Tokenizer.from_gguf(shard)
     prompt = text if args.raw else chat_prompt(metadata, text, args.system)
     ids = tokenizer.encode(prompt, parse_special=True)
     if not ids or args.tokens < 1 or args.dense_cache_mib < 64 or args.expert_cache_mib < 0 or args.threads < 1:
@@ -84,6 +99,7 @@ def main():
     if args.context is not None and (args.context < len(ids) + args.tokens or
                                     args.context > metadata["glm5next.context_length"]):
         parser.error("prompt plus output exceeds the requested or model context")
+    if native and args.context > 65536: parser.error("native EXL3 context above 64K requires deferred host KV offload")
     encoded = ",".join(map(str, ids))
     if args.dry_run:
         print(encoded)
@@ -96,6 +112,7 @@ def main():
                f"--stop-ids={','.join(map(str, sorted(stops)))}"]
     if args.speculative != "none": command.append(f"--speculative={args.speculative}")
     command.extend((f"--draft-depth={args.draft_depth}", f"--cpu-affinity={args.cpu_affinity}", f"--cpu-prepack-mib={args.cpu_prepack_mib}"))
+    if native: command.append(f"--weight-pages={args.weight_pages}")
     # Read only the token-ID protocol from stdout; decoder failures use stderr.
     if args.context is not None: command.append(f"--context={args.context}")
     if args.lock_weights: command.append("--lock-weights")

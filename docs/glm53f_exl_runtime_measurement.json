@@ -1,0 +1,119 @@
+{
+  "date": "2026-10-05",
+  "model": "/mnt/nvme01/models/glm53f/glm53f-exl",
+  "hardware": {
+    "cpu": "AMD Threadripper 1950X",
+    "numa_nodes": 2,
+    "ram_gib_usable": 125,
+    "gpu": "NVIDIA RTX 5060 Ti 16 GB",
+    "driver": "615.71.09"
+  },
+  "configuration": {
+    "exe": "build-glm/strata-glm-decode",
+    "model": "/mnt/nvme01/models/glm53f/glm53f-exl",
+    "model_name": "glm-5.3-flash-exl3",
+    "context": 8192,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 10240,
+    "gpu_devices": "0",
+    "threads": 15,
+    "cpu_affinity": "numa",
+    "weight_pages": "4k",
+    "prefill_batch": 256,
+    "decode_experts": "cpu",
+    "speculative": "none",
+    "log": "build-exl3-engine.log"
+  },
+  "validation": {
+    "normalized_hadamard_energy": "passed",
+    "real_cuda_projections": {
+      "layer": 3,
+      "expert": 17,
+      "relative_l2": {
+        "gate_proj": 1.16268e-06,
+        "up_proj": 1.22056e-06,
+        "down_proj": 8.38808e-07
+      }
+    },
+    "cpu_gpu_prefill_parity": {
+      "prompt_token_ids": [
+        9703
+      ],
+      "greedy_token": 154822,
+      "state_and_logits": "passed"
+    },
+    "multi_token_cpu_gpu_prefill_parity": {
+      "prompt_token_ids": [
+        9703,
+        1917
+      ],
+      "greedy_token": 2282,
+      "state_and_logits": "passed"
+    }
+  },
+  "short_cli_run": {
+    "prompt": "Reply with a short greeting.",
+    "thinking": true,
+    "prompt_tokens": 18,
+    "generated_tokens": 8,
+    "generated_prefix": "The user is asking me to reply with",
+    "prefill_ms": 50403.5,
+    "prefill_tokens_per_second": 0.357118,
+    "decode_steps": 7,
+    "decode_ms": 54299.1,
+    "decode_tokens_per_second": 0.128915,
+    "decode_step_ms": [
+      8474.45,
+      8190.5,
+      7883.51,
+      7912.73,
+      7357.0,
+      7238.57,
+      7241.19
+    ],
+    "host_peak_rss_mib": 39378.9,
+    "engine_gpu_peak_allocation_mib": 4815.06,
+    "notes": [
+      "Single short bring-up run, not a long-context or steady-state benchmark.",
+      "Prefill includes lazy expert reads, row packing and first-touch faults; major faults=0.",
+      "Decode excludes prefill and the first greedy token.",
+      "Only selected experts loaded; this is not full-model memory residency.",
+      "The idle server was started during this run; no API request overlapped it."
+    ]
+  },
+  "api_smoke": {
+    "base_url": "http://127.0.0.1:8095/v1",
+    "model": "glm-5.3-flash-exl3",
+    "health_status": 200,
+    "models_status": 200,
+    "chat_status": 200,
+    "content": "The user is asking",
+    "finish_reason": "length",
+    "usage": {
+      "prompt_tokens": 18,
+      "completion_tokens": 4,
+      "total_tokens": 22,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 18,
+      "prompt_ms": 75488.7,
+      "prompt_per_token_ms": 4193.817,
+      "prompt_per_second": 0.2,
+      "predicted_n": 4,
+      "predicted_ms": 31504.4,
+      "predicted_per_token_ms": 7876.1,
+      "predicted_per_second": 0.1,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "notes": [
+      "The native chat template always opens <think>; enable_thinking=false does not disable it.",
+      "Four generated tokens validate coherent reasoning text, not a complete answer.",
+      "The multi-token parity check ran concurrently with this API request; these API timings are not an isolated benchmark."
+    ]
+  }
+}

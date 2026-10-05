@@ -1,0 +1,79 @@
+[
+  {
+    "label": "node0 local",
+    "command": [
+      "numactl",
+      "--cpunodebind=0",
+      "--membind=0",
+      "tools/membw/membw",
+      "--spread",
+      "--threads",
+      "8",
+      "--mib",
+      "2048",
+      "--repeats",
+      "20",
+      "--kernel",
+      "decode",
+      "--layers",
+      "64",
+      "--prefetch",
+      "2048"
+    ],
+    "median": 41.6505,
+    "best": 41.8865,
+    "minimum": 38.7425,
+    "stdout": "Threads: 8; eligible NUMA nodes: 0; worker CPUs: 0 4 1 5 2 6 3 7\nArray size: 2048 MiB each (two arrays); worker first-touch placement\nPage advice: 4 KiB; unroll: 4; prefetch: 2048 bytes; decode block: 256 KiB; layers: 64\ndecode: median 41.6505, best 41.8865, min 38.7425 GB/s (decimal), 20 passes; validation OK\n"
+  },
+  {
+    "label": "node0 remote",
+    "command": [
+      "numactl",
+      "--cpunodebind=0",
+      "--membind=1",
+      "tools/membw/membw",
+      "--spread",
+      "--threads",
+      "8",
+      "--mib",
+      "2048",
+      "--repeats",
+      "20",
+      "--kernel",
+      "decode",
+      "--layers",
+      "64",
+      "--prefetch",
+      "2048"
+    ],
+    "median": 21.0479,
+    "best": 21.064,
+    "minimum": 20.8213,
+    "stdout": "Threads: 8; eligible NUMA nodes: 0; worker CPUs: 0 4 1 5 2 6 3 7\nArray size: 2048 MiB each (two arrays); worker first-touch placement\nPage advice: 4 KiB; unroll: 4; prefetch: 2048 bytes; decode block: 256 KiB; layers: 64\ndecode: median 21.0479, best 21.064, min 20.8213 GB/s (decimal), 20 passes; validation OK\n"
+  },
+  {
+    "label": "both interleaved",
+    "command": [
+      "numactl",
+      "--interleave=0,1",
+      "tools/membw/membw",
+      "--spread",
+      "--threads",
+      "16",
+      "--mib",
+      "2048",
+      "--repeats",
+      "20",
+      "--kernel",
+      "decode",
+      "--layers",
+      "64",
+      "--prefetch",
+      "2048"
+    ],
+    "median": 64.2445,
+    "best": 65.114,
+    "minimum": 62.665,
+    "stdout": "Threads: 16; eligible NUMA nodes: 0 1; worker CPUs: 0 4 8 12 1 5 9 13 2 6 10 14 3 7 11 15\nArray size: 2048 MiB each (two arrays); worker first-touch placement\nPage advice: 4 KiB; unroll: 4; prefetch: 2048 bytes; decode block: 256 KiB; layers: 64\ndecode: median 64.2445, best 65.114, min 62.665 GB/s (decimal), 20 passes; validation OK\n"
+  }
+]

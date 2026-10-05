@@ -1,3 +1,6 @@
+#include "strata/kernels/cpu/exl3/pool.hpp"
+#include "strata/kernels/cpu/exl3/dense_q8.hpp"
+#include "strata/kernels/exl3.hpp"
 // Experimental GLM decode and streamed GPU prefill. CPU experts overlap resident GPU experts.
 // Greedy decoding with verified speculation and optional recurrent CUDA graphs.
 #include "ggml.h"
@@ -51,6 +54,7 @@
 #include <numeric>
 #include <queue>
 #include <sstream>
+#include <set>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -430,7 +434,7 @@ struct GpuPrefill {
         return (required + 64 * MiB - 1) / (64 * MiB) * (64 * MiB);
     }
     explicit GpuPrefill(int width, void *stream, bool compact = false, size_t capacity = 8192,
-                        bool experts_only = false, bool tensor_experts = false, bool tensor_batches = false) : chunk(width) {
+                        bool experts_only = false, bool tensor_experts = false, bool tensor_batches = false, bool native_exl = false) : chunk(width) {
         check(cudaGetDevice(&owner));
         if (compact) {
             arena = std::make_unique<Device>(32 * MiB);
@@ -440,6 +444,10 @@ struct GpuPrefill {
         GpuLocality locality;
         arena = std::make_unique<Device>(experts_only ? (size_t)width * 320 * 1024 + 192 * MiB
                                                      : arena_bytes(width, capacity));
+        if(native_exl) {
+            std::cerr<<"EXL3 GPU prefill chunk="<<chunk<<" scratch_MiB="<<arena->bytes/double(MiB)<<'\n';
+            return;
+        }
         if (!experts_only || tensor_experts) {
             dq = std::make_unique<Device>((tensor_batches ? 512 : experts_only ? 64 : 128) * MiB);
             blas_workspace = std::make_unique<Device>(32 * MiB);
@@ -1326,6 +1334,171 @@ class Decoder {
     long long host_affinity = -1;
     std::unique_ptr<Pinned> host_moe;
     std::vector<int> host_selected;
+    std::unique_ptr<strata::cpu::exl3::Pool> exl_pool;
+    std::map<std::string,strata::cpu::exl3::Pool::Matrix> exl_matrices;
+    const strata::cpu::exl3::Pool::Matrix& exl_matrix(int layer,int expert,const std::string& projection) {
+        auto key=strata::artifact::GlmExl3::prefix(layer,expert,projection);
+        auto it=exl_matrices.find(key);if(it==exl_matrices.end())it=exl_matrices.emplace(key,exl_pool->load(artifact.exl3(),layer,expert,projection)).first;
+        return it->second;
+    }
+    void exl_gpu_linear(const strata::cpu::exl3::Pool::Matrix& matrix,const float* x,float* y,int nt) {
+        const int in=matrix.in,out=matrix.out;
+        auto& packed=buf("exl_packed",size_t(in)*out/16);
+        for(const auto& rows:matrix.rows)if(!rows.packed.empty())
+            check(cudaMemcpyAsync((uint8_t*)packed.p+rows.first*in/4,rows.packed.data(),rows.packed.size(),cudaMemcpyHostToDevice,stream));
+        auto& scales_in=buf("exl_suh",in/2);auto& scales_out=buf("exl_svh",out/2);
+        scales_in.put_async(matrix.suh.data(),in*2,stream);scales_out.put_async(matrix.svh.data(),out*2,stream);
+        auto& w=buf("exl_reconstructed",size_t(in)*out);auto& h=buf("exl_input",size_t(in)*nt);
+        k::exl3_reconstruct((const uint8_t*)packed.p,w.f(),in,out,stream);
+        k::exl3_hadamard(x,h.f(),(const uint16_t*)scales_in.p,in,nt,true,stream);
+        const float one=1,zero=0;
+        check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,out,nt,in,&one,w.f(),in,h.f(),in,&zero,y,out));
+        k::exl3_hadamard(y,y,(const uint16_t*)scales_out.p,out,nt,false,stream);
+        check(cudaGetLastError());
+    }
+    void moe_exl3_gpu(const std::string& p,int layer_id,const float* x,float* out,const strata::core::LayerDescriptor& layer) {
+        const int nt=batch_tokens;
+        auto& logits=buf("router_logits",m.experts*nt);auto& ids=buf("router_ids",m.top_k*nt);auto& rw=buf("router_weights",m.top_k*nt);
+        mat(p+"ffn_gate_inp.weight",x,logits.f());auto& bias=weight(p+"exp_probs_b.bias");
+        for(int t=0;t<nt;++t)k::glm_router(logits.f(t*m.experts),bias.f(),(int*)ids.p+t*m.top_k,rw.f(t*m.top_k),m.experts,m.top_k,m.expert_scale,stream);
+        std::vector<int> selected(nt*m.top_k);std::vector<float> routing(nt*m.top_k),activation(nt*m.hidden);
+        check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*4,cudaMemcpyDeviceToHost,stream));
+        check(cudaMemcpyAsync(routing.data(),rw.p,routing.size()*4,cudaMemcpyDeviceToHost,stream));
+        check(cudaMemcpyAsync(activation.data(),x,activation.size()*4,cudaMemcpyDeviceToHost,stream));
+        ffn(p,x,out,"_shexp",m.shared_intermediate,layer.shared_swiglu_limit);check(cudaStreamSynchronize(stream));
+        std::map<int,std::vector<int>> groups;for(int j=0;j<int(selected.size());++j) {
+            if(selected[j]<0||selected[j]>=m.experts)throw std::runtime_error("EXL3: invalid route");
+            groups[selected[j]].push_back(j);
+        }
+        std::vector<float> sum(nt*m.hidden,0.f),input,result;
+        for(const auto& [expert,indices]:groups) {
+            check_stop();int count=indices.size();input.resize(count*m.hidden);result.resize(count*m.hidden);
+            for(int j=0;j<count;++j)std::copy_n(activation.data()+(indices[j]/m.top_k)*m.hidden,m.hidden,input.data()+j*m.hidden);
+            auto& dx=buf("exl_group_x",count*m.hidden);auto& gate=buf("exl_gate",count*layer.intermediate);
+            auto& up=buf("exl_up",count*layer.intermediate);auto& dy=buf("exl_group_y",count*m.hidden);dx.put(input.data(),input.size()*4);
+            exl_gpu_linear(exl_matrix(layer_id,expert,"gate_proj"),dx.f(),gate.f(),count);
+            exl_gpu_linear(exl_matrix(layer_id,expert,"up_proj"),dx.f(),up.f(),count);
+            k::glm_swiglu(gate.f(),up.f(),gate.f(),count*layer.intermediate,layer.swiglu_limit,stream);
+            exl_gpu_linear(exl_matrix(layer_id,expert,"down_proj"),gate.f(),dy.f(),count);
+            check(cudaMemcpyAsync(result.data(),dy.p,result.size()*4,cudaMemcpyDeviceToHost,stream));check(cudaStreamSynchronize(stream));
+            for(int j=0;j<count;++j)for(int i=0;i<m.hidden;++i)sum[(indices[j]/m.top_k)*m.hidden+i]+=routing[indices[j]]*result[j*m.hidden+i];
+        }
+        auto& routed=buf("moe_sum",sum.size());routed.put(sum.data(),sum.size()*4);const float one=1;
+        check(cublasSaxpy(blas,sum.size(),&one,routed.f(),1,out,1));
+    }
+    struct NativeGpuExpert {
+        std::unique_ptr<Device> data;
+        std::array<size_t,3> packed,suh,svh,in,out;
+        std::list<std::pair<int,int>>::iterator order;
+    };
+    size_t native_expert_gpu_limit=[] {
+        const char* v=std::getenv("STRATA_EXL3_GPU_EXPERT_CACHE_MIB");
+        size_t mib=v?std::stoull(v):0;
+        if(mib>4096)throw std::invalid_argument("EXL3 GPU expert cache must be 0..4096 MiB");
+        return mib*MiB;
+    }();
+    size_t native_expert_gpu_bytes=0,native_expert_gpu_hits=0,native_expert_gpu_misses=0,native_expert_gpu_copied=0;
+    std::map<std::pair<int,int>,NativeGpuExpert> native_gpu_experts;
+    std::list<std::pair<int,int>> native_gpu_expert_lru;
+    std::unique_ptr<Pinned> native_expert_upload;
+    size_t native_expert_upload_bytes=0;
+    const strata::cpu::exl3::Pool::Matrix& native_matrix(int layer,int expert,const std::string& projection) {
+        const auto key=strata::artifact::GlmExl3::prefix(layer,expert,projection);
+        auto it=exl_matrices.find(key);
+        if(it==exl_matrices.end())it=exl_matrices.emplace(key,exl_pool->load(artifact.exl3(),layer,expert,projection)).first;
+        return it->second;
+    }
+    NativeGpuExpert& native_gpu_expert(int layer,int expert) {
+        const auto key=std::make_pair(layer,expert);auto found=native_gpu_experts.find(key);
+        if(found!=native_gpu_experts.end()) {
+            ++native_expert_gpu_hits;native_gpu_expert_lru.splice(native_gpu_expert_lru.begin(),native_gpu_expert_lru,found->second.order);
+            return found->second;
+        }
+        ++native_expert_gpu_misses;NativeGpuExpert entry;size_t bytes=0;
+        std::array<const strata::cpu::exl3::Pool::Matrix*,3> matrices;
+        const char* projections[]={"gate_proj","up_proj","down_proj"};
+        for(unsigned i=0;i<3;++i) {
+            const auto& m=native_matrix(layer,expert,projections[i]);matrices[i]=&m;entry.in[i]=m.in;entry.out[i]=m.out;
+            entry.packed[i]=bytes;bytes+=m.in*m.out/4;entry.suh[i]=bytes;bytes+=m.in*2;entry.svh[i]=bytes;bytes+=m.out*2;
+        }
+        if(bytes>native_expert_gpu_limit)throw std::runtime_error("EXL3 GPU cache cannot hold one expert");
+        // CUDA/runtime allocations and display use can grow after startup. Keep
+        // extra room beyond Device's physical guard; the cache yields first.
+        auto fits=[&] {
+            size_t free,total;check(cudaMemGetInfo(&free,&total));
+            return native_expert_gpu_bytes+bytes<=native_expert_gpu_limit &&
+                free>=bytes+Device::physical_reserve()+256*MiB &&
+                Device::limit()>=Device::live()+bytes+256*MiB;
+        };
+        auto evict=[&](std::list<std::pair<int,int>>::iterator victim) {
+            check(cudaStreamSynchronize(stream));const auto old=*victim;
+            native_expert_gpu_bytes-=native_gpu_experts.at(old).data->bytes;
+            native_gpu_experts.erase(old);native_gpu_expert_lru.erase(victim);
+        };
+        while(!fits()) {
+            if(native_gpu_expert_lru.empty())throw std::runtime_error("EXL3 GPU expert cache: insufficient runtime headroom for one expert");
+            evict(std::prev(native_gpu_expert_lru.end()));
+        }
+        if(!native_expert_upload || native_expert_upload_bytes<bytes) {native_expert_upload=std::make_unique<Pinned>(bytes);native_expert_upload_bytes=bytes;}
+        auto* dst=static_cast<uint8_t*>(native_expert_upload->p);
+        for(unsigned i=0;i<3;++i) {
+            const auto& m=*matrices[i];
+            exl_pool->run([&](size_t rank) {
+                const auto& r=m.rows[rank];if(!r.packed.empty())
+                    std::memcpy(dst+entry.packed[i]+(r.first/16)*(m.in/16)*64,r.packed.data(),r.packed.size());
+            });
+            std::memcpy(dst+entry.suh[i],m.suh.data(),m.in*2);std::memcpy(dst+entry.svh[i],m.svh.data(),m.out*2);
+        }
+        entry.data=std::make_unique<Device>(bytes);entry.data->put(dst,bytes);
+        native_expert_gpu_copied+=bytes;native_expert_gpu_bytes+=bytes;
+        native_gpu_expert_lru.push_front(key);entry.order=native_gpu_expert_lru.begin();
+        return native_gpu_experts.emplace(key,std::move(entry)).first->second;
+    }
+    void native_gpu_projection(const NativeGpuExpert& e,unsigned projection,const float* x,float* y) {
+        const auto* data=static_cast<const uint8_t*>(e.data->p);const int in=e.in[projection],out=e.out[projection];
+        auto& h=buf("native_expert_h",std::max(in,out));
+        k::exl3_hadamard(x,h.f(),reinterpret_cast<const uint16_t*>(data+e.suh[projection]),in,1,true,stream);
+        k::exl3_packed_gemv(data+e.packed[projection],h.f(),y,in,out,stream);
+        k::exl3_hadamard(y,y,reinterpret_cast<const uint16_t*>(data+e.svh[projection]),out,1,false,stream);
+    }
+    void moe_exl3_gpu_decode(int layer,const float* x,float* out,const strata::core::LayerDescriptor& desc) {
+        const auto* ids=static_cast<const int*>(host_moe->p);const float* routing=reinterpret_cast<const float*>(ids+cpu::MAXT*m.top_k);
+        auto& gate=buf("exl_decode_gate",desc.intermediate);auto& up=buf("exl_decode_up",desc.intermediate);
+        auto& hidden=buf("exl_decode_hidden",desc.intermediate);auto& result=buf("exl_decode_result",m.hidden);
+        for(int j=0;j<m.top_k;++j) {
+            check_stop();int expert=ids[j];if(expert<0||expert>=m.experts)throw std::runtime_error("EXL3: invalid GPU route");
+            auto& e=native_gpu_expert(layer,expert);
+            native_gpu_projection(e,0,x,gate.f());native_gpu_projection(e,1,x,up.f());
+            k::glm_swiglu(gate.f(),up.f(),hidden.f(),desc.intermediate,desc.swiglu_limit,stream);
+            native_gpu_projection(e,2,hidden.f(),result.f());
+            check(cublasSaxpy(blas,m.hidden,routing+j,result.f(),1,out,1));
+        }
+        check(cudaGetLastError());
+    }
+    void moe_exl3(const std::string& p,int l,const float* x,float* out,const strata::core::LayerDescriptor& layer) {
+        const int nt=batch_tokens;
+        if(nt>cpu::MAXT)throw std::runtime_error("EXL3: CPU routed batch exceeds MAXT");
+        enqueue_moe_prefix(p,l,x,out,layer);prepared_moe_layer=-1;
+        check(cudaEventSynchronize(moe_ready));
+        if(nt==1 && native_dense_q8 && native_expert_gpu_limit) {moe_exl3_gpu_decode(l,x,out,layer);return;}
+        auto* ids=(int*)host_moe->p;auto* routing=(float*)(ids+cpu::MAXT*m.top_k);auto* activation=routing+cpu::MAXT*m.top_k;
+        std::vector<float> gate(layer.intermediate),up(layer.intermediate),result(m.hidden),sum(nt*m.hidden,0.f);
+        auto matrix=[&](int expert,const std::string& projection)->const strata::cpu::exl3::Pool::Matrix& {
+            auto key=strata::artifact::GlmExl3::prefix(l,expert,projection);
+            auto it=exl_matrices.find(key);if(it==exl_matrices.end())it=exl_matrices.emplace(key,exl_pool->load(artifact.exl3(),l,expert,projection)).first;
+            return it->second;
+        };
+        for(int t=0;t<nt;++t)for(int j=0;j<m.top_k;++j) {
+            check_stop();int e=ids[t*m.top_k+j];if(e<0||e>=m.experts)throw std::runtime_error("EXL3: invalid route");
+            exl_pool->apply(matrix(e,"gate_proj"),activation+t*m.hidden,gate.data());
+            exl_pool->apply(matrix(e,"up_proj"),activation+t*m.hidden,up.data());
+            for(size_t i=0;i<gate.size();++i) {float g=std::min(gate[i],layer.swiglu_limit);float u=std::clamp(up[i],-layer.swiglu_limit,layer.swiglu_limit);gate[i]=g/(1+std::exp(-g))*u;}
+            exl_pool->apply(matrix(e,"down_proj"),gate.data(),result.data());
+            for(int i=0;i<m.hidden;++i)sum[t*m.hidden+i]+=routing[t*m.top_k+j]*result[i];
+        }
+        auto& routed=buf("moe_sum",sum.size());routed.put(sum.data(),sum.size()*4);const float one=1;
+        check(cublasSaxpy(blas,sum.size(),&one,routed.f(),1,out,1));
+    }
     std::vector<float> host_results, host_sum;
     std::vector<std::vector<uint8_t>> host_quant;
     std::vector<cpu::ExpertJobMulti> host_jobs;
@@ -1632,6 +1805,53 @@ class Decoder {
     };
     std::map<std::string, Weight> weights;
     std::list<std::string> lru;
+    size_t native_pinned_bytes = 0;
+    std::set<std::string> native_pinned_weights;
+    bool native_dense_q8 = std::getenv("STRATA_EXL3_DENSE_QUANT") != nullptr || std::getenv("STRATA_EXL3_DENSE_Q8") != nullptr;
+    int native_dense_bits=[] {const char* v=std::getenv("STRATA_EXL3_DENSE_BITS");if(v && std::string(v)!="6" && std::string(v)!="8")throw std::invalid_argument("EXL3 dense bits must be 6 or 8");return v?std::stoi(v):8;}();
+    bool native_cpu_dense = std::getenv("STRATA_EXL3_CPU_DENSE") != nullptr;
+    struct NativeDenseWeight {std::unique_ptr<Device> data;int bits;};
+    std::map<std::string,NativeDenseWeight> native_q8_weights;
+    size_t native_q8_bytes = 0;
+    void prepare_native_dense_q8() {
+        if(!artifact.is_exl3() || !native_dense_q8 || !native_q8_weights.empty())return;
+        size_t required=0;
+        for(const auto& [name,t]:artifact.tensors())
+            if(name!="token_embd.weight" && t.tensor->type==GGML_TYPE_BF16 && t.tensor->shape.size()==2) {
+                if(t.tensor->shape[0]%32)throw std::runtime_error("EXL3 Q8: invalid row width: "+name);
+                required+=t.bytes>=8*MiB?t.tensor->elements()/32*((native_dense_bits==6 && name!="output.weight")?26:34):t.bytes;
+            }
+        if(required>budget)throw std::runtime_error("EXL3 Q8: resident fixed matrices exceed dense cache budget; need MiB="+std::to_string((required+MiB-1)/MiB));
+        const auto start=std::chrono::steady_clock::now();size_t quantized=0;
+        for(const auto& [name,t]:artifact.tensors()) {
+            if(name=="token_embd.weight" || t.tensor->type!=GGML_TYPE_BF16 || t.tensor->shape.size()!=2)continue;
+            check_stop();const size_t in=t.tensor->shape[0],out=t.tensor->shape[1];
+            if(t.bytes<8*MiB) {
+                auto data=std::make_unique<Device>(t.bytes);data->put(t.data(),data->bytes);
+                native_q8_bytes+=data->bytes;native_q8_weights.emplace(name,NativeDenseWeight{std::move(data),16});continue;
+            }
+            ++quantized;
+            if(native_dense_bits==6 && name!="output.weight") {
+                std::vector<strata::cpu::exl3::DenseQ6Block> packed(in*out/32);
+                const auto* source=reinterpret_cast<const uint16_t*>(t.data());
+                exl_pool->run([&](size_t rank){for(size_t row=out*rank/exl_pool->size();row<out*(rank+1)/exl_pool->size();++row)strata::cpu::exl3::dense_q6_row(source+row*in,packed.data()+row*(in/32),in);});
+                auto data=std::make_unique<Device>(packed.size()*sizeof(packed[0]));data->put(packed.data(),data->bytes);
+                native_q8_bytes+=data->bytes;native_q8_weights.emplace(name,NativeDenseWeight{std::move(data),6});continue;
+            }
+            std::vector<strata::cpu::exl3::DenseQ8Block> packed(in*out/32);
+            const auto* source=reinterpret_cast<const uint16_t*>(t.data());
+            exl_pool->run([&](size_t rank) {
+                for(size_t row=out*rank/exl_pool->size();row<out*(rank+1)/exl_pool->size();++row)
+                    strata::cpu::exl3::dense_q8_row(source+row*in,packed.data()+row*(in/32),in);
+            });
+            auto data=std::make_unique<Device>(packed.size()*sizeof(packed[0]));
+            data->put(packed.data(),data->bytes);native_q8_bytes+=data->bytes;
+            native_q8_weights.emplace(name,NativeDenseWeight{std::move(data),8});
+        }
+        resident+=native_q8_bytes;
+        std::cerr<<"EXL3_DENSE_QUANT bits="<<native_dense_bits<<" tensors="<<native_q8_weights.size()<<" quantized="<<quantized<<" preserved_bf16="<<native_q8_weights.size()-quantized<<" resident_MiB="<<native_q8_bytes/double(MiB)
+                 <<" prepare_ms="<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<'\n';
+    }
     void check_stop() {
         if (cancelled && cancelled())
             throw std::runtime_error("cancelled");
@@ -1684,7 +1904,7 @@ class Decoder {
             lru.splice(lru.begin(), lru, it->second.order);
             return *it->second.data;
         }
-        if (gpu && !name.starts_with("blk.45."))
+        if (gpu && !artifact.is_exl3() && !name.starts_with("blk.45."))
             throw std::runtime_error("GLM: fixed GPU weight missing: " + key);
         const auto &t = artifact.at(name);
         std::vector<float> values;
@@ -1696,14 +1916,26 @@ class Decoder {
         while (resident + bytes > budget && !lru.empty()) {
             // Previous kernels may still hold a pointer to an evicted weight.
             check(cudaStreamSynchronize(stream));
-            const auto old = lru.back();
+            auto victim = std::prev(lru.end());
+            while (native_pinned_weights.count(*victim)) {
+                if (victim == lru.begin()) throw std::runtime_error("GLM: no evictable dense weight");
+                --victim;
+            }
+            const auto old = *victim;
             resident -= weights.at(old).data->bytes;
             weights.erase(old);
-            lru.pop_back();
+            lru.erase(victim);
         }
         auto data = std::make_unique<Device>(bytes);
         data->put(values.empty() ? (const void *)t.data() : values.data(), bytes);
         resident += bytes;
+        // A cyclic layer trace defeats plain LRU. Retain a bounded fixed subset,
+        // leaving half the cache for streamed matrices and simultaneous operands.
+        if (artifact.is_exl3() && !std::getenv("STRATA_EXL3_LRU") &&
+            native_pinned_bytes + bytes <= std::min((budget-native_q8_bytes)/2,
+                budget-native_q8_bytes>artifact.at("output.weight").bytes?budget-native_q8_bytes-artifact.at("output.weight").bytes:0)) {
+            native_pinned_weights.insert(key); native_pinned_bytes += bytes;
+        }
         lru.push_front(key);
         auto [inserted, ok] = weights.emplace(key, Weight{std::move(data), lru.begin()});
         (void)ok;
@@ -1713,9 +1945,69 @@ class Decoder {
         if (!nt)
             nt = batch_tokens;
         const auto &t = *artifact.at(name).tensor;
+
         if (t.shape.size() != 2)
             throw std::runtime_error("GLM: matrix must have two dimensions: " + name);
         const int in = (int)t.shape[0], out = (int)t.shape[1];
+        if(artifact.is_exl3() && t.type==GGML_TYPE_BF16) {
+            if(native_dense_q8) {
+                const auto it=native_q8_weights.find(name);
+                if(it==native_q8_weights.end())throw std::runtime_error("EXL3 Q8: fixed matrix not prepared: "+name);
+                const auto& W=*it->second.data;
+                if(it->second.bits==16) {
+                    if(nt==1)k::exl3_bf16_gemv((const uint16_t*)W.p,x,y,in,out,stream);
+                    else {
+                        const float one=1,zero=0;const int panel_rows=512;
+                        auto& panel=buf("bf16_dense_panel",size_t(panel_rows)*in);
+                        for(int row=0;row<out;row+=panel_rows) {
+                            int rows=std::min(panel_rows,out-row);
+                            k::exl3_bf16_to_float((const uint16_t*)W.p+size_t(row)*in,panel.f(),rows*in,stream);
+                            check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,rows,nt,in,&one,panel.f(),in,x,in,&zero,y+row,out));
+                        }
+                    }
+                    check(cudaGetLastError());return;
+                }
+                const bool q6=it->second.bits==6;
+                if(nt==1) {
+                    if(q6)k::exl3_dense_q6_gemv(W.p,x,y,in,out,stream);else k::exl3_dense_q8_gemv(W.p,x,y,in,out,stream);
+                } else {
+                    const float one=1,zero=0;const int panel_rows=512;
+                    auto& panel=buf("q8_dense_panel",size_t(panel_rows)*in);
+                    for(int row=0;row<out;row+=panel_rows) {
+                        int rows=std::min(panel_rows,out-row);
+                        const auto* packed=(const uint8_t*)W.p+size_t(row)*(in/32)*(q6?26:34);
+                        if(q6)k::exl3_dense_q6_to_float(packed,panel.f(),rows*in,stream);else k::exl3_dense_q8_to_float(packed,panel.f(),rows*in,stream);
+                        check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,rows,nt,in,&one,panel.f(),in,x,in,&zero,y+row,out));
+                    }
+                }
+                check(cudaGetLastError());return;
+            }
+            if(nt==1 && !fast && native_cpu_dense) {
+                std::vector<float> host_x(in),host_y(out);
+                check(cudaMemcpyAsync(host_x.data(),x,size_t(in)*4,cudaMemcpyDeviceToHost,stream));
+                check(cudaStreamSynchronize(stream));
+                const auto* rows=reinterpret_cast<const uint16_t*>(artifact.at(name).data());
+                exl_pool->run([&](size_t rank) {
+                    size_t first=size_t(out)*rank/exl_pool->size(),last=size_t(out)*(rank+1)/exl_pool->size();
+                    for(size_t row=first;row<last;++row)
+                        host_y[row]=strata::cpu::exl3::bf16_dot(rows+row*in,host_x.data(),in);
+                });
+                check(cudaMemcpyAsync(y,host_y.data(),size_t(out)*4,cudaMemcpyHostToDevice,stream));
+                check(cudaStreamSynchronize(stream));
+                return;
+            }
+            auto& W=weight(name,false);const float one=1,zero=0;
+            if(nt==1)k::exl3_bf16_gemv((const uint16_t*)W.p,x,y,in,out,stream);
+            else {
+                const int panel_rows=512;auto& panel=buf("bf16_dense_panel",size_t(panel_rows)*in);
+                for(int row=0;row<out;row+=panel_rows) {
+                    int rows=std::min(panel_rows,out-row);
+                    k::exl3_bf16_to_float((const uint16_t*)W.p+size_t(row)*in,panel.f(),rows*in,stream);
+                    check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,rows,nt,in,&one,panel.f(),in,x,in,&zero,y+row,out));
+                }
+            }
+            check(cudaGetLastError());return;
+        }
         auto &W = weight(name, floating);
         const float one = 1, zero = 0;
         if (fast && name != "output.weight") {
@@ -2312,6 +2604,7 @@ class Decoder {
     }
     void moe(const std::string &p, int l, const float *x, float *out,
              const strata::core::LayerDescriptor &layer) {
+        if(artifact.is_exl3()) {if(fast)moe_exl3_gpu(p,l,x,out,layer);else moe_exl3(p,l,x,out,layer);return;}
         if (l == (int)m.layers.size() && mtp_ready) {
             moe_mtp(p, x, out, layer);
             return;
@@ -3333,13 +3626,23 @@ class Decoder {
         mtp_position = snapshot.mtp_position;
     }
     Decoder(const std::string &path, size_t ctx, size_t cache_bytes, int threads, size_t expert_bytes = 0, bool pin_cpu = false)
-        : artifact(path), m(artifact.descriptor()), pool(threads, pin_cpu, true), capacity(ctx),
+        : artifact(path), m(artifact.descriptor()), pool(artifact.is_exl3()?1:threads, artifact.is_exl3()?false:pin_cpu, true), capacity(ctx),
           budget(cache_bytes) {
         check(cudaGetDevice(&primary_device));
         if (m.architecture != "glm5next" || ctx < 1 || ctx > (size_t)m.context || budget < 64 * 1024 * 1024)
             throw std::invalid_argument("GLM: invalid architecture, context, or cache budget");
         validate();
-        if (GpuPrefill::prefetch_groups() && m.experts == 288)
+        if(artifact.is_exl3()) {
+            if(ctx>65536)throw std::invalid_argument("EXL3: context above 64K requires host KV offload, which is deferred");
+#ifdef __linux__
+            const uint64_t ram=uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
+            const auto census=artifact.census();
+            if(census.main_experts+census.main_fixed+6ULL*1024*MiB>ram)throw std::runtime_error("EXL3: main weights plus 6 GiB host reserve exceed system RAM");
+#endif
+            if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
+            exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu);
+        }
+        if (!artifact.is_exl3() && GpuPrefill::prefetch_groups() && m.experts == 288)
             for (size_t l = 0; l < m.layers.size(); ++l) {
                 if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
                 const auto p = "blk." + std::to_string(l) + ".";
@@ -3454,12 +3757,14 @@ class Decoder {
                 fp32(p + "hc_" + part + "_scale.weight");
             }
             if (layer.ffn == strata::core::FfnKind::Moe) {
+                if(!artifact.is_exl3()) {
                 artifact.shape(p + "ffn_gate_exps.weight", {H, ff, E});
                 artifact.shape(p + "ffn_up_exps.weight", {H, ff, E});
                 artifact.shape(p + "ffn_down_exps.weight", {ff, H, E});
                 if (artifact.at(p + "ffn_gate_exps.weight").tensor->type !=
                     artifact.at(p + "ffn_up_exps.weight").tensor->type)
                     throw std::runtime_error("GLM: gate/up types differ");
+                }
                 artifact.shape(p + "ffn_gate_inp.weight", {H, E});
                 artifact.shape(p + "exp_probs_b.bias", {E});
                 fp32(p + "exp_probs_b.bias");
@@ -3520,7 +3825,7 @@ class Decoder {
         if (nt < 1 || nt > (fast ? gpu->chunk : cpu::MAXT) || position + nt > (int)capacity)
             throw std::out_of_range("GLM: invalid batch size or context capacity");
         for (int token : tokens)
-            if (token < 0 || token >= m.vocab)
+            if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
                 throw std::out_of_range("GLM: token or context out of range");
         batch_tokens = nt;
         if (device_resident_experts && !fast && (nt == 1 || batched_resident) && decode_prefill_cache && !device_lookup_ready) {
@@ -3573,7 +3878,7 @@ class Decoder {
             check_stop();
             auto layer_start = std::chrono::steady_clock::now();
             reset_phase();
-            if (fast && layer.ffn == strata::core::FfnKind::Moe) prefetch_groups(l);
+            if (fast && !artifact.is_exl3() && layer.ffn == strata::core::FfnKind::Moe) prefetch_groups(l);
             auto enqueue_mixer = [&] {
                 hc_read(p, "attn", r.f(), collapsed.f(), c.f());
                 norm(p + "attn_norm.weight", collapsed.f(), x.f(), m.hidden);
@@ -3693,6 +3998,11 @@ class Decoder {
         for (float v : result)
             if (!std::isfinite(v))
                 throw std::runtime_error("GLM: non-finite logits");
+        if(artifact.is_exl3()) {
+            const auto& ids=artifact.exl3().token_ids;
+            for(int t=0;t<head_tokens;++t)for(size_t id=0;id<ids.size();++id)
+                if(!ids[id])result[t*m.vocab+id]=-std::numeric_limits<float>::infinity();
+        }
         return result;
     }
     std::vector<float> step(int token) { return batch({token}, false); }
@@ -3743,6 +4053,7 @@ class Decoder {
     }
     int vocabulary() const { return m.vocab; }
     void prepare_cpu(size_t bytes) {
+        if(artifact.is_exl3()&&bytes)throw std::invalid_argument("EXL3: GGUF CPU prepack is unsupported");
         if (!bytes || !prepared_experts.empty()) return;
         if (gpu_decode_experts) throw std::invalid_argument("CPU packing requires CPU target experts");
         for (const auto &cache : expert_cache)
@@ -4027,10 +4338,12 @@ class Decoder {
                     std::chrono::steady_clock::now() - start).count() << '\n';
     }
     void set_decode_cache_budget(size_t bytes) {
+        if(artifact.is_exl3()&&bytes)throw std::invalid_argument("EXL3: GGUF decode cache is unsupported");
         decode_cache_budget = bytes;
         if (bytes) prefill_routes.assign(m.layers.size(), std::vector<uint64_t>(m.experts));
     }
     void set_decode_cache_auto(bool value, bool extend = false) {
+        if(artifact.is_exl3()&&(value||extend))throw std::invalid_argument("EXL3: GGUF decode cache is unsupported");
         decode_cache_auto = value; decode_cache_extend = extend;
         if (value) {
             if (!gpu || gpu->chunk <= cpu::MAXT)
@@ -4054,10 +4367,11 @@ class Decoder {
             if (secondary) expert_copies[1] = std::make_unique<ExpertCopyWorker>(secondary->device);
         }
     }
-    void set_decode_graphs(bool enabled) { decode_graphs = enabled; }
+    void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
     // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
     // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
     void enable_remote_tp(const std::string &address, double share, bool reply_f16) {
+        if(artifact.is_exl3())throw std::invalid_argument("EXL3: remote tensor parallel is unsupported");
         auto tp = std::make_unique<RemoteTp>();
         tp->reply_format = reply_f16 ? strata::net::kReplyF16 : strata::net::kReplyF32;
         tp->hidden = (int)m.hidden;
@@ -4405,6 +4719,26 @@ class Decoder {
     }
 
     int enable_gpu(int requested, size_t total_budget, bool reserve_checkpoint = false) {
+        if(artifact.is_exl3()) {
+            if(gpu)return gpu->chunk;
+            int width=requested?requested:256;
+            if(width<1||width>256||total_budget<2048*MiB)throw std::invalid_argument("EXL3: GPU prefill batch must be 1..256");
+            size_t free,total;check(cudaMemGetInfo(&free,&total));
+            Device::limit()=std::min(total_budget-1024*MiB,Device::live()+(free>1024*MiB?free-1024*MiB:0));
+            check(cublasSetMathMode(blas,CUBLAS_PEDANTIC_MATH));
+            tensor_mla=false;
+            gpu=std::make_unique<GpuPrefill>(width,stream,false,capacity,false,false,false,true);
+            prepare_native_dense_q8();
+            if(native_expert_gpu_limit) {
+                if(!native_dense_q8)throw std::invalid_argument("EXL3 GPU expert cache requires resident dense quantization");
+                size_t free,total;check(cudaMemGetInfo(&free,&total));
+                const size_t physical=free>Device::physical_reserve()?free-Device::physical_reserve():0;
+                const size_t available=std::min(physical,Device::limit()>Device::live()?Device::limit()-Device::live():0);
+                if(available<896*MiB || native_expert_gpu_limit>available-896*MiB)
+                    throw std::runtime_error("EXL3 GPU expert cache plus 896 MiB runtime reserve exceed GPU budget: available_MiB="+std::to_string(available/MiB));
+            }
+            return width;
+        }
         if (gpu)
             return gpu->chunk;
         if (m.layers.size() != 45 || m.hidden != 4096 || m.experts != 288 || m.top_k != 8 ||
@@ -4477,6 +4811,7 @@ class Decoder {
     void configure_prefill(const std::vector<int> &devices, size_t total_budget,
                            size_t cache_bytes, bool automatic, bool reserve_mtp, bool tensor_experts = false,
                            bool tensor_batches = false) {
+        if(artifact.is_exl3()) {if(devices.size()!=1||cache_bytes||automatic||reserve_mtp||tensor_experts||tensor_batches)throw std::invalid_argument("EXL3: requires single GPU, CPU experts, no speculation/cache");return;}
         if (primary_prefill_groups != 9 && (devices.size() != 2 || m.experts != 288))
             throw std::invalid_argument("GLM: weighted prefill partition requires two GPUs and 288 experts");
         std::cerr << "PREFILL_PARTITION primary_groups=" << (devices.size() == 2 ? primary_prefill_groups : 18)
@@ -4560,6 +4895,7 @@ class Decoder {
         configure_prefill_schedule();
     }
     void set_decode_prefill_cache(bool enabled) {
+        if(artifact.is_exl3()&&enabled)throw std::invalid_argument("EXL3: GGUF expert caches are unsupported");
         if (enabled && (!gpu || !prepared_experts.empty() || gpu_decode_experts))
             throw std::invalid_argument("GLM: decode prefill cache requires unpacked CPU experts and GPU prefill");
         decode_prefill_cache = enabled;
@@ -4585,6 +4921,7 @@ class Decoder {
         if (secondary) secondary->cache.reset();
     }
     void warm_weights(bool lock = false, const std::vector<int> &upload_devices = {}) {
+        if(artifact.is_exl3())throw std::invalid_argument("EXL3: GGUF weight locking is unsupported");
         if (direct_upload_enabled() && !lock)
             throw std::invalid_argument("GLM: direct weight upload requires --lock-weights");
         const auto start = std::chrono::steady_clock::now();
@@ -4652,11 +4989,13 @@ class Decoder {
         }
     }
     void set_gpu_decode_experts(bool value) {
+        if(artifact.is_exl3()&&value)throw std::invalid_argument("EXL3: decode currently requires CPU routed experts");
         if (value && !gpu)
             throw std::invalid_argument("GPU decode experts require GPU prefill allocation");
         gpu_decode_experts = value;
     }
     void reset_decode_stats() {
+        native_expert_gpu_hits=native_expert_gpu_misses=native_expert_gpu_copied=0;
         if (gpu) {
             gpu->transferred = 0;
             gpu->groups = 0;
@@ -4666,6 +5005,21 @@ class Decoder {
         pool.ms_native_local_prepare = 0;
         pool.native_local_queries = 0;
         pool.multi_bytes = 0;
+    }
+    void set_native_dense_q8(bool enabled,bool cpu_reference=false) {
+        if(!artifact.is_exl3())throw std::invalid_argument("EXL3 Q8 requires a native artifact");
+        native_dense_q8=enabled;native_cpu_dense=cpu_reference;
+        if(enabled && !native_q8_weights.empty()) {
+            // A BF16 quality-reference pass may have cached duplicate dense matrices.
+            // They are unused once the protected mixed Q8/BF16 resident set is active.
+            check(cudaStreamSynchronize(stream));
+            for(auto it=weights.begin();it!=weights.end();) {
+                const auto name=it->first.substr(0,it->first.rfind(':'));
+                if(!native_q8_weights.count(name)){++it;continue;}
+                if(native_pinned_weights.erase(it->first))native_pinned_bytes-=it->second.data->bytes;
+                resident-=it->second.data->bytes;lru.erase(it->second.order);it=weights.erase(it);
+            }
+        }
     }
     void set_profile(bool enabled) { profile = enabled; }
     void set_routing_trace(const std::string &path) {
@@ -4680,6 +5034,10 @@ class Decoder {
         if (getrusage(RUSAGE_SELF, &usage) == 0)
             std::cerr << "HOST_RSS peak_MiB=" << usage.ru_maxrss / 1024.0 << '\n';
 #endif
+        if(artifact.is_exl3() && native_expert_gpu_limit)
+            std::cerr<<"EXL3_GPU_CACHE hits="<<native_expert_gpu_hits<<" misses="<<native_expert_gpu_misses
+                     <<" copied_MiB="<<native_expert_gpu_copied/double(MiB)<<" entries="<<native_gpu_experts.size()
+                     <<" allocated_MiB="<<native_expert_gpu_bytes/double(MiB)<<'\n';
         std::cerr << "CPU_EXPERT gu_ms=" << pool.ms_multi_gu << " quant_ms=" << pool.ms_multi_q
                   << " down_ms=" << pool.ms_multi_down << " bytes=" << pool.multi_bytes << '\n';
         if (pool.native_local_queries)
@@ -5049,10 +5407,15 @@ static int serve(int argc, char **argv) {
     const size_t gpu_budget = argc > 9 ? gpu_budget_bytes(argv[9]) : 12288 * MiB;
     const auto stops = argc > 8 ? token_ids(argv[8]) : std::vector<int>{};
     const int lookup_depth = argc > 10 ? std::stoi(argv[10]) : 0;
+    if(std::filesystem::is_directory(argv[2])&&lookup_depth)throw std::invalid_argument("EXL3: lookup speculation is not qualified");
     const bool stream_decode = argc > 11 && std::stoi(argv[11]) != 0;
     const bool use_mtp = argc > 12 && std::string(argv[12]) == "mtp";
     const int draft_depth = argc > 13 ? std::stoi(argv[13]) : 3;
-    const bool pin_cpu = argc > 14 && std::string(argv[14]) == "auto";
+    if(argc>25) {
+        std::string pages=argv[25];if(pages!="4k"&&pages!="huge")throw std::invalid_argument("weight_pages must be 4k or huge");
+        strata::cpu::exl3::huge_pages=pages=="huge";
+    }
+    const bool pin_cpu = argc > 14 && (std::string(argv[14]) == "auto" || std::string(argv[14]) == "numa");
     const size_t cpu_prepack_mib = argc > 15 ? std::stoull(argv[15]) : 0;
     const auto devices = configure_devices(argc > 16 ? argv[16] : "0", gpu_budget);
     const auto [prefill_cache_bytes, prefill_cache_auto] = cache_setting(argc > 17 ? argv[17] : "0");
@@ -5289,7 +5652,7 @@ int main(int argc, char **argv) {
     if (argc < 3) {
         std::cerr << "usage: strata-glm-decode <shard.gguf> <comma-separated token IDs> [steps=1] "
                      "[dense-cache-MiB=4096] [threads=6] [--prefill-batch=1..8192|auto] "
-                     "[--gpu-budget-mib=12288] [--check-prefill] "
+                     "[--gpu-budget-mib=12288] [--check-prefill] [--check-native-dense] "
                      "[--gpu-devices=0|0,1] [--prefill-expert-cache-mib=auto|N] [--lock-weights] [--check-gpu-split] "
                      "[--decode-prefill-cache] [--profile-decode] [--profile-prefill] "
                      "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
@@ -5311,7 +5674,7 @@ int main(int argc, char **argv) {
         const int mib = argc > 4 ? std::stoi(argv[4]) : 4096;
         const int threads = argc > 5 ? std::stoi(argv[5]) : 6;
         bool replay = false;
-        bool check_prefill = false;
+        bool check_prefill = false, check_native_dense_q8 = false;
         int expert_mib = 0, decode_cache_mib = 0, decode_cache_slots = 0;
         int prefill_batch = 8;
         size_t gpu_budget = 12288 * MiB;
@@ -5332,7 +5695,8 @@ int main(int argc, char **argv) {
         std::vector<int> stops;
         for (int i = 6; i < argc; ++i) {
             const std::string flag = argv[i];
-            if (flag == "--prefill-experts=f16-batched") { tensor_experts = tensor_batches = true; force_gpu = true; }
+            if (flag == "--check-native-dense-q8" || flag == "--check-native-dense") {check_native_dense_q8=true;force_gpu=true;}
+            else if (flag == "--prefill-experts=f16-batched") { tensor_experts = tensor_batches = true; force_gpu = true; }
             else if (flag == "--prefill-experts=f16") { tensor_experts = true; tensor_batches = false; force_gpu = true; }
             else if (flag == "--prefill-experts=mmq") tensor_experts = tensor_batches = false;
             else if (flag == "--decode-cache-adapt") decode_cache_adapt = true;
@@ -5384,7 +5748,9 @@ int main(int argc, char **argv) {
             else if (flag.starts_with("--lookup-depth="))
                 lookup_depth = std::stoi(flag.substr(15));
             else if (flag.starts_with("--cpu-prepack-mib=")) cpu_prepack_mib = std::stoull(flag.substr(18));
-            else if (flag == "--cpu-affinity=auto") pin_cpu = true;
+            else if(flag=="--weight-pages=huge")strata::cpu::exl3::huge_pages=true;
+            else if(flag=="--weight-pages=4k")strata::cpu::exl3::huge_pages=false;
+            else if (flag == "--cpu-affinity=auto" || flag == "--cpu-affinity=numa") pin_cpu = true;
             else if (flag == "--cpu-affinity=none") pin_cpu = false;
             else if (flag.starts_with("--routing-trace=")) routing_trace_path = flag.substr(16);
             else if (flag == "--profile")
@@ -5444,8 +5810,14 @@ int main(int argc, char **argv) {
         if (decode_cache_slots < 0 || decode_cache_slots > 12960 ||
             (decode_cache_slots && (!decode_cache_mib || decode_cache_auto)))
             throw std::invalid_argument("decode-cache-slots needs a cache budget and 0..12960 slots");
+        if(std::filesystem::is_directory(argv[1])&&lookup_depth)throw std::invalid_argument("EXL3: lookup speculation is not qualified");
         Decoder decoder(argv[1], context ? context : tokens.size() + steps, (size_t)mib * 1024 * 1024,
                         threads, (size_t)expert_mib * 1024 * 1024, pin_cpu);
+        if(check_native_dense_q8) {
+            if((context ? size_t(context) : tokens.size()+steps)<tokens.size()+8)
+                throw std::invalid_argument("--check-native-dense-q8 requires native EXL3 and eight available positions");
+            decoder.set_native_dense_q8(true);
+        }
         if (prefill_batch == 0 || prefill_batch > cpu::MAXT || force_gpu)
             prefill_batch = decoder.enable_gpu(prefill_batch, gpu_budget, lookup_depth > 0 || check_verify || check_decode_graphs);
         if (direct_upload_enabled()) decoder.warm_weights(true, devices);
@@ -5478,7 +5850,8 @@ int main(int argc, char **argv) {
             std::vector<float> last;
             for (size_t t = 0; t < tokens.size(); t += width) {
                 const size_t end = std::min(tokens.size(), t + width);
-                last = decoder.batch(std::vector<int>(tokens.begin() + t, tokens.begin() + end));
+                last = decoder.batch(std::vector<int>(tokens.begin() + t, tokens.begin() + end),
+                    !(std::filesystem::is_directory(argv[1]) && width <= cpu::MAXT));
             }
             return last;
         };
@@ -5506,6 +5879,7 @@ int main(int argc, char **argv) {
                     return a == b;
                 double error = 0, norm = 0;
                 for (size_t i = 0; i < a.size(); ++i) {
+                    if (a[i] == -std::numeric_limits<float>::infinity() && b[i] == a[i]) continue;
                     if (!std::isfinite(a[i]))
                         return false;
                     error += (double)(a[i] - b[i]) * (a[i] - b[i]);
@@ -5519,7 +5893,10 @@ int main(int argc, char **argv) {
             bool same = close(logits, expected) && actual_state.position == expected_state.position;
             for (size_t l = 0; l < actual_state.layers.size(); ++l)
                 for (size_t i = 0; i < 8; ++i)
-                    same &= close(actual_state.layers[l][i], expected_state.layers[l][i]);
+                    if (!close(actual_state.layers[l][i], expected_state.layers[l][i])) {
+                        std::cerr << "parity state layer=" << l << " buffer=" << i << '\n';
+                        same = false;
+                    }
             same &= std::max_element(logits.begin(), logits.end()) - logits.begin() ==
                     std::max_element(expected.begin(), expected.end()) - expected.begin();
             std::cerr << "parity greedy actual="
@@ -5558,6 +5935,36 @@ int main(int argc, char **argv) {
 #endif
                 decoder.report_gpu();
             }
+        }
+        if(check_native_dense_q8) {
+            const auto quantized_state=decoder.snapshot();const auto quantized_logits=logits;
+            decoder.reset();decoder.set_native_dense_q8(false,false);
+            auto reference_logits=prefill(prefill_batch);
+            decoder.set_native_dense_q8(false,true);
+            std::vector<int> window;std::vector<std::vector<float>> reference_rows;
+            for(size_t i=0;i<8;++i){window.push_back(greedy(reference_logits));reference_rows.push_back(reference_logits);if(i+1<8)reference_logits=decoder.step(window[i]);}
+            decoder.restore(quantized_state);decoder.set_native_dense_q8(true);
+            auto actual=quantized_logits;double max_kl=0,max_relative=0;int top1=0;
+            for(size_t row=0;row<window.size();++row) {
+                const auto& expected=reference_rows[row];double amax=-INFINITY,bmax=-INFINITY,error=0,energy=0;
+                for(size_t i=0;i<actual.size();++i) {
+                    if(actual[i]==-INFINITY && expected[i]==-INFINITY)continue;
+                    if(!std::isfinite(actual[i])||!std::isfinite(expected[i]))throw std::runtime_error("EXL3 Q8: nonfinite quality logits");
+                    amax=std::max(amax,double(expected[i]));bmax=std::max(bmax,double(actual[i]));
+                    error+=double(actual[i]-expected[i])*(actual[i]-expected[i]);energy+=double(expected[i])*expected[i];
+                }
+                double asum=0,bsum=0;
+                for(size_t i=0;i<actual.size();++i){asum+=std::exp(double(expected[i])-amax);bsum+=std::exp(double(actual[i])-bmax);}
+                double az=amax+std::log(asum),bz=bmax+std::log(bsum),kl=0;
+                for(size_t i=0;i<actual.size();++i)if(std::isfinite(expected[i]))kl+=std::exp(double(expected[i])-az)*(double(expected[i])-az-double(actual[i])+bz);
+                double relative=std::sqrt(error/std::max(energy,1e-30));bool same=greedy(actual)==greedy(expected);top1+=same;
+                max_kl=std::max(max_kl,kl);max_relative=std::max(max_relative,relative);
+                std::cerr<<"EXL3_Q8_QUALITY row="<<row<<" kl_bf16_to_q8="<<kl<<" relative_L2="<<relative<<" greedy_reference="<<greedy(expected)<<" greedy_actual="<<greedy(actual)<<'\n';
+                if(row+1<window.size())actual=decoder.step(window[row]);
+            }
+            decoder.restore(quantized_state);logits=quantized_logits;
+            std::cerr<<"EXL3_Q8_QUALITY_SUMMARY rows="<<window.size()<<" top1_equal="<<top1<<" max_kl="<<max_kl<<" max_relative_L2="<<max_relative<<'\n';
+            if(max_kl>.01 || top1!=int(window.size()))throw std::runtime_error("EXL3 dense quantization: quality smoke threshold exceeded (max KL .01, all eight greedy predictions must match)");
         }
         const auto cache_prepare_start = std::chrono::steady_clock::now();
         decoder.prepare_decode_cache();

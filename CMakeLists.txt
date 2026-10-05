@@ -239,7 +239,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/shared_expert.cu
                           src/kernels/cuda/gr.cu
                           src/kernels/cuda/gdn.cu
-                          src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu
+                          src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/exl3.cu
                           src/kernels/cuda/qsa.cu
                           src/kernels/cuda/elementwise.cu
                           src/kernels/cuda/bf16_gemv.cu
@@ -1128,4 +1128,25 @@ if(STRATA_BUILD_TESTS)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
     add_subdirectory(tests)
   endif()
+endif()
+
+add_executable(strata-glm-exl3-kernel-bench tools/glm_exl3_kernel_bench.cpp)
+target_link_libraries(strata-glm-exl3-kernel-bench PRIVATE strata_artifact Threads::Threads)
+add_executable(strata-glm-exl3-check tools/glm_exl3_check.cpp)
+target_include_directories(strata-glm-exl3-check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(STRATA_BUILD_TESTS)
+  add_executable(exl3_cpu_test tests/artifact/exl3_test.cpp)
+  target_link_libraries(exl3_cpu_test PRIVATE strata_artifact Threads::Threads)
+  add_test(NAME exl3_cpu_test COMMAND exl3_cpu_test)
+  if(STRATA_ENABLE_CUDA)
+    add_executable(exl3_cuda_test tests/artifact/exl3_cuda.cpp)
+    target_link_libraries(exl3_cuda_test PRIVATE strata_kernels CUDA::cudart CUDA::cublas)
+    add_test(NAME exl3_cuda_test COMMAND exl3_cuda_test)
+    set_tests_properties(exl3_cuda_test PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
+endif()
+if(STRATA_BUILD_TESTS)
+  add_executable(safetensors_test tests/artifact/safetensors_test.cpp)
+  target_link_libraries(safetensors_test PRIVATE strata_artifact)
+  add_test(NAME safetensors_test COMMAND safetensors_test)
 endif()

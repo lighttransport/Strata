@@ -4,6 +4,9 @@ The technical side of Strata: every measured number, the API, images, all settin
 New here? Start with the [README](../README.md); installing step by step is in [INSTALL.md](INSTALL.md), the models in
 [MODELS.md](MODELS.md), common problems in [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
+The experimental GLM decoder can also read a routed-only K2/MCG safetensors pack; see
+[GLM native EXL3](GLM_EXL3.md) for its NUMA placement, configuration and validation limits.
+
 > **On this page:** [Speed](#speed-measured) · [Other GPUs](#other-gpus-estimated) · [Which model?](#which-model) ·
 > [Requirements](#before-you-start) · [Windows](#windows) · [Linux](#linux) · [API](#using-it) ·
 > [MCP tools](#tools-from-mcp-servers) · [MCP server](#manage-strata-from-your-ai-assistant-mcp-server) ·

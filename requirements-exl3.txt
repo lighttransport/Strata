@@ -1,0 +1,2 @@
+# Optional native safetensors tokenizer; no torch or transformers runtime.
+tokenizers==0.23.2

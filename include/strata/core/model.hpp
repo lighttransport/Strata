@@ -1,6 +1,7 @@
 #pragma once
 
 #include "strata/artifact/gguf_reader.hpp"
+#include "strata/artifact/glm_native.hpp"
 
 #include <cmath>
 #include <filesystem>
@@ -38,6 +39,23 @@ struct ModelDescriptor {
     bool has_ngram = false;
     std::vector<LayerDescriptor> layers, draft_layers;
 
+    static ModelDescriptor native(const artifact::Json& root) {
+        const auto& c=root.at("text_config");ModelDescriptor m;m.architecture="glm5next";
+        auto n=[&](const char* k){return static_cast<int64_t>(c.at(k).integer());};
+        m.hidden=n("hidden_size");m.vocab=n("vocab_size");m.context=n("max_position_embeddings");
+        m.experts=n("n_routed_experts");m.top_k=n("num_experts_per_tok");m.streams=n("hc_mult");
+        m.attention_heads=n("num_attention_heads");m.kv_rank=n("kv_lora_rank");m.q_rank=n("q_lora_rank");
+        const auto& a=c.at("linear_attn_config");m.linear_heads=a.at("num_heads").integer();m.linear_dim=a.at("head_dim").integer();
+        m.conv_kernel=a.at("short_conv_kernel_size").integer();m.gate_lower_bound=a.at("gate_lower_bound").real();
+        m.index_heads=n("index_n_heads");m.index_dim=n("index_head_dim");m.index_pool=n("index_kpool");m.index_top_k=n("index_topk");
+        m.sinkhorn_iterations=n("hc_sinkhorn_iters");m.hc_epsilon=c.at("hc_eps").real();m.rms_epsilon=c.at("rms_norm_eps").real();
+        m.expert_scale=c.at("routed_scaling_factor").real();m.rope_dim=n("qk_rope_head_dim");m.expert_groups=n("n_group");m.selected_groups=n("topk_group");
+        m.gating_function=2;m.normalize_expert_weights=c.at("norm_topk_prob").flag();m.shared_experts=n("n_shared_experts");
+        m.shared_intermediate=n("moe_intermediate_size");m.residual=ResidualKind::Mhc;
+        for(int64_t l=0;l<n("num_hidden_layers");++l)m.layers.push_back({c.at("layer_types").array.at(l).string()=="linear_attention"?MixerKind::Kda:MixerKind::SparseMla,
+            l<n("first_k_dense_replace")?FfnKind::Dense:FfnKind::Moe,l<n("first_k_dense_replace")?n("intermediate_size"):n("moe_intermediate_size"),c.at("swiglu_limit").real(),c.at("swiglu_limit").real()});
+        return m;
+    }
     static ModelDescriptor read(const GgufFile &file) {
         auto integer = [&](const std::string &key) -> int64_t {
             const auto *v = file.get(key);
@@ -155,7 +173,8 @@ struct ArtifactTensor {
     const GgufFile *file;
     const TensorInfo *tensor;
     uint64_t bytes;
-    const uint8_t *data() const { return file->tensor_data(*tensor); }
+    const artifact::GlmNative::Binding* native = nullptr;
+    const uint8_t *data() const { return native ? native->data() : file->tensor_data(*tensor); }
 };
 
 struct ModelCensus {
@@ -167,6 +186,11 @@ struct ModelCensus {
 class ModelArtifact {
   public:
     explicit ModelArtifact(const std::filesystem::path &shard) {
+        if(std::filesystem::is_directory(shard)) {
+            native_=std::make_unique<artifact::GlmNative>(shard);descriptor_=ModelDescriptor::native(native_->model.config);
+            for(const auto& [name,b]:native_->bindings)tensors_.emplace(name,ArtifactTensor{nullptr,&b.info,b.info.elements()*(b.info.type==0?4:2),&b});
+            return;
+        }
         const std::regex split("^(.*)-([0-9]{5})-of-([0-9]{5})\\.gguf$");
         std::smatch match;
         const std::string filename = shard.filename().string();
@@ -237,6 +261,8 @@ class ModelArtifact {
             throw std::runtime_error("model: split tensor count mismatch");
     }
 
+    bool is_exl3()const { return bool(native_); }
+    artifact::GlmExl3& exl3() { if(!native_)throw std::runtime_error("not EXL3");return native_->model; }
     const ModelDescriptor &descriptor() const { return descriptor_; }
     const std::map<std::string, ArtifactTensor> &tensors() const { return tensors_; }
     const ArtifactTensor &at(const std::string &name) const {
@@ -251,6 +277,7 @@ class ModelArtifact {
     }
     ModelCensus census() const {
         ModelCensus c;
+        if(native_) { const auto& n=native_->model;c.main_experts=n.experts_bytes;c.main_fixed=n.fixed_bytes;c.draft=n.draft_bytes;c.total=n.tensors.bytes();c.selected_expert_bytes=c.main_experts/descriptor_.experts*descriptor_.top_k;return c; }
         for (const auto &[name, t] : tensors_) {
             c.total += t.bytes;
             bool draft = false;
@@ -268,6 +295,7 @@ class ModelArtifact {
     }
 
   private:
+    std::unique_ptr<artifact::GlmNative> native_;
     ModelDescriptor descriptor_;
     std::vector<std::unique_ptr<GgufFile>> files_;
     std::map<std::string, ArtifactTensor> tensors_;

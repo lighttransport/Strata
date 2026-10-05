@@ -1,0 +1,19 @@
+{
+  "exe": "build-glm/strata-glm-decode",
+  "model": "/mnt/nvme01/models/glm53f/glm53f-exl",
+  "model_name": "glm-5.3-flash-exl3",
+  "context": 8192,
+  "dense_cache_mib": 4096,
+  "gpu_budget_mib": 10240,
+  "gpu_devices": "0",
+  "threads": 15,
+  "cpu_affinity": "numa",
+  "weight_pages": "4k",
+  "prefill_batch": 256,
+  "decode_experts": "cpu",
+  "speculative": "none",
+  "log": "build-exl3-engine.log",
+  "env": {
+    "STRATA_EXL3_CPU_DENSE": "1"
+  }
+}

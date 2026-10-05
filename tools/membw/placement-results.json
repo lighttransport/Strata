@@ -1,0 +1,51 @@
+[
+  {
+    "command": [
+      "numactl",
+      "--localalloc",
+      "tools/membw/membw",
+      "--spread",
+      "--threads",
+      "8",
+      "--mib",
+      "2048",
+      "--repeats",
+      "40",
+      "--kernel",
+      "read-int"
+    ],
+    "huge_advice": false,
+    "buffer_pages_by_node": {
+      "N0": 524288,
+      "N1": 524288
+    },
+    "anonymous_huge_kib": 0,
+    "stdout": "Threads: 8; eligible NUMA nodes: 0 1; worker CPUs: 0 4 8 12 1 5 9 13\nArray size: 2048 MiB each (two arrays); worker first-touch placement\nPage advice: 4 KiB; unroll: 4; prefetch: 0 bytes; decode block: 256 KiB; layers: 1\nread-int: median 91.6786, best 92.3251, min 87.2675 GB/s (decimal), 40 passes; validation OK\n",
+    "note": "Placement probe; performance excludes neither /proc sampling nor its overhead. Use confirmation suite for performance."
+  },
+  {
+    "command": [
+      "numactl",
+      "--localalloc",
+      "tools/membw/membw",
+      "--spread",
+      "--threads",
+      "8",
+      "--mib",
+      "2048",
+      "--repeats",
+      "40",
+      "--kernel",
+      "read-int",
+      "--huge"
+    ],
+    "huge_advice": true,
+    "buffer_pages_by_node": {
+      "N0": 524288,
+      "N1": 524288
+    },
+    "anonymous_huge_kib": 4194304,
+    "stdout": "Threads: 8; eligible NUMA nodes: 0 1; worker CPUs: 0 4 8 12 1 5 9 13\nArray size: 2048 MiB each (two arrays); worker first-touch placement\nPage advice: huge; unroll: 4; prefetch: 0 bytes; decode block: 256 KiB; layers: 1\nread-int: median 90.9102, best 91.8243, min 87.5289 GB/s (decimal), 40 passes; validation OK\n",
+    "note": "Placement probe; performance excludes neither /proc sampling nor its overhead. Use confirmation suite for performance."
+  }
+]

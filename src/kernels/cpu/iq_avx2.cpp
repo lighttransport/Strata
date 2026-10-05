@@ -120,9 +120,10 @@ template <> struct Fmt32<17> {   // IQ2_XS: d, qs[32] u16 (9-bit grid index + 7-
         const int o = 4 * half;
         g = _mm256_set_epi64x((long long) iq2xs_grid[v[o + 3] & 511], (long long) iq2xs_grid[v[o + 2] & 511],
                               (long long) iq2xs_grid[v[o + 1] & 511], (long long) iq2xs_grid[v[o] & 511]);
-        uint32_t s = 0;
-        for (int l = 0; l < 4; ++l) s |= (uint32_t) ksigns_iq2xs[v[o + l] >> 9] << (8 * l);
-        sgn = sgn_vec(s);
+        sgn = _mm256_set_epi64x((long long)even_signs.v[v[o+3] >> 9],
+                                (long long)even_signs.v[v[o+2] >> 9],
+                                (long long)even_signs.v[v[o+1] >> 9],
+                                (long long)even_signs.v[v[o] >> 9]);
         const uint8_t sb = b[66 + 2 * j + half];
         sc = sc16(2 * (sb & 15) + 1, 2 * (sb >> 4) + 1);
     }
@@ -398,7 +399,12 @@ inline void row_dot_iq2xs(const uint8_t* row, int nblocks, const block_q8_K* con
 
 template <int TY, int NT>
 inline void row_dot_any(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
-    if constexpr (TY == 17) row_dot_iq2xs<NT>(row, nblocks, y, res);
+    if constexpr (TY == 17) {
+        // Optional Zen 1 path: 1 KiB sign table, identical integer sums and FP32 order.
+        static const bool table_signs = std::getenv("STRATA_IQ2_TABLE_SIGNS") != nullptr;
+        if (table_signs) row_dot<17, NT>(row, nblocks, y, res);
+        else row_dot_iq2xs<NT>(row, nblocks, y, res);
+    }
     else                    row_dot<TY, NT>(row, nblocks, y, res);
 }
 

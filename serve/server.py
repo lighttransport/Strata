@@ -2909,15 +2909,21 @@ def main() -> int:
         ap.error(f"the model's tokenizer is missing ({tpath / 'vocab.json'}); run setup again")
     if a.engine == "glm":
         if not cfg.get("model") or not cfg.get("exe"):
-            ap.error("--engine glm needs a config with exe and model (any GLM GGUF shard)")
+            ap.error("--engine glm needs a config with exe and model (GLM GGUF shard or native EXL3 directory)")
         from glm_generate import metadata_shard
         from gguf_reader import GGUFFile
         from strata_tokenizer import Tokenizer
         shard = metadata_shard(Path(cfg["model"]))
-        glm_metadata = GGUFFile(shard).metadata
+        glm_native = shard.is_dir()
+        if glm_native:
+            from glm_artifact import NativeTokenizer, load_metadata
+            glm_metadata = load_metadata(shard)
+            tok = NativeTokenizer(shard)
+        else:
+            glm_metadata = GGUFFile(shard).metadata
+            tok = Tokenizer.from_gguf(shard)
         if glm_metadata.get("general.architecture") != "glm5next":
-            ap.error("--engine glm requires a glm5next GGUF")
-        tok = Tokenizer.from_gguf(shard)
+            ap.error("--engine glm requires a glm5next artifact")
     elif (tpath / "vocab.json").exists():
         import strata_tokenizer as ST
         vocab = json.loads((tpath / "vocab.json").read_text(encoding="utf-8"))
@@ -2933,21 +2939,27 @@ def main() -> int:
             ap.error("GLM decode_experts must be cpu or gpu")
         if cfg.get("speculative", "none") not in ("none", "lookup", "mtp"):
             ap.error("GLM speculative must be none, lookup or mtp")
-        if cfg.get("cpu_affinity", "none") not in ("none", "auto"):
-            ap.error("GLM cpu_affinity must be none or auto")
+        if cfg.get("cpu_affinity", "none") not in ("none", "auto", "numa"):
+            ap.error("GLM cpu_affinity must be none, auto or numa")
         if not 1 <= int(cfg.get("draft_depth", 3)) <= 7:
             ap.error("GLM draft_depth must be 1..7")
-        context = int(cfg.get("context", 4096))
+        context = int(cfg.get("context", 8192 if glm_native else 4096))
+        if glm_native and (context > 65536 or cfg.get("speculative", "none") != "none" or cfg.get("lookup_depth", 0) or cfg.get("decode_experts", "cpu") != "cpu"):
+            ap.error("native EXL3 requires context <=64K, CPU decode experts and speculative=none")
         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
-                str(cfg.get("threads", 6)), str(cfg.get("expert_cache_mib", 0)),
-                str(cfg.get("prefill_batch", 8)), ",".join(str(glm_metadata[k]) for k in
+                str(cfg.get("threads", 15 if glm_native else 6)), str(cfg.get("expert_cache_mib", 0)),
+                str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(str(glm_metadata[k]) for k in
                     ("tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id")
-                    if k in glm_metadata), str(cfg.get("gpu_budget_mib", 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "none"), str(cfg.get("cpu_prepack_mib", 0))]
+                    if k in glm_metadata), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native else "none"), str(cfg.get("cpu_prepack_mib", 0))]
         devices = cfg.get("gpu_devices", "0")
         if isinstance(devices, list): devices = ",".join(map(str, devices))
         args.extend((str(devices), str(cfg.get("prefill_expert_cache_mib", 0)), str(int(bool(cfg.get("lock_weights", False)))),
                      str(int(bool(cfg.get("decode_prefill_cache", False)))), str(cfg.get("decode_cache_mib", 0)), str(int(bool(cfg.get("decode_graphs", False)))), str(cfg.get("decode_cache_window", 256)),
                      str(int(bool(cfg.get("decode_cache_adapt", False))))))
+        if glm_native:
+            pages = cfg.get("weight_pages", "4k")
+            if pages not in ("4k", "huge"): ap.error("GLM weight_pages must be 4k or huge")
+            args.extend(("mmq", pages))
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
         vision, sampling_defaults = None, {}
     elif a.engine == "strata":

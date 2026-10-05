@@ -1,0 +1,401 @@
+{
+  "date": "2026-10-05",
+  "hardware": {
+    "cpu": "Threadripper 1950X",
+    "numa_nodes": 2,
+    "workers": 15,
+    "worker_cpus": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "gpu": "RTX 5060 Ti 16 GB",
+    "usable_ram_gib": 125,
+    "observed_pcie": "Gen3 x8"
+  },
+  "model": "/mnt/nvme01/models/glm53f/glm53f-exl",
+  "prompt": "Reply with a short greeting.",
+  "prompt_tokens": 18,
+  "config": "configs/glm53f-exl-fast.json",
+  "fixed_runtime_quantization": {
+    "large_matrix_bits": 6,
+    "output_head_bits": 8,
+    "small_matrix_bits": 16,
+    "small_threshold_mib": 8,
+    "resident_mib": 6694.31,
+    "quantized_matrices": 316,
+    "preserved_bf16_matrices": 346,
+    "source_files_unchanged": true
+  },
+  "gpu_cache": {
+    "format": "native MCG packed, no expanded expert weights",
+    "ceiling_mib": 2816,
+    "physical_reserve_mib": 2048,
+    "additional_margin_mib": 256
+  },
+  "quality": {
+    "scope": "eight natural teacher-forced continuation positions; matched batched GPU prefill; original BF16 fixed weights and CPU MCG experts as reference",
+    "rows": [
+      {
+        "position": 0,
+        "kl_bf16_to_quant": 0.00146531,
+        "raw_logits_relative_l2": 0.115307,
+        "reference_greedy": 785,
+        "actual_greedy": 785
+      },
+      {
+        "position": 1,
+        "kl_bf16_to_quant": 0.000239086,
+        "raw_logits_relative_l2": 0.0732647,
+        "reference_greedy": 1196,
+        "actual_greedy": 1196
+      },
+      {
+        "position": 2,
+        "kl_bf16_to_quant": 0.00786035,
+        "raw_logits_relative_l2": 0.0590614,
+        "reference_greedy": 374,
+        "actual_greedy": 374
+      },
+      {
+        "position": 3,
+        "kl_bf16_to_quant": 0.000258419,
+        "raw_logits_relative_l2": 0.0516527,
+        "reference_greedy": 10156,
+        "actual_greedy": 10156
+      },
+      {
+        "position": 4,
+        "kl_bf16_to_quant": 0.0011932,
+        "raw_logits_relative_l2": 0.0474145,
+        "reference_greedy": 752,
+        "actual_greedy": 752
+      },
+      {
+        "position": 5,
+        "kl_bf16_to_quant": 0.00232783,
+        "raw_logits_relative_l2": 0.0643256,
+        "reference_greedy": 311,
+        "actual_greedy": 311
+      },
+      {
+        "position": 6,
+        "kl_bf16_to_quant": 0.000577974,
+        "raw_logits_relative_l2": 0.0370647,
+        "reference_greedy": 9846,
+        "actual_greedy": 9846
+      },
+      {
+        "position": 7,
+        "kl_bf16_to_quant": 5.50315e-06,
+        "raw_logits_relative_l2": 0.0370681,
+        "reference_greedy": 448,
+        "actual_greedy": 448
+      }
+    ],
+    "max_kl": 0.00786035,
+    "max_raw_logits_relative_l2": 0.115307,
+    "all_greedy_predictions_equal": true,
+    "threshold": {
+      "max_kl": 0.01,
+      "all_eight_greedy_match": true
+    },
+    "general_quality_established": false
+  },
+  "short_after_quality": {
+    "tokens_per_trial": 4,
+    "decode_steps_per_trial": 3,
+    "rates_tok_s": [
+      1.99961,
+      2.01463,
+      2.03373
+    ],
+    "warm_mean_tok_s": 2.02418,
+    "cache": [
+      {
+        "hits": 256,
+        "misses": 752,
+        "copied_mib": 4538.44,
+        "entries": 348,
+        "allocated_mib": 2100.23
+      },
+      {
+        "hits": 300,
+        "misses": 708,
+        "copied_mib": 4272.89,
+        "entries": 348,
+        "allocated_mib": 2100.23
+      },
+      {
+        "hits": 300,
+        "misses": 708,
+        "copied_mib": 4272.89,
+        "entries": 348,
+        "allocated_mib": 2100.23
+      }
+    ],
+    "all_three_token_streams_equal": true,
+    "token_ids": [
+      785,
+      1196,
+      374,
+      10156
+    ],
+    "all_tokens_sha256": "e0bc8422666217e852c3a2395a00163c6bde9e9124459af71576d04c7979f8ec",
+    "peak_host_rss_mib": 40050.3,
+    "peak_engine_gpu_mib": 10959.2
+  },
+  "long_global_cache": {
+    "tokens_per_trial": 32,
+    "decode_steps_per_trial": 31,
+    "rates_tok_s": [
+      0.926864,
+      2.17656,
+      2.20704
+    ],
+    "warm_mean_tok_s": 2.1917999999999997,
+    "cache": [
+      {
+        "hits": 3326,
+        "misses": 7090,
+        "copied_mib": 42789.3,
+        "entries": 375,
+        "allocated_mib": 2263.18
+      },
+      {
+        "hits": 3381,
+        "misses": 7035,
+        "copied_mib": 42457.3,
+        "entries": 375,
+        "allocated_mib": 2263.18
+      },
+      {
+        "hits": 3381,
+        "misses": 7035,
+        "copied_mib": 42457.3,
+        "entries": 375,
+        "allocated_mib": 2263.18
+      }
+    ],
+    "all_three_token_streams_equal": true,
+    "token_ids": [
+      785,
+      1196,
+      374,
+      10156,
+      752,
+      311,
+      9846,
+      448,
+      264,
+      2805,
+      41875,
+      13,
+      1096,
+      374,
+      264,
+      1602,
+      4285,
+      1681,
+      13,
+      358,
+      1265,
+      1101,
+      3410,
+      264,
+      9809,
+      11,
+      11651,
+      41875,
+      13,
+      2308,
+      1184,
+      369
+    ],
+    "all_tokens_sha256": "6985bcf10e5dafd3c32f519dbf5a35ce91003cc6d36d357e0c6dd141a4aec9ca",
+    "peak_host_rss_mib": 47397.3,
+    "peak_engine_gpu_mib": 10396.1
+  },
+  "long_per_layer_experiment": {
+    "tokens_per_trial": 32,
+    "decode_steps_per_trial": 31,
+    "rates_tok_s": [
+      1.41797,
+      2.25805,
+      2.20157
+    ],
+    "warm_mean_tok_s": 2.2298099999999996,
+    "cache": [
+      {
+        "hits": 3434,
+        "misses": 6982,
+        "copied_mib": 42137.5,
+        "entries": 366,
+        "allocated_mib": 2208.87
+      },
+      {
+        "hits": 3477,
+        "misses": 6939,
+        "copied_mib": 41877.9,
+        "entries": 367,
+        "allocated_mib": 2214.9
+      },
+      {
+        "hits": 3485,
+        "misses": 6931,
+        "copied_mib": 41829.7,
+        "entries": 366,
+        "allocated_mib": 2208.87
+      }
+    ],
+    "all_three_token_streams_equal": true,
+    "token_ids": [
+      785,
+      1196,
+      374,
+      10156,
+      752,
+      311,
+      9846,
+      448,
+      264,
+      2805,
+      41875,
+      13,
+      1096,
+      374,
+      264,
+      1602,
+      4285,
+      1681,
+      13,
+      358,
+      1265,
+      1101,
+      3410,
+      264,
+      9809,
+      11,
+      11651,
+      41875,
+      13,
+      2308,
+      1184,
+      369
+    ],
+    "all_tokens_sha256": "6985bcf10e5dafd3c32f519dbf5a35ce91003cc6d36d357e0c6dd141a4aec9ca",
+    "peak_host_rss_mib": 47396.8,
+    "peak_engine_gpu_mib": 10347.8
+  },
+  "per_layer_disposition": "removed: warm gain about 2%, insufficient to justify complexity",
+  "tests": [
+    "CPU Q6/Q8 quantization bounds",
+    "CUDA Q6/Q8 panel and GEMV parity",
+    "real packed MCG CUDA projections relative L2 <= 1.21e-6",
+    "native tokenizer 3 tests",
+    "GLM API boundary 3 tests",
+    "all 96 global/per-layer IDs identical"
+  ],
+  "integer_probe": {
+    "upstream_revision": "16a49792a3c93d8432d72e6c4bce800841566577",
+    "packed_corpus_bytes": 2113929216,
+    "expert_calls": 336,
+    "random_tile_parity": 256,
+    "median_ms": {
+      "mcg_fp32": 1463.5,
+      "mul1_int8": 503.715,
+      "mul1_two_pass": 869.873
+    },
+    "scope": "expert-only synthetic mul1 codebook probe on replicated real matrix shapes, no model quality or complete inference claim"
+  },
+  "limitations": [
+    "loading and prefill excluded from decode timing",
+    "cold trial includes lazy CPU expert loading",
+    "only greeting prompt and short context tested",
+    "fixed matrix quantization introduces approximation",
+    "10+ tokens/s not demonstrated",
+    "1M context not qualified"
+  ],
+  "api_smoke": {
+    "endpoint": "http://127.0.0.1:8095/v1",
+    "health_status": 200,
+    "loaded": true,
+    "models_status": 200,
+    "requests": [
+      {
+        "elapsed_s": 24.623503073999018,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "reasoning_content": "The user is asking"
+        },
+        "finish_reason": "length",
+        "usage": {
+          "prompt_tokens": 18,
+          "completion_tokens": 4,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 18,
+          "prompt_ms": 20014.3,
+          "prompt_per_token_ms": 1111.906,
+          "prompt_per_second": 0.9,
+          "predicted_n": 4,
+          "predicted_ms": 4606.6,
+          "predicted_per_token_ms": 1151.655,
+          "predicted_per_second": 0.9,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      },
+      {
+        "elapsed_s": 6.128756455000257,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "reasoning_content": "The user is asking"
+        },
+        "finish_reason": "length",
+        "usage": {
+          "prompt_tokens": 18,
+          "completion_tokens": 4,
+          "total_tokens": 22,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 18,
+          "prompt_ms": 4730.7,
+          "prompt_per_token_ms": 262.818,
+          "prompt_per_second": 3.8,
+          "predicted_n": 4,
+          "predicted_ms": 1395.5,
+          "predicted_per_token_ms": 348.877,
+          "predicted_per_second": 2.9,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      }
+    ],
+    "repeated_messages_equal": true,
+    "timing_scope": "API counts four generated tokens, including the first prefill prediction; CLI bandwidth comparisons time three subsequent decode steps."
+  }
+}
