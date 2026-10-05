@@ -367,6 +367,15 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
         }
 #endif
     }
+#if defined(__linux__)
+    if(access("/sys/devices/system/node/node1",F_OK)==0 && access("/sys/devices/system/node/node2",F_OK)!=0 && cpu_nodes_.empty()) {
+        cpu_nodes_.assign(CPU_SETSIZE,-1);
+        for(int cpu=0;cpu<CPU_SETSIZE;++cpu)for(int node=0;node<2;++node) {
+            char path[96];std::snprintf(path,sizeof(path),"/sys/devices/system/cpu/cpu%d/node%d",cpu,node);
+            if(access(path,F_OK)==0)cpu_nodes_[cpu]=node;
+        }
+    }
+#endif
     if (const char* e = std::getenv("STRATA_NATIVE_TASKS_PER_THREAD")) {
         char* end = nullptr;
         const long value = std::strtol(e, &end, 10);
@@ -384,6 +393,13 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
         n_ = (int) topo_.worker_cores.size();
     }
     if (n_ < 1) n_ = 1;
+    if(pin && !cpu_nodes_.empty()) {
+        for(int i=0;i<n_ && i<int(topo_.worker_cores.size());++i) {
+            int core=topo_.worker_cores[i],node=cpu_nodes_[core];
+            if(node>=0 && node<2 && numa_cores_[node]<0)numa_cores_[node]=core;
+        }
+        numa_rows_available_=numa_cores_[0]>=0 && numa_cores_[1]>=0;
+    }
     scratch_.resize((size_t) n_);
     wstate_.reset(new std::atomic<int32_t>[(size_t) n_]);
     for (int i = 0; i < n_; ++i) wstate_[(size_t) i].store(kParked);
@@ -477,15 +493,21 @@ void ExpertPool::worker(int id) {
 int ExpertPool::claim(uint32_t epoch, int node) {
     uint64_t h = head_.load(std::memory_order_acquire);
     if ((uint32_t)(h >> 32) != epoch) return -1;
-    if (native_local_phase_ && mode_ == 6) {
+    if (native_local_phase_) {
         node = node == 1 ? 1 : 0;
-        for (int pass = 0; pass < 2; ++pass) {
-            const int q = node ^ pass;
-            auto& next = q ? local_next1_ : local_next0_;
-            const uint32_t i = next.fetch_add(1, std::memory_order_relaxed);
-            if (i < local_tasks_[q].size()) {
-                head_.fetch_add(1, std::memory_order_relaxed);
-                return local_tasks_[q][i];
+        for(int pass=0;pass<(native_owned_phase_?1:2);++pass) {
+            int q=node^pass;auto& cursor=q?local_next1_:local_next0_;
+            uint64_t local=cursor.load(std::memory_order_acquire);
+            for(;;) {
+                if(uint32_t(local>>32)!=epoch)break;
+                uint32_t count=uint32_t(local>>16)&0xffffu,index=uint32_t(local)&0xffffu;
+                if(index>=count)break;
+                if(cursor.compare_exchange_weak(local,local+1,std::memory_order_acq_rel,std::memory_order_acquire)) {
+                    // A successful epoch-tagged claim owns an unfinished job,
+                    // so the host cannot replace this queue until it completes.
+                    head_.fetch_add(1,std::memory_order_relaxed);
+                    return local_tasks_[q][index];
+                }
             }
         }
         return -1;
@@ -517,13 +539,12 @@ void ExpertPool::wait_parked(const char* what) {
     hstate_.store(kWaitParked, std::memory_order_relaxed);
     hstate_ms_.store(now_ms(), std::memory_order_relaxed);
     uint32_t spins = 0;
-    std::chrono::steady_clock::time_point t0{};
+    auto t0=std::chrono::steady_clock::now();
     while (parked_.load(std::memory_order_acquire) != (uint32_t) n_) {
         _mm_pause();
         if ((++spins & 1023u) != 0) continue;
         const auto now = std::chrono::steady_clock::now();
-        if (spins == 1024u) t0 = now;
-        else if (now - t0 > kStall) {
+        if (now - t0 > kStall) {
             std::fprintf(stderr, "strata: the CPU expert pool stalled %s (%u of %d workers parked) - stopping the engine "
                                  "so the server can start it again (issue #29)\n",
                          what, parked_.load(), n_);
@@ -538,14 +559,14 @@ void ExpertPool::wait_done(int n) {
     hstate_.store(kWaitDone, std::memory_order_relaxed);
     hstate_ms_.store(now_ms(), std::memory_order_relaxed);
     uint32_t spins = 0, seen = 0;
-    std::chrono::steady_clock::time_point t0{};
+    auto t0=std::chrono::steady_clock::now();
     for (;;) {
         const uint32_t d = done_.load(std::memory_order_acquire);
         if (d >= (uint32_t) n) return;                                // `>=`: never a wait that an overshoot outlives
         _mm_pause();
         if ((++spins & 1023u) != 0) continue;
         const auto now = std::chrono::steady_clock::now();
-        if (spins == 1024u || d != seen) { t0 = now; seen = d; }     // progress restarts the clock
+        if (d != seen) { t0 = now; seen = d; }     // progress restarts the clock
         else if (now - t0 > kStall) {
             std::fprintf(stderr, "strata: the CPU expert pool stalled: %u of %d jobs done, %u of %d workers parked - "
                                  "stopping the engine so the server can start it again (issue #29)\n",
@@ -585,6 +606,19 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
             s2_expert_down_rows(jobs_[e].blob, split_[(size_t) e].a2, jobs_[e].out, r0, r1);
         } else if (mode_ >= 5) {
             // plan v0.3 P6: native layers, 5 = gate/up rows, 6 = down rows
+            if(native_owned_phase_) {
+                const int e=i/(2*native_owned_parts_),node=(i/native_owned_parts_)%2,part=i%native_owned_parts_;
+                const int half=(mode_==5?nfmt_->n_ff:nfmt_->n_embd)/2;
+                const int r0=half*part/native_owned_parts_,r1=half*(part+1)/native_owned_parts_;
+                const auto& j=mjobs_[e];float* output[MAXT];const void* act[MAXT];
+                for(int t=0;t<j.nt;++t) {
+                    output[t]=(mode_==5?split_multi_[e].ff[t]:j.out[t])+node*half;
+                    act[t]=mode_==5?j.nact[t]:split_multi_[e].hq[t];
+                }
+                if(mode_==5)native_gu_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].up);
+                else native_down_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].down);
+                done_.fetch_add(1,std::memory_order_release);continue;
+            }
             const int per = (int) (mode_ == 5 ? nfmt_->n_ff : nfmt_->n_embd);
             const int64_t g0 = mrows_ * (int64_t) i / mtasks_, g1 = mrows_ * (int64_t) (i + 1) / mtasks_;
             for (int64_t r = g0; r < g1;) {
@@ -647,6 +681,14 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
 void ExpertPool::prepare_native_local_tasks(int n_tasks) {
     native_local_phase_ = false;
 #if defined(__linux__) && defined(SYS_move_pages)
+    if(native_owned_phase_) {
+        local_tasks_[0].clear();local_tasks_[1].clear();
+        for(int i=0;i<n_tasks;++i)local_tasks_[(i/native_owned_parts_)%2].push_back(i);
+        uint32_t next_epoch=epoch_.load(std::memory_order_relaxed)+1;
+        local_next0_.store(pack_head(next_epoch,local_tasks_[0].size(),0),std::memory_order_release);
+        local_next1_.store(pack_head(next_epoch,local_tasks_[1].size(),0),std::memory_order_release);
+        native_local_phase_=true;return;
+    }
     if (!native_local_enabled_ || mode_ != 6) return;
     std::vector<void*> pages;
     std::vector<int> task_ids;
@@ -685,8 +727,9 @@ void ExpertPool::prepare_native_local_tasks(int n_tasks) {
         const int node = votes0[task] == votes1[task] ? task % 2 : votes1[task] > votes0[task];
         local_tasks_[node].push_back(task);
     }
-    local_next0_.store(0, std::memory_order_relaxed);
-    local_next1_.store(0, std::memory_order_relaxed);
+    uint32_t next_epoch=epoch_.load(std::memory_order_relaxed)+1;
+    local_next0_.store(pack_head(next_epoch,local_tasks_[0].size(),0),std::memory_order_release);
+    local_next1_.store(pack_head(next_epoch,local_tasks_[1].size(),0),std::memory_order_release);
     native_local_phase_ = true;
     if (!native_local_reported_) {
         int known = 0;
@@ -780,6 +823,14 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
     for (int i = 0; i < n; ++i)
         if (jobs[i].nt < 1 || jobs[i].nt > MAXT)
             throw std::invalid_argument("native expert pool: invalid token count");
+    const bool owned=jobs[0].numa[0].gate!=nullptr;
+    if(owned && (!numa_rows_available_ || f.gu_type==42 || f.d_type==42 || f.n_ff%2 || f.n_embd%2))
+        throw std::invalid_argument("native NUMA rows require pinned workers on both nodes and native IQ geometry");
+    for(int e=0;e<n;++e)for(int node=0;node<2;++node) {
+        const auto& row=jobs[e].numa[node];
+        if(owned?(!row.gate||!row.up||!row.down):(row.gate||row.up||row.down))
+            throw std::invalid_argument("native NUMA row batch must have complete, consistent shards");
+    }
     const auto t0 = std::chrono::steady_clock::now();
     // more distinct experts than buffers: run them in batches
     for (int b0 = 0; b0 < n; b0 += kMaxSplitMulti) {
@@ -787,7 +838,9 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         mjobs_ = jobs + b0;
         nfmt_ = &f;
         const int threads = n_ + (host_works_ ? 1 : 0);
-        mtasks_ = native_tasks_per_thread_ * threads;
+        native_owned_phase_=owned;
+        native_owned_parts_=std::max(1,(native_tasks_per_thread_*threads+2*nb-1)/(2*nb));
+        mtasks_ = owned?2*nb*native_owned_parts_:native_tasks_per_thread_ * threads;
         mrows_ = (int64_t) nb * f.n_ff;
         const auto a = std::chrono::steady_clock::now();
         run_phase(5, mtasks_);
@@ -805,6 +858,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         ms_multi_down += std::chrono::duration<double, std::milli>(d - c).count();
     }
     multi_bytes += (int64_t) n * (int64_t) f.bytes;
+    native_owned_phase_=false;native_local_phase_=false;
     mode_ = 0;
     ms_drain_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }

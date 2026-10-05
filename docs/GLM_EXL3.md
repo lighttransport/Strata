@@ -307,3 +307,7 @@ loaded. Two four-token API requests both returned the same reasoning text,
 `The user is asking`, confirming generation and repeated-request reset. API
 throughput counts the first prediction from prefill as a generated token;
 use the CLI decode-step rates above for throughput comparisons.
+
+The newer Q2 work on this 128 GB two-node system is documented in the
+[Q2 NUMA decode report](GLM_Q2_NUMA_DECODE.md), including its separate ordinary
+and speculative rates, unchanged packed-weight placement, and graph checks.

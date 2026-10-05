@@ -31,6 +31,7 @@
 #include "strata/kernels/cpu/native_expert.hpp"
 
 #include <atomic>
+#include <array>
 #include <cstdio>
 #include <memory>
 #include <chrono>
@@ -64,6 +65,9 @@ struct ExpertJobMulti {
     const void* nact[MAXT] = {};
     const uint8_t* native_up = nullptr;
     const uint8_t* native_down = nullptr;
+    // Node-local packed half-rows; all three projections are present together.
+    struct NumaRows {const uint8_t* gate=nullptr;const uint8_t* up=nullptr;const uint8_t* down=nullptr;};
+    NumaRows numa[2];
 };
 
 /// How worker threads are allocated across physical/logical CPU cores (#272).  `All` is the layout the pool has
@@ -132,6 +136,8 @@ public:
     ExpertPool& operator=(const ExpertPool&) = delete;
 
     int workers() const { return n_; }
+    bool numa_rows_available()const {return numa_rows_available_;}
+    std::array<int,2> numa_cores()const {return numa_cores_;}
     /// Whether the host thread also drains.  Reported at startup, because "the engine adapts to the machine it
     /// is on" is only true if the engine says which adaptation it took.
     bool host_works() const { return host_works_; }
@@ -217,12 +223,19 @@ private:
     int n_ = 0;
     bool host_works_ = true;
     int native_tasks_per_thread_ = 3;
-    bool native_local_enabled_ = false, native_local_phase_ = false;
+    bool native_local_enabled_ = false;
+    // A late parked worker can inspect dispatch flags while the host prepares
+    // the next epoch. Queue claims remain protected by their epoch tags.
+    std::atomic<bool> native_local_phase_{false};
+    std::atomic<bool> native_owned_phase_{false};
+    bool numa_rows_available_=false;
+    int native_owned_parts_=1;
+    std::array<int,2> numa_cores_{{-1,-1}};
     bool native_local_reported_ = false;
     std::vector<int> cpu_nodes_;
     std::vector<int> local_tasks_[2];
-    alignas(64) std::atomic<uint32_t> local_next0_{0};
-    alignas(64) std::atomic<uint32_t> local_next1_{0};
+    alignas(64) std::atomic<uint64_t> local_next0_{0};
+    alignas(64) std::atomic<uint64_t> local_next1_{0};
     ExpertJob* jobs_ = nullptr;
     int njobs_ = 0;
     /// The host's own scratch when `host_works_`.  A separate object rather than a share of `scratch_[i]`,

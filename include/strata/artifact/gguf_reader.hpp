@@ -371,6 +371,24 @@ public:
         return it == meta_.end() ? nullptr : &it->second;
     }
     const uint8_t* tensor_data(const TensorInfo& t) const { return base_ + data_start_ + t.offset; }
+    // Release only fully covered tensor pages after an owned copy or before a
+    // bounded copy pass. File contents and adjacent metadata/tensors are intact.
+    void discard_tensor_pages(const TensorInfo& t,uint64_t bytes)const {
+#ifdef __linux__
+        const size_t page=static_cast<size_t>(sysconf(_SC_PAGESIZE));
+        const uint64_t offset=data_start_+t.offset;
+        if(offset>size_ || bytes>size_-offset)throw std::out_of_range("GGUF discard tensor range");
+        const uint64_t first=(offset+page-1)/page*page,last=(offset+bytes)/page*page;
+        if(last>first) {
+            if(madvise(const_cast<uint8_t*>(base_)+first,last-first,MADV_DONTNEED))
+                throw std::runtime_error("GGUF source page release failed");
+            if(posix_fadvise(fd_,first,last-first,POSIX_FADV_DONTNEED))
+                throw std::runtime_error("GGUF source cache advice failed");
+        }
+#else
+        (void)t;(void)bytes;
+#endif
+    }
 
 private:
     void open() {

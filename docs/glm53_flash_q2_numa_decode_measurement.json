@@ -1,0 +1,1820 @@
+{
+  "date": "2026-10-05",
+  "hardware": {
+    "cpu": "Threadripper 1950X / X399",
+    "ram": "4 x 32 GB DDR4, 125.8 GiB usable",
+    "numa_nodes": 2,
+    "gpu": "RTX 5060 Ti 16 GB",
+    "workers_plus_host": 16
+  },
+  "scope": "Three restored-state greedy decode trials per fixture; loading, prefill, MTP prime excluded; no weight conversion",
+  "model": "GLM-5.3-Flash-UD-Q2_K_XL",
+  "main_routed_packed_bytes": 99033808896,
+  "ordinary_routed_bytes_per_token": 2750939136,
+  "early_control_tok_s": [
+    8.71323,
+    9.02412,
+    8.55191
+  ],
+  "owned_after_prefill_experiment": {
+    "tok_s": [
+      9.56325,
+      9.01697,
+      8.33534
+    ],
+    "preparation_ms": 167981,
+    "host_peak_rss_mib": 102965,
+    "packed_mib_per_node": 47223,
+    "discarded_earlier_swap_kib": 6501928
+  },
+  "mode_sweep_same_mtp_allocation": {
+    "environment": {
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_GLM_QUANT_ONCE": "1"
+    },
+    "results": {
+      "prime": {
+        "input_tokens": 53,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/sweep-final/prime.ids",
+          "256",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=3",
+          "--stop-ids=154820,154827,154829",
+          "--decode-mode-sweep"
+        ],
+        "memory": {
+          "peak_rss_kib": 107387452,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "none:0": [
+            {
+              "generated": 133,
+              "milliseconds": 13603.7,
+              "tokens_per_second": 9.70323,
+              "ended_on_stop": true
+            },
+            {
+              "generated": 133,
+              "milliseconds": 13656.1,
+              "tokens_per_second": 9.66603,
+              "ended_on_stop": true
+            },
+            {
+              "generated": 133,
+              "milliseconds": 13586.1,
+              "tokens_per_second": 9.71581,
+              "ended_on_stop": true
+            }
+          ],
+          "lookup:1": [
+            {
+              "rounds": 17,
+              "proposed": 17,
+              "accepted": 9,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 14053.7,
+              "tokens_per_second": 9.39253,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 17,
+              "proposed": 17,
+              "accepted": 9,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 14086.3,
+              "tokens_per_second": 9.3708,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 17,
+              "proposed": 17,
+              "accepted": 9,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 14077.8,
+              "tokens_per_second": 9.3765,
+              "ended_on_stop": true
+            }
+          ],
+          "lookup:2": [
+            {
+              "rounds": 13,
+              "proposed": 26,
+              "accepted": 13,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 14368.1,
+              "tokens_per_second": 9.18699,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 13,
+              "proposed": 26,
+              "accepted": 13,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 14360.3,
+              "tokens_per_second": 9.19201,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 13,
+              "proposed": 26,
+              "accepted": 13,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 14931.1,
+              "tokens_per_second": 8.84061,
+              "ended_on_stop": true
+            }
+          ],
+          "lookup:3": [
+            {
+              "rounds": 12,
+              "proposed": 36,
+              "accepted": 14,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 15032.6,
+              "tokens_per_second": 8.78094,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 12,
+              "proposed": 36,
+              "accepted": 14,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 15035.9,
+              "tokens_per_second": 8.77899,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 12,
+              "proposed": 36,
+              "accepted": 14,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 15149.5,
+              "tokens_per_second": 8.71316,
+              "ended_on_stop": true
+            }
+          ],
+          "mtp:1": [
+            {
+              "rounds": 67,
+              "proposed": 67,
+              "accepted": 66,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12548.4,
+              "tokens_per_second": 10.5193,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 67,
+              "proposed": 67,
+              "accepted": 66,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12547.0,
+              "tokens_per_second": 10.5205,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 67,
+              "proposed": 67,
+              "accepted": 66,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12582.7,
+              "tokens_per_second": 10.4906,
+              "ended_on_stop": true
+            }
+          ],
+          "mtp:2": [
+            {
+              "rounds": 46,
+              "proposed": 92,
+              "accepted": 87,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12382.6,
+              "tokens_per_second": 10.6602,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 46,
+              "proposed": 92,
+              "accepted": 87,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12376.7,
+              "tokens_per_second": 10.6652,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 46,
+              "proposed": 92,
+              "accepted": 87,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12368.0,
+              "tokens_per_second": 10.6727,
+              "ended_on_stop": true
+            }
+          ],
+          "mtp:3": [
+            {
+              "rounds": 37,
+              "proposed": 111,
+              "accepted": 96,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12840.1,
+              "tokens_per_second": 10.2803,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 37,
+              "proposed": 111,
+              "accepted": 96,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12848.8,
+              "tokens_per_second": 10.2733,
+              "ended_on_stop": true
+            },
+            {
+              "rounds": 37,
+              "proposed": 111,
+              "accepted": 96,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 12850.8,
+              "tokens_per_second": 10.2717,
+              "ended_on_stop": true
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "none:0": 9.70323,
+          "lookup:1": 9.3765,
+          "lookup:2": 9.18699,
+          "lookup:3": 8.77899,
+          "mtp:1": 10.5193,
+          "mtp:2": 10.6652,
+          "mtp:3": 10.2733
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "a53ac8180a35e48b289b804ff3ea0892568e361bbc792516346e5fb5c9d13cb4"
+      }
+    }
+  },
+  "coding_control": {
+    "environment": {
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_IQ2_TABLE_SIGNS": "1"
+    },
+    "results": {
+      "prime": {
+        "input_tokens": 53,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/coding-control/prime.ids",
+          "512",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=3",
+          "--stop-ids=154820,154827,154829"
+        ],
+        "memory": {
+          "peak_rss_kib": 105015908,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "none:0": [
+            {
+              "generated": 133,
+              "milliseconds": 13547.2,
+              "tokens_per_second": 9.74371,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 5856.79,
+                "quantize": 191.429,
+                "down": 3452.25
+              },
+              "cpu_expert_bytes": 363123965952,
+              "gpu_peak_allocated_mib": 8223.18
+            },
+            {
+              "generated": 133,
+              "milliseconds": 13517.1,
+              "tokens_per_second": 9.76539,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 5874.41,
+                "quantize": 190.619,
+                "down": 3459.6
+              },
+              "cpu_expert_bytes": 363123965952,
+              "gpu_peak_allocated_mib": 8223.18
+            },
+            {
+              "generated": 133,
+              "milliseconds": 13681.1,
+              "tokens_per_second": 9.64838,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 5903.61,
+                "quantize": 190.615,
+                "down": 3580.36
+              },
+              "cpu_expert_bytes": 363123965952,
+              "gpu_peak_allocated_mib": 8223.18
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "none:0": 9.74371
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "a53ac8180a35e48b289b804ff3ea0892568e361bbc792516346e5fb5c9d13cb4",
+        "greedy_ids_match_other_mode": true
+      },
+      "json_escape": {
+        "input_tokens": 82,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/coding-control/json_escape.ids",
+          "512",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=3",
+          "--stop-ids=154820,154827,154829"
+        ],
+        "memory": {
+          "peak_rss_kib": 105016356,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "none:0": [
+            {
+              "generated": 210,
+              "milliseconds": 21449.7,
+              "tokens_per_second": 9.74373,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 9251.59,
+                "quantize": 304.497,
+                "down": 5465.96
+              },
+              "cpu_expert_bytes": 574946279424,
+              "gpu_peak_allocated_mib": 8223.18
+            },
+            {
+              "generated": 210,
+              "milliseconds": 21395.0,
+              "tokens_per_second": 9.76865,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 9261.17,
+                "quantize": 303.27,
+                "down": 5462.17
+              },
+              "cpu_expert_bytes": 574946279424,
+              "gpu_peak_allocated_mib": 8223.18
+            },
+            {
+              "generated": 210,
+              "milliseconds": 21486.4,
+              "tokens_per_second": 9.7271,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 9318.92,
+                "quantize": 305.149,
+                "down": 5490.5
+              },
+              "cpu_expert_bytes": 574946279424,
+              "gpu_peak_allocated_mib": 8223.18
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "none:0": 9.74373
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "12cdbe4692b2926f8bd1f314c5d33ebd569ff7ec7fcd15fca456f838753df75c",
+        "greedy_ids_match_other_mode": true
+      },
+      "csv": {
+        "input_tokens": 101,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/coding-control/csv.ids",
+          "512",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=3",
+          "--stop-ids=154820,154827,154829"
+        ],
+        "memory": {
+          "peak_rss_kib": 105016512,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "none:0": [
+            {
+              "generated": 490,
+              "milliseconds": 50197.7,
+              "tokens_per_second": 9.74147,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 21756.9,
+                "quantize": 710.046,
+                "down": 12844.6
+              },
+              "cpu_expert_bytes": 1345209237504,
+              "gpu_peak_allocated_mib": 8223.18
+            },
+            {
+              "generated": 490,
+              "milliseconds": 50110.1,
+              "tokens_per_second": 9.75851,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 21747.8,
+                "quantize": 708.544,
+                "down": 12829.1
+              },
+              "cpu_expert_bytes": 1345209237504,
+              "gpu_peak_allocated_mib": 8223.18
+            },
+            {
+              "generated": 490,
+              "milliseconds": 50110.0,
+              "tokens_per_second": 9.75852,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 21774.0,
+                "quantize": 711.251,
+                "down": 12839.8
+              },
+              "cpu_expert_bytes": 1345209237504,
+              "gpu_peak_allocated_mib": 8223.18
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "none:0": 9.75851
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "dddf700e29a89c3d6c65addbbb572c05a3400a1f2ad6254a972431f86b9102ab",
+        "greedy_ids_match_other_mode": true
+      }
+    }
+  },
+  "coding_mtp_depth2_tasks12": {
+    "environment": {
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "12"
+    },
+    "results": {
+      "prime": {
+        "input_tokens": 53,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/coding-mtp12/prime.ids",
+          "512",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=3",
+          "--stop-ids=154820,154827,154829",
+          "--speculative=mtp",
+          "--draft-depth=2"
+        ],
+        "memory": {
+          "peak_rss_kib": 107364508,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "mtp:2": [
+            {
+              "rounds": 46,
+              "proposed": 92,
+              "accepted": 87,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 11654.1,
+              "tokens_per_second": 11.3265,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 5458.81,
+                "quantize": 193.385,
+                "down": 3081.72
+              },
+              "cpu_expert_bytes": 311186620416,
+              "mtp_milliseconds": {
+                "draft": 275.49,
+                "verify": 11095.7,
+                "resync": 230.632
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            },
+            {
+              "rounds": 46,
+              "proposed": 92,
+              "accepted": 87,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 11720.9,
+              "tokens_per_second": 11.2619,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 5486.09,
+                "quantize": 194.366,
+                "down": 3081.52
+              },
+              "cpu_expert_bytes": 311186620416,
+              "mtp_milliseconds": {
+                "draft": 276.166,
+                "verify": 11085.5,
+                "resync": 232.083
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            },
+            {
+              "rounds": 46,
+              "proposed": 92,
+              "accepted": 87,
+              "replayed": 0,
+              "generated": 133,
+              "milliseconds": 11657.5,
+              "tokens_per_second": 11.3231,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 5488.48,
+                "quantize": 195.74,
+                "down": 3084.57
+              },
+              "cpu_expert_bytes": 311186620416,
+              "mtp_milliseconds": {
+                "draft": 275.236,
+                "verify": 11091.7,
+                "resync": 237.803
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "mtp:2": 11.3231
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "a53ac8180a35e48b289b804ff3ea0892568e361bbc792516346e5fb5c9d13cb4",
+        "greedy_ids_match_other_mode": true
+      },
+      "json_escape": {
+        "input_tokens": 82,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/coding-mtp12/json_escape.ids",
+          "512",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=3",
+          "--stop-ids=154820,154827,154829",
+          "--speculative=mtp",
+          "--draft-depth=2"
+        ],
+        "memory": {
+          "peak_rss_kib": 107365608,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "mtp:2": [
+            {
+              "rounds": 72,
+              "proposed": 144,
+              "accepted": 137,
+              "replayed": 0,
+              "generated": 210,
+              "milliseconds": 18006.1,
+              "tokens_per_second": 11.6072,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 8339.83,
+                "quantize": 301.253,
+                "down": 4805.0
+              },
+              "cpu_expert_bytes": 483382263808,
+              "mtp_milliseconds": {
+                "draft": 430.237,
+                "verify": 17125.9,
+                "resync": 369.212
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            },
+            {
+              "rounds": 72,
+              "proposed": 144,
+              "accepted": 137,
+              "replayed": 0,
+              "generated": 210,
+              "milliseconds": 17997.6,
+              "tokens_per_second": 11.6126,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 8357.12,
+                "quantize": 302.722,
+                "down": 4820.61
+              },
+              "cpu_expert_bytes": 483382263808,
+              "mtp_milliseconds": {
+                "draft": 430.695,
+                "verify": 17118.5,
+                "resync": 367.14
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            },
+            {
+              "rounds": 72,
+              "proposed": 144,
+              "accepted": 137,
+              "replayed": 0,
+              "generated": 210,
+              "milliseconds": 18043.7,
+              "tokens_per_second": 11.583,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 8378.98,
+                "quantize": 302.997,
+                "down": 4826.41
+              },
+              "cpu_expert_bytes": 483382263808,
+              "mtp_milliseconds": {
+                "draft": 431.379,
+                "verify": 17166.5,
+                "resync": 364.732
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "mtp:2": 11.6072
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "12cdbe4692b2926f8bd1f314c5d33ebd569ff7ec7fcd15fca456f838753df75c",
+        "greedy_ids_match_other_mode": true
+      },
+      "csv": {
+        "input_tokens": 101,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/coding-mtp12/csv.ids",
+          "512",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=3",
+          "--stop-ids=154820,154827,154829",
+          "--speculative=mtp",
+          "--draft-depth=2"
+        ],
+        "memory": {
+          "peak_rss_kib": 107377132,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "mtp:2": [
+            {
+              "rounds": 190,
+              "proposed": 380,
+              "accepted": 300,
+              "replayed": 0,
+              "generated": 490,
+              "milliseconds": 47825.2,
+              "tokens_per_second": 10.2247,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 22035.4,
+                "quantize": 797.056,
+                "down": 12606.9
+              },
+              "cpu_expert_bytes": 1272784617472,
+              "mtp_milliseconds": {
+                "draft": 1154.27,
+                "verify": 45122.9,
+                "resync": 883.295
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            },
+            {
+              "rounds": 190,
+              "proposed": 380,
+              "accepted": 300,
+              "replayed": 0,
+              "generated": 490,
+              "milliseconds": 47480.8,
+              "tokens_per_second": 10.2989,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 22118.5,
+                "quantize": 800.305,
+                "down": 12656.1
+              },
+              "cpu_expert_bytes": 1272784617472,
+              "mtp_milliseconds": {
+                "draft": 1157.58,
+                "verify": 45217.1,
+                "resync": 878.767
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            },
+            {
+              "rounds": 190,
+              "proposed": 380,
+              "accepted": 300,
+              "replayed": 0,
+              "generated": 490,
+              "milliseconds": 47714.9,
+              "tokens_per_second": 10.2484,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 22155.2,
+                "quantize": 799.204,
+                "down": 12655.1
+              },
+              "cpu_expert_bytes": 1272784617472,
+              "mtp_milliseconds": {
+                "draft": 1144.95,
+                "verify": 45210.8,
+                "resync": 871.428
+              },
+              "gpu_peak_allocated_mib": 10299.7
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "mtp:2": 10.2484
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "dddf700e29a89c3d6c65addbbb572c05a3400a1f2ad6254a972431f86b9102ab",
+        "greedy_ids_match_other_mode": true
+      }
+    }
+  },
+  "quality": {
+    "prime": {
+      "passed_cases": 400538
+    },
+    "json_escape": {
+      "passed_cases": 2052
+    },
+    "csv": {
+      "passed_cases": 2058
+    }
+  },
+  "kernel_task_and_prefetch_sweep": [
+    {
+      "nt": 1,
+      "tasks": 3,
+      "prefetch": 2048,
+      "median_ms": 88.493
+    },
+    {
+      "nt": 3,
+      "tasks": 3,
+      "prefetch": 2048,
+      "median_ms": 197.73899999999998
+    },
+    {
+      "nt": 3,
+      "tasks": 6,
+      "prefetch": 2048,
+      "median_ms": 188.26749999999998
+    },
+    {
+      "nt": 3,
+      "tasks": 12,
+      "prefetch": 2048,
+      "median_ms": 185.1435
+    },
+    {
+      "nt": 3,
+      "tasks": 3,
+      "prefetch": 0,
+      "median_ms": 198.81150000000002
+    },
+    {
+      "nt": 3,
+      "tasks": 3,
+      "prefetch": 4096,
+      "median_ms": 211.4505
+    },
+    {
+      "nt": 1,
+      "tasks": 6,
+      "prefetch": 2048,
+      "median_ms": 79.7913
+    },
+    {
+      "nt": 1,
+      "tasks": 12,
+      "prefetch": 2048,
+      "median_ms": 78.94725
+    },
+    {
+      "nt": 1,
+      "tasks": 3,
+      "prefetch": 0,
+      "median_ms": 80.51185000000001
+    },
+    {
+      "nt": 1,
+      "tasks": 3,
+      "prefetch": 4096,
+      "median_ms": 81.91579999999999
+    },
+    {
+      "nt": 3,
+      "tasks": 3,
+      "prefetch": 2048,
+      "median_ms": 198.4755
+    },
+    {
+      "nt": 1,
+      "tasks": 3,
+      "prefetch": 2048,
+      "median_ms": 81.20570000000001
+    }
+  ],
+  "kernel_balanced_worker_sweep": [
+    {
+      "nt": 1,
+      "workers": 7,
+      "host": 1,
+      "cpu_mask": "0-3,8-11",
+      "median_ms": 122.69300000000001
+    },
+    {
+      "nt": 1,
+      "workers": 11,
+      "host": 1,
+      "cpu_mask": "0-5,8-13",
+      "median_ms": 89.745
+    },
+    {
+      "nt": 1,
+      "workers": 15,
+      "host": 1,
+      "cpu_mask": "0-15",
+      "median_ms": 78.5906
+    },
+    {
+      "nt": 3,
+      "workers": 7,
+      "host": 1,
+      "cpu_mask": "0-3,8-11",
+      "median_ms": 319.1735
+    },
+    {
+      "nt": 3,
+      "workers": 11,
+      "host": 1,
+      "cpu_mask": "0-5,8-13",
+      "median_ms": 224.65499999999997
+    },
+    {
+      "nt": 3,
+      "workers": 15,
+      "host": 1,
+      "cpu_mask": "0-15",
+      "median_ms": 182.631
+    }
+  ],
+  "api_regression": {
+    "endpoint": "127.0.0.1:8096",
+    "post_cancel_output_identical": true,
+    "cancelled_after_generated_delta": true,
+    "long_prompt_tokens": 4801,
+    "long_completion_tokens": 16,
+    "context_allocation": 8192,
+    "long_finish_reason": "length"
+  },
+  "owned_before_prefill_startup_check": {
+    "environment": {
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "3",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+      "STRATA_GLM_QUANT_ONCE": "1"
+    },
+    "results": {
+      "prime": {
+        "input_tokens": 53,
+        "command": [
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@/mnt/nvme02/work/Strata/build-q2-fast/owned-startup/prime.ids",
+          "256",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--warm-weights",
+          "--decode-bench=1",
+          "--stop-ids=154820,154827,154829"
+        ],
+        "memory": {
+          "peak_rss_kib": 104955288,
+          "peak_swap_kib": 0
+        },
+        "trials": {
+          "none:0": [
+            {
+              "generated": 133,
+              "milliseconds": 13552.1,
+              "tokens_per_second": 9.74022,
+              "ended_on_stop": true,
+              "cpu_expert_milliseconds": {
+                "gate_up": 6007.44,
+                "quantize": 182.334,
+                "down": 3326.24
+              },
+              "cpu_expert_bytes": 363123965952,
+              "gpu_peak_allocated_mib": 8223.18
+            }
+          ]
+        },
+        "median_tokens_per_second": {
+          "none:0": 9.74022
+        },
+        "greedy_ids_identical": true,
+        "token_sha256": "a53ac8180a35e48b289b804ff3ea0892568e361bbc792516346e5fb5c9d13cb4"
+      }
+    },
+    "matches_control_ids": true
+  },
+  "validation": {
+    "cpp_targeted_tests_passed": 3,
+    "python_tests_passed": 14,
+    "generated_cpp_cases_per_mode": 404648,
+    "mixed_width_graph_history_and_rollback_bitwise_equal": true,
+    "exl3_service_restored": true,
+    "exl3_health_loaded": true,
+    "exl3_restore_smoke_output_tokens": 4
+  },
+  "followup_iq2_scale_expansion": {
+    "scope": "Real GLM Q2 routed weight shapes and routes, synthetic activations, expert execution only; forward/reverse controls; 20 timed rounds per invocation",
+    "experiments": {
+      "compact_accumulators": [
+        {
+          "nt": 1,
+          "compact": false,
+          "median_ms": 77.6574,
+          "output_hash": "11389905731821859132",
+          "log": "compact-nt1-0-0.log"
+        },
+        {
+          "nt": 3,
+          "compact": false,
+          "median_ms": 192.59300000000002,
+          "output_hash": "6640934909076116911",
+          "log": "compact-nt3-0-1.log"
+        },
+        {
+          "nt": 3,
+          "compact": true,
+          "median_ms": 191.99,
+          "output_hash": "6640934909076116911",
+          "log": "compact-nt3-1-2.log"
+        },
+        {
+          "nt": 1,
+          "compact": true,
+          "median_ms": 77.68090000000001,
+          "output_hash": "11389905731821859132",
+          "log": "compact-nt1-1-3.log"
+        },
+        {
+          "nt": 3,
+          "compact": true,
+          "median_ms": 189.683,
+          "output_hash": "6640934909076116911",
+          "log": "compact-nt3-1-4.log"
+        },
+        {
+          "nt": 3,
+          "compact": false,
+          "median_ms": 193.5695,
+          "output_hash": "6640934909076116911",
+          "log": "compact-nt3-0-5.log"
+        },
+        {
+          "nt": 1,
+          "compact": true,
+          "median_ms": 77.36795000000001,
+          "output_hash": "11389905731821859132",
+          "log": "compact-nt1-1-6.log"
+        },
+        {
+          "nt": 1,
+          "compact": false,
+          "median_ms": 77.4565,
+          "output_hash": "11389905731821859132",
+          "log": "compact-nt1-0-7.log"
+        }
+      ],
+      "combined_signed_table": [
+        {
+          "nt": 1,
+          "signed": false,
+          "median_ms": 88.6002,
+          "output_hash": "11389905731821859132",
+          "log": "signed-nt1-0-0.log"
+        },
+        {
+          "nt": 3,
+          "signed": false,
+          "median_ms": 208.743,
+          "output_hash": "6640934909076116911",
+          "log": "signed-nt3-0-1.log"
+        },
+        {
+          "nt": 3,
+          "signed": true,
+          "median_ms": 216.5865,
+          "output_hash": "6640934909076116911",
+          "log": "signed-nt3-1-2.log"
+        },
+        {
+          "nt": 1,
+          "signed": true,
+          "median_ms": 82.7735,
+          "output_hash": "11389905731821859132",
+          "log": "signed-nt1-1-3.log"
+        },
+        {
+          "nt": 3,
+          "signed": true,
+          "median_ms": 209.85199999999998,
+          "output_hash": "6640934909076116911",
+          "log": "signed-nt3-1-4.log"
+        },
+        {
+          "nt": 3,
+          "signed": false,
+          "median_ms": 193.816,
+          "output_hash": "6640934909076116911",
+          "log": "signed-nt3-0-5.log"
+        },
+        {
+          "nt": 1,
+          "signed": true,
+          "median_ms": 83.54605000000001,
+          "output_hash": "11389905731821859132",
+          "log": "signed-nt1-1-6.log"
+        },
+        {
+          "nt": 1,
+          "signed": false,
+          "median_ms": 77.2226,
+          "output_hash": "11389905731821859132",
+          "log": "signed-nt1-0-7.log"
+        }
+      ],
+      "compiler_tuning": [
+        {
+          "nt": 1,
+          "tune": "generic",
+          "median_ms": 80.5061,
+          "output_hash": "11389905731821859132",
+          "log": "tune-nt1-generic-0.log"
+        },
+        {
+          "nt": 3,
+          "tune": "generic",
+          "median_ms": 190.931,
+          "output_hash": "6640934909076116911",
+          "log": "tune-nt3-generic-1.log"
+        },
+        {
+          "nt": 3,
+          "tune": "znver1",
+          "median_ms": 190.9645,
+          "output_hash": "6640934909076116911",
+          "log": "tune-nt3-znver1-2.log"
+        },
+        {
+          "nt": 1,
+          "tune": "znver1",
+          "median_ms": 76.81755,
+          "output_hash": "11389905731821859132",
+          "log": "tune-nt1-znver1-3.log"
+        },
+        {
+          "nt": 3,
+          "tune": "znver1",
+          "median_ms": 192.459,
+          "output_hash": "6640934909076116911",
+          "log": "tune-nt3-znver1-4.log"
+        },
+        {
+          "nt": 3,
+          "tune": "generic",
+          "median_ms": 194.708,
+          "output_hash": "6640934909076116911",
+          "log": "tune-nt3-generic-5.log"
+        },
+        {
+          "nt": 1,
+          "tune": "znver1",
+          "median_ms": 77.18665,
+          "output_hash": "11389905731821859132",
+          "log": "tune-nt1-znver1-6.log"
+        },
+        {
+          "nt": 1,
+          "tune": "generic",
+          "median_ms": 76.77289999999999,
+          "output_hash": "11389905731821859132",
+          "log": "tune-nt1-generic-7.log"
+        }
+      ],
+      "direct_u16_indices": [
+        {
+          "nt": 1,
+          "variant": "generic",
+          "median_ms": 76.93870000000001,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 1,
+          "variant": "u16",
+          "median_ms": 76.63305,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "generic",
+          "median_ms": 191.27949999999998,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "u16",
+          "median_ms": 190.48899999999998,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "u16",
+          "median_ms": 191.94400000000002,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "generic",
+          "median_ms": 191.9085,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 1,
+          "variant": "u16",
+          "median_ms": 78.09715,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 1,
+          "variant": "generic",
+          "median_ms": 77.58345,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        }
+      ],
+      "vector_scale_expansion": [
+        {
+          "nt": 1,
+          "variant": "generic",
+          "median_ms": 77.07740000000001,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 1,
+          "variant": "scales",
+          "median_ms": 75.29465,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "generic",
+          "median_ms": 192.0655,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "scales",
+          "median_ms": 185.675,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "scales",
+          "median_ms": 185.8145,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "variant": "generic",
+          "median_ms": 191.942,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 1,
+          "variant": "scales",
+          "median_ms": 75.8767,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 1,
+          "variant": "generic",
+          "median_ms": 76.92575,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        }
+      ],
+      "cost_order": [
+        {
+          "cost_order": false,
+          "median_ms": 185.156,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "cost_order": true,
+          "median_ms": 187.3905,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "cost_order": true,
+          "median_ms": 186.9985,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "cost_order": false,
+          "median_ms": 186.12,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        }
+      ],
+      "smt": [
+        {
+          "nt": 1,
+          "workers": 15,
+          "median_ms": 77.37625,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 1,
+          "workers": 31,
+          "median_ms": 126.246,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 3,
+          "workers": 15,
+          "median_ms": 187.89049999999997,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "workers": 31,
+          "median_ms": 262.839,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "workers": 31,
+          "median_ms": 260.962,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 3,
+          "workers": 15,
+          "median_ms": 190.73000000000002,
+          "output_hash": [
+            "6640934909076116911"
+          ]
+        },
+        {
+          "nt": 1,
+          "workers": 31,
+          "median_ms": 138.348,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        },
+        {
+          "nt": 1,
+          "workers": 15,
+          "median_ms": 78.38355,
+          "output_hash": [
+            "11389905731821859132"
+          ]
+        }
+      ]
+    },
+    "rejected_model_runs": [
+      {
+        "directory": "build-q2-next/depth-sweep",
+        "reason": "Full-tensor prefault caused observed process VmSwap=234436 KiB; stopped before a completed measurement"
+      },
+      {
+        "directory": "build-q2-next/depth-sweep-retry",
+        "fixture": "csv",
+        "reason": "Concurrent cc1plus compilation detected; CSV timings discarded; completed prime sweep retained"
+      },
+      {
+        "directory": "build-q2-next/csv-depth1",
+        "reason": "Concurrent XModelDiff CPU workloads; timings discarded; generated IDs still usable for correctness"
+      },
+      {
+        "directory": "build-q2-next/coding-control",
+        "reason": "Concurrent XModelDiff CPU workloads; stopped; timings discarded"
+      },
+      {
+        "directory": "build-q2-next/matched-control",
+        "reason": "Expanded CPU guard detected two XBinUsdDiff processes near 100% CPU each during model startup; benchmark automatically stopped",
+        "memory": {
+          "peak_rss_kib": 3596020,
+          "peak_swap_kib": 0,
+          "competing_workloads": [
+            {
+              "pid": 102632,
+              "name": "XBinUsdDiff",
+              "cpu_percent": 98.9
+            },
+            {
+              "pid": 102852,
+              "name": "XBinUsdDiff",
+              "cpu_percent": 99.8
+            }
+          ]
+        }
+      }
+    ],
+    "retained_change": "Expand IQ2_XS scales once per block and read the four half-row grid/sign indices directly; no numerical conversion",
+    "guard": "Optional --reject-competitors terminates only the benchmark process on a compiler or an external process using at least 80% of one core in two successive 1-second CPU samples; memory sampled every 100ms; any process swap aborts",
+    "completed_depth_sweep_prime": {
+      "input_tokens": 53,
+      "command": [
+        "build-glm/strata-glm-decode",
+        "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+        "@/mnt/nvme02/work/Strata/build-q2-next/depth-sweep-retry/prime.ids",
+        "512",
+        "4096",
+        "15",
+        "--context=8192",
+        "--prefill-batch=256",
+        "--gpu-budget-mib=12288",
+        "--cpu-affinity=numa",
+        "--decode-graphs",
+        "--decode-bench=3",
+        "--stop-ids=154820,154827,154829",
+        "--decode-mode-sweep=mtp"
+      ],
+      "memory": {
+        "peak_rss_kib": 106960968,
+        "peak_swap_kib": 0
+      },
+      "trials": {
+        "none:0": [
+          {
+            "generated": 133,
+            "milliseconds": 13453.1,
+            "tokens_per_second": 9.81189,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5538.61,
+              "quantize": 184.996,
+              "down": 3630.49
+            },
+            "cpu_expert_bytes": 363123965952,
+            "gpu_peak_allocated_mib": 9862.88
+          },
+          {
+            "generated": 133,
+            "milliseconds": 13353.3,
+            "tokens_per_second": 9.88523,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5518.94,
+              "quantize": 185.745,
+              "down": 3618.48
+            },
+            "cpu_expert_bytes": 363123965952,
+            "gpu_peak_allocated_mib": 9862.88
+          },
+          {
+            "generated": 133,
+            "milliseconds": 13396.7,
+            "tokens_per_second": 9.85316,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5549.43,
+              "quantize": 184.207,
+              "down": 3626.49
+            },
+            "cpu_expert_bytes": 363123965952,
+            "gpu_peak_allocated_mib": 9862.88
+          }
+        ],
+        "mtp:1": [
+          {
+            "rounds": 67,
+            "proposed": 67,
+            "accepted": 66,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11783.1,
+            "tokens_per_second": 11.2025,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5070.86,
+              "quantize": 183.471,
+              "down": 3293.05
+            },
+            "cpu_expert_bytes": 327438041088,
+            "mtp_milliseconds": {
+              "draft": 214.957,
+              "verify": 11254.8,
+              "resync": 251.42
+            },
+            "gpu_peak_allocated_mib": 10154.1
+          },
+          {
+            "rounds": 67,
+            "proposed": 67,
+            "accepted": 66,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11733.0,
+            "tokens_per_second": 11.2503,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5046.96,
+              "quantize": 185.27,
+              "down": 3291.48
+            },
+            "cpu_expert_bytes": 327438041088,
+            "mtp_milliseconds": {
+              "draft": 217.478,
+              "verify": 11214.8,
+              "resync": 238.855
+            },
+            "gpu_peak_allocated_mib": 10154.1
+          },
+          {
+            "rounds": 67,
+            "proposed": 67,
+            "accepted": 66,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11724.2,
+            "tokens_per_second": 11.2588,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5046.03,
+              "quantize": 183.545,
+              "down": 3294.07
+            },
+            "cpu_expert_bytes": 327438041088,
+            "mtp_milliseconds": {
+              "draft": 220.175,
+              "verify": 11203.6,
+              "resync": 238.993
+            },
+            "gpu_peak_allocated_mib": 10154.1
+          }
+        ],
+        "mtp:2": [
+          {
+            "rounds": 46,
+            "proposed": 92,
+            "accepted": 87,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11238.9,
+            "tokens_per_second": 11.745,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 4958.21,
+              "quantize": 189.376,
+              "down": 3171.15
+            },
+            "cpu_expert_bytes": 311186620416,
+            "mtp_milliseconds": {
+              "draft": 280.557,
+              "verify": 10663.7,
+              "resync": 245.0
+            },
+            "gpu_peak_allocated_mib": 10299.7
+          },
+          {
+            "rounds": 46,
+            "proposed": 92,
+            "accepted": 87,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11264.2,
+            "tokens_per_second": 11.7185,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 4969.39,
+              "quantize": 187.4,
+              "down": 3173.04
+            },
+            "cpu_expert_bytes": 311186620416,
+            "mtp_milliseconds": {
+              "draft": 291.298,
+              "verify": 10681.5,
+              "resync": 241.553
+            },
+            "gpu_peak_allocated_mib": 10299.7
+          },
+          {
+            "rounds": 46,
+            "proposed": 92,
+            "accepted": 87,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11260.2,
+            "tokens_per_second": 11.7227,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 4967.56,
+              "quantize": 189.203,
+              "down": 3175.3
+            },
+            "cpu_expert_bytes": 311186620416,
+            "mtp_milliseconds": {
+              "draft": 281.767,
+              "verify": 10691.3,
+              "resync": 236.956
+            },
+            "gpu_peak_allocated_mib": 10299.7
+          }
+        ],
+        "mtp:3": [
+          {
+            "rounds": 37,
+            "proposed": 111,
+            "accepted": 96,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11596.2,
+            "tokens_per_second": 11.383,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5173.45,
+              "quantize": 202.565,
+              "down": 3273.37
+            },
+            "cpu_expert_bytes": 315145584640,
+            "mtp_milliseconds": {
+              "draft": 345.764,
+              "verify": 10965.7,
+              "resync": 237.459
+            },
+            "gpu_peak_allocated_mib": 10445.3
+          },
+          {
+            "rounds": 37,
+            "proposed": 111,
+            "accepted": 96,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11604.7,
+            "tokens_per_second": 11.3747,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5181.11,
+              "quantize": 202.97,
+              "down": 3274.55
+            },
+            "cpu_expert_bytes": 315145584640,
+            "mtp_milliseconds": {
+              "draft": 336.693,
+              "verify": 10982.8,
+              "resync": 237.902
+            },
+            "gpu_peak_allocated_mib": 10445.3
+          },
+          {
+            "rounds": 37,
+            "proposed": 111,
+            "accepted": 96,
+            "replayed": 0,
+            "generated": 133,
+            "milliseconds": 11633.3,
+            "tokens_per_second": 11.3467,
+            "ended_on_stop": true,
+            "cpu_expert_milliseconds": {
+              "gate_up": 5178.32,
+              "quantize": 203.262,
+              "down": 3272.56
+            },
+            "cpu_expert_bytes": 315145584640,
+            "mtp_milliseconds": {
+              "draft": 347.948,
+              "verify": 10997.0,
+              "resync": 240.774
+            },
+            "gpu_peak_allocated_mib": 10445.3
+          }
+        ]
+      },
+      "median_tokens_per_second": {
+        "none:0": 9.85316,
+        "mtp:1": 11.2503,
+        "mtp:2": 11.7227,
+        "mtp:3": 11.3747
+      },
+      "greedy_ids_identical": true,
+      "token_sha256": "a53ac8180a35e48b289b804ff3ea0892568e361bbc792516346e5fb5c9d13cb4"
+    },
+    "quality_prime": {
+      "prime": {
+        "passed_cases": 400538
+      }
+    },
+    "quality_csv_generated_under_contention": {
+      "csv": {
+        "passed_cases": 2058
+      }
+    },
+    "generated_ids_match_previous_controls": {
+      "prime": true,
+      "csv": true
+    },
+    "final_kernel_output_hash_parity": [
+      {
+        "nt": 1,
+        "control_hash": "11389905731821859132",
+        "retained_hash": "11389905731821859132",
+        "scope": "correctness only"
+      },
+      {
+        "nt": 2,
+        "control_hash": "9990353799740928301",
+        "retained_hash": "9990353799740928301",
+        "scope": "correctness only"
+      },
+      {
+        "nt": 3,
+        "control_hash": "6640934909076116911",
+        "retained_hash": "6640934909076116911",
+        "scope": "correctness only"
+      },
+      {
+        "nt": 4,
+        "control_hash": "3472339585136266769",
+        "retained_hash": "3472339585136266769",
+        "scope": "correctness only"
+      }
+    ],
+    "completed_depth_sweep_prime_kernel": "Scale expansion with original array grid reader; the retained expert-only candidate also uses direct half-row index loads",
+    "validation": {
+      "python_unittest_cases": 3,
+      "native_expert_parity_failures": 0,
+      "pool_tests_passed": [
+        "native_pool_test",
+        "numa_pool_test"
+      ],
+      "verify_graphs": "Widths 1..4, mixed capture/replay, history reallocation, prefix rollback and sequential width-8 verification passed with scale expansion",
+      "quality_cases": {
+        "prime": 400538,
+        "csv": 2058
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@
 #include "strata/core/model.hpp"
 #include "strata/spec/suffix_drafter.hpp"
 #include "strata/kernels/cpu/pool.hpp"
+#include "strata/kernels/cpu/numa_weights.hpp"
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
@@ -513,6 +514,14 @@ struct GpuPrefill {
         cursor = offset + bytes;
         return std::make_unique<Device>((char *)arena->p + offset, bytes);
     }
+    const std::map<const strata::TensorInfo*,const cpu::NumaTensor*>* numa_sources=nullptr;
+    void copy_part(const strata::core::ArtifactTensor& t,int expert,void* dest,size_t bytes)const {
+        if(numa_sources) {
+            auto found=numa_sources->find(t.tensor);
+            if(found!=numa_sources->end()){found->second->copy(expert,dest);return;}
+        }
+        std::memcpy(dest,t.data()+size_t(expert)*bytes,bytes);
+    }
     void upload(const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
                 const strata::core::ArtifactTensor &D, int start, int n, int slot, void *stream,
                 const int *selected = nullptr, bool blobs = false, size_t expert_stride = 0) {
@@ -553,9 +562,9 @@ struct GpuPrefill {
                 const int expert = selected ? selected[j] : start + j;
                 const size_t gu_offset = blobs ? j * stride : j * 2 * gh;
                 const size_t down_offset = blobs ? gu_offset + 2 * gh : n * 2 * gh + j * db;
-                std::memcpy(p + gu_offset, G.data() + expert * gh, gh);
-                std::memcpy(p + gu_offset + gh, U.data() + expert * gh, gh);
-                std::memcpy(p + down_offset, D.data() + expert * db, db);
+                copy_part(G,expert,p+gu_offset,gh);
+                copy_part(U,expert,p+gu_offset+gh,gh);
+                copy_part(D,expert,p+down_offset,db);
                 if (blobs && stride > 2 * gh + db)
                     std::memset(p + gu_offset + 2 * gh + db, 0, stride - 2 * gh - db);
             }
@@ -1239,14 +1248,14 @@ class Decoder {
     // Decode: one q8_1 quantization of a mixer input shared by every projection reading it.
     bool quant_once = std::getenv("STRATA_GLM_QUANT_ONCE") != nullptr;
     const float *shared_quant_src = nullptr;
-    int shared_quant_in = 0;
+    int shared_quant_in = 0,shared_quant_nt=0;
     Device *shared_quant = nullptr;
     void share_quant(const float *x, int in) {
-        if (!quant_once || fast || batch_tokens != 1) return;
-        if (shared_quant && shared_quant_src == x && shared_quant_in == in) return;
-        shared_quant = &buf("q8_shared", k::native_q8_1_bytes(in, 1) / 4);
-        k::native_quantize_q8_1(x, shared_quant->p, in, 1, stream);
-        shared_quant_src = x; shared_quant_in = in;
+        if (!quant_once || fast || batch_tokens > cpu::MAXT) return;
+        if (shared_quant && shared_quant_src == x && shared_quant_in == in && shared_quant_nt==batch_tokens) return;
+        shared_quant = &buf("q8_shared", k::native_q8_1_bytes(in, batch_tokens) / 4);
+        k::native_quantize_q8_1(x, shared_quant->p, in, batch_tokens, stream);
+        shared_quant_src = x; shared_quant_in = in;shared_quant_nt=batch_tokens;
     }
     void end_share_quant() { shared_quant_src = nullptr; shared_quant = nullptr; }
     bool tp_stale = true;
@@ -1295,12 +1304,15 @@ class Decoder {
     PrefillGroupCache prefill_cache;
     std::map<std::string, std::unique_ptr<Device>> phase;
     bool decode_graphs = false;
+    bool verify_graphs=std::getenv("STRATA_GLM_VERIFY_GRAPHS")!=nullptr;
+    int graph_key(int layer)const {return layer+10000*(batch_tokens-1)+(capturing_history?100000:0);}
     std::map<int, std::unique_ptr<DecodeGraph>> mixer_graphs;
     template<class F> void decode_graph(int layer, F &&enqueue) {
-        if (!decode_graphs || !gpu || fast || batch_tokens != 1 || capturing_history) {
+        if (!decode_graphs || !gpu || fast || ((batch_tokens!=1 || capturing_history) &&
+            !(verify_graphs && !artifact.is_exl3() && batch_tokens<=4))) {
             enqueue(); return;
         }
-        auto &entry = mixer_graphs[layer];
+        auto &entry = mixer_graphs[graph_key(layer)];
         if (!entry) entry = std::make_unique<DecodeGraph>();
         if (!entry->warmed) {
             enqueue(); entry->warmed = true; return;
@@ -1330,6 +1342,10 @@ class Decoder {
         std::unique_ptr<uint8_t[]> gate, up, down;
     };
     std::map<int, PreparedExperts> prepared_experts;
+    struct NumaExperts {std::unique_ptr<cpu::NumaTensor> gate,up,down;};
+    std::map<int,NumaExperts> numa_experts;
+    std::map<const strata::TensorInfo*,const cpu::NumaTensor*> numa_sources;
+    size_t numa_weight_bytes=0;
     std::vector<int> prepack_cpus;
     long long host_affinity = -1;
     std::unique_ptr<Pinned> host_moe;
@@ -1873,7 +1889,7 @@ class Decoder {
         }
         // Verification can grow a one-token buffer after layer graphs captured
         // its address. Reserve the whole verification window before first replay.
-        if (batched_resident && gpu && main && batch_tokens <= cpu::MAXT) {
+        if (gpu && main && batch_tokens <= cpu::MAXT && (batched_resident || !artifact.is_exl3())) {
             const size_t row = name == "streams" ? 4 * m.hidden :
                                name == "hc_coeff" ? 24 : name == "output" ? m.vocab : m.hidden;
             floats = std::max(floats, row * cpu::MAXT);
@@ -2037,7 +2053,7 @@ class Decoder {
         }
         if (!k::native_mmvq_supported(t.type))
             throw std::runtime_error("GLM: unsupported dense quantization: " + name);
-        if (shared_quant && x == shared_quant_src && in == shared_quant_in && nt == 1) {
+        if (shared_quant && x == shared_quant_src && in == shared_quant_in && nt == shared_quant_nt) {
             k::native_mmvq(t.type, W.p, shared_quant->p, y, in, out, nt, stream);
             return;
         }
@@ -2729,6 +2745,8 @@ class Decoder {
                 job.blob = gate + (size_t)e * f.up_off;
                 job.native_up = up + (size_t)e * f.up_off;
                 job.native_down = down + (size_t)e * (f.bytes - f.down_off);
+                if(auto owned=numa_experts.find(l);owned!=numa_experts.end())for(int node=0;node<2;++node)
+                    job.numa[node]={owned->second.gate->shard(e,node),owned->second.up->shard(e,node),owned->second.down->shard(e,node)};
             } else if (inserted) {
                 blobs.emplace_back(f.bytes);
                 auto &blob = blobs.back();
@@ -3564,6 +3582,7 @@ class Decoder {
     void configure_prefill_schedule() {
         auto configure = [&](int device, GpuPrefill* prefill, PrefillGroupCache& cache, bool compact) {
             if (!prefill) return;
+            prefill->numa_sources=&numa_sources;
             prefill->defer_device_wait = defer_copy_wait;
             cache.preallocate = preallocate_groups;
             cache.early_ring_release = restore_prefill_groups;
@@ -3894,9 +3913,9 @@ class Decoder {
                         k::glm_mhc_write(r.f(t * 4 * m.hidden), c.f(t * 24), y.f(t * m.hidden),
                                          r.f(t * 4 * m.hidden), m.hidden, stream);
             };
-            const bool combined = layer_graphs && decode_graphs && direct_experts() && !fast && nt == 1 &&
-                layer.mixer == strata::core::MixerKind::Kda && layer.ffn == strata::core::FfnKind::Moe && !capturing_history &&
-                !tp_active();
+            const bool combined = layer_graphs && decode_graphs && !fast &&
+                ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=4)) &&
+                layer.mixer == strata::core::MixerKind::Kda && layer.ffn == strata::core::FfnKind::Moe && !tp_active();
             if (combined) {
                 auto enqueue_layer = [&] {
                     enqueue_mixer();
@@ -3908,13 +3927,13 @@ class Decoder {
                 };
                 // A batched verify call replaces moe_prefixes with a different
                 // arena layout. Replay still writes the graph's captured layout.
-                if (auto it = mixer_graphs.find(l); it != mixer_graphs.end() && it->second->executable) {
+                if (auto it = mixer_graphs.find(graph_key(l)); it != mixer_graphs.end() && it->second->executable) {
                     const auto &graph = *it->second;
                     moe_prefixes[l] = {graph.moe_ids, graph.moe_weights, graph.moe_cursor};
                 }
                 decode_graph(l, enqueue_layer);
                 const auto prefix = moe_prefixes.at(l);
-                auto &graph = *mixer_graphs.at(l);
+                auto &graph = *mixer_graphs.at(graph_key(l));
                 graph.moe_ids = prefix.ids; graph.moe_weights = prefix.weights; graph.moe_cursor = prefix.cursor;
             } else if (layer.mixer == strata::core::MixerKind::Kda && tp_active()) {
                 if (tp_stale) tp_sync_states();
@@ -4029,6 +4048,10 @@ class Decoder {
     }
     void clear_verify_history() {
         check(cudaStreamSynchronize(stream));
+        // History graphs own pointers into this allocation; discard before free.
+        for(auto it=mixer_graphs.begin();it!=mixer_graphs.end();) {
+            if(it->first>=100000)it=mixer_graphs.erase(it);else ++it;
+        }
         verify_history.reset(); history_offsets.clear(); history_slots = history_valid = 0;
     }
     int verify_history_slots() const { return history_slots; }
@@ -4052,9 +4075,64 @@ class Decoder {
         } catch (...) { capturing_history = false; throw; }
     }
     int vocabulary() const { return m.vocab; }
+    void prepare_numa_weights() {
+        const char* enabled=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS");
+        if(!enabled || std::string(enabled)=="0" || !numa_experts.empty())return;
+        if(std::string(enabled)!="1")throw std::invalid_argument("STRATA_GLM_Q2_NUMA_WEIGHTS must be 0 or 1");
+        if(artifact.is_exl3() || !pool.numa_rows_available() || secondary || remote_tp || !prepared_experts.empty() || direct_upload_enabled())
+            throw std::invalid_argument("Q2 NUMA weights require native GGUF, pinned workers on two nodes, single GPU, no TP/prepack/direct upload");
+        for(const auto& cache:expert_cache)if(cache)throw std::invalid_argument("Q2 NUMA weights cannot use legacy expert cache");
+        size_t required=0;
+        for(size_t l=3;l<m.layers.size();++l)for(const auto* part:{"gate","up","down"})
+            required+=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight").bytes;
+        size_t budget_mib=98304;
+        if(const char* value=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHT_MIB")) {
+            size_t used=0;budget_mib=std::stoull(value,&used);
+            if(used!=std::strlen(value)||budget_mib>131072)throw std::invalid_argument("invalid NUMA weight MiB budget");
+        }
+        if(required>budget_mib*MiB)throw std::runtime_error("Q2 NUMA weights exceed configured packed-byte budget");
+#ifdef __linux__
+        size_t total=size_t(sysconf(_SC_PHYS_PAGES))*size_t(sysconf(_SC_PAGESIZE));
+        if(total<16*1024*MiB || required>total-16*1024*MiB)throw std::runtime_error("Q2 NUMA weights need 16 GiB host capacity beyond packed weights");
+#endif
+        auto start=std::chrono::steady_clock::now();
+        // File-cache pages must yield before anonymous weights grow. Merely
+        // dropping this process's PTEs allowed Linux to swap the new arenas.
+        for(size_t l=3;l<m.layers.size();++l)for(const auto* part:{"gate","up","down"}) {
+            const auto& t=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight");
+            t.file->discard_tensor_pages(*t.tensor,t.bytes);
+        }
+        try {
+            for(size_t l=3;l<m.layers.size();++l) {
+                check_stop();auto& entry=numa_experts[l];const auto prefix="blk."+std::to_string(l)+".ffn_";
+                for(const auto* part:{"gate","up","down"}) {
+                    const auto& t=artifact.at(prefix+part+"_exps.weight");const auto& shape=t.tensor->shape;
+                    if(shape.size()!=3 || shape[2]!=size_t(m.experts) || shape[1]%2)throw std::invalid_argument("Q2 NUMA weights: unsupported tensor shape");
+                    size_t row=t.bytes/(shape[1]*shape[2]);const auto* source=t.data();
+                    auto owned=std::make_unique<cpu::NumaTensor>(source,row,shape[1],shape[2],pool.numa_cores());
+                    numa_sources[t.tensor]=owned.get();numa_weight_bytes+=t.bytes;
+                    t.file->discard_tensor_pages(*t.tensor,t.bytes);
+                    auto& dest=std::string(part)=="gate"?entry.gate:std::string(part)=="up"?entry.up:entry.down;
+                    dest=std::move(owned);
+                }
+#ifdef __linux__
+                std::ifstream status("/proc/self/status");std::string key,line;
+                while(std::getline(status,line))if(line.starts_with("VmSwap:")) {
+                    size_t kib=std::stoull(line.substr(7));
+                    if(kib>1024)throw std::runtime_error("Q2 NUMA preparation stopped: owned weights are swapping");
+                }
+#endif
+            }
+        }catch(...) {numa_sources.clear();numa_experts.clear();numa_weight_bytes=0;throw;}
+        if(gpu)gpu->numa_sources=&numa_sources;
+        std::cerr<<"Q2_NUMA_WEIGHTS bytes="<<numa_weight_bytes<<" node0_MiB="<<numa_weight_bytes/double(2*MiB)
+                 <<" node1_MiB="<<numa_weight_bytes/double(2*MiB)<<" prepare_ms="
+                 <<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<'\n';
+    }
     void prepare_cpu(size_t bytes) {
         if(artifact.is_exl3()&&bytes)throw std::invalid_argument("EXL3: GGUF CPU prepack is unsupported");
         if (!bytes || !prepared_experts.empty()) return;
+        if(!numa_experts.empty())throw std::invalid_argument("CPU format prepacking cannot coexist with NUMA packed rows");
         if (gpu_decode_experts) throw std::invalid_argument("CPU packing requires CPU target experts");
         for (const auto &cache : expert_cache)
             if (cache) throw std::invalid_argument("CPU packing requires expert-cache-mib=0");
@@ -4367,6 +4445,7 @@ class Decoder {
             if (secondary) expert_copies[1] = std::make_unique<ExpertCopyWorker>(secondary->device);
         }
     }
+    void set_verify_graphs(bool enabled) {verify_graphs=enabled;}
     void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
     // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
     // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
@@ -4436,6 +4515,7 @@ class Decoder {
     void set_decode_cache_slots(int slots) { decode_cache_slots_limit = slots; }
     void prepare_decode_cache() {
         finish_prefill_repairs(true);
+        prepare_numa_weights();
         device_lookup_ready = false;
         if (!decode_cache_budget && !decode_cache_auto) return;
         auto report_prefill = [](int device, const GpuPrefill* prefill) {
@@ -4922,6 +5002,7 @@ class Decoder {
     }
     void warm_weights(bool lock = false, const std::vector<int> &upload_devices = {}) {
         if(artifact.is_exl3())throw std::invalid_argument("EXL3: GGUF weight locking is unsupported");
+        if(lock && !numa_sources.empty())throw std::invalid_argument("Q2 NUMA weights cannot lock the original GGUF mappings");
         if (direct_upload_enabled() && !lock)
             throw std::invalid_argument("GLM: direct weight upload requires --lock-weights");
         const auto start = std::chrono::steady_clock::now();
@@ -4949,7 +5030,7 @@ class Decoder {
         }
 #endif
         for (const auto &[name, t] : artifact.tensors())
-            if (!name.starts_with("blk.45.")) {
+            if (!name.starts_with("blk.45.") && !numa_sources.count(t.tensor)) {
                 if (lock) {
 #ifdef __linux__
                     // A file-system client can invalidate clean file-backed
@@ -5464,6 +5545,7 @@ static int serve(int argc, char **argv) {
     decoder.set_decode_graphs(argc > 21 && std::string(argv[21]) == "1");
     decoder.set_decode_cache_window(argc > 22 ? std::stoi(argv[22]) : 256);
     decoder.set_decode_cache_adapt(argc > 23 && std::string(argv[23]) == "1");
+    decoder.prepare_numa_weights();
     if (argc > 18 && std::string(argv[18]) == "1" && !direct_upload_enabled()) decoder.warm_weights(true);
     if (use_mtp) decoder.enable_mtp_capture();
     std::cout << "INFO engine=glm-experimental sampling=greedy\nREADY " << ctx
@@ -5654,7 +5736,7 @@ int main(int argc, char **argv) {
                      "[dense-cache-MiB=4096] [threads=6] [--prefill-batch=1..8192|auto] "
                      "[--gpu-budget-mib=12288] [--check-prefill] [--check-native-dense] "
                      "[--gpu-devices=0|0,1] [--prefill-expert-cache-mib=auto|N] [--lock-weights] [--check-gpu-split] "
-                     "[--decode-prefill-cache] [--profile-decode] [--profile-prefill] "
+                     "[--decode-prefill-cache] [--decode-bench=3] [--decode-mode-sweep[=mtp]] [--check-verify-graphs] [--profile-decode] [--profile-prefill] "
                      "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
         return 2;
     }
@@ -5679,12 +5761,13 @@ int main(int argc, char **argv) {
         int prefill_batch = 8;
         size_t gpu_budget = 12288 * MiB;
         bool force_gpu = false, warm_weights = false, lock_weights = false, profile = false;
-        bool profile_prefill = false, profile_decode = false, decode_graphs = false, check_decode_graphs = false, decode_cache_adapt = false;
+        bool profile_prefill = false, profile_decode = false, decode_graphs = false, check_decode_graphs = false, check_verify_graphs=false, decode_cache_adapt = false;
         int decode_cache_window = 256;
         int repetitions = 1, context = 0, reference_batch = 1, lookup_depth = 0;
         bool check_verify = false, stream_decode = false, pin_cpu = false, use_mtp = false;
         bool mtp_cpu_experts = false, decode_prefill_cache = false, decode_cache_auto = false, decode_cache_extend = false;
         int draft_depth = 3, decode_repetitions = 1;
+        bool decode_mode_sweep = false, decode_mtp_sweep = false;
         size_t cpu_prepack_mib = 0, prefill_cache_bytes = 0;
         bool prefill_cache_auto = false, check_gpu_split = false, tensor_experts = false, tensor_batches = false;
         std::string gpu_devices_text = "0";
@@ -5739,6 +5822,8 @@ int main(int argc, char **argv) {
             else if (flag == "--mtp-experts=cpu") mtp_cpu_experts = true;
             else if (flag == "--mtp-experts=gpu") mtp_cpu_experts = false;
             else if (flag.starts_with("--draft-depth=")) draft_depth = std::stoi(flag.substr(14));
+            else if (flag == "--decode-mode-sweep") decode_mode_sweep = true;
+            else if (flag == "--decode-mode-sweep=mtp") decode_mode_sweep = decode_mtp_sweep = true;
             else if (flag.starts_with("--decode-bench=")) decode_repetitions = std::stoi(flag.substr(15));
             else if (flag == "--speculative=lookup")
                 lookup_depth = 3;
@@ -5753,6 +5838,7 @@ int main(int argc, char **argv) {
             else if (flag == "--cpu-affinity=auto" || flag == "--cpu-affinity=numa") pin_cpu = true;
             else if (flag == "--cpu-affinity=none") pin_cpu = false;
             else if (flag.starts_with("--routing-trace=")) routing_trace_path = flag.substr(16);
+            else if(flag=="--check-verify-graphs") {check_verify_graphs=true;force_gpu=true;}
             else if (flag == "--profile")
                 profile = true;
             else if (flag == "--profile-decode")
@@ -5776,6 +5862,11 @@ int main(int argc, char **argv) {
                 stops = token_ids(flag.substr(11));
             else
                 throw std::invalid_argument("unknown option: " + flag);
+        }
+        if (decode_mode_sweep) {
+            if (use_mtp || lookup_depth || replay || stream_decode || check_prefill || check_verify || check_decode_graphs || check_verify_graphs || check_gpu_split || decode_cache_mib || decode_cache_auto || decode_cache_adapt || decode_prefill_cache || cpu_prepack_mib || expert_mib || std::filesystem::is_directory(argv[1]))
+                throw std::invalid_argument("--decode-mode-sweep requires a GGUF CPU target with no other speculative, cache, or parity mode");
+            use_mtp = force_gpu = true;
         }
         const auto devices = configure_devices(gpu_devices_text, gpu_budget);
         if (check_gpu_split && (devices.size() != 2 || use_mtp || replay || check_prefill))
@@ -5831,6 +5922,7 @@ int main(int argc, char **argv) {
         decoder.set_decode_cache_budget((size_t)decode_cache_mib * MiB);
         decoder.set_decode_cache_auto(decode_cache_auto, decode_cache_extend);
         decoder.set_decode_graphs(decode_graphs);
+        if(check_verify_graphs)decoder.set_verify_graphs(true);
         decoder.set_decode_cache_window(decode_cache_window);
         if (!remote_tp_address.empty()) {
             if (!(remote_tp_share > 0 && remote_tp_share < 1))
@@ -5842,6 +5934,8 @@ int main(int argc, char **argv) {
         decoder.set_decode_cache_adapt(decode_cache_adapt);
         decoder.set_decode_cache_slots(decode_cache_slots);
         decoder.set_mtp_cpu_experts(mtp_cpu_experts);
+        if(cpu_prepack_mib && std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS") && std::string(std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS"))=="1")throw std::invalid_argument("Q2 NUMA weights cannot use CPU format prepacking");
+        decoder.prepare_numa_weights();
         if (use_mtp) decoder.enable_mtp_capture();
         if (warm_weights && !direct_upload_enabled())
             decoder.warm_weights(lock_weights);
@@ -5994,6 +6088,34 @@ int main(int argc, char **argv) {
             decoder.set_decode_cache_adapt(decode_cache_adapt);
             std::cerr << "DECODE_GRAPHS eight sequential logits and rollback identical\n";
         }
+        if(check_verify_graphs) {
+            auto cp=decoder.checkpoint();decoder.save(cp);
+            for(int allocation=0;allocation<2;++allocation) {
+                decoder.enable_verify_history(3);
+                for(int width:{1,2,3,4,1,2,4,3})for(bool history:{false,true}) {
+                    std::vector<int> window{greedy(logits),11,9647,0};window.resize(width);
+                    decoder.restore(cp);decoder.set_decode_graphs(false);
+                    auto expected=history?decoder.verify(window):decoder.batch(window,false,true);
+                    decoder.set_decode_graphs(true);
+                    for(int repetition=0;repetition<3;++repetition) {
+                        decoder.restore(cp);auto actual=history?decoder.verify(window):decoder.batch(window,false,true);
+                        if(actual!=expected)throw std::runtime_error("GLM: verification graph logits differ from direct batches");
+                        if(history)for(int accepted=1;accepted<=std::min(width,decoder.verify_history_slots());++accepted) {
+                            if(!decoder.restore_verified(accepted))throw std::runtime_error("GLM: missing graph verification prefix");
+                            auto got=decoder.step(17);decoder.restore(cp);decoder.set_decode_graphs(false);
+                            decoder.batch(std::vector<int>(window.begin(),window.begin()+accepted),false);
+                            auto reference=decoder.step(17);decoder.set_decode_graphs(true);
+                            if(got!=reference)throw std::runtime_error("GLM: verification graph rollback changed next logits");
+                            // Rebuild retained history before testing the next prefix.
+                            decoder.restore(cp);decoder.verify(window);
+                        }
+                    }
+                }
+                decoder.clear_verify_history();
+            }
+            decoder.restore(cp);decoder.set_decode_graphs(decode_graphs);
+            std::cerr<<"VERIFY_GRAPHS widths=1,2,3,4 mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal\n";
+        }
         if (check_verify) {
             auto cp = decoder.checkpoint();
             decoder.save(cp);
@@ -6044,18 +6166,26 @@ int main(int argc, char **argv) {
         }
         std::unique_ptr<Decoder::Snapshot> decode_start_state;
         const auto decode_start_logits = logits;
-        if (decode_repetitions > 1) decode_start_state = std::make_unique<Decoder::Snapshot>(decoder.snapshot());
+        if (decode_repetitions > 1 || decode_mode_sweep) decode_start_state = std::make_unique<Decoder::Snapshot>(decoder.snapshot());
+        const int modes = decode_mode_sweep ? (decode_mtp_sweep ? 4 : 7) : 1;
+        for (int mode_index = 0; mode_index < modes; ++mode_index) {
+            const int mode = decode_mtp_sweep && mode_index ? mode_index + 3 : mode_index;
+            const bool trial_mtp = decode_mode_sweep ? mode >= 4 : use_mtp;
+            const int trial_lookup = decode_mode_sweep ? (mode >= 1 && mode <= 3 ? mode : 0) : lookup_depth;
+            const int trial_depth = decode_mode_sweep ? mode - 3 : draft_depth;
+            if (decode_mode_sweep) std::cerr << "DECODE_MODE source=" << (trial_mtp ? "mtp" : trial_lookup ? "lookup" : "none")
+                << " depth=" << (trial_mtp ? trial_depth : trial_lookup) << " shared_mtp_allocation=1\n";
         for (int trial = 0; trial < decode_repetitions; ++trial) {
-            if (trial) { decoder.restore(*decode_start_state); logits = decode_start_logits; }
+            if (trial || decode_mode_sweep) { decoder.clear_verify_history(); decoder.restore(*decode_start_state); logits = decode_start_logits; }
             std::cerr << "DECODE_TRIAL index=" << trial << '\n';
         if (profile_decode) check(cudaProfilerStart());
         decoder.reset_decode_stats();
-        if (use_mtp) {
-            generate_mtp(decoder, logits, steps, stops, draft_depth, [](int token) {
+        if (trial_mtp) {
+            generate_mtp(decoder, logits, steps, stops, trial_depth, [](int token) {
                 std::cout << token << '\n' << std::flush;
             });
-        } else if (lookup_depth) {
-            generate_lookup(decoder, logits, tokens, steps, stops, lookup_depth, [](int token) {
+        } else if (trial_lookup) {
+            generate_lookup(decoder, logits, tokens, steps, stops, trial_lookup, [](int token) {
                 std::cout << token << '\n' << std::flush;
             });
         } else {
@@ -6095,6 +6225,7 @@ int main(int argc, char **argv) {
         decoder.report_gpu();
         if (profile_decode) check(cudaProfilerStop());
         }
+                }
         if (!dump.empty()) {
             std::ofstream output(dump, std::ios::binary);
             output.write((const char *)logits.data(), logits.size() * sizeof(float));

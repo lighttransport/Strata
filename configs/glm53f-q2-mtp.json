@@ -1,0 +1,26 @@
+{
+  "exe": "build-glm/strata-glm-decode",
+  "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+  "model_name": "glm-5.3-flash-q2",
+  "context": 8192,
+  "dense_cache_mib": 4096,
+  "gpu_budget_mib": 12288,
+  "gpu_devices": "0",
+  "threads": 15,
+  "cpu_affinity": "numa",
+  "prefill_batch": 256,
+  "decode_experts": "cpu",
+  "speculative": "mtp",
+  "decode_graphs": true,
+  "env": {
+    "STRATA_GLM_QUANT_ONCE": "1",
+    "STRATA_NATIVE_NUMA_LOCAL": "0",
+    "STRATA_POOL_SPIN_US": "20000",
+    "STRATA_IQ2_TABLE_SIGNS": "1",
+    "STRATA_GLM_LAYER_GRAPHS": "1",
+    "STRATA_GLM_VERIFY_GRAPHS": "1",
+    "STRATA_NATIVE_TASKS_PER_THREAD": "12"
+  },
+  "log": "build-q2-mtp-engine.log",
+  "draft_depth": 2
+}

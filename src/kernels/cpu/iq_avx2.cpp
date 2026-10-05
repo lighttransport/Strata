@@ -115,15 +115,12 @@ template <> struct Fmt32<17> {   // IQ2_XS: d, qs[32] u16 (9-bit grid index + 7-
     static constexpr int bytes = 74;
     static constexpr float K = 0.125f;
     static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
-        uint16_t v[8];
-        std::memcpy(v, b + 2 + 16 * j, 16);
-        const int o = 4 * half;
-        g = _mm256_set_epi64x((long long) iq2xs_grid[v[o + 3] & 511], (long long) iq2xs_grid[v[o + 2] & 511],
-                              (long long) iq2xs_grid[v[o + 1] & 511], (long long) iq2xs_grid[v[o] & 511]);
-        sgn = _mm256_set_epi64x((long long)even_signs.v[v[o+3] >> 9],
-                                (long long)even_signs.v[v[o+2] >> 9],
-                                (long long)even_signs.v[v[o+1] >> 9],
-                                (long long)even_signs.v[v[o] >> 9]);
+        const uint8_t* q = b + 2 + 16 * j + 8 * half;
+        const uint32_t v0 = u16(q), v1 = u16(q + 2), v2 = u16(q + 4), v3 = u16(q + 6);
+        g = _mm256_set_epi64x((long long)iq2xs_grid[v3 & 511], (long long)iq2xs_grid[v2 & 511],
+                              (long long)iq2xs_grid[v1 & 511], (long long)iq2xs_grid[v0 & 511]);
+        sgn = _mm256_set_epi64x((long long)even_signs.v[v3 >> 9], (long long)even_signs.v[v2 >> 9],
+                                (long long)even_signs.v[v1 >> 9], (long long)even_signs.v[v0 >> 9]);
         const uint8_t sb = b[66 + 2 * j + half];
         sc = sc16(2 * (sb & 15) + 1, 2 * (sb >> 4) + 1);
     }
@@ -250,6 +247,15 @@ struct ScaleShuffle {
     }
 };
 static constexpr ScaleShuffle scale_shuffle;
+struct ScaleShuffleIQ2XS {
+    alignas(16) uint8_t v[8][16]{};
+    constexpr ScaleShuffleIQ2XS() {
+        for (int h = 0; h < 8; ++h)
+            for (int lane = 0; lane < 16; ++lane) v[h][lane] = 2 * h + lane / 8;
+    }
+};
+// Each 32-value half uses one scale for its first 16 weights and one for its last 16.
+static constexpr ScaleShuffleIQ2XS scale_shuffle_iq2xs;
 template <> struct Fmt32<23> {   // IQ4_XS: d, scales_h, scales_l[4], qs[128] - 136 B, 8 signed sub-scales
     // ggml's ggml_vec_dot_iq4_xs_q8_K: the same 16-value codebook as IQ4_NL, but each of the eight 32-value
     // sub-blocks carries its own 6-bit scale, read as two nibbles of scales_l[p] plus two bits of scales_h, and
@@ -280,6 +286,14 @@ inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y,
         const uint8_t* blk = row + (size_t) i * Fmt32<TY>::bytes;
         rows_ahead(blk + prefetch_ahead);
         __m256i scales;
+        __m128i scales17;
+        if constexpr (TY == 17) {
+            // Decode all eight nibble pairs once; the half loop only shuffles their scales.
+            const __m128i packed = _mm_loadl_epi64((const __m128i*)(blk + 66)), mask = _mm_set1_epi8(15);
+            const __m128i nibbles = _mm_unpacklo_epi8(_mm_and_si128(packed, mask),
+                                                      _mm_and_si128(_mm_srli_epi16(packed, 4), mask));
+            scales17 = _mm_add_epi8(_mm_add_epi8(nibbles, nibbles), _mm_set1_epi8(1));
+        }
         if constexpr (TY == 22) {
             const uint64_t packed = u64(blk + 74);
             const __m128i nibbles = _mm_and_si128(_mm_set_epi64x(packed >> 4, packed), _mm_set1_epi8(15));
@@ -292,6 +306,9 @@ inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y,
             for (int half = 0; half < 2; ++half) {
                 __m256i g, sgn, sc;
                 Fmt32<TY>::decode(blk, j, half, g, sgn, sc);
+                if constexpr (TY == 17)
+                    sc = _mm256_cvtepi8_epi16(_mm_shuffle_epi8(scales17,
+                        _mm_load_si128((const __m128i*)scale_shuffle_iq2xs.v[2 * j + half])));
                 if constexpr (TY == 22)
                     sc = _mm256_shuffle_epi8(scales, _mm256_load_si256((const __m256i *)scale_shuffle.v[2 * j + half]));
                 const int off = 64 * j + 32 * half;

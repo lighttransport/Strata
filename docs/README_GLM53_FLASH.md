@@ -1,5 +1,7 @@
 # GLM5.3Flash with Strata
 
+For the 128 GB, two-node Threadripper configuration and current Q2 decode work, see [the NUMA decode report](GLM_Q2_NUMA_DECODE.md).
+
 For Xeon Gold with one or two Tesla V100 GPUs, see the [V100 hardware measurement report](GLM53_V100.md). It covers the dual-GPU reference, single-socket worker comparison and 16GB VRAM-capacity forecast.
 
 This fork runs GLM-5.3-Flash GGUF weights through the experimental `strata-glm-decode` backend. The current reference model is the mixed-quantization **UD-Q2_K_XL**, with all four shards. It runs on a Threadripper 1950X, 160 GB DDR4 and RTX 5060 Ti 16 GB, keeping fixed projections on GPU and executing routed decode experts directly from RAM.
