@@ -27,7 +27,7 @@ int main(int argc,char** argv){try {
         if(layer>=3 && layer<45 && (ids.size()!=8 || std::any_of(ids.begin(),ids.end(),[&](int id){return id<0 || id>=descriptor.experts;}) || std::set<int>(ids.begin(),ids.end()).size()!=ids.size()))throw std::runtime_error("invalid top8 routing row");
         routes[pos][layer]=ids;}
     if(routes.size()<size_t(nt))throw std::runtime_error("insufficient routing positions");
-    auto host=physical_cores(false);long long previous=host.empty()?-1:pin_current_thread(host[0]);
+    auto host=physical_cores(false);ThreadAffinity previous;if(!host.empty())previous=pin_current_thread(host[0]);
     struct Layer {NativeFmt f;std::vector<ExpertJobMulti> jobs;std::array<std::unique_ptr<NumaTensor>,3> owned;std::vector<std::vector<uint8_t>> acts;std::vector<float> out;};
     std::vector<Layer> layers;size_t bytes=0;
     for(int l=3;l<int(model.descriptor().layers.size());++l) {
@@ -64,5 +64,5 @@ int main(int argc,char** argv){try {
         for(size_t l=0;l<layers.size();++l)if(layers[l].out!=references[l])throw std::runtime_error("unstable repeated outputs");
         std::cout<<"round="<<round<<" ms="<<ms<<" packed_GB_s="<<bytes/ms/1e6<<" expert_only_tok_s="<<nt*1000/ms<<" output_hash="<<output_hash<<" checksum="<<checksum<<'\n';
     }
-    restore_thread_affinity(previous);
+    if(previous.valid)restore_thread_affinity(previous);
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -115,6 +115,7 @@ class Tokenizer:
                 if ty in (3, 4):
                     self.special_tokens[tokens[i]] = i
         always = [t for t, i in self.special_tokens.items() if token_types and token_types[i] == 4]
+        self.control_tokens = [t for t, i in self.special_tokens.items() if token_types and token_types[i] == 3]
         # Longest literal first, or `<|im_end|>` could match a shorter prefix of itself.  `regex.escape` so a
         # token containing regex metacharacters (several do: `<|`, `[`, `(`) is matched literally.
         self._always_re = self._alt(always)
@@ -222,18 +223,21 @@ class Tokenizer:
                 out.append(i)
         return out
 
-    def _encode_matching(self, text: str, pat) -> list[int]:
+    def _encode_matching(self, text: str, pat, plain=()) -> list[int]:
         """Encode `text`, emitting any literal `pat` matches as single tokens and BPE-ing the rest.
 
         The split happens on the RAW text, before the byte mapping, because a special token's string is a
         literal to match rather than bytes to decompose.  Everything between the matches is tokenized
-        normally - which is why a near-miss like `<|im_star` still costs ordinary tokens.
+        normally - which is why a near-miss like `<|im_star` still costs ordinary tokens.  A match that starts
+        inside one of the `plain` (start, end) spans is left to the text around it (#537).
         """
         if pat is None:
             return self._encode_plain(text)
         out: list[int] = []
         pos = 0
         for m in pat.finditer(text):
+            if plain and any(a <= m.start() < b for a, b in plain):
+                continue
             if m.start() > pos:
                 out.extend(self._encode_plain(text[pos:m.start()]))
             out.append(self.special_tokens[m.group(0)])
@@ -242,13 +246,15 @@ class Tokenizer:
             out.extend(self._encode_plain(text[pos:]))
         return out
 
-    def encode(self, text: str, parse_special: bool = False) -> list[int]:
+    def encode(self, text: str, parse_special: bool = False, plain=()) -> list[int]:
         """Tokenize `text`.
 
         `parse_special` controls only the type-3 CONTROL literals such as `<|im_end|>`; the type-4
         USER_DEFINED ones such as `<think>` are matched either way.  See the note in `__init__`.
+        `plain`: (start, end) spans of `text` that are ordinary text even where they spell a literal - a
+        `</think>` quoted in a message (#537) - and are tokenized with the text around them.
         """
-        return self._encode_matching(text, self._special_re if parse_special else self._always_re)
+        return self._encode_matching(text, self._special_re if parse_special else self._always_re, plain)
 
     def token_bytes(self, i: int) -> bytes:
         """The raw bytes of one token (a multi-byte character can be split across tokens)."""
