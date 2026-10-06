@@ -2,6 +2,7 @@
 // https://github.com/huggingface/transformers/tree/main/src/transformers/models/glm5_next
 #include "strata/kernels/glm.hpp"
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cuda_runtime.h>
 #include <stdexcept>
@@ -46,6 +47,34 @@ __global__ void norm(const float *x, const float *w, const float *b, float *y, i
     for (int i = t; i < n; i += 256)
         y[i] = (x[i] - mean) * inv * (w ? w[i] : 1.f) + (b ? b[i] : 0.f);
 }
+// Decode rows (few tokens): 1024 threads, float4 traffic and shuffle reductions instead of a shared tree.
+__global__ void rms_norm_rows(const float4 *x, const float4 *w, float4 *y, int n4, float eps) {
+    __shared__ float warps[32];
+    const int t = threadIdx.x, lane = t & 31;
+    x += (size_t)blockIdx.x * n4;
+    y += (size_t)blockIdx.x * n4;
+    float sum = 0;
+    for (int i = t; i < n4; i += 1024) {
+        const float4 v = x[i];
+        sum += v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+    }
+    for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+    if (!lane) warps[t / 32] = sum;
+    __syncthreads();
+    if (t < 32) {
+        sum = warps[t];
+        for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+        if (!t) warps[0] = rsqrtf(sum / (4.f * n4) + eps);
+    }
+    __syncthreads();
+    const float inv = warps[0];
+    for (int i = t; i < n4; i += 1024) {
+        float4 v = x[i];
+        const float4 g = w ? w[i] : make_float4(1.f, 1.f, 1.f, 1.f);
+        v.x = v.x * inv * g.x; v.y = v.y * inv * g.y; v.z = v.z * inv * g.z; v.w = v.w * inv * g.w;
+        y[i] = v;
+    }
+}
 __global__ void swiglu(const float *g, const float *u, float *y, int n, float limit) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
@@ -55,7 +84,7 @@ __global__ void swiglu(const float *g, const float *u, float *y, int n, float li
     }
 }
 __global__ void route(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
-                      float scale) {
+                      float scale, float min_share) {
     if (threadIdx.x || blockIdx.x)
         return;
     float sum = 0;
@@ -77,14 +106,18 @@ __global__ void route(const float *logits, const float *bias, int *ids, float *w
         weights[j] = sig(logits[id]);
         sum += weights[j];
     }
-    for (int j = 0; j < k; ++j)
+    for (int j = 0; j < k; ++j) {
         weights[j] *= scale / (sum + 1e-20f);
+        if (weights[j] < min_share * scale) weights[j] = 0.f;
+    }
 }
 // One warp caches each expert score once. Ties choose the first expert, as
 // in the serial scan; lane zero retains the original normalization order.
+// blockIdx.x selects the token; each token's selection is the single-token computation.
 __global__ void route_warp(const float *logits, const float *bias, int *ids, float *weights,
-                           int ne, int k, float scale) {
+                           int ne, int k, float scale, float min_share) {
     const int lane = threadIdx.x;
+    logits += (size_t)blockIdx.x * ne; ids += (size_t)blockIdx.x * k; weights += (size_t)blockIdx.x * k;
     float scores[16];
     for (int i = 0; i < 16; ++i) {
         const int e = lane + 32 * i;
@@ -115,7 +148,21 @@ __global__ void route_warp(const float *logits, const float *bias, int *ids, flo
             if (lane + 32 * i == selected) scores[i] = -INFINITY;
     }
     if (lane == 0)
-        for (int j = 0; j < k; ++j) weights[j] *= scale / (sum + 1e-20f);
+        for (int j = 0; j < k; ++j) {
+            weights[j] *= scale / (sum + 1e-20f);
+            if (weights[j] < min_share * scale) weights[j] = 0.f;
+        }
+}
+// Opt-in lossy pruning (STRATA_GLM_ROUTE_MIN_SHARE): selected experts below this share of the routed weight get
+// weight zero, and the CPU expert service skips zero-weight routes. 0 (default) keeps every route.
+float route_min_share() {
+    static const float v = [] {
+        const char *e = std::getenv("STRATA_GLM_ROUTE_MIN_SHARE");
+        const float x = e ? std::strtof(e, nullptr) : 0.f;
+        if (!(x >= 0.f && x < 1.f)) throw std::invalid_argument("STRATA_GLM_ROUTE_MIN_SHARE must be in [0, 1)");
+        return x;
+    }();
+    return v;
 }
 
 __global__ void mhc_coeff(const float *p, const float *base, const float *scale, float *c, int iters,
@@ -160,6 +207,7 @@ __global__ void mhc_coeff(const float *p, const float *base, const float *scale,
 __global__ void mhc_coeff_warp(const float *p, const float *base, const float *scale, float *c,
                                int iters, float eps) {
     const int lane = threadIdx.x, row = lane / 4, col = lane % 4;
+    p += (size_t)blockIdx.x * 24; c += (size_t)blockIdx.x * 24;   // one warp per token
     if (lane < 4) {
         c[lane] = sig(p[lane] * scale[0] + base[lane]) + eps;
         c[4 + lane] = 2 * sig(p[4 + lane] * scale[1] + base[4 + lane]);
@@ -209,6 +257,7 @@ __global__ void hc_project_reduce(const float *partial, float *out) {
 }
 __global__ void hc_read(const float *r, const float *c, float *x, int n) {
     const int d = blockIdx.x * blockDim.x + threadIdx.x;
+    r += (size_t)blockIdx.y * 4 * n; c += (size_t)blockIdx.y * 24; x += (size_t)blockIdx.y * n;   // token
     if (d < n) {
         float sum = 0;
         for (int i = 0; i < 4; ++i)
@@ -218,6 +267,7 @@ __global__ void hc_read(const float *r, const float *c, float *x, int n) {
 }
 __global__ void hc_write(const float *r, const float *c, const float *y, float *out, int n) {
     const int d = blockIdx.x * blockDim.x + threadIdx.x;
+    r += (size_t)blockIdx.y * 4 * n; c += (size_t)blockIdx.y * 24; y += (size_t)blockIdx.y * n; out += (size_t)blockIdx.y * 4 * n;
     if (d >= n)
         return;
     // Keep all input streams in registers so in-place updates are safe.
@@ -444,6 +494,17 @@ void glm_rms_norm(const float *x, const float *w, float *y, int n, int tokens, f
     norm<<<tokens, 256, 0, (cudaStream_t)s>>>(x, w, nullptr, y, n, eps, false);
     check();
 }
+void glm_rms_norm_rows(const float *x, const float *w, float *y, int n, int tokens, float eps, void *s) {
+    width(n);
+    width(tokens);
+    const auto aligned = [](const void *p) { return (reinterpret_cast<uintptr_t>(p) & 15) == 0; };
+    if (n % 4 == 0 && aligned(x) && aligned(y) && (!w || aligned(w)))
+        rms_norm_rows<<<tokens, 1024, 0, (cudaStream_t)s>>>((const float4 *)x, (const float4 *)w, (float4 *)y, n / 4,
+                                                             eps);
+    else
+        norm<<<tokens, 256, 0, (cudaStream_t)s>>>(x, w, nullptr, y, n, eps, false);
+    check();
+}
 void glm_layer_norm(const float *x, const float *w, const float *b, float *y, int n, float eps, void *s) {
     width(n);
     norm<<<1, 256, 0, (cudaStream_t)s>>>(x, w, b, y, n, eps, true);
@@ -463,9 +524,9 @@ void glm_router(const float *l, const float *b, int *ids, float *w, int ne, int 
     if (ne < 1 || k < 1 || k > ne)
         throw std::invalid_argument("GLM: invalid routing geometry");
     if (ne <= 512)
-        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale);
+        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share());
     else
-        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale);
+        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share());
     check();
 }
 void glm_hc_project(const float *x, const float *w, float *out, float *scratch, int width, void *s) {
@@ -487,6 +548,28 @@ void glm_mhc_read(const float *r, const float *p, const float *b, const float *s
 void glm_mhc_write(const float *r, const float *c, const float *y, float *out, int n, void *s) {
     width(n);
     hc_write<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(r, c, y, out, n);
+    check();
+}
+void glm_mhc_read_tokens(const float *r, const float *p, const float *b, const float *scale, float *c, float *x,
+                         int n, int it, float eps, int tokens, void *s) {
+    width(n);
+    width(it);
+    width(tokens);
+    mhc_coeff_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(p, b, scale, c, it, eps);
+    hc_read<<<dim3((n + 255) / 256, tokens), 256, 0, (cudaStream_t)s>>>(r, c, x, n);
+    check();
+}
+void glm_mhc_write_tokens(const float *r, const float *c, const float *y, float *out, int n, int tokens, void *s) {
+    width(n);
+    width(tokens);
+    hc_write<<<dim3((n + 255) / 256, tokens), 256, 0, (cudaStream_t)s>>>(r, c, y, out, n);
+    check();
+}
+void glm_router_tokens(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale, int tokens,
+                       void *s) {
+    if (ne < 1 || k < 1 || k > ne || ne > 512 || tokens < 1)
+        throw std::invalid_argument("GLM: invalid batched routing geometry");
+    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share());
     check();
 }
 void glm_hyper_head(const float *r, float *out, int n, void *s) {

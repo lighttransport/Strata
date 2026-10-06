@@ -213,6 +213,11 @@ int sweep(bool exact, cudaStream_t s, Totals& t) {
 int main() {
     cudaStream_t s;
     if (!ck(cudaStreamCreate(&s), "stream create")) return 1;
+    // STRATA_MMVQ_MULTI_ROWS=2|4 checks the multi-row exact layout against single-column calls.
+    if (const char* rows = std::getenv("STRATA_MMVQ_MULTI_ROWS")) {
+        strata::kernels::native_mmvq_set_multi_rows(std::atoi(rows));
+        std::printf("exact layout rows per block: %s\n", rows);
+    }
 
     Totals on, off;
     const int bad = sweep(true, s, on);

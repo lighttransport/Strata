@@ -39,6 +39,16 @@ inline rocblas_status cublasGemmEx(rocblas_handle h, rocblas_operation trans_a,
         a, a_type, lda, b, b_type, ldb, beta, c, c_type, ldc,
         c, c_type, ldc, compute_type, algo, 0, 0);
 }
+inline rocblas_status cublasGemmStridedBatchedEx(rocblas_handle h, rocblas_operation trans_a,
+    rocblas_operation trans_b, int m, int n, int k, const void* alpha,
+    const void* a, rocblas_datatype a_type, int lda, long long stride_a,
+    const void* b, rocblas_datatype b_type, int ldb, long long stride_b, const void* beta,
+    void* c, rocblas_datatype c_type, int ldc, long long stride_c, int batches,
+    rocblas_datatype compute_type, rocblas_gemm_algo algo) {
+    return rocblas_gemm_strided_batched_ex(h, trans_a, trans_b, m, n, k, alpha,
+        a, a_type, lda, stride_a, b, b_type, ldb, stride_b, beta, c, c_type, ldc, stride_c,
+        c, c_type, ldc, stride_c, batches, compute_type, algo, 0, 0);
+}
 #else
 #define CUBLAS_COMPUTE_32F HIPBLAS_COMPUTE_32F
 #define CUBLAS_DEFAULT_MATH HIPBLAS_DEFAULT_MATH
@@ -52,6 +62,7 @@ inline rocblas_status cublasGemmEx(rocblas_handle h, rocblas_operation trans_a,
 #define cublasCreate hipblasCreate
 #define cublasDestroy hipblasDestroy
 #define cublasGemmEx hipblasGemmEx
+#define cublasGemmStridedBatchedEx hipblasGemmStridedBatchedEx
 #define cublasHandle_t hipblasHandle_t
 #define cublasSetMathMode hipblasSetMathMode
 #define cublasSetStream hipblasSetStream

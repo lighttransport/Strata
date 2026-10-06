@@ -1,0 +1,271 @@
+{
+  "date": "2026-10-05",
+  "hardware": "Threadripper 1950X, two NUMA nodes, 128 GB DDR4, RTX 5060 Ti 16 GB",
+  "decoder_sha256": "9261d7c891cb01557f5ed6122abeee65a83e60f39026c7678544912a5c2df343",
+  "status": "full converted-model quality and performance qualification pending",
+  "calibration": {
+    "targets": 32768,
+    "projections": 84,
+    "counts_per_projection": [
+      262144
+    ],
+    "unvisited_moment_rows": 2,
+    "memory": {
+      "command": [
+        "numactl",
+        "--interleave=all",
+        "build-glm/strata-glm-decode",
+        "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+        "0",
+        "1",
+        "4096",
+        "15",
+        "--context=8192",
+        "--prefill-batch=256",
+        "--gpu-budget-mib=12288",
+        "--cpu-affinity=numa",
+        "--decode-graphs",
+        "--eval-corpus=build-q2-redesign/corpus/calibration.ids"
+      ],
+      "peak_rss_kib": 105103568,
+      "peak_swap_kib": 0,
+      "minimum_available_kib": 123405368,
+      "exit_code": 0,
+      "wall_seconds": 3130.766271250999,
+      "rejected": null
+    }
+  },
+  "original_weight_execution_control": {
+    "scope": "16 teacher-forced targets; all original weights retained, new owned/fused/async path",
+    "metrics": {
+      "sequence": 1,
+      "tokens": 16,
+      "nll": 6.82344664995,
+      "perplexity": 919.147536705,
+      "kl": 0,
+      "top1_agreement": 1
+    },
+    "memory": {
+      "command": [
+        "numactl",
+        "--interleave=all",
+        "build-glm/strata-glm-decode",
+        "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+        "0",
+        "1",
+        "4096",
+        "15",
+        "--context=8192",
+        "--prefill-batch=256",
+        "--gpu-budget-mib=12288",
+        "--cpu-affinity=numa",
+        "--decode-graphs",
+        "--expert-pack=build-q2-redesign/layer3-smoke.gguf",
+        "--expert-pack-profile=build-q2-redesign/layer3-profiles/original.json",
+        "--eval-corpus=build-q2-redesign/eval-smoke.ids",
+        "--eval-reference=build-q2-redesign/eval-smoke.logits"
+      ],
+      "peak_rss_kib": 104952716,
+      "peak_swap_kib": 0,
+      "minimum_available_kib": 26987436,
+      "exit_code": 0,
+      "wall_seconds": 212.49032336899836,
+      "rejected": null
+    }
+  },
+  "prefill_chunk_1_vs_17": {
+    "original": {
+      "passed": false,
+      "logit_relative_l2": 0.10263,
+      "greedy": [
+        1704,
+        1704
+      ],
+      "memory": {
+        "command": [
+          "numactl",
+          "--interleave=all",
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@build-q2-redesign/prefill-smoke.ids",
+          "8",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--expert-pack=build-q2-redesign/layer3-smoke.gguf",
+          "--expert-pack-profile=build-q2-redesign/layer3-profiles/original.json",
+          "--check-prefill"
+        ],
+        "peak_rss_kib": 105262800,
+        "peak_swap_kib": 0,
+        "minimum_available_kib": 26863568,
+        "exit_code": 1,
+        "wall_seconds": 307.1646184659985,
+        "rejected": null
+      }
+    },
+    "layer3_converted": {
+      "passed": false,
+      "logit_relative_l2": 0.100538,
+      "greedy": [
+        1704,
+        1704
+      ],
+      "memory": {
+        "command": [
+          "numactl",
+          "--interleave=all",
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@build-q2-redesign/prefill-smoke.ids",
+          "8",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--expert-pack=build-q2-redesign/layer3-smoke.gguf",
+          "--check-prefill",
+          "--check-verify-graphs"
+        ],
+        "peak_rss_kib": 105577616,
+        "peak_swap_kib": 0,
+        "minimum_available_kib": 26719648,
+        "exit_code": 1,
+        "wall_seconds": 300.5740563579966,
+        "rejected": null
+      }
+    }
+  },
+  "gpu_mmq_screen": {
+    "formats": [
+      "Q2_K",
+      "Q3_K"
+    ],
+    "dimensions": [
+      [
+        2048,
+        4096
+      ],
+      [
+        4096,
+        2048
+      ]
+    ],
+    "initcheck_errors": 0,
+    "memcheck_errors": 0,
+    "zero_route_experts_tested": true,
+    "note": "matrix reference is FP32 dequantized weights; Q8 activation error is expected"
+  },
+  "prefill_chunk_128_vs_256": {
+    "layer3_converted": {
+      "passed": false,
+      "logit_relative_l2": 0.136423,
+      "greedy": [
+        1424,
+        1424
+      ],
+      "memory": {
+        "command": [
+          "numactl",
+          "--interleave=all",
+          "build-glm/strata-glm-decode",
+          "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "@build-q2-redesign/prefill256.ids",
+          "8",
+          "4096",
+          "15",
+          "--context=8192",
+          "--prefill-batch=256",
+          "--reference-batch=128",
+          "--gpu-budget-mib=12288",
+          "--cpu-affinity=numa",
+          "--decode-graphs",
+          "--expert-pack=build-q2-redesign/layer3-smoke.gguf",
+          "--check-prefill",
+          "--check-verify-graphs"
+        ],
+        "peak_rss_kib": 105529400,
+        "peak_swap_kib": 0,
+        "minimum_available_kib": 26958484,
+        "sample_interval_ms": 100,
+        "rejected": null,
+        "exit_code": 1,
+        "wall_seconds": 234.25266002400167
+      }
+    },
+    "original_control": "not yet measured"
+  },
+  "layer3_verification_graphs": {
+    "passed": true,
+    "comparison": "bitwise logits, widths 1..4, warm capture/replay, history reallocation, accepted-prefix rollback",
+    "memory": {
+      "command": [
+        "numactl",
+        "--interleave=all",
+        "build-glm/strata-glm-decode",
+        "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+        "@build-q2-redesign/prefill-smoke.ids",
+        "8",
+        "4096",
+        "15",
+        "--context=8192",
+        "--prefill-batch=256",
+        "--gpu-budget-mib=12288",
+        "--cpu-affinity=numa",
+        "--decode-graphs",
+        "--expert-pack=build-q2-redesign/layer3-smoke.gguf",
+        "--check-verify-graphs"
+      ],
+      "peak_rss_kib": 105358056,
+      "peak_swap_kib": 0,
+      "minimum_available_kib": 28690808,
+      "sample_interval_ms": 100,
+      "rejected": null,
+      "exit_code": 0,
+      "wall_seconds": 298.16931915600435
+    }
+  },
+  "rejected_full_conversion": {
+    "command": [
+      "build-glm/strata-glm-q2-pack",
+      "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+      "--calibration=/mnt/nvme02/work/Strata/build-q2-redesign/calibration",
+      "--threads=16"
+    ],
+    "peak_rss_kib": 1508332,
+    "peak_swap_kib": 16,
+    "minimum_available_kib": 26719456,
+    "sample_interval_ms": 100,
+    "rejected": {
+      "reason": "memory limit",
+      "rss_kib": 911896,
+      "swap_kib": 16,
+      "available_kib": 44442068
+    },
+    "swapped_regions": [
+      {
+        "kind": "heap",
+        "size_kib": 51136,
+        "swap_kib": 16
+      }
+    ],
+    "exit_code": -15,
+    "wall_seconds": 1930.7267039350045
+  },
+  "qualification_retry": {
+    "work_directory": "build-q2-redesign/qualification-runtime-locked",
+    "status_at_recording": "conversion running with bounded runtime locks",
+    "service_restored": true,
+    "service_context": 8192,
+    "service_completion_tokens": 8,
+    "service_available_during_cpu_conversion": true
+  }
+}

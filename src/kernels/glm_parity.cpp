@@ -62,6 +62,8 @@ int main() {
             expected[i] = x[i] * w[i] / std::sqrt(sum / H + 1e-5);
         k::glm_rms_norm(dx.p, dw.p, dy.p, H, 1, 1e-5, nullptr);
         near("RMSNorm", dy.get(), expected);
+        k::glm_rms_norm_rows(dx.p, dw.p, dy.p, H, 1, 1e-5, nullptr);
+        near("RMSNorm rows", dy.get(), expected);
         auto b = random(H);
         Buffer<float> db(b);
         double mean = 0;

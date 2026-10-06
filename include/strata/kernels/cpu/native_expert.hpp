@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include "strata/kernels/cpu/expert_observer.hpp"
 
 namespace strata::kernels::cpu {
 
@@ -29,6 +30,10 @@ struct NativeFmt {
     size_t bytes = 0;                   ///< the whole blob
     size_t act_bytes = 0, h_bytes = 0;  ///< quantized activation sizes (n_embd of gu_act, n_ff of d_act)
     bool lossless = false;          ///< direct magnitude planes for IQ2_S/IQ3_S
+    int q23_layout = 0;             ///< 0: GGML rows; 1: tiled direct; 2: tiled lookup (Q2_K/Q3_K only)
+    ExpertObserver* observer = nullptr;
+    int observer_layer = -1;
+    bool fuse_h_quant = false;
     float swiglu_limit = 0;           ///< 0 preserves the Qwen contract; GLM uses 10
 };
 
@@ -41,6 +46,7 @@ bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt
 void native_quant_act(const NativeFmt& f, const float* x, void* dst);
 /// h (n_ff floats) -> the down activation (h_bytes).
 void native_quant_h(const NativeFmt& f, const float* h, void* dst);
+void native_quant_h_rows(const NativeFmt& f,const float* h,void* dst,int first,int last);
 
 /// From how many tokens native_gu_rows gives this gate/up type to a multi-token kernel (#152; ggml-cpu's per-token dot
 /// below that).  1: a token's rows are the same alone and in any group.

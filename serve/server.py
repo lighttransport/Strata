@@ -4829,6 +4829,8 @@ def main() -> int:
     if a.engine == "strata" and not (tpath / "vocab.json").exists():
         ap.error(f"the model's tokenizer is missing ({tpath / 'vocab.json'}); run setup again")
     if a.engine == "glm":
+        if cfg.get("expert_pack_profile") and not cfg.get("expert_pack"):
+            ap.error("GLM expert_pack_profile requires expert_pack")
         if not cfg.get("model") or not cfg.get("exe"):
             ap.error("--engine glm needs a config with exe and model (GLM GGUF shard or native EXL3 directory)")
         from glm_generate import metadata_shard
@@ -4836,6 +4838,8 @@ def main() -> int:
         from strata_tokenizer import Tokenizer
         shard = metadata_shard(Path(cfg["model"]))
         glm_native = shard.is_dir()
+        if glm_native and cfg.get("expert_pack"):
+            ap.error("GLM expert_pack requires an original GGUF model")
         if glm_native:
             from glm_artifact import NativeTokenizer, load_metadata
             glm_metadata = load_metadata(shard)
@@ -4881,6 +4885,11 @@ def main() -> int:
             pages = cfg.get("weight_pages", "4k")
             if pages not in ("4k", "huge"): ap.error("GLM weight_pages must be 4k or huge")
             args.extend(("mmq", pages))
+        elif cfg.get("expert_pack"):
+            backend = cfg.get("cpu_expert_backend", "auto")
+            if backend not in ("native", "auto", "packed-dot", "packed-lut"):
+                ap.error("invalid GLM CPU expert backend")
+            args.extend(("mmq", "4k", cfg["expert_pack"], cfg.get("expert_pack_profile", ""), backend))
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
         vision, sampling_defaults = None, {}
     elif a.engine == "strata":

@@ -124,6 +124,9 @@ bool built() { return true; }
 
 bool supported(int t) {
     switch ((ggml_type) t) {
+#ifdef STRATA_GLM_Q23_MMQ
+        case GGML_TYPE_Q2_K: case GGML_TYPE_Q3_K:
+#endif
         case GGML_TYPE_Q2_0:
 #ifdef STRATA_ORCA_Q4KS_MMQ
         case GGML_TYPE_Q5_0:   // #296 (Q4_K and Q5_1: STRATA_MMQ_KQUANTS)
@@ -133,8 +136,8 @@ bool supported(int t) {
         case GGML_TYPE_Q8_0:   // the draft layer's dense matrices (E-9)
 #ifdef STRATA_MMQ_KQUANTS
         case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q5_1:   // Unsloth's UD-Q4_K_XL experts (CUDA)
-#if defined(__HIPCC__) || defined(STRATA_Q6K_EXPERTS)
-        case GGML_TYPE_Q6_K:   // HIP: the dense GGUF projections (STRATA_DENSE_MMQ); CUDA: only the opt-in -DSTRATA_Q6K_EXPERTS=ON build
+#if defined(__HIPCC__) || defined(STRATA_Q6K_EXPERTS) || defined(STRATA_MMQ_KQUANTS)
+        case GGML_TYPE_Q6_K:   // HIP: the dense GGUF projections (STRATA_DENSE_MMQ); CUDA: -DSTRATA_Q6K_EXPERTS=ON or K-quant (Q4_K_M) experts
 #endif
 #endif
             return true;
@@ -181,6 +184,10 @@ size_t q8_bytes(int64_t rows, int64_t cols) {
 
 void quantize(const float* x, const int32_t* ids, void* xq, int t, int64_t cols, int64_t ld, int64_t rows, void* stream) {
     if (rows <= 0) return;
+    if(t==GGML_TYPE_Q2_K||t==GGML_TYPE_Q3_K) {
+        const size_t used=(size_t)rows*pad512(cols)*sizeof(block_q8_1_mmq)/(4*QK8_1);
+        ck(cudaMemsetAsync(static_cast<char*>(xq)+used,0,q8_bytes(rows,cols)-used,(cudaStream_t)stream),"Q23 activation padding");
+    }
     quantize_mmq_q8_1_cuda(x, ids, xq, (ggml_type) t, cols, ld, rows * ld, rows * ld, pad512(cols), rows, 1, 1,
                            (cudaStream_t) stream);
     ck(cudaGetLastError(), "quantize");
@@ -234,6 +241,10 @@ void Context::run(const Product& p, void* stream) {
         case GGML_TYPE_Q5_0: mul_mat_q_case<GGML_TYPE_Q5_0>(ctx, a, s); break;
 #endif
         case GGML_TYPE_Q2_0: mul_mat_q_case<GGML_TYPE_Q2_0>(ctx, a, s); break;
+#ifdef STRATA_GLM_Q23_MMQ
+        case GGML_TYPE_Q2_K: mul_mat_q_case<GGML_TYPE_Q2_K>(ctx, a, s); break;
+        case GGML_TYPE_Q3_K: mul_mat_q_case<GGML_TYPE_Q3_K>(ctx, a, s); break;
+#endif
         case GGML_TYPE_IQ2_XXS: mul_mat_q_case<GGML_TYPE_IQ2_XXS>(ctx, a, s); break;
         case GGML_TYPE_IQ2_XS: mul_mat_q_case<GGML_TYPE_IQ2_XS>(ctx, a, s); break;
         case GGML_TYPE_IQ2_S: mul_mat_q_case<GGML_TYPE_IQ2_S>(ctx, a, s); break;
@@ -245,10 +256,8 @@ void Context::run(const Product& p, void* stream) {
 #ifdef STRATA_MMQ_KQUANTS
         case GGML_TYPE_Q4_K: mul_mat_q_case<GGML_TYPE_Q4_K>(ctx, a, s); break;
         case GGML_TYPE_Q5_K: mul_mat_q_case<GGML_TYPE_Q5_K>(ctx, a, s); break;
-#if defined(__HIPCC__) || defined(STRATA_Q6K_EXPERTS)
-        case GGML_TYPE_Q6_K: mul_mat_q_case<GGML_TYPE_Q6_K>(ctx, a, s); break;
-#endif
         case GGML_TYPE_Q5_1: mul_mat_q_case<GGML_TYPE_Q5_1>(ctx, a, s); break;
+        case GGML_TYPE_Q6_K: mul_mat_q_case<GGML_TYPE_Q6_K>(ctx, a, s); break;
 #endif
         default:
             std::fprintf(stderr, "prefill mmq: type %d is not covered\n", (int) t);

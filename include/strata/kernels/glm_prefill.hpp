@@ -61,7 +61,8 @@ void glm_kda_gate_batch(const float *x, const float *bias, const float *a, float
                         float lower, int tokens, void *stream);
 void glm_kda_chunk(float *state, const float *q, const float *key, const float *value, const float *decay,
                    const float *beta, float *out, int heads, int dim, int tokens, void *stream,
-                   int columns = 128, int row_parts = 1, const float *prepared_qi = nullptr);
+                   int columns = 128, int row_parts = 1, const float *prepared_qi = nullptr,
+                   float *snapshots = nullptr, long long snapshot_stride = 0, int snapshot_tokens = 0);
 void glm_kda_prepare(const float *q, float *key, float *decay, float *beta, float *qi,
                      int heads, int tokens, void *stream);
 void glm_kda_output_batch(const float *x, const float *gate, const float *weight, float *out, int heads,

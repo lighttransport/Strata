@@ -93,6 +93,12 @@ def main():
     ap.add_argument("--reject-compilers", "--reject-competitors", action="store_true", help="stop and discard on concurrent compilers or sustained external CPU work")
     ap.add_argument("--no-warm-weights", action="store_true", help="rely on GPU prefill to visit main expert weights")
     ap.add_argument("--repetitions", type=int, default=3)
+    ap.add_argument("--expert-pack", type=pathlib.Path)
+    ap.add_argument("--expert-pack-profile", type=pathlib.Path)
+    ap.add_argument("--cpu-expert-backend", choices=("auto", "native", "packed-dot", "packed-lut"), default="auto")
+    ap.add_argument("--capture-experts", action="store_true")
+    ap.add_argument("--max-swap-mib", type=int, default=0, help="tolerated process swap; 0 rejects any swap")
+    ap.add_argument("--decoder-flag", action="append", default=[], help="extra decoder flag, repeatable (e.g. --decoder-flag=--decode-cache-mib=3584)")
     sweeps=ap.add_mutually_exclusive_group()
     sweeps.add_argument("--sweep", action="store_true", help="none, lookup 1..3, MTP 1..3; all retain the MTP allocation")
     sweeps.add_argument("--mtp-sweep", action="store_true", help="none and MTP 1..3; omit lookup modes")
@@ -121,15 +127,23 @@ def main():
                    "--stop-ids=" + ",".join(map(str, sorted(stops)))]
         if not args.no_warm_weights:
             command.append("--warm-weights")
+        if args.expert_pack:
+            command += [f"--expert-pack={args.expert_pack.resolve()}", f"--cpu-expert-backend={args.cpu_expert_backend}"]
+        if args.expert_pack_profile:
+            command.append(f"--expert-pack-profile={args.expert_pack_profile.resolve()}")
         if args.sweep or args.mtp_sweep:
             command.append("--decode-mode-sweep=mtp" if args.mtp_sweep else "--decode-mode-sweep")
         elif args.speculative == "mtp":
             command += ["--speculative=mtp", f"--draft-depth={args.depth}"]
         elif args.speculative == "lookup":
             command.append(f"--lookup-depth={args.depth}")
+        command += args.decoder_flag
         memory = dict(peak_rss_kib=0, peak_swap_kib=0)
         with prefix.with_suffix(".tokens").open("w") as out, prefix.with_suffix(".log").open("w") as err:
-            process = subprocess.Popen(command, stdout=out, stderr=err)
+            child_env = os.environ.copy()
+            if args.capture_experts:
+                child_env["STRATA_GLM_ACTIVATION_TRACE"] = str(prefix.with_suffix(".capture"))
+            process = subprocess.Popen(command, stdout=out, stderr=err, env=child_env)
             def monitor():
                 sample = 0
                 previous_cpu = process_cpu_snapshot() if args.reject_compilers else None
@@ -143,6 +157,10 @@ def main():
                                 memory[key] = max(memory[key], int(match[1]))
                     except FileNotFoundError:
                         pass
+                    available = next(int(line.split()[1]) for line in pathlib.Path("/proc/meminfo").read_text().splitlines() if line.startswith("MemAvailable:"))
+                    memory["minimum_available_kib"] = min(memory.get("minimum_available_kib", available), available)
+                    if memory["peak_rss_kib"] > 118 * 1024**2 or available < 4 * 1024**2:
+                        memory["memory_limit"] = True
                     if args.reject_compilers and sample % 10 == 0:
                         sampled_at, current_cpu = process_cpu_snapshot()
                         previous_at, previous_rows = previous_cpu
@@ -161,7 +179,7 @@ def main():
                         if competitors:
                             memory["competing_workloads"] = competitors
                     sample += 1
-                    if memory["peak_swap_kib"] or memory.get("competing_workloads"):
+                    if memory["peak_swap_kib"] > args.max_swap_mib * 1024 or memory.get("competing_workloads") or memory.get("memory_limit"):
                         try:
                             process.terminate()
                         except ProcessLookupError:
@@ -173,9 +191,11 @@ def main():
             code = process.wait()
             thread.join()
         prefix.with_suffix(".memory.json").write_text(json.dumps(memory, indent=2) + "\n")
+        if memory.get("memory_limit"):
+            raise RuntimeError(f"{fixture} exceeded the RAM limit; benchmark rejected")
         if memory.get("competing_workloads"):
             raise RuntimeError(f"{fixture} had concurrent CPU work; stopped and rejected this benchmark: {memory['competing_workloads']}")
-        if memory["peak_swap_kib"]:
+        if memory["peak_swap_kib"] > args.max_swap_mib * 1024:
             raise RuntimeError(f"{fixture} swapped {memory['peak_swap_kib']} KiB; stopped and rejected this benchmark")
         if code:
             raise RuntimeError(f"{fixture} exited {code}; see {prefix.with_suffix('.log')}")

@@ -694,6 +694,12 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
             const int e = (int) i / parts_b_, part = (int) i % parts_b_;
             const int r0 = H * part / parts_b_, r1 = H * (part + 1) / parts_b_;
             s2_expert_down_rows(jobs_[e].blob, split_[(size_t) e].a2, jobs_[e].out, r0, r1);
+        } else if (mode_ == 8) {
+            flow_task((int) i);
+        } else if (mode_ == 7) {
+            const int first=mrows_*i/mtasks_,last=mrows_*(i+1)/mtasks_;
+            for(int r=first;r<last;++r){const int token=r/reduce_hidden_,row=r%reduce_hidden_;float sum=0;
+                for(int k=0;k<reduce_experts_;++k){const int j=token*reduce_experts_+k;sum+=reduce_weights_[j]*reduce_results_[size_t(j)*reduce_hidden_+row];}reduce_output_[r]=sum;}
         } else if (mode_ >= 5) {
             // plan v0.3 P6: native layers, 5 = gate/up rows, 6 = down rows
             if(native_owned_phase_) {
@@ -705,7 +711,10 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
                     output[t]=(mode_==5?split_multi_[e].ff[t]:j.out[t])+node*half;
                     act[t]=mode_==5?j.nact[t]:split_multi_[e].hq[t];
                 }
-                if(mode_==5)native_gu_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].up);
+                if(mode_==5) {
+                    native_gu_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].up);
+                    if(nfmt_->fuse_h_quant)for(int t=0;t<j.nt;++t)native_quant_h_rows(*nfmt_,split_multi_[e].ff[t],split_multi_[e].hq[t],node*half+r0,node*half+r1);
+                }
                 else native_down_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].down);
                 done_.fetch_add(1,std::memory_order_release);continue;
             }
@@ -914,6 +923,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         if (jobs[i].nt < 1 || jobs[i].nt > MAXT)
             throw std::invalid_argument("native expert pool: invalid token count");
     const bool owned=jobs[0].numa[0].gate!=nullptr;
+    if(f.fuse_h_quant && (!owned||f.observer||f.n_ff%512||f.d_type==42))throw std::invalid_argument("fused hidden quantization requires owned 256-row chunks without observation");
     if(owned && (!numa_rows_available_ || f.gu_type==42 || f.d_type==42 || f.n_ff%2 || f.n_embd%2))
         throw std::invalid_argument("native NUMA rows require pinned workers on both nodes and native IQ geometry");
     for(int e=0;e<n;++e)for(int node=0;node<2;++node) {
@@ -929,17 +939,20 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         nfmt_ = &f;
         const int threads = n_ + (host_works_ ? 1 : 0);
         native_owned_phase_=owned;
-        native_owned_parts_=std::max(1,(native_tasks_per_thread_*threads+2*nb-1)/(2*nb));
+        native_owned_parts_=f.fuse_h_quant?f.n_ff/512:std::max(1,(native_tasks_per_thread_*threads+2*nb-1)/(2*nb));
         mtasks_ = owned?2*nb*native_owned_parts_:native_tasks_per_thread_ * threads;
         mrows_ = (int64_t) nb * f.n_ff;
         const auto a = std::chrono::steady_clock::now();
         run_phase(5, mtasks_);
         const auto b = std::chrono::steady_clock::now();
-        for (int e = 0; e < nb; ++e)
-            for (int t = 0; t < mjobs_[e].nt; ++t)
+        if(!f.fuse_h_quant)for (int e = 0; e < nb; ++e)
+            for (int t = 0; t < mjobs_[e].nt; ++t) {
+                if(f.observer)f.observer->hidden(f.observer_layer,mjobs_[e].expert_id,split_multi_[(size_t)e].ff[t],f.n_ff);
                 if (q2_native_kernels(f.d_type)) act_quant_any(split_multi_[(size_t) e].ff[t], FF, split_multi_[(size_t) e].a2[t]);
                 else native_quant_h(f, split_multi_[(size_t) e].ff[t], split_multi_[(size_t) e].hq[t]);
+            }
         const auto c = std::chrono::steady_clock::now();
+        if(f.fuse_h_quant){native_owned_parts_=std::max(1,(native_tasks_per_thread_*threads+2*nb-1)/(2*nb));mtasks_=2*nb*native_owned_parts_;}
         mrows_ = (int64_t) nb * f.n_embd;
         run_phase(6, mtasks_);
         const auto d = std::chrono::steady_clock::now();
@@ -951,6 +964,169 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
     native_owned_phase_=false;native_local_phase_=false;
     mode_ = 0;
     ms_drain_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+void ExpertPool::flow_task(int i) {
+    const NativeFmt& f = *nfmt_;
+    const int sides = flow_owned_ ? 2 : 1;
+    if (i < flow_gu_tasks_) {
+        const int parts = flow_gu_parts_, e = i / (sides * parts), node = flow_owned_ ? (i / parts) % 2 : 0;
+        const int part = i % parts;
+        const ExpertJobMulti& j = mjobs_[e];
+        SplitBufMulti& sb = split_multi_[(size_t) e];
+        float* ff[MAXT];
+        if (flow_owned_) {
+            const int half = (int) f.n_ff / 2, r0 = half * part / parts, r1 = half * (part + 1) / parts;
+            for (int t = 0; t < j.nt; ++t) ff[t] = sb.ff[t] + node * half;
+            native_gu_rows(f, j.numa[node].gate, j.nact, j.nt, ff, r0, r1, j.numa[node].up);
+            if (f.fuse_h_quant)
+                for (int t = 0; t < j.nt; ++t) native_quant_h_rows(f, sb.ff[t], sb.hq[t], node * half + r0, node * half + r1);
+        } else {
+            const int r0 = (int) f.n_ff * part / parts, r1 = (int) f.n_ff * (part + 1) / parts;
+            for (int t = 0; t < j.nt; ++t) ff[t] = sb.ff[t];
+            native_gu_rows(f, j.blob, j.nact, j.nt, ff, r0, r1, j.native_up);
+        }
+        // acq_rel: the last part sees every other part's rows before it quantizes and publishes them.
+        if (flow_experts_[e].left.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            if (!f.fuse_h_quant)
+                for (int t = 0; t < j.nt; ++t) native_quant_h(f, sb.ff[t], sb.hq[t]);
+            flow_experts_[e].ready.store(flow_tag_, std::memory_order_release);
+        }
+        return;
+    }
+    // Every gate/up part was claimed before any down part, so this wait ends once running parts finish.
+    const int d = i - flow_gu_tasks_, parts = flow_down_parts_, e = d / (sides * parts);
+    const int node = flow_owned_ ? (d / parts) % 2 : 0, part = d % parts;
+    // A gate/up part that never completes (a bug, not a slow row) stops the engine like the pool's other
+    // waits, instead of spinning forever.
+    for (uint32_t spins = 0; flow_experts_[e].ready.load(std::memory_order_acquire) != flow_tag_; ++spins) {
+        _mm_pause();
+        if ((spins & 0xfffffu) != 0xfffffu) continue;
+        static thread_local auto since = std::chrono::steady_clock::now();
+        if (spins == 0xfffffu) since = std::chrono::steady_clock::now();
+        else if (std::chrono::steady_clock::now() - since > kStall) {
+            std::fprintf(stderr, "strata: the layer dataflow waited %lld s for expert %d's gate/up rows - stopping the "
+                                 "engine so the server can start it again\n", (long long) kStall.count(), e);
+            strata::core::release_gpu_waits(stderr);
+            std::fflush(stderr);
+            std::abort();
+        }
+    }
+    const ExpertJobMulti& j = mjobs_[e];
+    SplitBufMulti& sb = split_multi_[(size_t) e];
+    const void* hq[MAXT];
+    float* out[MAXT];
+    for (int t = 0; t < j.nt; ++t) hq[t] = sb.hq[t];
+    int first, last, chunk;
+    if (flow_owned_) {
+        const int half = (int) f.n_embd / 2, r0 = half * part / parts, r1 = half * (part + 1) / parts;
+        for (int t = 0; t < j.nt; ++t) out[t] = j.out[t] + node * half;
+        native_down_rows(f, j.numa[node].gate, hq, j.nt, out, r0, r1, j.numa[node].down);
+        first = node * half + r0; last = node * half + r1; chunk = node * parts + part;
+    } else {
+        first = (int) f.n_embd * part / parts; last = (int) f.n_embd * (part + 1) / parts; chunk = part;
+        for (int t = 0; t < j.nt; ++t) out[t] = j.out[t];
+        native_down_rows(f, j.blob, hq, j.nt, out, first, last, j.native_down);
+    }
+    if (flow_chunks_[chunk].left.fetch_sub(1, std::memory_order_acq_rel) != 1) return;
+    // The last expert through this chunk writes its routed sum in reduce_routed's order.
+    const int hidden = (int) f.n_embd;
+    for (int t = 0; t < flow_tokens_; ++t) {
+        for (int r = first; r < last; ++r) {
+            float sum = 0;
+            for (int k = 0; k < flow_k_; ++k) {
+                const int route = t * flow_k_ + k;
+                sum += flow_weights_[route] * flow_results_[(size_t) route * hidden + r];
+            }
+            flow_sum_[(size_t) t * hidden + r] = sum;
+        }
+    }
+}
+
+void ExpertPool::run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
+                                  const float* weights, float* sum, int nt, int top_k) {
+    if (nt < 1 || nt > MAXT || top_k < 1 || top_k > 32 || !results || !weights || !sum)
+        throw std::invalid_argument("layer dataflow: invalid routed geometry");
+    const bool owned = n > 0 && jobs[0].numa[0].gate != nullptr;
+    // Paths this scheduler does not cover keep the phased execution.
+    if (n <= 0 || n > kMaxSplitMulti || n_ == 1 || f.observer || f.gu_type == 42 || f.d_type == 42 ||
+        native_local_enabled_ || (owned && !numa_rows_available_)) {
+        if (n > 0) run_split_multi_native(f, jobs, n);
+        reduce_routed(results, weights, sum, nt, top_k, (int) f.n_embd);
+        return;
+    }
+    if (f.n_ff <= 0 || f.n_ff > kNativeFF || f.act_bytes > kNativeActBytes || f.h_bytes > kNativeHBytes)
+        throw std::invalid_argument("layer dataflow: unsupported scratch geometry");
+    for (int i = 0; i < n; ++i) {
+        if (jobs[i].nt < 1 || jobs[i].nt > MAXT) throw std::invalid_argument("layer dataflow: invalid token count");
+        for (int node = 0; node < 2; ++node) {
+            const auto& row = jobs[i].numa[node];
+            if (owned ? (!row.gate || !row.up || !row.down) : (row.gate || row.up || row.down))
+                throw std::invalid_argument("layer dataflow: incomplete or mixed NUMA shards");
+        }
+    }
+    if (f.fuse_h_quant && (!owned || f.n_ff % 512))
+        throw std::invalid_argument("layer dataflow: fused hidden quantization requires owned 256-row chunks");
+    const auto t0 = std::chrono::steady_clock::now();
+    wait_parked("before a layer");
+    const int threads = n_ + (host_works_ ? 1 : 0), sides = owned ? 2 : 1;
+    const int target = native_tasks_per_thread_ * threads;
+    flow_gu_parts_ = owned && f.fuse_h_quant ? (int) f.n_ff / 512 : std::max(1, (target + sides * n - 1) / (sides * n));
+    flow_down_parts_ = std::max(1, (target + sides * n - 1) / (sides * n));
+    flow_gu_tasks_ = n * sides * flow_gu_parts_;
+    const int total = flow_gu_tasks_ + n * sides * flow_down_parts_, chunks = sides * flow_down_parts_;
+    if (total > 0xffff) throw std::invalid_argument("layer dataflow: too many tasks");
+    if (!flow_experts_) flow_experts_ = std::make_unique<FlowCounter[]>(kMaxSplitMulti);
+    if ((size_t) chunks > flow_chunk_capacity_) {
+        flow_chunks_ = std::make_unique<FlowCounter[]>(chunks);
+        flow_chunk_capacity_ = chunks;
+    }
+    for (int e = 0; e < n; ++e) flow_experts_[e].left.store(sides * flow_gu_parts_, std::memory_order_relaxed);
+    for (int c = 0; c < chunks; ++c) flow_chunks_[c].left.store(n, std::memory_order_relaxed);
+    mjobs_ = jobs; nfmt_ = &f;
+    flow_results_ = results; flow_weights_ = weights; flow_sum_ = sum; flow_k_ = top_k; flow_tokens_ = nt;
+    flow_owned_ = owned;
+    flow_tag_ = epoch_.load(std::memory_order_relaxed) + 1;   // the epoch begin_batch publishes
+    mode_ = 8;
+    njobs_ = total;
+    if (owned) {
+        // Each node's queue lists all of its gate/up parts before any down part.
+        local_tasks_[0].clear(); local_tasks_[1].clear();
+        for (int node = 0; node < 2; ++node) {
+            for (int e = 0; e < n; ++e)
+                for (int part = 0; part < flow_gu_parts_; ++part)
+                    local_tasks_[node].push_back((e * 2 + node) * flow_gu_parts_ + part);
+            for (int e = 0; e < n; ++e)
+                for (int part = 0; part < flow_down_parts_; ++part)
+                    local_tasks_[node].push_back(flow_gu_tasks_ + (e * 2 + node) * flow_down_parts_ + part);
+        }
+        local_next0_.store(pack_head(flow_tag_, local_tasks_[0].size(), 0), std::memory_order_release);
+        local_next1_.store(pack_head(flow_tag_, local_tasks_[1].size(), 0), std::memory_order_release);
+        native_owned_phase_ = true;
+        native_local_phase_ = true;
+    } else {
+        native_owned_phase_ = false;
+        native_local_phase_ = false;
+    }
+    const uint32_t e = begin_batch(total);
+    if (host_works_) drain(-1, host_scratch_, e);
+    wait_done(total);
+    wait_parked("after a layer");
+    hstate_.store(kIdle, std::memory_order_relaxed);
+    hstate_ms_.store(now_ms(), std::memory_order_relaxed);
+    native_owned_phase_ = false; native_local_phase_ = false;
+    mode_ = 0;
+    multi_bytes += (int64_t) n * (int64_t) f.bytes;
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    ms_layer_flow += ms;
+    ms_drain_ += ms;
+}
+
+void ExpertPool::reduce_routed(const float* results,const float* weights,float* output,int nt,int experts,int hidden) {
+    if(!results||!weights||!output||nt<1||nt>MAXT||experts<1||experts>32||hidden<1||hidden>8192)throw std::invalid_argument("invalid routed reduction geometry");
+    reduce_results_=results;reduce_weights_=weights;reduce_output_=output;reduce_experts_=experts;reduce_hidden_=hidden;
+    native_owned_phase_=false;native_local_phase_=false;mrows_=int64_t(nt)*hidden;mtasks_=n_+(host_works_?1:0);
+    run_phase(7,mtasks_);mode_=0;
 }
 
 void ExpertPool::run(ExpertJob* jobs, int n) {

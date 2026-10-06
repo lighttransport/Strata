@@ -5,9 +5,11 @@
 
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <regex>
+#include <set>
 
 namespace strata::core {
 
@@ -79,9 +81,11 @@ struct ModelDescriptor {
             throw std::runtime_error("model: missing architecture");
         ModelDescriptor m;
         m.architecture = a->s;
+        // Some converters (REAP-pruned GLM-5.3 GGUFs) spell the GLM architecture with a hyphen; its keys use it.
+        const std::string p = m.architecture + ".";
+        if (m.architecture == "glm5-next") m.architecture = "glm5next";
         if (m.architecture != "glm5next" && m.architecture != "qwen4exp")
             throw std::runtime_error("model: unsupported architecture " + m.architecture);
-        const std::string p = m.architecture + ".";
         const int64_t blocks = integer(p + "block_count");
         m.hidden = integer(p + "embedding_length");
         m.context = integer(p + "context_length");
@@ -106,26 +110,32 @@ struct ModelDescriptor {
             return m;
         }
         m.residual = ResidualKind::Mhc;
-        m.streams = integer(p + "hyper_connection.count");
-        m.sinkhorn_iterations = integer(p + "hyper_connection.sinkhorn_iterations");
-        m.hc_epsilon = real(p + "hyper_connection.epsilon");
+        // Newer converters (e.g. REAP-pruned GGUFs) name these attention.hc.*, ssm.gate_lower_bound and a scalar
+        // swiglu_limit; the first name is the original GLM-5.3-Flash GGUF's.
+        auto either = [&](const std::string &key, const std::string &other) { return file.get(p + key) ? p + key : p + other; };
+        m.streams = integer(either("hyper_connection.count", "attention.hc.mult"));
+        m.sinkhorn_iterations = integer(either("hyper_connection.sinkhorn_iterations", "attention.hc.sinkhorn_iters"));
+        m.hc_epsilon = real(either("hyper_connection.epsilon", "attention.hc.eps"));
         m.rms_epsilon = real(p + "attention.layer_norm_rms_epsilon");
         m.kv_rank = integer(p + "attention.kv_lora_rank");
         m.q_rank = integer(p + "attention.q_lora_rank");
         m.linear_heads = m.attention_heads;
         m.linear_dim = integer(p + "kda.head_dim");
-        m.gate_lower_bound = real(p + "kda.gate_lower_bound");
+        m.gate_lower_bound = real(either("kda.gate_lower_bound", "ssm.gate_lower_bound"));
         m.conv_kernel = integer(p + "ssm.conv_kernel");
         m.index_heads = integer(p + "attention.indexer.head_count");
         m.index_dim = integer(p + "attention.indexer.key_length");
-        m.index_pool = integer(p + "attention.indexer.kpool");
+        // GLM-5.3-Flash's indexer pools 4 keys; REAP GGUFs omit the key.
+        m.index_pool = file.get(p + "attention.indexer.kpool") ? integer(p + "attention.indexer.kpool") : 4;
         m.index_top_k = integer(p + "attention.indexer.top_k");
         m.expert_scale = real(p + "expert_weights_scale");
         m.rope_dim = integer(p + "rope.dimension_count");
         m.expert_groups = integer(p + "expert_group_count");
         m.selected_groups = integer(p + "expert_group_used_count");
         m.gating_function = integer(p + "expert_gating_func");
-        m.shared_intermediate = integer(p + "expert_shared_feed_forward_length");
+        m.shared_intermediate = file.get(p + "expert_shared_feed_forward_length")
+                                    ? integer(p + "expert_shared_feed_forward_length")
+                                    : integer(p + "expert_feed_forward_length");
         m.shared_experts = integer(p + "expert_shared_count");
         const auto *normalized = file.get(p + "expert_weights_norm");
         if (!normalized || normalized->type != MetaType::BOOL)
@@ -138,12 +148,14 @@ struct ModelDescriptor {
         const auto *kv = file.get(p + "attention.head_count_kv");
         const auto *clamp = file.get(p + "swiglu_clamp_exp");
         const auto *shared_clamp = file.get(p + "swiglu_clamp_shexp");
-        if (!kv || kv->type != MetaType::ARRAY || kv->count != (uint64_t)blocks ||
-            kv->items.size() != kv->count || !clamp || clamp->type != MetaType::ARRAY ||
-            clamp->count != (uint64_t)blocks || clamp->items.size() != clamp->count)
+        // A scalar swiglu_limit applies to routed and shared experts of every layer.
+        const float scalar_limit = !clamp && !shared_clamp && file.get(p + "swiglu_limit") ? real(p + "swiglu_limit") : 0.f;
+        if (!kv || kv->type != MetaType::ARRAY || kv->count != (uint64_t)blocks || kv->items.size() != kv->count ||
+            (!scalar_limit && (!clamp || clamp->type != MetaType::ARRAY || clamp->count != (uint64_t)blocks ||
+                               clamp->items.size() != clamp->count)))
             throw std::runtime_error("model: incomplete per-layer attention or clamp metadata");
-        if (!shared_clamp || shared_clamp->type != MetaType::ARRAY ||
-            shared_clamp->count != (uint64_t)blocks || shared_clamp->items.size() != shared_clamp->count)
+        if (!scalar_limit && (!shared_clamp || shared_clamp->type != MetaType::ARRAY ||
+            shared_clamp->count != (uint64_t)blocks || shared_clamp->items.size() != shared_clamp->count))
             throw std::runtime_error("model: incomplete shared-expert clamp metadata");
         if (draft < 0 || draft >= blocks || dense < 0 || dense > blocks - draft || m.streams != 4 ||
             m.sinkhorn_iterations < 1 || m.hc_epsilon <= 0 || m.rms_epsilon <= 0 || m.linear_dim < 1 ||
@@ -157,8 +169,8 @@ struct ModelDescriptor {
                 throw std::runtime_error("model: unsupported MLA KV head count");
             LayerDescriptor layer{heads == 0 ? MixerKind::Kda : MixerKind::SparseMla,
                                   l < dense ? FfnKind::Dense : FfnKind::Moe, l < dense ? dense_ff : moe_ff,
-                                  (float)clamp->items[(size_t)l].num(),
-                                  (float)shared_clamp->items[(size_t)l].num()};
+                                  scalar_limit ? scalar_limit : (float)clamp->items[(size_t)l].num(),
+                                  scalar_limit ? scalar_limit : (float)shared_clamp->items[(size_t)l].num()};
             if (!(layer.swiglu_limit > 0) || !std::isfinite(layer.swiglu_limit))
                 throw std::runtime_error("model: invalid SwiGLU limit");
             if (!(layer.shared_swiglu_limit > 0) || !std::isfinite(layer.shared_swiglu_limit))
@@ -223,7 +235,7 @@ class ModelArtifact {
                     throw std::runtime_error("model: inconsistent split metadata in " + paths[i].string());
             }
             if (const auto *a = file->get("general.architecture"))
-                if (a->s != descriptor_.architecture)
+                if ((a->s == "glm5-next" ? std::string("glm5next") : a->s) != descriptor_.architecture)
                     throw std::runtime_error("model: shard architecture mismatch");
             std::map<uint64_t, uint64_t> spans;
             for (const auto &t : file->tensors()) {
@@ -265,8 +277,67 @@ class ModelArtifact {
     artifact::GlmExl3& exl3() { if(!native_)throw std::runtime_error("not EXL3");return native_->model; }
     const ModelDescriptor &descriptor() const { return descriptor_; }
     const std::map<std::string, ArtifactTensor> &tensors() const { return tensors_; }
+    // Bind an experimental converted expert sidecar to this exact source header
+    // and file generation. The original GGUF stays immutable.
+    uint64_t source_fingerprint() const {
+        uint64_t hash=14695981039346656037ULL;
+        auto add=[&](const void* data,size_t size){auto* p=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;++i){hash^=p[i];hash*=1099511628211ULL;}};
+        for(const auto& f:files_) {
+            const auto size=f->file_size();add(&size,sizeof size);
+            const auto stamp=std::filesystem::last_write_time(f->path()).time_since_epoch().count();add(&stamp,sizeof stamp);
+            // Metadata-only split shards may omit padding after the last key.
+            std::ifstream input(f->path(),std::ios::binary);std::vector<char> header(std::min(f->data_start(),f->file_size()));
+            if(!input.read(header.data(),header.size()))throw std::runtime_error("expert pack: cannot fingerprint source");
+            add(header.data(),header.size());
+        }
+        return hash;
+    }
+    void overlay_experts(const std::filesystem::path& path,const std::set<std::string>& retained={}) {
+        if(native_ || !expert_pack_.empty())throw std::invalid_argument("expert pack requires an original GGUF model");
+        auto pack=std::make_unique<GgufFile>(path.string());
+        if(pack->tensors().empty())throw std::runtime_error("expert pack: empty sidecar");
+        const auto* version=pack->get("strata.expert_pack.version"),*source=pack->get("strata.expert_pack.source");
+        if(!version||version->type!=MetaType::U32||version->u!=1||!source||source->type!=MetaType::U64||source->u!=source_fingerprint())
+            throw std::runtime_error("expert pack: version or source fingerprint mismatch");
+        std::set<std::string> names;std::map<uint64_t,uint64_t> spans;
+        for(const auto& t:pack->tensors()) {
+            if(!names.insert(t.name).second)throw std::runtime_error("expert pack: duplicate tensor");
+            const auto& original=at(t.name);std::smatch match;
+            if(!std::regex_match(t.name,match,std::regex("blk\\.([0-9]+)\\.ffn_(gate|up|down)_exps\\.weight"))||std::stoi(match[1])<3||std::stoi(match[1])>44||t.shape!=original.tensor->shape||t.shape.size()!=3)
+                throw std::runtime_error("expert pack: invalid projection "+t.name);
+            // IQ2_XS gate/up -> Q2_K and IQ3_XXS down -> Q3_K (the UD-Q2_K_XL GGUF), or a K-quant source
+            // (Q4_K/Q5_K/Q6_K, e.g. the REAP-50 Q4_K_M GGUF) -> the same targets.
+            const bool kquant=original.tensor->type==12||original.tensor->type==13||original.tensor->type==14;
+            const bool valid=((original.tensor->type==17||kquant) && t.type==10 && match[2]!="down") ||
+                             ((original.tensor->type==18||kquant) && t.type==11 && match[2]=="down");
+            if(!valid)throw std::runtime_error("expert pack: invalid type transition "+t.name);
+            const uint64_t length=t.elements()/256*(t.type==10?84:110);
+            if(t.offset%32||pack->data_start()>pack->file_size()||t.offset>pack->file_size()-pack->data_start()||length>pack->file_size()-pack->data_start()-t.offset||!spans.emplace(t.offset,length).second)
+                throw std::runtime_error("expert pack: invalid payload bounds");
+            const auto* checksum=pack->get("strata.expert_pack.hash."+t.name);
+            if(!checksum||checksum->type!=MetaType::U64)throw std::runtime_error("expert pack: missing payload checksum");
+        }
+        uint64_t end=0;for(auto [offset,length]:spans){if(offset<end)throw std::runtime_error("expert pack: overlapping tensors");end=offset+length;}
+        for(const auto& name:retained)if(!names.contains(name))throw std::runtime_error("expert pack: unknown retained projection "+name);
+        // Gate/up share a NativeFmt. Their representation must stay paired.
+        for(int l=3;l<=44;++l){auto p="blk."+std::to_string(l)+".ffn_";if(names.contains(p+"gate_exps.weight")!=names.contains(p+"up_exps.weight")||retained.contains(p+"gate_exps.weight")!=retained.contains(p+"up_exps.weight"))throw std::runtime_error("expert pack: gate/up must be paired");}
+        for(const auto& t:pack->tensors())if(!retained.contains(t.name)) {
+            auto& entry=tensors_.at(t.name);original_experts_.emplace(t.name,entry);
+            entry={pack.get(),&t,t.elements()/256*(t.type==10?84:110)};
+        }
+        expert_pack_=path.string();files_.push_back(std::move(pack));
+    }
+    bool has_expert_pack()const{return !expert_pack_.empty();}
+    void discard_original_experts()const {for(const auto& [name,t]:original_experts_)t.file->discard_tensor_pages(*t.tensor,t.bytes);}
     const ArtifactTensor &at(const std::string &name) const {
-        const auto i = tensors_.find(name);
+        auto i = tensors_.find(name);
+        if (i == tensors_.end() && name.ends_with(".weight")) {
+            // REAP-pruned GLM GGUFs name hc_* tensors without ".weight" and the indexer compressor indexer.kpool_*.
+            const std::string stem = name.substr(0, name.size() - 7);
+            if (stem.find(".hc_") != std::string::npos) i = tensors_.find(stem);
+            else if (const auto k = stem.find("indexer_compressor_"); k != std::string::npos)
+                i = tensors_.find(stem.substr(0, k) + "indexer.kpool_" + stem.substr(k + 19));
+        }
         if (i == tensors_.end())
             throw std::runtime_error("model: missing tensor " + name);
         return i->second;
@@ -299,6 +370,8 @@ class ModelArtifact {
     ModelDescriptor descriptor_;
     std::vector<std::unique_ptr<GgufFile>> files_;
     std::map<std::string, ArtifactTensor> tensors_;
+    std::map<std::string, ArtifactTensor> original_experts_;
+    std::string expert_pack_;
 };
 
 } // namespace strata::core

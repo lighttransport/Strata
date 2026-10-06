@@ -87,8 +87,11 @@ void product(mmq::Context& ctx, cudaStream_t s, const char* name, ggml_type t, i
         ws.push_back(make_matrix(t, out_rows, cols, e, trial));
         std::copy(ws.back().begin(), ws.back().end(), w.begin() + (ptrdiff_t) ((size_t) e * eb));
     }
-    Dev dx(x.size() * 4), dsrc((size_t) rows * 4), ddst((size_t) rows * 4), db(bounds.size() * 4), dw(w.size()),
+    // MMQ loads a complete row-ID tile before masking the last partial tile.
+    Dev dx(x.size() * 4), dsrc((size_t) (rows+128) * 4), ddst((size_t) (rows+128) * 4), db(bounds.size() * 4), dw(w.size()),
         dxq(mmq::q8_bytes(rows, cols)), dy((size_t) rows * (size_t) out_rows * 4);
+    ck(cudaMemset(dsrc.p, 0, (rows+128)*4), "src padding");
+    ck(cudaMemset(ddst.p, 0, (rows+128)*4), "dst padding");
     ck(cudaMemcpy(dx.p, x.data(), x.size() * 4, cudaMemcpyHostToDevice), "x");
     ck(cudaMemcpy(dsrc.p, src.data(), src.size() * 4, cudaMemcpyHostToDevice), "src");
     ck(cudaMemcpy(ddst.p, dst.data(), dst.size() * 4, cudaMemcpyHostToDevice), "dst");
@@ -147,15 +150,20 @@ int main() {
         ck(cudaStreamCreateWithFlags(&s, cudaStreamNonBlocking), "stream");
         {
             mmq::Context ctx;
-            const std::vector<std::vector<int>> batches{{1, 3, 3}, {4, 1, 2}, {2, 3}, {17}};
+            const std::vector<std::vector<int>> batches{{1, 3, 3}, {4, 1, 2}, {2, 3}, {17}, {0, 2, 0, 3}, {0, 0, 5, 0}};
             int trial = 0;
             for (const auto& counts : batches) {
                 const std::string tag = "-" + std::to_string(trial);
+#ifdef STRATA_TEST_Q23
+                product(ctx, s, ("Q2_K gate/up" + tag).c_str(), GGML_TYPE_Q2_K, 2048, 4096, counts, trial);
+                product(ctx, s, ("Q3_K down" + tag).c_str(), GGML_TYPE_Q3_K, 4096, 2048, counts, trial + 5);
+#else
                 product(ctx, s, ("Q4_K gate/up" + tag).c_str(), GGML_TYPE_Q4_K, 1280, 2560, counts, trial);
                 product(ctx, s, ("Q5_K gate/up" + tag).c_str(), GGML_TYPE_Q5_K, 1280, 2560, counts, trial + 5);
                 product(ctx, s, ("Q6_K gate/up" + tag).c_str(), GGML_TYPE_Q6_K, 1280, 2560, counts, trial + 17);
                 product(ctx, s, ("Q5_1 down" + tag).c_str(), GGML_TYPE_Q5_1, 2560, 640, counts, trial + 9);
                 product(ctx, s, ("Q8_0 down" + tag).c_str(), GGML_TYPE_Q8_0, 2560, 640, counts, trial + 13);
+#endif
                 ++trial;
             }
         }
