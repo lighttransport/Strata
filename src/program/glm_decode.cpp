@@ -1531,7 +1531,7 @@ class Decoder {
     std::unique_ptr<Pinned> packed_cpu_sum;
     cudaEvent_t packed_sum_uploaded=nullptr;
     std::vector<int> prepack_cpus;
-    long long host_affinity = -1;
+    cpu::ThreadAffinity host_affinity;   // invalid (nothing to restore) until the host thread is pinned
     std::unique_ptr<Pinned> host_moe;
     std::vector<int> host_selected;
     std::unique_ptr<strata::cpu::exl3::Pool> exl_pool;

@@ -1,9 +1,10 @@
-// prefill_mmq_kquant_test - the prompt path's MMQ products for the expert formats of Unsloth's UD-Q4_K_XL (Q4_K and
-// Q5_K gate/up at 1280 x 2560, Q5_1 and Q8_0 down at 2560 x 640), on synthetic weights quantized by ggml's own
+// prefill_mmq_kquant_test - the prompt path's MMQ products for the expert formats of Unsloth's UD-Q4_K_XL and
+// UD-Q6_K_XL (gate/up Q4_K / Q5_K / Q6_K at 1280 x 2560, down Q5_1 and Q8_0 at 2560 x 640), on synthetic weights
+// quantized by ggml's own
 // reference quantizers, against a double-precision product of ggml's dequantized weights.  MMQ rounds the activations
 // to q8_1 by design, so this is a screen for layout, stride, expert-bound and row-id errors (the bounds of
 // tests/hip/prefill_mmq_parity.cpp), not a bit-exactness test.  Several experts per product, permuted rows, an
-// all-zero row.  The MMQ path also covers Q6_K (UD-Q6_K_XL gate/up, the down projections of Q4_K_M GGUFs).
+// all-zero row.  The MMQ path covers gate/up Q4_K / Q5_K / Q6_K and down Q5_1 / Q8_0 (UD-Q4_K_XL / UD-Q6_K_XL).
 #include "strata/prefill/moe_mmq.hpp"
 
 #include "ggml.h"

@@ -238,6 +238,31 @@ class OverHttp(unittest.TestCase):
                                   {**headers, "Authorization": "Bearer s3cret"})[0], 200)
 
     # --- /unload and /load
+    def test_control_body_arrives_before_the_operation_and_reply(self):
+        self.start()
+        for body, expected in ((b"{}", 200), (b"{", 400)):
+            c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+            try:
+                with mock.patch.object(self.svc, "unload", return_value="unloaded") as unload:
+                    c.putrequest("POST", "/unload")
+                    c.putheader("Content-Type", "application/json")
+                    c.putheader("Content-Length", "2")
+                    c.endheaders()
+                    c.sock.settimeout(0.1)
+                    with self.assertRaises(socket.timeout):
+                        c.sock.recv(1)
+                    unload.assert_not_called()
+                    c.sock.settimeout(5)
+                    c.send(body)
+                    if len(body) < 2:
+                        c.sock.shutdown(socket.SHUT_WR)
+                    r = c.getresponse()
+                    self.assertEqual(r.status, expected)
+                    r.read()
+                    self.assertEqual(unload.call_count, int(expected == 200))
+            finally:
+                c.close()
+
     def test_unload_and_load_need_json_from_the_own_page(self):
         self.start()
         form = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -249,6 +274,25 @@ class OverHttp(unittest.TestCase):
         self.assertEqual(self.req("POST", "/unload", {}, {"Content-Type": "application/json"})[0], 200)
         self.assertEqual(self.req("POST", "/load", {}, {"Content-Type": "application/json",
                                                         "Origin": f"http://127.0.0.1:{self.port}"})[0], 200)
+
+    # --- /slots/0?action=save|restore (session files)
+    def test_slots_need_json_from_the_own_page(self):
+        self.start()
+        body = {"filename": "a.bin"}
+        for action in ("save", "restore"):
+            path = f"/slots/0?action={action}"
+            self.assertEqual(self.req("POST", path, b"filename=a.bin",
+                                      {"Content-Type": "application/x-www-form-urlencoded"})[0], 415, path)
+            self.assertEqual(self.req("POST", path, body, {"Content-Type": "text/plain"})[0], 415, path)
+            for origin in ("http://evil.example.com", "null"):
+                self.assertEqual(self.req("POST", path, body, {"Content-Type": "application/json",
+                                                               "Origin": origin})[0], 403, (path, origin))
+            # JSON without an Origin (curl, scripts) or from the own page reaches the slot API: off here, so 501
+            self.assertEqual(self.req("POST", path, body, {"Content-Type": "application/json"})[0], 501, path)
+            self.assertEqual(self.req("POST", path, body, {"Content-Type": "application/json",
+                                                           "Origin": f"http://127.0.0.1:{self.port}"})[0], 501, path)
+        self.assertEqual(self.req("POST", "/slots/0?action=save", body, {"Content-Type": "application/json"},
+                                  host="rebind.example.com")[0], 403)
 
 
 if __name__ == "__main__":

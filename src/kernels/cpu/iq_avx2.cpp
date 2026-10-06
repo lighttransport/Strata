@@ -10,7 +10,20 @@
 // order of the float additions differs.
 //
 // Formats: IQ2_XXS (16), IQ2_XS (17), IQ3_XXS (18), IQ3_S (21), IQ2_S (22), IQ4_XS (23).  IQ1_M stays on ggml-cpu.
+//
+// IQ3_XXS, IQ3_S and IQ2_S also have a gathered decode (Fmt32<118>, <121>, <122>): the grid indices built in a
+// register and read with one vpgather, the same words into the same lanes, so the same bits.  Where it is faster
+// depends on the core, so STRATA_IQ256_GATHER picks it per thread (expert_layout.hpp, cpu_gather_fast_here).
+//
+// Where the CPU has AVX-VNNI (cpu_avxvnni_ok: Alder Lake, Sapphire Rapids and later) the row kernels take a second
+// copy with vpdpwssd / vpdpbusd (iq_avx2_rows.inl), the same integer sums.
+//
+// This file is compiled for AVX2 and must not run anything before the engine's cpu_avx2_ok() check: no runtime
+// initializer at namespace scope (#391, 016ea2e), the switches are read on first use.
+#include <string>
+#include <stdexcept>
 #include "strata/kernels/cpu/iq_avx2.hpp"
+#include "strata/kernels/cpu/expert_layout.hpp"
 
 #define GGML_COMMON_DECL_CPP
 #define GGML_COMMON_IMPL_CPP
@@ -22,6 +35,17 @@
 #include <cstdlib>
 #include <cstring>
 
+// STRATA_AVXVNNI (CMake: the compiler has the AVX-VNNI intrinsics): GCC and Clang compile them only inside functions
+// with target("avxvnni") - the VNNI copy of iq_avx2_rows.inl.
+#if !defined(STRATA_AVXVNNI)
+#define STRATA_AVXVNNI 0
+#endif
+#if STRATA_AVXVNNI && (defined(__GNUC__) || defined(__clang__))
+#define STRATA_AVXVNNI_FN __attribute__((target("avxvnni")))
+#else
+#define STRATA_AVXVNNI_FN
+#endif
+
 namespace strata::kernels::cpu {
 namespace {
 
@@ -32,9 +56,10 @@ inline uint64_t u64(const uint8_t* p) { uint64_t v; std::memcpy(&v, p, 8); retur
 
 // 32 sign bits -> 32 bytes of -1 (bit set) / +1: ggml's bit_selector pattern, shared by all tokens.
 inline __m256i sgn_vec(uint32_t m) {
-    const __m256i bits = _mm256_shuffle_epi8(_mm256_set1_epi32((int)m),
-        _mm256_setr_epi8(0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1,
-                         2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3));
+    const __m128i bm = _mm_set1_epi32((int) m);
+    const __m128i lo = _mm_shuffle_epi8(bm, _mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1));
+    const __m128i hi = _mm_shuffle_epi8(bm, _mm_setr_epi8(2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3));
+    const __m256i bits = _mm256_inserti128_si256(_mm256_castsi128_si256(lo), hi, 1);
     const __m256i sel = _mm256_setr_epi8(1, 2, 4, 8, 16, 32, 64, (char) 0x80,
                                          1, 2, 4, 8, 16, 32, 64, (char) 0x80,
                                          1, 2, 4, 8, 16, 32, 64, (char) 0x80,
@@ -55,19 +80,30 @@ inline __m256i sc32(int s) { return _mm256_set1_epi16(s); }
 // keven_signs_q2xs (ggml keeps it static in arch/x86/quants.c): one u64 per 7-bit sign index, byte k
 // = 0xFF when bit k of ksigns_iq2xs[i] is set, 0x01 otherwise.  With this a whole 32-value sign vector
 // is four scalar loads and a set_epi64x - no ksigns byte packing chain and no bit_selector expansion.
-// Built once at load time from the shared ggml-common table so it can never drift from it.
+//
+// Computed at COMPILE time (constexpr), so this file has no static constructor at all.  This TU is compiled
+// for AVX2, and a runtime constructor here runs before main() on every CPU: MSVC turned its variable shift
+// into BMI2 `shlx` (#391, demetree: strata.exe exited 0xC000001D before printing anything on a Sandy Bridge
+// Xeon) and GCC vectorised the loop into AVX2 (`vpbroadcastb`, found on an AVX-only Xeon E5 by the
+// Strata_Dirigo fork).  ksigns_iq2xs[i] is i's 7 bits plus an even-parity bit 7 (ggml-common.h); a const
+// array is not usable in a constant expression, so the byte is derived the same way here, and
+// native_expert_parity checks these kernels against ggml-cpu's.
 struct EvenSigns {
     uint64_t v[128];
-    EvenSigns() {
+    constexpr EvenSigns() : v{} {
         for (int i = 0; i < 128; ++i) {
+            int par = 0;
+            for (int k = 0; k < 7; ++k) par ^= (i >> k) & 1;
+            const int s = i | (par << 7);          // == ksigns_iq2xs[i]
             uint64_t r = 0;
-            for (int k = 0; k < 8; ++k)
-                r |= (uint64_t) (((ksigns_iq2xs[i] >> k) & 1) ? 0xFF : 0x01) << (8 * k);
+            for (int k = 0; k < 8; ++k) r |= (uint64_t) (((s >> k) & 1) ? 0xFF : 0x01) << (8 * k);
             v[i] = r;
         }
     }
 };
-static const EvenSigns even_signs;
+static constexpr EvenSigns even_signs{};
+static_assert(even_signs.v[0] == 0x0101010101010101ull && even_signs.v[1] == 0xFF010101010101FFull,
+              "keven_signs_q2xs: byte k = 0xFF when bit k of ksigns_iq2xs[i] is set");
 
 inline float hsum8(__m256 v) {
     const __m128 lo = _mm256_castps256_ps128(v), hi = _mm256_extractf128_ps(v, 1);
@@ -83,15 +119,18 @@ inline float hsum8(__m256 v) {
 // distance in bytes, 0 = off, default 2048.  Measured on a Zen 3 5700X3D (no AVX-512) on IQ3_S decode: -4% on
 // the gate/up phase, +1.0 GB/s over the rows, -1.3% ms/round end to end.  The non-temporal hint measured
 // worse than T0 at the same distance, so this keeps T0.
-const int prefetch_ahead = [] {
-    const char* v = std::getenv("STRATA_IQ_PREFETCH");
-    return v ? std::atoi(v) : 2048;
-}();
+int prefetch_distance() {
+    static const int d = [] {
+        const char* v = std::getenv("STRATA_IQ_PREFETCH");
+        return v ? std::atoi(v) : 2048;
+    }();
+    return d;
+}
 
-inline void rows_ahead(const uint8_t* p) {
-    if (prefetch_ahead <= 0) return;
-    _mm_prefetch((const char*) p, _MM_HINT_T0);
-    _mm_prefetch((const char*) p + 64, _MM_HINT_T0);
+inline void rows_ahead(const uint8_t* blk, int pf) {
+    if (pf <= 0) return;
+    _mm_prefetch((const char*) blk + pf, _MM_HINT_T0);
+    _mm_prefetch((const char*) blk + pf + 64, _MM_HINT_T0);
 }
 
 // ---- per format: one 32-value half (values 64*j + 32*half .. +31) -> grid magnitudes, sign vector, scales
@@ -115,12 +154,14 @@ template <> struct Fmt32<17> {   // IQ2_XS: d, qs[32] u16 (9-bit grid index + 7-
     static constexpr int bytes = 74;
     static constexpr float K = 0.125f;
     static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
-        const uint8_t* q = b + 2 + 16 * j + 8 * half;
-        const uint32_t v0 = u16(q), v1 = u16(q + 2), v2 = u16(q + 4), v3 = u16(q + 6);
-        g = _mm256_set_epi64x((long long)iq2xs_grid[v3 & 511], (long long)iq2xs_grid[v2 & 511],
-                              (long long)iq2xs_grid[v1 & 511], (long long)iq2xs_grid[v0 & 511]);
-        sgn = _mm256_set_epi64x((long long)even_signs.v[v3 >> 9], (long long)even_signs.v[v2 >> 9],
-                                (long long)even_signs.v[v1 >> 9], (long long)even_signs.v[v0 >> 9]);
+        uint16_t v[8];
+        std::memcpy(v, b + 2 + 16 * j, 16);
+        const int o = 4 * half;
+        g = _mm256_set_epi64x((long long) iq2xs_grid[v[o + 3] & 511], (long long) iq2xs_grid[v[o + 2] & 511],
+                              (long long) iq2xs_grid[v[o + 1] & 511], (long long) iq2xs_grid[v[o] & 511]);
+        uint32_t s = 0;
+        for (int l = 0; l < 4; ++l) s |= (uint32_t) ksigns_iq2xs[v[o + l] >> 9] << (8 * l);
+        sgn = sgn_vec(s);
         const uint8_t sb = b[66 + 2 * j + half];
         sc = sc16(2 * (sb & 15) + 1, 2 * (sb >> 4) + 1);
     }
@@ -174,88 +215,77 @@ template <> struct Fmt32<21> {   // IQ3_S: d, qs[64], qh[8], signs[32], scales[4
     }
 };
 
-// Direct magnitude planes preserve the codebook values without a lookup in the dot loop.
-inline __m256i magnitude_codes(const uint8_t *q) {
-    const __m128i packed = _mm_loadl_epi64((const __m128i *)q), mask = _mm_set1_epi8(3);
-    const __m128i a = _mm_and_si128(packed, mask), b = _mm_and_si128(_mm_srli_epi16(packed, 2), mask);
-    const __m128i c = _mm_and_si128(_mm_srli_epi16(packed, 4), mask), d = _mm_and_si128(_mm_srli_epi16(packed, 6), mask);
-    return _mm256_inserti128_si256(_mm256_castsi128_si256(_mm_unpacklo_epi64(a, b)), _mm_unpacklo_epi64(c, d), 1);
+// ---- the gathered decodes (STRATA_IQ256_GATHER, see the top of the file): each its format's Fmt32 bit for bit
+// The 32 sign bits of a half from the j's 8 sign bytes: one broadcast and one shuffle (sgn_vec: two and an insert).
+inline __m256i sgn_half(const uint8_t* m8, int half) {
+    const __m256i sb = _mm256_shuffle_epi8(
+        _mm256_set1_epi64x((long long) u64(m8)),
+        half ? _mm256_setr_epi8(4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7)
+             : _mm256_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3));
+    const __m256i sel = _mm256_set1_epi64x((long long) 0x8040201008040201ull);
+    return _mm256_or_si256(_mm256_cmpeq_epi8(_mm256_and_si256(sb, sel), sel), _mm256_set1_epi8(1));
 }
-template <> struct Fmt32<122> {
-    static constexpr int bytes = 106;
-    static constexpr float K = .125f;
-    static void decode(const uint8_t *b, int j, int half, __m256i &g, __m256i &sign, __m256i &scale) {
-        const int h = 2 * j + half;
-        const __m256i lut = _mm256_setr_epi8(8,25,43,0,8,25,43,0,8,25,43,0,8,25,43,0,
-                                            8,25,43,0,8,25,43,0,8,25,43,0,8,25,43,0);
-        g = _mm256_shuffle_epi8(lut, magnitude_codes(b + 2 + h * 8));
-        sign = sgn_vec(u32(b + 66 + h * 4));
-        const int s = b[98 + h];
-        scale = sc16(2 * (s & 15) + 1, 2 * (s >> 4) + 1);
-    }
-};
+// The four 7-bit even-sign indices of a u32 (bits 0-6, 7-13, 14-20, 21-27) -> their four masks, one gather.
+inline __m256i even_signs4(uint32_t w) {
+    const __m128i idx = _mm_and_si128(_mm_srlv_epi32(_mm_set1_epi32((int) w), _mm_setr_epi32(0, 7, 14, 21)),
+                                      _mm_set1_epi32(127));
+    return _mm256_i32gather_epi64((const long long*) even_signs.v, idx, 8);
+}
+
+// IQ3_S: the eight 9-bit grid indices built in one register (8 low bits from qs, the 9th from bit k of qh) and read
+// with one gather; the scalar form spends ~7 shuffle-port uops per half on vpinsrd and runs the index arithmetic on
+// the scalar ports.  On a 14900KF's P-cores, gate/up rows of an IQ3_S expert at three tokens: 0.40 -> 0.27 ms.
 template <> struct Fmt32<121> {
-    static constexpr int bytes = 134;
-    static constexpr float K = 1.f;
-    static void decode(const uint8_t *b, int j, int half, __m256i &g, __m256i &sign, __m256i &scale) {
-        const int h = 2 * j + half;
-        __m256i codes = _mm256_or_si256(magnitude_codes(b + 2 + h * 8),
-            _mm256_and_si256(sgn_vec(u32(b + 66 + h * 4)), _mm256_set1_epi8(4)));
-        g = _mm256_add_epi8(_mm256_add_epi8(codes, codes), _mm256_set1_epi8(1));
-        sign = sgn_vec(u32(b + 98 + h * 4));
-        const int s = b[130 + j];
-        scale = sc32(2 * (half ? s >> 4 : s & 15) + 1);
+    static constexpr int bytes = 110;
+    static constexpr float K = 1.0f;
+    static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
+        const uint8_t* q = b + 2 + 16 * j + 8 * half;
+        const uint32_t h = b[66 + 2 * j + half];
+        const __m256i lo = _mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*) q));
+        const __m256i hb = _mm256_and_si256(_mm256_sllv_epi32(_mm256_set1_epi32((int) h),
+                                                              _mm256_setr_epi32(8, 7, 6, 5, 4, 3, 2, 1)),
+                                            _mm256_set1_epi32(0x100));
+        g = _mm256_i32gather_epi32((const int*) iq3s_grid, _mm256_or_si256(lo, hb), 4);
+        sgn = sgn_half(b + 74 + 8 * j, half);
+        const uint8_t s = b[106 + j];
+        sc = sc32(half ? 2 * (s >> 4) + 1 : 2 * (s & 15) + 1);
     }
 };
-template <int TY> void prepare_rows(const uint8_t *src, uint8_t *dst, int n, int rows) {
-    for (int r = 0; r < rows; ++r)
-        for (int i = 0; i < n / 256; ++i) {
-            const uint8_t *b = src + ((size_t)r * (n / 256) + i) * Fmt32<TY>::bytes;
-            uint8_t *out = dst + ((size_t)r * (n / 256) + i) * Fmt32<TY + 100>::bytes;
-            std::memcpy(out, b, 2);
-            if constexpr (TY == 22) {
-                std::memcpy(out + 66, b + 34, 32); std::memcpy(out + 98, b + 74, 8);
-            } else {
-                std::memcpy(out + 98, b + 74, 32); std::memcpy(out + 130, b + 106, 4);
-            }
-            for (int h = 0; h < 8; ++h) {
-                __m256i g, sign, scale;
-                Fmt32<TY>::decode(b, h / 2, h % 2, g, sign, scale);
-                __m256i codes;
-                if constexpr (TY == 22)
-                    codes = _mm256_sub_epi8(_mm256_setzero_si256(), _mm256_add_epi8(
-                        _mm256_cmpgt_epi8(g, _mm256_set1_epi8(8)), _mm256_cmpgt_epi8(g, _mm256_set1_epi8(25))));
-                else {
-                    codes = _mm256_and_si256(_mm256_srli_epi16(g, 1), _mm256_set1_epi8(7));
-                    const uint32_t high = (uint32_t)_mm256_movemask_epi8(_mm256_slli_epi16(codes, 5));
-                    std::memcpy(out + 66 + 4 * h, &high, 4);
-                }
-                codes = _mm256_and_si256(codes, _mm256_set1_epi8(3));
-                const __m128i lo = _mm256_castsi256_si128(codes), hi = _mm256_extracti128_si256(codes, 1);
-                __m128i packed = _mm_or_si128(lo, _mm_slli_epi16(_mm_srli_si128(lo, 8), 2));
-                packed = _mm_or_si128(packed, _mm_slli_epi16(hi, 4));
-                packed = _mm_or_si128(packed, _mm_slli_epi16(_mm_srli_si128(hi, 8), 6));
-                _mm_storel_epi64((__m128i *)(out + 2 + 8 * h), packed);
-            }
-        }
-}
-struct ScaleShuffle {
-    alignas(32) uint8_t v[8][32]{};
-    constexpr ScaleShuffle() {
-        for (int h = 0; h < 8; ++h)
-            for (int i = 0; i < 32; ++i) v[h][i] = 2 * h + i % 2;
+
+// IQ3_XXS: the grid entries and the four even-sign masks each by one gather.  P-core gate/up rows at three tokens:
+// 0.26 -> 0.24 ms.
+template <> struct Fmt32<118> {
+    static constexpr int bytes = 98;
+    static constexpr float K = 0.25f;
+    static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
+        const uint8_t* q = b + 2 + 16 * j + 8 * half;
+        g = _mm256_i32gather_epi32((const int*) iq3xxs_grid, _mm256_cvtepu8_epi32(_mm_loadl_epi64((const __m128i*) q)), 4);
+        const uint32_t w = u32(b + 2 + 64 + 8 * j + 4 * half);
+        sgn = even_signs4(w);
+        sc = sc32(2 * (int) (w >> 28) + 1);
     }
 };
-static constexpr ScaleShuffle scale_shuffle;
-struct ScaleShuffleIQ2XS {
-    alignas(16) uint8_t v[8][16]{};
-    constexpr ScaleShuffleIQ2XS() {
-        for (int h = 0; h < 8; ++h)
-            for (int lane = 0; lane < 16; ++lane) v[h][lane] = 2 * h + lane / 8;
+
+// IQ2_S: the four 10-bit grid indices (qs byte k, bits 2k and 2k+1 of qh at bits 8-9) by one 64-bit gather and the
+// explicit sign bits from one broadcast.  P-core gate/up rows at three tokens: 0.31 -> 0.27 ms.  IQ2_XXS measured 4%
+// slower gathered (its four 8-byte grid loads are few enough already) and IQ2_XS has its own sign decode, so both
+// keep their Fmt32 everywhere.
+template <> struct Fmt32<122> {
+    static constexpr int bytes = 82;
+    static constexpr float K = 0.125f;
+    static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
+        const uint8_t* qs = b + 2 + 8 * j + 4 * half;
+        const uint32_t h = b[66 + 2 * j + half];
+        const __m128i idx = _mm_or_si128(
+            _mm_cvtepu8_epi32(_mm_cvtsi32_si128((int) u32(qs))),
+            _mm_and_si128(_mm_sllv_epi32(_mm_set1_epi32((int) h), _mm_setr_epi32(8, 6, 4, 2)), _mm_set1_epi32(0x300)));
+        g = _mm256_i32gather_epi64((const long long*) iq2s_grid, idx, 8);
+        sgn = sgn_half(b + 2 + 32 + 8 * j, half);
+        const uint8_t sb = b[74 + 2 * j + half];
+        sc = sc16(2 * (sb & 15) + 1, 2 * (sb >> 4) + 1);
     }
 };
-// Each 32-value half uses one scale for its first 16 weights and one for its last 16.
-static constexpr ScaleShuffleIQ2XS scale_shuffle_iq2xs;
+
 template <> struct Fmt32<23> {   // IQ4_XS: d, scales_h, scales_l[4], qs[128] - 136 B, 8 signed sub-scales
     // ggml's ggml_vec_dot_iq4_xs_q8_K: the same 16-value codebook as IQ4_NL, but each of the eight 32-value
     // sub-blocks carries its own 6-bit scale, read as two nibbles of scales_l[p] plus two bits of scales_h, and
@@ -278,311 +308,114 @@ template <> struct Fmt32<23> {   // IQ4_XS: d, scales_h, scales_l[4], qs[128] - 
     }
 };
 
-template <int TY, int NT>
-inline void row_dot(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
-    __m256 accf[NT];
-    for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
-    for (int i = 0; i < nblocks; ++i) {
-        const uint8_t* blk = row + (size_t) i * Fmt32<TY>::bytes;
-        rows_ahead(blk + prefetch_ahead);
-        __m256i scales;
-        __m128i scales17;
-        if constexpr (TY == 17) {
-            // Decode all eight nibble pairs once; the half loop only shuffles their scales.
-            const __m128i packed = _mm_loadl_epi64((const __m128i*)(blk + 66)), mask = _mm_set1_epi8(15);
-            const __m128i nibbles = _mm_unpacklo_epi8(_mm_and_si128(packed, mask),
-                                                      _mm_and_si128(_mm_srli_epi16(packed, 4), mask));
-            scales17 = _mm_add_epi8(_mm_add_epi8(nibbles, nibbles), _mm_set1_epi8(1));
-        }
-        if constexpr (TY == 22) {
-            const uint64_t packed = u64(blk + 74);
-            const __m128i nibbles = _mm_and_si128(_mm_set_epi64x(packed >> 4, packed), _mm_set1_epi8(15));
-            scales = _mm256_cvtepi8_epi16(_mm_add_epi8(_mm_add_epi8(nibbles, nibbles), _mm_set1_epi8(1)));
-        }
-        __m256i acci[NT][2];
-        for (int t = 0; t < NT; ++t)
-            acci[t][0] = acci[t][1] = _mm256_setzero_si256();
-        for (int j = 0; j < 4; ++j) {
-            for (int half = 0; half < 2; ++half) {
-                __m256i g, sgn, sc;
-                Fmt32<TY>::decode(blk, j, half, g, sgn, sc);
-                if constexpr (TY == 17)
-                    sc = _mm256_cvtepi8_epi16(_mm_shuffle_epi8(scales17,
-                        _mm_load_si128((const __m128i*)scale_shuffle_iq2xs.v[2 * j + half])));
-                if constexpr (TY == 22)
-                    sc = _mm256_shuffle_epi8(scales, _mm256_load_si256((const __m256i *)scale_shuffle.v[2 * j + half]));
-                const int off = 64 * j + 32 * half;
-                for (int t = 0; t < NT; ++t) {
-                    const __m256i yv = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + off));
-                    const __m256i ys = _mm256_sign_epi8(yv, sgn);
-                    acci[t][half] = _mm256_add_epi32(acci[t][half], _mm256_madd_epi16(_mm256_maddubs_epi16(g, ys), sc));
-                }
-            }
-        }
-        const float dx = h2f(u16(blk)) * Fmt32<TY>::K;
-        for (int t = 0; t < NT; ++t)
-            accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * y[t][i].d), _mm256_cvtepi32_ps(_mm256_add_epi32(acci[t][0], acci[t][1])), accf[t]);
-    }
-    for (int t = 0; t < NT; ++t) res[t] = hsum8(accf[t]);
-}
+// ---- the row kernels, twice: the AVX2 forms and the AVX-VNNI ones (iq_avx2_rows.inl)
+namespace plain {
+#define STRATA_ROWS_VNNI 0
+#define STRATA_ROWS_FN
+#include "iq_avx2_rows.inl"
+}  // namespace plain
+#if STRATA_AVXVNNI
+namespace vnni {
+#define STRATA_ROWS_VNNI 1
+#define STRATA_ROWS_FN STRATA_AVXVNNI_FN
+#include "iq_avx2_rows.inl"
+}  // namespace vnni
+#endif
 
-// ---- IQ2_XS (17) with ggml's vectorized sign decode (arch/x86/quants.c, ggml_vec_dot_iq2_xs_q8_K):
-// the 7-bit sign indices never touch ksigns_iq2xs - the 8th sign bit is reconstructed by parity (two
-// shifts, a xor and ggml's bit_helper pshufb) and the per-half sign vectors come out of shuffles of one
-// 32-byte load.  The 8 scale bytes become all 16 half-scales with ggml's unpack trick.  The grid lookups
-// stay scalar loads into set_epi64x (ggml does the same).  Every token still only pays a load, a sign,
-// a maddubs, a madd and an add per half, into alternating accumulators.
-template <int NT>
-inline void row_dot_iq2xs(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
-    static const uint8_t bit_sel[32] = {
-        1, 2, 4, 8, 16, 32, 64, (uint8_t) 0x80, 1, 2, 4, 8, 16, 32, 64, (uint8_t) 0x80,
-        1, 2, 4, 8, 16, 32, 64, (uint8_t) 0x80, 1, 2, 4, 8, 16, 32, 64, (uint8_t) 0x80 };
-    static const char shuf_even[32] = {   // sign bits of u16 0,1,2,3 (even bytes of the sign register)
-        0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2,
-        4, 4, 4, 4, 4, 4, 4, 4, 6, 6, 6, 6, 6, 6, 6, 6 };
-    static const char shuf_odd[32] = {    // sign bits of u16 4,5,6,7
-        8, 8, 8, 8, 8, 8, 8, 8, 10, 10, 10, 10, 10, 10, 10, 10,
-        12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 14, 14, 14, 14, 14, 14 };
-    static const uint8_t bit_help[32] = {  // 0x80 when the 4-bit index has odd popcount (parity bit 7)
-        0x00, (uint8_t) 0x80, (uint8_t) 0x80, 0x00, (uint8_t) 0x80, 0x00, 0x00, (uint8_t) 0x80,
-        (uint8_t) 0x80, 0x00, 0x00, (uint8_t) 0x80, 0x00, (uint8_t) 0x80, (uint8_t) 0x80, 0x00,
-        0x00, (uint8_t) 0x80, (uint8_t) 0x80, 0x00, (uint8_t) 0x80, 0x00, 0x00, (uint8_t) 0x80,
-        (uint8_t) 0x80, 0x00, 0x00, (uint8_t) 0x80, 0x00, (uint8_t) 0x80, (uint8_t) 0x80, 0x00 };
-    static const uint8_t k_sc_shuffle[128] = {  // half h -> scale bytes 2h (lanes 0-7), 2h+1 (lanes 8-15)
-        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
-        2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
-        4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
-        6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7,
-        8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 9,
-        10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11,
-        12, 12, 12, 12, 12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13,
-        14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 15, 15, 15, 15, 15, 15 };
-    const __m256i bsel = _mm256_loadu_si256((const __m256i*) bit_sel);
-    const __m256i shev = _mm256_loadu_si256((const __m256i*) shuf_even);
-    const __m256i shod = _mm256_loadu_si256((const __m256i*) shuf_odd);
-    const __m256i bhelp = _mm256_loadu_si256((const __m256i*) bit_help);
-    const __m256i m511 = _mm256_set1_epi16(511);
-    const __m128i m4 = _mm_set1_epi8(0xf), m1 = _mm_set1_epi8(1);
-    const __m256i one8 = _mm256_set1_epi8(1);
-
-    __m256 accf[NT];
-    for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
-    for (int i = 0; i < nblocks; ++i) {
-        const uint8_t* blk = row + (size_t) i * 74;
-        rows_ahead(blk + prefetch_ahead);
-        // the 8 scale bytes -> 16 half-scales of 2*s+1, interleaved [a0, b0, a1, b1, ...] (ggml's unpack)
-        __m128i st = _mm_set1_epi64x((long long) u64(blk + 66));
-        st = _mm_unpacklo_epi8(_mm_and_si128(st, m4), _mm_and_si128(_mm_srli_epi16(st, 4), m4));
-        const __m128i scales = _mm_add_epi8(_mm_slli_epi16(st, 1), m1);
-        __m256i acc[NT][2];
-        for (int t = 0; t < NT; ++t) acc[t][0] = acc[t][1] = _mm256_setzero_si256();
-        for (int jj = 0; jj < 2; ++jj) {   // 128 values (16 u16) per step
-            const __m256i q2 = _mm256_loadu_si256((const __m256i*) (blk + 2 + 32 * jj));
-            const __m256i p7 = _mm256_srli_epi16(q2, 9);              // 7 sign bits per u16, even bytes
-            const __m256i p3 = _mm256_srli_epi16(q2, 13);             // sign index bits 4-6
-            const __m256i fsb = _mm256_or_si256(p7,
-                _mm256_shuffle_epi8(bhelp, _mm256_xor_si256(p7, p3)));  // + the parity sign bit 7
-            const __m256i s01 = _mm256_broadcastsi128_si256(_mm256_castsi256_si128(fsb)); // u16 0-7
-            const __m256i s23 = _mm256_broadcastsi128_si256(_mm256_extracti128_si256(fsb, 1)); // u16 8-15
-            alignas(32) uint16_t gi[16];
-            _mm256_store_si256((__m256i*) gi, _mm256_and_si256(q2, m511));
-            for (int h = 0; h < 4; ++h) {   // the four 32-value halves of this group
-                const int H = 4 * jj + h;   // global half index -> scales byte pair
-                const __m256i g = _mm256_set_epi64x((long long) iq2xs_grid[gi[4 * h + 3]],
-                                                   (long long) iq2xs_grid[gi[4 * h + 2]],
-                                                   (long long) iq2xs_grid[gi[4 * h + 1]],
-                                                   (long long) iq2xs_grid[gi[4 * h]]);
-                const __m256i sb = _mm256_shuffle_epi8(h < 2 ? s01 : s23, (h & 1) ? shod : shev);
-                const __m256i sgn = _mm256_or_si256(
-                    _mm256_cmpeq_epi8(_mm256_and_si256(sb, bsel), bsel), one8);
-                const __m256i sc = _mm256_cvtepi8_epi16(
-                    _mm_shuffle_epi8(scales, _mm_loadu_si128((const __m128i*) k_sc_shuffle + H)));
-                const int off = 128 * jj + 32 * h;
-                for (int t = 0; t < NT; ++t) {
-                    const __m256i yv = _mm256_loadu_si256((const __m256i*) (y[t][i].qs + off));
-                    const __m256i ys = _mm256_sign_epi8(yv, sgn);
-                    acc[t][h & 1] = _mm256_add_epi32(acc[t][h & 1],
-                        _mm256_madd_epi16(_mm256_maddubs_epi16(g, ys), sc));
-                }
-            }
-        }
-        const float dx = h2f(u16(blk)) * 0.125f;
-        for (int t = 0; t < NT; ++t)
-            accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * y[t][i].d),
-                _mm256_cvtepi32_ps(_mm256_add_epi32(acc[t][0], acc[t][1])), accf[t]);
-    }
-    for (int t = 0; t < NT; ++t) res[t] = hsum8(accf[t]);
-}
-
-template <int TY, int NT>
-inline void row_dot_any(const uint8_t* row, int nblocks, const block_q8_K* const* y, float* res) {
-    if constexpr (TY == 17) {
-        // Optional Zen 1 path: 1 KiB sign table, identical integer sums and FP32 order.
-        static const bool table_signs = std::getenv("STRATA_IQ2_TABLE_SIGNS") != nullptr;
-        if (table_signs) row_dot<17, NT>(row, nblocks, y, res);
-        else row_dot_iq2xs<NT>(row, nblocks, y, res);
-    }
-    else                    row_dot<TY, NT>(row, nblocks, y, res);
-}
-
-template <int TY, int NT>
-void gu_rows(const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act, float* const* ff,
-             int r0, int r1, float limit, const uint8_t* separate_up) {
-    const block_q8_K* y[NT];
-    for (int t = 0; t < NT; ++t) y[t] = (const block_q8_K*) act[t];
-    const int nb = n / QK_K;
-    float g[NT], u[NT];
-    for (int r = r0; r < r1; ++r) {
-        row_dot_any<TY, NT>(blob + (size_t) r * gu_row, nb, y, g);
-        row_dot_any<TY, NT>((separate_up ? separate_up : blob + up_off) + (size_t) r * gu_row, nb, y, u);
-        for (int t = 0; t < NT; ++t) {
-            if (limit > 0) { g[t] = std::fmin(g[t], limit); u[t] = std::fmax(-limit, std::fmin(u[t], limit)); }
-            ff[t][r] = (g[t] / (1.f + std::exp(-g[t]))) * u[t];
-        }
-    }
-}
-
-template <int TY, int NT>
-void dot_rows(const uint8_t* w, size_t row_bytes, int n, const void* const* act, float* const* out, int r0, int r1) {
-    const block_q8_K* y[NT];
-    for (int t = 0; t < NT; ++t) y[t] = (const block_q8_K*) act[t];
-    float res[NT];
-    for (int r = r0; r < r1; ++r) {
-        row_dot_any<TY, NT>(w + (size_t) r * row_bytes, n / QK_K, y, res);
-        for (int t = 0; t < NT; ++t) out[t][r] = res[t];
-    }
-}
-
-template <int TY>
-void gu_rows_nt(int nt, const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act,
-                float* const* ff, int r0, int r1, float limit, const uint8_t* separate_up) {
-    switch (nt) {
-        case 1: gu_rows<TY, 1>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 2: gu_rows<TY, 2>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 3: gu_rows<TY, 3>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 4: gu_rows<TY, 4>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 5: gu_rows<TY, 5>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 6: gu_rows<TY, 6>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 7: gu_rows<TY, 7>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        default: gu_rows<TY, 8>(blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-    }
-}
-
-template <int TY>
-void dot_rows_nt(int nt, const uint8_t* w, size_t row_bytes, int n, const void* const* act, float* const* out, int r0,
-                 int r1) {
-    switch (nt) {
-        case 1: dot_rows<TY, 1>(w, row_bytes, n, act, out, r0, r1); break;
-        case 2: dot_rows<TY, 2>(w, row_bytes, n, act, out, r0, r1); break;
-        case 3: dot_rows<TY, 3>(w, row_bytes, n, act, out, r0, r1); break;
-        case 4: dot_rows<TY, 4>(w, row_bytes, n, act, out, r0, r1); break;
-        default: for (int t0 = 0; t0 < nt; t0 += 4) {
-            const int k = nt - t0 < 4 ? nt - t0 : 4;
-            dot_rows_nt<TY>(k, w, row_bytes, n, act + t0, out + t0, r0, r1);
-        }
-    }
-}
+bool vnni_on() { return STRATA_AVXVNNI && cpu_avxvnni_ok(); }
 
 }  // namespace
 
-size_t iq256_prepared_row_bytes(int type, int n) {
-    if (n < 1 || n % 256 || (type != 21 && type != 22)) return 0;
-    return (size_t)(n / 256) * (type == 21 ? 134 : 106);
-}
-void iq256_prepare_rows(int type, const uint8_t *src, uint8_t *dst, int n, int rows) {
-    if (type == 21) prepare_rows<21>(src, dst, n, rows);
-    else if (type == 22) prepare_rows<22>(src, dst, n, rows);
-}
 bool iq256_supported(int type) noexcept {
     return type == 16 || type == 17 || type == 18 || type == 21 || type == 22 || type == 23;
 }
 
-void iq256_gu_rows_clamped(int type, const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act, int nt,
-                   float* const* ff, int r0, int r1, float limit, const uint8_t* separate_up) {
-    switch (type) {
-        case 16: gu_rows_nt<16>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 17: gu_rows_nt<17>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 18: gu_rows_nt<18>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 21: gu_rows_nt<21>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 121: gu_rows_nt<121>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 122: gu_rows_nt<122>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 22: gu_rows_nt<22>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        case 23: gu_rows_nt<23>(nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up); break;
-        default: break;
+int iq256_variant() noexcept {
+    // STRATA_IQ256_GATHER=0/1 for every core; unset, where the calling thread's core gathers faster (per thread: a
+    // hybrid CPU's pool runs on P- and E-cores).  AVX-VNNI where cpu_avxvnni_ok().  The same bits either way.
+    const int s = iq256_gather_setting();
+    return ((s >= 0 ? s == 1 : cpu_gather_fast_here()) ? kIq256Gather : 0) | (vnni_on() ? kIq256Vnni : 0);
+}
+
+int iq256_variants() noexcept { return kIq256Gather | (vnni_on() ? kIq256Vnni : 0); }
+
+namespace {
+// The gate/up rows in a variant, with GLM's SwiGLU clamp (limit > 0) and separate up rows; limit 0 and no
+// separate_up are iq256_gu_rows_v's bits.
+void gu_rows_variant(int variant, int type, const uint8_t* blob, size_t gu_row, size_t up_off, int n,
+                     const void* const* act, int nt, float* const* ff, int r0, int r1, float limit,
+                     const uint8_t* separate_up) {
+    const bool g = (variant & kIq256Gather) != 0;
+#if STRATA_AVXVNNI
+    if (variant & kIq256Vnni) {
+        if (g) vnni::gu_type<true>(type, nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up);
+        else vnni::gu_type<false>(type, nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up);
+        return;
     }
+#endif
+    if (g) plain::gu_type<true>(type, nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up);
+    else plain::gu_type<false>(type, nt, blob, gu_row, up_off, n, act, ff, r0, r1, limit, separate_up);
+}
+}  // namespace
+
+void iq256_gu_rows_v(int variant, int type, const uint8_t* blob, size_t gu_row, size_t up_off, int n,
+                     const void* const* act, int nt, float* const* ff, int r0, int r1) {
+    gu_rows_variant(variant, type, blob, gu_row, up_off, n, act, nt, ff, r0, r1, 0.f, nullptr);
+}
+
+void iq256_gu_rows_clamped(int type, const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act,
+                           int nt, float* const* ff, int r0, int r1, float limit, const uint8_t* separate_up) {
+    gu_rows_variant(iq256_variant(), type, blob, gu_row, up_off, n, act, nt, ff, r0, r1, limit, separate_up);
+}
+
+// The GLM branch's lossless direct-magnitude IQ2_S/IQ3_S planes are not part of this kernel set (upstream's 121/122
+// are its gathered decodes of the original bytes): no format is prepared, so CPU prepacking keeps the original rows.
+size_t iq256_prepared_row_bytes(int, int) { return 0; }
+void iq256_prepare_rows(int type, const uint8_t*, uint8_t*, int, int) {
+    throw std::invalid_argument("iq256_prepare_rows: no prepared layout for type " + std::to_string(type));
+}
+
+void iq256_rows_v(int variant, int type, const uint8_t* w, size_t row_bytes, int n, const void* const* act, int nt,
+                  float* const* out, int r0, int r1) {
+    const bool g = (variant & kIq256Gather) != 0;
+#if STRATA_AVXVNNI
+    if (variant & kIq256Vnni) {
+        if (g) vnni::dot_type<true>(type, nt, w, row_bytes, n, act, out, r0, r1);
+        else vnni::dot_type<false>(type, nt, w, row_bytes, n, act, out, r0, r1);
+        return;
+    }
+#endif
+    if (g) plain::dot_type<true>(type, nt, w, row_bytes, n, act, out, r0, r1);
+    else plain::dot_type<false>(type, nt, w, row_bytes, n, act, out, r0, r1);
 }
 
 void iq256_gu_rows(int type, const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act, int nt,
                    float* const* ff, int r0, int r1) {
-    iq256_gu_rows_clamped(type, blob, gu_row, up_off, n, act, nt, ff, r0, r1, 0);
+    iq256_gu_rows_v(iq256_variant(), type, blob, gu_row, up_off, n, act, nt, ff, r0, r1);
 }
 
 void iq256_rows(int type, const uint8_t* w, size_t row_bytes, int n, const void* const* act, int nt, float* const* out,
                 int r0, int r1) {
-    switch (type) {
-        case 16: dot_rows_nt<16>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 17: dot_rows_nt<17>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 18: dot_rows_nt<18>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 21: dot_rows_nt<21>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 121: dot_rows_nt<121>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 122: dot_rows_nt<122>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 22: dot_rows_nt<22>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        case 23: dot_rows_nt<23>(nt, w, row_bytes, n, act, out, r0, r1); break;
-        default: break;
-    }
+    iq256_rows_v(iq256_variant(), type, w, row_bytes, n, act, nt, out, r0, r1);
 }
 
-// ---- IQ4_NL (type 20): 32-value blocks of 18 bytes (f16 d + 16 nibble bytes) against Q8_0 activations.
-// ggml-cpu's own AVX-2 dot (ggml_vec_dot_iq4_nl_q8_0) is single-token: every token redoes the nibble ->
-// kvalues_iq4nl pshufb decode and the |w| half of the signed x signed product.  Here both are computed once
-// per block; every token then costs a sign, a maddubs, a madd and an fmadd.  The arithmetic is ggml's - only
-// the order of the float additions differs.
-template <int NT>
-void iq4nl_rows(const uint8_t* w, size_t row_bytes, int n, const block_q8_0* const* y, float* const* out,
-                int r0, int r1) {
-    const __m128i values = _mm_loadu_si128((const __m128i*) kvalues_iq4nl);
-    const __m128i m4b = _mm_set1_epi8(0x0f);
-    const __m256i ones = _mm256_set1_epi16(1);
-    const int nb = n / QK4_NL;
-    for (int r = r0; r < r1; ++r) {
-        const uint8_t* row = w + (size_t) r * row_bytes;
-        __m256 accf[NT];
-        for (int t = 0; t < NT; ++t) accf[t] = _mm256_setzero_ps();
-        for (int ib = 0; ib < nb; ++ib) {
-            const uint8_t* blk = row + (size_t) ib * sizeof(block_iq4_nl);
-            rows_ahead(blk + prefetch_ahead);
-            const __m128i bits = _mm_loadu_si128((const __m128i*) (blk + 2));
-            const __m128i lo = _mm_and_si128(bits, m4b);                      // values 0..15
-            const __m128i hi = _mm_and_si128(_mm_srli_epi16(bits, 4), m4b);    // values 16..31
-            const __m256i q4 = _mm256_inserti128_si256(_mm256_castsi128_si256(_mm_shuffle_epi8(values, lo)),
-                                                       _mm_shuffle_epi8(values, hi), 1);
-            const __m256i aq = _mm256_sign_epi8(q4, q4);   // |w|: the unsigned operand of maddubs
-            const float dx = h2f(u16(blk));
-            for (int t = 0; t < NT; ++t) {
-                const block_q8_0& b = y[t][ib];
-                const __m256i q8 = _mm256_loadu_si256((const __m256i*) b.qs);
-                const __m256i p = _mm256_madd_epi16(_mm256_maddubs_epi16(aq, _mm256_sign_epi8(q8, q4)), ones);
-                accf[t] = _mm256_fmadd_ps(_mm256_set1_ps(dx * h2f(b.d)), _mm256_cvtepi32_ps(p), accf[t]);
-            }
-        }
-        for (int t = 0; t < NT; ++t) out[t][r] = hsum8(accf[t]);
+void iq4nl256_down_rows_v(int variant, const uint8_t* w, size_t row_bytes, int n, const void* const* hq, int nt,
+                          float* const* out, int r0, int r1) {
+    const block_q8_0* y[8];
+    for (int t = 0; t < nt; ++t) y[t] = (const block_q8_0*) hq[t];
+#if STRATA_AVXVNNI
+    if (variant & kIq256Vnni) {
+        vnni::iq4nl_nt(w, row_bytes, n, y, nt, out, r0, r1);
+        return;
     }
+#endif
+    (void) variant;
+    plain::iq4nl_nt(w, row_bytes, n, y, nt, out, r0, r1);
 }
 
 void iq4nl256_down_rows(const uint8_t* w, size_t row_bytes, int n, const void* const* hq, int nt, float* const* out,
                         int r0, int r1) {
-    const block_q8_0* y[8];
-    for (int t = 0; t < nt; ++t) y[t] = (const block_q8_0*) hq[t];
-    switch (nt) {
-        case 1: iq4nl_rows<1>(w, row_bytes, n, y, out, r0, r1); break;
-        case 2: iq4nl_rows<2>(w, row_bytes, n, y, out, r0, r1); break;
-        case 3: iq4nl_rows<3>(w, row_bytes, n, y, out, r0, r1); break;
-        case 4: iq4nl_rows<4>(w, row_bytes, n, y, out, r0, r1); break;
-        default: for (int t0 = 0; t0 < nt; t0 += 4) {
-            const int k = nt - t0 < 4 ? nt - t0 : 4;
-            iq4nl256_down_rows(w, row_bytes, n, hq + t0, k, out + t0, r0, r1);
-        }
-    }
+    iq4nl256_down_rows_v(vnni_on() ? kIq256Vnni : 0, w, row_bytes, n, hq, nt, out, r0, r1);
 }
 
 }  // namespace strata::kernels::cpu
