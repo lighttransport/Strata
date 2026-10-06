@@ -1,0 +1,521 @@
+{
+  "date": "2026-10-05",
+  "hardware": "Threadripper 1950X / X399, 128 GB DDR4, two NUMA nodes, RTX 5060 Ti 16 GB",
+  "scope": "preliminary layer-3 CPU expert-only comparison; synthetic activations; not whole-model decode",
+  "placement": "owned node-bound output row halves",
+  "workers": 15,
+  "host_participates": true,
+  "token_width": 3,
+  "rounds": 20,
+  "performance_qualification": "No continuous external-work guard was used for these initial microbenchmarks. Full-model qualification is pending.",
+  "results": {
+    "original_iq": {
+      "packed_bytes": 177340416,
+      "median_milliseconds": 4.424155,
+      "median_packed_gb_s": 40.085300000000004,
+      "trials": [
+        {
+          "round": 0,
+          "milliseconds": 4.19251,
+          "packed_gb_s": 42.2994,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 1,
+          "milliseconds": 4.39992,
+          "packed_gb_s": 40.3053,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 2,
+          "milliseconds": 4.93418,
+          "packed_gb_s": 35.9412,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 3,
+          "milliseconds": 4.57368,
+          "packed_gb_s": 38.7741,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 4,
+          "milliseconds": 4.8415,
+          "packed_gb_s": 36.6293,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 5,
+          "milliseconds": 4.70722,
+          "packed_gb_s": 37.6741,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 6,
+          "milliseconds": 4.59191,
+          "packed_gb_s": 38.6202,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 7,
+          "milliseconds": 4.36532,
+          "packed_gb_s": 40.6248,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 8,
+          "milliseconds": 4.40534,
+          "packed_gb_s": 40.2557,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 9,
+          "milliseconds": 4.40372,
+          "packed_gb_s": 40.2706,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 10,
+          "milliseconds": 4.55107,
+          "packed_gb_s": 38.9668,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 11,
+          "milliseconds": 4.37671,
+          "packed_gb_s": 40.5191,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 12,
+          "milliseconds": 4.39992,
+          "packed_gb_s": 40.3053,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 13,
+          "milliseconds": 4.38624,
+          "packed_gb_s": 40.4311,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 14,
+          "milliseconds": 4.40203,
+          "packed_gb_s": 40.286,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 15,
+          "milliseconds": 4.46221,
+          "packed_gb_s": 39.7428,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 16,
+          "milliseconds": 4.51949,
+          "packed_gb_s": 39.2391,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 17,
+          "milliseconds": 4.44297,
+          "packed_gb_s": 39.9149,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 18,
+          "milliseconds": 4.40243,
+          "packed_gb_s": 40.2824,
+          "output_hash": "9204730003474721274"
+        },
+        {
+          "round": 19,
+          "milliseconds": 4.55514,
+          "packed_gb_s": 38.932,
+          "output_hash": "9204730003474721274"
+        }
+      ]
+    },
+    "ggml_q23": {
+      "packed_bytes": 200409088,
+      "median_milliseconds": 3.01062,
+      "median_packed_gb_s": 66.56765,
+      "trials": [
+        {
+          "round": 0,
+          "milliseconds": 2.95481,
+          "packed_gb_s": 67.8247,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 1,
+          "milliseconds": 3.04928,
+          "packed_gb_s": 65.7234,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 2,
+          "milliseconds": 2.91586,
+          "packed_gb_s": 68.7308,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 3,
+          "milliseconds": 2.96224,
+          "packed_gb_s": 67.6546,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 4,
+          "milliseconds": 3.08522,
+          "packed_gb_s": 64.9578,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 5,
+          "milliseconds": 3.15183,
+          "packed_gb_s": 63.5849,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 6,
+          "milliseconds": 3.03404,
+          "packed_gb_s": 66.0535,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 7,
+          "milliseconds": 3.08696,
+          "packed_gb_s": 64.9211,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 8,
+          "milliseconds": 3.00068,
+          "packed_gb_s": 66.7879,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 9,
+          "milliseconds": 3.00275,
+          "packed_gb_s": 66.7418,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 10,
+          "milliseconds": 2.96816,
+          "packed_gb_s": 67.5197,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 11,
+          "milliseconds": 2.99963,
+          "packed_gb_s": 66.8113,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 12,
+          "milliseconds": 2.97926,
+          "packed_gb_s": 67.2681,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 13,
+          "milliseconds": 3.00453,
+          "packed_gb_s": 66.7023,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 14,
+          "milliseconds": 2.99001,
+          "packed_gb_s": 67.0262,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 15,
+          "milliseconds": 3.06661,
+          "packed_gb_s": 65.352,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 16,
+          "milliseconds": 3.04776,
+          "packed_gb_s": 65.7562,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 17,
+          "milliseconds": 3.01671,
+          "packed_gb_s": 66.433,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 18,
+          "milliseconds": 3.18524,
+          "packed_gb_s": 62.9181,
+          "output_hash": "6752088555857172737"
+        },
+        {
+          "round": 19,
+          "milliseconds": 3.23845,
+          "packed_gb_s": 61.8843,
+          "output_hash": "6752088555857172737"
+        }
+      ]
+    },
+    "custom_q23_avx2": {
+      "packed_bytes": 200409088,
+      "median_milliseconds": 3.847125,
+      "median_packed_gb_s": 52.09325,
+      "trials": [
+        {
+          "round": 0,
+          "milliseconds": 3.95977,
+          "packed_gb_s": 50.6113,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 1,
+          "milliseconds": 3.73721,
+          "packed_gb_s": 53.6253,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 2,
+          "milliseconds": 3.76118,
+          "packed_gb_s": 53.2836,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 3,
+          "milliseconds": 4.08397,
+          "packed_gb_s": 49.0722,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 4,
+          "milliseconds": 4.08711,
+          "packed_gb_s": 49.0345,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 5,
+          "milliseconds": 3.78548,
+          "packed_gb_s": 52.9416,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 6,
+          "milliseconds": 3.88102,
+          "packed_gb_s": 51.6383,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 7,
+          "milliseconds": 3.90388,
+          "packed_gb_s": 51.3359,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 8,
+          "milliseconds": 3.88902,
+          "packed_gb_s": 51.532,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 9,
+          "milliseconds": 3.82871,
+          "packed_gb_s": 52.3438,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 10,
+          "milliseconds": 3.88263,
+          "packed_gb_s": 51.6169,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 11,
+          "milliseconds": 3.80209,
+          "packed_gb_s": 52.7103,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 12,
+          "milliseconds": 3.83128,
+          "packed_gb_s": 52.3087,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 13,
+          "milliseconds": 3.81682,
+          "packed_gb_s": 52.5069,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 14,
+          "milliseconds": 3.80614,
+          "packed_gb_s": 52.6542,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 15,
+          "milliseconds": 3.84767,
+          "packed_gb_s": 52.0859,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 16,
+          "milliseconds": 3.93818,
+          "packed_gb_s": 50.8888,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 17,
+          "milliseconds": 3.85045,
+          "packed_gb_s": 52.0483,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 18,
+          "milliseconds": 3.82744,
+          "packed_gb_s": 52.3612,
+          "output_hash": "7241504725731002310"
+        },
+        {
+          "round": 19,
+          "milliseconds": 3.84658,
+          "packed_gb_s": 52.1006,
+          "output_hash": "7241504725731002310"
+        }
+      ]
+    },
+    "q23_tile_lut": {
+      "packed_bytes": 200409088,
+      "median_milliseconds": 8.91328,
+      "median_packed_gb_s": 22.48435,
+      "trials": [
+        {
+          "round": 0,
+          "milliseconds": 8.92408,
+          "packed_gb_s": 22.4571,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 1,
+          "milliseconds": 9.16483,
+          "packed_gb_s": 21.8672,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 2,
+          "milliseconds": 8.82086,
+          "packed_gb_s": 22.7199,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 3,
+          "milliseconds": 8.85249,
+          "packed_gb_s": 22.6387,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 4,
+          "milliseconds": 8.85418,
+          "packed_gb_s": 22.6344,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 5,
+          "milliseconds": 9.24689,
+          "packed_gb_s": 21.6731,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 6,
+          "milliseconds": 8.83002,
+          "packed_gb_s": 22.6963,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 7,
+          "milliseconds": 8.85572,
+          "packed_gb_s": 22.6305,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 8,
+          "milliseconds": 8.93623,
+          "packed_gb_s": 22.4266,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 9,
+          "milliseconds": 8.90248,
+          "packed_gb_s": 22.5116,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 10,
+          "milliseconds": 8.8537,
+          "packed_gb_s": 22.6356,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 11,
+          "milliseconds": 8.98186,
+          "packed_gb_s": 22.3127,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 12,
+          "milliseconds": 9.02012,
+          "packed_gb_s": 22.218,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 13,
+          "milliseconds": 8.99821,
+          "packed_gb_s": 22.2721,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 14,
+          "milliseconds": 8.87762,
+          "packed_gb_s": 22.5747,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 15,
+          "milliseconds": 9.16807,
+          "packed_gb_s": 21.8595,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 16,
+          "milliseconds": 8.85201,
+          "packed_gb_s": 22.64,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 17,
+          "milliseconds": 9.01126,
+          "packed_gb_s": 22.2399,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 18,
+          "milliseconds": 8.85173,
+          "packed_gb_s": 22.6407,
+          "output_hash": "739574727452555835"
+        },
+        {
+          "round": 19,
+          "milliseconds": 9.04838,
+          "packed_gb_s": 22.1486,
+          "output_hash": "739574727452555835"
+        }
+      ]
+    }
+  }
+}

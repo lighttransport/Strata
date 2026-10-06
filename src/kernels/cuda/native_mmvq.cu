@@ -791,16 +791,21 @@ struct Q5KTraits {
     using Block = Q5KBlock;
     static constexpr int DIV = QK, T = QI / VDR, KBY = QK / Q8K, BPI = VDR * WARPS * WARP / QI;
     __device__ static int kqs(int tid) { return VDR * (tid % (QI / VDR)); }
-    struct W { int vl[2], vh[2]; uint16_t aux[2]; half2 dm; int bq8_offset; };
+    // v holds q5_q8_dot_impl's unpacked v0i/v1i per sub-block, computed once per (row, block) instead of
+    // once per column; the integer values and every float operation are unchanged.
+    struct W { int v[2][2]; uint16_t aux[2]; half2 dm; int bq8_offset; };
     __device__ static W load(const Block* __restrict__ bq5, int iqs) {
         W r;
         r.bq8_offset = 2 * ((iqs / 2) / 4);
         const int* ql = reinterpret_cast<const int*>(bq5->qs + 16 * r.bq8_offset + 4 * ((iqs / 2) % 4));
         const int* qh = reinterpret_cast<const int*>(bq5->qh + 4 * ((iqs / 2) % 4));
-        r.vl[0] = ql[0];
-        r.vl[1] = ql[4];
-        r.vh[0] = qh[0] >> r.bq8_offset;
-        r.vh[1] = qh[4] >> r.bq8_offset;
+        const int vl[2] = {ql[0], ql[4]};
+        const int vh[2] = {qh[0] >> r.bq8_offset, qh[4] >> r.bq8_offset};
+#pragma unroll
+        for (int i = 0; i < 2; ++i) {
+            r.v[i][0] = ((vl[0] >> (4 * i)) & 0x0f0f0f0f) | (((vh[0] >> i) << 4) & 0x10101010);
+            r.v[i][1] = ((vl[1] >> (4 * i)) & 0x0f0f0f0f) | (((vh[1] >> i) << 4) & 0x10101010);
+        }
         const uint16_t* scales = reinterpret_cast<const uint16_t*>(bq5->scales);
         const int j = r.bq8_offset / 2;
         const int jm = j & 1;
@@ -825,7 +830,17 @@ struct Q5KTraits {
             u[2 * i + 1] = q8[4];
         }
         const uint8_t* sc = reinterpret_cast<const uint8_t*>(r.aux);
-        return q5_q8_dot_impl(r.vl, r.vh, u, sc, sc + 2, r.dm, d8);
+        const uint8_t* m = sc + 2;
+        float sumf_d = 0.0f, sumf_m = 0.0f;
+#pragma unroll
+        for (int i = 0; i < 2; ++i) {
+            const int dot1 = STRATA_DP4A(r.v[i][0], u[2 * i], STRATA_DP4A(r.v[i][1], u[2 * i + 1], 0));
+            const int dot2 = STRATA_DP4A(0x01010101, u[2 * i], STRATA_DP4A(0x01010101, u[2 * i + 1], 0));
+            sumf_d += d8[i] * (dot1 * sc[i]);
+            sumf_m += d8[i] * (dot2 * m[i]);
+        }
+        const float2 dm5f = __half22float2(r.dm);
+        return dm5f.x * sumf_d - dm5f.y * sumf_m;
     }
 };
 struct Q4KTraits {
@@ -928,15 +943,20 @@ struct Q6KTraits {
     using Block = Q6KBlock;
     static constexpr int DIV = 256, T = 32, KBY = 8, BPI = WARPS * WARP / 32;
     __device__ static int kqs(int tid) { return tid % 32; }
-    struct W { int vl, vh; float d; const int8_t* scales; int bq8_offset; };
+    // vi and sc are q6_q8_dot_impl's per-sub-block weights and scales, unpacked once per (row, block).
+    struct W { int vi[2], sc[2]; float d; int bq8_offset; };
     __device__ static W load(const Block* __restrict__ w, int iqs) {
         W r;
         r.bq8_offset = 4 * (iqs / 16) + (iqs % 16) / 8;
         const int scale_offset = 8 * (iqs / 16) + (iqs % 16) / 4;
         const int vh_shift = 2 * ((iqs % 16) / 8);
-        r.vl = load_int_b2(w->ql, iqs);
-        r.vh = load_int_b2(w->qh, 8 * (iqs / 16) + iqs % 8) >> vh_shift;
-        r.scales = w->scales + scale_offset;
+        const int vl = load_int_b2(w->ql, iqs);
+        const int vh = load_int_b2(w->qh, 8 * (iqs / 16) + iqs % 8) >> vh_shift;
+#pragma unroll
+        for (int i = 0; i < 2; ++i) {
+            r.sc[i] = w->scales[scale_offset + 4 * i];
+            r.vi[i] = __vsubss4(((vl >> (4 * i)) & 0x0f0f0f0f) | (((vh >> (4 * i)) << 4) & 0x30303030), 0x20202020);
+        }
         r.d = w->d;
         return r;
     }
@@ -948,7 +968,10 @@ struct Q6KTraits {
             u[i] = reinterpret_cast<const int*>(x[r.bq8_offset + 2 * i].qs)[iqs % 8];
             d8[i] = __low2float(x[r.bq8_offset + 2 * i].ds);
         }
-        return q6_q8_dot_impl(r.vl, r.vh, u, r.scales, r.d, d8);
+        float sumf = 0.0f;
+#pragma unroll
+        for (int i = 0; i < 2; ++i) sumf += d8[i] * (STRATA_DP4A(r.vi[i], u[i], 0) * r.sc[i]);
+        return r.d * sumf;
     }
 };
 struct IQ4XSTraits {
@@ -995,6 +1018,9 @@ struct SmallTraits {
 // llama.cpp's generic multi-column table (ncols 2-4: 4 warps; 5-8: 2 warps; always 2 rows per block): faster,
 // equal to ncols = 1 only to float rounding (the cross-warp reduction groups partial sums differently).
 bool g_multi_exact = true;   // until the upstream layout is timed on an idle GPU (plan rule: default only what is measured)
+// Rows per block in the exact layout. Every thread keeps the ncols = 1 block assignment and the reduction
+// order per row is unchanged, so 2 or 4 rows stay bitwise equal to single-column calls.
+int g_multi_rows = 1;
 
 template<typename F, int NCOLS, int NW, int ROWS>
 __launch_bounds__(NW * WARP, 1)
@@ -1056,6 +1082,10 @@ void launch_multi_n(const void* weights, const void* x_q8_1, float* y, int n_in,
     if (n_in / F::DIV < F::BPI) {
         const unsigned blocks = unsigned((std::size_t(n_out) + WARPS - 1) / WARPS);
         native_mmvq_multi_kernel<F, NCOLS, WARPS, WARPS><<<blocks, threads, 0, s>>>(w, x, y, n_in, n_out);
+    } else if (g_multi_rows == 2) {
+        native_mmvq_multi_kernel<F, NCOLS, WARPS, 2><<<unsigned((std::size_t(n_out) + 1) / 2), threads, 0, s>>>(w, x, y, n_in, n_out);
+    } else if (g_multi_rows == 4) {
+        native_mmvq_multi_kernel<F, NCOLS, WARPS, 4><<<unsigned((std::size_t(n_out) + 3) / 4), threads, 0, s>>>(w, x, y, n_in, n_out);
     } else {
         native_mmvq_multi_kernel<F, NCOLS, WARPS, 1><<<unsigned(n_out), threads, 0, s>>>(w, x, y, n_in, n_out);
     }
@@ -1143,6 +1173,10 @@ void small_f32(const void* weights, const float* x, void* scratch_q8_1,
 
 void native_mmvq_set_multi_exact(bool exact) { g_multi_exact = exact; }
 bool native_mmvq_multi_exact() { return g_multi_exact; }
+void native_mmvq_set_multi_rows(int rows) {
+    if (rows != 1 && rows != 2 && rows != 4) throw std::invalid_argument("native MMVQ multi rows must be 1, 2 or 4");
+    g_multi_rows = rows;
+}
 
 std::size_t native_q8_1_bytes(int n_in, int ncols) {
     validate_shape(n_in, ncols);

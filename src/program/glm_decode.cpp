@@ -6,12 +6,17 @@
 #include "ggml.h"
 #include "strata/core/expert_cache.hpp"
 #include "strata/core/model.hpp"
+#include "strata/core/runtime_memory.hpp"
+#include "strata/artifact/expert_calibration.hpp"
+#include "strata/artifact/json.hpp"
 #include "strata/spec/suffix_drafter.hpp"
 #include "strata/kernels/cpu/pool.hpp"
 #include "strata/kernels/cpu/numa_weights.hpp"
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
+#include "strata/kernels/glm_mailbox.hpp"
+#include "strata/kernels/glm_q8.hpp"
 #include "strata/kernels/dequant_bf16.hpp"
 #include "strata/prefill/gemm.hpp"
 #include "strata/prefill/partition.hpp"
@@ -21,6 +26,8 @@
 #include "strata/net/expert_tp.hpp"
 #include "ucomm.h"
 #include <algorithm>
+#include <iomanip>
+#include <immintrin.h>
 #include <array>
 #include <atomic>
 #include <bit>
@@ -175,7 +182,7 @@ size_t prefill_expert_stride(const strata::core::ArtifactTensor &g,
     // differ between gate/up and down. Padding must be a multiple of both.
     const size_t align = std::lcm(size_t(16), std::lcm(ggml_type_size((ggml_type)g.tensor->type),
                                                     ggml_type_size((ggml_type)d.tensor->type)));
-    const size_t bytes = (g.bytes + u.bytes + d.bytes) / 288;
+    const size_t bytes = (g.bytes + u.bytes + d.bytes) / g.tensor->shape[2];
     return (bytes + align - 1) / align * align;
 }
 namespace mmq = strata::prefill::mmq;
@@ -183,6 +190,58 @@ struct Pinned {
     void *p = nullptr;
     explicit Pinned(size_t bytes) { check(cudaMallocHost(&p, bytes)); }
     ~Pinned() { cudaFreeHost(p); }
+};
+// GPU-driven decode step (STRATA_GLM_STEP_PIPELINE=1). One slot per layer; the generation advances once per
+// step, so a slot never needs clearing and a late flag from an earlier step cannot satisfy a wait.
+struct StepMailbox {
+    void *host = nullptr;
+    k::GlmMailboxView view, device_view;
+    std::unique_ptr<Device> generation;
+    unsigned step = 0;
+    StepMailbox(int slots, int max_tokens, int top_k, int hidden) {
+        const size_t bytes = k::glm_mailbox_bytes(slots, max_tokens, top_k, hidden);
+        check(cudaHostAlloc(&host, bytes, cudaHostAllocMapped | cudaHostAllocPortable));
+        std::memset(host, 0, bytes);
+        void *mapped = nullptr;
+        check(cudaHostGetDevicePointer(&mapped, host, 0));
+        view = k::glm_mailbox_view(host, slots, max_tokens, top_k, hidden);
+        device_view = k::glm_mailbox_view(mapped, slots, max_tokens, top_k, hidden);
+        generation = std::make_unique<Device>(256, true);
+    }
+    ~StepMailbox() { cudaFreeHost(host); }
+    StepMailbox(const StepMailbox &) = delete;
+    StepMailbox &operator=(const StepMailbox &) = delete;
+    unsigned *device_generation() const { return (unsigned *)generation->p; }
+    void begin(cudaStream_t stream) {
+        if (!++step) ++step;
+        __atomic_store_n(view.control + 32, 0u, __ATOMIC_SEQ_CST);
+        __atomic_store_n(view.control + 16, 0u, __ATOMIC_SEQ_CST);
+        __atomic_store_n(view.control, step, __ATOMIC_SEQ_CST);
+        k::glm_mailbox_begin(device_view, device_generation(), stream);
+    }
+    // Spins for the GPU's publication of this step; a GPU-side timeout or a stalled step throws.
+    void wait_published(int slot, const std::atomic<bool> &launch_failed) const {
+        const auto *flag = view.flags + (size_t)slot * 32;
+        const auto start = std::chrono::steady_clock::now();
+        for (unsigned spins = 0; __atomic_load_n(flag, __ATOMIC_ACQUIRE) != step; ++spins) {
+            _mm_pause();
+            if ((spins & 0xffff) == 0xffff) {
+                if (launch_failed) throw std::runtime_error("GLM: step enqueue failed");
+                if (const unsigned error = __atomic_load_n(view.control + 16, __ATOMIC_ACQUIRE))
+                    throw std::runtime_error("GLM: step pipeline GPU wait timed out at layer " + std::to_string(error - 1));
+                if (std::chrono::steady_clock::now() - start > std::chrono::seconds(60))
+                    throw std::runtime_error("GLM: step pipeline layer " + std::to_string(slot) + " was never published");
+            }
+        }
+    }
+    bool published(int slot) const { return __atomic_load_n(view.flags + (size_t)slot * 32, __ATOMIC_ACQUIRE) == step; }
+    void complete(int slot) const { __atomic_store_n(view.flags + (size_t)slot * 32 + 16, step, __ATOMIC_RELEASE); }
+    void abort() const { __atomic_store_n(view.control + 32, 1u, __ATOMIC_SEQ_CST); }
+    unsigned gpu_error() const { return __atomic_load_n(view.control + 16, __ATOMIC_ACQUIRE); }
+    int *ids(int slot) const { return view.ids + (size_t)slot * view.max_tokens * view.top_k; }
+    float *weights(int slot) const { return view.weights + (size_t)slot * view.max_tokens * view.top_k; }
+    float *act(int slot) const { return view.act + (size_t)slot * view.max_tokens * view.hidden; }
+    float *sum(int slot) const { return view.sum + (size_t)slot * view.max_tokens * view.hidden; }
 };
 bool direct_upload_enabled() {
     const char *value = std::getenv("STRATA_GLM_DIRECT_WEIGHT_UPLOAD");
@@ -373,7 +432,9 @@ class ExpertStager {
     int size() const { return workers.size(); }
 };
 struct GpuPrefill {
-    static constexpr size_t slot_bytes = 208 * MiB;
+    // One 16-expert group per ring slot: 208 MiB covers GLM-5.3-Flash's GGUFs; larger experts (a Q4_K_M REAP-50
+    // GGUF) raise it when the model loads.
+    static inline size_t slot_bytes = 208 * MiB;
     int chunk;
     size_t cursor = 0;
     std::unique_ptr<Device> arena, dq, blas_workspace, mmq_workspace, slots[2];
@@ -410,7 +471,7 @@ struct GpuPrefill {
     }
     void prefetch(const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
                   const strata::core::ArtifactTensor &D, int layer, int group, int index, size_t stride) {
-        const size_t gh = G.bytes / 288, db = D.bytes / 288, bytes = 16 * stride;
+        const size_t gh = G.bytes / G.tensor->shape[2], db = D.bytes / D.tensor->shape[2], bytes = 16 * stride;
         if (bytes + 16384 > pool[index]->bytes) throw std::runtime_error("GLM: native expert group exceeds prefetch slot");
         auto *p = (char *)pool[index]->p;
         check(cudaStreamWaitEvent(copy, pool_done[index], 0));
@@ -525,7 +586,7 @@ struct GpuPrefill {
     void upload(const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
                 const strata::core::ArtifactTensor &D, int start, int n, int slot, void *stream,
                 const int *selected = nullptr, bool blobs = false, size_t expert_stride = 0) {
-        size_t gh = G.bytes / 288, db = D.bytes / 288;
+        size_t gh = G.bytes / G.tensor->shape[2], db = D.bytes / D.tensor->shape[2];
         const size_t stride = expert_stride ? expert_stride : 2 * gh + db;
         const size_t bytes = n * stride;
         if (bytes + 16384 > slot_bytes)
@@ -587,6 +648,8 @@ struct LayerState {
 };
 // Cache complete original MMQ groups: residency must not change the product
 // shape, activation quantizer, stream-k partition, or floating reduction order.
+// 16-expert prefill groups in the loaded model (18 for GLM-5.3-Flash's 288 experts, 9 for a REAP-50 GGUF).
+static int prefill_expert_groups = 18;
 struct PrefillGroupCache {
     struct Layer {
         bool selected = false;
@@ -676,7 +739,7 @@ struct PrefillGroupCache {
         if (layer.selected) return;
         layer.admitted.clear(); layer.selected = true;
         std::vector<int> groups;
-        for (int group = 0; group < 18; ++group)
+        for (int group = 0; group < prefill_expert_groups; ++group)
             if (strata::prefill::owns_expert_group(group, participant, participants, primary_groups) &&
                 bounds[group * 16 + 16] != bounds[group * 16]) groups.push_back(group);
         std::sort(groups.begin(), groups.end(), [&](int a, int b) {
@@ -1296,23 +1359,80 @@ class Decoder {
         throw std::invalid_argument("GLM: decode admission minimum must be 1..64");
     }();
     bool layer_graphs = std::getenv("STRATA_GLM_LAYER_GRAPHS") != nullptr;
+    // GPU-driven decode step: every layer is enqueued before the CPU experts run, and each MoE layer hands
+    // off through a mapped mailbox instead of a host event wait, upload and relaunch.
+    bool step_pipeline = [] {
+        const char *value = std::getenv("STRATA_GLM_STEP_PIPELINE");
+        if (!value || std::string(value) == "0") return false;
+        if (std::string(value) == "1") return true;
+        throw std::invalid_argument("GLM: step pipeline must be 0 or 1");
+    }();
+    std::map<int, std::unique_ptr<Device>> q8_fp32_scratch;
+    std::array<size_t, 3> q8_scratch_bytes{};
+    static int q8_scratch_role(const std::string &name) {
+        return name.ends_with("attn_k_b.weight") ? 0 : name.ends_with("attn_v_b.weight") ? 1 : 2;
+    }
+    // One pool dispatch per MoE layer (STRATA_GLM_LAYER_FLOW=1): see ExpertPool::run_layer_native.
+    bool layer_flow = std::getenv("STRATA_GLM_LAYER_FLOW") && std::string(std::getenv("STRATA_GLM_LAYER_FLOW")) == "1";
+    // llama.cpp's multi-column GEMV layout for verify windows: faster, equal to single-token rows only to rounding.
+    const bool multi_upstream = [] {
+        const char *value = std::getenv("STRATA_GLM_MULTI_UPSTREAM");
+        const bool on = value && std::string(value) == "1";
+        if (on) k::native_mmvq_set_multi_exact(false);
+        if (const char *rows = std::getenv("STRATA_GLM_MULTI_ROWS")) k::native_mmvq_set_multi_rows(std::atoi(rows));
+        return on;
+    }();
+    bool pipelining = false, pipeline_residents = false;
+    // Decode reads the Q8_0 MLA absorb and mHC projection weights directly instead of their FP32 copies.
+    bool q8_decode = [] {
+        const char *value = std::getenv("STRATA_GLM_Q8_DECODE");
+        if (!value || std::string(value) == "0") return false;
+        if (std::string(value) == "1") return true;
+        throw std::invalid_argument("GLM: Q8 decode must be 0 or 1");
+    }();
+    std::unique_ptr<StepMailbox> mailbox;
+    // Split verify (STRATA_GLM_SPLIT_VERIFY=1): a pipelined verify window runs as two token groups interleaved per
+    // layer, so the GPU computes one group's attention while the CPU computes the other group's experts. Group B
+    // uses the mailbox slots after group A's, its own main buffers and its own resident-expert executor.
+    const bool split_verify = std::getenv("STRATA_GLM_SPLIT_VERIFY") && std::string(std::getenv("STRATA_GLM_SPLIT_VERIFY")) == "1";
+    int buffer_group = 0;          // main-buffer set the launcher enqueues into (1: group B)
+    long split_windows = 0;
+    int history_token_offset = 0;  // first token of the enqueued group within its verify window
+    int mailbox_group_stride() const { return (int)m.layers.size() + 1; }
+    // Per-step host timeline (STRATA_GLM_STEP_TRACE=1): routed CPU work versus everything between layers.
+    bool step_trace = std::getenv("STRATA_GLM_STEP_TRACE") != nullptr;
+    struct StepTrace {
+        long steps = 0, layers = 0;
+        double head_ms = 0, cpu_ms = 0, gap_ms = 0, tail_ms = 0, enqueue_ms = 0;
+        std::chrono::steady_clock::time_point start, last_done, seen;
+        bool any = false;
+    } trace;
+    void trace_seen() { if (step_trace) trace.seen = std::chrono::steady_clock::now(); }
+    void trace_done() {
+        if (!step_trace) return;
+        const auto now = std::chrono::steady_clock::now();
+        auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+        (trace.any ? trace.gap_ms : trace.head_ms) += ms(trace.any ? trace.last_done : trace.start, trace.seen);
+        trace.cpu_ms += ms(trace.seen, now);
+        trace.last_done = now; trace.any = true; ++trace.layers;
+    }
     struct MoePrefix { int *ids; float *weights; size_t cursor; };
     std::map<int, MoePrefix> moe_prefixes;
     int prepared_moe_layer = -1;
-    std::unique_ptr<ResidentExecutor> cached_decode;
+    std::unique_ptr<ResidentExecutor> cached_decode, cached_decode_b;
     std::unique_ptr<SecondaryPrefill> secondary;
     PrefillGroupCache prefill_cache;
     std::map<std::string, std::unique_ptr<Device>> phase;
     bool decode_graphs = false;
     bool verify_graphs=std::getenv("STRATA_GLM_VERIFY_GRAPHS")!=nullptr;
-    int graph_key(int layer)const {return layer+10000*(batch_tokens-1)+(capturing_history?100000:0);}
+    int graph_key(int layer)const {return layer+10000*(batch_tokens-1)+(capturing_history?100000:0)+(pipelining?200000:0)+(pipeline_residents?400000:0);}
     std::map<int, std::unique_ptr<DecodeGraph>> mixer_graphs;
-    template<class F> void decode_graph(int layer, F &&enqueue) {
+    template<class F> void decode_graph(int layer, F &&enqueue, int key = -1) {
         if (!decode_graphs || !gpu || fast || ((batch_tokens!=1 || capturing_history) &&
             !(verify_graphs && !artifact.is_exl3() && batch_tokens<=4))) {
             enqueue(); return;
         }
-        auto &entry = mixer_graphs[graph_key(layer)];
+        auto &entry = mixer_graphs[key >= 0 ? key : graph_key(layer)];
         if (!entry) entry = std::make_unique<DecodeGraph>();
         if (!entry->warmed) {
             enqueue(); entry->warmed = true; return;
@@ -1346,6 +1466,11 @@ class Decoder {
     std::map<int,NumaExperts> numa_experts;
     std::map<const strata::TensorInfo*,const cpu::NumaTensor*> numa_sources;
     size_t numa_weight_bytes=0;
+    int q23_layout=0;
+    bool packed_huge_pages=false;
+    std::unique_ptr<strata::artifact::ExpertCalibration> expert_observer;
+    std::unique_ptr<Pinned> packed_cpu_sum;
+    cudaEvent_t packed_sum_uploaded=nullptr;
     std::vector<int> prepack_cpus;
     long long host_affinity = -1;
     std::unique_ptr<Pinned> host_moe;
@@ -1522,6 +1647,8 @@ class Decoder {
     int mtp_position = 0, prefill_width_saved = 0;
     std::vector<float> target_hidden, mtp_hidden;
     std::unique_ptr<Device> mtp_experts;
+    // Device addresses of the GPU draft experts, so a draft step builds its expert groups without the host.
+    std::unique_ptr<Device> mtp_lookup;
     bool mtp_ready = false, mtp_cpu_experts = false;
     // Batched draft-layer priming during prefill (STRATA_GLM_MTP_BATCHED): positions primed so far and the
     // last target hidden row of the previous batch, kept on the device.
@@ -1530,7 +1657,7 @@ class Decoder {
     std::unique_ptr<Device> mtp_prev_hidden;
     k::NativeExpertLayout mtp_layout;
     size_t mtp_expert_bytes = 0;
-    uint64_t cache_hits = 0, cache_entries = 0;
+    uint64_t cache_hits = 0, cache_entries = 0, pruned_routes = 0;
     std::vector<std::unique_ptr<strata::core::ExpertCache>> expert_cache;
     size_t decode_cache_budget = 0;
     bool decode_cache_auto = false, decode_cache_extend = false;
@@ -1808,6 +1935,7 @@ class Decoder {
     int history_slots = 0, history_position = 0, history_valid = 0;
     bool capturing_history = false;
     void capture_state(Device *buffer, int token) {
+        token += history_token_offset;
         if (!capturing_history || token >= history_slots) return;
         auto it = history_offsets.find(buffer);
         if (it == history_offsets.end()) return;
@@ -1880,7 +2008,7 @@ class Decoder {
     }
     Device &buf(const std::string &name, size_t floats) {
         bool main = name == "streams" || name == "collapsed" || name == "x" || name == "y" ||
-                    name == "hc_coeff" || name == "output";
+                    name == "hc_coeff" || name == "output" || name == "moe_ids" || name == "moe_weights";
         if (gpu && !main) {
             auto &p = phase[name];
             if (!p || p->bytes < floats * 4)
@@ -1891,10 +2019,11 @@ class Decoder {
         // its address. Reserve the whole verification window before first replay.
         if (gpu && main && batch_tokens <= cpu::MAXT && (batched_resident || !artifact.is_exl3())) {
             const size_t row = name == "streams" ? 4 * m.hidden :
-                               name == "hc_coeff" ? 24 : name == "output" ? m.vocab : m.hidden;
+                               name == "hc_coeff" ? 24 : name == "output" ? m.vocab :
+                               name == "moe_ids" || name == "moe_weights" ? m.top_k : m.hidden;
             floats = std::max(floats, row * cpu::MAXT);
         }
-        auto &p = scratch[name];
+        auto &p = scratch[buffer_group ? name + "#b" : name];
         if (!p || p->bytes < floats * 4)
             p = std::make_unique<Device>(floats * 4);
         return *p;
@@ -1913,12 +2042,35 @@ class Decoder {
             traits->to_float(tensor.data() + i * row, out.data() + i * t.shape[0], t.shape[0]);
         return out;
     }
+    // REAP-pruned GGUFs spell hc_* without ".weight" and the indexer compressor as indexer.kpool_*; weights are
+    // cached under the original GLM-5.3-Flash names whichever spelling a caller uses.
+    static std::string canonical_tensor_name(const std::string &name) {
+        if (name.find(".hc_") != std::string::npos && !name.ends_with(".weight")) return name + ".weight";
+        if (const auto k = name.find("indexer.kpool_"); k != std::string::npos)
+            return name.substr(0, k) + "indexer_compressor_" + name.substr(k + 14) + ".weight";
+        return name;
+    }
     Device &weight(const std::string &name, bool floating = false) {
-        const std::string key = name + (floating ? ":fp32" : ":raw");
+        const std::string key = canonical_tensor_name(name) + (floating ? ":fp32" : ":raw");
         auto it = weights.find(key);
         if (it != weights.end()) {
             lru.splice(lru.begin(), lru, it->second.order);
             return *it->second.data;
+        }
+        if (floating && gpu && q8_decode) {
+            // Q8 decode keeps only the Q8_0 copy resident; FP32 users (prefill GEMMs) get a scratch expansion.
+            auto raw = weights.find(canonical_tensor_name(name) + ":raw");
+            if (raw != weights.end() && artifact.at(name).tensor->type == GGML_TYPE_Q8_0) {
+                size_t values = 1;
+                for (auto d : artifact.at(name).tensor->shape) values *= d;
+                auto &scratch = q8_fp32_scratch[q8_scratch_role(name)];
+                if (!scratch || scratch->bytes < values * 4) {
+                    check(cudaStreamSynchronize(stream));   // earlier GEMMs may still read the smaller buffer
+                    scratch = std::make_unique<Device>(values * 4);
+                }
+                k::glm_q8_dequant(raw->second.data->p, scratch->f(), (long long)values, stream);
+                return *scratch;
+            }
         }
         if (gpu && !artifact.is_exl3() && !name.starts_with("blk.45."))
             throw std::runtime_error("GLM: fixed GPU weight missing: " + key);
@@ -1926,6 +2078,13 @@ class Decoder {
         std::vector<float> values;
         if (floating && t.tensor->type != 0)
             values = dequant(t);
+        if (name.ends_with(".ssm_a") && t.tensor->type == GGML_TYPE_F32) {
+            // The KDA kernels take A as stored by the GLM-5.3-Flash GGUF (negative). Some converters (the REAP-50
+            // GGUF) store it positive; every other shared tensor of those files is bit-identical.
+            values.assign((const float *)t.data(), (const float *)t.data() + t.bytes / 4);
+            if (std::all_of(values.begin(), values.end(), [](float v) { return v > 0; }))
+                for (auto &v : values) v = -v;
+        }
         const size_t bytes = values.empty() ? t.bytes : values.size() * 4;
         if (bytes > budget)
             throw std::runtime_error("GLM: weight exceeds dense cache budget: " + name);
@@ -2046,6 +2205,10 @@ class Decoder {
             return;
         }
         if (t.type == 0 || floating) {
+            if (q8_decode && nt <= 8 && in % 4 == 0 && ((uintptr_t)W.p & 15) == 0 && ((uintptr_t)x & 15) == 0) {
+                k::glm_f32_rows_gemv(W.f(), x, y, out, in, nt, stream);
+                return;
+            }
             for (int t = 0; t < nt; ++t)
                 check(cublasSgemv(blas, CUBLAS_OP_T, in, out, &one, W.f(), in, x + t * in, 1, &zero,
                                   y + t * out, 1));
@@ -2063,13 +2226,21 @@ class Decoder {
     }
     void norm(const std::string &name, const float *x, float *y, int width) {
         auto &W = weight(name);
-        k::glm_rms_norm(x, W.f(), y, width, batch_tokens, m.rms_epsilon, stream);
+        // The 1024-thread rows kernel sums in a different order, so it is part of the opt-in decode kernels and
+        // used only outside prefill: every decode and verify width then rounds alike.
+        if (q8_decode && !fast) k::glm_rms_norm_rows(x, W.f(), y, width, batch_tokens, m.rms_epsilon, stream);
+        else k::glm_rms_norm(x, W.f(), y, width, batch_tokens, m.rms_epsilon, stream);
     }
     void hc_read(const std::string &p, const std::string &kind, const float *r, float *x, float *c) {
         auto &normalized = buf("hc_normalized", m.hidden * 4 * batch_tokens);
         auto &projected = buf("hc_projected", 24 * batch_tokens);
         k::glm_rms_norm(r, nullptr, normalized.f(), m.hidden * 4, batch_tokens, m.rms_epsilon, stream);
-        if (split_hc_projection && !fast && batch_tokens == 1) {
+        const auto &hc_name = p + "hc_" + kind + "_fn.weight";
+        if (q8_decode && !fast && artifact.at(hc_name).tensor->type == GGML_TYPE_Q8_0) {
+            auto &partial = buf("hc_q8_partial", 24 * cpu::MAXT * 32);
+            k::glm_q8_rows_gemv(weight(hc_name).p, normalized.f(), projected.f(), partial.f(), 24, m.hidden * 4,
+                                batch_tokens, stream);
+        } else if (split_hc_projection && !fast && batch_tokens == 1) {
             auto &w = weight(p + "hc_" + kind + "_fn.weight", true);
             auto &scratch = buf("hc_partial", 24 * 32);
             k::glm_hc_project(normalized.f(), w.f(), projected.f(), scratch.f(), m.hidden * 4, stream);
@@ -2083,6 +2254,12 @@ class Decoder {
         if (fast) {
             k::glm_mhc_read_batch(r, projected.f(), base.f(), scale.f(), c, x, m.hidden,
                                   m.sinkhorn_iterations, m.hc_epsilon, batch_tokens, stream);
+            return;
+        }
+        static const bool serial_mhc = std::getenv("STRATA_GLM_SERIAL_MHC") != nullptr;
+        if (batch_tokens > 1 && !serial_mhc) {
+            k::glm_mhc_read_tokens(r, projected.f(), base.f(), scale.f(), c, x, m.hidden, m.sinkhorn_iterations,
+                                   m.hc_epsilon, batch_tokens, stream);
             return;
         }
         for (int t = 0; t < batch_tokens; ++t)
@@ -2255,7 +2432,7 @@ class Decoder {
             target.fetched.clear();
             const auto found = cache.layers.find(layer_id);
             int index = 0;
-            for (int group = 0; group < 18 && index < (int)target.pool.size(); ++group) {
+            for (int group = 0; group < prefill_expert_groups && index < (int)target.pool.size(); ++group) {
                 if (!strata::prefill::owns_expert_group(group, participant, split ? 2 : 1, primary_prefill_groups)) continue;
                 if (found != cache.layers.end() && found->second.entries.count(group)) continue;
                 target.prefetch(G, U, D, layer_id, group, index++, stride);
@@ -2269,6 +2446,10 @@ class Decoder {
         auto &ids = buf("router_ids", nt * K), &rw = buf("router_weights", nt * K);
         auto &bounds = buf("router_bounds", E + 1), &dest = buf("router_dest", nt * K + 128);
         auto &source = buf("router_source", nt * K + 128);
+        if(artifact.has_expert_pack()) {
+            check(cudaMemsetAsync(static_cast<int*>(dest.p)+nt*K,0,128*sizeof(int),stream));
+            check(cudaMemsetAsync(static_cast<int*>(source.p)+nt*K,0,128*sizeof(int),stream));
+        }
         auto &cursor = buf("router_cursor", stable_routes ? E * ((nt * K + 255) / 256 + 1) : E);
         mat(p + "ffn_gate_inp.weight", x, logits.f());
         auto &bias = weight(p + "exp_probs_b.bias");
@@ -2521,6 +2702,25 @@ class Decoder {
         mat(p + "ffn_gate_inp.weight", x, logits.f());
         auto &bias = weight(p + "exp_probs_b.bias");
         k::glm_router(logits.f(), bias.f(), (int *)ids.p, routing.f(), m.experts, K, m.expert_scale, stream);
+        if (!mtp_cpu_experts && mtp_lookup) {
+            // GPU draft experts: groups come from the device lookup (one group per route, as the host built
+            // them), so the step needs no host synchronization.
+            ffn(p, x, out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
+            auto &ptr = buf("mtp_pointers", K * 2), &bounds = buf("mtp_bounds", K + 1);
+            auto &dst = buf("mtp_dest", K), &src = buf("mtp_source", K), &groups = buf("mtp_groups", 1);
+            auto &qa = buf("mtp_q8", (k::native_q8_1_bytes(H, 1) + 3) / 4);
+            auto &scratch = buf("mtp_expert_scratch", (k::native_expert_scratch_bytes(K, layer.intermediate) + 3) / 4);
+            auto &result = buf("mtp_expert_results", K * H);
+            k::glm_resident_routes((const int *)ids.p, (const unsigned long long *)mtp_lookup->p,
+                                   (unsigned long long *)ptr.p, (int *)bounds.p, (int *)dst.p, (int *)src.p,
+                                   (int *)groups.p, stream);
+            k::native_quantize_q8_1(x, qa.p, H, 1, stream);
+            k::native_expert_grouped(mtp_layout, (const unsigned long long *)ptr.p, (const int *)bounds.p,
+                                     (const int *)groups.p, (const int *)dst.p, (const int *)src.p, K, K,
+                                     qa.p, scratch.p, result.f(), stream);
+            k::glm_route_sum(result.f(), routing.f(), out, H, K, 1, stream);
+            return;
+        }
         auto *selected = (int *)host_moe->p;
         check(cudaMemcpyAsync(selected, ids.p, K * 4, cudaMemcpyDeviceToHost, stream));
         auto *activation = (float *)(selected + cpu::MAXT * K) + cpu::MAXT * K;
@@ -2592,9 +2792,8 @@ class Decoder {
         share_quant(x, m.hidden);
         mat(p + "ffn_gate_inp.weight", x, logits.f());
         auto &bias = weight(p + "exp_probs_b.bias");
-        for (int t = 0; t < nt; ++t)
-            k::glm_router(logits.f(t * m.experts), bias.f(), (int *)ids.p + t * m.top_k,
-                          rw.f(t * m.top_k), m.experts, m.top_k, m.expert_scale, stream);
+        if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, nt, stream);
+        else k::glm_router(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, stream);
         auto *host_ids = (int *)host_moe->p;
         auto *routing = (float *)(host_ids + cpu::MAXT * m.top_k);
         auto *activation = routing + cpu::MAXT * m.top_k;
@@ -2679,8 +2878,10 @@ class Decoder {
             }
         }
         check(cudaEventSynchronize(moe_ready));
+        trace_seen();
         host_selected.assign(host_ids, host_ids + m.top_k * nt);
         auto &selected = host_selected;
+        if(expert_observer)expert_observer->input(l,position,nt,m.hidden,m.top_k,selected.data(),activation);
         if (routing_trace.is_open()) {
             for (int t = 0; t < nt; ++t) {
                 routing_trace << position + t << ',' << l;
@@ -2694,6 +2895,9 @@ class Decoder {
         if (!cpu::native_fmt(G.tensor->type, D.tensor->type, m.hidden, layer.intermediate, f, error))
             throw std::runtime_error(error);
         f.swiglu_limit = layer.swiglu_limit;
+        f.q23_layout=q23_layout;
+        f.observer=expert_observer&&expert_observer->collects_moments()?expert_observer.get():nullptr;f.observer_layer=l;
+        f.fuse_h_quant=artifact.has_expert_pack()&&(!std::getenv("STRATA_GLM_PACK_FUSE_QUANT")||std::string(std::getenv("STRATA_GLM_PACK_FUSE_QUANT"))!="0");
         auto prepared = prepared_experts.find(l);
         if (prepared != prepared_experts.end()) f = prepared->second.format;
         host_quant.resize(nt);
@@ -2739,6 +2943,7 @@ class Decoder {
             if (inserted && !cache) {
                 jobs.emplace_back();
                 auto &job = jobs.back();
+                job.expert_id=e;
                 const auto *gate = prepared == prepared_experts.end() ? G.data() : prepared->second.gate.get();
                 const auto *up = prepared == prepared_experts.end() ? U.data() : prepared->second.up.get();
                 const auto *down = prepared == prepared_experts.end() || !prepared->second.down ? D.data() : prepared->second.down.get();
@@ -2801,7 +3006,7 @@ class Decoder {
                     cpu::native_quant_act(f, activation + t * m.hidden, quant[t].data());
             // Both GPUs execute resident experts while CPU workers handle misses.
             pool.run_split_multi_native(remote ? local_f : f, jobs.data(), jobs.size());
-            if (!(direct && device_reduction)) check(cudaStreamSynchronize(stream));
+            if (!(direct && device_reduction) && (!artifact.has_expert_pack()||!hits.empty()||!remote_hits.empty())) check(cudaStreamSynchronize(stream));
         } catch (...) {
             if (pending.valid()) pending.wait();
             throw;
@@ -2855,6 +3060,13 @@ class Decoder {
             check(cudaStreamSynchronize(stream));
         }
         if (direct && device_reduction) return;
+        if(artifact.has_expert_pack()&&!remote) {
+            if(!packed_cpu_sum){packed_cpu_sum=std::make_unique<Pinned>(cpu::MAXT*m.hidden*4);check(cudaEventCreateWithFlags(&packed_sum_uploaded,cudaEventDisableTiming));}
+            check(cudaEventSynchronize(packed_sum_uploaded));
+            auto* sum=static_cast<float*>(packed_cpu_sum->p);pool.reduce_routed(results.data(),routing,sum,nt,m.top_k,m.hidden);
+            auto& routed=buf("moe_sum",m.hidden*nt);routed.put_async(sum,size_t(nt)*m.hidden*4,stream);check(cudaEventRecord(packed_sum_uploaded,stream));
+            const float one=1;check(cublasSaxpy(blas,m.hidden*nt,&one,routed.f(),1,out,1));return;
+        }
         host_sum.assign(m.hidden * nt, 0.f);
         auto &sum = host_sum;
         for (size_t j = 0; j < selected.size(); ++j)
@@ -2866,6 +3078,351 @@ class Decoder {
         const float one = 1;
         check(cublasSaxpy(blas, m.hidden * nt, &one, routed.f(), 1, out, 1));
     }
+    // The step pipeline covers the plain CPU-expert decode path; every other expert placement keeps moe().
+    bool pipeline_ready(int nt) const {
+        if (!step_pipeline || !gpu || fast || artifact.is_exl3() || nt < 1 || nt > 4 || profile ||
+            gpu_decode_experts || tp_active() || remote_tp || (secondary && secondary_enabled) || decode_cache_adapt ||
+            device_resident_experts || decode_prefill_cache)
+            return false;
+        for (const auto &cache : expert_cache)
+            if (cache) return false;
+        return true;
+    }
+    // GPU half of a pipelined MoE layer: route, publish, shared expert, then wait for the CPU's routed sum.
+    // The pipelined MoE layer in two halves: publish (router, mailbox publication, resident experts, shared
+    // expert) and combine (wait for the CPU sum and add it). Split verify enqueues the other group in between.
+    struct MoePending { int layer, slot, nt; int *ids; float *rw, *out; ResidentExecutor *executor; };
+    MoePending enqueue_moe_publish(const std::string &p, int l, const float *x, float *out,
+                                   const strata::core::LayerDescriptor &layer, int slot, ResidentExecutor *executor) {
+        const int nt = batch_tokens;
+        auto &logits = buf("router_logits", m.experts * nt);
+        auto &ids = buf("moe_ids", m.top_k * nt);
+        auto &rw = buf("moe_weights", m.top_k * nt);
+        share_quant(x, m.hidden);
+        mat(p + "ffn_gate_inp.weight", x, logits.f());
+        auto &bias = weight(p + "exp_probs_b.bias");
+        if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, nt, stream);
+        else k::glm_router(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, stream);
+        k::glm_mailbox_publish(mailbox->device_view, slot, (int *)ids.p, rw.f(), x, nt, mailbox->device_generation(), stream);
+        if (pipeline_residents) {
+            // Resident experts run here while the CPU computes the others; the combine adds both.
+            const auto &G = artifact.at(p + "ffn_gate_exps.weight");
+            const auto &D = artifact.at(p + "ffn_down_exps.weight");
+            auto layout = k::native_expert_layout(G.tensor->type, D.tensor->type, m.hidden, layer.intermediate);
+            layout.swiglu_limit = layer.swiglu_limit;
+            executor->run_device(layout, x, (int *)ids.p, l, stream, false, false, nt);
+        }
+        ffn(p, x, out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
+        return {l, slot, nt, (int *)ids.p, rw.f(), out, executor};
+    }
+    void enqueue_moe_combine(const MoePending &pending) {
+        if (pipeline_residents)
+            k::glm_mailbox_wait_add_resident(mailbox->device_view, pending.slot, pending.out, pending.nt,
+                                             mailbox->device_generation(), pending.ids, pending.rw,
+                                             (const unsigned long long *)pending.executor->lookup->p + (size_t)pending.layer * 288,
+                                             pending.executor->output->f(), stream);
+        else k::glm_mailbox_wait_add(mailbox->device_view, pending.slot, pending.out, pending.nt,
+                                     mailbox->device_generation(), stream);
+    }
+    void enqueue_moe_pipelined(const std::string &p, int l, const float *x, float *out,
+                               const strata::core::LayerDescriptor &layer) {
+        enqueue_moe_combine(enqueue_moe_publish(p, l, x, out, layer, l, cached_decode.get()));
+    }
+    // CPU half: the same jobs and fixed-order reduction as moe()'s CPU path, read from and written to the mailbox.
+    void cpu_moe_mailbox(int l, int slot, int nt, int position) {
+        const int H = m.hidden, K = m.top_k;
+        const auto &layer = m.layers[l];
+        const std::string p = "blk." + std::to_string(l) + ".";
+        const int *selected = mailbox->ids(slot);
+        const float *routing = mailbox->weights(slot), *activation = mailbox->act(slot);
+        for (int j = 0; j < nt * K; ++j)
+            if (selected[j] < 0 || selected[j] >= m.experts) throw std::runtime_error("GLM: invalid published expert");
+        if (expert_observer) expert_observer->input(l, position, nt, H, K, selected, activation);
+        if (routing_trace.is_open()) {
+            for (int t = 0; t < nt; ++t) {
+                routing_trace << position + t << ',' << l;
+                for (int j = 0; j < K; ++j) routing_trace << ',' << selected[t * K + j];
+                routing_trace << '\n';
+            }
+            if (!routing_trace) throw std::runtime_error("GLM: failed writing routing trace");
+        }
+        const auto &G = artifact.at(p + "ffn_gate_exps.weight");
+        const auto &U = artifact.at(p + "ffn_up_exps.weight");
+        const auto &D = artifact.at(p + "ffn_down_exps.weight");
+        cpu::NativeFmt f;
+        std::string error;
+        if (!cpu::native_fmt(G.tensor->type, D.tensor->type, H, layer.intermediate, f, error))
+            throw std::runtime_error(error);
+        f.swiglu_limit = layer.swiglu_limit;
+        f.q23_layout = q23_layout;
+        f.observer = expert_observer && expert_observer->collects_moments() ? expert_observer.get() : nullptr;
+        f.observer_layer = l;
+        f.fuse_h_quant = artifact.has_expert_pack() && (!std::getenv("STRATA_GLM_PACK_FUSE_QUANT") ||
+                                                        std::string(std::getenv("STRATA_GLM_PACK_FUSE_QUANT")) != "0");
+        auto prepared = prepared_experts.find(l);
+        if (prepared != prepared_experts.end()) f = prepared->second.format;
+        host_quant.resize(nt);
+        for (int t = 0; t < nt; ++t) {
+            host_quant[t].resize(f.act_bytes);
+            cpu::native_quant_act(f, activation + (size_t)t * H, host_quant[t].data());
+        }
+        host_results.resize((size_t)nt * K * H);
+        host_jobs.clear();
+        std::array<int, 512> job_of;
+        job_of.fill(-1);
+        const auto owned = numa_experts.find(l);
+        const auto *resident = pipeline_residents ? (const unsigned long long *)cached_decode->host_lookup->p + (size_t)l * 288 : nullptr;
+        std::array<float, cpu::MAXT * 8> cpu_weights;
+        if (nt * K > (int)cpu_weights.size()) throw std::runtime_error("GLM: step pipeline route count");
+        for (int j = 0; j < nt * K; ++j) {
+            const int e = selected[j], t = j / K;
+            ++cache_entries;
+            cpu_weights[j] = routing[j];
+            if (routing[j] == 0.f) {
+                // Pruned by STRATA_GLM_ROUTE_MIN_SHARE; contributes nothing.
+                ++pruned_routes;
+                std::fill_n(host_results.data() + (size_t)j * H, H, 0.f);
+                continue;
+            }
+            if (resident && resident[e]) {
+                // The GPU adds this route; the CPU's fixed-order sum sees an exact zero.
+                ++cache_hits;
+                cpu_weights[j] = 0.f;
+                std::fill_n(host_results.data() + (size_t)j * H, H, 0.f);
+                continue;
+            }
+            if (job_of[e] < 0) {
+                job_of[e] = (int)host_jobs.size();
+                auto &job = host_jobs.emplace_back();
+                job.expert_id = e;
+                const auto *gate = prepared == prepared_experts.end() ? G.data() : prepared->second.gate.get();
+                const auto *up = prepared == prepared_experts.end() ? U.data() : prepared->second.up.get();
+                const auto *down = prepared == prepared_experts.end() || !prepared->second.down ? D.data() : prepared->second.down.get();
+                job.blob = gate + (size_t)e * f.up_off;
+                job.native_up = up + (size_t)e * f.up_off;
+                job.native_down = down + (size_t)e * (f.bytes - f.down_off);
+                if (owned != numa_experts.end())
+                    for (int node = 0; node < 2; ++node)
+                        job.numa[node] = {owned->second.gate->shard(e, node), owned->second.up->shard(e, node),
+                                          owned->second.down->shard(e, node)};
+            }
+            auto &job = host_jobs[job_of[e]];
+            const int slot = job.nt++;
+            job.nact[slot] = host_quant[t].data();
+            job.out[slot] = host_results.data() + (size_t)j * H;
+        }
+        if (layer_flow)
+            pool.run_layer_native(f, host_jobs.data(), host_jobs.size(), host_results.data(), cpu_weights.data(),
+                                  mailbox->sum(slot), nt, K);
+        else {
+            if (!host_jobs.empty()) pool.run_split_multi_native(f, host_jobs.data(), host_jobs.size());
+            pool.reduce_routed(host_results.data(), cpu_weights.data(), mailbox->sum(slot), nt, K, H);
+        }
+        if (resident) tier_select(l, selected, nt * K, resident);
+    }
+    // Adaptive GPU tier for the step pipeline (STRATA_GLM_TIER_ADAPT=1 with --decode-cache-mib): recently
+    // routed CPU experts replace cold resident ones. A replacement is detached from the lookup while the GPU
+    // waits on the current layer; the service thread copies its bytes into pinned staging while it waits for
+    // later layers (otherwise idle time); the upload into the freed slot starts after the step completes, on
+    // its own stream; and a finished upload joins the lookup at a later step start.
+    bool tier_adapt = std::getenv("STRATA_GLM_TIER_ADAPT") != nullptr;
+    std::vector<std::vector<float>> tier_score;
+    struct TierCopy {
+        int layer = 0, expert = 0, staging = -1, victim_layer = -1, victim_expert = -1;
+        std::unique_ptr<Device> entry;
+        std::array<const uint8_t *, 3> source{};
+        std::array<size_t, 3> sizes{};
+        size_t staged = 0, bytes = 0;
+        bool uploading = false;
+    };
+    std::vector<TierCopy> tier_copies;
+    std::unique_ptr<Pinned> tier_staging;
+    std::vector<int> tier_free_staging;
+    std::vector<cudaEvent_t> tier_events;
+    cudaStream_t tier_stream = nullptr;
+    uint64_t tier_swaps = 0;
+    static constexpr size_t kTierStagingBytes = 16 * MiB;
+    static float tier_setting(const char *name, float fallback) {
+        const char *value = std::getenv(name);
+        return value ? std::stof(value) : fallback;
+    }
+    const float kTierDecay = tier_setting("STRATA_GLM_TIER_DECAY", 0.98f);
+    const float kTierAdmit = tier_setting("STRATA_GLM_TIER_ADMIT", 2.f);
+    const float kTierMargin = tier_setting("STRATA_GLM_TIER_MARGIN", 1.5f);
+    const size_t kTierInflight = (size_t)tier_setting("STRATA_GLM_TIER_INFLIGHT", 8);
+    void tier_begin_step() {
+        if (!tier_adapt || !pipelining) return;
+        if (tier_score.empty()) tier_score.assign(m.layers.size(), std::vector<float>(m.experts));
+        // Pinned staging and CUDA objects are created here, before the step launches: allocating them while
+        // the GPU waits on the service thread could synchronize with that wait.
+        if (!tier_staging) {
+            tier_staging = std::make_unique<Pinned>(kTierInflight * kTierStagingBytes);
+            for (size_t i = 0; i < kTierInflight; ++i) {
+                tier_free_staging.push_back((int)i);
+                cudaEvent_t event;
+                check(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
+                tier_events.push_back(event);
+            }
+            check(cudaStreamCreateWithFlags(&tier_stream, cudaStreamNonBlocking));
+        }
+        for (auto &layer : tier_score) for (auto &v : layer) v *= kTierDecay;
+        for (auto it = tier_copies.begin(); it != tier_copies.end();) {
+            if (!it->uploading) { ++it; continue; }
+            const auto status = cudaEventQuery(tier_events[it->staging]);
+            if (status == cudaErrorNotReady) { cudaGetLastError(); ++it; continue; }
+            check(status);
+            decode_resident[it->layer].emplace(it->expert, std::move(it->entry));
+            tier_free_staging.push_back(it->staging);
+            it = tier_copies.erase(it);
+        }
+    }
+    // Called by the CPU service before it releases layer l, so the GPU's later lookup copies see the change.
+    void tier_select(int l, const int *selected, int routes, const unsigned long long *resident) {
+        if (!tier_adapt || !tier_staging) return;
+        auto &score = tier_score[l];
+        for (int j = 0; j < routes; ++j) score[selected[j]] += 1.f;
+        for (int j = 0; j < routes; ++j) {
+            const int e = selected[j];
+            if (resident[e] || score[e] < kTierAdmit || tier_free_staging.empty()) continue;
+            bool queued = false;
+            for (const auto &c : tier_copies) queued = queued || (c.layer == l && c.expert == e);
+            if (queued) continue;
+            const auto p = "blk." + std::to_string(l) + ".";
+            const auto &g = artifact.at(p + "ffn_gate_exps.weight"), &u = artifact.at(p + "ffn_up_exps.weight"),
+                       &d = artifact.at(p + "ffn_down_exps.weight");
+            const std::array<size_t, 3> sizes{g.bytes / m.experts, u.bytes / m.experts, d.bytes / m.experts};
+            const size_t bytes = sizes[0] + sizes[1] + sizes[2];
+            if (bytes > kTierStagingBytes) continue;
+            int victim_layer = -1, victim_expert = -1;
+            float coldest = score[e] / kTierMargin;
+            for (size_t vl = 0; vl < decode_resident.size(); ++vl)
+                for (const auto &[ve, slot] : decode_resident[vl])
+                    if (slot->bytes == bytes && tier_score[vl][ve] < coldest) {
+                        coldest = tier_score[vl][ve]; victim_layer = (int)vl; victim_expert = ve;
+                    }
+            if (victim_layer < 0) continue;
+            auto found = decode_resident[victim_layer].find(victim_expert);
+            TierCopy copy;
+            copy.layer = l; copy.expert = e; copy.entry = std::move(found->second);
+            copy.victim_layer = victim_layer; copy.victim_expert = victim_expert;
+            copy.sizes = sizes; copy.bytes = bytes;
+            copy.source = {g.data() + e * sizes[0], u.data() + e * sizes[1], d.data() + e * sizes[2]};
+            copy.staging = tier_free_staging.back();
+            tier_free_staging.pop_back();
+            // The victim leaves decode_resident now but keeps its lookup entry for the rest of this step: the
+            // GPU may still copy this layer's lookup, and the slot is overwritten only after the step completes.
+            decode_resident[victim_layer].erase(found);
+            tier_copies.push_back(std::move(copy));
+        }
+    }
+    // Stages up to `budget` bytes while the service waits for the GPU; returns false when nothing is pending.
+    bool tier_stage(size_t budget) {
+        for (auto &copy : tier_copies) {
+            if (copy.uploading || copy.staged == copy.bytes) continue;
+            auto *dst = (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes;
+            size_t offset = 0;
+            for (int part = 0; part < 3 && budget; ++part) {
+                const size_t begin = std::max(copy.staged, offset), end = offset + copy.sizes[part];
+                if (begin < end) {
+                    const size_t n = std::min(budget, end - begin);
+                    std::memcpy(dst + begin, copy.source[part] + (begin - offset), n);
+                    copy.staged = begin + n;
+                    budget -= n;
+                }
+                offset = end;
+            }
+            return true;
+        }
+        return false;
+    }
+    // After the step's final synchronization: every freed slot is idle, so staged copies may upload.
+    void tier_submit() {
+        for (auto &copy : tier_copies) {
+            if (copy.uploading || copy.staged != copy.bytes) continue;
+            check(cudaMemcpyAsync(copy.entry->p, (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes,
+                                  copy.bytes, cudaMemcpyHostToDevice, tier_stream));
+            check(cudaEventRecord(tier_events[copy.staging], tier_stream));
+            copy.uploading = true;
+            ++tier_swaps;
+        }
+    }
+    void tier_drain() {
+        if (tier_stream) check(cudaStreamSynchronize(tier_stream));
+        // An upload that finished holds its new expert; a slot not yet uploaded still holds its victim.
+        for (auto &copy : tier_copies) {
+            if (copy.uploading) decode_resident[copy.layer].emplace(copy.expert, std::move(copy.entry));
+            else decode_resident[copy.victim_layer].emplace(copy.victim_expert, std::move(copy.entry));
+            tier_free_staging.push_back(copy.staging);
+        }
+        tier_copies.clear();
+        tier_score.clear();
+    }
+    std::unique_ptr<GpuWorker> launcher;
+    std::future<void> launch_pending;
+    std::atomic<bool> launch_failed{false};
+    // One CPU expert pass: a MoE layer's mailbox slot, the tokens it holds and the first one's position.
+    struct ServiceItem { int layer, slot, tokens, position; };
+    void service_pipeline(const std::vector<ServiceItem> &items) {
+        for (const auto &item : items) {
+            check_stop();
+            if (tier_adapt)
+                while (!mailbox->published(item.slot) && tier_stage(16 * 1024)) {}
+            mailbox->wait_published(item.slot, launch_failed);
+            trace_seen();
+            cpu_moe_mailbox(item.layer, item.slot, item.tokens, item.position);
+            mailbox->complete(item.slot);
+            trace_done();
+        }
+    }
+    // The launcher thread enqueues the whole step while this thread runs each MoE layer's CPU experts.
+    template <class F> void run_pipelined_step(F &enqueue, int split = 0) {
+        // The service order is the publication order: per MoE layer, group A then (split verify) group B.
+        std::vector<ServiceItem> layers;
+        for (size_t l = 0; l < m.layers.size(); ++l)
+            if (m.layers[l].ffn == strata::core::FfnKind::Moe) {
+                if (!split) layers.push_back({(int)l, (int)l, batch_tokens, position});
+                else {
+                    layers.push_back({(int)l, (int)l, split, position});
+                    layers.push_back({(int)l, (int)l + mailbox_group_stride(), batch_tokens - split, position + split});
+                }
+            }
+        if (!launcher) launcher = std::make_unique<GpuWorker>(primary_device);
+        launch_failed = false;
+        launch_pending = launcher->submit([&] {
+            try {
+                enqueue();
+            } catch (...) {
+                launch_failed = true;
+                mailbox->abort();
+                throw;
+            }
+            if (step_trace)
+                trace.enqueue_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - trace.start).count();
+        });
+        try {
+            service_pipeline(layers);
+        } catch (...) {
+            // Aborted waits drain the stream, so the launcher finishes before its captures go out of scope.
+            mailbox->abort();
+            launch_pending.wait();
+            if (launch_failed) launch_pending.get();  // the launcher's own error explains the stop
+            throw;
+        }
+        launch_pending.get();
+    }
+    // Releases an interrupted step: pending GPU waits return without their sums, the launcher finishes
+    // enqueueing, and the stream drains before any buffer is reused.
+    struct PipelineGuard {
+        Decoder &decoder;
+        ~PipelineGuard() {
+            if (!decoder.pipelining) return;
+            decoder.pipelining = false;
+            decoder.mailbox->abort();
+            if (decoder.launch_pending.valid()) decoder.launch_pending.wait();
+            cudaStreamSynchronize(decoder.stream);
+            cudaGetLastError();
+        }
+    };
     // Upper-half rows of a quantized or FP32 matrix, byte-identical to the primary copy.
     static std::unique_ptr<Device> upper_rows(const strata::core::ArtifactTensor &t, int rows, int first) {
         if (t.tensor->shape.size() != 2 || (int)t.tensor->shape[1] != rows || t.bytes % rows)
@@ -3226,6 +3783,21 @@ class Decoder {
                 qi = buf("linear_qi", (size_t)heads * batch_tokens).f();
                 k::glm_kda_prepare(q.f(), key.f(), decay.f(), beta.f(), qi, heads, batch_tokens, stream);
             }
+            // A verify window's rollback history comes straight from the recurrence kernel.
+            float *snapshots = nullptr;
+            if (capturing_history && !prepared && kda_row_parts == 1 && batch_tokens <= 64)
+                if (auto it = history_offsets.find(state.recurrent.get()); it != history_offsets.end())
+                    snapshots = (float *)((char *)verify_history->p + it->second);
+            if (snapshots && history_token_offset >= history_slots) {
+                // A later split-verify group has no rollback slots left: the plain recurrence.
+                k::glm_kda_chunk(state.recurrent->f(), q.f(), key.f(), v.f(), decay.f(), beta.f(), y.f(), heads, dim,
+                                 batch_tokens, stream, kda_columns, kda_row_parts);
+            } else if (snapshots) {
+                k::glm_kda_chunk(state.recurrent->f(), q.f(), key.f(), v.f(), decay.f(), beta.f(), y.f(), heads, dim,
+                                 batch_tokens, stream, kda_columns, kda_row_parts, nullptr,
+                                 snapshots + (size_t)history_token_offset * (history_stride / 4),
+                                 (long long)(history_stride / 4), history_slots - history_token_offset);
+            } else {
             const int chunk = capturing_history ? 1 : 64;
             for (int t = 0; t < batch_tokens; t += chunk) {
                 check_stop();
@@ -3234,6 +3806,7 @@ class Decoder {
                                  beta.f(t * heads), y.f(t * n), heads, dim, count, stream, kda_columns,
                                  kda_row_parts, prepared ? qi + t * heads : nullptr);
                 capture_state(state.recurrent.get(), t);
+            }
             }
         } else
             for (int t = 0; t < batch_tokens; ++t)
@@ -3362,6 +3935,10 @@ class Decoder {
             // FP16 attention products (STRATA_GLM_MLA_F16): rounded queries and probabilities.
             strata::prefill::Gemm *gemm = nullptr;
             uint16_t *aq16 = nullptr, *attn16 = nullptr;
+            const void *wk8 = nullptr, *wv8 = nullptr;  // Q8_0 decode weights (STRATA_GLM_Q8_DECODE)
+            // Q8_0 verify windows: whole-window absorbed queries/values, so each projection reads its weights
+            // once for every token (each token's products are those of a one-token call).
+            float *aq_all = nullptr, *av_all = nullptr;
         };
         auto run_tiles = [&, B, heads, latent, dim, ih, idim, pool_size, pools, tile](const Tiles &d, bool stoppable) {
             const float one = 1, zero = 0;
@@ -3371,9 +3948,15 @@ class Decoder {
                 check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, out, tokens, in, &one, W, in,
                                                 (long long)in * out, x, ld_x, in, &zero, y, ld_y, out, count));
             };
+            const bool hoisted = d.aq_all && d.av_all && d.wk8 && d.wv8 && !d.gemm && !d.back;
+            if (hoisted)
+                k::glm_q8_heads_gemv(d.wk8, d.q, d.aq_all, (int)kb.shape[2], (int)kb.shape[0], (int)kb.shape[1],
+                                     d.tokens, heads * dim, heads * latent, d.stream);
             for (int t = 0; t < d.tokens; t += tile) {
                 if (stoppable) check_stop();
                 const int count = std::min(tile, d.tokens - t), at = position + d.first + t;
+                float *aq_t = hoisted ? d.aq_all + (size_t)t * heads * latent : d.aq;
+                float *av_t = hoisted ? d.av_all + (size_t)t * heads * latent : d.av;
                 const int scored_pools = active_index_pools ? (at + count) / pool_size : pools;
                 if (scored_pools)
                     check(cublasSgemm(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, scored_pools, count * ih, idim, &one,
@@ -3382,7 +3965,11 @@ class Decoder {
                                     idim, d.stream);
                 k::glm_index_select_batch(d.scores, d.ids, d.counts, pools, at, count,
                                           pool_size, m.index_top_k, stride, d.stream);
-                absorb(kb, d.wk, d.q + (size_t)t * heads * dim, d.aq, count, heads * dim, heads * latent);
+                if (hoisted) {}
+                else if (d.wk8)
+                    k::glm_q8_heads_gemv(d.wk8, d.q + (size_t)t * heads * dim, d.aq, (int)kb.shape[2], (int)kb.shape[0],
+                                         (int)kb.shape[1], count, heads * dim, heads * latent, d.stream);
+                else absorb(kb, d.wk, d.q + (size_t)t * heads * dim, d.aq, count, heads * dim, heads * latent);
                 if (d.gemm) {
                     auto *keys = (uint16_t *)d.gathered;
                     k::glm_mla_gather_f16(d.cache, d.ids, d.counts, keys, count, stride, latent, d.stream);
@@ -3407,7 +3994,7 @@ class Decoder {
                 }
                 k::glm_mla_gather(d.cache, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
                 check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, stride, heads, latent, &one,
-                                                d.gathered, latent, (long long)stride * latent, d.aq, latent,
+                                                d.gathered, latent, (long long)stride * latent, aq_t, latent,
                                                 (long long)heads * latent, &zero, d.attn, stride,
                                                 (long long)heads * stride, count));
                 inspect("attention_scores", d.attn, (size_t)count * heads * stride, d.stream);
@@ -3415,10 +4002,14 @@ class Decoder {
                 inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
                 check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_N, CUBLAS_OP_N, latent, heads, stride, &one,
                                                 d.gathered, latent, (long long)stride * latent, d.attn,
-                                                stride, (long long)heads * stride, &zero, d.av, latent,
+                                                stride, (long long)heads * stride, &zero, av_t, latent,
                                                 (long long)heads * latent, count));
-                inspect("absorbed_value", d.av, (size_t)count * heads * latent, d.stream);
-                absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
+                inspect("absorbed_value", av_t, (size_t)count * heads * latent, d.stream);
+                if (hoisted) continue;
+                if (d.wv8)
+                    k::glm_q8_heads_gemv(d.wv8, d.av, d.value + (size_t)t * heads * dim, (int)vb.shape[2], (int)vb.shape[0],
+                                         (int)vb.shape[1], count, heads * latent, heads * dim, d.stream);
+                else absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
                 inspect("head_value", d.value + (size_t)t * heads * dim, (size_t)count * heads * dim, d.stream);
                 if (d.back) {
                     check(cudaEventRecord(d.produced, d.stream));
@@ -3428,12 +4019,25 @@ class Decoder {
                                               (size_t)count * heads * dim * 4, d.back));
                 }
             }
+            if (hoisted)
+                k::glm_q8_heads_gemv(d.wv8, d.av_all, d.value, (int)vb.shape[2], (int)vb.shape[0], (int)vb.shape[1],
+                                     d.tokens, heads * latent, heads * dim, d.stream);
             (void)B;
         };
+        const bool q8_mla = q8_decode && !fast && kb.type == GGML_TYPE_Q8_0 && vb.type == GGML_TYPE_Q8_0;
         Tiles local{blas, stream, state.pooled->f(), state.cache->f(), iq.f(), iw.f(), q.f(),
-                    weight(p + "attn_k_b.weight", true).f(), weight(p + "attn_v_b.weight", true).f(),
+                    q8_mla ? nullptr : weight(p + "attn_k_b.weight", true).f(),
+                    q8_mla ? nullptr : weight(p + "attn_v_b.weight", true).f(),
                     value.f(), dots.f(), scores.f(), aq.f(), av.f(), gathered.f(), attn.f(),
                     (int *)ids.p, (int *)counts.p, 0, B};
+        if (q8_mla) {
+            local.wk8 = weight(p + "attn_k_b.weight").p;
+            local.wv8 = weight(p + "attn_v_b.weight").p;
+            if (B > 1 && tile == 1) {
+                local.aq_all = buf("mla_absorbed_q_window", (size_t)B * heads * latent).f();
+                local.av_all = buf("mla_absorbed_v_window", (size_t)B * heads * latent).f();
+            }
+        }
         const bool halves = tensor_mla && fast && gpu && gpu->gemm;
         if (halves) {
             local.gemm = gpu->gemm.get();
@@ -3644,9 +4248,38 @@ class Decoder {
         position = snapshot.position;
         mtp_position = snapshot.mtp_position;
     }
-    Decoder(const std::string &path, size_t ctx, size_t cache_bytes, int threads, size_t expert_bytes = 0, bool pin_cpu = false)
+    Decoder(const std::string &path, size_t ctx, size_t cache_bytes, int threads, size_t expert_bytes = 0, bool pin_cpu = false,
+            const std::string& expert_pack="",const std::string& pack_profile="",const std::string& cpu_backend="auto")
         : artifact(path), m(artifact.descriptor()), pool(artifact.is_exl3()?1:threads, artifact.is_exl3()?false:pin_cpu, true), capacity(ctx),
           budget(cache_bytes) {
+        if (m.experts % 16 || m.experts > 288) throw std::invalid_argument("GLM: expert count must be a multiple of 16, at most 288");
+        prefill_expert_groups = (int)m.experts / 16;
+        for (size_t l = 0; l < m.layers.size(); ++l) {
+            if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+            const auto p = "blk." + std::to_string(l) + ".";
+            const size_t group = 16 * prefill_expert_stride(artifact.at(p + "ffn_gate_exps.weight"),
+                artifact.at(p + "ffn_up_exps.weight"), artifact.at(p + "ffn_down_exps.weight")) + 16384;
+            GpuPrefill::slot_bytes = std::max(GpuPrefill::slot_bytes, (group + MiB - 1) / MiB * MiB);
+        }
+        const char* calibration_dir=std::getenv("STRATA_GLM_CALIBRATION_DIR"),*activation_trace=std::getenv("STRATA_GLM_ACTIVATION_TRACE");
+        if(calibration_dir||activation_trace) {
+            if(artifact.is_exl3()||((calibration_dir&&*calibration_dir)&&!expert_pack.empty()))throw std::invalid_argument("moment calibration requires original GGUF; activation capture requires GGUF");
+            expert_observer=std::make_unique<strata::artifact::ExpertCalibration>(calibration_dir?calibration_dir:"",activation_trace?activation_trace:"",(int)m.experts);
+        }
+        if(cpu_backend!="auto"&&cpu_backend!="native"&&cpu_backend!="packed-dot"&&cpu_backend!="packed-lut")throw std::invalid_argument("invalid CPU expert backend");
+        if(expert_pack.empty()&&(!pack_profile.empty()||cpu_backend.starts_with("packed-")))throw std::invalid_argument("packed CPU backend/profile requires --expert-pack");
+        if(!expert_pack.empty()) {
+            if(!pin_cpu||!pool.numa_rows_available()||expert_bytes||direct_upload_enabled())throw std::invalid_argument("expert pack requires two pinned NUMA nodes and no legacy cache/direct upload");
+            std::set<std::string> retained;
+            if(!pack_profile.empty()) {
+                const auto profile=strata::artifact::read_json(pack_profile);const auto& list=profile.at("retain");
+                if(list.kind!=strata::artifact::Json::Array)throw std::invalid_argument("expert pack profile retain must be an array");
+                for(const auto& name:list.array)if(!retained.insert(name.string()).second)throw std::invalid_argument("duplicate retained projection");
+            }
+            artifact.overlay_experts(expert_pack,retained);q23_layout=cpu_backend=="packed-dot"?1:cpu_backend=="packed-lut"?2:0;
+            packed_huge_pages=std::getenv("STRATA_GLM_PACK_HUGE")&&std::string(std::getenv("STRATA_GLM_PACK_HUGE"))=="1";
+            std::cerr<<"EXPERT_PACK source="<<expert_pack<<" backend="<<(cpu_backend=="auto"?"native":cpu_backend)<<" retained="<<retained.size()<<'\n';
+        }
         check(cudaGetDevice(&primary_device));
         if (m.architecture != "glm5next" || ctx < 1 || ctx > (size_t)m.context || budget < 64 * 1024 * 1024)
             throw std::invalid_argument("GLM: invalid architecture, context, or cache budget");
@@ -3743,6 +4376,7 @@ class Decoder {
         gpu.reset();
         if (moe_ready) cudaEventDestroy(moe_ready);
         if (mla_ready) cudaEventDestroy(mla_ready);
+        if (packed_sum_uploaded) cudaEventDestroy(packed_sum_uploaded);
         if (blas)
             cublasDestroy(blas);
         if (stream)
@@ -3847,8 +4481,34 @@ class Decoder {
             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
                 throw std::out_of_range("GLM: token or context out of range");
         batch_tokens = nt;
+        pipelining = false;
+        if (pipeline_ready(nt) && !mailbox) {
+            if (m.experts > 512) throw std::runtime_error("GLM: step pipeline expert count");
+            mailbox = std::make_unique<StepMailbox>(mailbox_group_stride() * (split_verify ? 2 : 1), cpu::MAXT, m.top_k, m.hidden);
+        }
+        pipelining = pipeline_ready(nt);
+        PipelineGuard pipeline_guard{*this};
+        pipeline_residents = false;
+        if (pipelining) {
+            tier_begin_step();
+            for (const auto &layer : decode_resident) pipeline_residents = pipeline_residents || !layer.empty();
+            if (pipeline_residents) {
+                // Device experts are data: the lookup is copied into each layer's GPU pass at execution time.
+                if (m.layers.size() > 64 || m.experts > 288) throw std::runtime_error("GLM: resident lookup geometry");
+                if (!cached_decode) cached_decode = std::make_unique<ResidentExecutor>();
+                auto *table = (unsigned long long *)cached_decode->host_lookup->p;
+                std::memset(table, 0, cached_decode->lookup->bytes);
+                for (size_t l = 0; l < decode_resident.size(); ++l)
+                    for (const auto &[expert, slot] : decode_resident[l]) table[l * 288 + expert] = (unsigned long long)slot->p;
+                if (split_verify && nt >= 2) {
+                    if (!cached_decode_b) cached_decode_b = std::make_unique<ResidentExecutor>();
+                    std::memcpy(cached_decode_b->host_lookup->p, table, cached_decode->lookup->bytes);
+                }
+            }
+        }
+        if (step_trace && !fast) { trace.start = std::chrono::steady_clock::now(); trace.any = false; }
         if (device_resident_experts && !fast && (nt == 1 || batched_resident) && decode_prefill_cache && !device_lookup_ready) {
-            if (m.layers.size() > 64 || m.experts != 288) throw std::runtime_error("GLM: resident lookup geometry");
+            if (m.layers.size() > 64 || m.experts > 288) throw std::runtime_error("GLM: resident lookup geometry");
             for (int participant = 0; participant < (secondary && secondary_enabled ? 2 : 1); ++participant) {
                 DeviceScope scope(participant ? secondary->device : primary_device);
                 auto &executor = participant ? secondary->decode : cached_decode;
@@ -3861,7 +4521,7 @@ class Decoder {
                     const auto p = "blk." + std::to_string(l) + ".";
                     const size_t stride = prefill_expert_stride(artifact.at(p + "ffn_gate_exps.weight"),
                         artifact.at(p + "ffn_up_exps.weight"), artifact.at(p + "ffn_down_exps.weight"));
-                    for (int e = 0; e < 288; ++e) {
+                    for (int e = 0; e < m.experts; ++e) {
                         auto it = resident[l].find(e);
                         table[l * 288 + e] = (unsigned long long)(it != resident[l].end() ? it->second->p : cache.expert(l, e, stride));
                     }
@@ -3891,6 +4551,17 @@ class Decoder {
         auto &x = buf("x", m.hidden * nt);
         auto &y = buf("y", m.hidden * nt);
         auto &c = buf("hc_coeff", 24 * nt);
+        // Split verify: group A is the first split tokens (in r's rows), group B the rest (in its own streams).
+        const int split = pipelining && split_verify && nt >= 2 && !fast && !tp_active() && !kda_split_active() ? nt / 2 : 0;
+        if (split) {
+            buffer_group = 1;
+            buf("streams", m.hidden * 4 * nt).put(emb.data() + (size_t)split * 4 * m.hidden, (size_t)(nt - split) * 4 * m.hidden * 4);
+            buffer_group = 0;
+        }
+        if (pipelining) mailbox->begin(stream);
+        // Pipelined steps enqueue from the launcher thread: the stream's launch queue can fill while the
+        // GPU waits for this thread's CPU experts.
+        auto enqueue_layers = [&] {
         for (size_t l = 0; l < m.layers.size(); ++l) {
             const std::string p = "blk." + std::to_string(l) + ".";
             const auto &layer = m.layers[l];
@@ -3909,13 +4580,23 @@ class Decoder {
                 if (fast)
                     k::glm_mhc_write_batch(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
                 else
-                    for (int t = 0; t < nt; ++t)
-                        k::glm_mhc_write(r.f(t * 4 * m.hidden), c.f(t * 24), y.f(t * m.hidden),
-                                         r.f(t * 4 * m.hidden), m.hidden, stream);
+                    k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             };
             const bool combined = layer_graphs && decode_graphs && !fast &&
                 ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=4)) &&
                 layer.mixer == strata::core::MixerKind::Kda && layer.ffn == strata::core::FfnKind::Moe && !tp_active();
+            if (combined && pipelining) {
+                decode_graph(l, [&] {
+                    enqueue_mixer();
+                    reset_phase();
+                    hc_read(p, "ffn", r.f(), collapsed.f(), c.f());
+                    norm(p + "ffn_norm.weight", collapsed.f(), x.f(), m.hidden);
+                    reset_phase();
+                    enqueue_moe_pipelined(p, l, x.f(), y.f(), layer);
+                    k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
+                });
+                continue;
+            }
             if (combined) {
                 auto enqueue_layer = [&] {
                     enqueue_mixer();
@@ -3958,9 +4639,7 @@ class Decoder {
                 }
                 decode_graph(2000 + l, [&] {
                     kda(p, l, x.f(), y.f());
-                    for (int t = 0; t < nt; ++t)
-                        k::glm_mhc_write(r.f(t * 4 * m.hidden), c.f(t * 24), y.f(t * m.hidden),
-                                         r.f(t * 4 * m.hidden), m.hidden, stream);
+                    k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
                 });
             } else if (layer.mixer == strata::core::MixerKind::Kda) decode_graph(l, enqueue_mixer);
             else enqueue_mixer();
@@ -3978,14 +4657,16 @@ class Decoder {
             }
             if (layer.ffn == strata::core::FfnKind::Dense)
                 ffn(p, x.f(), y.f(), "", layer.intermediate, layer.swiglu_limit);
-            else
+            else if (pipelining)
+                enqueue_moe_pipelined(p, l, x.f(), y.f(), layer);
+            else {
                 moe(p, l, x.f(), y.f(), layer);
+                if (!fast) trace_done();
+            }
             if (fast)
                 k::glm_mhc_write_batch(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             else
-                for (int t = 0; t < nt; ++t)
-                    k::glm_mhc_write(r.f(t * 4 * m.hidden), c.f(t * 24), y.f(t * m.hidden),
-                                     r.f(t * 4 * m.hidden), m.hidden, stream);
+                k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             if (profile) {
                 check(cudaStreamSynchronize(stream));
                 auto end = std::chrono::steady_clock::now();
@@ -4001,6 +4682,126 @@ class Decoder {
         for (int t = 0; t < nt; ++t)
             k::glm_hyper_head(r.f(t * 4 * m.hidden), collapsed.f(t * m.hidden), m.hidden, stream);
         norm("output_norm.weight", collapsed.f(), x.f(), m.hidden);
+        };
+        // Split verify, per layer: combine group A's previous MoE layer, enqueue A's layer up to its publication,
+        // then the same for B. The GPU computes one group's attention while the CPU computes the other group's
+        // experts; layer state still advances in token order (A's tokens before B's at every layer).
+        auto enqueue_split = [&] {
+            const int base = position;
+            struct Group { int first, count; Device *r = nullptr; MoePending pending{}; bool waiting = false; };
+            std::array<Group, 2> groups{Group{0, split}, Group{split, nt - split}};
+            auto select = [&](int g) {
+                buffer_group = g; batch_tokens = groups[g].count; position = base + groups[g].first;
+                history_token_offset = groups[g].first;
+                reset_phase();
+            };
+            try {
+                // Group A runs ahead through the dense layers to its first publication, so the CPU starts
+                // while group B computes its dense layers; after that the groups alternate per layer.
+                std::vector<std::pair<size_t, int>> order;
+                size_t first_moe = 0;
+                while (first_moe < m.layers.size() && m.layers[first_moe].ffn != strata::core::FfnKind::Moe) ++first_moe;
+                for (int g = 0; g < 2; ++g)
+                    for (size_t l = 0; l <= first_moe && l < m.layers.size(); ++l) order.emplace_back(l, g);
+                for (size_t l = first_moe + 1; l < m.layers.size(); ++l) { order.emplace_back(l, 0); order.emplace_back(l, 1); }
+                for (const auto [l, g] : order) {
+                    const std::string p = "blk." + std::to_string(l) + ".";
+                    const auto &layer = m.layers[l];
+                    check_stop();
+                    {
+                        select(g);
+                        auto &gr = buf("streams", m.hidden * 4 * nt), &gcol = buf("collapsed", m.hidden * nt);
+                        auto &gx = buf("x", m.hidden * nt), &gy = buf("y", m.hidden * nt), &gc = buf("hc_coeff", 24 * nt);
+                        groups[g].r = &gr;
+                        // A KDA MoE layer's segment (previous combine through this layer's publication) replays
+                        // as one graph per group, width, first token and whether a combine precedes it. MLA
+                        // layers stay eager: their kernels take the position as an argument.
+                        const bool graphed = layer.mixer == strata::core::MixerKind::Kda &&
+                                             layer.ffn == strata::core::FfnKind::Moe && layer_graphs && decode_graphs;
+                        const bool combine = groups[g].waiting;
+                        const MoePending previous = groups[g].pending;
+                        auto segment = [&] {
+                            reset_phase();
+                            if (combine) {
+                                enqueue_moe_combine(previous);
+                                k::glm_mhc_write_tokens(gr.f(), gc.f(), gy.f(), gr.f(), m.hidden, batch_tokens, stream);
+                            }
+                            hc_read(p, "attn", gr.f(), gcol.f(), gc.f());
+                            norm(p + "attn_norm.weight", gcol.f(), gx.f(), m.hidden);
+                            reset_phase();
+                            kda(p, l, gx.f(), gy.f());
+                            k::glm_mhc_write_tokens(gr.f(), gc.f(), gy.f(), gr.f(), m.hidden, batch_tokens, stream);
+                            reset_phase();
+                            hc_read(p, "ffn", gr.f(), gcol.f(), gc.f());
+                            norm(p + "ffn_norm.weight", gcol.f(), gx.f(), m.hidden);
+                            reset_phase();
+                            groups[g].pending = enqueue_moe_publish(p, (int)l, gx.f(), gy.f(), layer,
+                                                                    (int)l + g * mailbox_group_stride(),
+                                                                    g ? cached_decode_b.get() : cached_decode.get());
+                        };
+                        if (graphed) {
+                            const int key = graph_key((int)l) + 1000000 * (1 + g + 2 * groups[g].first + 32 * combine);
+                            groups[g].pending = {};
+                            decode_graph((int)l, segment, key);
+                            if (!groups[g].pending.ids) {
+                                // A replayed graph skipped the enqueue: the publication used the same buffers.
+                                groups[g].pending = {(int)l, (int)l + g * mailbox_group_stride(), batch_tokens,
+                                                     (int *)buf("moe_ids", m.top_k * nt).p, buf("moe_weights", m.top_k * nt).f(),
+                                                     gy.f(), g ? cached_decode_b.get() : cached_decode.get()};
+                            }
+                            groups[g].waiting = true;
+                            continue;
+                        }
+                        if (groups[g].waiting) {
+                            enqueue_moe_combine(groups[g].pending);
+                            k::glm_mhc_write_tokens(gr.f(), gc.f(), gy.f(), gr.f(), m.hidden, batch_tokens, stream);
+                            groups[g].waiting = false;
+                        }
+                        hc_read(p, "attn", gr.f(), gcol.f(), gc.f());
+                        norm(p + "attn_norm.weight", gcol.f(), gx.f(), m.hidden);
+                        reset_phase();
+                        if (layer.mixer == strata::core::MixerKind::Kda) kda(p, l, gx.f(), gy.f());
+                        else mla(p, l, gx.f(), gy.f());
+                        k::glm_mhc_write_tokens(gr.f(), gc.f(), gy.f(), gr.f(), m.hidden, batch_tokens, stream);
+                        reset_phase();
+                        hc_read(p, "ffn", gr.f(), gcol.f(), gc.f());
+                        norm(p + "ffn_norm.weight", gcol.f(), gx.f(), m.hidden);
+                        reset_phase();
+                        if (layer.ffn == strata::core::FfnKind::Dense) {
+                            ffn(p, gx.f(), gy.f(), "", layer.intermediate, layer.swiglu_limit);
+                            k::glm_mhc_write_tokens(gr.f(), gc.f(), gy.f(), gr.f(), m.hidden, batch_tokens, stream);
+                        } else {
+                            groups[g].pending = enqueue_moe_publish(p, (int)l, gx.f(), gy.f(), layer,
+                                                                    (int)l + g * mailbox_group_stride(),
+                                                                    g ? cached_decode_b.get() : cached_decode.get());
+                            groups[g].waiting = true;
+                        }
+                    }
+                }
+                for (int g = 0; g < 2; ++g) {
+                    select(g);
+                    if (!groups[g].waiting) continue;
+                    enqueue_moe_combine(groups[g].pending);
+                    k::glm_mhc_write_tokens(buf("streams", m.hidden * 4 * nt).f(), buf("hc_coeff", 24 * nt).f(),
+                                            buf("y", m.hidden * nt).f(), buf("streams", m.hidden * 4 * nt).f(),
+                                            m.hidden, batch_tokens, stream);
+                }
+                // The window's rows in order, then one output norm over all of them.
+                buffer_group = 0; batch_tokens = nt; position = base; history_token_offset = 0;
+                reset_phase();
+                for (int g = 0; g < 2; ++g)
+                    for (int t = 0; t < groups[g].count; ++t)
+                        k::glm_hyper_head(groups[g].r->f((size_t)t * 4 * m.hidden),
+                                          collapsed.f((size_t)(groups[g].first + t) * m.hidden), m.hidden, stream);
+                norm("output_norm.weight", collapsed.f(), x.f(), m.hidden);
+            } catch (...) {
+                buffer_group = 0; batch_tokens = nt; position = base; history_token_offset = 0;
+                throw;
+            }
+        };
+        if (split) { ++split_windows; run_pipelined_step(enqueue_split, split); }
+        else if (pipelining) run_pipelined_step(enqueue_layers);
+        else enqueue_layers();
         if (capture_hidden) {
             target_hidden.resize((position + nt) * m.hidden);
             check(cudaMemcpy(target_hidden.data() + position * m.hidden, x.p, (size_t)nt * m.hidden * 4,
@@ -4011,6 +4812,12 @@ class Decoder {
         auto &logits = buf("output", (size_t)m.vocab * head_tokens);
         mat("output.weight", x.f(all_logits ? 0 : (nt - 1) * m.hidden), logits.f(), false, head_tokens);
         check(cudaStreamSynchronize(stream));
+        if (pipelining) {
+            pipelining = false;
+            tier_submit();
+            if (const unsigned error = mailbox->gpu_error())
+                throw std::runtime_error("GLM: step pipeline GPU wait timed out at layer " + std::to_string(error - 1));
+        }
         position += nt;
         batch_tokens = 1;
         auto result = logits.floats((size_t)m.vocab * head_tokens);
@@ -4021,6 +4828,10 @@ class Decoder {
             const auto& ids=artifact.exl3().token_ids;
             for(int t=0;t<head_tokens;++t)for(size_t id=0;id<ids.size();++id)
                 if(!ids[id])result[t*m.vocab+id]=-std::numeric_limits<float>::infinity();
+        }
+        if (step_trace && !fast && trace.any) {
+            trace.tail_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - trace.last_done).count();
+            ++trace.steps;
         }
         return result;
     }
@@ -4075,17 +4886,26 @@ class Decoder {
         } catch (...) { capturing_history = false; throw; }
     }
     int vocabulary() const { return m.vocab; }
+    void flush_expert_observer(){if(expert_observer)expert_observer->flush();}
     void prepare_numa_weights() {
         const char* enabled=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS");
-        if(!enabled || std::string(enabled)=="0" || !numa_experts.empty())return;
-        if(std::string(enabled)!="1")throw std::invalid_argument("STRATA_GLM_Q2_NUMA_WEIGHTS must be 0 or 1");
+        if(!numa_experts.empty())return;
+        if(!artifact.has_expert_pack()&&(!enabled||std::string(enabled)=="0"))return;
+        if(enabled&&std::string(enabled)!="1"&&std::string(enabled)!="0")throw std::invalid_argument("STRATA_GLM_Q2_NUMA_WEIGHTS must be 0 or 1");
+        // An explicit 0 keeps a pack on its file mapping (reclaimable page cache instead of owned arenas);
+        // fused hidden quantization needs owned rows, so it must be disabled too.
+        if(enabled&&std::string(enabled)=="0") {
+            const char* fuse=std::getenv("STRATA_GLM_PACK_FUSE_QUANT");
+            if(!fuse||std::string(fuse)!="0")throw std::invalid_argument("a mapped expert pack needs STRATA_GLM_PACK_FUSE_QUANT=0");
+            return;
+        }
         if(artifact.is_exl3() || !pool.numa_rows_available() || secondary || remote_tp || !prepared_experts.empty() || direct_upload_enabled())
             throw std::invalid_argument("Q2 NUMA weights require native GGUF, pinned workers on two nodes, single GPU, no TP/prepack/direct upload");
         for(const auto& cache:expert_cache)if(cache)throw std::invalid_argument("Q2 NUMA weights cannot use legacy expert cache");
         size_t required=0;
         for(size_t l=3;l<m.layers.size();++l)for(const auto* part:{"gate","up","down"})
             required+=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight").bytes;
-        size_t budget_mib=98304;
+        size_t budget_mib=artifact.has_expert_pack()?114688:98304;
         if(const char* value=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHT_MIB")) {
             size_t used=0;budget_mib=std::stoull(value,&used);
             if(used!=std::strlen(value)||budget_mib>131072)throw std::invalid_argument("invalid NUMA weight MiB budget");
@@ -4096,9 +4916,14 @@ class Decoder {
         if(total<16*1024*MiB || required>total-16*1024*MiB)throw std::runtime_error("Q2 NUMA weights need 16 GiB host capacity beyond packed weights");
 #endif
         auto start=std::chrono::steady_clock::now();
+        // STRATA_GLM_MAPPED_OWNED=1: node-owned scheduling over the file mapping (pages moved, not copied).
+        const bool mapped=std::getenv("STRATA_GLM_MAPPED_OWNED")&&std::string(std::getenv("STRATA_GLM_MAPPED_OWNED"))=="1";
+        if(mapped&&(q23_layout||packed_huge_pages))throw std::invalid_argument("mapped owned rows need the plain row layout");
+        size_t unmoved=0;
+        artifact.discard_original_experts();
         // File-cache pages must yield before anonymous weights grow. Merely
         // dropping this process's PTEs allowed Linux to swap the new arenas.
-        for(size_t l=3;l<m.layers.size();++l)for(const auto* part:{"gate","up","down"}) {
+        if(!mapped)for(size_t l=3;l<m.layers.size();++l)for(const auto* part:{"gate","up","down"}) {
             const auto& t=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight");
             t.file->discard_tensor_pages(*t.tensor,t.bytes);
         }
@@ -4109,9 +4934,18 @@ class Decoder {
                     const auto& t=artifact.at(prefix+part+"_exps.weight");const auto& shape=t.tensor->shape;
                     if(shape.size()!=3 || shape[2]!=size_t(m.experts) || shape[1]%2)throw std::invalid_argument("Q2 NUMA weights: unsupported tensor shape");
                     size_t row=t.bytes/(shape[1]*shape[2]);const auto* source=t.data();
-                    auto owned=std::make_unique<cpu::NumaTensor>(source,row,shape[1],shape[2],pool.numa_cores());
-                    numa_sources[t.tensor]=owned.get();numa_weight_bytes+=t.bytes;
-                    t.file->discard_tensor_pages(*t.tensor,t.bytes);
+                    const auto* expected=t.file->get("strata.expert_pack.hash."+t.tensor->name);
+                    if(expected) {uint64_t hash=14695981039346656037ULL;for(size_t k=0;k<t.bytes;++k){hash^=source[k];hash*=1099511628211ULL;}if(hash!=expected->u)throw std::runtime_error("expert pack payload checksum mismatch: "+t.tensor->name);}
+                    const int packed=q23_layout&&(t.tensor->type==10||t.tensor->type==11)?t.tensor->type:0;
+                    std::unique_ptr<cpu::NumaTensor> owned;
+                    if(mapped) {
+                        owned=std::make_unique<cpu::NumaTensor>(cpu::NumaTensor::View{},source,row,shape[1],shape[2]);
+                        unmoved+=owned->unmoved_pages;numa_weight_bytes+=t.bytes;
+                    } else {
+                        owned=std::make_unique<cpu::NumaTensor>(source,row,shape[1],shape[2],pool.numa_cores(),packed_huge_pages,packed,shape[0]);
+                        numa_sources[t.tensor]=owned.get();numa_weight_bytes+=t.bytes;
+                        t.file->discard_tensor_pages(*t.tensor,t.bytes);
+                    }
                     auto& dest=std::string(part)=="gate"?entry.gate:std::string(part)=="up"?entry.up:entry.down;
                     dest=std::move(owned);
                 }
@@ -4125,7 +4959,7 @@ class Decoder {
             }
         }catch(...) {numa_sources.clear();numa_experts.clear();numa_weight_bytes=0;throw;}
         if(gpu)gpu->numa_sources=&numa_sources;
-        std::cerr<<"Q2_NUMA_WEIGHTS bytes="<<numa_weight_bytes<<" node0_MiB="<<numa_weight_bytes/double(2*MiB)
+        std::cerr<<"Q2_NUMA_WEIGHTS mapped="<<mapped<<" unmoved_pages="<<unmoved<<" bytes="<<numa_weight_bytes<<" node0_MiB="<<numa_weight_bytes/double(2*MiB)
                  <<" node1_MiB="<<numa_weight_bytes/double(2*MiB)<<" prepare_ms="
                  <<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<'\n';
     }
@@ -4514,6 +5348,7 @@ class Decoder {
     }
     void set_decode_cache_slots(int slots) { decode_cache_slots_limit = slots; }
     void prepare_decode_cache() {
+        tier_drain();
         finish_prefill_repairs(true);
         prepare_numa_weights();
         device_lookup_ready = false;
@@ -4578,8 +5413,27 @@ class Decoder {
         }
         struct Candidate { uint64_t count; int layer, expert; size_t bytes; };
         std::vector<Candidate> candidates;
+        // STRATA_GLM_EXPERT_PRIOR: calibration routing counts (coverage.json) blended with this prompt's routes
+        // as prior pseudo-tokens, so short prompts still select the generally hottest experts.
+        const auto prior = load_expert_prior();
+        constexpr double prior_tokens = 256;
         for (size_t l = 0; l < m.layers.size(); ++l) {
             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+            if (!prior.empty()) {
+                const auto &share = prior.at(l);
+                uint64_t routed = 0;
+                for (uint64_t c : prefill_routes[l]) routed += c;
+                const double tokens = routed / double(m.top_k);
+                const auto p = "blk." + std::to_string(l) + ".";
+                const size_t bytes = (artifact.at(p + "ffn_gate_exps.weight").bytes + artifact.at(p + "ffn_up_exps.weight").bytes +
+                                      artifact.at(p + "ffn_down_exps.weight").bytes) / m.experts;
+                for (int e = 0; e < m.experts; ++e) {
+                    // Expected routes per token, scaled to an integer rank.
+                    const double rate = (prefill_routes[l][e] + prior_tokens * m.top_k * share[e]) / (tokens + prior_tokens);
+                    if (rate > 0) candidates.push_back({(uint64_t)std::llround(rate * 1e6), (int)l, e, bytes});
+                }
+                continue;
+            }
             const auto p = "blk." + std::to_string(l) + ".";
             const size_t bytes = (artifact.at(p + "ffn_gate_exps.weight").bytes +
                 artifact.at(p + "ffn_up_exps.weight").bytes +
@@ -4691,6 +5545,29 @@ class Decoder {
                           << " slots=" << device_slots[i] << " MiB=" << device_bytes[i] / double(MiB)
                           << " prefix_routes=" << load[i] << '\n';
     }
+    // Per-layer routing shares from a calibration coverage.json ({"projections":[{"name":"blk.L.gu","counts":[...]}]}).
+    std::vector<std::vector<double>> load_expert_prior() const {
+        const char *path = std::getenv("STRATA_GLM_EXPERT_PRIOR");
+        if (!path || !*path) return {};
+        const auto json = strata::artifact::read_json(path);
+        std::vector<std::vector<double>> shares(m.layers.size());
+        for (const auto &entry : json.at("projections").array) {
+            const auto &name = entry.at("name").string();
+            if (!name.starts_with("blk.") || !name.ends_with(".gu")) continue;
+            const size_t layer = std::stoul(name.substr(4, name.size() - 7));
+            const auto &counts = entry.at("counts").array;
+            if (layer >= m.layers.size() || counts.size() != (size_t)m.experts)
+                throw std::runtime_error("GLM: expert prior geometry: " + name);
+            double total = 0;
+            for (const auto &c : counts) total += (double)c.integer();
+            if (total <= 0) throw std::runtime_error("GLM: empty expert prior: " + name);
+            for (const auto &c : counts) shares[layer].push_back((double)c.integer() / total);
+        }
+        for (size_t l = 0; l < m.layers.size(); ++l)
+            if (m.layers[l].ffn == strata::core::FfnKind::Moe && shares[l].empty())
+                throw std::runtime_error("GLM: expert prior lacks layer " + std::to_string(l));
+        return shares;
+    }
     void compact_decode() {
         if (!gpu || prefill_width_saved || gpu_decode_experts) return;
         check(cudaStreamSynchronize(stream));
@@ -4731,6 +5608,10 @@ class Decoder {
                 check(cudaMemcpy((char *)mtp_experts->p + e * mtp_expert_bytes, packed.data(), packed.size(),
                                  cudaMemcpyHostToDevice));
             }
+            std::vector<unsigned long long> lookup(m.experts);
+            for (int e = 0; e < m.experts; ++e) lookup[e] = (unsigned long long)mtp_experts->p + e * mtp_expert_bytes;
+            mtp_lookup = std::make_unique<Device>(lookup.size() * 8);
+            mtp_lookup->put(lookup.data(), lookup.size() * 8);
         }
         ensure_draft_state();
         mtp_ready = true;
@@ -4771,6 +5652,23 @@ class Decoder {
         }
         cp.storage = std::make_unique<Device>(bytes);
         std::cerr << "CHECKPOINT MiB=" << bytes / double(MiB) << '\n';
+        return cp;
+    }
+    // Draft-block buffers only: save() and restore_mtp() then cover just the MTP state.
+    Checkpoint mtp_checkpoint() {
+        Checkpoint cp;
+        size_t bytes = 0;
+        cp.draft_begin = 0;
+        if (states.size() > m.layers.size()) {
+            auto &state = states[m.layers.size()];
+            for (Device *buffer : {state.recurrent.get(), state.conv_q.get(), state.conv_k.get(),
+                                   state.conv_v.get(), state.keys.get(), state.gates.get()})
+                if (buffer) {
+                    cp.buffers.emplace_back(buffer, bytes);
+                    bytes += buffer->bytes;
+                }
+        }
+        cp.storage = std::make_unique<Device>(std::max<size_t>(bytes, 256));
         return cp;
     }
     void save(Checkpoint &cp) {
@@ -4821,7 +5719,7 @@ class Decoder {
         }
         if (gpu)
             return gpu->chunk;
-        if (m.layers.size() != 45 || m.hidden != 4096 || m.experts != 288 || m.top_k != 8 ||
+        if (m.layers.size() != 45 || m.hidden != 4096 || m.experts > 288 || m.experts % 16 || m.top_k != 8 ||
             m.linear_dim != 128 || m.linear_heads != 64 || m.attention_heads != 64 || m.kv_rank != 512 ||
             m.q_rank != 1536 || m.index_pool != 4 || m.index_top_k != 2048 || m.index_heads != 32 ||
             m.index_dim != 128)
@@ -4838,7 +5736,8 @@ class Decoder {
             if (cache)
                 throw std::invalid_argument("GLM: GPU prefill currently requires expert-cache-mib=0");
         size_t fixed = 0;
-        auto floating = [](const std::string &n) {
+        auto floating = [](const std::string &name) {
+            const std::string n = canonical_tensor_name(name);
             return n.ends_with("hc_attn_fn.weight") || n.ends_with("hc_ffn_fn.weight") ||
                    n.ends_with("attn_k_b.weight") || n.ends_with("attn_v_b.weight");
         };
@@ -4848,20 +5747,26 @@ class Decoder {
         for (const auto &[n, t] : artifact.tensors())
             if (eligible(n)) {
                 size_t bytes = t.bytes;
-                if (floating(n)) {
+                if (floating(n) && !(q8_decode && t.tensor->type == GGML_TYPE_Q8_0)) {
                     bytes = 4;
                     for (auto d : t.tensor->shape)
                         bytes *= d;
                 }
                 fixed += bytes;
+                if (floating(n) && q8_decode && t.tensor->type == GGML_TYPE_Q8_0) {
+                    size_t values = 1;
+                    for (auto d : t.tensor->shape) values *= d;
+                    q8_scratch_bytes[q8_scratch_role(n)] = std::max(q8_scratch_bytes[q8_scratch_role(n)], values * 4);
+                }
             }
+        for (size_t bytes : q8_scratch_bytes) fixed += bytes;   // prefill's FP32 expansions of Q8-only weights
         size_t free, total;
         check(cudaMemGetInfo(&free, &total));
         Device::limit() =
             std::min(total_budget - 1024 * MiB, Device::live() + (free > 1024 * MiB ? free - 1024 * MiB : 0));
         auto needed = [&](int b) {
             return Device::live() + fixed + GpuPrefill::arena_bytes(b, capacity) +
-                   (128 + 32 + 128 + 416) * MiB + (size_t)b * m.hidden * 7 * 4 + MiB +
+                   (128 + 32 + 128) * MiB + 2 * GpuPrefill::slot_bytes + (size_t)b * m.hidden * 7 * 4 + MiB +
                    (reserve_checkpoint ? 152 * MiB : 0);
         };
         int width = requested ? requested : 4096;
@@ -4873,8 +5778,17 @@ class Decoder {
         check(cublasSetMathMode(blas, CUBLAS_PEDANTIC_MATH));
         budget = SIZE_MAX;
         for (const auto &[n, t] : artifact.tensors())
-            if (eligible(n))
-                weight(n, floating(n));
+            if (eligible(n)) {
+                const bool q8 = q8_decode && floating(n) && t.tensor->type == GGML_TYPE_Q8_0;
+                weight(n, floating(n) && !q8);
+                if (q8) {
+                    // Persistent prefill expansion buffers, so a later decode cache cannot take their space.
+                    size_t values = 1;
+                    for (auto d : t.tensor->shape) values *= d;
+                    auto &scratch = q8_fp32_scratch[q8_scratch_role(n)];
+                    if (!scratch || scratch->bytes < values * 4) scratch = std::make_unique<Device>(values * 4);
+                }
+            }
         gpu = std::make_unique<GpuPrefill>(width, stream, false, capacity);
         // Allocate persistent residual and output buffers before carving phase scratch.
         for (auto name : {"streams", "collapsed", "x", "y", "hc_coeff", "output"}) {
@@ -4894,7 +5808,7 @@ class Decoder {
         if(artifact.is_exl3()) {if(devices.size()!=1||cache_bytes||automatic||reserve_mtp||tensor_experts||tensor_batches)throw std::invalid_argument("EXL3: requires single GPU, CPU experts, no speculation/cache");return;}
         if (primary_prefill_groups != 9 && (devices.size() != 2 || m.experts != 288))
             throw std::invalid_argument("GLM: weighted prefill partition requires two GPUs and 288 experts");
-        std::cerr << "PREFILL_PARTITION primary_groups=" << (devices.size() == 2 ? primary_prefill_groups : 18)
+        std::cerr << "PREFILL_PARTITION primary_groups=" << (devices.size() == 2 ? primary_prefill_groups : prefill_expert_groups)
                   << " secondary_groups=" << (devices.size() == 2 ? 18 - primary_prefill_groups : 0) << '\n';
         tensor_prefill_experts = tensor_experts;
         tensor_batched_experts = tensor_batches;
@@ -4909,6 +5823,7 @@ class Decoder {
         if (devices.size() == 2)
             secondary = std::make_unique<SecondaryPrefill>(devices[1], primary_device, gpu->chunk, total_budget, tensor_experts, tensor_batches);
         if (secondary && split_mla && secondary->peer) {
+            if (q8_decode) throw std::invalid_argument("GLM: Q8 decode does not support split MLA");
             // Resident before the cache allowance below is measured.
             check(cudaStreamSynchronize(stream));
             for (size_t l = 0; l < m.layers.size(); ++l) {
@@ -4954,7 +5869,7 @@ class Decoder {
                     artifact.at(p + "ffn_up_exps.weight"), artifact.at(p + "ffn_down_exps.weight")) + 16384;
                 costs.emplace_back(cost, l); round += cost;
             }
-            const size_t maximum = secondary ? (device == primary_device ? primary_prefill_groups : 18 - primary_prefill_groups) : 18;
+            const size_t maximum = secondary ? (device == primary_device ? primary_prefill_groups : 18 - primary_prefill_groups) : prefill_expert_groups;
             const size_t base = round ? std::min(maximum, bytes / round) : 0;
             size_t left = bytes - base * round;
             std::sort(costs.begin(), costs.end());
@@ -5082,7 +5997,8 @@ class Decoder {
             gpu->groups = 0;
             gpu->stage_ms = 0;
         }
-        pool.ms_multi_gu = pool.ms_multi_q = pool.ms_multi_down = 0;
+        pool.ms_multi_gu = pool.ms_multi_q = pool.ms_multi_down = pool.ms_layer_flow = 0;
+        trace = StepTrace{};
         pool.ms_native_local_prepare = 0;
         pool.native_local_queries = 0;
         pool.multi_bytes = 0;
@@ -5120,7 +6036,14 @@ class Decoder {
                      <<" copied_MiB="<<native_expert_gpu_copied/double(MiB)<<" entries="<<native_gpu_experts.size()
                      <<" allocated_MiB="<<native_expert_gpu_bytes/double(MiB)<<'\n';
         std::cerr << "CPU_EXPERT gu_ms=" << pool.ms_multi_gu << " quant_ms=" << pool.ms_multi_q
-                  << " down_ms=" << pool.ms_multi_down << " bytes=" << pool.multi_bytes << '\n';
+                  << " down_ms=" << pool.ms_multi_down << " layer_flow_ms=" << pool.ms_layer_flow
+                  << " bytes=" << pool.multi_bytes << '\n';
+        if (step_trace && trace.steps)
+            std::cerr << "STEP_TRACE steps=" << trace.steps << " moe_layers=" << trace.layers
+                      << " pipelined=" << (mailbox ? 1 : 0) << " head_ms=" << trace.head_ms
+                      << " cpu_ms=" << trace.cpu_ms << " between_ms=" << trace.gap_ms << " tail_ms=" << trace.tail_ms
+                      << " enqueue_ms=" << trace.enqueue_ms << " tier_swaps=" << tier_swaps << " split_windows=" << split_windows << " per_step_ms="
+                      << (trace.head_ms + trace.cpu_ms + trace.gap_ms + trace.tail_ms) / trace.steps << '\n';
         if (pool.native_local_queries)
             std::cerr << "NATIVE_NUMA_TIMING prepare_ms=" << pool.ms_native_local_prepare
                       << " queries=" << pool.native_local_queries << '\n';
@@ -5148,6 +6071,7 @@ class Decoder {
     void reset() {
         finish_prefill_repairs();
         device_lookup_ready = false;
+        tier_drain();
         for (int i = 0; i < 2; ++i) finish_copy(i);
         victims.clear();
         for (auto &counts : decode_seen) std::fill(counts.begin(), counts.end(), 0);
@@ -5188,7 +6112,7 @@ class Decoder {
             gpu->tensor_rows_actual = gpu->tensor_rows_padded = gpu->tensor_dequant_values = 0;
         }
         if (prefill_width_saved) {
-            phase.clear(); scratch.clear(); gpu.reset(); mtp_experts.reset();
+            phase.clear(); scratch.clear(); gpu.reset(); mtp_experts.reset(); mtp_lookup.reset();
             for (auto it = weights.begin(); it != weights.end();) {
                 if (it->first.starts_with("blk.45.")) {
                     resident -= it->second.data->bytes;
@@ -5225,7 +6149,7 @@ class Decoder {
         target_hidden.clear();
         batch_tokens = 1;
         cache_frozen = false;
-        cache_hits = cache_entries = 0;
+        cache_hits = cache_entries = pruned_routes = 0;
     }
     void report_cache() const {
         if (decode_cache_adapt)
@@ -5237,6 +6161,8 @@ class Decoder {
             enabled |= bool(c);
         if (enabled || decode_prefill_cache)
             std::cerr << "resident expert entries=" << cache_hits << "/" << cache_entries << '\n';
+        if (pruned_routes)
+            std::cerr << "ROUTE_PRUNE pruned=" << pruned_routes << " routes=" << cache_entries << '\n';
     }
 };
 } // namespace
@@ -5253,6 +6179,52 @@ static std::vector<int> token_ids(const std::string &text) {
         ids.push_back(id);
     }
     return ids;
+}
+
+// Teacher forcing uses the same CPU expert backend as decode, including across
+// prompt boundaries. Full baseline logits are streamed, never held corpus-wide.
+using strata::core::lock_small_runtime_mappings;
+
+static void evaluate_corpus(Decoder& decoder,const std::string& corpus,const std::string& save_path,const std::string& reference_path) {
+    if(!save_path.empty()&&!reference_path.empty())throw std::invalid_argument("choose eval save or reference, not both");
+    std::ifstream input(corpus);if(!input)throw std::runtime_error("cannot open evaluation corpus");
+    std::ofstream saved;std::ifstream reference;
+    const uint32_t header[2]={0x31455647,uint32_t(decoder.vocabulary())};
+    if(!save_path.empty()){if(std::filesystem::exists(save_path))throw std::runtime_error("refusing to overwrite baseline logits");saved.open(save_path,std::ios::binary);saved.write(reinterpret_cast<const char*>(header),sizeof header);if(!saved)throw std::runtime_error("cannot save evaluation logits");}
+    if(!reference_path.empty()){reference.open(reference_path,std::ios::binary);uint32_t h[2];if(!reference.read(reinterpret_cast<char*>(h),sizeof h)||std::memcmp(h,header,sizeof h))throw std::runtime_error("invalid evaluation baseline");}
+    const int vocab=decoder.vocabulary();std::vector<float> base(vocab);std::string line;uint64_t count=0;double nll=0,kl=0;int sequence=0,top1=0;
+    while(std::getline(input,line)) {
+        if(line.empty())continue;
+        const auto ids=token_ids(line);if(ids.size()<2)throw std::runtime_error("evaluation sequence needs at least two tokens");
+        for(int id:ids)if(id<0||id>=vocab)throw std::runtime_error("invalid evaluation token");
+        const uint32_t length=ids.size();
+        if(saved.is_open()){saved.write(reinterpret_cast<const char*>(&length),4);saved.write(reinterpret_cast<const char*>(ids.data()),ids.size()*4);}
+        if(reference.is_open()){uint32_t len=0;reference.read(reinterpret_cast<char*>(&len),4);if(len!=length)throw std::runtime_error("evaluation baseline sequence mismatch");std::vector<int> expected(len);if(!reference.read(reinterpret_cast<char*>(expected.data()),len*4)||expected!=ids)throw std::runtime_error("evaluation baseline tokens differ");}
+        decoder.reset();lock_small_runtime_mappings();
+        for(size_t start=0;start+1<ids.size();start+=4) {
+            const size_t end=std::min(start+4,ids.size()-1);auto logits=decoder.batch(std::vector<int>(ids.begin()+start,ids.begin()+end),false,true);
+            if(start==0)lock_small_runtime_mappings();
+            for(size_t t=0;t<end-start;++t) {
+                const auto* row=logits.data()+t*vocab;const double maximum=*std::max_element(row,row+vocab);double sum=0;
+                for(int k=0;k<vocab;++k){if(!std::isfinite(row[k]))throw std::runtime_error("nonfinite evaluation logits");sum+=std::exp(double(row[k])-maximum);}const double logz=maximum+std::log(sum);
+                nll+=logz-row[ids[start+t+1]];++count;
+                if(saved.is_open()){saved.write(reinterpret_cast<const char*>(row),vocab*4);if(!saved)throw std::runtime_error("evaluation logits write failed");}
+                if(reference.is_open()) {
+                    if(!reference.read(reinterpret_cast<char*>(base.data()),vocab*4))throw std::runtime_error("truncated evaluation logits");
+                    const double bm=*std::max_element(base.begin(),base.end());double bs=0;for(float v:base){if(!std::isfinite(v))throw std::runtime_error("nonfinite baseline logits");bs+=std::exp(double(v)-bm);}const double bz=bm+std::log(bs);
+                    for(int k=0;k<vocab;++k)kl+=std::exp(double(base[k])-bz)*(double(base[k])-bz-row[k]+logz);
+                    top1+=(std::max_element(row,row+vocab)-row)==(std::max_element(base.begin(),base.end())-base.begin());
+                }
+            }
+        }
+        ++sequence;std::cout<<"{\"sequence\":"<<sequence<<",\"tokens\":"<<count<<",\"nll\":"<<std::setprecision(12)<<nll/count<<",\"perplexity\":"<<std::exp(nll/count);
+        if(reference.is_open())std::cout<<",\"kl\":"<<kl/count<<",\"top1_agreement\":"<<double(top1)/count;
+        std::cout<<"}\n"<<std::flush;
+    }
+    if(!count)throw std::runtime_error("empty evaluation corpus");
+    if(reference.is_open()&&reference.peek()!=std::ifstream::traits_type::eof())throw std::runtime_error("trailing evaluation baseline records");
+    if(saved.is_open()){saved.close();if(!saved)throw std::runtime_error("evaluation logits close failed");}
+    decoder.flush_expert_observer();decoder.report_gpu();
 }
 
 // Existing Python API engine protocol. Every request starts with empty model state;
@@ -5347,6 +6319,11 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
                                const std::vector<int> &stops, int depth,
                                const std::function<void(int)> &emit) {
     auto checkpoint = decoder.checkpoint();
+    // The first proposal already advanced the draft block with exactly the anchor's resync inputs (the
+    // target hidden of the last verified position), so the resync can start after the anchor.
+    static const bool skip_anchor = std::getenv("STRATA_GLM_MTP_SKIP_ANCHOR") &&
+                                    std::string(std::getenv("STRATA_GLM_MTP_SKIP_ANCHOR")) == "1";
+    auto anchor_state = decoder.mtp_checkpoint();
     decoder.enable_verify_history(depth);
     // A rejection after accepting n drafts restores n+1 target positions.
     // Limiting proposals to the retained slots keeps every rejection prefix
@@ -5381,8 +6358,10 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
         const int pos = decoder.token_position();
         std::vector<int> window{anchor};
         const auto draft_start = std::chrono::steady_clock::now();
-        for (int i = 0; i < k; ++i)
+        for (int i = 0; i < k; ++i) {
             window.push_back(greedy(decoder.mtp_propose(window.back(), i == 0)));
+            if (i == 0 && skip_anchor) decoder.save(anchor_state);
+        }
         draft_ms += elapsed_ms(draft_start);
         const auto verify_start = std::chrono::steady_clock::now();
         auto all = decoder.verify(window);
@@ -5395,10 +6374,15 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
             if (stats.stopped) break;
         }
         stats.accepted += accepted;
+        size_t resync_from = 0;
+        auto restore_draft = [&] {
+            if (skip_anchor && !window.empty()) { decoder.restore_mtp(anchor_state); resync_from = 1; }
+            else decoder.restore_mtp(checkpoint);
+        };
         if (accepted != k || stats.stopped) {
             window.resize(accepted + 1 - int(stats.stopped));
             if (decoder.restore_verified(window.size())) {
-                decoder.restore_mtp(checkpoint);
+                restore_draft();
                 const size_t offset = (window.size() - 1) * decoder.vocabulary();
                 logits.assign(all.begin() + offset, all.begin() + offset + decoder.vocabulary());
             } else {
@@ -5409,11 +6393,11 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
                 }
             }
         } else {
-            decoder.restore_mtp(checkpoint);
+            restore_draft();
             logits.assign(all.end() - decoder.vocabulary(), all.end());
         }
         const auto resync_start = std::chrono::steady_clock::now();
-        decoder.sync_mtp(window, pos);
+        decoder.sync_mtp(std::vector<int>(window.begin() + resync_from, window.end()), pos + (int)resync_from);
         resync_ms += elapsed_ms(resync_start);
     }
     stats.milliseconds = std::chrono::duration<double, std::milli>(
@@ -5514,7 +6498,8 @@ static int serve(int argc, char **argv) {
         preflight_gpu_budget(gpu_budget);
     if ((width == 0 || width > cpu::MAXT || stream_decode || use_mtp) && experts)
         throw std::invalid_argument("GPU prefill/decode requires expert-cache-MiB=0");
-    Decoder decoder(argv[2], ctx, (size_t)dense * 1024 * 1024, threads, (size_t)experts * 1024 * 1024, pin_cpu);
+    Decoder decoder(argv[2], ctx, (size_t)dense * 1024 * 1024, threads, (size_t)experts * 1024 * 1024, pin_cpu,
+                    argc>26?argv[26]:"",argc>27?argv[27]:"",argc>28?argv[28]:"auto");
     if (width == 0 || width > cpu::MAXT || stream_decode || use_mtp)
         width = decoder.enable_gpu(width, gpu_budget, lookup_depth > 0);
     if (direct_upload_enabled()) decoder.warm_weights(true, devices);
@@ -5663,6 +6648,7 @@ static int serve(int argc, char **argv) {
             }
             decoder.freeze_cache();
             if (!*request.cancel) decoder.prepare_cpu(cpu_prepack_mib * MiB);
+            if (!*request.cancel) lock_small_runtime_mappings();
             const auto prefilled = Clock::now();
             decoder.reset_decode_stats();
             int generated = 0;
@@ -5719,7 +6705,7 @@ static int serve(int argc, char **argv) {
                 std::cout << "ERR " << e.what() << '\n' << std::flush;
         }
         decoder.set_cancel({});
-        try { decoder.report_gpu(); decoder.report_cache(); }
+        try { decoder.flush_expert_observer(); decoder.report_gpu(); decoder.report_cache(); }
         catch (const std::exception &e) {
             std::cout << "ERR GPU reporting failed: " << e.what() << '\n' << std::flush;
             std::_Exit(1);
@@ -5737,6 +6723,8 @@ int main(int argc, char **argv) {
                      "[--gpu-budget-mib=12288] [--check-prefill] [--check-native-dense] "
                      "[--gpu-devices=0|0,1] [--prefill-expert-cache-mib=auto|N] [--lock-weights] [--check-gpu-split] "
                      "[--decode-prefill-cache] [--decode-bench=3] [--decode-mode-sweep[=mtp]] [--check-verify-graphs] [--profile-decode] [--profile-prefill] "
+                     "[--expert-pack=sidecar.gguf] [--expert-pack-profile=retain.json] [--cpu-expert-backend=auto|native|packed-dot|packed-lut] "
+                     "[--eval-corpus=sequences.ids] [--eval-save-logits=path | --eval-reference=path] "
                      "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
         return 2;
     }
@@ -5771,6 +6759,8 @@ int main(int argc, char **argv) {
         size_t cpu_prepack_mib = 0, prefill_cache_bytes = 0;
         bool prefill_cache_auto = false, check_gpu_split = false, tensor_experts = false, tensor_batches = false;
         std::string gpu_devices_text = "0";
+        std::string expert_pack_path,expert_pack_profile,cpu_expert_backend="auto";
+        std::string eval_corpus,eval_save,eval_reference;
         std::string remote_tp_address;
         double remote_tp_share = 0.5;
         std::string remote_tp_reply = "f16";
@@ -5833,6 +6823,12 @@ int main(int argc, char **argv) {
             else if (flag.starts_with("--lookup-depth="))
                 lookup_depth = std::stoi(flag.substr(15));
             else if (flag.starts_with("--cpu-prepack-mib=")) cpu_prepack_mib = std::stoull(flag.substr(18));
+            else if (flag.starts_with("--expert-pack=")) expert_pack_path=flag.substr(14);
+            else if (flag.starts_with("--expert-pack-profile=")) expert_pack_profile=flag.substr(22);
+            else if (flag.starts_with("--cpu-expert-backend=")) cpu_expert_backend=flag.substr(21);
+            else if (flag.starts_with("--eval-corpus=")) eval_corpus=flag.substr(14);
+            else if (flag.starts_with("--eval-save-logits=")) eval_save=flag.substr(19);
+            else if (flag.starts_with("--eval-reference=")) eval_reference=flag.substr(17);
             else if(flag=="--weight-pages=huge")strata::cpu::exl3::huge_pages=true;
             else if(flag=="--weight-pages=4k")strata::cpu::exl3::huge_pages=false;
             else if (flag == "--cpu-affinity=auto" || flag == "--cpu-affinity=numa") pin_cpu = true;
@@ -5903,7 +6899,7 @@ int main(int argc, char **argv) {
             throw std::invalid_argument("decode-cache-slots needs a cache budget and 0..12960 slots");
         if(std::filesystem::is_directory(argv[1])&&lookup_depth)throw std::invalid_argument("EXL3: lookup speculation is not qualified");
         Decoder decoder(argv[1], context ? context : tokens.size() + steps, (size_t)mib * 1024 * 1024,
-                        threads, (size_t)expert_mib * 1024 * 1024, pin_cpu);
+                        threads, (size_t)expert_mib * 1024 * 1024, pin_cpu,expert_pack_path,expert_pack_profile,cpu_expert_backend);
         if(check_native_dense_q8) {
             if((context ? size_t(context) : tokens.size()+steps)<tokens.size()+8)
                 throw std::invalid_argument("--check-native-dense-q8 requires native EXL3 and eight available positions");
@@ -5939,6 +6935,10 @@ int main(int argc, char **argv) {
         if (use_mtp) decoder.enable_mtp_capture();
         if (warm_weights && !direct_upload_enabled())
             decoder.warm_weights(lock_weights);
+        if(!eval_corpus.empty()) {
+            if(use_mtp||lookup_depth||decode_mode_sweep||check_verify||stream_decode)throw std::invalid_argument("evaluation requires ordinary CPU target decode");
+            evaluate_corpus(decoder,eval_corpus,eval_save,eval_reference);decoder.report_cache();return 0;
+        }
         std::vector<float> logits;
         auto prefill = [&](int width) {
             std::vector<float> last;
@@ -6177,6 +7177,7 @@ int main(int argc, char **argv) {
                 << " depth=" << (trial_mtp ? trial_depth : trial_lookup) << " shared_mtp_allocation=1\n";
         for (int trial = 0; trial < decode_repetitions; ++trial) {
             if (trial || decode_mode_sweep) { decoder.clear_verify_history(); decoder.restore(*decode_start_state); logits = decode_start_logits; }
+            lock_small_runtime_mappings();
             std::cerr << "DECODE_TRIAL index=" << trial << '\n';
         if (profile_decode) check(cudaProfilerStart());
         decoder.reset_decode_stats();
@@ -6226,6 +7227,7 @@ int main(int argc, char **argv) {
         if (profile_decode) check(cudaProfilerStop());
         }
                 }
+        decoder.flush_expert_observer();
         if (!dump.empty()) {
             std::ofstream output(dump, std::ios::binary);
             output.write((const char *)logits.data(), logits.size() * sizeof(float));

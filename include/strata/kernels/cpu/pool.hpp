@@ -57,6 +57,7 @@ struct ExpertJob {
 /// Plan v0.3 P6: one expert for the `nt` tokens of a verify window that were routed to it.  Every token's output
 /// is bitwise the single-token job's.
 struct ExpertJobMulti {
+    int expert_id = -1; // model ID for optional calibration, not a scheduling slot
     const uint8_t* blob = nullptr;
     int nt = 0;
     const ActQ* act[MAXT] = {};
@@ -163,6 +164,15 @@ public:
     void run_split_multi(ExpertJobMulti* jobs, int n);
     /// Plan v0.3 P6: the same for a native pack's layer (ggml-cpu arithmetic, `nact` activations).
     void run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs, int n);
+    void reduce_routed(const float* results,const float* weights,float* output,int nt,int experts,int hidden);
+    /// One dispatch for a whole MoE layer instead of gate/up, host quantization, down and reduction phases.
+    /// Each expert's down rows start as soon as its own gate/up rows finish (the worker completing them
+    /// quantizes the hidden vector), and the worker completing a row chunk across every expert writes that
+    /// chunk's routed sum. `results` holds route rows (token * top_k + k) * n_embd, as `reduce_routed` reads
+    /// them. Outputs and `sum` are bitwise those of `run_split_multi_native` followed by `reduce_routed`.
+    void run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
+                          const float* weights, float* sum, int nt, int top_k);
+    double ms_layer_flow = 0;
     // Diagnostic tuning between completed batches; the host owns scheduling.
     void set_native_tasks_per_thread(int count) {
         if (count < 1 || count > 16) throw std::invalid_argument("native tasks per thread must be 1..16");
@@ -206,6 +216,21 @@ public:
     static constexpr std::chrono::seconds kStall{60};
 
 private:
+    // run_layer_native (mode 8): per-expert gate/up countdowns, ready tags, per-chunk countdowns.
+    struct alignas(64) FlowCounter { std::atomic<int32_t> left{0}; std::atomic<uint32_t> ready{0}; };
+    std::unique_ptr<FlowCounter[]> flow_experts_, flow_chunks_;
+    size_t flow_chunk_capacity_ = 0;
+    const float* flow_results_ = nullptr;
+    const float* flow_weights_ = nullptr;
+    float* flow_sum_ = nullptr;
+    int flow_k_ = 0, flow_tokens_ = 0, flow_gu_parts_ = 1, flow_down_parts_ = 1, flow_gu_tasks_ = 0;
+    bool flow_owned_ = false;
+    uint32_t flow_tag_ = 0;
+    void flow_task(int i);
+    const float* reduce_results_=nullptr;
+    const float* reduce_weights_=nullptr;
+    float* reduce_output_=nullptr;
+    int reduce_experts_=0,reduce_hidden_=0;
     void worker(int id);
     void drain(int id, ExpertScratch& scratch, uint32_t epoch);
     void run_phase(int mode, int n_tasks);

@@ -1,5 +1,9 @@
 # Q2 decode on two NUMA nodes
 
+The opt-in converted-weight experiment is documented in
+[GLM Q2 expert conversion](GLM_Q2_REQUANTIZATION.md). The results below retain
+the original GGUF quantization.
+
 Measurements on 2026-10-05 use a Threadripper 1950X / X399, four 32 GB DDR4
 DIMMs (125.8 GiB usable RAM), two NUMA nodes, and an RTX 5060 Ti 16 GB.
 There are 15 pinned physical-core workers plus the host. Context allocation is

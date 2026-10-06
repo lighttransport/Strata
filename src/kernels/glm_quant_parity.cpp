@@ -180,12 +180,69 @@ void check_iq_coalesced(int type, const uint8_t* blocks, int64_t available, cuda
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2 || argc > 3 || (argc == 3 && std::strcmp(argv[2], "--benchmark") != 0)) {
-        std::cerr << "usage: glm_quant_parity <GLM shard.gguf> [--benchmark]\n";
+    const bool dense = argc == 3 && std::strcmp(argv[2], "--dense") == 0;
+    if (argc < 2 || argc > 3 || (argc == 3 && std::strcmp(argv[2], "--benchmark") != 0 && !dense)) {
+        std::cerr << "usage: glm_quant_parity <GLM shard.gguf> [--benchmark | --dense]\n";
         return 2;
     }
     try {
         strata::core::ModelArtifact artifact(argv[1]);
+        if (dense) {
+            // Every non-expert matrix the native GEMV serves: 64 real rows, 1 and 4 Q8_1 columns, against the
+            // dequantized rows dotted with the same Q8_1 activations.
+            Stream stream;
+            std::mt19937 rng(7);
+            std::normal_distribution<float> nd;
+            int checked = 0, failed = 0;
+            for (const auto &[name, t] : artifact.tensors()) {
+                const int type = t.tensor->type;
+                if (name.ends_with("_exps.weight") || t.tensor->shape.size() != 2 ||
+                    !strata::kernels::native_mmvq_supported(type) || type == 0)
+                    continue;
+                const int cols = t.tensor->shape[0], rows = std::min<int>(64, t.tensor->shape[1]);
+                if (cols % 32) continue;
+                const size_t row_bytes = ggml_row_size((ggml_type)type, cols), bytes = row_bytes * rows;
+                const auto *traits = ggml_get_type_traits((ggml_type)type);
+                std::vector<float> ref((size_t)rows * cols);
+                for (int r = 0; r < rows; ++r) traits->to_float(t.data() + r * row_bytes, ref.data() + (size_t)r * cols, cols);
+                for (int nc : {1, 4}) {
+                    std::vector<float> x((size_t)cols * nc);
+                    for (auto &v : x) v = nd(rng);
+                    Allocation w(bytes), dx(x.size() * 4), qx((size_t)cols / 32 * 36 * nc), y((size_t)rows * 4 * nc);
+                    check(cudaMemcpy(w.p, t.data(), bytes, cudaMemcpyHostToDevice));
+                    check(cudaMemcpy(dx.p, x.data(), x.size() * 4, cudaMemcpyHostToDevice));
+                    strata::kernels::quantize_q8_1_rows((float *)dx.p, nc, cols, qx.p, stream.p);
+                    strata::kernels::native_mmvq(type, w.p, qx.p, (float *)y.p, cols, rows, nc, stream.p);
+                    check(cudaStreamSynchronize(stream.p));
+                    std::vector<uint8_t> packed((size_t)cols / 32 * 36 * nc);
+                    check(cudaMemcpy(packed.data(), qx.p, packed.size(), cudaMemcpyDeviceToHost));
+                    std::vector<float> out((size_t)rows * nc);
+                    check(cudaMemcpy(out.data(), y.p, out.size() * 4, cudaMemcpyDeviceToHost));
+                    double error = 0, denom = 0;
+                    for (int c = 0; c < nc; ++c)
+                        for (int r = 0; r < rows; ++r) {
+                            double expected = 0;
+                            for (int i = 0; i < cols; ++i) {
+                                const auto *block = packed.data() + ((size_t)c * cols / 32 + i / 32) * 36;
+                                uint16_t half;
+                                std::memcpy(&half, block, 2);
+                                expected += (double)ref[(size_t)r * cols + i] * ggml_fp16_to_fp32(half) * (int8_t)block[4 + i % 32];
+                            }
+                            error += std::abs(out[(size_t)c * rows + r] - expected);
+                            denom += std::abs(expected);
+                        }
+                    const double relative = error / (denom + 1e-30);
+                    ++checked;
+                    if (!(relative < 1e-4)) {
+                        ++failed;
+                        std::cout << "DENSE_MISMATCH " << name << " type=" << type << " cols=" << cols << " ncols=" << nc
+                                  << " rel=" << relative << '\n';
+                    }
+                }
+            }
+            std::cout << "DENSE checked=" << checked << " failed=" << failed << '\n';
+            return failed ? 1 : 0;
+        }
         // Q2 and Q4 artifacts use different native expert formats. Validate
         // every IQ/K format actually present rather than requiring Q4 types
         // that do not occur in the user's Q2 shards.

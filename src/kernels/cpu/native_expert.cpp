@@ -6,6 +6,7 @@
 #include "strata/kernels/cpu/iq_avx512.hpp"
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/cpu/kq_avx2.hpp"
+#include "strata/kernels/cpu/q23_avx2.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
 
 #include "ggml.h"
@@ -13,12 +14,18 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <mutex>
+#include <stdexcept>
 
 namespace strata::kernels::cpu {
 namespace {
 
 const ggml_type_traits_cpu* traits(int type) { return ggml_get_type_traits_cpu((ggml_type) type); }
+bool use_q23_avx2() {
+    const char* value=std::getenv("STRATA_Q23_AVX2");
+    return value&&std::strcmp(value,"1")==0;
+}
 
 void init_once() {
     static std::once_flag once;
@@ -54,6 +61,10 @@ bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt
         return false;
     }
     f.lossless = false;
+    f.q23_layout = 0;
+    f.observer = nullptr;
+    f.observer_layer = -1;
+    f.fuse_h_quant = false;
     f.gu_type = gu_type;
     f.d_type = d_type;
     f.gu_act = (int) tg->vec_dot_type;
@@ -81,9 +92,25 @@ void native_quant_act(const NativeFmt& f, const float* x, void* dst) {
 void native_quant_h(const NativeFmt& f, const float* h, void* dst) {
     traits(f.d_act)->from_float(h, dst, f.n_ff);
 }
+void native_quant_h_rows(const NativeFmt& f,const float* h,void* dst,int first,int last) {
+    const int block=ggml_blck_size(ggml_type(f.d_act));
+    if(first<0||last<first||last>f.n_ff||first%block||last%block)throw std::invalid_argument("unaligned hidden quantization chunk");
+    traits(f.d_act)->from_float(h+first,static_cast<uint8_t*>(dst)+ggml_row_size(ggml_type(f.d_act),first),last-first);
+}
 
 void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* act, int nt, float* const* ff,
                     int r0, int r1, const uint8_t* separate_up) {
+    if (f.q23_layout && (f.gu_type==10 || f.gu_type==11)) {
+        thread_local float up[8][kNativeFF];float* ptr[8];for(int t=0;t<nt;++t)ptr[t]=up[t];
+        q23_packed_rows(f.gu_type,blob,int(f.n_embd),act,nt,ff,r0,r1,f.q23_layout==2);
+        q23_packed_rows(f.gu_type,separate_up?separate_up:blob+f.up_off,int(f.n_embd),act,nt,ptr,r0,r1,f.q23_layout==2);
+        for(int t=0;t<nt;++t)for(int r=r0;r<r1;++r) {float g=ff[t][r],u=up[t][r];if(f.swiglu_limit>0){g=std::fmin(g,f.swiglu_limit);u=std::fmax(-f.swiglu_limit,std::fmin(u,f.swiglu_limit));}ff[t][r]=g/(1.f+std::exp(-g))*u;}
+        return;
+    }
+    if ((f.gu_type==10 || f.gu_type==11) && use_q23_avx2()) {
+        q23_gu_rows(f.gu_type,blob,separate_up?separate_up:blob+f.up_off,f.gu_row,int(f.n_embd),act,nt,ff,r0,r1,f.swiglu_limit);
+        return;
+    }
     if (f.lossless) {
         iq256_gu_rows_clamped(f.gu_type + 100, blob, f.gu_row, f.up_off, (int)f.n_embd,
                              act, nt, ff, r0, r1, f.swiglu_limit, separate_up);
@@ -148,6 +175,13 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
 
 void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const* hq, int nt, float* const* out,
                       int r0, int r1, const uint8_t* separate_down) {
+    if (f.q23_layout && (f.d_type==10 || f.d_type==11)) {
+        q23_packed_rows(f.d_type,separate_down?separate_down:blob+f.down_off,int(f.n_ff),hq,nt,out,r0,r1,f.q23_layout==2);return;
+    }
+    if ((f.d_type==10 || f.d_type==11) && use_q23_avx2()) {
+        q23_rows(f.d_type,separate_down?separate_down:blob+f.down_off,f.d_row,int(f.n_ff),hq,nt,out,r0,r1);
+        return;
+    }
     if (f.lossless && (f.d_type == 21 || f.d_type == 22)) {
         iq256_rows(f.d_type + 100, separate_down ? separate_down : blob + f.down_off,
                    f.d_row, (int)f.n_ff, hq, nt, out, r0, r1);

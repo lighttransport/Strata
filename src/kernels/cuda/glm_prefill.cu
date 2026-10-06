@@ -353,12 +353,16 @@ __global__ void decay(const float *x, const float *b, const float *a, float *y, 
         y[i] = lower * sigmoid(-a[d / dim] * (x[i] + b[d]));
     }
 }
+// snapshots (optional): the state after token t < snapshot_tokens also goes to snapshots + t * snapshot_stride,
+// in the state's own layout, so a verify window keeps its rollback history without per-token kernels.
 template<int columns>
 __global__ void kda_chunk(float *state, const float *q, const float *k, const float *v, const float *g,
-                          const float *beta, float *out, int heads, int tokens) {
+                          const float *beta, float *out, int heads, int tokens, float *snapshots = nullptr,
+                          long long snapshot_stride = 0, int snapshot_tokens = 0) {
     constexpr int dim = 128;
     int h = blockIdx.x, j = blockIdx.y * columns + threadIdx.x;
     state += (size_t)h * dim * dim;
+    if (snapshots) snapshots += (size_t)h * dim * dim + j;
     float values[dim];
 #pragma unroll
     for (int i = 0; i < dim; ++i)
@@ -396,6 +400,10 @@ __global__ void kda_chunk(float *state, const float *q, const float *k, const fl
             sum += values[i] * qr[i] * qi;
         }
         out[offset + j] = sum;
+        if (snapshots && t < snapshot_tokens) {
+#pragma unroll
+            for (int i = 0; i < dim; ++i) snapshots[(size_t)t * snapshot_stride + (size_t)i * dim] = values[i];
+        }
         __syncthreads();
     }
 #pragma unroll
@@ -928,9 +936,12 @@ void glm_kda_prepare(const float *q, float *key, float *decay, float *beta, floa
 }
 void glm_kda_chunk(float *state, const float *q, const float *k, const float *v, const float *g,
                    const float *b, float *out, int heads, int dim, int tokens, void *s, int columns,
-                   int row_parts, const float *prepared_qi) {
+                   int row_parts, const float *prepared_qi, float *snapshots, long long snapshot_stride,
+                   int snapshot_tokens) {
     if (dim != 128 || tokens < 1 || tokens > 64)
         throw std::invalid_argument("GLM: invalid KDA chunk");
+    if (snapshots && (row_parts != 1 || prepared_qi))
+        throw std::invalid_argument("GLM: KDA snapshots need the column kernel");
     if (row_parts != 1) {
         if (columns != 128 || (row_parts != 4 && row_parts != 8))
             throw std::invalid_argument("GLM: parallel KDA needs 128 columns and 4 or 8 row parts");
@@ -960,11 +971,14 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
     }
     if (prepared_qi) throw std::invalid_argument("GLM: prepared KDA needs parallel rows");
     if (columns == 32)
-        kda_chunk<32><<<dim3(heads, 4), 32, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+        kda_chunk<32><<<dim3(heads, 4), 32, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens,
+                                                                   snapshots, snapshot_stride, snapshot_tokens);
     else if (columns == 64)
-        kda_chunk<64><<<dim3(heads, 2), 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+        kda_chunk<64><<<dim3(heads, 2), 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens,
+                                                                   snapshots, snapshot_stride, snapshot_tokens);
     else if (columns == 128)
-        kda_chunk<128><<<heads, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+        kda_chunk<128><<<heads, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens,
+                                                            snapshots, snapshot_stride, snapshot_tokens);
     else throw std::invalid_argument("GLM: KDA columns must be 32, 64 or 128");
     check();
 }

@@ -7,6 +7,10 @@ namespace strata::kernels {
 // All buffers are device pointers. Calls enqueue on stream without allocating.
 void glm_rms_norm(const float *x, const float *weight, float *y, int width, int tokens, float eps,
                   void *stream);
+// Same result to rounding with 1024 threads and float4 traffic per row; the sum order differs from glm_rms_norm,
+// so a caller uses one or the other for every width it must keep consistent.
+void glm_rms_norm_rows(const float *x, const float *weight, float *y, int width, int tokens, float eps,
+                       void *stream);
 void glm_layer_norm(const float *x, const float *weight, const float *bias, float *y, int width, float eps,
                     void *stream);
 void glm_swiglu(const float *gate, const float *up, float *y, int count, float limit, void *stream);
@@ -20,6 +24,16 @@ void glm_mhc_read(const float *streams, const float *projected, const float *bas
 void glm_mhc_write(const float *streams, const float *coefficients, const float *y, float *out, int width,
                    void *stream);
 void glm_hyper_head(const float *streams, float *out, int width, void *stream);
+// Several decode tokens in one launch each: token t uses streams + t*4*width, projections and coefficients
+// + t*24, x/y + t*width; every token computes exactly what the single-token call computes.
+void glm_mhc_read_tokens(const float *streams, const float *projected, const float *base, const float *scale,
+                         float *coefficients, float *x, int width, int iterations, float eps, int tokens,
+                         void *stream);
+void glm_mhc_write_tokens(const float *streams, const float *coefficients, const float *y, float *out, int width,
+                          int tokens, void *stream);
+// Router for several tokens: logits + t*experts, ids/weights + t*top_k.
+void glm_router_tokens(const float *logits, const float *correction, int *ids, float *weights, int experts,
+                       int top_k, float scale, int tokens, void *stream);
 // FP32 24-row mHC projection; caller supplies 24*32 partial sums.
 void glm_hc_project(const float *x, const float *weight, float *out, float *scratch,
                     int width, void *stream);
