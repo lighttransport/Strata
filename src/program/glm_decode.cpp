@@ -431,6 +431,28 @@ class ExpertStager {
     }
     int size() const { return workers.size(); }
 };
+// Remote TP: one expert tensor whose owned NUMA rows hold only the local part (gate/up rows [0, keep), or down
+// columns [0, keep) of every row). copy() assembles a whole expert from them and the file's remaining bytes.
+struct TrimmedSource {
+    const cpu::NumaTensor *local = nullptr;
+    size_t row = 0, local_row = 0, rows = 0, local_rows = 0; // full and local row bytes; rows per expert
+    bool down = false;
+    void copy(const uint8_t *file, int expert, uint8_t *dest) const {
+        const uint8_t *source = file + (size_t)expert * rows * row;
+        if (!down) {
+            local->copy(expert, dest);
+            std::memcpy(dest + local_rows * row, source + local_rows * row, (rows - local_rows) * row);
+            return;
+        }
+        thread_local std::vector<uint8_t> part;
+        part.resize(rows * local_row);
+        local->copy(expert, part.data());
+        for (size_t r = 0; r < rows; ++r) {
+            std::memcpy(dest + r * row, part.data() + r * local_row, local_row);
+            std::memcpy(dest + r * row + local_row, source + r * row + local_row, row - local_row);
+        }
+    }
+};
 struct GpuPrefill {
     // One 16-expert group per ring slot: 208 MiB covers GLM-5.3-Flash's GGUFs; larger experts (a Q4_K_M REAP-50
     // GGUF) raise it when the model loads.
@@ -576,10 +598,17 @@ struct GpuPrefill {
         return std::make_unique<Device>((char *)arena->p + offset, bytes);
     }
     const std::map<const strata::TensorInfo*,const cpu::NumaTensor*>* numa_sources=nullptr;
+    // Remote TP: tensors whose owned rows hold only this node's part of each expert. An upload assembles the whole
+    // expert from those rows and the worker's part read from the file, so only that part's pages are cached.
+    const std::map<const strata::TensorInfo*,TrimmedSource>* trimmed_sources=nullptr;
     void copy_part(const strata::core::ArtifactTensor& t,int expert,void* dest,size_t bytes)const {
         if(numa_sources) {
             auto found=numa_sources->find(t.tensor);
             if(found!=numa_sources->end()){found->second->copy(expert,dest);return;}
+        }
+        if(trimmed_sources) {
+            auto found=trimmed_sources->find(t.tensor);
+            if(found!=trimmed_sources->end()){found->second.copy(t.data(),expert,static_cast<uint8_t*>(dest));return;}
         }
         std::memcpy(dest,t.data()+size_t(expert)*bytes,bytes);
     }
@@ -1200,10 +1229,27 @@ struct RemoteTp {
     std::vector<uint8_t> wire;
     uint32_t reply_format = strata::net::kReplyF16;
     ucomm_req_t *sending = nullptr, *receiving = nullptr;
-    double wait_ms = 0;
+    double wait_ms = 0, send_wait_ms = 0;
     int64_t calls = 0;
+    std::vector<ucomm_mr_t *> regions; // request and reply buffers, registered once (IB)
+    std::set<int> trimmed; // layers whose owned NUMA rows hold only the local rows, in their own contiguous layout
+    bool check = std::getenv("STRATA_GLM_REMOTE_TP_CHECK") && std::string(std::getenv("STRATA_GLM_REMOTE_TP_CHECK")) == "1";
+    std::map<int, double> check_worst; // layer -> largest |local + remote - whole| / max |whole|
+    int64_t check_calls = 0;
     static void ok(ucomm_status s, const char *what) {
         if (s != UCOMM_OK) throw std::runtime_error(std::string("GLM remote TP ") + what + ": " + ucomm_strerror(s));
+    }
+    // Sends one layer's remote work: the routed (expert, token, weight) list and each token's quantized activation.
+    void request_layer(int layer, int nt, const std::vector<strata::net::TpJob> &list,
+                       const std::vector<std::vector<uint8_t>> &quant, size_t act_bytes) {
+        const strata::net::TpRequest head{layer, nt, (int32_t)list.size(), (int32_t)act_bytes};
+        const size_t list_bytes = list.size() * sizeof(strata::net::TpJob);
+        request.resize(sizeof head + list_bytes + (size_t)nt * act_bytes);
+        std::memcpy(request.data(), &head, sizeof head);
+        std::memcpy(request.data() + sizeof head, list.data(), list_bytes);
+        for (int t = 0; t < nt; ++t)
+            std::memcpy(request.data() + sizeof head + list_bytes + (size_t)t * act_bytes, quant[t].data(), act_bytes);
+        start(nt);
     }
     void start(int nt) {
         reply.resize((size_t)nt * hidden);
@@ -1214,6 +1260,7 @@ struct RemoteTp {
     void finish(float *sum) {
         const auto t0 = std::chrono::steady_clock::now();
         ok(ucomm_wait(sending, nullptr), "send");
+        send_wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         ok(ucomm_wait(receiving, nullptr), "reply");
         sending = receiving = nullptr;
         wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -1237,7 +1284,16 @@ struct RemoteTp {
         strata::net::TpRequest quit{-1, 0, 0, 0};
         ucomm_send(comm, 1, strata::net::kTagRequest, &quit, sizeof quit);
         std::cerr << "REMOTE_TP backend=" << ucomm_backend_name(comm) << " calls=" << calls << " wait_ms=" << wait_ms
-                  << " wait_ms_per_call=" << (calls ? wait_ms / calls : 0.0) << '\n';
+                  << " wait_ms_per_call=" << (calls ? wait_ms / calls : 0.0)
+                  << " send_wait_ms_per_call=" << (calls ? send_wait_ms / calls : 0.0) << '\n';
+        for (auto *region : regions) ucomm_mr_dereg(region);
+        if (check) {
+            double worst = 0;
+            for (const auto &[l, rel] : check_worst) worst = std::max(worst, rel);
+            std::cerr << "REMOTE_TP_CHECK calls=" << check_calls << " worst_rel=" << worst;
+            for (const auto &[l, rel] : check_worst) std::cerr << ' ' << l << ':' << rel;
+            std::cerr << '\n';
+        }
         ucomm_finalize(comm);
     }
 };
@@ -1465,6 +1521,9 @@ class Decoder {
     struct NumaExperts {std::unique_ptr<cpu::NumaTensor> gate,up,down;};
     std::map<int,NumaExperts> numa_experts;
     std::map<const strata::TensorInfo*,const cpu::NumaTensor*> numa_sources;
+    std::set<const strata::TensorInfo*> numa_local_only; // remote TP: owned rows hold part of each expert
+    std::map<const strata::TensorInfo*,TrimmedSource> trimmed_sources; // the same tensors, for whole-expert uploads
+    std::vector<uint8_t> trim_buffer;                    // remote TP: the local rows of one tensor, before the copy to nodes
     size_t numa_weight_bytes=0;
     int q23_layout=0;
     bool packed_huge_pages=false;
@@ -2972,22 +3031,16 @@ class Decoder {
         const bool remote = remote_tp && !jobs.empty() && !direct && !cache && prepared == prepared_experts.end() &&
                             remote_tp->split.count(l);
         if (remote) {
-            const int keep = remote_tp->split.at(l);
-            local_f.n_ff = keep;   // gate/up rows [0, keep) and the first keep columns of each down row
-            local_f.h_bytes = ggml_row_size((ggml_type)f.d_act, keep);
-            auto &rq = remote_tp->request;
+            local_f = remote_local_fmt(l, f);
+            if (asynchronous)   // the request carries the activations, so they are quantized first
+                for (int t = 0; t < nt; ++t)
+                    cpu::native_quant_act(f, activation + t * m.hidden, quant[t].data());
             std::vector<strata::net::TpJob> list;
             for (size_t j = 0; j < selected.size(); ++j)
                 if (groups.count(selected[j])) list.push_back({selected[j], (int32_t)(j / m.top_k), routing[j]});
-            strata::net::TpRequest head{l, nt, (int32_t)list.size(), (int32_t)f.act_bytes};
-            rq.resize(sizeof head + list.size() * sizeof(strata::net::TpJob) + (size_t)nt * f.act_bytes);
-            std::memcpy(rq.data(), &head, sizeof head);
-            std::memcpy(rq.data() + sizeof head, list.data(), list.size() * sizeof(strata::net::TpJob));
-            for (int t = 0; t < nt; ++t)
-                std::memcpy(rq.data() + sizeof head + list.size() * sizeof(strata::net::TpJob) + (size_t)t * f.act_bytes,
-                            quant[t].data(), f.act_bytes);
-            remote_tp->start(nt);
-        }
+            remote_tp->request_layer(l, nt, list, quant, f.act_bytes);
+        } else if (remote_tp && remote_tp->trimmed.count(l) && !jobs.empty())
+            throw std::logic_error("GLM remote TP: this node holds only part of each expert, but the layer ran locally");
         if (!direct && !remote_hits.empty()) {
             pending = secondary->worker->submit([&] {
                 auto &other = *secondary;
@@ -3001,7 +3054,7 @@ class Decoder {
                 cached_decode->run(layout, hits, primary_address, activation, nt, stream, decode_graphs);
             }
             // Quantize on the host only when at least one CPU expert needs it.
-            if (asynchronous && !jobs.empty())
+            if (asynchronous && !jobs.empty() && !remote)
                 for (int t = 0; t < nt; ++t)
                     cpu::native_quant_act(f, activation + t * m.hidden, quant[t].data());
             // Both GPUs execute resident experts while CPU workers handle misses.
@@ -3081,7 +3134,7 @@ class Decoder {
     // The step pipeline covers the plain CPU-expert decode path; every other expert placement keeps moe().
     bool pipeline_ready(int nt) const {
         if (!step_pipeline || !gpu || fast || artifact.is_exl3() || nt < 1 || nt > 4 || profile ||
-            gpu_decode_experts || tp_active() || remote_tp || (secondary && secondary_enabled) || decode_cache_adapt ||
+            gpu_decode_experts || tp_active() || (secondary && secondary_enabled) || decode_cache_adapt ||
             device_resident_experts || decode_prefill_cache)
             return false;
         for (const auto &cache : expert_cache)
@@ -3211,13 +3264,29 @@ class Decoder {
             job.nact[slot] = host_quant[t].data();
             job.out[slot] = host_results.data() + (size_t)j * H;
         }
+        // Cross-node TP: the worker's rows of the same routes run while this node computes its own rows; its
+        // router-weighted partial sums are added after the local sum.
+        cpu::NativeFmt run_f = f;
+        bool remote = false;
+        if (remote_tp && remote_tp->split.count(l)) {
+            std::vector<strata::net::TpJob> list;
+            for (int j = 0; j < nt * K; ++j)
+                if (cpu_weights[j] != 0.f) list.push_back({selected[j], (int32_t)(j / K), cpu_weights[j]});
+            if (!list.empty()) {
+                run_f = remote_local_fmt(l, f);
+                remote_tp->request_layer(l, nt, list, host_quant, f.act_bytes);
+                remote = true;
+            }
+        }
         if (layer_flow)
-            pool.run_layer_native(f, host_jobs.data(), host_jobs.size(), host_results.data(), cpu_weights.data(),
+            pool.run_layer_native(run_f, host_jobs.data(), host_jobs.size(), host_results.data(), cpu_weights.data(),
                                   mailbox->sum(slot), nt, K);
         else {
-            if (!host_jobs.empty()) pool.run_split_multi_native(f, host_jobs.data(), host_jobs.size());
+            if (!host_jobs.empty()) pool.run_split_multi_native(run_f, host_jobs.data(), host_jobs.size());
             pool.reduce_routed(host_results.data(), cpu_weights.data(), mailbox->sum(slot), nt, K, H);
         }
+        if (remote) remote_tp->finish(mailbox->sum(slot));
+        if (remote && remote_tp->check) remote_tp_check(l, f, G, U, D, nt, K, cpu_weights.data(), mailbox->sum(slot));
         if (resident) tier_select(l, selected, nt * K, resident);
     }
     // Adaptive GPU tier for the step pipeline (STRATA_GLM_TIER_ADAPT=1 with --decode-cache-mib): recently
@@ -4186,7 +4255,7 @@ class Decoder {
     void configure_prefill_schedule() {
         auto configure = [&](int device, GpuPrefill* prefill, PrefillGroupCache& cache, bool compact) {
             if (!prefill) return;
-            prefill->numa_sources=&numa_sources;
+            prefill->numa_sources=&numa_sources;prefill->trimmed_sources=&trimmed_sources;
             prefill->defer_device_wait = defer_copy_wait;
             cache.preallocate = preallocate_groups;
             cache.early_ring_release = restore_prefill_groups;
@@ -4899,7 +4968,7 @@ class Decoder {
             if(!fuse||std::string(fuse)!="0")throw std::invalid_argument("a mapped expert pack needs STRATA_GLM_PACK_FUSE_QUANT=0");
             return;
         }
-        if(artifact.is_exl3() || !pool.numa_rows_available() || secondary || remote_tp || !prepared_experts.empty() || direct_upload_enabled())
+        if(artifact.is_exl3() || !pool.numa_rows_available() || secondary || !prepared_experts.empty() || direct_upload_enabled())
             throw std::invalid_argument("Q2 NUMA weights require native GGUF, pinned workers on two nodes, single GPU, no TP/prepack/direct upload");
         for(const auto& cache:expert_cache)if(cache)throw std::invalid_argument("Q2 NUMA weights cannot use legacy expert cache");
         size_t required=0;
@@ -4917,7 +4986,8 @@ class Decoder {
 #endif
         auto start=std::chrono::steady_clock::now();
         // STRATA_GLM_MAPPED_OWNED=1: node-owned scheduling over the file mapping (pages moved, not copied).
-        const bool mapped=std::getenv("STRATA_GLM_MAPPED_OWNED")&&std::string(std::getenv("STRATA_GLM_MAPPED_OWNED"))=="1";
+        // Remote TP copies its local rows instead: a mapping cannot hold part of each expert row.
+        const bool mapped=!remote_tp&&std::getenv("STRATA_GLM_MAPPED_OWNED")&&std::string(std::getenv("STRATA_GLM_MAPPED_OWNED"))=="1";
         if(mapped&&(q23_layout||packed_huge_pages))throw std::invalid_argument("mapped owned rows need the plain row layout");
         size_t unmoved=0;
         artifact.discard_original_experts();
@@ -4938,7 +5008,31 @@ class Decoder {
                     if(expected) {uint64_t hash=14695981039346656037ULL;for(size_t k=0;k<t.bytes;++k){hash^=source[k];hash*=1099511628211ULL;}if(hash!=expected->u)throw std::runtime_error("expert pack payload checksum mismatch: "+t.tensor->name);}
                     const int packed=q23_layout&&(t.tensor->type==10||t.tensor->type==11)?t.tensor->type:0;
                     std::unique_ptr<cpu::NumaTensor> owned;
-                    if(mapped) {
+                    const int keep=remote_tp&&remote_tp->split.count(int(l))?remote_tp->split.at(int(l)):0;
+                    if(keep) {
+                        // Remote TP: this node keeps gate/up rows [0, keep) and down columns [0, keep) of every
+                        // expert, contiguous; the worker holds the rest. GPU uploads still read whole experts
+                        // from the file, so these rows are not a numa_source.
+                        const bool down=std::string(part)=="down";
+                        const size_t local_row=down?ggml_row_size(ggml_type(t.tensor->type),keep):row,local_rows=down?shape[1]:size_t(keep);
+                        const size_t local_bytes=local_row*local_rows*shape[2];
+                        if(trim_buffer.size()<local_bytes)trim_buffer.resize(local_bytes);   // reused: faulted in once
+                        uint8_t* local=trim_buffer.data();
+                        std::vector<std::jthread> gather;
+                        const size_t workers=std::max<size_t>(1,std::min<size_t>(16,std::thread::hardware_concurrency()));
+                        for(size_t w=0;w<workers;++w)gather.emplace_back([&,w] {
+                            for(size_t e=shape[2]*w/workers;e<shape[2]*(w+1)/workers;++e) {
+                                if(!down)std::memcpy(local+e*local_rows*row,source+e*shape[1]*row,local_rows*row);
+                                else for(size_t r=0;r<shape[1];++r)
+                                    std::memcpy(local+(e*shape[1]+r)*local_row,source+(e*shape[1]+r)*row,local_row);
+                            }
+                        });
+                        gather.clear();
+                        owned=std::make_unique<cpu::NumaTensor>(local,local_row,local_rows,shape[2],pool.numa_cores(),packed_huge_pages,packed,down?keep:int(shape[0]));
+                        numa_local_only.insert(t.tensor);numa_weight_bytes+=local_bytes;
+                        trimmed_sources[t.tensor]={owned.get(),row,local_row,shape[1],local_rows,down};
+                        t.file->discard_tensor_pages(*t.tensor,t.bytes);
+                    } else if(mapped) {
                         owned=std::make_unique<cpu::NumaTensor>(cpu::NumaTensor::View{},source,row,shape[1],shape[2]);
                         unmoved+=owned->unmoved_pages;numa_weight_bytes+=t.bytes;
                     } else {
@@ -4949,6 +5043,7 @@ class Decoder {
                     auto& dest=std::string(part)=="gate"?entry.gate:std::string(part)=="up"?entry.up:entry.down;
                     dest=std::move(owned);
                 }
+                if(remote_tp&&remote_tp->split.count(int(l)))remote_tp->trimmed.insert(int(l));
 #ifdef __linux__
                 std::ifstream status("/proc/self/status");std::string key,line;
                 while(std::getline(status,line))if(line.starts_with("VmSwap:")) {
@@ -4957,8 +5052,9 @@ class Decoder {
                 }
 #endif
             }
-        }catch(...) {numa_sources.clear();numa_experts.clear();numa_weight_bytes=0;throw;}
-        if(gpu)gpu->numa_sources=&numa_sources;
+        }catch(...) {numa_sources.clear();numa_local_only.clear();trimmed_sources.clear();numa_experts.clear();numa_weight_bytes=0;if(remote_tp)remote_tp->trimmed.clear();throw;}
+        std::vector<uint8_t>().swap(trim_buffer);
+        if(gpu){gpu->numa_sources=&numa_sources;gpu->trimmed_sources=&trimmed_sources;}
         std::cerr<<"Q2_NUMA_WEIGHTS mapped="<<mapped<<" unmoved_pages="<<unmoved<<" bytes="<<numa_weight_bytes<<" node0_MiB="<<numa_weight_bytes/double(2*MiB)
                  <<" node1_MiB="<<numa_weight_bytes/double(2*MiB)<<" prepare_ms="
                  <<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<'\n';
@@ -5283,7 +5379,55 @@ class Decoder {
     void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
     // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
     // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
-    void enable_remote_tp(const std::string &address, double share, bool reply_f16) {
+    // STRATA_GLM_REMOTE_TP_CHECK=1: the same routes' whole experts again from the file mapping (unfused, unsplit),
+    // compared with the local + remote sum; the largest difference relative to the layer's largest value is reported
+    // at exit. Slow (the mapping's pages come back from disk); for validating the split, not for timing.
+    void remote_tp_check(int l, const cpu::NativeFmt &f, const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
+                         const strata::core::ArtifactTensor &D, int nt, int K, const float *weights, const float *sum) {
+        const int H = m.hidden;
+        cpu::NativeFmt full = f;
+        full.fuse_h_quant = false;
+        full.observer = nullptr;
+        std::vector<float> results((size_t)nt * K * H, 0.f), expected((size_t)nt * H);
+        std::vector<cpu::ExpertJobMulti> jobs = host_jobs;
+        for (auto &job : jobs) {
+            const int e = job.expert_id;
+            job.blob = G.data() + (size_t)e * f.up_off;
+            job.native_up = U.data() + (size_t)e * f.up_off;
+            job.native_down = D.data() + (size_t)e * (f.bytes - f.down_off);
+            for (auto &node : job.numa) node = {};
+            for (int k = 0; k < job.nt; ++k) job.out[k] = results.data() + (job.out[k] - host_results.data());
+        }
+        if (!jobs.empty()) pool.run_split_multi_native(full, jobs.data(), jobs.size());
+        pool.reduce_routed(results.data(), weights, expected.data(), nt, K, H);
+        double peak = 0, diff = 0;
+        for (size_t i = 0; i < expected.size(); ++i) {
+            peak = std::max(peak, (double)std::fabs(expected[i]));
+            diff = std::max(diff, (double)std::fabs(expected[i] - sum[i]));
+        }
+        const double rel = peak > 0 ? diff / peak : 0;
+        auto &worst = remote_tp->check_worst[l];
+        worst = std::max(worst, rel);
+        ++remote_tp->check_calls;
+    }
+    // Remote TP: the format of this node's rows. Owned NUMA rows of a split layer hold only rows [0, keep), in their
+    // own layout; otherwise the full tensors are read with their full strides, rows and down columns [0, keep).
+    cpu::NativeFmt remote_local_fmt(int l, const cpu::NativeFmt &f) const {
+        const int keep = remote_tp->split.at(l);
+        cpu::NativeFmt local = f;
+        if (remote_tp->trimmed.count(l)) {
+            cpu::NativeFmt g;
+            std::string error;
+            if (!cpu::native_fmt(f.gu_type, f.d_type, f.n_embd, keep, g, error)) throw std::runtime_error(error);
+            local.n_ff = g.n_ff; local.d_row = g.d_row; local.up_off = g.up_off; local.down_off = g.down_off;
+            local.bytes = g.bytes; local.h_bytes = g.h_bytes;
+        } else {
+            local.n_ff = keep;
+            local.h_bytes = ggml_row_size((ggml_type)f.d_act, keep);
+        }
+        return local;
+    }
+    void enable_remote_tp(const std::string &address, double share, bool reply_f16, bool send_weights) {
         if(artifact.is_exl3())throw std::invalid_argument("EXL3: remote tensor parallel is unsupported");
         auto tp = std::make_unique<RemoteTp>();
         tp->reply_format = reply_f16 ? strata::net::kReplyF16 : strata::net::kReplyF32;
@@ -5295,6 +5439,15 @@ class Decoder {
         cfg.root_addr = address.c_str();
         cfg.timeout_ms = 0; // the worker may still be filling its dummy weights
         RemoteTp::ok(ucomm_init(&cfg, &tp->comm), "connect");
+        // Sized for the largest step and registered once: ucomm otherwise registers each rendezvous buffer per
+        // message, a firmware command on ConnectX-3 that cost ~0.2 ms per layer. Resizes stay within capacity.
+        tp->request.resize(sizeof(strata::net::TpRequest) + (size_t)cpu::MAXT * m.top_k * sizeof(strata::net::TpJob) +
+                           (size_t)cpu::MAXT * cpu::kNativeActBytes);
+        tp->wire.resize(strata::net::tp_reply_bytes(strata::net::kReplyF32, cpu::MAXT, m.hidden));
+        for (auto *buffer : {&tp->request, &tp->wire}) {
+            ucomm_mr_t *region = nullptr;
+            if (ucomm_mr_reg(tp->comm, buffer->data(), buffer->size(), &region) == UCOMM_OK) tp->regions.push_back(region);
+        }
         std::vector<uint8_t> setup(sizeof(strata::net::TpSetup));
         for (size_t l = 0; l < m.layers.size(); ++l) {
             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
@@ -5302,7 +5455,8 @@ class Decoder {
             const auto &G = artifact.at(p + "ffn_gate_exps.weight");
             const auto &D = artifact.at(p + "ffn_down_exps.weight");
             const int ff = m.layers[l].intermediate;
-            const int block = std::max<int>(256, (int)ggml_blck_size((ggml_type)D.tensor->type));
+            // Owned NUMA rows split the local rows across two nodes in 256-row chunks: keep whole 512-row steps.
+            const int block = ff % 512 == 0 ? 512 : std::max<int>(256, (int)ggml_blck_size((ggml_type)D.tensor->type));
             int keep = (int)std::lround(share * ff / block) * block;
             keep = std::clamp(keep, block, ff - block);
             if (ff % block) throw std::invalid_argument("GLM remote TP: expert width is not whole blocks");
@@ -5312,14 +5466,100 @@ class Decoder {
             const auto *b = (const uint8_t *)&spec;
             setup.insert(setup.end(), b, b + sizeof spec);
         }
-        strata::net::TpSetup head{strata::net::kTpMagic, (uint32_t)tp->split.size(), (uint32_t)m.hidden, tp->reply_format};
+        // The streamed rows' identity, so a worker keeping them in --weights-dir can skip the transfer: the pack's
+        // own payload checksums when present, plus the geometry and 16 spread 4 KiB samples of every expert tensor.
+        uint64_t fingerprint = 0;
+        if (send_weights) {
+            uint64_t h = 14695981039346656037ull;
+            auto mix = [&](const void *p, size_t n) {
+                for (size_t i = 0; i < n; ++i) h = (h ^ ((const uint8_t *)p)[i]) * 1099511628211ull;
+            };
+            for (const auto &[l, keep] : tp->split)
+                for (const auto *part : {"gate", "up", "down"}) {
+                    const auto &t = artifact.at("blk." + std::to_string(l) + ".ffn_" + part + "_exps.weight");
+                    const int64_t geometry[4] = {l, keep, (int64_t)t.tensor->type, (int64_t)t.bytes};
+                    mix(geometry, sizeof geometry);
+                    if (const auto *sum = t.file->get("strata.expert_pack.hash." + t.tensor->name)) mix(&sum->u, sizeof sum->u);
+                    const size_t sample = std::min<size_t>(4096, t.bytes);
+                    for (int k = 0; k < 16; ++k) mix(t.data() + (t.bytes - sample) * k / 15, sample);
+                }
+            fingerprint = h ? h : 1;
+        }
+        strata::net::TpSetup head{strata::net::kTpMagic, (uint32_t)tp->split.size(), (uint32_t)m.hidden, tp->reply_format,
+                                  send_weights ? strata::net::kWeightsStreamed : strata::net::kWeightsDummy, 0, fingerprint};
         std::memcpy(setup.data(), &head, sizeof head);
         RemoteTp::ok(ucomm_send(tp->comm, 1, strata::net::kTagSetup, setup.data(), setup.size()), "setup");
+        strata::net::TpAccept accept{};
+        RemoteTp::ok(ucomm_recv(tp->comm, 1, strata::net::kTagAccept, &accept, sizeof accept, nullptr), "accept");
+        if (!accept.ok) {
+            // The worker's rows scale with its share of each expert: the local share that would fit, if any.
+            const auto &[l0, keep0] = *tp->split.begin();
+            const double remote = 1.0 - double(keep0) / m.layers[l0].intermediate;
+            const double fit = accept.needed_bytes ? remote * double(accept.available_bytes) / double(accept.needed_bytes) : 0.0;
+            std::ostringstream message;
+            message << "GLM remote TP: the worker refused the setup: " << std::string(accept.reason, strnlen(accept.reason, sizeof accept.reason));
+            if (fit > 0) message << "; --remote-tp-share=" << std::fixed << std::setprecision(2) << 1.0 - fit << " or more would fit";
+            throw std::runtime_error(message.str());
+        }
+        double sent_gib = 0, send_s = 0;
+        if (send_weights && !accept.have) {
+            // The worker's rows of every expert (expert_tp.hpp), double-buffered so gathering overlaps sending.
+            const auto t0 = std::chrono::steady_clock::now();
+            std::array<std::vector<uint8_t>, 2> staging;
+            std::array<ucomm_req_t *, 2> inflight{};
+            std::array<ucomm_mr_t *, 2> registered{};
+            size_t largest = 0;   // the staging buffers are sized and registered once (IB), not per message
+            for (const auto &[l, keep] : tp->split) {
+                const auto &G = artifact.at("blk." + std::to_string(l) + ".ffn_gate_exps.weight");
+                const auto &D = artifact.at("blk." + std::to_string(l) + ".ffn_down_exps.weight");
+                const size_t ff = m.layers[l].intermediate, rows = ff - keep;
+                largest = std::max(largest, 2 * rows * ggml_row_size((ggml_type)G.tensor->type, m.hidden) +
+                                                (size_t)m.hidden * (ggml_row_size((ggml_type)D.tensor->type, ff) -
+                                                                    ggml_row_size((ggml_type)D.tensor->type, keep)));
+            }
+            for (int k = 0; k < 2; ++k) {
+                staging[k].resize(largest);
+                if (ucomm_mr_reg(tp->comm, staging[k].data(), largest, &registered[k]) != UCOMM_OK) registered[k] = nullptr;
+            }
+            int which = 0;
+            for (const auto &[l, keep] : tp->split) {
+                check_stop();
+                const std::string p = "blk." + std::to_string(l) + ".";
+                const auto &G = artifact.at(p + "ffn_gate_exps.weight"), &U = artifact.at(p + "ffn_up_exps.weight");
+                const auto &D = artifact.at(p + "ffn_down_exps.weight");
+                const size_t ff = m.layers[l].intermediate, rows = ff - keep, H = m.hidden;
+                const size_t gu_row = ggml_row_size((ggml_type)G.tensor->type, H);
+                const size_t d_full = ggml_row_size((ggml_type)D.tensor->type, ff);
+                const size_t d_keep = ggml_row_size((ggml_type)D.tensor->type, keep), d_rest = d_full - d_keep;
+                if (U.tensor->type != G.tensor->type || G.bytes != gu_row * ff * m.experts || D.bytes != d_full * H * m.experts)
+                    throw std::runtime_error("GLM remote TP: unexpected expert tensor geometry at layer " + std::to_string(l));
+                const size_t bytes = 2 * rows * gu_row + H * d_rest;
+                for (int e = 0; e < m.experts; ++e) {
+                    if (inflight[which]) RemoteTp::ok(ucomm_wait(inflight[which], nullptr), "weights");
+                    inflight[which] = nullptr;
+                    auto &blob = staging[which];   // sized for the largest layer: never reallocated
+                    std::memcpy(blob.data(), G.data() + (e * ff + keep) * gu_row, rows * gu_row);
+                    std::memcpy(blob.data() + rows * gu_row, U.data() + (e * ff + keep) * gu_row, rows * gu_row);
+                    for (size_t r = 0; r < H; ++r)
+                        std::memcpy(blob.data() + 2 * rows * gu_row + r * d_rest, D.data() + (e * H + r) * d_full + d_keep, d_rest);
+                    RemoteTp::ok(ucomm_isend(tp->comm, 1, strata::net::kTagWeights, blob.data(), bytes, &inflight[which]), "weights");
+                    which ^= 1;
+                    sent_gib += bytes / double(1ull << 30);
+                }
+            }
+            for (auto *r : inflight)
+                if (r) RemoteTp::ok(ucomm_wait(r, nullptr), "weights");
+            for (auto *r : registered)
+                if (r) ucomm_mr_dereg(r);
+            send_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        }
         strata::net::TpReady ready{};
         RemoteTp::ok(ucomm_recv(tp->comm, 1, strata::net::kTagReady, &ready, sizeof ready, nullptr), "ready");
         std::cerr << "REMOTE_TP connected backend=" << ucomm_backend_name(tp->comm) << " layers=" << tp->split.size()
                   << " rows_here=" << tp->split.begin()->second << "/" << m.layers[tp->split.begin()->first].intermediate
-                  << " worker_slots=" << ready.slots << " reply=" << (reply_f16 ? "f16" : "f32") << '\n';
+                  << " worker_slots=" << ready.slots << " reply=" << (reply_f16 ? "f16" : "f32")
+                  << " weights=" << (!send_weights ? "dummy" : accept.have ? "kept" : "streamed") << " worker_GiB="
+                  << accept.needed_bytes / double(1ull << 30) << " sent_GiB=" << sent_gib << " send_s=" << send_s << '\n';
         remote_tp = std::move(tp);
     }
     bool uses_device_experts() const { return device_resident_experts; }
@@ -5945,7 +6185,7 @@ class Decoder {
         }
 #endif
         for (const auto &[name, t] : artifact.tensors())
-            if (!name.starts_with("blk.45.") && !numa_sources.count(t.tensor)) {
+            if (!name.starts_with("blk.45.") && !numa_sources.count(t.tensor) && !numa_local_only.count(t.tensor)) {
                 if (lock) {
 #ifdef __linux__
                     // A file-system client can invalidate clean file-backed
@@ -6530,6 +6770,15 @@ static int serve(int argc, char **argv) {
     decoder.set_decode_graphs(argc > 21 && std::string(argv[21]) == "1");
     decoder.set_decode_cache_window(argc > 22 ? std::stoi(argv[22]) : 256);
     decoder.set_decode_cache_adapt(argc > 23 && std::string(argv[23]) == "1");
+    // Cross-node expert TP for serving (configs pass these through "env"); same meaning as the CLI flags.
+    if (const char *address = std::getenv("STRATA_GLM_REMOTE_TP"); address && *address) {
+        const char *share = std::getenv("STRATA_GLM_REMOTE_TP_SHARE"), *reply = std::getenv("STRATA_GLM_REMOTE_TP_REPLY");
+        const double fraction = share && *share ? std::stod(share) : 0.5;
+        if (!(fraction > 0 && fraction < 1)) throw std::invalid_argument("STRATA_GLM_REMOTE_TP_SHARE must be between 0 and 1");
+        if (reply && *reply && std::string(reply) != "f16" && std::string(reply) != "f32")
+            throw std::invalid_argument("STRATA_GLM_REMOTE_TP_REPLY must be f16 or f32");
+        decoder.enable_remote_tp(address, fraction, !reply || std::string(reply) != "f32", true);
+    }
     decoder.prepare_numa_weights();
     if (argc > 18 && std::string(argv[18]) == "1" && !direct_upload_enabled()) decoder.warm_weights(true);
     if (use_mtp) decoder.enable_mtp_capture();
@@ -6725,7 +6974,7 @@ int main(int argc, char **argv) {
                      "[--decode-prefill-cache] [--decode-bench=3] [--decode-mode-sweep[=mtp]] [--check-verify-graphs] [--profile-decode] [--profile-prefill] "
                      "[--expert-pack=sidecar.gguf] [--expert-pack-profile=retain.json] [--cpu-expert-backend=auto|native|packed-dot|packed-lut] "
                      "[--eval-corpus=sequences.ids] [--eval-save-logits=path | --eval-reference=path] "
-                     "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
+                     "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--remote-tp-weights=send|dummy] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--stop-ids=IDs]\n";
         return 2;
     }
     try {
@@ -6764,6 +7013,7 @@ int main(int argc, char **argv) {
         std::string remote_tp_address;
         double remote_tp_share = 0.5;
         std::string remote_tp_reply = "f16";
+        std::string remote_tp_weights = "send";
         std::string dump, routing_trace_path;
         std::vector<int> stops;
         for (int i = 6; i < argc; ++i) {
@@ -6779,6 +7029,7 @@ int main(int argc, char **argv) {
             else if (flag.starts_with("--remote-tp=")) remote_tp_address = flag.substr(12);
             else if (flag.starts_with("--remote-tp-share=")) remote_tp_share = std::stod(flag.substr(18));
             else if (flag == "--remote-tp-reply=f32" || flag == "--remote-tp-reply=f16") remote_tp_reply = flag.substr(18);
+            else if (flag == "--remote-tp-weights=send" || flag == "--remote-tp-weights=dummy") remote_tp_weights = flag.substr(20);
             else if (flag == "--decode-prefill-cache") { decode_prefill_cache = true; force_gpu = true; }
             else if (flag.starts_with("--gpu-devices=")) { gpu_devices_text = flag.substr(14); force_gpu = true; }
             else if (flag.starts_with("--prefill-expert-cache-mib=")) {
@@ -6923,7 +7174,7 @@ int main(int argc, char **argv) {
         if (!remote_tp_address.empty()) {
             if (!(remote_tp_share > 0 && remote_tp_share < 1))
                 throw std::invalid_argument("--remote-tp-share must be between 0 and 1");
-            decoder.enable_remote_tp(remote_tp_address, remote_tp_share, remote_tp_reply != "f32");
+            decoder.enable_remote_tp(remote_tp_address, remote_tp_share, remote_tp_reply != "f32", remote_tp_weights == "send");
         }
         if (decode_cache_adapt && (replay || check_verify || decode_repetitions > 1))
             throw std::invalid_argument("GLM: adaptive cache benchmarks require independent serve requests");

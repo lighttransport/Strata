@@ -920,7 +920,8 @@ if(STRATA_NATIVE_EXPERTS)
   target_link_libraries(strata_kernels_cpu PUBLIC ggml-cpu ggml-base)
   target_compile_definitions(strata_kernels_cpu PUBLIC STRATA_NATIVE_EXPERTS=1)
   # Cross-node expert tensor parallelism (include/strata/net/expert_tp.hpp): ucomm is plain C11 with libibverbs
-  # loaded at run time, so neither side needs verbs headers. The worker is CPU only (no CUDA) and holds dummy weights.
+  # loaded at run time, so neither side needs verbs headers. The worker is CPU only (no CUDA); the decoder streams
+  # its rows of every expert at startup (or dummy weights for speed tests).
   add_library(strata_ucomm STATIC tools/ucomm/src/ucomm.c tools/ucomm/src/ucomm_boot.c tools/ucomm/src/ucomm_udp.c
               tools/ucomm/src/ucomm_ib.c tools/ucomm/src/ibvew.c)
   set_target_properties(strata_ucomm PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
