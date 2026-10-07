@@ -20,8 +20,18 @@ FIXTURES = {
     "csv": "Write a complete C++17 bool parse_csv(std::string_view s, std::vector<std::string>& out) function for one CSV record. Support empty fields, quoted commas, doubled quotes and trailing empty fields. Reject unclosed quotes, quotes inside unquoted fields and text after a closing quote except comma. Leave out unchanged on failure. Include headers. Return only one cpp code block, no main or explanation. Keep reasoning very brief.",
 }
 
+# Long-context codegen: about 8k tokens of frozen headers (docs/fixtures/glm_q2_long_cpp) and a ~4k-token answer.
+_LONG = pathlib.Path(__file__).resolve().parents[1] / "docs/fixtures/glm_q2_long_cpp"
+FIXTURES["long_cpp"] = (
+    "Below are two C++ headers from an inference engine.\n\n"
+    + "".join(f"// ===== {name} =====\n{(_LONG / name).read_text()}\n" for name in ("pool.hpp", "numa_weights.hpp"))
+    + "\nWrite a complete, self-contained C++17 GoogleTest file that tests NumaTensor (both the copying and the View "
+      "constructors, shard addressing, copy() round trips and invalid geometry errors) and the ExpertPool routed "
+      "reduction (reduce_routed against a scalar reference for 1..4 tokens and 1..8 experts). Include helper "
+      "functions, at least 12 TEST cases and short comments. Return only one cpp code block. Keep reasoning very brief.")
 
-def parse_trials(log, ids, stops, source="none", depth=0):
+
+def parse_trials(log, ids, stops, source="none", depth=0, same_output=True):
     cursor = 0
     groups = {}
     for section in re.split(r"(?=DECODE_MODE source=|DECODE_TRIAL index=)", log):
@@ -62,7 +72,7 @@ def parse_trials(log, ids, stops, source="none", depth=0):
         raise ValueError("unaccounted generated tokens")
     reference = next(iter(groups.values()))[0]["token_ids"]
     for trials in groups.values():
-        if any(t["token_ids"] != reference for t in trials):
+        if same_output and any(t["token_ids"] != reference for t in trials):
             raise ValueError("greedy output differs across trials/modes")
     return groups
 
@@ -90,6 +100,8 @@ def main():
     ap.add_argument("--output", type=pathlib.Path, required=True)
     ap.add_argument("--fixtures", nargs="+", choices=FIXTURES, default=list(FIXTURES))
     ap.add_argument("--tokens", type=int, default=512)
+    ap.add_argument("--context", type=int, default=8192, help="long_cpp needs 16384")
+    ap.add_argument("--prefill-batch", type=int, default=8192, help="prefill chunk; each chunk streams every expert over PCIe once")
     ap.add_argument("--reject-compilers", "--reject-competitors", action="store_true", help="stop and discard on concurrent compilers or sustained external CPU work")
     ap.add_argument("--no-warm-weights", action="store_true", help="rely on GPU prefill to visit main expert weights")
     ap.add_argument("--repetitions", type=int, default=3)
@@ -97,6 +109,8 @@ def main():
     ap.add_argument("--expert-pack-profile", type=pathlib.Path)
     ap.add_argument("--cpu-expert-backend", choices=("auto", "native", "packed-dot", "packed-lut"), default="auto")
     ap.add_argument("--capture-experts", action="store_true")
+    ap.add_argument("--allow-different-trials", action="store_true",
+                    help="residency-dependent routing (STRATA_GLM_ROUTE_AFFINITY, prefer-resident): trials may produce different tokens")
     ap.add_argument("--max-swap-mib", type=int, default=0, help="tolerated process swap; 0 rejects any swap")
     ap.add_argument("--decoder-flag", action="append", default=[], help="extra decoder flag, repeatable (e.g. --decoder-flag=--decode-cache-mib=3584)")
     sweeps=ap.add_mutually_exclusive_group()
@@ -122,7 +136,7 @@ def main():
         prefix.with_suffix(".prompt.txt").write_text(chat)
         prefix.with_suffix(".ids").write_text(",".join(map(str, prompt)))
         command = [args.decoder, str(model), "@" + str(prefix.with_suffix(".ids").resolve()), str(args.tokens), "4096", "15",
-                   "--context=8192", "--prefill-batch=256", "--gpu-budget-mib=12288", "--cpu-affinity=numa",
+                   f"--context={args.context}", f"--prefill-batch={args.prefill_batch}", "--gpu-budget-mib=12288", "--cpu-affinity=numa",
                    "--decode-graphs", f"--decode-bench={args.repetitions}",
                    "--stop-ids=" + ",".join(map(str, sorted(stops)))]
         if not args.no_warm_weights:
@@ -200,7 +214,8 @@ def main():
         if code:
             raise RuntimeError(f"{fixture} exited {code}; see {prefix.with_suffix('.log')}")
         ids = list(map(int, prefix.with_suffix(".tokens").read_text().split()))
-        groups = parse_trials(prefix.with_suffix(".log").read_text(), ids, stops, args.speculative, args.depth if args.speculative!="none" else 0)
+        groups = parse_trials(prefix.with_suffix(".log").read_text(), ids, stops, args.speculative, args.depth if args.speculative!="none" else 0,
+                              not args.allow_different_trials)
         output = next(iter(groups.values()))[0]["token_ids"]
         prefix.with_suffix(".output.md").write_text(tokenizer.decode([t for t in output if t not in stops]))
         for trials in groups.values():
@@ -208,7 +223,7 @@ def main():
                 del trial["token_ids"]
         results[fixture] = dict(input_tokens=len(prompt), command=command, memory=memory, trials=groups,
             median_tokens_per_second={k: statistics.median(t["tokens_per_second"] for t in v) for k, v in groups.items()},
-            greedy_ids_identical=True, token_sha256=hashlib.sha256(json.dumps(output).encode()).hexdigest())
+            greedy_ids_identical=not args.allow_different_trials, token_sha256=hashlib.sha256(json.dumps(output).encode()).hexdigest())
         (args.output / "measurement.json").write_text(json.dumps(dict(environment={k: v for k, v in os.environ.items() if k.startswith("STRATA_")}, results=results), indent=2) + "\n")
         print(fixture, results[fixture]["median_tokens_per_second"], memory, flush=True)
 

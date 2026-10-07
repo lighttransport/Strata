@@ -1,4 +1,5 @@
 #include "strata/kernels/cpu/q23_avx2.hpp"
+#include "strata/kernels/canon_expert.hpp"
 #define GGML_COMMON_DECL_CPP
 #include "ggml-common.h"
 #include <immintrin.h>
@@ -96,7 +97,7 @@ template<int TY,int NT> void dot(const uint8_t* w,int blocks,const void* const* 
     }
     for(int t=0;t<NT;++t)result[t]=sum(acc[t]);
 }
-template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,float* const* out,int first,int last,float clamp) {
+template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,float* const* out,int first,int last,float clamp,bool canon,float skip) {
     // Q3_K: 4 * (pair sums of activations) per 32-value chunk, so (q + 4) * y - 4 * y stays exact in int16.
     alignas(32) __m256i p4[TY==11?NT*kMaxBlocks*8:1];
     if constexpr(TY==11) {
@@ -109,26 +110,30 @@ template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stri
     const int pf=prefetch_distance();
     for(int r=first;r<last;++r) {
         float a[NT],u[NT];dot<TY,NT>(w+size_t(r)*stride,n/256,act,a,p4,pf);
-        if(up)dot<TY,NT>(up+size_t(r)*stride,n/256,act,u,p4,pf);
+        // Gate skipping (canonical, opt-in): when every token's unit is below the threshold its up row is not read.
+        bool need_up=up!=nullptr;
+        if(need_up&&canon&&skip>0) {need_up=false;for(int t=0;t<NT;++t){need_up=need_up||!canon_gate_skipped(a[t],clamp,skip);u[t]=0;}}
+        if(need_up)dot<TY,NT>(up+size_t(r)*stride,n/256,act,u,p4,pf);
         for(int t=0;t<NT;++t) {
-            if(up) {float g=clamp>0?std::fmin(a[t],clamp):a[t],v=clamp>0?std::fmax(-clamp,std::fmin(u[t],clamp)):u[t];out[t][r]=g/(1.f+std::exp(-g))*v;}
+            if(up&&canon)out[t][r]=canon_swiglu(a[t],u[t],clamp,skip);
+            else if(up) {float g=clamp>0?std::fmin(a[t],clamp):a[t],v=clamp>0?std::fmax(-clamp,std::fmin(u[t],clamp)):u[t];out[t][r]=g/(1.f+std::exp(-g))*v;}
             else out[t][r]=a[t];
         }
     }
 }
-template<int TY> void dispatch(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp) {
-#define CASE(N) case N:rows<TY,N>(w,up,stride,n,act,out,first,last,clamp);break
+template<int TY> void dispatch(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp,bool canon,float skip) {
+#define CASE(N) case N:rows<TY,N>(w,up,stride,n,act,out,first,last,clamp,canon,skip);break
     switch(nt){CASE(1);CASE(2);CASE(3);CASE(4);CASE(5);CASE(6);CASE(7);CASE(8);default:throw std::invalid_argument("Q23: token width must be 1..8");}
 #undef CASE
 }
-void run(int type,const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp) {
+void run(int type,const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp,bool canon,float skip) {
     if(n<=0||n%256||first<0||last<first)throw std::invalid_argument("Q23: invalid row geometry");
     if(type==11&&n/256>kMaxBlocks)throw std::invalid_argument("Q23: Q3_K rows longer than 4096 values");
-    if(type==10)dispatch<10>(w,up,stride,n,act,nt,out,first,last,clamp);
-    else if(type==11)dispatch<11>(w,up,stride,n,act,nt,out,first,last,clamp);
+    if(type==10)dispatch<10>(w,up,stride,n,act,nt,out,first,last,clamp,canon,skip);
+    else if(type==11)dispatch<11>(w,up,stride,n,act,nt,out,first,last,clamp,canon,skip);
     else throw std::invalid_argument("Q23: unsupported weight type");
 }
 }
-void q23_rows(int type,const uint8_t* w,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last){run(type,w,nullptr,stride,n,act,nt,out,first,last,0);}
-void q23_gu_rows(int type,const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp){run(type,w,up,stride,n,act,nt,out,first,last,clamp);}
+void q23_rows(int type,const uint8_t* w,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last){run(type,w,nullptr,stride,n,act,nt,out,first,last,0,false,0);}
+void q23_gu_rows(int type,const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp,bool canon,float gate_skip){run(type,w,up,stride,n,act,nt,out,first,last,clamp,canon,gate_skip);}
 }

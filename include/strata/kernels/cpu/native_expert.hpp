@@ -34,6 +34,8 @@ struct NativeFmt {
     ExpertObserver* observer = nullptr;
     int observer_layer = -1;
     bool fuse_h_quant = false;
+    bool canon = false;               ///< canonical Q2_K/Q3_K arithmetic (canon_expert.hpp): the bits the GPU tier computes
+    float gate_skip = 0;              ///< canonical mode: units with |silu(gate)| below this contribute zero (lossy, opt-in)
     float swiglu_limit = 0;           ///< 0 preserves the Qwen contract; GLM uses 10
 };
 

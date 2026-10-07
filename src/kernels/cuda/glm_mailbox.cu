@@ -29,13 +29,14 @@ __global__ void begin(const volatile unsigned *control, unsigned *generation) {
     *generation = control[0];
 }
 __global__ void publish(GlmMailboxView v, int slot, const int *ids, const float *weights, const float *x, int tokens,
-                        const unsigned *generation) {
+                        const unsigned *generation, const int *wanted) {
     const int routes = tokens * v.top_k;
     int *out_ids = v.ids + (size_t)slot * v.max_tokens * v.top_k;
     float *out_weights = v.weights + (size_t)slot * v.max_tokens * v.top_k;
     for (int i = threadIdx.x; i < routes; i += blockDim.x) {
         out_ids[i] = ids[i];
         out_weights[i] = weights[i];
+        if (wanted) v.wanted[(size_t)slot * v.max_tokens * v.top_k + i] = wanted[i];
     }
     const float4 *src = reinterpret_cast<const float4 *>(x);
     float4 *dst = reinterpret_cast<float4 *>(v.act + (size_t)slot * v.max_tokens * v.hidden);
@@ -96,15 +97,32 @@ __global__ void wait_add_resident(GlmMailboxView v, int slot, float *out, int to
         out[i] += acc;
     }
 }
+// Resident routes' rows go to the mailbox (posted writes), then the rows flag: the CPU sums every route.
+__global__ void post_rows(GlmMailboxView v, int slot, const int *ids, const float *weights,
+                          const unsigned long long *lookup, const float *resident, int tokens) {
+    const int routes = tokens * v.top_k;
+    float4 *rows = reinterpret_cast<float4 *>(v.rows + (size_t)slot * v.max_tokens * v.top_k * v.hidden);
+    const float4 *src = reinterpret_cast<const float4 *>(resident);
+    const int quads = v.hidden / 4;
+    for (int j = blockIdx.x; j < routes; j += gridDim.x) {
+        if (!lookup[ids[j]] || weights[j] == 0.f) continue;
+        for (int i = threadIdx.x; i < quads; i += blockDim.x) rows[(size_t)j * quads + i] = src[(size_t)j * quads + i];
+    }
+}
+__global__ void rows_ready(GlmMailboxView v, int slot, const unsigned *generation) {
+    __threadfence_system();
+    *(volatile unsigned *)(v.flags + (size_t)slot * kFlagWords + 8) = *generation;
+}
 } // namespace
 
-size_t glm_mailbox_bytes(int slots, int max_tokens, int top_k, int hidden) {
+size_t glm_mailbox_bytes(int slots, int max_tokens, int top_k, int hidden, bool with_rows, bool with_wanted) {
     const size_t routes = (size_t)slots * max_tokens * top_k, rows = (size_t)slots * max_tokens * hidden;
     return round_up(slots * kFlagWords * 4) + round_up(kControlWords * 4) + round_up(routes * 4) * 2 +
-           round_up(rows * 4) * 2;
+           round_up(rows * 4) * 2 + (with_rows ? round_up(rows * top_k * 4) : 0) + (with_wanted ? round_up(routes * 4) : 0);
 }
 
-GlmMailboxView glm_mailbox_view(void *base, int slots, int max_tokens, int top_k, int hidden) {
+GlmMailboxView glm_mailbox_view(void *base, int slots, int max_tokens, int top_k, int hidden, bool with_rows,
+                                bool with_wanted) {
     if (slots < 1 || max_tokens < 1 || top_k < 1 || hidden < 4 || hidden % 4)
         throw std::invalid_argument("GLM mailbox: invalid geometry");
     auto *p = static_cast<char *>(base);
@@ -115,7 +133,9 @@ GlmMailboxView glm_mailbox_view(void *base, int slots, int max_tokens, int top_k
     v.ids = reinterpret_cast<int *>(p); p += round_up(routes * 4);
     v.weights = reinterpret_cast<float *>(p); p += round_up(routes * 4);
     v.act = reinterpret_cast<float *>(p); p += round_up(rows * 4);
-    v.sum = reinterpret_cast<float *>(p);
+    v.sum = reinterpret_cast<float *>(p); p += round_up(rows * 4);
+    if (with_rows) { v.rows = reinterpret_cast<float *>(p); p += round_up(rows * top_k * 4); }
+    if (with_wanted) v.wanted = reinterpret_cast<int *>(p);
     v.slots = slots; v.max_tokens = max_tokens; v.top_k = top_k; v.hidden = hidden;
     return v;
 }
@@ -126,10 +146,10 @@ void glm_mailbox_begin(GlmMailboxView v, unsigned *generation, void *stream) {
 }
 
 void glm_mailbox_publish(GlmMailboxView v, int slot, const int *ids, const float *weights, const float *x,
-                         int tokens, const unsigned *generation, void *stream) {
-    if (slot < 0 || slot >= v.slots || tokens < 1 || tokens > v.max_tokens)
+                         int tokens, const unsigned *generation, void *stream, const int *wanted) {
+    if (slot < 0 || slot >= v.slots || tokens < 1 || tokens > v.max_tokens || (wanted && !v.wanted))
         throw std::invalid_argument("GLM mailbox: invalid publish");
-    publish<<<1, 512, 0, (cudaStream_t)stream>>>(v, slot, ids, weights, x, tokens, generation);
+    publish<<<1, 512, 0, (cudaStream_t)stream>>>(v, slot, ids, weights, x, tokens, generation, wanted);
     ok(cudaGetLastError(), "publish");
 }
 
@@ -149,6 +169,16 @@ void glm_mailbox_wait_add_resident(GlmMailboxView v, int slot, float *out, int t
     wait_add_resident<<<1, 1024, 0, (cudaStream_t)stream>>>(v, slot, out, tokens, generation, ids, weights, lookup,
                                                              resident);
     ok(cudaGetLastError(), "resident wait");
+}
+
+void glm_mailbox_post_rows(GlmMailboxView v, int slot, const int *ids, const float *weights,
+                           const unsigned long long *lookup, const float *resident, int tokens,
+                           const unsigned *generation, void *stream) {
+    if (slot < 0 || slot >= v.slots || tokens < 1 || tokens > v.max_tokens || !v.rows || !lookup || !resident)
+        throw std::invalid_argument("GLM mailbox: invalid resident rows");
+    post_rows<<<tokens * v.top_k, 256, 0, (cudaStream_t)stream>>>(v, slot, ids, weights, lookup, resident, tokens);
+    rows_ready<<<1, 1, 0, (cudaStream_t)stream>>>(v, slot, generation);
+    ok(cudaGetLastError(), "resident rows");
 }
 
 } // namespace strata::kernels

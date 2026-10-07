@@ -8,6 +8,7 @@
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/cpu/kq_avx2.hpp"
 #include "strata/kernels/cpu/q23_avx2.hpp"
+#include "strata/kernels/canon_expert.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
 
 #include "ggml.h"
@@ -86,16 +87,28 @@ bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt
     return true;
 }
 
+namespace {
+// Canonical mode covers the Q2_K/Q3_K pack only: both activations are Q8_K and both dots are q23_avx2's.
+void canon_check(const NativeFmt& f) {
+    if ((f.gu_type != 10 && f.gu_type != 11) || (f.d_type != 10 && f.d_type != 11) || f.gu_act != GGML_TYPE_Q8_K ||
+        f.d_act != GGML_TYPE_Q8_K || f.q23_layout || f.lossless)
+        throw std::invalid_argument("canonical expert arithmetic needs Q2_K/Q3_K experts in GGML rows");
+}
+}
+
 void native_quant_act(const NativeFmt& f, const float* x, void* dst) {
+    if (f.canon) { canon_check(f); canon_quant_q8k(x, dst, (int) f.n_embd); return; }
     traits(f.gu_act)->from_float(x, dst, f.n_embd);
 }
 
 void native_quant_h(const NativeFmt& f, const float* h, void* dst) {
+    if (f.canon) { canon_check(f); canon_quant_q8k(h, dst, (int) f.n_ff); return; }
     traits(f.d_act)->from_float(h, dst, f.n_ff);
 }
 void native_quant_h_rows(const NativeFmt& f,const float* h,void* dst,int first,int last) {
     const int block=ggml_blck_size(ggml_type(f.d_act));
     if(first<0||last<first||last>f.n_ff||first%block||last%block)throw std::invalid_argument("unaligned hidden quantization chunk");
+    if(f.canon){canon_quant_q8k(h+first,static_cast<uint8_t*>(dst)+ggml_row_size(ggml_type(f.d_act),first),last-first);return;}
     traits(f.d_act)->from_float(h+first,static_cast<uint8_t*>(dst)+ggml_row_size(ggml_type(f.d_act),first),last-first);
 }
 
@@ -127,8 +140,9 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
         for(int t=0;t<nt;++t)for(int r=r0;r<r1;++r) {float g=ff[t][r],u=up[t][r];if(f.swiglu_limit>0){g=std::fmin(g,f.swiglu_limit);u=std::fmax(-f.swiglu_limit,std::fmin(u,f.swiglu_limit));}ff[t][r]=g/(1.f+std::exp(-g))*u;}
         return;
     }
-    if ((f.gu_type==10 || f.gu_type==11) && use_q23_avx2()) {
-        q23_gu_rows(f.gu_type,blob,separate_up?separate_up:blob+f.up_off,f.gu_row,int(f.n_embd),act,nt,ff,r0,r1,f.swiglu_limit);
+    if (f.canon) canon_check(f);
+    if ((f.gu_type==10 || f.gu_type==11) && (f.canon || use_q23_avx2())) {
+        q23_gu_rows(f.gu_type,blob,separate_up?separate_up:blob+f.up_off,f.gu_row,int(f.n_embd),act,nt,ff,r0,r1,f.swiglu_limit,f.canon,f.canon?f.gate_skip:0.f);
         return;
     }
     // Lossless prepared rows (iq256_prepare_rows) are not available with this kernel set; nothing sets lossless.
@@ -198,7 +212,7 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
     if (f.q23_layout && (f.d_type==10 || f.d_type==11)) {
         q23_packed_rows(f.d_type,separate_down?separate_down:blob+f.down_off,int(f.n_ff),hq,nt,out,r0,r1,f.q23_layout==2);return;
     }
-    if ((f.d_type==10 || f.d_type==11) && use_q23_avx2()) {
+    if ((f.d_type==10 || f.d_type==11) && (f.canon || use_q23_avx2())) {
         q23_rows(f.d_type,separate_down?separate_down:blob+f.down_off,f.d_row,int(f.n_ff),hq,nt,out,r0,r1);
         return;
     }

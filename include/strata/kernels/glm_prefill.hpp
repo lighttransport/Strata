@@ -34,7 +34,7 @@ void glm_moe_reduce_batch(const float *cpu, const float *primary, const float *r
 void glm_conv_batch(const float *x, const float *weight, float *history, float *y, int channels, int kernel,
                     int tokens, void *stream);
 void glm_route_batch(const float *logits, const float *bias, int *ids, float *weights, int experts, int top_k,
-                     float scale, int tokens, void *stream);
+                     float scale, int tokens, void *stream, const float *bonus = nullptr);
 void glm_group_routes(const int *ids, int *bounds, int *dest, int *source, int *cursor, int experts,
                       int top_k, int tokens, void *stream);
 // Stable expert grouping retains increasing original route IDs within each expert.

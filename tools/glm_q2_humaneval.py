@@ -73,6 +73,11 @@ def main():
     parser.add_argument("--expert-pack-profile", type=pathlib.Path)
     parser.add_argument("--tokens", type=int, default=2048)
     parser.add_argument("--limit", type=int, default=164, help="smaller values are smoke tests, not full pass@1")
+    parser.add_argument("--gpu-budget-mib", type=int, default=12288)
+    parser.add_argument("--decode-cache-mib", type=int, default=0, help="GPU expert tier, as the server's decode_cache_mib")
+    parser.add_argument("--speculative", choices=("none", "mtp"), default="none")
+    parser.add_argument("--draft-depth", type=int, default=1)
+    parser.add_argument("--route-affinity", type=float, default=0.0, help="lossy: STRATA_GLM_ROUTE_AFFINITY for the engine")
     args = parser.parse_args()
     if not 1 <= args.limit <= 164 or not 1 <= args.tokens <= 4096:
         parser.error("limit must be 1..164 and tokens 1..4096")
@@ -99,7 +104,8 @@ def main():
     environment.globals["raise_exception"] = lambda s: (_ for _ in ()).throw(ValueError(s))
     template = environment.from_string(metadata["tokenizer.chat_template"])
     engine_args = [str(model), "8192", "4096", "15", "0", "256", ",".join(map(str, sorted(stops))),
-                   "12288", "0", "0", "none", "1", "numa", "0", "0", "0", "0", "0", "0", "1", "256", "0", "mmq", "4k"]
+                   str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), "numa", "0", "0", "0", "0", "0",
+                   str(args.decode_cache_mib), "1", "256", "0", "mmq", "4k"]
     if args.expert_pack:
         engine_args += [str(args.expert_pack.resolve()), str(args.expert_pack_profile.resolve()) if args.expert_pack_profile else "", "native"]
     manifest = {"dataset_revision": REVISION, "dataset_sha256": DATA_SHA256,
@@ -107,7 +113,12 @@ def main():
                 "maximum_generated_tokens": args.tokens, "engine_args": engine_args,
                 "environment": {k: v for k, v in os.environ.items() if k.startswith("STRATA_")}}
     (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    engine = GlmEngine(args.decoder, engine_args, log=str(args.output / "engine.log"), env=os.environ.copy())
+    engine_env = os.environ.copy()
+    if args.route_affinity:
+        engine_env["STRATA_GLM_ROUTE_AFFINITY"] = str(args.route_affinity)
+    manifest["route_affinity"] = args.route_affinity
+    (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    engine = GlmEngine(args.decoder, engine_args, log=str(args.output / "engine.log"), env=engine_env)
     results = []
     try:
         for task in tasks[:args.limit]:

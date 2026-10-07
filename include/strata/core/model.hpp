@@ -305,11 +305,12 @@ class ModelArtifact {
             const auto& original=at(t.name);std::smatch match;
             if(!std::regex_match(t.name,match,std::regex("blk\\.([0-9]+)\\.ffn_(gate|up|down)_exps\\.weight"))||std::stoi(match[1])<3||std::stoi(match[1])>44||t.shape!=original.tensor->shape||t.shape.size()!=3)
                 throw std::runtime_error("expert pack: invalid projection "+t.name);
-            // IQ2_XS gate/up -> Q2_K and IQ3_XXS down -> Q3_K (the UD-Q2_K_XL GGUF), or a K-quant source
-            // (Q4_K/Q5_K/Q6_K, e.g. the REAP-50 Q4_K_M GGUF) -> the same targets.
+            // IQ2_XS gate/up -> Q2_K and IQ3_XXS down -> Q3_K or Q2_K (the UD-Q2_K_XL GGUF), or a K-quant
+            // source (Q4_K/Q5_K/Q6_K, e.g. the REAP-50 Q4_K_M GGUF) -> the same targets.
             const bool kquant=original.tensor->type==12||original.tensor->type==13||original.tensor->type==14;
-            const bool valid=((original.tensor->type==17||kquant) && t.type==10 && match[2]!="down") ||
-                             ((original.tensor->type==18||kquant) && t.type==11 && match[2]=="down");
+            // The higher formats of the exception layers (IQ3_XXS gate/up, IQ4_XS down) convert to the same targets.
+            const bool valid=((original.tensor->type==17||original.tensor->type==18||kquant) && t.type==10 && match[2]!="down") ||
+                             ((original.tensor->type==18||original.tensor->type==23||kquant) && (t.type==11||t.type==10) && match[2]=="down");
             if(!valid)throw std::runtime_error("expert pack: invalid type transition "+t.name);
             const uint64_t length=t.elements()/256*(t.type==10?84:110);
             if(t.offset%32||pack->data_start()>pack->file_size()||t.offset>pack->file_size()-pack->data_start()||length>pack->file_size()-pack->data_start()-t.offset||!spans.emplace(t.offset,length).second)

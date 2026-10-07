@@ -42,6 +42,7 @@ struct NativeExpertLayout {
     int gu_type = -1, d_type = -1;
     int64_t n_embd = 0, n_ff = 0;
     float swiglu_limit = 0;
+    float gate_skip = 0;                // canonical kernels only (glm_q23): see canon_expert.hpp
     size_t gu_row = 0, d_row = 0;       // bytes per row
     size_t up_off = 0, down_off = 0;    // byte offsets inside the blob
     size_t bytes = 0;                   // the whole blob

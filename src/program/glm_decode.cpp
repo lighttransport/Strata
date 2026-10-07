@@ -16,6 +16,8 @@
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
 #include "strata/kernels/glm_mailbox.hpp"
+#include "strata/kernels/glm_q23.hpp"
+#include "strata/kernels/canon_expert.hpp"
 #include "strata/kernels/glm_q8.hpp"
 #include "strata/kernels/dequant_bf16.hpp"
 #include "strata/prefill/gemm.hpp"
@@ -52,6 +54,7 @@
 #include <cstring>
 #include <linux/mempolicy.h>
 #include <sys/syscall.h>
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 #include <iostream>
@@ -96,9 +99,16 @@ void capture_allocation() {
         throw std::runtime_error("GLM: cannot read CPU allocation");
 #endif
 }
-struct DeviceAccount { size_t live = 0, peak = 0, limit = SIZE_MAX; };
+struct DeviceAccount {
+    size_t live = 0, peak = 0, limit = SIZE_MAX;
+    std::map<std::string, size_t> by_tag;   // live bytes per allocation category, for GPU_LIVE
+    std::mutex tag_mutex;
+};
 struct Device {
     using Account = DeviceAccount;
+    // Category of allocations made on this thread; set through DeviceTag.
+    static inline thread_local const char *tag = "other";
+    const char *category = tag;
     static inline std::array<Account, 64> accounts;
     static Account &account() {
         int device;
@@ -109,6 +119,14 @@ struct Device {
     static size_t &peak() { return account().peak; }
     static size_t &limit() { return account().limit; }
     static size_t physical_reserve() {
+        // STRATA_GLM_GPU_RESERVE_MIB: free device memory to leave for other clients, instead of the defaults below.
+        static const long configured = [] {
+            const char *value = std::getenv("STRATA_GLM_GPU_RESERVE_MIB");
+            const long mib = value ? std::atol(value) : -1;
+            if (value && (mib < 128 || mib > 8192)) throw std::invalid_argument("GLM: GPU reserve must be 128..8192 MiB");
+            return mib;
+        }();
+        if (configured >= 0) return size_t(configured) * 1024 * 1024;
         int device;
         check(cudaGetDevice(&device));
         int timeout = 0; // CUDA 13 dropped cudaDeviceProp::kernelExecTimeoutEnabled; the attribute works in 12 and 13
@@ -136,6 +154,7 @@ struct Device {
         check(cudaMalloc(&p, n));
         a.live += n;
         a.peak = std::max(a.peak, a.live);
+        { std::lock_guard<std::mutex> lock(a.tag_mutex); a.by_tag[category] += n; }
         if (zero) {
             auto status = cudaMemset(p, 0, n);
             if (status != cudaSuccess) {
@@ -148,7 +167,10 @@ struct Device {
         if (owned) {
             DeviceScope scope(owner);
             cudaFree(p);
-            accounts.at(owner).live -= bytes;
+            auto &a = accounts.at(owner);
+            a.live -= bytes;
+            std::lock_guard<std::mutex> lock(a.tag_mutex);
+            a.by_tag[category] -= bytes;
         }
     }
     Device(const Device &) = delete;
@@ -174,6 +196,11 @@ struct Device {
         return x;
     }
 };
+struct DeviceTag {
+    const char *previous = Device::tag;
+    explicit DeviceTag(const char *tag) { Device::tag = tag; }
+    ~DeviceTag() { Device::tag = previous; }
+};
 constexpr size_t MiB = 1024 * 1024;
 size_t prefill_expert_stride(const strata::core::ArtifactTensor &g,
                             const strata::core::ArtifactTensor &u,
@@ -198,14 +225,14 @@ struct StepMailbox {
     k::GlmMailboxView view, device_view;
     std::unique_ptr<Device> generation;
     unsigned step = 0;
-    StepMailbox(int slots, int max_tokens, int top_k, int hidden) {
-        const size_t bytes = k::glm_mailbox_bytes(slots, max_tokens, top_k, hidden);
+    StepMailbox(int slots, int max_tokens, int top_k, int hidden, bool rows = false, bool wanted = false) {
+        const size_t bytes = k::glm_mailbox_bytes(slots, max_tokens, top_k, hidden, rows, wanted);
         check(cudaHostAlloc(&host, bytes, cudaHostAllocMapped | cudaHostAllocPortable));
         std::memset(host, 0, bytes);
         void *mapped = nullptr;
         check(cudaHostGetDevicePointer(&mapped, host, 0));
-        view = k::glm_mailbox_view(host, slots, max_tokens, top_k, hidden);
-        device_view = k::glm_mailbox_view(mapped, slots, max_tokens, top_k, hidden);
+        view = k::glm_mailbox_view(host, slots, max_tokens, top_k, hidden, rows, wanted);
+        device_view = k::glm_mailbox_view(mapped, slots, max_tokens, top_k, hidden, rows, wanted);
         generation = std::make_unique<Device>(256, true);
     }
     ~StepMailbox() { cudaFreeHost(host); }
@@ -235,6 +262,20 @@ struct StepMailbox {
         }
     }
     bool published(int slot) const { return __atomic_load_n(view.flags + (size_t)slot * 32, __ATOMIC_ACQUIRE) == step; }
+    // Spins until the GPU has copied this step's resident rows into the mailbox.
+    void wait_rows(int slot, const std::atomic<bool> &launch_failed) const {
+        const auto *flag = view.flags + (size_t)slot * 32 + 8;
+        const auto start = std::chrono::steady_clock::now();
+        for (unsigned spins = 0; __atomic_load_n(flag, __ATOMIC_ACQUIRE) != step; ++spins) {
+            _mm_pause();
+            if ((spins & 0xffff) == 0xffff) {
+                if (launch_failed) throw std::runtime_error("GLM: step enqueue failed");
+                if (__atomic_load_n(view.control + 32, __ATOMIC_ACQUIRE)) throw std::runtime_error("GLM: step pipeline aborted");
+                if (std::chrono::steady_clock::now() - start > std::chrono::seconds(60))
+                    throw std::runtime_error("GLM: resident rows of layer slot " + std::to_string(slot) + " never arrived");
+            }
+        }
+    }
     void complete(int slot) const { __atomic_store_n(view.flags + (size_t)slot * 32 + 16, step, __ATOMIC_RELEASE); }
     void abort() const { __atomic_store_n(view.control + 32, 1u, __ATOMIC_SEQ_CST); }
     unsigned gpu_error() const { return __atomic_load_n(view.control + 16, __ATOMIC_ACQUIRE); }
@@ -242,6 +283,8 @@ struct StepMailbox {
     float *weights(int slot) const { return view.weights + (size_t)slot * view.max_tokens * view.top_k; }
     float *act(int slot) const { return view.act + (size_t)slot * view.max_tokens * view.hidden; }
     float *sum(int slot) const { return view.sum + (size_t)slot * view.max_tokens * view.hidden; }
+    float *rows(int slot) const { return view.rows + (size_t)slot * view.max_tokens * view.top_k * view.hidden; }
+    const int *wanted(int slot) const { return view.wanted ? view.wanted + (size_t)slot * view.max_tokens * view.top_k : nullptr; }
 };
 bool direct_upload_enabled() {
     const char *value = std::getenv("STRATA_GLM_DIRECT_WEIGHT_UPLOAD");
@@ -514,12 +557,16 @@ struct GpuPrefill {
         const size_t tile = std::min(width, 64), pools = std::max<size_t>(1, context / 4);
         const size_t mla = tile * (2052 * (512 + 64) + 2 * 64 * 512 + 33 * pools) * 4
                          + (size_t)width * 176 * 1024 + MiB;
-        const size_t required = std::max({64 * MiB, (size_t)width * 512 * 1024, mla});
+        // The per-token MLA buffers (q, value, indexer queries) outgrow the allowance above once the context passes
+        // 8192 tokens and the tile's pooled scores fill the arena; give them their own room.
+        const size_t headroom = context > 8192 ? (size_t)width * 256 * 1024 + 64 * MiB : 0;
+        const size_t required = std::max({64 * MiB, (size_t)width * 512 * 1024, mla + headroom});
         return (required + 64 * MiB - 1) / (64 * MiB) * (64 * MiB);
     }
     explicit GpuPrefill(int width, void *stream, bool compact = false, size_t capacity = 8192,
                         bool experts_only = false, bool tensor_experts = false, bool tensor_batches = false, bool native_exl = false) : chunk(width) {
         check(cudaGetDevice(&owner));
+        DeviceTag tag("prefill");
         if (compact) {
             arena = std::make_unique<Device>(32 * MiB);
             counts = std::make_unique<Pinned>(289 * 4);
@@ -601,7 +648,22 @@ struct GpuPrefill {
     // Remote TP: tensors whose owned rows hold only this node's part of each expert. An upload assembles the whole
     // expert from those rows and the worker's part read from the file, so only that part's pages are cached.
     const std::map<const strata::TensorInfo*,TrimmedSource>* trimmed_sources=nullptr;
+    // Lazily mapped experts (STRATA_GLM_MAPPED_LAZY): staging is often the first read of an expert's pages, so each
+    // half of its rows is read under the policy of the node whose workers will use it, as the decode pool splits them.
+    bool place_by_node=false;
     void copy_part(const strata::core::ArtifactTensor& t,int expert,void* dest,size_t bytes)const {
+        if(place_by_node) {
+#ifdef __linux__
+            const uint8_t* src=t.data()+size_t(expert)*bytes;const size_t half=bytes/2;
+            for(int node=0;node<2;++node) {
+                unsigned long mask=1ul<<node;
+                syscall(SYS_set_mempolicy,MPOL_PREFERRED,&mask,8*sizeof(mask));
+                std::memcpy(static_cast<uint8_t*>(dest)+node*half,src+node*half,node?bytes-half:half);
+            }
+            syscall(SYS_set_mempolicy,MPOL_DEFAULT,nullptr,0);
+            return;
+#endif
+        }
         if(numa_sources) {
             auto found=numa_sources->find(t.tensor);
             if(found!=numa_sources->end()){found->second->copy(expert,dest);return;}
@@ -614,7 +676,10 @@ struct GpuPrefill {
     }
     void upload(const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
                 const strata::core::ArtifactTensor &D, int start, int n, int slot, void *stream,
-                const int *selected = nullptr, bool blobs = false, size_t expert_stride = 0) {
+                const int *selected = nullptr, bool blobs = false, size_t expert_stride = 0,
+                const int *route_bounds = nullptr) {
+        // route_bounds (per-expert prefix counts of this batch's routes): experts without a route are not
+        // staged, so their pages are not read. Only for groups that no later batch reuses.
         size_t gh = G.bytes / G.tensor->shape[2], db = D.bytes / D.tensor->shape[2];
         const size_t stride = expert_stride ? expert_stride : 2 * gh + db;
         const size_t bytes = n * stride;
@@ -650,6 +715,7 @@ struct GpuPrefill {
             for (int j = worker; j < n; j += stager->size()) {
                 auto *p = (uint8_t *)pinned[slot]->p;
                 const int expert = selected ? selected[j] : start + j;
+                if (route_bounds && route_bounds[expert + 1] == route_bounds[expert]) continue;
                 const size_t gu_offset = blobs ? j * stride : j * 2 * gh;
                 const size_t down_offset = blobs ? gu_offset + 2 * gh : n * 2 * gh + j * db;
                 copy_part(G,expert,p+gu_offset,gh);
@@ -809,7 +875,7 @@ struct PrefillGroupCache {
     }
     void *weights(int layer_id, int first, int n, GpuPrefill &gpu, int slot,
                   const strata::core::ArtifactTensor &g, const strata::core::ArtifactTensor &u,
-                  const strata::core::ArtifactTensor &d, cudaStream_t stream) {
+                  const strata::core::ArtifactTensor &d, cudaStream_t stream, const int *route_bounds = nullptr) {
         auto &layer = layers[layer_id];
         const int group = first / 16;
         const size_t stride = prefill_expert_stride(g, u, d), bytes = n * stride;
@@ -819,8 +885,10 @@ struct PrefillGroupCache {
             return it->second->p;
         }
         // Both MMQ prefill and native decode address these byte-identical blobs.
-        gpu.upload(g, u, d, first, n, slot, stream, nullptr, true, stride);
-        if (std::find(layer.admitted.begin(), layer.admitted.end(), group) == layer.admitted.end())
+        const bool retained = std::find(layer.admitted.begin(), layer.admitted.end(), group) != layer.admitted.end();
+        if (retained && route_bounds) throw std::runtime_error("GLM: a retained prefill group needs every expert staged");
+        gpu.upload(g, u, d, first, n, slot, stream, nullptr, true, stride, route_bounds);
+        if (!retained)
             return gpu.slots[slot]->p;
         std::unique_ptr<Device> entry;
         if (preallocate && !layer.spare.empty()) {
@@ -832,6 +900,137 @@ struct PrefillGroupCache {
         void *p = entry->p;
         layer.entries.emplace(group, std::move(entry));
         return p;
+    }
+};
+// Host-memory residency for a host smaller than the routed experts (STRATA_GLM_PREFER_RESIDENT_MIB with lazy mapped
+// rows). It tracks which experts' pages this process has read and keeps their total under a budget; the router is
+// biased to select only those, and experts it would have selected are read in the background and join later.
+// Pages are released explicitly, so the kernel's reclaim has no reason to take resident ones.
+struct RamTier {
+    enum : uint8_t { Absent = 0, Resident = 1, Loading = 2 };
+    struct Range { const uint8_t *data; size_t bytes; int fd; uint64_t offset; int node; };
+    int layers = 0, experts = 0;
+    size_t budget = 0, resident_bytes = 0, loads = 0, evictions = 0;
+    std::vector<uint8_t> state;
+    std::vector<float> score;
+    std::vector<float> window;                              // unbiased routes since the last rebalance
+    std::vector<size_t> expert_bytes;                       // per layer; 0 for layers without routed experts
+    std::function<std::vector<Range>(int, int)> ranges;     // the page-aligned parts of one expert
+    std::mutex mutex;
+    std::condition_variable wake, idle;
+    std::deque<int> queue;
+    std::vector<int> finished;
+    int active = 0;
+    bool stopping = false;
+    std::vector<std::thread> threads;
+    RamTier(int layers, int experts, size_t budget) : layers(layers), experts(experts), budget(budget),
+        state((size_t)layers * experts), score((size_t)layers * experts), window((size_t)layers * experts), expert_bytes(layers) {
+        for (int i = 0; i < 4; ++i) threads.emplace_back([this] { work(); });
+    }
+    ~RamTier() {
+        { std::lock_guard<std::mutex> lock(mutex); stopping = true; }
+        wake.notify_all();
+        for (auto &t : threads) t.join();
+    }
+    static void read_range(const Range &r) {
+#ifdef __linux__
+        // Page-cache pages are allocated under the reading thread's policy: put each half on its node.
+        unsigned long mask = 1ul << r.node;
+        syscall(SYS_set_mempolicy, MPOL_PREFERRED, &mask, 8 * sizeof(mask));
+        const uintptr_t first = (uintptr_t)r.data / 4096 * 4096, last = ((uintptr_t)r.data + r.bytes + 4095) / 4096 * 4096;
+#ifdef MADV_POPULATE_READ
+        if (!madvise((void *)first, last - first, MADV_POPULATE_READ)) return;
+#endif
+        volatile uint8_t sink = 0;
+        for (uintptr_t page = first; page < last; page += 4096) sink = sink + *(const uint8_t *)page;
+#else
+        (void)r;
+#endif
+    }
+    static void drop_range(const Range &r) {
+#ifdef __linux__
+        // Only pages that lie wholly inside the expert: its neighbours keep the pages they share with it.
+        const uintptr_t begin = (uintptr_t)r.data, first = (begin + 4095) / 4096 * 4096, last = (begin + r.bytes) / 4096 * 4096;
+        if (last <= first) return;
+        madvise((void *)first, last - first, MADV_DONTNEED);
+        posix_fadvise(r.fd, r.offset + (first - begin), last - first, POSIX_FADV_DONTNEED);
+#else
+        (void)r;
+#endif
+    }
+    void work() {
+        std::unique_lock<std::mutex> lock(mutex);
+        for (;;) {
+            wake.wait(lock, [&] { return stopping || !queue.empty(); });
+            if (stopping) return;
+            const int job = queue.front();
+            queue.pop_front();
+            ++active;
+            lock.unlock();
+            // Reads are indices; drops (the syscalls that release an evicted expert's pages) are ~index.
+            if (job >= 0) for (const auto &r : ranges(job / experts, job % experts)) read_range(r);
+            else for (const auto &r : ranges(~job / experts, ~job % experts)) drop_range(r);
+            lock.lock();
+            --active;
+            if (job >= 0) finished.push_back(job);
+            if (queue.empty() && !active) idle.notify_all();
+        }
+    }
+    // Starts reading an absent expert; false when it is already resident or on its way.
+    bool request(int layer, int expert) {
+        const int index = layer * experts + expert;
+        if (state[index] != Absent) return false;
+        state[index] = Loading;
+        { std::lock_guard<std::mutex> lock(mutex); queue.push_back(index); }
+        wake.notify_one();
+        return true;
+    }
+    // Releases a resident expert now (its pages are dropped on a worker thread).
+    void evict(int index) {
+        if (state[index] != Resident) return;
+        state[index] = Absent;
+        resident_bytes -= expert_bytes[index / experts];
+        { std::lock_guard<std::mutex> lock(mutex); queue.push_back(~index); }
+        wake.notify_one();
+        ++evictions;
+    }
+    size_t pending() {
+        std::lock_guard<std::mutex> lock(mutex);
+        size_t reads = active;
+        for (int job : queue) reads += job >= 0;
+        return reads;
+    }
+    void wait_idle() {
+        std::unique_lock<std::mutex> lock(mutex);
+        idle.wait(lock, [&] { return queue.empty() && !active; });
+    }
+    // Finished reads become resident; then the coldest residents leave until the budget holds. `keep(index)`
+    // protects experts the caller is about to use. Returns whether residency changed.
+    bool settle(const std::function<bool(int)> &keep) {
+        std::vector<int> done;
+        { std::lock_guard<std::mutex> lock(mutex); done.swap(finished); }
+        for (int index : done) {
+            state[index] = Resident;
+            resident_bytes += expert_bytes[index / experts];
+            ++loads;
+        }
+        bool changed = !done.empty();
+        if (resident_bytes > budget) {
+            std::vector<int> order;
+            for (int index = 0; index < (int)state.size(); ++index)
+                if (state[index] == Resident && !keep(index)) order.push_back(index);
+            std::sort(order.begin(), order.end(), [&](int a, int b) { return score[a] != score[b] ? score[a] < score[b] : a < b; });
+            for (int index : order) {
+                if (resident_bytes <= budget) break;
+                state[index] = Absent;
+                resident_bytes -= expert_bytes[index / experts];
+                { std::lock_guard<std::mutex> lock(mutex); queue.push_back(~index); }
+                wake.notify_one();
+                ++evictions;
+                changed = true;
+            }
+        }
+        return changed;
     }
 };
 // Small persistent decode workspace, independent of the large prefill arena.
@@ -882,11 +1081,14 @@ struct ResidentExecutor {
         return *entry;
     }
     ResidentExecutor() {
+        DeviceTag tag("resident_exec");
         const size_t meta_bytes = entries * 8 + (3 * entries + 2) * 4;
         metadata = std::make_unique<Device>(meta_bytes);
         activation = std::make_unique<Device>(cpu::MAXT * 4096 * 4);
         quantized = std::make_unique<Device>(k::native_q8_1_bytes(4096, cpu::MAXT));
-        scratch = std::make_unique<Device>(k::native_expert_scratch_bytes(entries, 2048));
+        auto canonical = k::native_expert_layout(10, 11, 4096, 2048);
+        scratch = std::make_unique<Device>(std::max(k::native_expert_scratch_bytes(entries, 2048),
+                                                    k::glm_q23_scratch_bytes(canonical, cpu::MAXT, entries)));
         output = std::make_unique<Device>(entries * 4096 * 4);
         host_metadata = std::make_unique<Pinned>(meta_bytes);
         host_activation = std::make_unique<Pinned>(cpu::MAXT * 4096 * 4);
@@ -905,8 +1107,22 @@ struct ResidentExecutor {
         // Readers finish before slot replacement updates pinned lookup cells.
         (void)stream;
     }
+    // Canonical layers (canon_expert.hpp) take the Q2_K/Q3_K kernels whose rows equal the CPU pool's bit for bit.
+    void expert_rows(const k::NativeExpertLayout &layout, bool canon, const unsigned long long *ptr, const int *starts,
+                     const int *count, const int *dest, const int *tokens, size_t groups, size_t rows, const float *x,
+                     int nt, cudaStream_t stream) {
+        if (canon) {
+            k::glm_q23_expert_grouped(layout, ptr, starts, count, dest, tokens, groups, rows, x, nt, scratch->p,
+                                      output->f(), stream);
+            return;
+        }
+        k::native_quantize_q8_1(x, quantized->p, 4096, nt, stream);
+        k::native_expert_grouped(layout, ptr, starts, count, dest, tokens, groups, rows, quantized->p, scratch->p,
+                                 output->f(), stream, 0, nt);
+    }
     void run_device(const k::NativeExpertLayout &layout, const float *x, const int *ids,
-                    int layer, cudaStream_t stream, bool use_graphs, bool readback = true, int nt = 1) {
+                    int layer, cudaStream_t stream, bool use_graphs, bool readback = true, int nt = 1,
+                    bool canon = false) {
         if (nt < 1 || nt > cpu::MAXT) throw std::runtime_error("GLM: invalid resident batch");
         auto *ptr = (unsigned long long *)metadata->p;
         auto *starts = (int *)(ptr + entries);
@@ -921,14 +1137,12 @@ struct ResidentExecutor {
                                        ptr, starts, dest, tokens, count, stream);
             else k::glm_resident_routes_batch(ids, (const unsigned long long *)lookup->p + layer * 288,
                                               ptr, starts, dest, tokens, count, nt, stream);
-            k::native_quantize_q8_1(x, quantized->p, 4096, nt, stream);
-            k::native_expert_grouped(layout, ptr, starts, count, dest, tokens, nt * 8, nt * 8,
-                                     quantized->p, scratch->p, output->f(), stream, 0, nt);
+            expert_rows(layout, canon, ptr, starts, count, dest, tokens, nt * 8, nt * 8, x, nt, stream);
             if (readback)
                 check(cudaMemcpyAsync(host_output->p, output->p, (size_t)nt * 8 * 4096 * sizeof(float), cudaMemcpyDeviceToHost, stream));
         };
         if (!use_graphs) { enqueue(); return; }
-        auto &graph = device_graphs[{layer, readback, nt}];
+        auto &graph = device_graphs[{layer, readback, nt + (canon ? 100 : 0)}];
         if (graph && (graph->input != x || graph->ids != ids)) graph.reset();
         if (!graph) {
             auto capture = std::make_unique<Graph>();
@@ -949,7 +1163,7 @@ struct ResidentExecutor {
     }
     void run(const k::NativeExpertLayout &layout, const std::map<int, std::vector<int>> &hits,
              const std::function<void *(int)> &address, const float *x, int nt, cudaStream_t stream,
-             bool use_graphs = false) {
+             bool use_graphs = false, bool canon = false) {
         auto *ptr = (unsigned long long *)host_metadata->p;
         auto *starts = (int *)(ptr + entries);
         auto *dest = starts + entries + 1;
@@ -973,18 +1187,17 @@ struct ResidentExecutor {
         auto enqueue = [&] {
             metadata->put_async(host_metadata->p, metadata->bytes, stream);
             activation->put_async(host_activation->p, (size_t)nt * 4096 * 4, stream);
-            k::native_quantize_q8_1(activation->f(), quantized->p, 4096, nt, stream);
-            k::native_expert_grouped(layout, (const unsigned long long *)base,
+            expert_rows(layout, canon, (const unsigned long long *)base,
                 (const int *)(base + offset(starts)), (const int *)(base + offset(count)),
                 (const int *)(base + offset(dest)), (const int *)(base + offset(tokens)),
-                groups, rows, quantized->p, scratch->p, output->f(), stream, 0, nt);
+                groups, rows, activation->f(), nt, stream);
             check(cudaMemcpyAsync(host_output->p, output->p, (size_t)nt * 8 * 4096 * 4,
                                   cudaMemcpyDeviceToHost, stream));
         };
         if (!use_graphs || nt != 1 || rows != groups) {
             enqueue(); return;
         }
-        auto &graph = graphs[{layout.gu_type, layout.d_type, layout.swiglu_limit, groups}];
+        auto &graph = graphs[{layout.gu_type + (canon ? 1000 : 0), layout.d_type, layout.swiglu_limit, groups}];
         if (!graph) {
             auto captured = std::make_unique<Graph>();
             check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
@@ -1462,14 +1675,19 @@ class Decoder {
         double head_ms = 0, cpu_ms = 0, gap_ms = 0, tail_ms = 0, enqueue_ms = 0;
         std::chrono::steady_clock::time_point start, last_done, seen;
         bool any = false;
+        // STRATA_GLM_STEP_TRACE=2: the same split per mailbox slot (layer, and layer + stride for group B).
+        std::array<double, 128> slot_wait{}, slot_cpu{};
     } trace;
+    const bool step_trace_slots = step_trace && std::string(std::getenv("STRATA_GLM_STEP_TRACE")) == "2";
     void trace_seen() { if (step_trace) trace.seen = std::chrono::steady_clock::now(); }
-    void trace_done() {
+    void trace_done(int slot = -1) {
         if (!step_trace) return;
         const auto now = std::chrono::steady_clock::now();
         auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
-        (trace.any ? trace.gap_ms : trace.head_ms) += ms(trace.any ? trace.last_done : trace.start, trace.seen);
+        const double wait = ms(trace.any ? trace.last_done : trace.start, trace.seen);
+        (trace.any ? trace.gap_ms : trace.head_ms) += wait;
         trace.cpu_ms += ms(trace.seen, now);
+        if (slot >= 0 && slot < (int)trace.slot_wait.size()) { trace.slot_wait[slot] += wait; trace.slot_cpu[slot] += ms(trace.seen, now); }
         trace.last_done = now; trace.any = true; ++trace.layers;
     }
     struct MoePrefix { int *ids; float *weights; size_t cursor; };
@@ -1513,6 +1731,11 @@ class Decoder {
     std::function<bool()> cancelled;
     bool cache_frozen = false;
     std::ofstream routing_trace;
+    // STRATA_GLM_ROUTER_SCORE_TRACE=path (non-pipelined CPU-expert decode): per token and MoE layer, binary
+    // records {int32 position, layer, experts; float logits[experts]}; path + ".bias" holds each layer's bias once.
+    std::ofstream router_score_trace, router_bias_trace;
+    std::unique_ptr<Pinned> host_router_logits;
+    std::set<int> router_bias_written;
     struct PreparedExperts {
         cpu::NativeFmt format;
         std::unique_ptr<uint8_t[]> gate, up, down;
@@ -1594,7 +1817,7 @@ class Decoder {
     size_t native_expert_gpu_limit=[] {
         const char* v=std::getenv("STRATA_EXL3_GPU_EXPERT_CACHE_MIB");
         size_t mib=v?std::stoull(v):0;
-        if(mib>4096)throw std::invalid_argument("EXL3 GPU expert cache must be 0..4096 MiB");
+        if(mib>4096)throw std::invalid_argument("EXL3 GPU expert cache must be 0..12288 MiB");
         return mib*MiB;
     }();
     size_t native_expert_gpu_bytes=0,native_expert_gpu_hits=0,native_expert_gpu_misses=0,native_expert_gpu_copied=0;
@@ -2070,8 +2293,14 @@ class Decoder {
                     name == "hc_coeff" || name == "output" || name == "moe_ids" || name == "moe_weights";
         if (gpu && !main) {
             auto &p = phase[name];
-            if (!p || p->bytes < floats * 4)
-                p = gpu->allocate(floats * 4);
+            if (!p || p->bytes < floats * 4) {
+                try { p = gpu->allocate(floats * 4); }
+                catch (const std::runtime_error &) {
+                    throw std::runtime_error("GLM: prefill scratch exhausted by " + name + " (" + std::to_string(floats * 4 / MiB) +
+                                             " MiB, arena " + std::to_string(gpu->arena->bytes / MiB) + " MiB, position " +
+                                             std::to_string(position) + ", width " + std::to_string(batch_tokens) + ")");
+                }
+            }
             return *p;
         }
         // Verification can grow a one-token buffer after layer graphs captured
@@ -2160,6 +2389,7 @@ class Decoder {
             weights.erase(old);
             lru.erase(victim);
         }
+        DeviceTag tag(name.starts_with("blk.45.") ? "dense_mtp" : floating ? "dense_fp32" : "dense");
         auto data = std::make_unique<Device>(bytes);
         data->put(values.empty() ? (const void *)t.data() : values.data(), bytes);
         resident += bytes;
@@ -2373,7 +2603,8 @@ class Decoder {
             const int slot = target.groups % 2;
             const int fetched = n == 16 ? target.take(layer_id, first / 16) : -1;
             void *weights = fetched >= 0 ? cache.adopt(layer_id, first, target, fetched, stride, work_stream)
-                                         : cache.weights(layer_id, first, n, target, slot, G, U, D, work_stream);
+                                         : cache.weights(layer_id, first, n, target, slot, G, U, D, work_stream,
+                                                         lazy_experts ? hb : nullptr);
             const bool pooled = fetched >= 0 && weights == target.pool[fetched]->p;
             const bool release_after_products = pooled ||
                 (fetched < 0 && (!cache.early_ring_release || weights == target.slots[slot]->p));
@@ -2521,7 +2752,15 @@ class Decoder {
                         " token=" + std::to_string(position + i / E) +
                         " expert=" + std::to_string(i % E));
         }
-        k::glm_route_batch(logits.f(), bias.f(), (int *)ids.p, rw.f(), E, K, m.expert_scale, nt, stream);
+        const float *prefill_bonus = route_bonus_row(std::stoi(p.substr(4)));
+        if (prefill_bonus && ram_tier) {
+            // The memory tier learns the prompt's unbiased routes; the batch itself runs on the biased ones.
+            auto &want = buf("router_wanted", nt * K), &want_w = buf("router_wanted_weights", nt * K);
+            k::glm_route_batch(logits.f(), bias.f(), (int *)want.p, want_w.f(), E, K, m.expert_scale, nt, stream);
+            prefill_wanted.resize((size_t)nt * K);
+            check(cudaMemcpyAsync(prefill_wanted.data(), want.p, prefill_wanted.size() * 4, cudaMemcpyDeviceToHost, stream));
+        } else prefill_wanted.clear();
+        k::glm_route_batch(logits.f(), bias.f(), (int *)ids.p, rw.f(), E, K, m.expert_scale, nt, stream, prefill_bonus);
         if (stable_routes)
             k::glm_group_routes_stable((int *)ids.p, (int *)bounds.p, (int *)dest.p, (int *)source.p,
                                       (int *)cursor.p, E, K, nt, stream);
@@ -2562,6 +2801,18 @@ class Decoder {
                 for (int expert : history) ++frequency[expert];
             } else {
                 for (int e = 0; e < E; ++e) frequency[e] += hb[e + 1] - hb[e];
+            }
+        }
+        if (ram_tier) {
+            // The prompt's routes keep their experts in memory through the batch and warm for the decode.
+            const int layer_id = std::stoi(p.substr(4));
+            if (ram_tier->expert_bytes[layer_id]) {
+                for (int e = 0; e < E; ++e)
+                    if (hb[e + 1] != hb[e]) ram_used[(size_t)layer_id * E + e] = 1;
+                for (int e : prefill_wanted) {   // synchronized with the routing table above
+                    ram_tier->score[(size_t)layer_id * E + e] += 1.f;
+                    ram_tier->window[(size_t)layer_id * E + e] += 1.f;
+                }
             }
         }
         auto &result = buf("moe_results", (size_t)nt * K * H);
@@ -2851,14 +3102,17 @@ class Decoder {
         share_quant(x, m.hidden);
         mat(p + "ffn_gate_inp.weight", x, logits.f());
         auto &bias = weight(p + "exp_probs_b.bias");
-        if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, nt, stream);
-        else k::glm_router(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, stream);
+        const float *bonus = route_bonus_row(l);
+        if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, nt, stream, bonus);
+        else k::glm_router(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, stream, bonus);
         auto *host_ids = (int *)host_moe->p;
         auto *routing = (float *)(host_ids + cpu::MAXT * m.top_k);
         auto *activation = routing + cpu::MAXT * m.top_k;
         check(cudaMemcpyAsync(host_ids, ids.p, m.top_k * nt * sizeof(int), cudaMemcpyDeviceToHost, stream));
         check(cudaMemcpyAsync(routing, rw.p, m.top_k * nt * sizeof(float), cudaMemcpyDeviceToHost, stream));
         check(cudaMemcpyAsync(activation, x, m.hidden * nt * sizeof(float), cudaMemcpyDeviceToHost, stream));
+        if (host_router_logits)
+            check(cudaMemcpyAsync(host_router_logits->p, logits.p, (size_t)m.experts * nt * sizeof(float), cudaMemcpyDeviceToHost, stream));
         cudaStreamCaptureStatus status;
         check(cudaStreamIsCapturing(stream, &status));
         check(cudaEventRecordWithFlags(moe_ready, stream,
@@ -2941,6 +3195,7 @@ class Decoder {
         host_selected.assign(host_ids, host_ids + m.top_k * nt);
         auto &selected = host_selected;
         if(expert_observer)expert_observer->input(l,position,nt,m.hidden,m.top_k,selected.data(),activation);
+        ram_touch(l, selected.data(), nullptr, nt * m.top_k);
         if (routing_trace.is_open()) {
             for (int t = 0; t < nt; ++t) {
                 routing_trace << position + t << ',' << l;
@@ -2948,6 +3203,22 @@ class Decoder {
                 routing_trace << '\n';
             }
             if (!routing_trace) throw std::runtime_error("GLM: failed writing routing trace");
+        }
+        if (host_router_logits) {
+            if (router_bias_written.insert(l).second) {
+                const auto bias = weight(p + "exp_probs_b.bias").floats(m.experts);
+                const int header[2] = {l, m.experts};
+                router_bias_trace.write((const char *)header, sizeof(header));
+                router_bias_trace.write((const char *)bias.data(), bias.size() * sizeof(float));
+                router_bias_trace.flush();
+            }
+            for (int t = 0; t < nt; ++t) {
+                const int header[3] = {position + t, l, m.experts};
+                router_score_trace.write((const char *)header, sizeof(header));
+                router_score_trace.write((const char *)host_router_logits->p + (size_t)t * m.experts * sizeof(float),
+                                         (size_t)m.experts * sizeof(float));
+            }
+            if (!router_score_trace || !router_bias_trace) throw std::runtime_error("GLM: failed writing router score trace");
         }
         cpu::NativeFmt f;
         std::string error;
@@ -2959,6 +3230,12 @@ class Decoder {
         f.fuse_h_quant=artifact.has_expert_pack()&&(!std::getenv("STRATA_GLM_PACK_FUSE_QUANT")||std::string(std::getenv("STRATA_GLM_PACK_FUSE_QUANT"))!="0");
         auto prepared = prepared_experts.find(l);
         if (prepared != prepared_experts.end()) f = prepared->second.format;
+        f.canon = canon_types(G.tensor->type, D.tensor->type);
+        f.gate_skip = f.canon ? gate_skip[l] : 0.f;
+        layout.gate_skip = f.gate_skip;
+        if (f.canon) cpu::canon_gate_stats_layer(l);
+        if (f.canon && (prepared != prepared_experts.end() || remote_tp || direct || expert_cache[l]))
+            throw std::runtime_error("GLM: canonical experts need the plain CPU expert path or the pipelined tier");
         host_quant.resize(nt);
         for (auto &q : host_quant) q.resize(f.act_bytes);
         auto &quant = host_quant;
@@ -3051,7 +3328,7 @@ class Decoder {
         try {
             if (!direct && !hits.empty()) {
                 if (!cached_decode) cached_decode = std::make_unique<ResidentExecutor>();
-                cached_decode->run(layout, hits, primary_address, activation, nt, stream, decode_graphs);
+                cached_decode->run(layout, hits, primary_address, activation, nt, stream, decode_graphs, f.canon);
             }
             // Quantize on the host only when at least one CPU expert needs it.
             if (asynchronous && !jobs.empty() && !remote)
@@ -3116,7 +3393,7 @@ class Decoder {
         if(artifact.has_expert_pack()&&!remote) {
             if(!packed_cpu_sum){packed_cpu_sum=std::make_unique<Pinned>(cpu::MAXT*m.hidden*4);check(cudaEventCreateWithFlags(&packed_sum_uploaded,cudaEventDisableTiming));}
             check(cudaEventSynchronize(packed_sum_uploaded));
-            auto* sum=static_cast<float*>(packed_cpu_sum->p);pool.reduce_routed(results.data(),routing,sum,nt,m.top_k,m.hidden);
+            auto* sum=static_cast<float*>(packed_cpu_sum->p);pool.reduce_routed(results.data(),routing,sum,nt,m.top_k,m.hidden,f.canon);
             auto& routed=buf("moe_sum",m.hidden*nt);routed.put_async(sum,size_t(nt)*m.hidden*4,stream);check(cudaEventRecord(packed_sum_uploaded,stream));
             const float one=1;check(cublasSaxpy(blas,m.hidden*nt,&one,routed.f(),1,out,1));return;
         }
@@ -3144,7 +3421,10 @@ class Decoder {
     // GPU half of a pipelined MoE layer: route, publish, shared expert, then wait for the CPU's routed sum.
     // The pipelined MoE layer in two halves: publish (router, mailbox publication, resident experts, shared
     // expert) and combine (wait for the CPU sum and add it). Split verify enqueues the other group in between.
-    struct MoePending { int layer, slot, nt; int *ids; float *rw, *out; ResidentExecutor *executor; };
+    struct MoePending {
+        int layer, slot, nt; int *ids; float *rw, *out; ResidentExecutor *executor; bool canon;
+        const float *x = nullptr;
+    };
     MoePending enqueue_moe_publish(const std::string &p, int l, const float *x, float *out,
                                    const strata::core::LayerDescriptor &layer, int slot, ResidentExecutor *executor) {
         const int nt = batch_tokens;
@@ -3154,22 +3434,41 @@ class Decoder {
         share_quant(x, m.hidden);
         mat(p + "ffn_gate_inp.weight", x, logits.f());
         auto &bias = weight(p + "exp_probs_b.bias");
-        if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, nt, stream);
-        else k::glm_router(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, stream);
-        k::glm_mailbox_publish(mailbox->device_view, slot, (int *)ids.p, rw.f(), x, nt, mailbox->device_generation(), stream);
+        const float *bonus = route_bonus_row(l);
+        if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, nt, stream, bonus);
+        else k::glm_router(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, stream, bonus);
+        const int *wanted = nullptr;
+        if (bonus && ram_tier) {
+            // The unbiased selection, for the memory tier's read-ahead; its weights are not used.
+            auto &want = buf("moe_wanted", m.top_k * nt), &scratch = buf("moe_wanted_weights", m.top_k * nt);
+            if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)want.p, scratch.f(), m.experts, m.top_k, m.expert_scale, nt, stream);
+            else k::glm_router(logits.f(), bias.f(), (int *)want.p, scratch.f(), m.experts, m.top_k, m.expert_scale, stream);
+            wanted = (int *)want.p;
+        }
+        k::glm_mailbox_publish(mailbox->device_view, slot, (int *)ids.p, rw.f(), x, nt, mailbox->device_generation(), stream, wanted);
+        MoePending pending{l, slot, nt, (int *)ids.p, rw.f(), out, executor, canon_layer(l), x};
+        // Resident experts run here while the CPU computes the others.
         if (pipeline_residents) {
-            // Resident experts run here while the CPU computes the others; the combine adds both.
             const auto &G = artifact.at(p + "ffn_gate_exps.weight");
             const auto &D = artifact.at(p + "ffn_down_exps.weight");
             auto layout = k::native_expert_layout(G.tensor->type, D.tensor->type, m.hidden, layer.intermediate);
             layout.swiglu_limit = layer.swiglu_limit;
-            executor->run_device(layout, x, (int *)ids.p, l, stream, false, false, nt);
+            layout.gate_skip = pending.canon ? gate_skip[l] : 0.f;
+            pending.executor->run_device(layout, pending.x, pending.ids, pending.layer, stream, false, false, pending.nt, pending.canon);
+            // Canonical, strict: the CPU adds every route, so the resident rows go to the mailbox.
+            if (pending.canon && canon_strict())
+                k::glm_mailbox_post_rows(mailbox->device_view, pending.slot, pending.ids, pending.rw,
+                                         (const unsigned long long *)pending.executor->lookup->p + (size_t)pending.layer * 288,
+                                         pending.executor->output->f(), pending.nt, mailbox->device_generation(), stream);
         }
-        ffn(p, x, out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
-        return {l, slot, nt, (int *)ids.p, rw.f(), out, executor};
+        ffn(p, pending.x, pending.out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
+        return pending;
     }
     void enqueue_moe_combine(const MoePending &pending) {
-        if (pipeline_residents)
+        if (pending.canon && (canon_strict() || !pipeline_residents))
+            k::glm_mailbox_wait_add(mailbox->device_view, pending.slot, pending.out, pending.nt,
+                                    mailbox->device_generation(), stream);
+        else if (pipeline_residents)
             k::glm_mailbox_wait_add_resident(mailbox->device_view, pending.slot, pending.out, pending.nt,
                                              mailbox->device_generation(), pending.ids, pending.rw,
                                              (const unsigned long long *)pending.executor->lookup->p + (size_t)pending.layer * 288,
@@ -3191,6 +3490,7 @@ class Decoder {
         for (int j = 0; j < nt * K; ++j)
             if (selected[j] < 0 || selected[j] >= m.experts) throw std::runtime_error("GLM: invalid published expert");
         if (expert_observer) expert_observer->input(l, position, nt, H, K, selected, activation);
+        ram_touch(l, selected, mailbox->wanted(slot), nt * K);
         if (routing_trace.is_open()) {
             for (int t = 0; t < nt; ++t) {
                 routing_trace << position + t << ',' << l;
@@ -3214,12 +3514,19 @@ class Decoder {
                                                         std::string(std::getenv("STRATA_GLM_PACK_FUSE_QUANT")) != "0");
         auto prepared = prepared_experts.find(l);
         if (prepared != prepared_experts.end()) f = prepared->second.format;
+        f.canon = canon_types(G.tensor->type, D.tensor->type);
+        f.gate_skip = f.canon ? gate_skip[l] : 0.f;
+        if (f.canon) cpu::canon_gate_stats_layer(l);
+        if (f.canon && (prepared != prepared_experts.end() || remote_tp))
+            throw std::runtime_error("GLM: canonical experts cannot be combined with prepared experts or remote TP");
         host_quant.resize(nt);
         for (int t = 0; t < nt; ++t) {
             host_quant[t].resize(f.act_bytes);
             cpu::native_quant_act(f, activation + (size_t)t * H, host_quant[t].data());
         }
-        host_results.resize((size_t)nt * K * H);
+        // Canonical rows go straight into the mailbox: the GPU reads the ones its part of the chain needs.
+        if (!f.canon) host_results.resize((size_t)nt * K * H);
+        float *const results = f.canon ? mailbox->rows(slot) : host_results.data();
         host_jobs.clear();
         std::array<int, 512> job_of;
         job_of.fill(-1);
@@ -3227,6 +3534,11 @@ class Decoder {
         const auto *resident = pipeline_residents ? (const unsigned long long *)cached_decode->host_lookup->p + (size_t)l * 288 : nullptr;
         std::array<float, cpu::MAXT * 8> cpu_weights;
         if (nt * K > (int)cpu_weights.size()) throw std::runtime_error("GLM: step pipeline route count");
+        // Canonical sum with resident routes: their rows arrive in the mailbox from the GPU, and this thread adds
+        // all routes after the pool has written the others. Without resident routes the pool's last writers do.
+        bool gpu_rows = false;
+        if (f.canon && resident && canon_strict())
+            for (int j = 0; j < nt * K; ++j) gpu_rows = gpu_rows || (routing[j] != 0.f && resident[selected[j]]);
         for (int j = 0; j < nt * K; ++j) {
             const int e = selected[j], t = j / K;
             ++cache_entries;
@@ -3234,16 +3546,17 @@ class Decoder {
             if (routing[j] == 0.f) {
                 // Pruned by STRATA_GLM_ROUTE_MIN_SHARE; contributes nothing.
                 ++pruned_routes;
-                std::fill_n(host_results.data() + (size_t)j * H, H, 0.f);
+                if (!f.canon) std::fill_n(results + (size_t)j * H, H, 0.f);
                 continue;
             }
             if (resident && resident[e]) {
                 // The GPU adds this route; the CPU's fixed-order sum sees an exact zero.
                 ++cache_hits;
                 cpu_weights[j] = 0.f;
-                std::fill_n(host_results.data() + (size_t)j * H, H, 0.f);
+                if (!f.canon) std::fill_n(results + (size_t)j * H, H, 0.f);
                 continue;
             }
+            if (gpu_rows) cpu_weights[j] = 0.f;
             if (job_of[e] < 0) {
                 job_of[e] = (int)host_jobs.size();
                 auto &job = host_jobs.emplace_back();
@@ -3262,7 +3575,7 @@ class Decoder {
             auto &job = host_jobs[job_of[e]];
             const int slot = job.nt++;
             job.nact[slot] = host_quant[t].data();
-            job.out[slot] = host_results.data() + (size_t)j * H;
+            job.out[slot] = results + (size_t)j * H;
         }
         // Cross-node TP: the worker's rows of the same routes run while this node computes its own rows; its
         // router-weighted partial sums are added after the local sum.
@@ -3279,11 +3592,16 @@ class Decoder {
             }
         }
         if (layer_flow)
-            pool.run_layer_native(run_f, host_jobs.data(), host_jobs.size(), host_results.data(), cpu_weights.data(),
+            pool.run_layer_native(run_f, host_jobs.data(), host_jobs.size(), results, cpu_weights.data(),
                                   mailbox->sum(slot), nt, K);
         else {
             if (!host_jobs.empty()) pool.run_split_multi_native(run_f, host_jobs.data(), host_jobs.size());
-            pool.reduce_routed(host_results.data(), cpu_weights.data(), mailbox->sum(slot), nt, K, H);
+            pool.reduce_routed(results, cpu_weights.data(), mailbox->sum(slot), nt, K, H, f.canon);
+        }
+        if (gpu_rows) {
+            mailbox->wait_rows(slot, launch_failed);
+            for (int t = 0; t < nt; ++t)
+                cpu::canon_route_sum(results + (size_t)t * K * H, routing + (size_t)t * K, mailbox->sum(slot) + (size_t)t * H, K, H, 0, H);
         }
         if (remote) remote_tp->finish(mailbox->sum(slot));
         if (remote && remote_tp->check) remote_tp_check(l, f, G, U, D, nt, K, cpu_weights.data(), mailbox->sum(slot));
@@ -3295,21 +3613,334 @@ class Decoder {
     // later layers (otherwise idle time); the upload into the freed slot starts after the step completes, on
     // its own stream; and a finished upload joins the lookup at a later step start.
     bool tier_adapt = std::getenv("STRATA_GLM_TIER_ADAPT") != nullptr;
+    // STRATA_GLM_CANON=1: Q2_K/Q3_K routed experts use the canonical arithmetic of canon_expert.hpp on the CPU and
+    // on the GPU, and the routed sum is the canonical chain, so logits do not depend on which experts are resident.
+    const bool canon_experts = [] { const char *v = std::getenv("STRATA_GLM_CANON"); return v && std::string(v) == "1"; }();
+    // STRATA_GLM_ROUTE_AFFINITY (opt-in, lossy): GPU-resident experts win selection ties within this margin, in
+    // probability units. The per-expert bonuses are rebuilt at each step start with the lookup and uploaded once;
+    // the pipelined router reads its layer's row.
+    const float route_affinity = [] {
+        const char *v = std::getenv("STRATA_GLM_ROUTE_AFFINITY");
+        const float x = v ? std::strtof(v, nullptr) : 0.f;
+        if (!(x >= 0.f && x <= 2.f)) throw std::invalid_argument("STRATA_GLM_ROUTE_AFFINITY must be in [0, 2]");
+        return x;
+    }();
+    std::unique_ptr<Pinned> host_route_bonus;
+    std::unique_ptr<Device> route_bonus;
+    bool route_bonus_active = false, route_bonus_dirty = true;
+    const float *route_bonus_row(int l) const {
+        return route_bonus_active && l >= 0 && l < (int)m.layers.size() ? route_bonus->f((size_t)l * m.experts) : nullptr;
+    }
+    // STRATA_GLM_PREFER_RESIDENT_MIB=N (opt-in, lossy; needs STRATA_GLM_MAPPED_LAZY=1): for a host smaller than
+    // the routed experts. About N MiB of experts stay in memory; routing selects among those (a bonus larger than
+    // any score difference), and an expert the unbiased router asks for is read in the background and joins at a
+    // later step, displacing the coldest one. Decode never waits for the disk. Which experts are in memory depends
+    // on read completion times, so outputs are not reproducible run to run.
+    std::unique_ptr<RamTier> ram_tier;
+    std::vector<int> prefill_wanted;
+    bool lazy_experts = false;                     // STRATA_GLM_MAPPED_LAZY: prefill stages only routed experts
+    std::vector<uint8_t> ram_used;                 // experts routed in the current step: not evicted at its end
+    std::map<const void *, int> ram_files;         // one descriptor per mapped GGUF, for page-cache advice
+    // Selection bonus of in-memory experts. The default exceeds any score difference, so routing never leaves the
+    // memory set. STRATA_GLM_RAM_MARGIN=0.10 (hybrid): in-memory experts win near ties only; an expert outside the
+    // set that still wins is read from the file on first use (the decode waits for it) and joins the set.
+    const float kResidentBonus = tier_setting("STRATA_GLM_RAM_MARGIN", 4.f);
+    size_t ram_misses = 0, ram_miss_bytes = 0;
+    const float kRamDecay = tier_setting("STRATA_GLM_RAM_DECAY", 0.995f);
+    const float kRamAdmit = tier_setting("STRATA_GLM_RAM_ADMIT", 8.f);
+    const size_t kRamInflight = (size_t)tier_setting("STRATA_GLM_RAM_INFLIGHT", 32);
+    // Called at each step start, after the resident lookup has been rebuilt and before the step is enqueued.
+    void refresh_route_bonus() {
+        const bool affinity = route_affinity > 0 && pipelining && pipeline_residents;
+        const bool active = affinity || ram_tier;
+        // Affinity follows the tier, which may change every step; memory residency sets the dirty flag itself.
+        if (!active) { route_bonus_active = false; return; }
+        if (route_bonus_active && !affinity && !route_bonus_dirty) return;
+        const size_t count = m.layers.size() * (size_t)m.experts;
+        if (!route_bonus) {
+            host_route_bonus = std::make_unique<Pinned>(count * sizeof(float));
+            route_bonus = std::make_unique<Device>(count * sizeof(float));
+        }
+        auto *bonus = (float *)host_route_bonus->p;
+        std::fill_n(bonus, count, 0.f);
+        if (ram_tier)
+            for (size_t i = 0; i < count; ++i)
+                if (ram_tier->state[i] == RamTier::Resident) bonus[i] = kResidentBonus;
+        if (affinity)
+            for (size_t l = 0; l < decode_resident.size(); ++l)
+                for (const auto &[expert, slot] : decode_resident[l]) bonus[l * m.experts + expert] += route_affinity;
+        check(cudaStreamSynchronize(stream));   // the previous step's kernels have finished with the old bonuses
+        route_bonus->put_async(bonus, count * sizeof(float), stream);
+        route_bonus_active = true;
+        route_bonus_dirty = affinity;
+    }
+    // Builds the memory tier over the lazily mapped experts and reads the initial selection.
+    void prepare_ram_tier() {
+        const char *value = std::getenv("STRATA_GLM_PREFER_RESIDENT_MIB");
+        if (!value || ram_tier) return;
+        const size_t mib = std::stoull(value);
+        if (mib < 1024 || numa_experts.empty()) throw std::invalid_argument("GLM: prefer-resident needs lazy mapped expert rows and at least 1024 MiB");
+        const int E = m.experts;
+        ram_tier = std::make_unique<RamTier>((int)m.layers.size(), E, mib * MiB);
+        ram_used.assign(m.layers.size() * (size_t)E, 0);
+        auto parts = [this](int l) {
+            const auto p = "blk." + std::to_string(l) + ".ffn_";
+            return std::array<const strata::core::ArtifactTensor *, 3>{&artifact.at(p + "gate_exps.weight"),
+                &artifact.at(p + "up_exps.weight"), &artifact.at(p + "down_exps.weight")};
+        };
+        for (const auto &[l, entry] : numa_experts) {
+            size_t bytes = 0;
+            for (const auto *t : parts(l)) {
+                bytes += t->bytes / E;
+                if (!ram_files.count(t->file)) {
+#ifdef __linux__
+                    const int fd = ::open(t->file->path().c_str(), O_RDONLY);
+                    if (fd < 0) throw std::runtime_error("GLM: cannot open " + t->file->path());
+                    ram_files[t->file] = fd;
+#endif
+                }
+            }
+            ram_tier->expert_bytes[l] = bytes;
+        }
+        ram_tier->ranges = [this, parts, E](int l, int e) {
+            std::vector<RamTier::Range> out;
+            for (const auto *t : parts(l)) {
+                const size_t bytes = t->bytes / E, half = bytes / 2;
+                const uint8_t *data = t->data() + (size_t)e * bytes;
+                const uint64_t offset = t->file->data_start() + t->tensor->offset + (uint64_t)e * bytes;
+                const int fd = ram_files.at(t->file);
+                // Output rows split evenly between the nodes, as the node-owned jobs read them.
+                out.push_back({data, half, fd, offset, 0});
+                out.push_back({data + half, bytes - half, fd, offset + half, 1});
+            }
+            return out;
+        };
+        // Initial selection: the calibration prior's hottest experts, at least two selections' worth per layer.
+        const auto prior = load_expert_prior();
+        struct Item { double share; int layer, expert; };
+        std::vector<Item> order;
+        size_t selected = 0, count = 0;
+        for (const auto &[l, entry] : numa_experts) {
+            std::vector<Item> layer;
+            for (int e = 0; e < E; ++e) layer.push_back({prior.empty() ? 1. / (e + 1) : prior[l][e], l, e});
+            std::sort(layer.begin(), layer.end(), [](const Item &a, const Item &b) { return a.share != b.share ? a.share > b.share : a.expert < b.expert; });
+            for (int i = 0; i < E; ++i) {
+                if (i < 2 * m.top_k) {
+                    ram_tier->request(l, layer[i].expert); selected += ram_tier->expert_bytes[l]; ++count;
+                } else order.push_back(layer[i]);
+            }
+        }
+        std::sort(order.begin(), order.end(), [](const Item &a, const Item &b) {
+            return a.share != b.share ? a.share > b.share : a.layer != b.layer ? a.layer < b.layer : a.expert < b.expert;
+        });
+        for (const auto &item : order) {
+            if (selected + ram_tier->expert_bytes[item.layer] > ram_tier->budget) break;
+            ram_tier->request(item.layer, item.expert); selected += ram_tier->expert_bytes[item.layer]; ++count;
+        }
+        const auto start = std::chrono::steady_clock::now();
+        ram_tier->wait_idle();
+        ram_tier->settle([](int) { return false; });
+        route_bonus_dirty = true;
+        std::cerr << "RAM_TIER budget_MiB=" << mib << " experts=" << count << " resident_MiB=" << ram_tier->resident_bytes / double(MiB)
+                  << " read_ms=" << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() << '\n';
+    }
+    // Routed experts stay warm; an expert the unbiased router wanted but could not have gains score too.
+    void ram_touch(int l, const int *selected, const int *wanted, int routes) {
+        if (!ram_tier || !ram_tier->expert_bytes[l]) return;
+        // Scores count the unbiased router's choices: the routes taken favour residents and would only
+        // confirm the current set.
+        const size_t base = (size_t)l * m.experts;
+        const int *unbiased = wanted ? wanted : selected;
+        for (int j = 0; j < routes; ++j) {
+            ram_tier->score[base + unbiased[j]] += 1.f;
+            ram_tier->window[base + unbiased[j]] += 1.f;
+            ram_used[base + selected[j]] = 1;
+            // A selected expert outside the set is about to be read by the workers' page faults: it is resident
+            // from now on, and the budget is restored at the end of the step.
+            auto &state = ram_tier->state[base + selected[j]];
+            if (state == RamTier::Absent) {
+                state = RamTier::Resident;
+                ram_tier->resident_bytes += ram_tier->expert_bytes[l];
+                ++ram_misses; ram_miss_bytes += ram_tier->expert_bytes[l];
+                route_bonus_dirty = true;
+            }
+        }
+    }
+    // Rebalance (STRATA_GLM_RAM_REBALANCE=N tokens; default 512 while the context is under 4096 tokens, then
+    // 2048): the set becomes the experts with the most unbiased routes in the window (the long-term score breaks
+    // ties), within the budget. Leaving experts are released first, then the missing ones read in the background.
+    size_t ram_window_tokens = 0, ram_rebalances = 0, ram_last_rebalance = 0;
+    const int kRamRebalance = (int)tier_setting("STRATA_GLM_RAM_REBALANCE", 0);
+    const float kRamHistory = tier_setting("STRATA_GLM_RAM_HISTORY", 0.25f);
+    // A rebalance needs this many tokens of evidence, and replaces at most this share of the budget: every replaced
+    // expert is a disk read while decode runs.
+    const int kRamMinWindow = (int)tier_setting("STRATA_GLM_RAM_MIN_WINDOW", 256);
+    const float kRamChurn = tier_setting("STRATA_GLM_RAM_CHURN", 0.05f);
+    void ram_rebalance() {
+        auto &t = *ram_tier;
+        std::vector<int> order;
+        for (int index = 0; index < (int)t.state.size(); ++index)
+            if (t.expert_bytes[index / t.experts]) order.push_back(index);
+        auto value = [&](int i) { return t.window[i] + kRamHistory * t.score[i]; };
+        std::sort(order.begin(), order.end(), [&](int a, int b) { return value(a) != value(b) ? value(a) > value(b) : a < b; });
+        std::vector<uint8_t> target(t.state.size());
+        size_t bytes = 0;
+        // Every layer keeps at least two selections' worth, so routing always has a choice.
+        std::vector<int> per_layer(t.layers);
+        for (int index : order) {
+            const int layer = index / t.experts;
+            if (per_layer[layer] >= 2 * m.top_k) continue;
+            target[index] = 1; bytes += t.expert_bytes[layer]; ++per_layer[layer];
+        }
+        for (int index : order) {
+            if (target[index]) continue;
+            if (bytes + t.expert_bytes[index / t.experts] > t.budget) continue;
+            target[index] = 1; bytes += t.expert_bytes[index / t.experts];
+        }
+        // Joining in value order and leaving in reverse value order, up to the churn cap in bytes.
+        const size_t cap = (size_t)(kRamChurn * t.budget);
+        size_t moved = 0, leave = 0, join = 0;
+        std::vector<int> joins, leaves;
+        for (int index : order) if (target[index] && t.state[index] == RamTier::Absent) joins.push_back(index);
+        for (auto it = order.rbegin(); it != order.rend(); ++it)
+            if (!target[*it] && t.state[*it] == RamTier::Resident && !ram_used[*it]) leaves.push_back(*it);
+        size_t li = 0;
+        for (int index : joins) {
+            const size_t bytes_in = t.expert_bytes[index / t.experts];
+            if (moved + bytes_in > cap) break;
+            size_t freed = 0;
+            while (freed < bytes_in && li < leaves.size()) {   // make room first, so the budget holds
+                const int out = leaves[li++];
+                freed += t.expert_bytes[out / t.experts]; t.evict(out); ++leave;
+            }
+            if (freed < bytes_in && t.resident_bytes + bytes_in > t.budget) break;
+            if (t.request(index / t.experts, index % t.experts)) { ++join; moved += bytes_in; }
+        }
+        std::fill(t.window.begin(), t.window.end(), 0.f);
+        ++ram_rebalances;
+        route_bonus_dirty = true;
+        std::cerr << "RAM_REBALANCE position=" << position << " leave=" << leave << " join=" << join << '\n';
+    }
+    // After each step: finished reads join, the coldest leave, and the most wanted absent experts start reading.
+    void ram_plan() {
+        if (!ram_tier) return;
+        auto &t = *ram_tier;
+        if (t.settle([&](int index) { return ram_used[index] != 0; })) route_bonus_dirty = true;
+        const int interval = std::max(kRamMinWindow, kRamRebalance > 0 ? kRamRebalance : position < 4096 ? 512 : 2048);
+        if ((size_t)position >= ram_last_rebalance + interval) {
+            ram_rebalance();
+            ram_last_rebalance = position;
+        }
+        std::fill(ram_used.begin(), ram_used.end(), 0);
+        // Between rebalances only experts the unbiased router keeps asking for are read (admit threshold).
+        const size_t pending = t.pending();
+        if (pending < kRamInflight) {
+            std::vector<int> wanted;
+            for (int index = 0; index < (int)t.state.size(); ++index)
+                if (t.state[index] == RamTier::Absent && t.score[index] >= kRamAdmit) wanted.push_back(index);
+            const size_t n = std::min(wanted.size(), kRamInflight - pending);
+            std::partial_sort(wanted.begin(), wanted.begin() + n, wanted.end(),
+                              [&](int a, int b) { return t.score[a] != t.score[b] ? t.score[a] > t.score[b] : a < b; });
+            for (size_t i = 0; i < n; ++i) t.request(wanted[i] / t.experts, wanted[i] % t.experts);
+        }
+        for (auto &v : t.score) v *= kRamDecay;
+    }
+    // STRATA_GLM_GATE_SKIP=thresholds.json (opt-in, lossy; canonical mode): {"layers":{"3":tau,...}} from
+    // tools/glm_gate_thresholds.py. A routed expert's unit whose |silu(gate)| is below its layer's tau contributes
+    // zero on both devices, and the CPU does not read that unit's up row.
+    const std::vector<float> gate_skip = [] {
+        std::vector<float> taus(64, 0.f);
+        const char *path = std::getenv("STRATA_GLM_GATE_SKIP");
+        if (!path || !*path) return taus;
+        const auto json = strata::artifact::read_json(path);
+        for (const auto &[layer, tau] : json.at("layers").object) {
+            const float value = tau.real();
+            if (std::stoul(layer) >= taus.size() || !(value >= 0.f && value < 1e3f)) throw std::invalid_argument("STRATA_GLM_GATE_SKIP: invalid entry");
+            taus[std::stoul(layer)] = value;
+        }
+        return taus;
+    }();
+    // Strict combine: resident rows travel to the host and the CPU adds all routes in the canonical order, so logits
+    // do not depend on placement. When routing itself follows residency (affinity, prefer-resident) that invariance
+    // has nothing to protect, and the GPU adds its rows to the CPU's sum on the device instead: no row transfers.
+    // STRATA_GLM_CANON_COMBINE=strict|device overrides.
+    bool canon_strict() const {
+        static const char *mode = std::getenv("STRATA_GLM_CANON_COMBINE");
+        if (mode && std::string(mode) == "strict") return true;
+        if (mode && std::string(mode) == "device") return false;
+        return !(route_affinity > 0) && !ram_tier;
+    }
+    bool canon_types(int gate, int down) const {
+        return canon_experts && (gate == 10 || gate == 11) && (down == 10 || down == 11);
+    }
+    bool canon_layer(int l) const {
+        const auto p = "blk." + std::to_string(l) + ".";
+        return canon_types(artifact.at(p + "ffn_gate_exps.weight").tensor->type, artifact.at(p + "ffn_down_exps.weight").tensor->type);
+    }
     std::vector<std::vector<float>> tier_score;
+    // Expected routes per token of each expert when the tier was selected (prompt routes blended with the prior).
+    // Scores start from it, so the first routed experts do not displace the selection before it has been used.
+    std::vector<std::vector<float>> tier_rate;
     struct TierCopy {
         int layer = 0, expert = 0, staging = -1, victim_layer = -1, victim_expert = -1;
         std::unique_ptr<Device> entry;
         std::array<const uint8_t *, 3> source{};
         std::array<size_t, 3> sizes{};
-        size_t staged = 0, bytes = 0;
+        size_t bytes = 0;
+        std::atomic<bool> staged{false};
         bool uploading = false;
+        uint64_t selected_step = 0, uploaded_step = 0;
     };
-    std::vector<TierCopy> tier_copies;
+    std::list<TierCopy> tier_copies;
+    // Copies a promoted expert's bytes into pinned staging off the decode threads.
+    struct TierStager {
+        std::mutex mutex;
+        std::condition_variable wake, idle;
+        std::deque<std::pair<TierCopy *, uint8_t *>> jobs;
+        bool busy = false, stopping = false;
+        std::thread thread{[this] {
+            std::unique_lock<std::mutex> lock(mutex);
+            for (;;) {
+                wake.wait(lock, [&] { return stopping || !jobs.empty(); });
+                if (stopping) return;
+                auto [copy, dst] = jobs.front();
+                jobs.pop_front();
+                busy = true;
+                lock.unlock();
+                size_t offset = 0;
+                for (int part = 0; part < 3; ++part) {
+                    std::memcpy(dst + offset, copy->source[part], copy->sizes[part]);
+                    offset += copy->sizes[part];
+                }
+                copy->staged.store(true, std::memory_order_release);
+                lock.lock();
+                busy = false;
+                if (jobs.empty()) idle.notify_all();
+            }
+        }};
+        void submit(TierCopy *copy, uint8_t *dst) {
+            { std::lock_guard<std::mutex> lock(mutex); jobs.emplace_back(copy, dst); }
+            wake.notify_one();
+        }
+        void wait_idle() {
+            std::unique_lock<std::mutex> lock(mutex);
+            idle.wait(lock, [&] { return jobs.empty() && !busy; });
+        }
+        ~TierStager() {
+            { std::lock_guard<std::mutex> lock(mutex); stopping = true; }
+            wake.notify_one();
+            thread.join();
+        }
+    };
+    std::unique_ptr<TierStager> tier_stager;
     std::unique_ptr<Pinned> tier_staging;
     std::vector<int> tier_free_staging;
     std::vector<cudaEvent_t> tier_events;
     cudaStream_t tier_stream = nullptr;
     uint64_t tier_swaps = 0;
+    // Tier changes follow step counts, not completion times, so a run's residency sequence is reproducible: a
+    // promotion selected in step s uploads after step s + 1 and joins the lookup at the start of step s + 3.
+    uint64_t tier_step = 0;
     static constexpr size_t kTierStagingBytes = 16 * MiB;
     static float tier_setting(const char *name, float fallback) {
         const char *value = std::getenv(name);
@@ -3318,10 +3949,16 @@ class Decoder {
     const float kTierDecay = tier_setting("STRATA_GLM_TIER_DECAY", 0.98f);
     const float kTierAdmit = tier_setting("STRATA_GLM_TIER_ADMIT", 2.f);
     const float kTierMargin = tier_setting("STRATA_GLM_TIER_MARGIN", 1.5f);
-    const size_t kTierInflight = (size_t)tier_setting("STRATA_GLM_TIER_INFLIGHT", 8);
+    const size_t kTierInflight = (size_t)tier_setting("STRATA_GLM_TIER_INFLIGHT", 16);
+    const float kTierSeed = tier_setting("STRATA_GLM_TIER_SEED", 50.f);   // 1 / (1 - decay): a steady rate's score
     void tier_begin_step() {
         if (!tier_adapt || !pipelining) return;
-        if (tier_score.empty()) tier_score.assign(m.layers.size(), std::vector<float>(m.experts));
+        if (tier_score.empty()) {
+            tier_score.assign(m.layers.size(), std::vector<float>(m.experts));
+            if (tier_rate.size() == tier_score.size())
+                for (size_t l = 0; l < tier_score.size(); ++l)
+                    for (int e = 0; e < m.experts; ++e) tier_score[l][e] = kTierSeed * tier_rate[l][e];
+        }
         // Pinned staging and CUDA objects are created here, before the step launches: allocating them while
         // the GPU waits on the service thread could synchronize with that wait.
         if (!tier_staging) {
@@ -3333,81 +3970,77 @@ class Decoder {
                 tier_events.push_back(event);
             }
             check(cudaStreamCreateWithFlags(&tier_stream, cudaStreamNonBlocking));
+            tier_stager = std::make_unique<TierStager>();
         }
+        ++tier_step;
         for (auto &layer : tier_score) for (auto &v : layer) v *= kTierDecay;
         for (auto it = tier_copies.begin(); it != tier_copies.end();) {
-            if (!it->uploading) { ++it; continue; }
-            const auto status = cudaEventQuery(tier_events[it->staging]);
-            if (status == cudaErrorNotReady) { cudaGetLastError(); ++it; continue; }
-            check(status);
+            if (!it->uploading || tier_step < it->uploaded_step + 2) { ++it; continue; }
+            check(cudaEventSynchronize(tier_events[it->staging]));
             decode_resident[it->layer].emplace(it->expert, std::move(it->entry));
             tier_free_staging.push_back(it->staging);
             it = tier_copies.erase(it);
         }
     }
     // Called by the CPU service before it releases layer l, so the GPU's later lookup copies see the change.
-    void tier_select(int l, const int *selected, int routes, const unsigned long long *resident) {
+    void tier_select(int l, const int *selected, int routes, const unsigned long long *) {
         if (!tier_adapt || !tier_staging) return;
         auto &score = tier_score[l];
         for (int j = 0; j < routes; ++j) score[selected[j]] += 1.f;
-        for (int j = 0; j < routes; ++j) {
-            const int e = selected[j];
-            if (resident[e] || score[e] < kTierAdmit || tier_free_staging.empty()) continue;
-            bool queued = false;
-            for (const auto &c : tier_copies) queued = queued || (c.layer == l && c.expert == e);
-            if (queued) continue;
-            const auto p = "blk." + std::to_string(l) + ".";
+    }
+    // After a step: pairs the hottest non-resident experts with the coldest resident ones, as many as staging
+    // slots are free. A victim leaves decode_resident here, so the next step's lookup no longer lists it.
+    void tier_plan() {
+        if (!tier_adapt || !tier_staging || tier_free_staging.empty() || tier_score.empty()) return;
+        struct Item { float score; int layer, expert; };
+        std::vector<Item> wanted, cold;
+        for (size_t l = 0; l < tier_score.size(); ++l) {
+            if (m.layers[l].ffn != strata::core::FfnKind::Moe || (canon_experts && !canon_layer((int)l))) continue;
+            const auto &score = tier_score[l];
+            for (int e = 0; e < m.experts; ++e)
+                if (score[e] >= kTierAdmit && !decode_resident[l].count(e)) wanted.push_back({score[e], (int)l, e});
+            for (const auto &[e, slot] : decode_resident[l]) cold.push_back({score[e], (int)l, e});
+        }
+        for (const auto &c : tier_copies)
+            std::erase_if(wanted, [&](const Item &w) { return w.layer == c.layer && w.expert == c.expert; });
+        const size_t n = std::min({wanted.size(), cold.size(), tier_free_staging.size()});
+        if (!n) return;
+        const auto hotter = [](const Item &a, const Item &b) {
+            return a.score != b.score ? a.score > b.score : a.layer != b.layer ? a.layer < b.layer : a.expert < b.expert;
+        };
+        const auto colder = [](const Item &a, const Item &b) {
+            return a.score != b.score ? a.score < b.score : a.layer != b.layer ? a.layer < b.layer : a.expert < b.expert;
+        };
+        std::partial_sort(wanted.begin(), wanted.begin() + n, wanted.end(), hotter);
+        std::partial_sort(cold.begin(), cold.begin() + n, cold.end(), colder);
+        for (size_t i = 0; i < n; ++i) {
+            const auto &w = wanted[i], &v = cold[i];
+            if (w.score <= kTierMargin * v.score) break;
+            const auto p = "blk." + std::to_string(w.layer) + ".";
             const auto &g = artifact.at(p + "ffn_gate_exps.weight"), &u = artifact.at(p + "ffn_up_exps.weight"),
                        &d = artifact.at(p + "ffn_down_exps.weight");
             const std::array<size_t, 3> sizes{g.bytes / m.experts, u.bytes / m.experts, d.bytes / m.experts};
             const size_t bytes = sizes[0] + sizes[1] + sizes[2];
-            if (bytes > kTierStagingBytes) continue;
-            int victim_layer = -1, victim_expert = -1;
-            float coldest = score[e] / kTierMargin;
-            for (size_t vl = 0; vl < decode_resident.size(); ++vl)
-                for (const auto &[ve, slot] : decode_resident[vl])
-                    if (slot->bytes == bytes && tier_score[vl][ve] < coldest) {
-                        coldest = tier_score[vl][ve]; victim_layer = (int)vl; victim_expert = ve;
-                    }
-            if (victim_layer < 0) continue;
-            auto found = decode_resident[victim_layer].find(victim_expert);
-            TierCopy copy;
-            copy.layer = l; copy.expert = e; copy.entry = std::move(found->second);
-            copy.victim_layer = victim_layer; copy.victim_expert = victim_expert;
+            auto found = decode_resident[v.layer].find(v.expert);
+            if (bytes > kTierStagingBytes || found->second->bytes != bytes) continue;
+            auto &copy = tier_copies.emplace_back();
+            copy.layer = w.layer; copy.expert = w.expert; copy.entry = std::move(found->second);
+            copy.victim_layer = v.layer; copy.victim_expert = v.expert;
             copy.sizes = sizes; copy.bytes = bytes;
-            copy.source = {g.data() + e * sizes[0], u.data() + e * sizes[1], d.data() + e * sizes[2]};
+            copy.source = {g.data() + w.expert * sizes[0], u.data() + w.expert * sizes[1], d.data() + w.expert * sizes[2]};
             copy.staging = tier_free_staging.back();
             tier_free_staging.pop_back();
-            // The victim leaves decode_resident now but keeps its lookup entry for the rest of this step: the
-            // GPU may still copy this layer's lookup, and the slot is overwritten only after the step completes.
-            decode_resident[victim_layer].erase(found);
-            tier_copies.push_back(std::move(copy));
+            copy.selected_step = tier_step;
+            decode_resident[v.layer].erase(found);
+            tier_stager->submit(&copy, (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes);
         }
-    }
-    // Stages up to `budget` bytes while the service waits for the GPU; returns false when nothing is pending.
-    bool tier_stage(size_t budget) {
-        for (auto &copy : tier_copies) {
-            if (copy.uploading || copy.staged == copy.bytes) continue;
-            auto *dst = (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes;
-            size_t offset = 0;
-            for (int part = 0; part < 3 && budget; ++part) {
-                const size_t begin = std::max(copy.staged, offset), end = offset + copy.sizes[part];
-                if (begin < end) {
-                    const size_t n = std::min(budget, end - begin);
-                    std::memcpy(dst + begin, copy.source[part] + (begin - offset), n);
-                    copy.staged = begin + n;
-                    budget -= n;
-                }
-                offset = end;
-            }
-            return true;
-        }
-        return false;
     }
     // After the step's final synchronization: every freed slot is idle, so staged copies may upload.
     void tier_submit() {
         for (auto &copy : tier_copies) {
-            if (copy.uploading || copy.staged != copy.bytes) continue;
+            if (copy.uploading || copy.selected_step >= tier_step) continue;
+            while (!copy.staged.load(std::memory_order_acquire)) std::this_thread::yield();
+            copy.uploaded_step = tier_step;
             check(cudaMemcpyAsync(copy.entry->p, (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes,
                                   copy.bytes, cudaMemcpyHostToDevice, tier_stream));
             check(cudaEventRecord(tier_events[copy.staging], tier_stream));
@@ -3416,6 +4049,7 @@ class Decoder {
         }
     }
     void tier_drain() {
+        if (tier_stager) tier_stager->wait_idle();
         if (tier_stream) check(cudaStreamSynchronize(tier_stream));
         // An upload that finished holds its new expert; a slot not yet uploaded still holds its victim.
         for (auto &copy : tier_copies) {
@@ -3434,13 +4068,11 @@ class Decoder {
     void service_pipeline(const std::vector<ServiceItem> &items) {
         for (const auto &item : items) {
             check_stop();
-            if (tier_adapt)
-                while (!mailbox->published(item.slot) && tier_stage(16 * 1024)) {}
             mailbox->wait_published(item.slot, launch_failed);
             trace_seen();
             cpu_moe_mailbox(item.layer, item.slot, item.tokens, item.position);
             mailbox->complete(item.slot);
-            trace_done();
+            trace_done(item.slot);
         }
     }
     // The launcher thread enqueues the whole step while this thread runs each MoE layer's CPU experts.
@@ -4256,6 +4888,7 @@ class Decoder {
         auto configure = [&](int device, GpuPrefill* prefill, PrefillGroupCache& cache, bool compact) {
             if (!prefill) return;
             prefill->numa_sources=&numa_sources;prefill->trimmed_sources=&trimmed_sources;
+            prefill->place_by_node=lazy_experts;
             prefill->defer_device_wait = defer_copy_wait;
             cache.preallocate = preallocate_groups;
             cache.early_ring_release = restore_prefill_groups;
@@ -4387,6 +5020,7 @@ class Decoder {
         decode_resident.resize(m.layers.size());
         remote_decode_resident.resize(m.layers.size());
         expert_cache.resize(m.layers.size());
+        DeviceTag state_tag("state");
         for (size_t l = 0; l < states.size(); ++l) {
             auto &s = states[l];
             if (m.layers[l].mixer == strata::core::MixerKind::Kda) {
@@ -4553,7 +5187,7 @@ class Decoder {
         pipelining = false;
         if (pipeline_ready(nt) && !mailbox) {
             if (m.experts > 512) throw std::runtime_error("GLM: step pipeline expert count");
-            mailbox = std::make_unique<StepMailbox>(mailbox_group_stride() * (split_verify ? 2 : 1), cpu::MAXT, m.top_k, m.hidden);
+            mailbox = std::make_unique<StepMailbox>(mailbox_group_stride() * (split_verify ? 2 : 1), cpu::MAXT, m.top_k, m.hidden, canon_experts, bool(ram_tier));
         }
         pipelining = pipeline_ready(nt);
         PipelineGuard pipeline_guard{*this};
@@ -4575,6 +5209,7 @@ class Decoder {
                 }
             }
         }
+        refresh_route_bonus();
         if (step_trace && !fast) { trace.start = std::chrono::steady_clock::now(); trace.any = false; }
         if (device_resident_experts && !fast && (nt == 1 || batched_resident) && decode_prefill_cache && !device_lookup_ready) {
             if (m.layers.size() > 64 || m.experts > 288) throw std::runtime_error("GLM: resident lookup geometry");
@@ -4816,7 +5451,8 @@ class Decoder {
                                 // A replayed graph skipped the enqueue: the publication used the same buffers.
                                 groups[g].pending = {(int)l, (int)l + g * mailbox_group_stride(), batch_tokens,
                                                      (int *)buf("moe_ids", m.top_k * nt).p, buf("moe_weights", m.top_k * nt).f(),
-                                                     gy.f(), g ? cached_decode_b.get() : cached_decode.get()};
+                                                     gy.f(), g ? cached_decode_b.get() : cached_decode.get(), canon_layer((int)l),
+                                                     gx.f()};
                             }
                             groups[g].waiting = true;
                             continue;
@@ -4884,9 +5520,11 @@ class Decoder {
         if (pipelining) {
             pipelining = false;
             tier_submit();
+            tier_plan();
             if (const unsigned error = mailbox->gpu_error())
                 throw std::runtime_error("GLM: step pipeline GPU wait timed out at layer " + std::to_string(error - 1));
         }
+        ram_plan();
         position += nt;
         batch_tokens = 1;
         auto result = logits.floats((size_t)m.vocab * head_tokens);
@@ -4917,11 +5555,12 @@ class Decoder {
         slots = std::min(slots, cpu::MAXT - 1);
         size_t free_bytes = 0, total_bytes = 0;
         check(cudaMemGetInfo(&free_bytes, &total_bytes));
-        const size_t reserve = size_t(2) * 1024 * MiB + 64 * MiB;
+        const size_t reserve = Device::physical_reserve() + 64 * MiB;
         const size_t physical = free_bytes > reserve ? free_bytes - reserve : 0;
         const size_t owned = Device::live() <= Device::limit() ? Device::limit() - Device::live() : 0;
         slots = std::min<size_t>(std::max(0, slots), std::min(physical, owned) / bytes);
         if (!slots) { history_offsets.clear(); return; }
+        DeviceTag tag("verify_history");
         verify_history = std::make_unique<Device>(bytes * slots);
         history_stride = bytes; history_slots = slots;
         std::cerr << "VERIFY_HISTORY slots=" << slots << " MiB=" << bytes * slots / double(MiB) << '\n';
@@ -4934,6 +5573,7 @@ class Decoder {
         }
         verify_history.reset(); history_offsets.clear(); history_slots = history_valid = 0;
     }
+    void invalidate_verify_history() { history_valid = 0; }
     int verify_history_slots() const { return history_slots; }
     bool restore_verified(int count) {
         if (!verify_history || count < 1 || count > history_valid) return false;
@@ -4980,15 +5620,19 @@ class Decoder {
             if(used!=std::strlen(value)||budget_mib>131072)throw std::invalid_argument("invalid NUMA weight MiB budget");
         }
         if(required>budget_mib*MiB)throw std::runtime_error("Q2 NUMA weights exceed configured packed-byte budget");
-#ifdef __linux__
-        size_t total=size_t(sysconf(_SC_PHYS_PAGES))*size_t(sysconf(_SC_PAGESIZE));
-        if(total<16*1024*MiB || required>total-16*1024*MiB)throw std::runtime_error("Q2 NUMA weights need 16 GiB host capacity beyond packed weights");
-#endif
-        auto start=std::chrono::steady_clock::now();
         // STRATA_GLM_MAPPED_OWNED=1: node-owned scheduling over the file mapping (pages moved, not copied).
         // Remote TP copies its local rows instead: a mapping cannot hold part of each expert row.
         const bool mapped=!remote_tp&&std::getenv("STRATA_GLM_MAPPED_OWNED")&&std::string(std::getenv("STRATA_GLM_MAPPED_OWNED"))=="1";
         if(mapped&&(q23_layout||packed_huge_pages))throw std::invalid_argument("mapped owned rows need the plain row layout");
+        // STRATA_GLM_MAPPED_LAZY=1 (with mapped owned rows): for hosts with less memory than the experts. Nothing
+        // is read or moved at load; expert pages are read from the file on first use and the page cache keeps
+        // the recently used ones. The payload checksum pass, which reads every byte, is skipped.
+        const bool lazy=mapped&&std::getenv("STRATA_GLM_MAPPED_LAZY")&&std::string(std::getenv("STRATA_GLM_MAPPED_LAZY"))=="1";
+#ifdef __linux__
+        size_t total=size_t(sysconf(_SC_PHYS_PAGES))*size_t(sysconf(_SC_PAGESIZE));
+        if(!lazy&&(total<16*1024*MiB || required>total-16*1024*MiB))throw std::runtime_error("Q2 NUMA weights need 16 GiB host capacity beyond packed weights");
+#endif
+        auto start=std::chrono::steady_clock::now();
         size_t unmoved=0;
         artifact.discard_original_experts();
         // File-cache pages must yield before anonymous weights grow. Merely
@@ -5005,7 +5649,7 @@ class Decoder {
                     if(shape.size()!=3 || shape[2]!=size_t(m.experts) || shape[1]%2)throw std::invalid_argument("Q2 NUMA weights: unsupported tensor shape");
                     size_t row=t.bytes/(shape[1]*shape[2]);const auto* source=t.data();
                     const auto* expected=t.file->get("strata.expert_pack.hash."+t.tensor->name);
-                    if(expected) {uint64_t hash=14695981039346656037ULL;for(size_t k=0;k<t.bytes;++k){hash^=source[k];hash*=1099511628211ULL;}if(hash!=expected->u)throw std::runtime_error("expert pack payload checksum mismatch: "+t.tensor->name);}
+                    if(expected&&!lazy) {uint64_t hash=14695981039346656037ULL;for(size_t k=0;k<t.bytes;++k){hash^=source[k];hash*=1099511628211ULL;}if(hash!=expected->u)throw std::runtime_error("expert pack payload checksum mismatch: "+t.tensor->name);}
                     const int packed=q23_layout&&(t.tensor->type==10||t.tensor->type==11)?t.tensor->type:0;
                     std::unique_ptr<cpu::NumaTensor> owned;
                     const int keep=remote_tp&&remote_tp->split.count(int(l))?remote_tp->split.at(int(l)):0;
@@ -5033,7 +5677,7 @@ class Decoder {
                         trimmed_sources[t.tensor]={owned.get(),row,local_row,shape[1],local_rows,down};
                         t.file->discard_tensor_pages(*t.tensor,t.bytes);
                     } else if(mapped) {
-                        owned=std::make_unique<cpu::NumaTensor>(cpu::NumaTensor::View{},source,row,shape[1],shape[2]);
+                        owned=std::make_unique<cpu::NumaTensor>(cpu::NumaTensor::View{},source,row,shape[1],shape[2],lazy);
                         unmoved+=owned->unmoved_pages;numa_weight_bytes+=t.bytes;
                     } else {
                         owned=std::make_unique<cpu::NumaTensor>(source,row,shape[1],shape[2],pool.numa_cores(),packed_huge_pages,packed,shape[0]);
@@ -5055,9 +5699,15 @@ class Decoder {
         }catch(...) {numa_sources.clear();numa_local_only.clear();trimmed_sources.clear();numa_experts.clear();numa_weight_bytes=0;if(remote_tp)remote_tp->trimmed.clear();throw;}
         std::vector<uint8_t>().swap(trim_buffer);
         if(gpu){gpu->numa_sources=&numa_sources;gpu->trimmed_sources=&trimmed_sources;}
-        std::cerr<<"Q2_NUMA_WEIGHTS mapped="<<mapped<<" unmoved_pages="<<unmoved<<" bytes="<<numa_weight_bytes<<" node0_MiB="<<numa_weight_bytes/double(2*MiB)
+        std::cerr<<"Q2_NUMA_WEIGHTS mapped="<<mapped<<" lazy="<<lazy<<" unmoved_pages="<<unmoved<<" bytes="<<numa_weight_bytes<<" node0_MiB="<<numa_weight_bytes/double(2*MiB)
                  <<" node1_MiB="<<numa_weight_bytes/double(2*MiB)<<" prepare_ms="
                  <<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<'\n';
+        lazy_experts=lazy;
+        if(gpu)gpu->place_by_node=lazy;
+        if(std::getenv("STRATA_GLM_PREFER_RESIDENT_MIB")) {
+            if(!lazy)throw std::invalid_argument("STRATA_GLM_PREFER_RESIDENT_MIB needs STRATA_GLM_MAPPED_LAZY=1");
+            prepare_ram_tier();
+        }
     }
     void prepare_cpu(size_t bytes) {
         if(artifact.is_exl3()&&bytes)throw std::invalid_argument("EXL3: GGUF CPU prepack is unsupported");
@@ -5587,8 +6237,11 @@ class Decoder {
         device_lookup_ready = false;
     }
     void set_decode_cache_slots(int slots) { decode_cache_slots_limit = slots; }
+    bool has_decode_cache() const { return decode_cache_budget || decode_cache_auto; }
     void prepare_decode_cache() {
         tier_drain();
+        // The prompt's unbiased routes decide the memory set before the first decode step.
+        if (ram_tier && position >= kRamMinWindow) { ram_rebalance(); ram_last_rebalance = position; }
         finish_prefill_repairs(true);
         prepare_numa_weights();
         device_lookup_ready = false;
@@ -5659,6 +6312,10 @@ class Decoder {
         constexpr double prior_tokens = 256;
         for (size_t l = 0; l < m.layers.size(); ++l) {
             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+            if (canon_experts) {
+                // A layer left in another format would round differently on the GPU; it stays on the CPU.
+                if (!canon_layer((int)l)) continue;
+            }
             if (!prior.empty()) {
                 const auto &share = prior.at(l);
                 uint64_t routed = 0;
@@ -5691,6 +6348,11 @@ class Decoder {
             if (a.layer != b.layer) return a.layer < b.layer;
             return a.expert < b.expert;
         });
+        tier_rate.clear();
+        if (!prior.empty()) {
+            tier_rate.assign(m.layers.size(), std::vector<float>(m.experts));
+            for (const auto &c : candidates) tier_rate[c.layer][c.expert] = c.count * 1e-6f;
+        }
         size_t used = 0, slots = 0;
         std::array<size_t, 2> remaining{};
         std::array<uint64_t, 2> load{};
@@ -5710,12 +6372,15 @@ class Decoder {
                                        Device::limit() > logical ? Device::limit() - logical : 0);
                 // Coarse slabs absorb small driver allocation changes between requests.
                 remaining[i] = remaining[i] / (64 * MiB) * (64 * MiB);
+                DeviceTag tag("tier");
                 if (remaining[i] && !candidates.empty())
                     decode_cache_storage[i] = std::make_unique<Device>(remaining[i]);
             }
         }
         uint64_t fingerprint = 14695981039346656037ULL;
-        constexpr size_t scratch_reserve = 768 * MiB;
+        // Left free for what is allocated after the tier: with MTP that includes the draft block's fixed weights,
+        // the verify history and two rollback checkpoints.
+        const size_t scratch_reserve = (capture_hidden ? 1280 : 768) * MiB;
         for (const auto &c : candidates) {
             check_stop();
             if (decode_cache_slots_limit && slots >= (size_t)decode_cache_slots_limit) break;
@@ -5837,6 +6502,7 @@ class Decoder {
         mtp_layout.swiglu_limit = layer.swiglu_limit;
         mtp_expert_bytes = (G.bytes + U.bytes + D.bytes) / m.experts;
         if (!mtp_cpu_experts) {
+            DeviceTag tag("mtp_experts");
             mtp_experts = std::make_unique<Device>(mtp_expert_bytes * m.experts);
             const size_t gu = G.bytes / m.experts, down = D.bytes / m.experts;
             std::vector<uint8_t> packed(mtp_expert_bytes);
@@ -6264,8 +6930,20 @@ class Decoder {
         routing_trace.open(path);
         if (!routing_trace) throw std::runtime_error("GLM: cannot open routing trace");
     }
+    void set_router_score_trace(const std::string &path) {
+        if (path.empty()) return;
+        if (step_pipeline) throw std::invalid_argument("GLM: router score trace needs STRATA_GLM_STEP_PIPELINE unset");
+        router_score_trace.open(path, std::ios::binary);
+        router_bias_trace.open(path + ".bias", std::ios::binary);
+        if (!router_score_trace || !router_bias_trace) throw std::runtime_error("GLM: cannot open router score trace");
+        host_router_logits = std::make_unique<Pinned>((size_t)cpu::MAXT * m.experts * sizeof(float));
+    }
     void set_cancel(std::function<bool()> fn) { cancelled = std::move(fn); }
     void report_gpu() const {
+        if (ram_tier)
+            std::cerr << "RAM_TIER_STATE resident_MiB=" << ram_tier->resident_bytes / double(MiB) << " reads=" << ram_tier->loads
+                      << " evictions=" << ram_tier->evictions << " rebalances=" << ram_rebalances << " misses=" << ram_misses
+                      << " miss_MiB=" << ram_miss_bytes / double(MiB) << '\n';
 #ifdef __linux__
         rusage usage{};
         if (getrusage(RUSAGE_SELF, &usage) == 0)
@@ -6284,6 +6962,18 @@ class Decoder {
                       << " cpu_ms=" << trace.cpu_ms << " between_ms=" << trace.gap_ms << " tail_ms=" << trace.tail_ms
                       << " enqueue_ms=" << trace.enqueue_ms << " tier_swaps=" << tier_swaps << " split_windows=" << split_windows << " per_step_ms="
                       << (trace.head_ms + trace.cpu_ms + trace.gap_ms + trace.tail_ms) / trace.steps << '\n';
+        if (step_trace_slots && trace.steps)
+            for (int group = 0; group < 2; ++group) {
+                std::cerr << "STEP_TRACE_SLOTS group=" << group << " wait_cpu_us_per_step=";
+                for (size_t l = 0; l < m.layers.size(); ++l) {
+                    const size_t slot = l + group * mailbox_group_stride();
+                    if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+                    std::cerr << l << (m.layers[l].mixer == strata::core::MixerKind::Kda ? "k:" : "m:")
+                              << std::llround(trace.slot_wait[slot] * 1000 / trace.steps) << '/'
+                              << std::llround(trace.slot_cpu[slot] * 1000 / trace.steps) << ' ';
+                }
+                std::cerr << '\n';
+            }
         if (pool.native_local_queries)
             std::cerr << "NATIVE_NUMA_TIMING prepare_ms=" << pool.ms_native_local_prepare
                       << " queries=" << pool.native_local_queries << '\n';
@@ -6296,6 +6986,14 @@ class Decoder {
             size_t free = 0, total = 0;
             check(cudaMemGetInfo(&free, &total));
             const auto &a = Device::accounts.at(device);
+            {
+                auto &tags = Device::accounts.at(device);
+                std::lock_guard<std::mutex> lock(tags.tag_mutex);
+                std::cerr << "GPU_LIVE device=" << device;
+                for (const auto &[tag, bytes] : tags.by_tag)
+                    if (bytes) std::cerr << ' ' << tag << "_MiB=" << bytes / double(MiB);
+                std::cerr << '\n';
+            }
             std::cerr << "GPU_DEVICE device=" << device << " peak_allocated_MiB=" << a.peak / double(MiB)
                       << " live_MiB=" << a.live / double(MiB)
                       << " native_expert_bytes=" << (prefill ? prefill->transferred : 0)
@@ -6312,6 +7010,8 @@ class Decoder {
         finish_prefill_repairs();
         device_lookup_ready = false;
         tier_drain();
+        ram_last_rebalance = 0;
+        if (ram_tier) std::fill(ram_tier->window.begin(), ram_tier->window.end(), 0.f);
         for (int i = 0; i < 2; ++i) finish_copy(i);
         victims.clear();
         for (auto &counts : decode_seen) std::fill(counts.begin(), counts.end(), 0);
@@ -6344,7 +7044,9 @@ class Decoder {
         if (secondary) secondary->restore_prefill();
         for (auto &counts : prefill_routes) std::fill(counts.begin(), counts.end(), 0);
         for (auto &ids : prefill_recent_ids) ids.clear();
-        clear_verify_history();
+        // The verify history allocation stays: the tier is sized around it, and a later request might not find
+        // the device memory again. Its contents are invalid.
+        history_valid = 0;
         if (gpu) {
             if (gpu->copy) check(cudaStreamSynchronize(gpu->copy));
             gpu->transferred = gpu->groups = 0;
@@ -6441,6 +7143,9 @@ static void evaluate_corpus(Decoder& decoder,const std::string& corpus,const std
         if(saved.is_open()){saved.write(reinterpret_cast<const char*>(&length),4);saved.write(reinterpret_cast<const char*>(ids.data()),ids.size()*4);}
         if(reference.is_open()){uint32_t len=0;reference.read(reinterpret_cast<char*>(&len),4);if(len!=length)throw std::runtime_error("evaluation baseline sequence mismatch");std::vector<int> expected(len);if(!reference.read(reinterpret_cast<char*>(expected.data()),len*4)||expected!=ids)throw std::runtime_error("evaluation baseline tokens differ");}
         decoder.reset();lock_small_runtime_mappings();
+        // A configured GPU tier takes part in the evaluation (its selection has no prompt routes here, so it
+        // starts from the calibration prior): modes whose output depends on residency are measured as they run.
+        if(decoder.has_decode_cache())decoder.prepare_decode_cache();
         for(size_t start=0;start+1<ids.size();start+=4) {
             const size_t end=std::min(start+4,ids.size()-1);auto logits=decoder.batch(std::vector<int>(ids.begin()+start,ids.begin()+end),false,true);
             if(start==0)lock_small_runtime_mappings();
@@ -6760,7 +7465,7 @@ static int serve(int argc, char **argv) {
     const std::string decode_cache_setting = argc > 20 ? argv[20] : "0";
     const bool decode_cache_extend = decode_cache_setting == "extend";
     const auto [decode_cache_bytes, decode_cache_auto] = cache_setting(decode_cache_extend ? "auto" : decode_cache_setting);
-    if (decode_cache_bytes > 4096 * MiB || ((decode_cache_bytes || decode_cache_auto) &&
+    if (decode_cache_bytes > 12288 * MiB || ((decode_cache_bytes || decode_cache_auto) &&
         (stream_decode || lookup_depth || experts || cpu_prepack_mib)))
         throw std::invalid_argument("GLM: serve decode cache requires single-token unpacked CPU target experts");
     // With a decode cache the draft block's experts stay on the CPU; the cache owns the spare device memory.
@@ -7085,6 +7790,8 @@ int main(int argc, char **argv) {
             else if (flag == "--cpu-affinity=auto" || flag == "--cpu-affinity=numa") pin_cpu = true;
             else if (flag == "--cpu-affinity=none") pin_cpu = false;
             else if (flag.starts_with("--routing-trace=")) routing_trace_path = flag.substr(16);
+            // Same as STRATA_GLM_ROUTE_AFFINITY (read when the decoder is built, after the flags).
+            else if (flag.starts_with("--route-affinity=")) setenv("STRATA_GLM_ROUTE_AFFINITY", flag.substr(17).c_str(), 1);
             else if(flag=="--check-verify-graphs") {check_verify_graphs=true;force_gpu=true;}
             else if (flag == "--profile")
                 profile = true;
@@ -7142,9 +7849,9 @@ int main(int argc, char **argv) {
             throw std::invalid_argument("GPU prefill/decode requires expert-cache-mib=0");
         if (decode_cache_auto && use_mtp)
             throw std::invalid_argument("GLM: automatic decode cache currently requires single-token decoding");
-        if (decode_cache_mib < 0 || decode_cache_mib > 4096 ||
+        if (decode_cache_mib < 0 || decode_cache_mib > 12288 ||
             ((decode_cache_mib || decode_cache_auto) && ((use_mtp && !mtp_cpu_experts) || lookup_depth || stream_decode || expert_mib || cpu_prepack_mib)))
-            throw std::invalid_argument("decode-cache-mib requires CPU target experts, single or CPU-draft MTP, no prepacking, and 0..4096 MiB");
+            throw std::invalid_argument("decode-cache-mib requires CPU target experts, single or CPU-draft MTP, no prepacking, and 0..12288 MiB");
         if (decode_cache_slots < 0 || decode_cache_slots > 12960 ||
             (decode_cache_slots && (!decode_cache_mib || decode_cache_auto)))
             throw std::invalid_argument("decode-cache-slots needs a cache budget and 0..12960 slots");
@@ -7166,6 +7873,7 @@ int main(int argc, char **argv) {
         decoder.set_decode_prefill_cache(decode_prefill_cache);
         decoder.set_profile(profile);
         decoder.set_routing_trace(routing_trace_path);
+        if (const char *scores = std::getenv("STRATA_GLM_ROUTER_SCORE_TRACE")) decoder.set_router_score_trace(scores);
         decoder.set_decode_cache_budget((size_t)decode_cache_mib * MiB);
         decoder.set_decode_cache_auto(decode_cache_auto, decode_cache_extend);
         decoder.set_decode_graphs(decode_graphs);
@@ -7427,7 +8135,12 @@ int main(int argc, char **argv) {
             if (decode_mode_sweep) std::cerr << "DECODE_MODE source=" << (trial_mtp ? "mtp" : trial_lookup ? "lookup" : "none")
                 << " depth=" << (trial_mtp ? trial_depth : trial_lookup) << " shared_mtp_allocation=1\n";
         for (int trial = 0; trial < decode_repetitions; ++trial) {
-            if (trial || decode_mode_sweep) { decoder.clear_verify_history(); decoder.restore(*decode_start_state); logits = decode_start_logits; }
+            if (trial || decode_mode_sweep) {
+                // A sweep changes the draft depth; plain repetitions keep the allocation the tier was sized around.
+                if (decode_mode_sweep) decoder.clear_verify_history();
+                else decoder.invalidate_verify_history();
+                decoder.restore(*decode_start_state); logits = decode_start_logits;
+            }
             lock_small_runtime_mappings();
             std::cerr << "DECODE_TRIAL index=" << trial << '\n';
         if (profile_decode) check(cudaProfilerStart());

@@ -8,7 +8,7 @@ void q23_rows(int type, const uint8_t* weights, size_t row_bytes, int columns,
               const void* const* act, int nt, float* const* out, int first, int last);
 void q23_gu_rows(int type, const uint8_t* gate, const uint8_t* up, size_t row_bytes,
                  int columns, const void* const* act, int nt, float* const* out,
-                 int first, int last, float clamp);
+                 int first, int last, float clamp, bool canon = false, float gate_skip = 0.f);
 // A reversible 32-row x 256-column tile; byte count equals original GGML bytes.
 void q23_pack(int type,const uint8_t* source,uint8_t* dest,int columns,int rows);
 void q23_unpack(int type,const uint8_t* source,uint8_t* dest,int columns,int rows);

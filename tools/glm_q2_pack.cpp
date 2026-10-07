@@ -10,6 +10,10 @@
 #include <mutex>
 #include <iomanip>
 #include <sstream>
+#ifdef __linux__
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace {
 template<class T> void write(std::ostream& out,T value){out.write(reinterpret_cast<const char*>(&value),sizeof value);}
@@ -37,9 +41,12 @@ int main(int argc,char** argv){try {
         }
         std::cout<<"PACK verified projections="<<checked<<'\n';return 0;
     }
-    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-pack MODEL OUTPUT [--calibration=DIR | --uncalibrated] [--first-layer=3] [--last-layer=44] [--threads=8]");
-    std::string calibration;bool uncalibrated=false;int first=3,last=44,threads=8;
-    for(int i=3;i<argc;++i){std::string arg=argv[i];if(arg.starts_with("--calibration="))calibration=arg.substr(14);else if(arg=="--uncalibrated")uncalibrated=true;else if(arg.starts_with("--first-layer="))first=std::stoi(arg.substr(14));else if(arg.starts_with("--last-layer="))last=std::stoi(arg.substr(13));else if(arg.starts_with("--threads="))threads=std::stoi(arg.substr(10));else throw std::runtime_error("unknown argument "+arg);}
+    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-pack MODEL OUTPUT [--calibration=DIR | --uncalibrated] [--first-layer=3] [--last-layer=44] [--threads=8] [--down=q3|q2] [--reuse=PACK] [--all-layers]");
+    // --down=q2 stores down projections as Q2_K (84 instead of 110 bytes per 256 weights). --reuse=PACK copies
+    // every projection that an existing pack of the same source already holds in the requested type.
+    // --all-layers also converts the layers the UD quantization kept in a higher format (IQ3_XXS gate/up, IQ4_XS down).
+    std::string calibration,reuse;bool uncalibrated=false,all_layers=false;int first=3,last=44,threads=8;uint32_t down_type=11;
+    for(int i=3;i<argc;++i){std::string arg=argv[i];if(arg=="--all-layers")all_layers=true;else if(arg=="--down=q2")down_type=10;else if(arg=="--down=q3")down_type=11;else if(arg.starts_with("--reuse="))reuse=arg.substr(8);else if(arg.starts_with("--calibration="))calibration=arg.substr(14);else if(arg=="--uncalibrated")uncalibrated=true;else if(arg.starts_with("--first-layer="))first=std::stoi(arg.substr(14));else if(arg.starts_with("--last-layer="))last=std::stoi(arg.substr(13));else if(arg.starts_with("--threads="))threads=std::stoi(arg.substr(10));else throw std::runtime_error("unknown argument "+arg);}
     if(first<3||last>44||first>last||threads<1||threads>16||uncalibrated==!calibration.empty())throw std::runtime_error("invalid conversion settings; choose calibration or explicit uncalibrated, threads 1..16");
     strata::core::ModelArtifact model(argv[1]);const uint64_t experts=model.descriptor().experts;
     if(model.is_exl3()||model.descriptor().architecture!="glm5next"||model.descriptor().hidden!=4096||experts>288||experts%16)throw std::runtime_error("GLM model required");
@@ -48,10 +55,11 @@ int main(int argc,char** argv){try {
     std::vector<Entry> entries;uint64_t offset=0;
     for(int l=first;l<=last;++l)for(const char* part:{"gate","up","down"}) {
         const auto name="blk."+std::to_string(l)+".ffn_"+part+"_exps.weight";const auto& t=model.at(name);
-        const bool down=std::string(part)=="down";const uint32_t type=down?11:10;
+        const bool down=std::string(part)=="down";const uint32_t type=down?down_type:10;
         // IQ2_XS gate/up and IQ3_XXS down (UD-Q2_K_XL), or K-quant sources (Q4_K/Q5_K/Q6_K, e.g. a REAP-50 Q4_K_M).
         const bool kquant=t.tensor->type==12||t.tensor->type==13||t.tensor->type==14;
-        if(t.tensor->type!=(down?18u:17u)&&!kquant)continue;
+        const bool higher=all_layers&&t.tensor->type==(down?23u:18u);   // IQ4_XS down, IQ3_XXS gate/up
+        if(t.tensor->type!=(down?18u:17u)&&!kquant&&!higher)continue;
         if(t.tensor->shape!=std::vector<uint64_t>{down?2048u:4096u,down?4096u:2048u,experts})throw std::runtime_error("unsupported expert geometry: "+name);
         const uint64_t bytes=t.tensor->elements()/256*(type==10?84:110);entries.push_back({name,&t,type,offset,bytes});offset+=bytes;
     }
@@ -61,12 +69,34 @@ int main(int argc,char** argv){try {
     std::ofstream out(partial,std::ios::binary|std::ios::trunc);out.exceptions(std::ios::failbit|std::ios::badbit);out.write(h.data(),h.size());
     ggml_cpu_init();
     strata::core::lock_small_runtime_mappings();
+    std::unique_ptr<strata::core::ModelArtifact> previous;
+    if(!reuse.empty()) {
+        // The overlay checks that the old pack was made from this source.
+        previous=std::make_unique<strata::core::ModelArtifact>(argv[1]);previous->overlay_experts(reuse);
+    }
+    // Written pages leave the page cache as they are flushed: a pack is larger than the memory a loaded model leaves free.
+    auto drop_written=[&] {
+#ifdef __linux__
+        const int fd=::open(partial.c_str(),O_RDONLY);
+        if(fd>=0){::fdatasync(fd);::posix_fadvise(fd,0,0,POSIX_FADV_DONTNEED);::close(fd);}
+#endif
+    };
     for(auto& e:entries) {
         const auto& t=*e.source;const int cols=t.tensor->shape[0],rows=t.tensor->shape[1],experts=t.tensor->shape[2];
         const size_t slice=e.bytes/experts,source_slice=t.bytes/experts;
+        if(previous) {
+            const auto& old=previous->at(e.name);
+            if(old.tensor->type==e.type&&old.bytes==e.bytes&&old.file!=t.file) {
+                out.write(reinterpret_cast<const char*>(old.data()),e.bytes);e.hash=hash_bytes(14695981039346656037ULL,old.data(),e.bytes);
+                const auto* expected=old.file->get("strata.expert_pack.hash."+e.name);
+                if(!expected||expected->u!=e.hash)throw std::runtime_error("reused projection fails its checksum: "+e.name);
+                out.flush();old.file->discard_tensor_pages(*old.tensor,old.bytes);drop_written();
+                std::cerr<<"PACK tensor="<<e.name<<" bytes="<<e.bytes<<" reused\n";continue;
+            }
+        }
         std::vector<float> importance;
         if(!calibration.empty()) {
-            const auto l=e.name.substr(0,e.name.find(".ffn_"));const auto p=std::filesystem::path(calibration)/(l+(e.type==10?".gu.f32":".down.f32"));
+            const auto l=e.name.substr(0,e.name.find(".ffn_"));const auto p=std::filesystem::path(calibration)/(l+(e.name.find(".ffn_down_")==std::string::npos?".gu.f32":".down.f32"));
             importance.resize(size_t(cols)*experts);std::ifstream in(p,std::ios::binary);
             if(!in.read(reinterpret_cast<char*>(importance.data()),importance.size()*4)||in.peek()!=std::ifstream::traits_type::eof())throw std::runtime_error("invalid calibration tensor "+p.string());
             for(float v:importance)if(!std::isfinite(v)||v<0)throw std::runtime_error("nonfinite or negative importance");
@@ -93,7 +123,7 @@ int main(int argc,char** argv){try {
             if(base==0)strata::core::lock_small_runtime_mappings();
             for(int j=0;j<count;++j){out.write(reinterpret_cast<const char*>(packed[j].data()),slice);e.hash=hash_bytes(e.hash,packed[j].data(),slice);e.error+=err[j];e.norm+=norm[j];}
         }
-        out.flush();t.file->discard_tensor_pages(*t.tensor,t.bytes);
+        out.flush();t.file->discard_tensor_pages(*t.tensor,t.bytes);drop_written();
         std::cerr<<"PACK tensor="<<e.name<<" bytes="<<e.bytes<<" normalized_mse="<<std::setprecision(9)<<e.error/std::max(e.norm,1e-30)<<'\n';
     }
     if(model.source_fingerprint()!=fingerprint)throw std::runtime_error("source identity changed during conversion");

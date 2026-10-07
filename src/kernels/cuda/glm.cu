@@ -83,8 +83,10 @@ __global__ void swiglu(const float *g, const float *u, float *y, int n, float li
         y[i] = a * sig(a) * b;
     }
 }
+// `bonus` (optional, one value per expert) is added to the selection score only, so the caller can prefer experts
+// that are cheap to run. Weights still come from the true probabilities of the selected experts.
 __global__ void route(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
-                      float scale, float min_share) {
+                      float scale, float min_share, const float *bonus) {
     if (threadIdx.x || blockIdx.x)
         return;
     float sum = 0;
@@ -96,7 +98,7 @@ __global__ void route(const float *logits, const float *bias, int *ids, float *w
             for (int i = 0; i < j; ++i)
                 used |= ids[i] == e;
             const float p = sig(logits[e]);
-            const float score = p + bias[e];
+            const float score = p + bias[e] + (bonus ? bonus[e] : 0.f);
             if (!used && score > best) {
                 best = score;
                 id = e;
@@ -115,13 +117,14 @@ __global__ void route(const float *logits, const float *bias, int *ids, float *w
 // in the serial scan; lane zero retains the original normalization order.
 // blockIdx.x selects the token; each token's selection is the single-token computation.
 __global__ void route_warp(const float *logits, const float *bias, int *ids, float *weights,
-                           int ne, int k, float scale, float min_share) {
+                           int ne, int k, float scale, float min_share, const float *bonus) {
     const int lane = threadIdx.x;
     logits += (size_t)blockIdx.x * ne; ids += (size_t)blockIdx.x * k; weights += (size_t)blockIdx.x * k;
     float scores[16];
     for (int i = 0; i < 16; ++i) {
         const int e = lane + 32 * i;
         scores[i] = e < ne ? sig(logits[e]) + bias[e] : -INFINITY;
+        if (e < ne && bonus) scores[i] += bonus[e];
     }
     float sum = 0;
     for (int j = 0; j < k; ++j) {
@@ -520,13 +523,14 @@ void glm_swiglu(const float *g, const float *u, float *y, int n, float limit, vo
     swiglu<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(g, u, y, n, limit);
     check();
 }
-void glm_router(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale, void *s) {
+void glm_router(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale, void *s,
+                const float *bonus) {
     if (ne < 1 || k < 1 || k > ne)
         throw std::invalid_argument("GLM: invalid routing geometry");
     if (ne <= 512)
-        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share());
+        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
     else
-        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share());
+        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
     check();
 }
 void glm_hc_project(const float *x, const float *w, float *out, float *scratch, int width, void *s) {
@@ -566,10 +570,10 @@ void glm_mhc_write_tokens(const float *r, const float *c, const float *y, float 
     check();
 }
 void glm_router_tokens(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale, int tokens,
-                       void *s) {
+                       void *s, const float *bonus) {
     if (ne < 1 || k < 1 || k > ne || ne > 512 || tokens < 1)
         throw std::invalid_argument("GLM: invalid batched routing geometry");
-    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share());
+    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
     check();
 }
 void glm_hyper_head(const float *r, float *out, int n, void *s) {

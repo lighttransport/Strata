@@ -1,5 +1,6 @@
 // src/kernels/cpu/pool.cpp - P2.S3: the CPU expert pool.  Read pool.hpp first; it explains the protocol.
 #include "strata/kernels/cpu/pool.hpp"
+#include "strata/kernels/canon_expert.hpp"
 #include <stdexcept>
 #include "strata/core/progress.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
@@ -698,6 +699,13 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
             flow_task((int) i);
         } else if (mode_ == 7) {
             const int first=mrows_*i/mtasks_,last=mrows_*(i+1)/mtasks_;
+            if(reduce_canon_) {
+                for(int token=first/reduce_hidden_;token*reduce_hidden_<last;++token) {
+                    const int r0=std::max(first-token*reduce_hidden_,0),r1=std::min(last-token*reduce_hidden_,reduce_hidden_);
+                    canon_route_sum(reduce_results_+size_t(token)*reduce_experts_*reduce_hidden_,reduce_weights_+token*reduce_experts_,
+                                    reduce_output_+size_t(token)*reduce_hidden_,reduce_experts_,reduce_hidden_,r0,r1);
+                }
+            } else
             for(int r=first;r<last;++r){const int token=r/reduce_hidden_,row=r%reduce_hidden_;float sum=0;
                 for(int k=0;k<reduce_experts_;++k){const int j=token*reduce_experts_+k;sum+=reduce_weights_[j]*reduce_results_[size_t(j)*reduce_hidden_+row];}reduce_output_[r]=sum;}
         } else if (mode_ >= 5) {
@@ -1031,6 +1039,12 @@ void ExpertPool::flow_task(int i) {
     if (flow_chunks_[chunk].left.fetch_sub(1, std::memory_order_acq_rel) != 1) return;
     // The last expert through this chunk writes its routed sum in reduce_routed's order.
     const int hidden = (int) f.n_embd;
+    if (f.canon) {
+        for (int t = 0; t < flow_tokens_; ++t)
+            canon_route_sum(flow_results_ + (size_t) t * flow_k_ * hidden, flow_weights_ + t * flow_k_,
+                            flow_sum_ + (size_t) t * hidden, flow_k_, hidden, first, last);
+        return;
+    }
     for (int t = 0; t < flow_tokens_; ++t) {
         for (int r = first; r < last; ++r) {
             float sum = 0;
@@ -1052,7 +1066,7 @@ void ExpertPool::run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int 
     if (n <= 0 || n > kMaxSplitMulti || n_ == 1 || f.observer || f.gu_type == 42 || f.d_type == 42 ||
         native_local_enabled_ || (owned && !numa_rows_available_)) {
         if (n > 0) run_split_multi_native(f, jobs, n);
-        reduce_routed(results, weights, sum, nt, top_k, (int) f.n_embd);
+        reduce_routed(results, weights, sum, nt, top_k, (int) f.n_embd, f.canon);
         return;
     }
     if (f.n_ff <= 0 || f.n_ff > kNativeFF || f.act_bytes > kNativeActBytes || f.h_bytes > kNativeHBytes)
@@ -1122,7 +1136,8 @@ void ExpertPool::run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int 
     ms_drain_ += ms;
 }
 
-void ExpertPool::reduce_routed(const float* results,const float* weights,float* output,int nt,int experts,int hidden) {
+void ExpertPool::reduce_routed(const float* results,const float* weights,float* output,int nt,int experts,int hidden,bool canon) {
+    reduce_canon_=canon;
     if(!results||!weights||!output||nt<1||nt>MAXT||experts<1||experts>32||hidden<1||hidden>8192)throw std::invalid_argument("invalid routed reduction geometry");
     reduce_results_=results;reduce_weights_=weights;reduce_output_=output;reduce_experts_=experts;reduce_hidden_=hidden;
     native_owned_phase_=false;native_local_phase_=false;mrows_=int64_t(nt)*hidden;mtasks_=n_+(host_works_?1:0);

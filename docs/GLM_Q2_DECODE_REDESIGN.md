@@ -489,6 +489,180 @@ token-identical. The pack therefore shows no measurable coding loss at this
 sample size, despite its held-out KL. That is the gate the plan set for lossy
 options, so `q23` is accepted for the throughput work below; it stays opt-in.
 
+## Progress (2026-10-07): placement-independent experts, adaptive tier, routing affinity, 64 GB modes
+
+Goal raised to 30 tok/s on the single node, plus a configuration for a 64 GB host. Everything
+below is opt-in by environment variable; the previous configurations are unchanged. Work directory
+`build-q2-v3/` (`run.sh`, `eval.sh`, `fixtures3.sh`, `summarize.py`, `nsys.sh`); server configurations
+`configs/glm53f-q2-v3*.json`.
+
+### Starting point (quiet machine, 2026-10-07)
+
+Three-fixture benchmark, pack, MTP depth 2, split verify, 3.5 GiB static tier: prime 18.9, json_escape
+20.6, csv 18.3 tok/s. A round is about 140 ms for 2.8 tokens: CPU experts 120 ms, in-step GPU waits 11
+ms, draft and resync 13 ms. A token reads 3.06 GB of routed experts; the CPU reads them at 65-70 GB/s.
+30 tok/s is 92 GB/s of expert traffic, so about 40% of it has to leave the CPU.
+
+### Canonical expert arithmetic (`STRATA_GLM_CANON=1`)
+
+`include/strata/kernels/canon_expert.hpp` defines one arithmetic for a routed Q2_K/Q3_K expert that the
+CPU (`q23_avx2.cpp` dot, `canon_expert.cpp` quantizer and SwiGLU, built with `-ffp-contract=off`) and
+the GPU (`src/kernels/cuda/glm_q23.cu`, one `__dp4a` per lane and chunk, explicit `__fmaf_rn`) produce
+bit for bit: Q8_K activations, integer sums per superblock, the AVX2 kernel's eight float lanes and
+reduction order, a shared polynomial `exp`, and the routed sum as one fma chain in descending route
+order. `glm_q23_parity` checks every output row of random experts and real-sized layouts (both down
+formats, one to six tokens, gate skipping) with `memcmp`; `canon_expert_test` checks the quantizer
+against ggml's and the exp against libm. In the model, the tier contents never change a logit: the
+ordinary decode of 511 tokens with 405 resident experts and with none gives identical tokens and
+bit-identical final logits; `--check-verify` and `--check-verify-graphs` pass with a tier under split
+verify. Held-out quality (first 16 sequences, against the original model's logits) is the legacy
+path's within rounding: perplexity 4.825 (legacy 4.849), KL 0.1367 (0.1382), top-1 87.7% (87.7%).
+
+The GPU kernels run at about 235 GB/s of expert bytes on 8-24 experts per launch (the old tier kernels
+reached about 50 GB/s in the model) and 0.047 ms for one expert (a warp-parallel Q8_K quantizer, loads of
+several superblocks issued together).
+
+Two combine modes. Strict (lossless configurations): the GPU posts its resident rows into the mailbox
+and the CPU adds every route in the canonical order, so logits do not depend on placement. Device
+(`STRATA_GLM_CANON_COMBINE=device`, automatic when routing follows residency): the GPU adds its rows to
+the CPU's partial sum on the device, which saves the row transfers; results then depend on placement at
+rounding level only, and the tier's evolution is deterministic by step count.
+
+### Adaptive GPU tier
+
+`STRATA_GLM_TIER_ADAPT=1` is now usable: with canonical arithmetic its promotions do not change
+outputs, and they follow step counts (selected in step s, staged on a background thread, uploaded after
+step s+1, in the lookup at step s+3), so a run's residency sequence is reproducible. Scores start from
+the selection's expected route rates (`STRATA_GLM_TIER_SEED`), and promotion is planned once per step
+instead of per route on the decode thread. `STRATA_GLM_GPU_RESERVE_MIB=512` and
+`--gpu-budget-mib=14336 --decode-cache-mib=5632` give a 4.8 GiB tier beside the desktop session; the
+verify history allocation now persists across requests and the tier leaves 1.28 GiB for MTP's draft
+weights, history and checkpoints (both had silently fallen back to replay steps or depth 1 when VRAM
+was tight). `GPU_LIVE` prints device memory by category: dense weights 6154 MiB, state 333, MTP dense
+221, verify history 291, tier the rest.
+
+On the same 512-token prime answer (82% draft acceptance): static tier 18.0 tok/s, adaptive 21.0
+(CPU bytes per round 8.26 -> 6.95 GB). Simulation on the three fixtures' routing traces
+(`tools/glm_residency_sim.py`): prior-only static 6%, adaptive 23.5% of routes at 4.8 GiB, 28% at 6.5 GiB.
+
+Three-fixture benchmark, lossless configuration (`configs/glm53f-q2-v3.json`: canonical + adaptive
+tier + split verify): prime 20.6, json_escape 23.6, csv 17.5 tok/s (baseline 18.9 / 20.6 / 18.3). The csv answer changed (501
+against 478 tokens) and its draft acceptance fell from 81% to 73%; one of its trials replayed 110 tokens.
+Per round on json_escape: 125 ms (CPU 98, GPU waits 10, draft 7, resync 6) against 140 ms before.
+
+### Routing affinity (`STRATA_GLM_ROUTE_AFFINITY=x`, lossy)
+
+The router adds `x` (probability units) to the selection score of GPU-resident experts; weights keep
+the true probabilities. Resident experts then win near ties, and the GPU share rises without more VRAM.
+The same per-expert bonus table drives the prefill and decode routers; the evaluator builds a tier per
+sequence so these modes are measured as they run.
+
+| Margin | Routes changed (sim) | GPU share (sim) | Held-out ppl / KL / top-1 (16 seq.) | prime tok/s (warm tier) |
+| --- | ---: | ---: | --- | --- |
+| 0 | 0 | 23.5% | 4.825 / 0.1367 / 87.7% | 21.0 |
+| 0.02 | 5.7% | 28.6% | not measured | 24.5 |
+| 0.05 | 16% | 37.9% | 4.842 / 0.1426 / 87.5% | 25.4 |
+| 0.10 | 33% | 52.8% | 4.966 / 0.1648 / 86.9% | 27.0-28.6 |
+| 0.15 | 46% | 62% | 5.117 / 0.1983 / 85.9% | 28.1-28.6 |
+
+Above 0.10 the CPU is no longer the bottleneck: at 0.15 the CPU expert phase is 49 ms per round but
+the CPU waits 37 ms for the GPU. An nsys timeline at 0.10 (`build-q2-v3/nsys.sh`) gives per round:
+dense Q5_K/Q6_K GEMVs 29.5 ms (split verify runs them once per token group, 10 GB per round at 346
+GB/s), resident experts 12.7 ms, KDA 3.7, small Q8_0 GEMVs 6.1, LM heads 3.0, norms 2.3; about 72 ms
+of kernel time in an 87 ms step. Both processors are busy about 70-80% of a step; the rest is the
+per-layer ping-pong (one group's attention chain, most of it the MLA layers' eager kernels, is
+longer than the other group's CPU pass).
+
+### Gate-threshold row skipping (`STRATA_GLM_GATE_SKIP=thresholds.json`, lossy)
+
+In canonical mode a unit whose |silu(gate)| is below its layer's threshold contributes exactly zero on
+both devices, and the CPU does not read its up row (about a third of an expert's bytes).
+`STRATA_Q23_GATE_STATS` records |silu(gate)| histograms; `tools/glm_gate_thresholds.py` turns them into
+per-layer thresholds for a target share. Skipping 28% of units: perplexity 4.848 (+0.5%), KL 0.1455,
+top-1 87.3%; 46%: 5.023 (+4.1%), KL 0.188. The 28% setting saves about 9% of CPU expert bytes.
+
+### Q2_K down projections (`experts-q22.gguf`)
+
+`strata-glm-q2-pack --down=q2 --reuse=experts-q23.gguf` converts only the down projections (the
+gate/up bytes are copied from the q23 pack and checked), 95.9 GB instead of 105.5. Held-out: perplexity
+4.867, KL 0.1637, top-1 86.5%, about as lossy as routing affinity 0.10 for 9% fewer bytes. Not timed;
+`--all-layers` (also converts layer 11-44's IQ3_XXS/IQ4_XS exceptions) is implemented but no pack was
+built.
+
+### Prefill: chunk size
+
+Each prefill chunk streams every routed expert to the GPU once (about 105 GB at about 7.5 GB/s over the
+5060 Ti's x8 link, 14 s), so prefill speed is close to chunk / 14 s. 7,807-token prompt, 16k context:
+
+| Chunk | tok/s | GPU allocated |
+| --- | ---: | ---: |
+| 256 | 13-15 | |
+| 2048 | 89 | 8.95 GiB |
+| 4096 | 153 | 10.1 GiB |
+| 8192 | 220 | 12.4 GiB |
+
+8192 is the default in the v3 configs and scripts. The GPU expert tier is built after prefill, so it
+does not compete for this memory. The prefill arena needed headroom above an 8k context (`mla_value`
+overflowed it); the overflow error now names the buffer.
+
+### Long-context codegen fixture
+
+`long_cpp` (`tools/glm_q2_coding_bench.py --fixtures long_cpp --context 16384 --tokens 4096`): two frozen
+headers (`docs/fixtures/glm_q2_long_cpp`, 7,795 prompt tokens) and a request for a GoogleTest file. At
+affinity 0.10: decode 21.1 and 19.4 tok/s, draft acceptance 73% and 59%, CPU expert rate 61 GB/s;
+both trials stopped at the 4,096-token cap (17 coherent TEST cases, last one cut off).
+
+### HumanEval
+
+Lossless configuration (canonical, 4.8 GiB adaptive tier, MTP depth 2, split verify): 156/164 (95.1%;
+original weights 153, legacy pack 155). The affinity runs were stopped (0.05: 53/56 when stopped).
+
+### 64 GB host
+
+Measured under a 60 GiB memory cgroup (`systemd-run --user --scope -p MemoryMax=60G -p MemorySwapMax=0`)
+with the model files dropped from the page cache first (`build-q2-v3/drop_cache.py`). The pack was moved
+to the x4-linked disk (`/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf`, symlinked from
+the old path); the other drive (`nvme0n1`) trains at PCIe x1 in a x4 M.2 slot (a seating or Gen4-in-Gen3
+training problem, not lane sharing).
+
+| Mode | Warm tok/s | Held-out ppl / KL / top-1 |
+| --- | ---: | --- |
+| `exact`: lazy mapping, misses read on first use | 2.4 (1.5 on the x1 disk) | lossless |
+| prefer-resident, frozen 48 GB set (bonus 4: never leaves the set) | 23 | 5.578 / 0.371 / 79.8% |
+| prefer-resident, rebalance-only, hard ban | 22.9 | 5.641 / 0.405 / 79.1% |
+| **hybrid, `STRATA_GLM_RAM_MARGIN=0.10`** (default in `glm53f-q2-v3-64g-resident.json`) | **15.1** | **4.888 / 0.150 / 87.0%** |
+| hybrid, margin 0.05 | 10.9 | 4.850 / 0.143 / 87.8% |
+| REAP-50 pack (55 GB) in RAM | 15.4-16.1 | 11.1 / 0.587 / 69.8% (all 64 sequences; original 8.57) |
+
+`STRATA_GLM_MAPPED_LAZY=1` maps the pack without reading, moving or checksumming it (load 4 ms instead
+of 135 s) and prefill stages only routed experts, placing each half's pages on its node.
+`STRATA_GLM_PREFER_RESIDENT_MIB=N` keeps N MiB of experts in memory (`RamTier`): the router adds
+`STRATA_GLM_RAM_MARGIN` to in-memory experts' selection scores; an expert outside the set that still
+wins is read by the workers' page faults and joins the set, the coldest leaving at the end of the step.
+Scores count the unbiased router's choices only (published through the mailbox, and from a second
+unbiased routing pass in prefill); counting the routes taken made the set confirm itself. Bulk
+rebalancing every 512 tokens (2048 past 4096 tokens of context) needs at least 256 tokens of evidence
+and moves at most 5% of the budget. Background read-ahead between rebalances (`STRATA_GLM_RAM_ADMIT`)
+cost half the speed (10,000 reads competing with decode, CPU expert rate 26 GB/s) and is off in the
+config (`1e9`). The first repetition after a cold start runs at about half the warm rate while the set
+moves to the prompt's topic.
+
+### Other changes
+
+- `tools/glm_q2_coding_bench.py --allow-different-trials` for residency-dependent routing;
+  `tools/glm_q2_humaneval.py --gpu-budget-mib --decode-cache-mib --speculative --draft-depth`.
+- `STRATA_GLM_ROUTER_SCORE_TRACE=path` (non-pipelined decode) records router logits for the simulator.
+- `STRATA_GLM_STEP_TRACE=2` prints per-layer CPU waits and expert time for both token groups.
+- The decode cache cap is 12288 MiB in the CLI and the server.
+
+### Next steps
+
+1. The GPU is the limit above affinity 0.10 (CPU waits 26-37 ms per round for it): fuse the dense
+   chain's small kernels, make MLA layers graphable (position as device data), and run the dense
+   GEMVs once per verify window instead of once per token group. Each would remove several ms per round.
+2. Headless operation would add about 2 GiB of tier (about 5 points of GPU share).
+3. HumanEval for the chosen fast configuration (affinity 0.05-0.10).
+
 ## Where a token goes today
 
 Ordinary decode, prime fixture, current configuration

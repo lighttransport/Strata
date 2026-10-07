@@ -164,7 +164,8 @@ __global__ void conv_history(const float *x, float *history, int n, int kernel, 
         history[c * (kernel - 1) + j] = t < 0 ? history[c * (kernel - 1) + t + kernel - 1] : x[t * n + c];
     }
 }
-__global__ void routing(const float *l, const float *bias, int *ids, float *w, int ne, int top, float scale) {
+__global__ void routing(const float *l, const float *bias, int *ids, float *w, int ne, int top, float scale,
+                        const float *bonus) {
     int t = blockIdx.x;
     l += t * ne;
     ids += t * top;
@@ -178,6 +179,7 @@ __global__ void routing(const float *l, const float *bias, int *ids, float *w, i
             for (int z = 0; z < j; ++z)
                 used |= ids[z] == e;
             float score = sigmoid(l[e]) + bias[e];
+            if (bonus) score += bonus[e];   // selection only; weights below keep the true probabilities
             if (!used && score > best) {
                 best = score;
                 chosen = e;
@@ -869,8 +871,8 @@ void glm_conv_batch(const float *x, const float *w, float *h, float *y, int n, i
     check();
 }
 void glm_route_batch(const float *l, const float *b, int *ids, float *w, int ne, int top, float scale,
-                     int tokens, void *s) {
-    routing<<<tokens, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale);
+                     int tokens, void *s, const float *bonus) {
+    routing<<<tokens, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale, bonus);
     check();
 }
 void glm_group_routes(const int *ids, int *b, int *d, int *src, int *cursor, int ne, int top, int tokens,

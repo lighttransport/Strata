@@ -325,7 +325,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/shared_expert.cu
                           src/kernels/cuda/gr.cu
                           src/kernels/cuda/gdn.cu
-                          src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_mailbox.cu src/kernels/cuda/glm_q8.cu src/kernels/cuda/exl3.cu
+                          src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_mailbox.cu src/kernels/cuda/glm_q23.cu src/kernels/cuda/glm_q8.cu src/kernels/cuda/exl3.cu
                           src/kernels/cuda/qsa.cu
                           src/kernels/cuda/elementwise.cu
                           src/kernels/cuda/bf16_gemv.cu
@@ -370,6 +370,9 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     add_executable(glm_kda_column_tiles_parity src/kernels/glm_kda_column_tiles_parity.cpp)
     target_link_libraries(glm_kda_column_tiles_parity PRIVATE strata_kernels CUDA::cudart)
     add_test(NAME glm_kda_column_tiles_parity COMMAND glm_kda_column_tiles_parity)
+    add_executable(glm_q23_parity src/kernels/glm_q23_parity.cpp)
+    target_link_libraries(glm_q23_parity PRIVATE strata_kernels strata_kernels_cpu CUDA::cudart)
+    add_test(NAME glm_q23_parity COMMAND glm_q23_parity)
     add_executable(glm_mailbox_test src/kernels/glm_mailbox_test.cpp)
     target_link_libraries(glm_mailbox_test PRIVATE strata_kernels CUDA::cudart)
     add_test(NAME glm_mailbox_test COMMAND glm_mailbox_test)
@@ -1158,7 +1161,7 @@ if(STRATA_NATIVE_EXPERTS)
   # one-pass static linking has no cycle to resolve)
   target_sources(strata_kernels_cpu PRIVATE src/kernels/cpu/native_expert.cpp src/kernels/cpu/iq_avx512.cpp
                                            src/kernels/cpu/iq_avx2.cpp src/kernels/cpu/kq_avx2.cpp src/kernels/cpu/q23_avx2.cpp src/kernels/cpu/q23_packed.cpp
-                                           src/kernels/cpu/kq_avx1.cpp)
+                                           src/kernels/cpu/kq_avx1.cpp src/kernels/cpu/canon_expert.cpp)
   target_include_directories(strata_kernels_cpu PRIVATE third_party/ggml)
   if(MSVC)
     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
@@ -1176,6 +1179,8 @@ if(STRATA_NATIVE_EXPERTS)
     set_source_files_properties(src/kernels/cpu/kq_avx1.cpp PROPERTIES COMPILE_OPTIONS "-mavx")
     set_source_files_properties(src/kernels/cpu/q23_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
     set_source_files_properties(src/kernels/cpu/q23_packed.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+    # Canonical expert arithmetic: products are rounded before they are added, as the CUDA kernels do.
+    set_source_files_properties(src/kernels/cpu/canon_expert.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-ffp-contract=off")
   endif()
   set_property(SOURCE src/kernels/cpu/iq_avx2.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${_strata_avxvnni})
   if(STRATA_ISA_FLOOR STREQUAL "avx")
@@ -1524,6 +1529,10 @@ if(STRATA_BUILD_TESTS)
   add_executable(q23_pool_test src/kernels/cpu/q23_pool_test.cpp)
   target_link_libraries(q23_pool_test PRIVATE strata_kernels_cpu)
   add_test(NAME q23_pool_test COMMAND q23_pool_test)
+  add_executable(canon_expert_test src/kernels/cpu/canon_expert_test.cpp)
+  target_include_directories(canon_expert_test PRIVATE third_party/ggml)
+  target_link_libraries(canon_expert_test PRIVATE strata_kernels_cpu)
+  add_test(NAME canon_expert_test COMMAND canon_expert_test)
   add_executable(flow_pool_test src/kernels/cpu/flow_pool_test.cpp)
   target_link_libraries(flow_pool_test PRIVATE strata_kernels_cpu)
   add_test(NAME flow_pool_test COMMAND flow_pool_test)
