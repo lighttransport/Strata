@@ -1835,6 +1835,8 @@ class GlmEngine(StrataEngine):
     def generate(self, ids, max_new, sampling, cancel, embeddings=None):
         if embeddings is not None:
             raise ValueError("GLM currently supports text input only")
+        # reject non-greedy settings before any engine I/O; upstream's generate checks alive() first
+        self.sampling_keys(sampling)
         yield from super().generate(ids, max_new, sampling, cancel)
 
 

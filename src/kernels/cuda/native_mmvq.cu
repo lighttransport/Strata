@@ -1419,7 +1419,19 @@ struct IlQ5K {
         for (int c = 0; c < NC; ++c) {
             const int uc[4] = {u[0][c], u[1][c], u[2][c], u[3][c]};
             const float dc[2] = {d8[0][c], d8[1][c]};
-            out[c] = q5_q8_dot_impl(r.vl, r.vh, uc, sc, sc + 2, r.dm, dc);
+            // W carries the unpacked v0i/v1i (this branch's Q5KTraits); same integer values and float order
+            // as q5_q8_dot_impl
+            const uint8_t* m = sc + 2;
+            float sumf_d = 0.0f, sumf_m = 0.0f;
+#pragma unroll
+            for (int i = 0; i < 2; ++i) {
+                const int dot1 = STRATA_DP4A(r.v[i][0], uc[2 * i], STRATA_DP4A(r.v[i][1], uc[2 * i + 1], 0));
+                const int dot2 = STRATA_DP4A(0x01010101, uc[2 * i], STRATA_DP4A(0x01010101, uc[2 * i + 1], 0));
+                sumf_d += dc[i] * (dot1 * sc[i]);
+                sumf_m += dc[i] * (dot2 * m[i]);
+            }
+            const float2 dm5f = __half22float2(r.dm);
+            out[c] = dm5f.x * sumf_d - dm5f.y * sumf_m;
         }
     }
 };
@@ -1439,7 +1451,11 @@ struct IlQ6K {
         for (int c = 0; c < NC; ++c) {
             const int uc[2] = {u[0][c], u[1][c]};
             const float dc[2] = {d8[0][c], d8[1][c]};
-            out[c] = q6_q8_dot_impl(r.vl, r.vh, uc, r.scales, r.d, dc);
+            // W carries the unpacked vi/sc (this branch's Q6KTraits); same arithmetic as q6_q8_dot_impl
+            float sumf = 0.0f;
+#pragma unroll
+            for (int i = 0; i < 2; ++i) sumf += dc[i] * (STRATA_DP4A(r.vi[i], uc[i], 0) * r.sc[i]);
+            out[c] = r.d * sumf;
         }
     }
 };
