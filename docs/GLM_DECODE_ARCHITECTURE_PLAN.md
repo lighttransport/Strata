@@ -71,6 +71,14 @@ the GPU ceiling from 36 to 46 tok/s and are required for A and B to pay off.
 Aggregate throughput: 2 rows 51-58 tok/s, 4 rows 60. The CPU quantized-dot ceiling (30/(1 - GPU share)) caps 8
 rows; a 2x faster dot kernel only helps there.
 
+**G. From the literature survey (docs/GLM_DECODE_RESEARCH.md).** Two lossless additions: a cross-layer route
+predictor that prefetches next-layer experts over PCIe during the CPU pass (+6 % here, +18 % on a Gen4 x16 link)
+and a recency-based tier policy (+3 %). Two lossy ones: KTransformers-style expert deferral, which gives
+ordinary and batched decode the overlap that split verify gives MTP (15 -> 24 tok/s single token, 24 -> 31 at
+4 rows), and AcceptMoE-style verifier sizing (4 experts for draft positions >= 2: 23.7 -> 28.3 on the lossless
+base at a 2 % acceptance cost, 57 -> 64 on the lossy stack). Together they move the one-card figure to 26 tok/s
+lossless, 31-33 with tapering, and the lossy stack to 64 (75 with two rows).
+
 **Not worth it here:** PCIe co-streaming of experts (Gen3 x8: -5 % even at 3 %; needs about 50 GB/s to help),
 MTP deeper than 4, blocks wider than 8, a faster CPU dot kernel below 8 rows, codebook 2-bit formats on the CPU
 (compute-bound at 37-42 GB/s). A second 16 GB card is the lossless route: 32-33 tok/s single-stream.

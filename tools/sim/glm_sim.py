@@ -70,11 +70,14 @@ def add_config_args(ap, sweep=False):
     opt("--max-verify-width", "max_verify_width", help="engine cap on tokens per step (cpu::MAXT = 8); raise to explore")
     opt("--expert-skip", "expert_skip", help="share of routed expert bytes skipped by gate thresholds (lossy)")
     opt("--pcie-share", "pcie_share", help="share of non-resident expert bytes the GPU streams over PCIe and computes")
+    opt("--pcie-prefetch", "pcie_prefetch", help="1 = predict next-layer routes and prefetch those experts over PCIe (lossless)")
+    opt("--expert-deferral", "expert_deferral", help="1 = add part of each layer's routed output one layer late (lossy; full overlap)")
+    opt("--spec-tail-topk", "spec_tail_topk", help="experts per route for draft positions >= 2 (AcceptMoE-style; lossy below 8)")
     opt("--tier-compress", "tier_compress", help="GPU tier expert format density: slots x this (lossy above 1)")
     opt("--dense-format", "dense_format", choices=list(model.DENSE_FORMATS))
     opt("--split-verify", "split_verify")
     opt("--decode-cache-mib", "decode_cache_mib", help="GPU expert tier MiB; -1 = fill the budget, 0 = none")
-    opt("--tier-policy", "tier_policy", choices=["static", "static_prior", "adaptive"])
+    opt("--tier-policy", "tier_policy", choices=["static", "static_prior", "adaptive", "lru"])
     opt("--affinity", "affinity")
     opt("--gpu-budget-mib", "gpu_budget_mib")
     opt("--reserve-mib", "reserve_mib")
@@ -98,7 +101,7 @@ CONFIG_FIELDS = [f.name for f in dataclasses.fields(RunConfig)]
 def config_from_args(args, **overrides):
     data = {name: getattr(args, name) for name in CONFIG_FIELDS if hasattr(args, name)}
     data.update(overrides)
-    for key in ("split_verify", "prefill_legacy"):
+    for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral"):
         if key in data:
             data[key] = bool(data[key])
     return RunConfig.from_dict(data)

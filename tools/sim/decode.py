@@ -123,9 +123,14 @@ def _group_widths(width, split):
     return [width]
 
 
-def _union(width, rows, pack, consecutive, override=None):
+def _union(width, rows, pack, consecutive, override=None, tail_topk=8, first_position=0):
+    """Distinct-expert ratio of a group of `width` consecutive window positions starting at `first_position`.
+    Positions >= 2 (second draft onward) may route to only `tail_topk` experts (AcceptMoE-style tapering)."""
     g = GEOMETRY
     u = override if override is not None else routing.union_ratio(width, pack.experts, g.top_k, consecutive)
+    if tail_topk < g.top_k:
+        tail_positions = max(0, first_position + width - max(2, first_position))
+        u *= 1 - (tail_positions / width) * (1 - tail_topk / g.top_k)
     if rows > 1:
         k_eff = g.top_k * u
         u = pack.experts * (1 - (1 - k_eff / pack.experts) ** rows) / g.top_k
@@ -141,7 +146,12 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
     workers = hw.cpu.workers(cfg.threads)
     split = cfg.split_verify and width >= 2 and cfg.placement == "cpu"
     widths = _group_widths(width, split)
-    unions = [_union(w, rows, pack, consecutive, union if len(widths) == 1 else None) for w in widths]
+    starts = [0, widths[0]] if len(widths) == 2 else [0]
+    unions = [_union(w, rows, pack, consecutive, union if len(widths) == 1 else None, cfg.spec_tail_topk, start)
+              for w, start in zip(widths, starts)]
+    # tapered draft positions route to fewer experts, so their MACs shrink with their bytes
+    tapers = [u / _union(w, rows, pack, consecutive, union if len(widths) == 1 else None, GEOMETRY.top_k, start)
+              for u, w, start in zip(unions, widths, starts)]
     ram_hit, _ = ram_hit_share(hw, cfg, pack) if cfg.placement == "ram_tier" else (1.0, 0)
     handoff = kernels.handoff_ms(hw)
 
@@ -162,7 +172,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
         one = pack.expert_bytes(layer) * g.top_k
         eff = pack.kernel_efficiency(layer)
         cpu_g, gpu_g = [], []
-        for w, u in zip(widths, unions):
+        for w, u, taper in zip(widths, unions, tapers):
             cols = rows * w
             attn = params.gpu_attn_us_per_layer * 1e-3 * cols
             if layer in g.mla_layers:
@@ -173,7 +183,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             union_bytes = one * u * keep
             resident = union_bytes * hit / cfg.tier_compress
             nonres = union_bytes * (1 - hit)
-            routes = cols * g.top_k * (1 - hit) * keep
+            routes = cols * g.top_k * (1 - hit) * keep * taper
             macs = routes * g.expert_macs()
             gpu_bytes += resident
             if cfg.gpus > 1 and plan.tier_mib > 0:
@@ -192,6 +202,18 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                 cpu_g.append(0.0)
                 gpu_g.append(gpu)
                 continue
+            if cfg.pcie_prefetch and hw.pcie.h2d() > 0:
+                # routes of the next layer predicted one layer ahead: the upload overlaps this layer's CPU pass,
+                # so the bytes it can move are bounded by PCIe bandwidth x the layer's CPU time (solved in closed
+                # form below as an added bandwidth); wrong predictions fall back to the CPU
+                cores = min(workers, hw.cpu.cores)
+                cpu_bw = min(hw.memory.dram_gbps, cores * hw.memory.per_core_gbps) * params.cpu_bw_scale
+                extra = hw.pcie.h2d() * params.prefetch_accuracy
+                moved = nonres * extra / (cpu_bw + extra)
+                nonres -= moved
+                macs *= 1 - moved / max(1e-9, nonres + moved)
+                pcie_bytes += moved
+                gpu += kernels.gpu_tier_ms(hw, moved)
             if cfg.pcie_share > 0:
                 # the GPU pulls a share of this layer's experts over PCIe and computes them while the CPU streams the rest
                 streamed = nonres * cfg.pcie_share
@@ -213,7 +235,9 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             if cfg.placement == "ram_tier" and ram_hit < 1.0:
                 fetched = nonres * (1 - ram_hit)
                 disk_bytes += fetched
-                fetch_ms = kernels.disk_ms(hw, fetched, parallel=True) + params.ram_tier_wait_ms * fetched / pack.expert_bytes(layer)
+                # the per-expert wait was calibrated on a ~1 GB/s device; a faster store queues proportionally less
+                wait = params.ram_tier_wait_ms / max(1.0, hw.disk.fetch_gbps)
+                fetch_ms = kernels.disk_ms(hw, fetched, parallel=True) + wait * fetched / pack.expert_bytes(layer)
                 disk += fetch_ms
                 t_cpu += fetch_ms
             cpu_g.append(t_cpu)
@@ -222,6 +246,11 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
         if cfg.placement == "gpu_stream":
             t = sum(gpu_g) + handoff
             gpu_exposed += sum(gpu_g)
+        elif cfg.expert_deferral:
+            # deferred routed outputs join the residual one layer late, so the GPU chain runs ahead of the CPU
+            t = max(sum(cpu_g), sum(gpu_g)) + handoff
+            gpu_exposed += max(0.0, sum(gpu_g) - sum(cpu_g))
+            cpu_exposed += min(sum(cpu_g), sum(gpu_g))
         elif len(widths) == 2:
             # group B's GPU chain runs under group A's CPU pass and vice versa
             t = max(cpu_g[0], gpu_g[1]) + max(cpu_g[1], gpu_g[0]) + 2 * handoff
@@ -308,7 +337,8 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         notes.append(f"RAM expert set {gib:.1f} GiB serves {h * 100:.1f} % of routed bytes ({cfg.ram_mode})")
     lossless = (cfg.affinity == 0 and not (cfg.placement == "ram_tier" and cfg.ram_mode != "exact")
                 and not pack.name.startswith("reap") and cfg.expert_skip == 0 and cfg.tier_compress <= 1.0
-                and model.DENSE_FORMATS[cfg.dense_format]["lossless"])
+                and model.DENSE_FORMATS[cfg.dense_format]["lossless"] and not cfg.expert_deferral
+                and cfg.spec_tail_topk >= GEOMETRY.top_k)
     depth = spec_depth(cfg)
     if cfg.speculation == "dflash" and cfg.draft_block > cfg.max_verify_width:
         notes.append(f"draft block {cfg.draft_block} capped at the engine's verify width {cfg.max_verify_width}")
@@ -329,6 +359,9 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         tokens = per_row * rows
     else:
         per_row = routing.tokens_per_round(depth, cfg.acceptance)
+        if cfg.spec_tail_topk < GEOMETRY.top_k and depth >= 2:
+            halvings = math.log2(GEOMETRY.top_k / cfg.spec_tail_topk)
+            per_row = 1 + (per_row - 1) * params.tail_topk_acceptance ** halvings
         s = step(hw, cfg, params, depth + 1, pack, plan, hit, rows=rows, union=union)
         draft = depth * draft_step_ms(hw, cfg, params, pack, True, plan, rows)
         accepted = max(0.0, per_row - (1 if cfg.skip_anchor else 0))

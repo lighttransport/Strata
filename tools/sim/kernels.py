@@ -25,6 +25,8 @@ class Params:
     prefill_legacy_factor: float = 1.9  # GPU prefill work before FP16 MLA / dequant-once / KDA row parts
     prefill_lazy_gain: float = 1.0     # SSD reads overlap with PCIe this much (1 = fully serialized)
     ram_tier_wait_ms: float = 1.5      # exposed wait per disk-fetched expert on top of its bytes
+    prefetch_accuracy: float = 0.9     # share of predicted next-layer routes that are right (FATE: 97 %, DraftExpert: 86-88 %)
+    tail_topk_acceptance: float = 0.97  # acceptance multiplier per halving of experts on tapered draft positions (AcceptMoE: -0.27 pt)
 
 
 def cpu_roofline(hw, params, bytes_, macs, width, workers, kernel_efficiency):

@@ -71,6 +71,8 @@ class TierCurve:
     b: float = 0.545
     adaptive_gain: float = 1.08     # adaptive tier reads 3-7 % fewer CPU bytes than the static prior fill
     static_gain: float = 0.5        # static tier ranked by the prompt's routes only: 6.8 % vs 15 % adaptive
+    lru_gain: float = 1.22          # ideal per-layer LRU replayed on the build-q2-v3 traces: 26.9 % at 4.7 % of
+                                    # slots, 41.2 % at 10 %, 57.7 % at 20 % (adaptive curve 23.7 / 35.7 / 52.1)
     affinity_tau: float = 0.22      # affinity margin x: resident share rises as 1 - exp(-x / tau)
 
     def hit(self, fraction, policy="adaptive", affinity=0.0, skew=1.0, adaptive=None):
@@ -82,6 +84,8 @@ class TierCurve:
         h = min(1.0, self.a * skew * fraction ** self.b)
         if policy == "adaptive":
             h = min(1.0, h * self.adaptive_gain)
+        elif policy == "lru":
+            h = min(1.0, h * self.lru_gain)
         elif policy == "static":
             h = h * self.static_gain
         if affinity > 0:

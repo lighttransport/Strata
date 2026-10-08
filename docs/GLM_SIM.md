@@ -82,6 +82,11 @@ routing to the resident set, `hybrid` adds a margin), remote tensor parallelism 
 expert's rows on the worker; per layer `max(local, remote + round trip)`; the worker's share also lives in the
 worker's RAM), `--gpus 2` (a second tier), `--batch M` independent sequences.
 
+**Algorithms from the literature** (docs/GLM_DECODE_RESEARCH.md): `--tier-policy lru` (recency cache, fitted to
+an LRU replay of the routing traces), `--pcie-prefetch 1` (next-layer routes predicted one layer ahead and
+uploaded during the CPU pass; lossless), `--expert-deferral 1` (routed output added one layer late so the GPU
+chain never waits; lossy), `--spec-tail-topk N` (fewer experts for draft positions >= 2; lossy).
+
 **Architecture knobs for what-ifs**: `--pcie-share` streams a share of each layer's non-resident experts over
 PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores resident experts in a denser format
 (more slots, lossy); `--param name=value` overrides any calibrated parameter (for example

@@ -251,6 +251,48 @@ class ArchitectureKnobTest(unittest.TestCase):
                 glm_sim.main(["estimate", "--hw", "tr16", "--param", "no_such_param=1"])
 
 
+class ResearchKnobTest(unittest.TestCase):
+    """Algorithms taken from the literature survey (docs/GLM_DECODE_RESEARCH.md)."""
+
+    def setUp(self):
+        self.params = kernels.Params()
+        self.H = hw.tr16()
+        self.cfg = RunConfig(pack="q22", mtp_depth=3, acceptance="prime")
+
+    def test_lru_policy_hits_more_and_stays_lossless(self):
+        a = decode.simulate(self.H, self.cfg, self.params)
+        b = decode.simulate(self.H, self.cfg.copy(tier_policy="lru"), self.params)
+        self.assertGreater(b.hit_bytes_share, a.hit_bytes_share)
+        self.assertLess(b.hit_bytes_share, a.hit_bytes_share * 1.3)   # traces: 27 vs 24 % at this size
+        self.assertTrue(b.lossless)
+
+    def test_pcie_prefetch_scales_with_link_speed(self):
+        a = decode.simulate(self.H, self.cfg, self.params)
+        b = decode.simulate(self.H, self.cfg.copy(pcie_prefetch=True), self.params)
+        fast = hw.tr16(); fast.pcie.h2d_gbps = 20.0
+        c = decode.simulate(fast, self.cfg.copy(pcie_prefetch=True), self.params)
+        self.assertGreater(b.tok_s, a.tok_s)
+        self.assertGreater(c.tok_s, b.tok_s)
+        self.assertGreater(b.step.pcie_bytes, 0)
+        self.assertTrue(b.lossless)
+
+    def test_expert_deferral_helps_ordinary_decode_most(self):
+        plain = RunConfig(pack="q22", speculation="none")
+        a = decode.simulate(self.H, plain, self.params)
+        b = decode.simulate(self.H, plain.copy(expert_deferral=True), self.params)
+        self.assertGreater(b.tok_s, a.tok_s * 1.3)
+        self.assertFalse(b.lossless)
+        split = decode.simulate(self.H, self.cfg.copy(expert_deferral=True), self.params)
+        self.assertLess(split.tok_s / decode.simulate(self.H, self.cfg, self.params).tok_s, 1.05)
+
+    def test_verify_tapering_cuts_bytes(self):
+        a = decode.simulate(self.H, self.cfg, self.params)
+        b = decode.simulate(self.H, self.cfg.copy(spec_tail_topk=4), self.params)
+        self.assertLess(b.step.cpu_bytes, a.step.cpu_bytes * 0.9)
+        self.assertLess(b.tokens_per_round, a.tokens_per_round)
+        self.assertFalse(b.lossless)
+
+
 class CliTest(unittest.TestCase):
     def run_cli(self, *argv):
         out = io.StringIO()
