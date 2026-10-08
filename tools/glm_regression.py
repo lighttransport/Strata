@@ -140,14 +140,16 @@ def run_quality(cfg, decoder, sequences=None, update_baseline=False, config_path
         log(f"FAIL quality: {len(rows)}/{len(lines)} sequences scored")
         return 1
     final = rows[-1]
-    log(f"quality: {len(lines)} sequences, {final['tokens']} tokens, KL {final['kl']:.5f}, top-1 "
-        f"{final['top1_agreement']:.4f}, perplexity {final['perplexity']:.4f} ({seconds:.0f} s)")
+    log(f"quality: {len(lines)} sequences, {final['tokens']} tokens, KL {final['kl']:.9f}, top-1 "
+        f"{final['top1_agreement']:.6f}, perplexity {final['perplexity']:.9f}, nll {final['nll']:.9f}, "
+        f"different_logits {final.get('different_logits')} ({seconds:.0f} s)")
     if update_baseline:
         if sequences and sequences != len([l for l in corpus.read_text().splitlines() if l.strip()]):
             log("refusing to store a baseline from a subset")
             return 1
         raw = json.loads(pathlib.Path(config_path).read_text())
-        raw["quality"]["baseline"] = {k: final[k] for k in ("tokens", "kl", "top1_agreement", "perplexity", "nll")}
+        raw["quality"]["baseline"] = {k: final[k] for k in ("tokens", "kl", "top1_agreement", "perplexity", "nll",
+                                                            "different_logits") if k in final}
         raw["quality"]["baseline"]["recorded"] = time.strftime("%Y-%m-%d")
         pathlib.Path(config_path).write_text(json.dumps(raw, indent=1) + "\n")
         log(f"baseline written to {config_path}")

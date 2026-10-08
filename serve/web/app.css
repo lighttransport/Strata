@@ -182,3 +182,8 @@ main { flex: 1; min-height: 0; display: flex; }
   .facts { grid-template-columns: 1fr; gap: 2px; }
   .facts dd { margin-bottom: var(--st-s-2); }
 }
+
+/* Visible while chatting; the monitor retains its detailed plots. */
+.chat-throughput { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; padding: 8px 2px; font-size: 12px; }
+.chat-throughput strong { font-variant-numeric: tabular-nums; }
+#chat-rate-phase { opacity: .65; margin-left: auto; }

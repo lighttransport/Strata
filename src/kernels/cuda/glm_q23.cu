@@ -9,12 +9,12 @@
 #include <cuda_runtime.h>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 
 namespace strata::kernels {
 namespace {
 
 constexpr int kQ8kWords = 73;   // block_q8_K: float d, int8 qs[256], int16 bsums[16] = 292 bytes
-constexpr int kMaxTok = 4;      // tokens of one group handled per pass
 constexpr int kMaxBlocks = 16;  // 4096 columns
 
 size_t round_up(size_t n) { return (n + 255) & ~size_t(255); }
@@ -174,13 +174,13 @@ void quantize(const float* x, uint8_t* blocks, int64_t n, cudaStream_t s) {
 }
 
 // h[entry][row] = swiglu(gate_row . x, up_row . x). A block is 32 rows of one group.
-template <int TG>
+template <int TG, int kMaxTok>
 __global__ void __launch_bounds__(256) gu_kernel(const unsigned long long* __restrict__ grp_ptr,
                                                  const int32_t* __restrict__ grp_start,
                                                  const int32_t* __restrict__ n_groups,
                                                  const int32_t* __restrict__ ent_tok, const int* __restrict__ xq,
-                                                 NativeExpertLayout L, float* __restrict__ h) {
-    __shared__ int sx[kMaxTok * kMaxBlocks * kQ8kWords];
+                                                 NativeExpertLayout L, float* __restrict__ h, int bucket) {
+    extern __shared__ int sx[];
     const int g = blockIdx.y;
     if (g >= *n_groups) return;
     const int tid = threadIdx.x, j = tid & 7, row = blockIdx.x * 32 + (tid >> 3);
@@ -189,6 +189,7 @@ __global__ void __launch_bounds__(256) gu_kernel(const unsigned long long* __res
     const uint8_t* gate = reinterpret_cast<const uint8_t*>(grp_ptr[g]) + (size_t)row * L.gu_row;
     const uint8_t* up = gate + L.up_off;
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
+    if ((bucket == 1 && e1 - e0 > 4) || (bucket == 2 && e1 - e0 <= 4)) return;
     for (int c0 = e0; c0 < e1; c0 += kMaxTok) {
         const int cn = min(kMaxTok, e1 - c0);
         __syncthreads();
@@ -228,19 +229,23 @@ __global__ void __launch_bounds__(256) gu_kernel(const unsigned long long* __res
             case 1: pass(std::integral_constant<int, 1>{}); break;
             case 2: pass(std::integral_constant<int, 2>{}); break;
             case 3: pass(std::integral_constant<int, 3>{}); break;
-            default: pass(std::integral_constant<int, 4>{}); break;
+            case 4: pass(std::integral_constant<int, 4>{}); break;
+            case 5: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 5>{}); break;
+            case 6: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 6>{}); break;
+            case 7: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 7>{}); break;
+            case 8: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 8>{}); break;
         }
     }
 }
 
 // out[ent_dst[entry]][row] = down_row . h[entry].
-template <int TD>
+template <int TD, int kMaxTok>
 __global__ void __launch_bounds__(256) down_kernel(const unsigned long long* __restrict__ grp_ptr,
                                                    const int32_t* __restrict__ grp_start,
                                                    const int32_t* __restrict__ n_groups,
                                                    const int32_t* __restrict__ ent_dst, const int* __restrict__ hq,
-                                                   NativeExpertLayout L, float* __restrict__ out) {
-    __shared__ int sx[kMaxTok * kMaxBlocks * kQ8kWords];
+                                                   NativeExpertLayout L, float* __restrict__ out, int bucket) {
+    extern __shared__ int sx[];
     const int g = blockIdx.y;
     if (g >= *n_groups) return;
     const int tid = threadIdx.x, j = tid & 7, row = blockIdx.x * 32 + (tid >> 3);
@@ -248,6 +253,7 @@ __global__ void __launch_bounds__(256) down_kernel(const unsigned long long* __r
     const size_t block_bytes = L.d_row / nb;
     const uint8_t* down = reinterpret_cast<const uint8_t*>(grp_ptr[g]) + L.down_off + (size_t)row * L.d_row;
     const int e0 = grp_start[g], e1 = grp_start[g + 1];
+    if ((bucket == 1 && e1 - e0 > 4) || (bucket == 2 && e1 - e0 <= 4)) return;
     for (int c0 = e0; c0 < e1; c0 += kMaxTok) {
         const int cn = min(kMaxTok, e1 - c0);
         __syncthreads();
@@ -285,7 +291,11 @@ __global__ void __launch_bounds__(256) down_kernel(const unsigned long long* __r
             case 1: pass(std::integral_constant<int, 1>{}); break;
             case 2: pass(std::integral_constant<int, 2>{}); break;
             case 3: pass(std::integral_constant<int, 3>{}); break;
-            default: pass(std::integral_constant<int, 4>{}); break;
+            case 4: pass(std::integral_constant<int, 4>{}); break;
+            case 5: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 5>{}); break;
+            case 6: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 6>{}); break;
+            case 7: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 7>{}); break;
+            case 8: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 8>{}); break;
         }
     }
 }
@@ -328,14 +338,36 @@ void glm_q23_expert_grouped(const NativeExpertLayout& L, const unsigned long lon
     auto* hq = reinterpret_cast<uint8_t*>(h) + round_up((size_t)cap_entries * (size_t)L.n_ff * sizeof(float));
     quantize(x, xq, tokens * L.n_embd, s);
     const dim3 gu_grid((unsigned)(L.n_ff / 32), (unsigned)cap_groups), down_grid((unsigned)(L.n_embd / 32), (unsigned)cap_groups);
-    if (L.gu_type == 10)
-        gu_kernel<10><<<gu_grid, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_tok, (const int*)xq, L, h);
-    else gu_kernel<11><<<gu_grid, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_tok, (const int*)xq, L, h);
-    check("glm_q23_expert_grouped/gu");
+    // Eight-column kernels use more registers. Bucket mode keeps sparse expert groups
+    // on the four-column kernel and reads a popular expert only once for all its rows.
+    static const int wide = [] {
+        const char* v = std::getenv("STRATA_GLM_Q23_WIDE");
+        return v && std::string(v) == "2" ? 2 : v && std::string(v) == "1" ? 1 : 0;
+    }();
+    auto gate_up = [&](auto width, int bucket) {
+        constexpr int NT = decltype(width)::value;
+        const size_t shared = NT * (L.n_embd / 256) * kQ8kWords * sizeof(int);
+        if (L.gu_type == 10)
+            gu_kernel<10, NT><<<gu_grid, 256, shared, s>>>(grp_ptr, grp_start, n_groups, ent_tok, (const int*)xq, L, h, bucket);
+        else gu_kernel<11, NT><<<gu_grid, 256, shared, s>>>(grp_ptr, grp_start, n_groups, ent_tok, (const int*)xq, L, h, bucket);
+        check("glm_q23_expert_grouped/gu");
+    };
+    auto down = [&](auto width, int bucket) {
+        constexpr int NT = decltype(width)::value;
+        const size_t shared = NT * (L.n_ff / 256) * kQ8kWords * sizeof(int);
+        if (L.d_type == 10)
+            down_kernel<10, NT><<<down_grid, 256, shared, s>>>(grp_ptr, grp_start, n_groups, ent_dst, (const int*)hq, L, out, bucket);
+        else down_kernel<11, NT><<<down_grid, 256, shared, s>>>(grp_ptr, grp_start, n_groups, ent_dst, (const int*)hq, L, out, bucket);
+    };
+    const auto four = std::integral_constant<int, 4>{};
+    const auto eight = std::integral_constant<int, 8>{};
+    if (wide == 2 && tokens > 4) { gate_up(four, 1); gate_up(eight, 2); }
+    else if (wide && tokens > 4) gate_up(eight, 0);
+    else gate_up(four, 0);
     quantize(h, hq, cap_entries * L.n_ff, s);
-    if (L.d_type == 10)
-        down_kernel<10><<<down_grid, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_dst, (const int*)hq, L, out);
-    else down_kernel<11><<<down_grid, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_dst, (const int*)hq, L, out);
+    if (wide == 2 && tokens > 4) { down(four, 1); down(eight, 2); }
+    else if (wide && tokens > 4) down(eight, 0);
+    else down(four, 0);
     check("glm_q23_expert_grouped/down");
 }
 

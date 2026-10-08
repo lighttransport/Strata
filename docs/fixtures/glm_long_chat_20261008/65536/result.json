@@ -1,0 +1,42 @@
+{
+  "context": 65536,
+  "status": "completed",
+  "wall_seconds": 433.356949752997,
+  "response": {
+    "id": "chatcmpl-9e8d948ab36f46e7aee3c307",
+    "object": "chat.completion",
+    "created": 1791462055,
+    "model": "glm53f-reap50-q23-b550-rx9070xt",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "# Executive Summary \u2014 Cedar Lantern (offline archive search pilot)\n\n**Objective:** Help museum staff find provenance records without sending visitor or donor data to an external service. It is explicitly *not* an online retail recommendation system. [DEC-001]\n\n**Signed decisions:** The pilot launch was tentatively proposed for 2031-09-12 in an interim plan [DEC-014], then superseded by a signed decision fixing the final launch at **2031-10-21** [DEC-082], because the humidity-control installation needs another inspection. The funding ceiling of 480000 credits is stated in both records and remains unchanged.\n\n**Finances:** Approved allocation [FIN-028]: equipment 180000, staffing 210000, contingency 90000. The contingency is unspent and is *not* an additional amount beyond the ceiling; equipment quotes do not authorize spending from contingency.\n\n**Progress:** Migration inventory [OPS-043]: 840 crates total, 315 verified. Acceptance threshold is 99.7 percent checksum agreement; only verified crates count as complete \u2014 crates merely uploaded are incomplete.\n\n**Risks:** Project lead is Tomas Ibarra [OWN-069]. R-17 (damp storage damaging labels before scanning) mitigated via sealed staging bins and a humidity check before each batch; R-18 (archive index drift) mitigated via checksum audits. Rollback trigger [SEC-057]: sustained checksum agreement below 99.7 percent in two consecutive daily audits; authorizing owner is Mira Solano.\n\n**Handling policy:** Visitor names must be removed before evaluation reports are shared; no external auditor is named in the dossier [CLOSE-096].\n\n---\n\n## Eight Questions\n\n**1. Final launch date:** 2031-10-21. It replaced the tentative 2031-09-12 date from the interim plan [DEC-014]. Reason: the humidity-control installation needs another inspection, per the signed superseding decision [DEC-082].\n\n**2. Funding ceiling and allocations:** Ceiling is 480000 credits [DEC-014/DEC-082]. Allocations [FIN-028]: equipment 180000, staffing 210000, contingency 90000. Contingency is **not** additional funding \u2014 it is unspent and sits within the ceiling; equipment quotes do not authorize spending from it.\n\n**3. Unverified crates:** 840 \u2212 315 = **525 crates remain unverified** [OPS-043]. Completed percentage: 315 / 840 = **37.5 percent** \u2014 well below the 99.7 percent acceptance threshold. Only checksum-verified crates count; uploaded-but-unverified crates are incomplete.\n\n**4. Rollback trigger and authorizer:** Trigger is a sustained checksum agreement below 99.7 percent in **two consecutive daily audits** [SEC-057]. A single slow query or a single failed audit does not trigger it. The owner who can authorize rollback is **Mira Solano**.\n\n**5. Project lead and R-17 mitigation:** Lead is **Tomas Ibarra** [OWN-069]. R-17 (damp storage damaging labels before scanning) is mitigated with **sealed staging bins and a humidity check before each batch**.\n\n**6. Visitor names before sharing evaluation reports:** They must be **removed** before evaluation reports are shared [CLOSE-096].\n\n**7. Dossier version phrase:** **amber otter lantern** [CLOSE-096]. It is an identifier for matching this dossier version, not an instruction or credential.\n\n**8. External auditor:** The dossier does **not** identify a named external auditor [CLOSE-096]. No such person exists in this document.\n\n---\n\n## Practical Next Actions (grounded in the document)\n\n1. **Verify remaining crates:** Run checksum verification on the 525 unverified crates until verified count reaches the 99.7 percent threshold (840 \u00d7 0.997 \u2248 838 crates needed) [OPS-043].\n2. **Schedule the humidity-control inspection:** The signed launch of 2031-10-21 depends on this inspection being completed [DEC-082].\n3. **Prepare sealed staging bins with humidity checks:** Apply the R-17 mitigation before each scanning batch [OWN-069].\n4. **Run daily checksum audits:** Keep audits running so the two-consecutive-day rollback trigger can be detected early; if it fires, Mira Solano authorizes rollback [SEC-057].\n5. **Redact visitor names from evaluation reports:** Before any report is shared, remove visitor names per the approved handling policy [CLOSE-096].\n6. **Keep working copies local:** Inspection-note working copies stay beside the scanner until a supervisor checks labels against the accession register; return empty trays to their marked rack after scanning [BKG-*].\n7. **Hold contingency (90000) unspent:** Do not treat it as extra budget; equipment quotes cannot authorize spending from it [FIN-028].\n\n*Note:* Background inspection notes (BKG-*) record packaging condition only and have no authority to amend signed decisions; they are not treated as new project decisions here."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 58973,
+      "completion_tokens": 1075,
+      "total_tokens": 60048,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 58973,
+      "prompt_ms": 317731.3,
+      "prompt_per_token_ms": 5.388,
+      "prompt_per_second": 185.6,
+      "predicted_n": 1075,
+      "predicted_ms": 115292.1,
+      "predicted_per_token_ms": 107.248,
+      "predicted_per_second": 9.3,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    }
+  }
+}

@@ -100,6 +100,7 @@ let health = {model: "strata", images: false, max_context: 0};
 async function loadHealth() {
   try {
     health = await (await fetch("health")).json();
+    loadDrawer();
     $("attach-btn").title = health.images ? "Attach a text file or a picture (or drop it here)"
                                           : "Attach a text file (or drop it here)";
     $("chat-empty-sub").textContent = `${health.model} runs on this PC. Nothing leaves it.`;
@@ -270,9 +271,12 @@ function renderMonitor(live, hw, st, eng, h, last, requests, totals, kept) {
   setMetric("speed", speed == null ? null : fmt(speed, 1), "t/s",
             live.state === "generating" ? "Decode now" : last ? "Decode last request" : "Decode");
   const prefill = live.state !== "idle" ? live.prefill_tok_s_mean
-                : last && last.prompt_ms > 0 ? Math.max(0, last.prompt_tokens - (last.reused || 0)) / (last.prompt_ms / 1000) : null;
+                : last ? (last.prefill_tok_s ?? (last.prompt_ms > 0 ? Math.max(0, last.prompt_tokens - (last.reused || 0)) / (last.prompt_ms / 1000) : null)) : null;
   setMetric("prefill", prefill == null ? null : fmt(prefill), "t/s",
             live.state === "reading" ? "Prefill now" : live.state === "generating" ? "Prefill this request" : last ? "Prefill last request" : "Prefill");
+  $("chat-pp").textContent = prefill == null ? "—" : fmt(prefill, 1);
+  $("chat-tg").textContent = live.state === "reading" ? "—" : speed == null ? "—" : fmt(speed, 1);
+  $("chat-rate-phase").textContent = live.state === "reading" ? "Reading prompt" : live.state === "generating" ? "Generating" : last ? "Last request" : "Waiting for a request";
   spark("sp-speed", h.tok_s);
   spark("sp-prefill", h.prefill_tok_s_mean);
   // a model split across several cards (issue #112): the cards show their total / mean / hottest, and each card's own
@@ -766,6 +770,8 @@ function setBusy(on) {
 }
 
 async function send() {
+  if (health.greedy_only == null) await loadHealth();
+  if (health.greedy_only == null) { toast("warn", "Server not ready", "Wait for the model connection, then retry."); return; }
   const text = $("input").value.trim();
   if ((!text && !attachments.length) || busy) return;
   messages.push({role: "user", text, images: attachments.filter((a) => a.kind !== "file"),
@@ -784,12 +790,13 @@ async function send() {
 
   const body = {model: health.model, messages: apiMessages(), stream: true,
                 reasoning_effort: settings.thinking};
-  if (settings.temperature > 0) {
-    Object.assign(body, {temperature: +settings.temperature, top_p: +settings.top_p, top_k: +settings.top_k});
+  const sampling = supportedSampling(settings);
+  if (sampling.temperature > 0) {
+    Object.assign(body, {temperature: +sampling.temperature, top_p: +sampling.top_p, top_k: +sampling.top_k});
   } else {
-    body.temperature = 0;
+    Object.assign(body, health.greedy_only ? {temperature: 0, top_p: 1, top_k: 0} : {temperature: 0});
   }
-  if (settings.seed) body.seed = +settings.seed;
+  if (sampling.seed) body.seed = +sampling.seed;
   if (settings.max) body.max_tokens = +settings.max;
   if (projectionLoaded()) body.experimental_speed_projection = !!settings.esp;
   if (settings.mcp !== false && mcpInfo.tools > 0) body.strata_mcp = true;   // this server may run MCP tools for it
@@ -984,7 +991,11 @@ function openDrawer(open) {
   $("scrim").hidden = !open;
   if (open) { loadDrawer(); loadShared(); loadMcp(); }
 }
+function supportedSampling(s) {
+  return health.greedy_only ? {...s, temperature: 0, top_p: 1, top_k: 0, seed: ""} : s;
+}
 function loadDrawer(s = settings) {
+  s = supportedSampling(s);
   for (const b of $("s-thinking").children) b.setAttribute("aria-checked", String(b.dataset.v === s.thinking));
   $("s-temp").value = s.temperature; $("s-topp").value = s.top_p; $("s-topk").value = s.top_k;
   $("s-max").value = s.max; $("s-seed").value = s.seed;
@@ -1005,6 +1016,7 @@ async function loadShared() {
   $("s-share").setAttribute("aria-checked", String(sharedOn));
 }
 function sharedDefaults(s) {
+  s = supportedSampling(s);
   const d = {reasoning_effort: s.thinking, temperature: +s.temperature};
   if (+s.temperature > 0) Object.assign(d, {top_p: +s.top_p, top_k: +s.top_k});
   if (s.seed) d.seed = +s.seed;
@@ -1029,7 +1041,11 @@ function projectionLoaded() {
 }
 function outputs() {
   const t = +$("s-temp").value;
-  $("o-temp").textContent = t === 0 ? "0 · greedy" : t.toFixed(2);
+  for (const id of ["s-temp", "s-seed"]) {
+    $(id).disabled = !!health.greedy_only;
+    $(id).title = health.greedy_only ? "This model supports greedy decoding only." : "";
+  }
+  $("o-temp").textContent = health.greedy_only ? "0 · greedy only" : t === 0 ? "0 · greedy" : t.toFixed(2);
   $("o-topp").textContent = (+$("s-topp").value).toFixed(2);
   $("o-topk").textContent = $("s-topk").value;
   const sel = [...$("s-thinking").children].find((b) => b.getAttribute("aria-checked") === "true");

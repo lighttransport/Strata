@@ -357,10 +357,11 @@ __global__ void decay(const float *x, const float *b, const float *a, float *y, 
 }
 // snapshots (optional): the state after token t < snapshot_tokens also goes to snapshots + t * snapshot_stride,
 // in the state's own layout, so a verify window keeps its rollback history without per-token kernels.
-template<int columns>
+template<int columns, bool prepared = false>
 __global__ void kda_chunk(float *state, const float *q, const float *k, const float *v, const float *g,
                           const float *beta, float *out, int heads, int tokens, float *snapshots = nullptr,
-                          long long snapshot_stride = 0, int snapshot_tokens = 0) {
+                          long long snapshot_stride = 0, int snapshot_tokens = 0,
+                          const float *prepared_qi = nullptr) {
     constexpr int dim = 128;
     int h = blockIdx.x, j = blockIdx.y * columns + threadIdx.x;
     state += (size_t)h * dim * dim;
@@ -373,20 +374,30 @@ __global__ void kda_chunk(float *state, const float *q, const float *k, const fl
     for (int t = 0; t < tokens; ++t) {
         int offset = (t * heads + h) * dim;
         if (!threadIdx.x) {
-            float qs = 1e-6f, ks = 1e-6f;
-            for (int i = 0; i < dim; ++i) {
-                qs += q[offset + i] * q[offset + i];
-                ks += k[offset + i] * k[offset + i];
+            if constexpr (prepared) {
+                qi = prepared_qi[t * heads + h];
+                b = beta[t * heads + h];
+            } else {
+                float qs = 1e-6f, ks = 1e-6f;
+                for (int i = 0; i < dim; ++i) {
+                    qs += q[offset + i] * q[offset + i];
+                    ks += k[offset + i] * k[offset + i];
+                }
+                ki = rsqrtf(ks);
+                qi = rsqrtf(qs) * rsqrtf((float)dim);
+                b = sigmoid(beta[t * heads + h]);
             }
-            ki = rsqrtf(ks);
-            qi = rsqrtf(qs) * rsqrtf((float)dim);
-            b = sigmoid(beta[t * heads + h]);
         }
-        __syncthreads();
+        if constexpr (!prepared) __syncthreads();
         for (int i = threadIdx.x; i < dim; i += columns) {
             qr[i] = q[offset + i];
-            kn[i] = k[offset + i] * ki;
-            decay[i] = expf(g[offset + i]);
+            if constexpr (prepared) {
+                kn[i] = k[offset + i];
+                decay[i] = g[offset + i];
+            } else {
+                kn[i] = k[offset + i] * ki;
+                decay[i] = expf(g[offset + i]);
+            }
         }
         __syncthreads();
         float mem = 0;
@@ -592,8 +603,14 @@ __global__ void kda_output(const float *x, const float *g, const float *w, float
         sum += x[h * dim + i] * x[h * dim + i];
     out[h * dim + j] = x[h * dim + j] * rsqrtf(sum / dim + eps) * w[j] * sigmoid(g[h * dim + j]);
 }
+__global__ void decode_position(int *position, int value) { *position = value; }
+__global__ void cache_rows(const float *rows, float *cache, int width, int tokens, const int *position) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < width * tokens) cache[(size_t)*position * width + i] = rows[i];
+}
 __global__ void pooling(const float *keys, const float *gates, const float *ape, const float *pk,
-                        const float *pg, float *out, int pos, int tokens, int pool, int dim) {
+                        const float *pg, float *out, int pos, int tokens, int pool, int dim, const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
     int d = blockIdx.x * 256 + threadIdx.x, first = pos / pool, last = (pos + tokens) / pool;
     if (d >= (last - first) * dim)
         return;
@@ -615,7 +632,8 @@ __global__ void pooling(const float *keys, const float *gates, const float *ape,
     out[p * dim + c] = value / sum;
 }
 __global__ void pending(const float *keys, const float *gates, float *pk, float *pg, int pos, int tokens,
-                        int pool, int dim) {
+                        int pool, int dim, const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
     int i = blockIdx.x * 256 + threadIdx.x;
     if (i >= pool * dim)
         return;
@@ -627,7 +645,8 @@ __global__ void pending(const float *keys, const float *gates, float *pk, float 
     }
 }
 __global__ void index_reduce(const float *dots, const float *w, float *scores, int heads, int pools,
-                             int queries, int pos, int pool, int dim) {
+                             int queries, int pos, int pool, int dim, const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
     int i = blockIdx.x * 256 + threadIdx.x;
     if (i >= pools * queries)
         return;
@@ -647,7 +666,8 @@ __device__ unsigned long long score_key(float score, int index) {
     return ((unsigned long long)ordered << 32) | (0xffffffffu - index);
 }
 __global__ void selection(const float *scores, int *ids, int *counts, int pools_total, int pos, int pool,
-                          int top, int stride) {
+                          int top, int stride, const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
     int q = blockIdx.x, tid = threadIdx.x, tokens = pos + q + 1, pools = tokens / pool,
         n = min(top / pool, pools);
     scores += q * pools_total;
@@ -971,7 +991,21 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
         else kda_rows<8><<<heads, 1024, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
         check(); return;
     }
-    if (prepared_qi) throw std::invalid_argument("GLM: prepared KDA needs parallel rows");
+    if (prepared_qi) {
+        // Preparation keeps the original serial norm sums. The recurrence below
+        // keeps all 128 state rows in their original accumulation order too.
+        if (columns == 32)
+            kda_chunk<32, true><<<dim3(heads, 4), 32, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads,
+                tokens, nullptr, 0, 0, prepared_qi);
+        else if (columns == 64)
+            kda_chunk<64, true><<<dim3(heads, 2), 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads,
+                tokens, nullptr, 0, 0, prepared_qi);
+        else if (columns == 128)
+            kda_chunk<128, true><<<heads, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads,
+                tokens, nullptr, 0, 0, prepared_qi);
+        else throw std::invalid_argument("GLM: KDA columns must be 32, 64 or 128");
+        check(); return;
+    }
     if (columns == 32)
         kda_chunk<32><<<dim3(heads, 4), 32, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens,
                                                                    snapshots, snapshot_stride, snapshot_tokens);
@@ -989,26 +1023,35 @@ void glm_kda_output_batch(const float *x, const float *g, const float *w, float 
     kda_output<<<h * tokens, d, 0, (cudaStream_t)s>>>(x, g, w, y, d, eps);
     check();
 }
+void glm_decode_position(int *position, int value, void *s) {
+    decode_position<<<1, 1, 0, (cudaStream_t)s>>>(position, value);
+    check();
+}
+void glm_cache_rows(const float *rows, float *cache, int width, int tokens, const int *position, void *s) {
+    cache_rows<<<(width * tokens + 255) / 256, 256, 0, (cudaStream_t)s>>>(rows, cache, width, tokens, position);
+    check();
+}
 void glm_index_prepare(const float *k, const float *g, const float *a, float *pk, float *pg, float *out,
-                       int pos, int tokens, int pool, int dim, void *s) {
-    int n = ((pos + tokens) / pool - pos / pool) * dim;
+                       int pos, int tokens, int pool, int dim, void *s, const int *device_pos, int offset) {
+    // The maximum number of completed pools does not depend on the current position.
+    int n = (device_pos ? (tokens + pool - 1) / pool : (pos + tokens) / pool - pos / pool) * dim;
     if (n)
-        pooling<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(k, g, a, pk, pg, out, pos, tokens, pool, dim);
-    pending<<<(pool * dim + 255) / 256, 256, 0, (cudaStream_t)s>>>(k, g, pk, pg, pos, tokens, pool, dim);
+        pooling<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(k, g, a, pk, pg, out, pos, tokens, pool, dim, device_pos, offset);
+    pending<<<(pool * dim + 255) / 256, 256, 0, (cudaStream_t)s>>>(k, g, pk, pg, pos, tokens, pool, dim, device_pos, offset);
     check();
 }
 void glm_index_reduce(const float *d, const float *w, float *out, int h, int pools, int q, int pos, int pool,
-                      int dim, void *s) {
+                      int dim, void *s, const int *device_pos, int offset) {
     if (pools)
         index_reduce<<<(pools * q + 255) / 256, 256, 0, (cudaStream_t)s>>>(d, w, out, h, pools, q, pos, pool,
-                                                                           dim);
+                                                                           dim, device_pos, offset);
     check();
 }
 void glm_index_select_batch(const float *scores, int *ids, int *counts, int pools, int pos, int queries,
-                            int pool, int top, int stride, void *s) {
+                            int pool, int top, int stride, void *s, const int *device_pos, int offset) {
     if (top / pool > 512)
         throw std::invalid_argument("GLM: selection exceeds 512 pools");
-    selection<<<queries, 256, 0, (cudaStream_t)s>>>(scores, ids, counts, pools, pos, pool, top, stride);
+    selection<<<queries, 256, 0, (cudaStream_t)s>>>(scores, ids, counts, pools, pos, pool, top, stride, device_pos, offset);
     check();
 }
 void glm_mla_gather(const float *c, const int *ids, const int *counts, float *out, int q, int stride,

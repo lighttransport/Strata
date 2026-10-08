@@ -1,0 +1,1786 @@
+{
+  "measurement_utc": "2026-10-07T18:22:19.382301+00:00",
+  "hardware": {
+    "cpu": "AMD Ryzen Threadripper 1950X",
+    "physical_cores": 16,
+    "numa_nodes": 2,
+    "ram_gb": 128,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti 16 GB",
+    "framebuffer_total_mib": 16311,
+    "nvidia_reserved_mib": 404,
+    "cuda_usable_mib": 15907,
+    "original_model_drive": "/mnt/nvme01",
+    "expert_pack_drive": "/mnt/nvme02"
+  },
+  "budgets": {
+    "system_ram_gib": 64,
+    "engine_and_file_cache_gib": 60,
+    "os_ram_allowance_gib": 4,
+    "swap_bytes": 0,
+    "gpu_nominal_mib": 16384,
+    "total_gpu_use_ceiling_mib": 14336,
+    "minimum_actual_gpu_free_mib": 2048,
+    "effective_reported_gpu_use_limit_mib": 13859,
+    "effective_use_including_reserved_limit_mib": 14263
+  },
+  "targets": {
+    "decode_tok_s": 20,
+    "prefill_tok_s": 300,
+    "additional_perplexity_ratio": 1.01,
+    "achieved": false
+  },
+  "outcome": "Safe unbiased profiles fit both margins but reached 2.36 tok/s decode at 1K and 2.30 at 8K; 8K prefill was 104.04 tok/s. Both tested residency biases failed the 1% prose quality gate.",
+  "main_expert_bytes": 111188901888,
+  "decoder_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+  "saved_configs": [
+    "configs/glm53f-q23-v8-64g-16g-safe-short.json",
+    "configs/glm53f-q23-v8-64g-16g-safe-long.json"
+  ],
+  "cases": [
+    {
+      "name": "unbiased-1024x256",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "model_name": "glm-5.3-flash-q23-v8-64g-unbiased",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 8192,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "build-q2-redesign/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_STAGE_PREFETCH": "1",
+            "STRATA_GLM_PREFETCH_GROUPS": "12",
+            "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          }
+        },
+        "prompt_tokens": 1024,
+        "prompt_sha256": "664796e1c7b7baee9b7e19632b72e393dd4b4b893e922a44e4a8a5961e9e6c9e",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1661975",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-1024.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased-1024x256",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "256",
+          "--trials",
+          "1",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336"
+        ],
+        "guard_source_sha256": "b11a147cbfa8bb2821bbe6e7b73e7c408b56a9c0e7f3fd478359c233b69c0050",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+            "bytes": 9429859,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+            "bytes": 49294975936,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+            "bytes": 49949266048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+            "bytes": 9466399584,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+            "bytes": 105488860384,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60
+      },
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "memory_pass": false,
+      "throughput_qualified": false,
+      "wall_seconds": 205.97131704501226,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 1024,
+            "batch": 8192,
+            "milliseconds": 76476.7,
+            "tokens_per_second": 13.3897
+          }
+        ],
+        "decode": [
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 107764.0,
+            "tokens_per_second": 2.36627
+          }
+        ],
+        "median_prefill_tok_s": 13.3897,
+        "median_decode_tok_s": 2.36627,
+        "peak_allocated_gpu_mib": 11902.3,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 992.48,
+              "prefill": 4330.02,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "dense_mtp": 220.84,
+              "other": 3789.67,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 163186,
+            "minor": 2517306
+          }
+        ]
+      },
+      "cgroup_peak_gib": 60.0,
+      "peak_rss_gib": 59.89352798461914,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": null,
+      "derived_minimum_free_mib": 2046,
+      "peak_gpu_use_including_reserved_mib": 14265,
+      "peak_cuda_process_mib": 12598,
+      "ssd_read_gib": 225.9502182006836,
+      "interference_events": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 26783,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "actual_gpu_cache": [
+        {
+          "slots": 425,
+          "mib": 3692.19,
+          "fingerprint": "17398538780407173887"
+        }
+      ],
+      "mtp_trials": [
+        {
+          "generated": 256,
+          "rounds": 118,
+          "proposed": 235,
+          "accepted": 137,
+          "replayed": 0
+        }
+      ],
+      "artifact_hashes": {
+        "log": "03e4d306107ed86f3e091996bf2f5844d2da1d353d313837fdce572327fb4e5b",
+        "stdout": "099eb849504d31d70f2bec2b4b9e8fe1f4ae22bbe57dedb8ce6124bf88edec6a",
+        "manifest.json": "9f0134bae4ec6a7b1706b2f33a71b7f8fd1243aa5827a99724bad79036228bf5",
+        "result.json": "11628e1ba7449cdf832862b87d20d0963afb5cd67dd3fea6218c981ba087413b"
+      },
+      "output": {
+        "tokens": 256,
+        "eos_positions": [],
+        "repetitions_identical": true
+      }
+    },
+    {
+      "name": "unbiased-short-safe",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "model_name": "glm-5.3-flash-q23-v8-64g-unbiased",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 1024,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "build-q2-redesign/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_STAGE_PREFETCH": "1",
+            "STRATA_GLM_PREFETCH_GROUPS": "8",
+            "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          }
+        },
+        "prompt_tokens": 1024,
+        "prompt_sha256": "664796e1c7b7baee9b7e19632b72e393dd4b4b893e922a44e4a8a5961e9e6c9e",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1663113",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased-short.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-1024.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased-short-safe",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "256",
+          "--trials",
+          "1",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336"
+        ],
+        "guard_source_sha256": "53de6716c4df96667a1c1b8d70ae78866d74369d8730b666737fa822b0bbae69",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+            "bytes": 9429859,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+            "bytes": 49294975936,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+            "bytes": 49949266048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+            "bytes": 9466399584,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+            "bytes": 105488860384,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60
+      },
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "memory_pass": true,
+      "throughput_qualified": false,
+      "wall_seconds": 205.8014699430205,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 75975.9,
+            "tokens_per_second": 13.478
+          }
+        ],
+        "decode": [
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 108067.0,
+            "tokens_per_second": 2.35965
+          }
+        ],
+        "median_prefill_tok_s": 13.478,
+        "median_decode_tok_s": 2.35965,
+        "peak_allocated_gpu_mib": 11065.0,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 207.824,
+              "prefill": 2449.35,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "dense_mtp": 220.84,
+              "other": 3789.67,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 161931,
+            "minor": 2500080
+          }
+        ]
+      },
+      "cgroup_peak_gib": 60.0,
+      "peak_rss_gib": 59.88270950317383,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2347,
+      "derived_minimum_free_mib": null,
+      "peak_gpu_use_including_reserved_mib": 13965,
+      "peak_cuda_process_mib": 12298,
+      "ssd_read_gib": 225.35022735595703,
+      "interference_events": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 26678,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "actual_gpu_cache": [
+        {
+          "slots": 425,
+          "mib": 3692.19,
+          "fingerprint": "17398538780407173887"
+        }
+      ],
+      "mtp_trials": [
+        {
+          "generated": 256,
+          "rounds": 118,
+          "proposed": 235,
+          "accepted": 137,
+          "replayed": 0
+        }
+      ],
+      "artifact_hashes": {
+        "log": "4b0926372385029fa6207fc4ec04472e948e1466c12f10869f421b0901b281cb",
+        "stdout": "099eb849504d31d70f2bec2b4b9e8fe1f4ae22bbe57dedb8ce6124bf88edec6a",
+        "manifest.json": "ef68f33e69e946b50e1f9ebe5baf069aadfff407042e55ba26826f6e9c66a5e8",
+        "result.json": "acbe6ba8e756ebdf21bdeaae9a0f81fb83296940a1d4ba04d50f9180a6b15dbc"
+      },
+      "output": {
+        "tokens": 256,
+        "eos_positions": [],
+        "repetitions_identical": true
+      }
+    },
+    {
+      "name": "unbiased-long-safe",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "model_name": "glm-5.3-flash-q23-v8-64g-unbiased",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 8192,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "build-q2-redesign/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_STAGE_PREFETCH": "1",
+            "STRATA_GLM_PREFETCH_GROUPS": "8",
+            "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          }
+        },
+        "prompt_tokens": 8192,
+        "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1667192",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased-long.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-8192.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased-long-safe",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "128",
+          "--trials",
+          "1",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336"
+        ],
+        "guard_source_sha256": "821faf21dcfbb39e83e0c860a9618302b449ba54b0a229d94734b872898d2b83",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+            "bytes": 9429859,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+            "bytes": 49294975936,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+            "bytes": 49949266048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+            "bytes": 9466399584,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+            "bytes": 105488860384,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60
+      },
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "memory_pass": true,
+      "throughput_qualified": false,
+      "wall_seconds": 170.10525406399393,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 78742.5,
+            "tokens_per_second": 104.035
+          }
+        ],
+        "decode": [
+          {
+            "kind": "mtp",
+            "tokens": 128,
+            "milliseconds": 55322.2,
+            "tokens_per_second": 2.29564
+          }
+        ],
+        "median_prefill_tok_s": 104.035,
+        "median_decode_tok_s": 2.29564,
+        "peak_allocated_gpu_mib": 11237.6,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 992.48,
+              "prefill": 3665.35,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "dense_mtp": 220.84,
+              "other": 3789.67,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 164750,
+            "minor": 2683907
+          }
+        ]
+      },
+      "cgroup_peak_gib": 60.0,
+      "peak_rss_gib": 59.88804244995117,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2352,
+      "derived_minimum_free_mib": null,
+      "peak_gpu_use_including_reserved_mib": 13961,
+      "peak_cuda_process_mib": 12296,
+      "ssd_read_gib": 172.63309478759766,
+      "interference_events": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 17903,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "actual_gpu_cache": [
+        {
+          "slots": 425,
+          "mib": 3692.19,
+          "fingerprint": "11381658425580011789"
+        }
+      ],
+      "mtp_trials": [
+        {
+          "generated": 128,
+          "rounds": 52,
+          "proposed": 103,
+          "accepted": 75,
+          "replayed": 0
+        }
+      ],
+      "artifact_hashes": {
+        "log": "2013183c26db976597ac8034b39d5c0dd2737a94f17b158bd69a96519952178d",
+        "stdout": "b46e113b84018e03aadae986459d9a60df29e7aa9144a029cbc7688c613b8690",
+        "manifest.json": "9c963f6150cb82440f47755bcf6962bad7904516420badce9f55816fc0d0bebb",
+        "result.json": "781afd78c93955ccbdb34a5b222fa94e5db23d929dca74751b8a9c5ef2479a38"
+      },
+      "output": {
+        "tokens": 128,
+        "eos_positions": [],
+        "repetitions_identical": true
+      }
+    },
+    {
+      "name": "resident010-short",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "model_name": "glm-5.3-flash-q23-v8-64g-resident",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 1024,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "build-q2-redesign/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_STAGE_PREFETCH": "1",
+            "STRATA_GLM_PREFETCH_GROUPS": "8",
+            "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1",
+            "STRATA_GLM_PREFER_RESIDENT_MIB": "48000",
+            "STRATA_GLM_RAM_MARGIN": "0.10",
+            "STRATA_GLM_RAM_ADMIT": "1e9"
+          }
+        },
+        "prompt_tokens": 1024,
+        "prompt_sha256": "664796e1c7b7baee9b7e19632b72e393dd4b4b893e922a44e4a8a5961e9e6c9e",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1664102",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=1230",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/resident010-short.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-1024.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/resident010-short",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "256",
+          "--trials",
+          "3",
+          "--timeout",
+          "1200",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336"
+        ],
+        "guard_source_sha256": "821faf21dcfbb39e83e0c860a9618302b449ba54b0a229d94734b872898d2b83",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+            "bytes": 9429859,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+            "bytes": 49294975936,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+            "bytes": 49949266048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+            "bytes": 9466399584,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+            "bytes": 105488860384,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60
+      },
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "memory_pass": true,
+      "throughput_qualified": false,
+      "wall_seconds": 527.4706094890134,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 84637.2,
+            "tokens_per_second": 12.0987
+          },
+          {
+            "trial": 1,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 85837.0,
+            "tokens_per_second": 11.9296
+          },
+          {
+            "trial": 2,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 85693.0,
+            "tokens_per_second": 11.9496
+          }
+        ],
+        "decode": [
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 62249.3,
+            "tokens_per_second": 4.09643
+          },
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 46198.1,
+            "tokens_per_second": 5.51971
+          },
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 42619.9,
+            "tokens_per_second": 5.98312
+          }
+        ],
+        "median_prefill_tok_s": 11.9496,
+        "median_decode_tok_s": 5.51971,
+        "peak_allocated_gpu_mib": 11065.1,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 207.874,
+              "prefill": 2449.35,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 207.874,
+              "prefill": 2449.35,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 207.874,
+              "prefill": 2449.35,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "dense_mtp": 220.84,
+              "other": 3789.72,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "dense_mtp": 220.84,
+              "other": 3789.72,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "dense_mtp": 220.84,
+              "other": 3789.72,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 153727,
+            "minor": 2256277
+          },
+          {
+            "trial": 1,
+            "major": 153328,
+            "minor": 2267371
+          },
+          {
+            "trial": 2,
+            "major": 153315,
+            "minor": 2267174
+          }
+        ]
+      },
+      "cgroup_peak_gib": 60.0,
+      "peak_rss_gib": 59.18819808959961,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2338,
+      "derived_minimum_free_mib": null,
+      "peak_gpu_use_including_reserved_mib": 13975,
+      "peak_cuda_process_mib": 12310,
+      "ssd_read_gib": 568.9555206298828,
+      "interference_events": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 49050,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "actual_gpu_cache": [
+        {
+          "slots": 425,
+          "mib": 3692.19,
+          "fingerprint": "15336204444552577201"
+        }
+      ],
+      "mtp_trials": [
+        {
+          "generated": 256,
+          "rounds": 110,
+          "proposed": 220,
+          "accepted": 144,
+          "replayed": 0
+        },
+        {
+          "generated": 256,
+          "rounds": 110,
+          "proposed": 220,
+          "accepted": 144,
+          "replayed": 0
+        },
+        {
+          "generated": 256,
+          "rounds": 120,
+          "proposed": 240,
+          "accepted": 134,
+          "replayed": 0
+        }
+      ],
+      "artifact_hashes": {
+        "log": "fe93ec209b3a99dd1e27c21de878d97724a22ef8a27667594a1c6ea5c6c9cf71",
+        "stdout": "55bb7a98d0a893ee9d1b41cc0fc9a7d45a4f795ab568d366f7e533878328d21c",
+        "manifest.json": "c66d026a7af3a0996fbd61a29bc463bcb7a3f0a9a93d19004fdf6e26d0bfb1f3",
+        "result.json": "10c189a12838d1520f3426eadf31f393833f85324a0f2bb3cfca3fb8c73f8423"
+      },
+      "output": {
+        "tokens": 768,
+        "eos_positions": [],
+        "repetitions_identical": false
+      }
+    },
+    {
+      "name": "resident010-quality-smoke",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "model_name": "glm-5.3-flash-q23-v8-64g-resident",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 1024,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "build-q2-redesign/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_STAGE_PREFETCH": "1",
+            "STRATA_GLM_PREFETCH_GROUPS": "8",
+            "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1",
+            "STRATA_GLM_PREFER_RESIDENT_MIB": "48000",
+            "STRATA_GLM_RAM_MARGIN": "0.10",
+            "STRATA_GLM_RAM_ADMIT": "1e9"
+          }
+        },
+        "prompt_tokens": 32,
+        "prompt_sha256": "6ab7aeff88b858e20f82eb6b8760213b5de867a74f1984e3910bfa8e43b2d469",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1666400",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/resident010-short.json",
+          "/mnt/nvme02/work/Strata/build-q2-v7-lowmem/smoke.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/resident010-quality-smoke",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "1",
+          "--trials",
+          "1",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336",
+          "--eval-corpus",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+          "--eval-reference",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+        ],
+        "guard_source_sha256": "821faf21dcfbb39e83e0c860a9618302b449ba54b0a229d94734b872898d2b83",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+            "bytes": 9429859,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+            "bytes": 49294975936,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+            "bytes": 49949266048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+            "bytes": 9466399584,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+            "bytes": 105488860384,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60,
+        "evaluation_corpus": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+        "evaluation_targets": 512,
+        "evaluation_corpus_sha256": "7bc350b1a931a2849890fe6dfbf6aaf815aa308d823c622cbaaef34d1ac8d9c1",
+        "evaluation_reference": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+      },
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "memory_pass": true,
+      "throughput_qualified": false,
+      "wall_seconds": 101.2312783410016,
+      "measurements": {
+        "prefill": [],
+        "decode": [],
+        "median_prefill_tok_s": null,
+        "median_decode_tok_s": null,
+        "peak_allocated_gpu_mib": 10651.2,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 3981.4,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105
+            }
+          }
+        ],
+        "page_faults": []
+      },
+      "cgroup_peak_gib": 58.893550872802734,
+      "peak_rss_gib": 56.41608428955078,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2758,
+      "derived_minimum_free_mib": null,
+      "peak_gpu_use_including_reserved_mib": 13555,
+      "peak_cuda_process_mib": 11890,
+      "ssd_read_gib": 112.11589431762695,
+      "interference_events": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "actual_gpu_cache": [
+        {
+          "slots": 456,
+          "mib": 3961.5,
+          "fingerprint": "16620749288459366051"
+        },
+        {
+          "slots": 450,
+          "mib": 3909.38,
+          "fingerprint": "12847479436281819526"
+        }
+      ],
+      "mtp_trials": [],
+      "artifact_hashes": {
+        "log": "c1b4002a9daf3d7ad45bde078b013adc6d1d7469dc7aac813f0211470ae0c9c8",
+        "stdout": "f215e7e8966304c8f66529ed124cbcde54a323c60f65e53a55e961be3e5ce5be",
+        "manifest.json": "ca4a9e9ce978e4225b9412f232e4d8e2e1965246a72937035ec20134c1456d0f",
+        "result.json": "61c7ece126fed94350706da9cc7444d5c0a5a6b8b3b0f43f227b06b03e393076"
+      },
+      "quality": {
+        "targets": 512,
+        "baseline": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 2.9849414060860626
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 10.690692176208964
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 5.64899015191
+          }
+        },
+        "metrics": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 2.9353414009453154
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 10.932477601572279
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 5.66485252399
+          }
+        },
+        "perplexity_ratios": {
+          "code": 0.9833832566898577,
+          "prose": 1.0226164425444204,
+          "all": 1.0028080013689946
+        },
+        "separate_category_gate_pass": false,
+        "kl": 0.073804643169,
+        "top1_agreement": 0.93359375,
+        "different_logits": 79298544,
+        "scope": "512 tuning targets, 256 code and 256 prose; ordinary decode only"
+      }
+    },
+    {
+      "name": "resident005-quality-smoke",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "model_name": "glm-5.3-flash-q23-v8-64g-resident005",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 1024,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "build-q2-redesign/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_STAGE_PREFETCH": "1",
+            "STRATA_GLM_PREFETCH_GROUPS": "8",
+            "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1",
+            "STRATA_GLM_PREFER_RESIDENT_MIB": "48000",
+            "STRATA_GLM_RAM_MARGIN": "0.05",
+            "STRATA_GLM_RAM_ADMIT": "1e9"
+          }
+        },
+        "prompt_tokens": 32,
+        "prompt_sha256": "6ab7aeff88b858e20f82eb6b8760213b5de867a74f1984e3910bfa8e43b2d469",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1667965",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/resident005-short.json",
+          "/mnt/nvme02/work/Strata/build-q2-v7-lowmem/smoke.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/resident005-quality-smoke",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "1",
+          "--trials",
+          "1",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336",
+          "--eval-corpus",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+          "--eval-reference",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+        ],
+        "guard_source_sha256": "821faf21dcfbb39e83e0c860a9618302b449ba54b0a229d94734b872898d2b83",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+            "bytes": 9429859,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+            "bytes": 49294975936,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+            "bytes": 49949266048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+            "bytes": 9466399584,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+            "bytes": 105488860384,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60,
+        "evaluation_corpus": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+        "evaluation_targets": 512,
+        "evaluation_corpus_sha256": "7bc350b1a931a2849890fe6dfbf6aaf815aa308d823c622cbaaef34d1ac8d9c1",
+        "evaluation_reference": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+      },
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "memory_pass": true,
+      "throughput_qualified": false,
+      "wall_seconds": 126.57151608201093,
+      "measurements": {
+        "prefill": [],
+        "decode": [],
+        "median_prefill_tok_s": null,
+        "median_decode_tok_s": null,
+        "peak_allocated_gpu_mib": 10651.2,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 3981.4,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105
+            }
+          }
+        ],
+        "page_faults": []
+      },
+      "cgroup_peak_gib": 59.63578796386719,
+      "peak_rss_gib": 57.629844665527344,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2755,
+      "derived_minimum_free_mib": null,
+      "peak_gpu_use_including_reserved_mib": 13557,
+      "peak_cuda_process_mib": 11890,
+      "ssd_read_gib": 155.40687561035156,
+      "interference_events": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "actual_gpu_cache": [
+        {
+          "slots": 456,
+          "mib": 3961.5,
+          "fingerprint": "16620749288459366051"
+        },
+        {
+          "slots": 450,
+          "mib": 3909.38,
+          "fingerprint": "12847479436281819526"
+        }
+      ],
+      "mtp_trials": [],
+      "artifact_hashes": {
+        "log": "f23cfeabb058448c0ce80a767a6a9a27d266a57c6f7621cb9cc879624cb4b92b",
+        "stdout": "c5d849eb3257923c79eafcfb3f128dc324096994d3433151045787225373df6e",
+        "manifest.json": "34cb3dc0dbbc58692c401aa98cafe6df4e08ee9da5246926ca61639231d662ed",
+        "result.json": "15eb554fc4f59484fe83b4a3a0c65951733f0c8116b33ea06c37fd0952a56c03"
+      },
+      "quality": {
+        "targets": 512,
+        "baseline": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 2.9849414060860626
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 10.690692176208964
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 5.64899015191
+          }
+        },
+        "metrics": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 2.9005845852837226
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 11.01307043857143
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 5.65193262085
+          }
+        },
+        "perplexity_ratios": {
+          "code": 0.971739203781239,
+          "prose": 1.0301550411375502,
+          "all": 1.0005208840626152
+        },
+        "separate_category_gate_pass": false,
+        "kl": 0.0581861081493,
+        "top1_agreement": 0.931640625,
+        "different_logits": 79298547,
+        "scope": "512 tuning targets, 256 code and 256 prose; ordinary decode only"
+      }
+    },
+    {
+      "name": "unbiased-quality-control",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "model_name": "glm-5.3-flash-q23-v8-64g-unbiased",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 1024,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "build-q2-redesign/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_STAGE_PREFETCH": "1",
+            "STRATA_GLM_PREFETCH_GROUPS": "8",
+            "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          }
+        },
+        "prompt_tokens": 32,
+        "prompt_sha256": "6ab7aeff88b858e20f82eb6b8760213b5de867a74f1984e3910bfa8e43b2d469",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1668605",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased-short.json",
+          "/mnt/nvme02/work/Strata/build-q2-v7-lowmem/smoke.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v8-64g/unbiased-quality-control",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "1",
+          "--trials",
+          "1",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336",
+          "--eval-corpus",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+          "--eval-reference",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+        ],
+        "guard_source_sha256": "821faf21dcfbb39e83e0c860a9618302b449ba54b0a229d94734b872898d2b83",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+            "bytes": 9429859,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+            "bytes": 49294975936,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+            "bytes": 49949266048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+            "bytes": 9466399584,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+            "bytes": 105488860384,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60,
+        "evaluation_corpus": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+        "evaluation_targets": 512,
+        "evaluation_corpus_sha256": "7bc350b1a931a2849890fe6dfbf6aaf815aa308d823c622cbaaef34d1ac8d9c1",
+        "evaluation_reference": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+      },
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "memory_pass": true,
+      "throughput_qualified": false,
+      "wall_seconds": 175.99322714400478,
+      "measurements": {
+        "prefill": [],
+        "decode": [],
+        "median_prefill_tok_s": null,
+        "median_decode_tok_s": null,
+        "peak_allocated_gpu_mib": 10651.2,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 6153.68,
+              "other": 3981.35,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105
+            }
+          }
+        ],
+        "page_faults": []
+      },
+      "cgroup_peak_gib": 60.0,
+      "peak_rss_gib": 59.237918853759766,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2758,
+      "derived_minimum_free_mib": null,
+      "peak_gpu_use_including_reserved_mib": 13555,
+      "peak_cuda_process_mib": 11890,
+      "ssd_read_gib": 204.98292541503906,
+      "interference_events": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 24216,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "actual_gpu_cache": [
+        {
+          "slots": 456,
+          "mib": 3961.5,
+          "fingerprint": "16620749288459366051"
+        },
+        {
+          "slots": 450,
+          "mib": 3909.38,
+          "fingerprint": "12847479436281819526"
+        }
+      ],
+      "mtp_trials": [],
+      "artifact_hashes": {
+        "log": "1f3c8fce98371967db5b43c1b64f9a1e74081af8bde8e23ae2d4a01ddbcdbd9c",
+        "stdout": "16ec9d3ee065c3946fde3069e83960115fad83656020d8f335bfe03c6149a5c1",
+        "manifest.json": "098b00654d646599d8e1f43b513921cedce3a6b55aa29c4fe5fc338747f674e4",
+        "result.json": "890f217116bd17ffe23d4e9f62278e5a9cabf16a1218a18ea197a437783141bc"
+      },
+      "quality": {
+        "targets": 512,
+        "baseline": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 2.9849414060860626
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 10.690692176208964
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 5.64899015191
+          }
+        },
+        "metrics": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 2.9849414060860626
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 10.690692176208964
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 5.64899015191
+          }
+        },
+        "perplexity_ratios": {
+          "code": 1.0,
+          "prose": 1.0,
+          "all": 1.0
+        },
+        "separate_category_gate_pass": true,
+        "kl": 3.23680300611e-20,
+        "top1_agreement": 1,
+        "different_logits": 0,
+        "scope": "512 tuning targets, 256 code and 256 prose; ordinary decode only"
+      }
+    }
+  ],
+  "buffer_resize_control": {
+    "generated_ids": 256,
+    "ids_identical": true,
+    "final_logits": 154880,
+    "logits_bit_identical": true
+  },
+  "validation": {
+    "unit_tests": "tools/test_glm_low_memory_bench.py: 10 passed",
+    "diff_check": "passed",
+    "unbiased_decode_control_logits": 79298560,
+    "unbiased_decode_control_differences": 0,
+    "full_task_quality_qualified": false,
+    "fast_prefill_quality_qualified": false
+  }
+}

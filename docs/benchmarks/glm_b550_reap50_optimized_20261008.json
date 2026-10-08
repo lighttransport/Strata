@@ -1,0 +1,412 @@
+{
+  "date": "2026-10-08",
+  "host": "b550",
+  "cpu": "AMD Ryzen 9 3950X, 16 physical cores, one NUMA node",
+  "gpu": "RX 9070 XT, gfx1201, automatic power mode",
+  "ram_limit_gib": 60,
+  "vram_reserve_mib": 2048,
+  "model_sha256": "c3b0cfb144556bd28e265d8255d48eeafce3d127aba5b9b5dd4e326322a34aa9",
+  "config": {
+    "exe": "build-hip-glm-v11/strata-glm-decode",
+    "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "model_name": "glm53f-reap50-q23-b550-rx9070xt",
+    "context": 4096,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 14336,
+    "gpu_devices": "0",
+    "threads": 12,
+    "cpu_affinity": "auto",
+    "prefill_batch": 2048,
+    "decode_experts": "cpu",
+    "speculative": "none",
+    "draft_depth": 1,
+    "decode_graphs": true,
+    "decode_cache_mib": 6144,
+    "env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "6",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512",
+      "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+      "STRATA_GLM_PACK_FUSE_QUANT": "0",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "/mnt/disk01/models/glm53f-reap/reap50-coverage.json",
+      "STRATA_GLM_FLOATING_Q8": "all",
+      "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576"
+    },
+    "log": "build-hip-glm-v11/b550-q23-engine.log",
+    "backend": "hip",
+    "weight_pages": "4k",
+    "prefill_experts": "f16-batched"
+  },
+  "upstream_merge": "036c926e6db07e8f66d6b125b3139ef282dad327",
+  "uncommitted_integration": true,
+  "prompt_tokens": 2048,
+  "generated_tokens_per_trial": 128,
+  "timed_decode_steps_per_trial": 127,
+  "trials": 3,
+  "speculation": "none",
+  "prefill_scope": "warm, following an untimed cold prefill; cache cleared before the fresh cgroup",
+  "clean": true,
+  "complete": true,
+  "rejected": null,
+  "measurements": {
+    "prefill": [
+      {
+        "trial": 0,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 8924.96,
+        "tokens_per_second": 229.469
+      },
+      {
+        "trial": 1,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 8890.41,
+        "tokens_per_second": 230.361
+      },
+      {
+        "trial": 2,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 8902.02,
+        "tokens_per_second": 230.06
+      }
+    ],
+    "decode": [
+      {
+        "kind": "single",
+        "tokens": 127,
+        "milliseconds": 12599.6,
+        "tokens_per_second": 10.0797
+      },
+      {
+        "kind": "single",
+        "tokens": 127,
+        "milliseconds": 12383.1,
+        "tokens_per_second": 10.2559
+      },
+      {
+        "kind": "single",
+        "tokens": 127,
+        "milliseconds": 12436.3,
+        "tokens_per_second": 10.2121
+      }
+    ],
+    "median_prefill_tok_s": 230.06,
+    "median_decode_tok_s": 10.2121,
+    "peak_allocated_gpu_mib": 11516.4,
+    "gpu_live": [
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5029.21,
+          "other": 806.414,
+          "prefill": 1464.0,
+          "state": 239.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5029.21,
+          "other": 806.414,
+          "prefill": 1464.0,
+          "state": 239.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5029.21,
+          "other": 806.414,
+          "prefill": 1464.0,
+          "state": 239.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5029.21,
+          "other": 6213.17,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 239.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5029.21,
+          "other": 6213.17,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 239.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5029.21,
+          "other": 6213.17,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 239.105
+        }
+      }
+    ],
+    "page_faults": [
+      {
+        "trial": 0,
+        "major": 17,
+        "minor": 33320
+      },
+      {
+        "trial": 1,
+        "major": 6,
+        "minor": 32928
+      },
+      {
+        "trial": 2,
+        "major": 4,
+        "minor": 32923
+      }
+    ]
+  },
+  "peak_ram_gib": 52.90102767944336,
+  "peak_rss_gib": 52.68809127807617,
+  "minimum_gpu_free_mib": 3002,
+  "swap_bytes": 0,
+  "memory_events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0,
+    "sock_throttled": 0
+  },
+  "executable_sha256": "685b1344f3e46b9d29e5fe599f96b01db6372218a5cab235bd7b2331399a150f",
+  "prompt_sha256": "e950c36c328437ab6e018d7695f313dbc0f81ce52be1df6ed88e167075041fd4",
+  "guard_sha256": "54ee00ce533f3e6a7591c6db0699de5303b115ca3bf2dd3361241910e0b18160",
+  "wall_seconds_including_load_and_untimed_prefill": 142.7543480460008,
+  "target_met": true,
+  "quality": {
+    "scope": "numerical smoke on 2048 teacher-forced targets from four repository prose/code documents; not a broad task-quality evaluation",
+    "corpus_sha256": "94c8e91091aa3aa7cb7a94419ac8f0eec59067d6047ed7739006f47aa7c0ed06",
+    "sources": [
+      "docs/AMD_HIP.md",
+      "tools/glm_low_memory_bench.py",
+      "include/strata/kernels/canon_expert.hpp",
+      "docs/AI_SETUP.md"
+    ],
+    "baseline": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 2.201374350297,
+      "perplexity": 9.037425556719
+    },
+    "candidate": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 2.208667842273,
+      "perplexity": 9.103580905999,
+      "kl": 0.03506529108,
+      "top1_agreement": 0.91845703125,
+      "different_logits": 317194133
+    },
+    "perplexity_change_percent": 0.7320154270129997,
+    "per_sequence_cumulative": {
+      "mmq": [
+        {
+          "sequence": 1,
+          "tokens": 512,
+          "nll": 2.858975115352,
+          "perplexity": 17.443640053256
+        },
+        {
+          "sequence": 2,
+          "tokens": 1024,
+          "nll": 2.069430100381,
+          "perplexity": 7.920308050864
+        },
+        {
+          "sequence": 3,
+          "tokens": 1536,
+          "nll": 2.216442567178,
+          "perplexity": 9.174634596733
+        },
+        {
+          "sequence": 4,
+          "tokens": 2048,
+          "nll": 2.201374350297,
+          "perplexity": 9.037425556719
+        }
+      ],
+      "f16": [
+        {
+          "sequence": 1,
+          "tokens": 512,
+          "nll": 2.83893862773,
+          "perplexity": 17.097608975357,
+          "kl": 0.053501017769,
+          "top1_agreement": 0.888671875,
+          "different_logits": 79298538
+        },
+        {
+          "sequence": 2,
+          "tokens": 1024,
+          "nll": 2.063249079626,
+          "perplexity": 7.871503448927,
+          "kl": 0.044615172854,
+          "top1_agreement": 0.919921875,
+          "different_logits": 158597078
+        },
+        {
+          "sequence": 3,
+          "tokens": 1536,
+          "nll": 2.223889593467,
+          "perplexity": 9.243213378821,
+          "kl": 0.040890503989,
+          "top1_agreement": 0.910807291667,
+          "different_logits": 237895618
+        },
+        {
+          "sequence": 4,
+          "tokens": 2048,
+          "nll": 2.208667842273,
+          "perplexity": 9.103580905999,
+          "kl": 0.03506529108,
+          "top1_agreement": 0.91845703125,
+          "different_logits": 317194133
+        }
+      ]
+    }
+  },
+  "affinity_only_equality": {
+    "generated_token_sha256": "4cbdbbdc8c6fdf29e8690e888a04f5b0b232aeb30263709f72825e60b50e0b15",
+    "final_logit_sha256": "2b5161a9d8c1a1e051cf8c74d84e9e8c3fcc7128ea534a1b9397df667146b743",
+    "same_before_after": true
+  },
+  "mmq_reference_config": "configs/glm53f-reap50-q23-b550-60g-9070xt-mmq-reference.json",
+  "service": {
+    "unit": "strata-glm-b550.service",
+    "url_on_b550": "http://127.0.0.1:8080",
+    "expert_cache_warmup_enabled": true,
+    "ready_seconds": 63.04684396399534,
+    "memory": {
+      "expert_warmup": {
+        "tensors": 126,
+        "bytes": 55094280192,
+        "seconds": 47.78383026400115
+      },
+      "peak_rss_bytes": 39878729728,
+      "peak_gpu_used_mib": 13301,
+      "peak_cgroup_gib": 55.85801696777344,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "swap": 0,
+      "gpu": {
+        "total_mib": 16304,
+        "reserved_mib": 0,
+        "free_mib": 3003,
+        "used_mib": 13301,
+        "usable_mib": 16304,
+        "gtt_used_mib": 75,
+        "performance": {
+          "power_dpm_force_performance_level": "auto",
+          "pp_dpm_sclk": "S: 41Mhz *\n1: 500Mhz \n2: 2400Mhz",
+          "pp_dpm_mclk": "0: 96Mhz *\n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz",
+          "gpu_busy_percent": "3",
+          "mem_busy_percent": "0"
+        }
+      }
+    },
+    "chat": {
+      "request": {
+        "model": "glm53f-reap50-q23-b550-rx9070xt",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Reply with just the word hello."
+          }
+        ],
+        "temperature": 0,
+        "max_tokens": 320
+      },
+      "wall_seconds": 15.611839926990797,
+      "response": {
+        "id": "chatcmpl-91110f0d3e6240fc981a6f00",
+        "object": "chat.completion",
+        "created": 1791459339,
+        "model": "glm53f-reap50-q23-b550-rx9070xt",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "hello",
+              "reasoning_content": "The user is asking me to reply with just the word \"hello\". This is a simple instruction-following request. There's nothing harmful about this - it's just a test or a simple request to output a specific word. I should comply with the instruction and reply with just \"hello\"."
+            },
+            "finish_reason": "stop"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 19,
+          "completion_tokens": 61,
+          "total_tokens": 80,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 19,
+          "prompt_ms": 9420.9,
+          "prompt_per_token_ms": 495.837,
+          "prompt_per_second": 2.0,
+          "predicted_n": 61,
+          "predicted_ms": 6188.1,
+          "predicted_per_token_ms": 101.445,
+          "predicted_per_second": 9.9,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@
 #include <bit>
 #include <iostream>
 #include <random>
+#include <source_location>
 #include <stdexcept>
 #include <vector>
 namespace k = strata::kernels;
@@ -38,12 +39,16 @@ template <class T> struct Buffer {
         return v;
     }
 };
-void near(const std::vector<float> &a, const std::vector<float> &b, float tolerance = 1e-4) {
+void near(const std::vector<float> &a, const std::vector<float> &b, float tolerance = 1e-4,
+          const std::source_location site = std::source_location::current()) {
     if (a.size() != b.size())
         throw std::runtime_error("size");
     for (size_t i = 0; i < a.size(); ++i)
         if (!std::isfinite(a[i]) || std::abs(a[i] - b[i]) / (1 + std::abs(b[i])) > tolerance)
-            throw std::runtime_error("scaled parity error at " + std::to_string(i));
+            throw std::runtime_error("scaled parity error at " + std::to_string(i) +
+                " from line " + std::to_string(site.line()) +
+                " actual_bits=" + std::to_string(std::bit_cast<uint32_t>(a[i])) +
+                " expected_bits=" + std::to_string(std::bit_cast<uint32_t>(b[i])));
 }
 void check_vector_gather(bool benchmark) {
     const char* original = std::getenv("STRATA_GLM_MLA_VECTOR_GATHER");
@@ -170,10 +175,53 @@ void check_batched_resident() {
     }
     std::cout << "Batched resident metadata and reduction bits/guards passed\n";
 }
+// Replay the same graph across pool boundaries and backwards positions (MTP rollback).
+void check_device_positions() {
+    constexpr int dim = 32, pool = 4, capacity = 64, heads = 2, stride = 20;
+    for (int width : {1, 2, 3, 8}) {
+        std::vector<float> input(width * dim), ape_data(pool * dim), dots_data(capacity / pool * width * heads);
+        for (size_t i = 0; i < input.size(); ++i) input[i] = std::sin(float(i) * .13f);
+        for (size_t i = 0; i < ape_data.size(); ++i) ape_data[i] = std::cos(float(i) * .17f);
+        for (size_t i = 0; i < dots_data.size(); ++i) dots_data[i] = std::sin(float(i) * .07f);
+        Buffer<float> x(input), ape(ape_data), dots(dots_data), weights(std::vector<float>(width * heads, .5f));
+        Buffer<float> pk(pool * dim), pg(pool * dim), pooled(capacity / pool * dim), cache(capacity * dim);
+        Buffer<float> rk(pool * dim), rg(pool * dim), rp(capacity / pool * dim), rc(capacity * dim);
+        Buffer<float> scores(capacity / pool * width), rs(capacity / pool * width);
+        Buffer<int> ids(width * stride), counts(width), ri(width * stride), rn(width), position(1);
+        cudaStream_t stream; ck(cudaStreamCreate(&stream));
+        cudaGraph_t graph; cudaGraphExec_t executable;
+        ck(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+        k::glm_cache_rows(x.p, cache.p, dim, width, position.p, stream);
+        k::glm_index_prepare(x.p, x.p, ape.p, pk.p, pg.p, pooled.p, 0, width, pool, dim, stream, position.p);
+        k::glm_index_reduce(dots.p, weights.p, scores.p, heads, capacity / pool, width, 0, pool, dim, stream, position.p);
+        k::glm_index_select_batch(scores.p, ids.p, counts.p, capacity / pool, 0, width, pool, 16, stride, stream, position.p);
+        ck(cudaStreamEndCapture(stream, &graph));
+        ck(cudaGraphInstantiate(&executable, graph, nullptr, nullptr, 0));
+        for (int pos : {0, 1, 3, 4, 7, 8, 15, 12, 31, 40, 56}) {
+            k::glm_decode_position(position.p, pos, stream);
+            ck(cudaGraphLaunch(executable, stream));
+            ck(cudaMemcpyAsync(rc.p + pos * dim, x.p, width * dim * 4, cudaMemcpyDeviceToDevice, stream));
+            k::glm_index_prepare(x.p, x.p, ape.p, rk.p, rg.p, rp.p, pos, width, pool, dim, stream);
+            k::glm_index_reduce(dots.p, weights.p, rs.p, heads, capacity / pool, width, pos, pool, dim, stream);
+            k::glm_index_select_batch(rs.p, ri.p, rn.p, capacity / pool, pos, width, pool, 16, stride, stream);
+            ck(cudaStreamSynchronize(stream));
+            auto equal = [](auto &a, auto &b) {
+                auto av = a.get(), bv = b.get();
+                if (std::memcmp(av.data(), bv.data(), av.size() * sizeof(av[0])))
+                    throw std::runtime_error("device-position graph replay differs from eager execution");
+            };
+            equal(pk, rk); equal(pg, rg); equal(pooled, rp); equal(cache, rc);
+            equal(scores, rs); equal(ids, ri); equal(counts, rn);
+        }
+        ck(cudaGraphExecDestroy(executable)); ck(cudaGraphDestroy(graph)); ck(cudaStreamDestroy(stream));
+    }
+    std::cout << "device-position graph replay: bitwise parity\n";
+}
 int main(int argc, char** argv) {
     const bool benchmark = argc == 2 && std::string(argv[1]) == "--benchmark";
     if (argc > 1 && !benchmark) return 2;
     try {
+        check_device_positions();
         check_vector_gather(benchmark);
         check_batched_resident();
         for (int primary = 1; primary < 18; ++primary) {
@@ -379,7 +427,7 @@ int main(int argc, char** argv) {
             near(decay.get(), decays.get(), 0);
             near(out.get(), outs.get(), 0);
         }
-        for (int B : {1, 9, 64, 129}) {
+        for (int B : {1, 9, 64, 129, 8192}) {
             int H = B == 64 ? 64 : 2, D = 128, N = H * D;
             Buffer<float> state(random(H * D * D)), seq(state.get()), q(random(B * N)), key(random(B * N)),
                 v(random(B * N)), decay(std::vector<float>(B * N, -.02f)), beta(random(B * H)), out(B * N),
@@ -394,6 +442,41 @@ int main(int argc, char** argv) {
             near(state.get(), seq.get(), 1e-6);
             near(out.get(), ref.get(), 1e-6);
             const auto expected_state = state.get(), expected_out = out.get();
+            // Hoist only token-independent normalization and gates. Every
+            // recurrence output and final state must retain the original bits.
+            for (int columns : {32, 64, 128}) {
+                Buffer<float> prepared_state(initial), prepared_out(B * N), pk(key.get()),
+                    pg(decay.get()), pb(beta.get()), qi(B * H);
+                k::glm_kda_prepare(q.p, pk.p, pg.p, pb.p, qi.p, H, B, nullptr);
+                for (int t = 0; t < B; t += 64)
+                    k::glm_kda_chunk(prepared_state.p, q.p + t * N, pk.p + t * N, v.p + t * N,
+                        pg.p + t * N, pb.p + t * H, prepared_out.p + t * N, H, D, std::min(64, B - t),
+                        nullptr, columns, 1, qi.p + t * H);
+                const auto actual_state = prepared_state.get(), actual_out = prepared_out.get();
+                if (std::memcmp(actual_state.data(), expected_state.data(), expected_state.size() * 4) ||
+                    std::memcmp(actual_out.data(), expected_out.data(), expected_out.size() * 4))
+                    throw std::runtime_error("prepared KDA column kernel differs from original float bits");
+                if (B == 64 && benchmark) {
+                    cudaEvent_t begin, end;
+                    ck(cudaEventCreate(&begin)); ck(cudaEventCreate(&end));
+                    float total_ms = 0;
+                    for (int repeat = 0; repeat < 50; ++repeat) {
+                        // Restore preparation inputs outside the timed range.
+                        ck(cudaMemcpyAsync(pk.p, key.p, (size_t)B * N * 4, cudaMemcpyDeviceToDevice));
+                        ck(cudaMemcpyAsync(pg.p, decay.p, (size_t)B * N * 4, cudaMemcpyDeviceToDevice));
+                        ck(cudaMemcpyAsync(pb.p, beta.p, (size_t)B * H * 4, cudaMemcpyDeviceToDevice));
+                        ck(cudaEventRecord(begin));
+                        k::glm_kda_prepare(q.p, pk.p, pg.p, pb.p, qi.p, H, B, nullptr);
+                        k::glm_kda_chunk(prepared_state.p, q.p, pk.p, v.p, pg.p, pb.p, prepared_out.p,
+                            H, D, B, nullptr, columns, 1, qi.p);
+                        ck(cudaEventRecord(end)); ck(cudaEventSynchronize(end));
+                        float ms; ck(cudaEventElapsedTime(&ms, begin, end)); total_ms += ms;
+                    }
+                    std::cout << "KDA_PREPARED_TIME columns=" << columns << " heads=" << H
+                              << " tokens=" << B << " ms=" << total_ms / 50 << '\n';
+                    ck(cudaEventDestroy(begin)); ck(cudaEventDestroy(end));
+                }
+            }
             for (int columns : {32, 64}) {
                 Buffer<float> split(initial), split_out(B * N);
                 for (int t = 0; t < B; t += 64)
@@ -575,7 +658,11 @@ int main(int argc, char** argv) {
             k::glm_mla_gather(cache.p, di.p, dc.p, gathered.p, B, C, L, nullptr);
             cublasHandle_t h;
             cublasCreate(&h);
+#ifdef STRATA_USE_HIP
+            cublasSetMathMode(h, CUBLAS_DEFAULT_MATH);
+#else
             cublasSetMathMode(h, CUBLAS_PEDANTIC_MATH);
+#endif
             float one = 1, zero = 0;
             auto cb = [](cublasStatus_t e) {
                 if (e != CUBLAS_STATUS_SUCCESS)

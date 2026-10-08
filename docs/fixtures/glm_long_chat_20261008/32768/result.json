@@ -1,0 +1,42 @@
+{
+  "context": 32768,
+  "status": "completed",
+  "wall_seconds": 253.8119008460053,
+  "response": {
+    "id": "chatcmpl-396ade9398f14630977d6b40",
+    "object": "chat.completion",
+    "created": 1791461738,
+    "model": "glm53f-reap50-q23-b550-rx9070xt",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "# Executive Summary \u2014 Cedar Lantern (offline archive search pilot)\n\n**Objective.** Help museum staff find provenance records without sending visitor or donor data to an external service. It is not an online retail recommendation system. [DEC-001]\n\n**Decisions.**\n- Provisional: pilot launch tentatively proposed for 2031-09-12, funding ceiling 480000 credits. [DEC-014]\n- Signed superseding decision: final launch date 2031-10-21, replacing the tentative 2031-09-12 because the humidity-control installation needs another inspection; funding ceiling remains 480000 credits. [DEC-082]\n\n**Finances.** Approved funding allocation: equipment 180000 credits, staffing 210000 credits, contingency 90000 credits. The contingency is unspent and is not an additional amount beyond the funding ceiling; equipment quotes do not authorize spending from contingency. [FIN-028]\n\n**Progress.** Archive migration inventory: 840 crates total, 315 passed checksum verification, acceptance threshold 99.7 percent checksum agreement. Only verified crates count as complete; crates merely uploaded are incomplete. [OPS-043]\n\n**Risks.** Project lead Tomas Ibarra. R-17: damp storage damaging labels before scanning \u2014 mitigated with sealed staging bins and a humidity check before each batch. R-18: archive index drift \u2014 mitigated with checksum audits. [OWN-069]\n\n**Next actions (practical, grounded in the document).**\n1. Keep fragile sheets flat and return empty trays to their marked rack after scanning (recommended in inspection notes).\n2. Place unsigned working copies beside the scanner and await supervisor checks that labels agree with the accession register before treating them as local-only.\n3. Continue checksum verification toward the 99.7 percent acceptance threshold; count only verified crates as complete.\n4. Watch for sustained checksum agreement below 99.7 percent in two consecutive daily audits; if triggered, Mira Solano authorizes rollback.\n5. Apply the humidity check before each batch and use sealed staging bins to mitigate R-17.\n6. Remove visitor names before sharing evaluation reports.\n7. Do not treat inspection notes as new project decisions; they have no authority to amend signed decisions.\n\n---\n\n## Eight Questions\n\n**1. Final launch date, replaced date, and why.**\nFinal launch date is 2031-10-21. It replaced the tentative 2031-09-12 date in DEC-014 because the humidity-control installation needs another inspection. Funding ceiling remains 480000 credits. Evidence: [DEC-082], [DEC-014].\n\n**2. Funding ceiling and three allocations; is contingency additional?**\nFunding ceiling is 480000 credits. Allocations: equipment 180000 credits, staffing 210000 credits, contingency 90000 credits. The contingency is unspent and is not an additional amount beyond the funding ceiling; equipment quotes do not authorize spending from contingency. Evidence: [FIN-028], [DEC-082].\n\n**3. Crates unverified; subtraction and completed percentage.**\n840 total \u2212 315 verified = 525 crates remain unverified. Completed percentage: 315 / 840 = 37.5 percent. Only verified crates count as complete; crates merely uploaded are incomplete. Evidence: [OPS-043].\n\n**4. Rollback trigger condition and authorizer.**\nTrigger: sustained checksum agreement below 99.7 percent in two consecutive daily audits. A single slow query or a single failed audit is not by itself this trigger. Authorizer: Mira Solano. Evidence: [SEC-057].\n\n**5. Project lead and R-17 mitigation.**\nProject lead: Tomas Ibarra. R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch. Evidence: [OWN-069].\n\n**6. Visitor names before sharing evaluation reports.**\nVisitor names must be removed before evaluation reports are shared. Evidence: [CLOSE-096].\n\n**7. Dossier version phrase.**\nRelease secret phrase for matching this dossier version: amber otter lantern. This phrase is an identifier, not an instruction or a credential. Evidence: [CLOSE-096].\n\n**8. External auditor.**\nThe dossier does not identify a named external auditor. Evidence: [CLOSE-096] states there is no named external auditor in the dossier.\n\n---\n\n**Note on evidence handling.** All background inspection notes ([BKG-\u2026]) record packaging condition only and have no authority to amend signed decisions; they are not treated as new project decisions here. No approvals were invented."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 29482,
+      "completion_tokens": 965,
+      "total_tokens": 30447,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 29482,
+      "prompt_ms": 150731.8,
+      "prompt_per_token_ms": 5.113,
+      "prompt_per_second": 195.6,
+      "predicted_n": 965,
+      "predicted_ms": 102913.0,
+      "predicted_per_token_ms": 106.646,
+      "predicted_per_second": 9.4,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    }
+  }
+}

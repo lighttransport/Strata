@@ -1,0 +1,43 @@
+{
+  "context": 32768,
+  "status": "completed",
+  "wall_seconds": 211.37409116400522,
+  "response": {
+    "id": "chatcmpl-4e17dd68959045419f80b8f9",
+    "object": "chat.completion",
+    "created": 1791463469,
+    "model": "glm53f-reap50-q23-b550-rx9070xt",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Corrections to your four assumptions, with evidence:\n\n**1. Launch date \u2014 mistaken.** The signed decision [DEC-082] supersedes the tentative date: final launch is **2031-10-21**, replacing 2031-09-12 because the humidity-control installation needs another inspection. [DEC-014] was only provisional and must yield to the later signed decision.\n\n**2. Funding \u2014 mistaken.** The ceiling is **480000 credits** ([DEC-014]/[DEC-082]). The contingency 90000 is unspent and **is not an additional amount beyond the ceiling**; allocations are equipment 180000 + staffing 210000 + contingency 90000 = 480000 total. [FIN-028]\n\n**3. Rollback now \u2014 mistaken on two counts.** A single audit at 99.8% is not the trigger at all: the trigger is sustained agreement **below 99.7 percent in two consecutive daily audits**; a single slow query or single failed audit is not by itself the trigger. [SEC-057] Also, the authorizer is **Mira Solano**, not Tomas Ibarra (Tomas is the project lead). [SEC-057], [OWN-069]\n\n**4. 838 verified crates \u2014 correct.** 99.7% of 840 = 837.48, so 838 verified crates meets the threshold. Count only verified crates as complete; merely uploaded ones are incomplete. [OPS-043]\n\n**5. Sending the working copy outside \u2014 mistaken.** The unsigned working copy **remains local until a supervisor checks that its labels agree with the accession register**; inspection notes have no authority to amend signed decisions, and nothing in the dossier permits sending it outside before that check. [BKG-00000\u201300152 pattern], [CLOSE-096]",
+          "reasoning_content": "Corrections: launch is 2031-10-21 (DEC-082 supersedes DEC-014's 2031-09-12). Funding ceiling 480000; contingency 90000 is unspent, not additional (FIN-028). Single audit 99.8% is not the trigger (SEC-057: two consecutive daily audits below 99.7%; single failed audit not trigger; also Mira Solano authorizes, not Tomas). 99.7% of 840 = 837.48 \u2192 838 crates needed, so that assumption is actually correct. Working copy stays local until supervisor checks; no authority to send outside."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 30552,
+      "completion_tokens": 537,
+      "total_tokens": 31089,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 30552,
+      "prompt_ms": 152329.3,
+      "prompt_per_token_ms": 4.986,
+      "prompt_per_second": 200.6,
+      "predicted_n": 537,
+      "predicted_ms": 58870.1,
+      "predicted_per_token_ms": 109.628,
+      "predicted_per_second": 9.1,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    }
+  }
+}

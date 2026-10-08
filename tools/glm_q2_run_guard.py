@@ -8,6 +8,15 @@ import time
 import signal
 from glm_q2_coding_bench import process_cpu_snapshot
 
+def gpu_free_mib(index):
+    value = subprocess.check_output(["nvidia-smi", "--id=" + str(index),
+        "--query-gpu=memory.free", "--format=csv,noheader,nounits"], text=True, timeout=3,
+        stderr=subprocess.STDOUT).strip()
+    free = int(value)
+    if free < 0:
+        raise ValueError("negative GPU free-memory reading")
+    return free
+
 def descendants(root):
     """Include subprocesses (e.g. a resident engine launched by an evaluator)."""
     parents = {}
@@ -29,19 +38,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--require-idle", action="store_true")
+    parser.add_argument("--record-interference", action="store_true",
+                        help="record sustained external CPU work without aborting a functional or long run")
     parser.add_argument("--max-swap-mib", type=int, default=0,
                         help="tolerated process swap; keep 0 for timing runs, a small allowance only for quality runs")
+    parser.add_argument("--min-gpu-free-mib", type=int,
+                        help="reject when the selected NVIDIA GPU has less free memory; sampled once per second")
+    parser.add_argument("--gpu-index", type=int, default=0)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.gpu_index < 0 or args.min_gpu_free_mib is not None and args.min_gpu_free_mib < 0:
+        parser.error("GPU index and memory reserve must be nonnegative")
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("a command is required")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     record = {"command": command, "peak_rss_kib": 0, "peak_swap_kib": 0, "minimum_available_kib": None,
-              "sample_interval_ms": 100, "rejected": None}
+              "sample_interval_ms": 100, "rejected": None, "interference": []}
     old = process_cpu_snapshot()
     hot = set()
     start = time.monotonic()
+    next_gpu_check = start
+    if args.min_gpu_free_mib is not None:
+        record["minimum_gpu_free_mib"] = None
+        record["required_gpu_free_mib"] = args.min_gpu_free_mib
     with args.output.with_suffix(".stdout").open("w") as out, args.output.with_suffix(".log").open("w") as err:
         process = subprocess.Popen(command, stdout=out, stderr=err, start_new_session=True)
         try:
@@ -65,6 +85,17 @@ def main():
                     record["peak_rss_kib"] = max(record["peak_rss_kib"], rss)
                     record["peak_swap_kib"] = max(record["peak_swap_kib"], swap)
                     record["minimum_available_kib"] = min(record["minimum_available_kib"] or available, available)
+                    if args.min_gpu_free_mib is not None and time.monotonic() >= next_gpu_check:
+                        next_gpu_check = time.monotonic() + 1
+                        try:
+                            free = gpu_free_mib(args.gpu_index)
+                            previous = record["minimum_gpu_free_mib"]
+                            record["minimum_gpu_free_mib"] = free if previous is None else min(previous, free)
+                            if free < args.min_gpu_free_mib:
+                                record["rejected"] = {"reason": "GPU memory reserve", "free_mib": free,
+                                                      "required_mib": args.min_gpu_free_mib}
+                        except (OSError, ValueError, subprocess.SubprocessError) as error:
+                            record["rejected"] = {"reason": "GPU memory probe failed", "error": str(error)}
                     if swap > args.max_swap_mib * 1024 or rss > 118 * 1024**2 or available < 4 * 1024**2:
                         record["rejected"] = {"reason": "memory limit", "rss_kib": rss, "swap_kib": swap, "available_kib": available}
                         if swap:
@@ -85,7 +116,7 @@ def main():
                                 elif line.startswith("Swap:") and int(line.split()[1]):
                                     swapped.append({**region, "swap_kib": int(line.split()[1])})
                             record["swapped_regions"] = swapped
-                    if args.require_idle and time.monotonic() - old[0] >= 1:
+                    if (args.require_idle or args.record_interference) and time.monotonic() - old[0] >= 1:
                         now = process_cpu_snapshot()
                         busy = set()
                         for pid, (name, ticks) in now[1].items():
@@ -95,7 +126,11 @@ def main():
                             if percent >= 80:
                                 busy.add(pid)
                                 if pid in hot:
-                                    record["rejected"] = {"reason": "external CPU work", "pid": pid, "name": name, "cpu_percent": percent}
+                                    event = {"reason": "external CPU work", "pid": pid, "name": name,
+                                             "cpu_percent": percent, "elapsed_seconds": time.monotonic() - start}
+                                    record["interference"].append(event)
+                                    if args.require_idle:
+                                        record["rejected"] = event
                         old, hot = now, busy
                     if record["rejected"]:
                         os.killpg(process.pid, signal.SIGTERM)

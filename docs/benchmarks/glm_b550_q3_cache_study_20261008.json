@@ -1,0 +1,303 @@
+{
+  "date": "2026-10-08",
+  "host": "b550",
+  "cpu": "Ryzen 9 3950X",
+  "gpu": "RX 9070 XT",
+  "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q3_K_M.gguf",
+  "main_expert_gib": 67.18359375,
+  "logical_expert_gib_per_token": 3.732421875,
+  "routing": "unbiased top 8, no speculation",
+  "baseline_runs": [
+    {
+      "case": "code",
+      "prompt_tokens": 634,
+      "generated_tokens": 384,
+      "decode_steps": 383,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 634,
+            "batch": 2048,
+            "milliseconds": 88622.4,
+            "tokens_per_second": 7.15395
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 383,
+            "milliseconds": 98392.5,
+            "tokens_per_second": 3.89257
+          }
+        ],
+        "median_prefill_tok_s": 7.15395,
+        "median_decode_tok_s": 3.89257,
+        "peak_allocated_gpu_mib": 10835.3,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4347.63,
+              "other": 806.414,
+              "prefill": 1550.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4347.63,
+              "other": 6213.6,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 219002,
+            "minor": 1256335
+          }
+        ]
+      },
+      "wall_seconds": 200.25276868899527,
+      "peak_ram_gib": 60.0,
+      "min_free_vram_mib": 4329,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 4468,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "major_faults": 504085,
+      "file_refaults": 6770191,
+      "process_read_gib": 95.93835067749023,
+      "interference": [
+        {
+          "seconds": 87.5078090629977,
+          "pid": 245,
+          "name": "kswapd0",
+          "cpu_percent": 99.70188050933895
+        },
+        {
+          "seconds": 88.6096335129987,
+          "pid": 245,
+          "name": "kswapd0",
+          "cpu_percent": 91.66411901650676
+        },
+        {
+          "seconds": 103.01455585099757,
+          "pid": 245,
+          "name": "kswapd0",
+          "cpu_percent": 100.86061512476432
+        },
+        {
+          "seconds": 104.16647842699604,
+          "pid": 245,
+          "name": "kswapd0",
+          "cpu_percent": 98.95971189673432
+        },
+        {
+          "seconds": 105.32560801200452,
+          "pid": 245,
+          "name": "kswapd0",
+          "cpu_percent": 99.21735153104783
+        },
+        {
+          "seconds": 106.45607017200382,
+          "pid": 245,
+          "name": "kswapd0",
+          "cpu_percent": 101.722802504804
+        },
+        {
+          "seconds": 107.58988414400665,
+          "pid": 245,
+          "name": "kswapd0",
+          "cpu_percent": 100.54906953862364
+        }
+      ],
+      "routing_trace_sha256": "c443fcfe1f109b4a526df83f0990541b49435478b28820d6e91e9e79065021f0",
+      "note": "Paging diagnostic; harness clean flag is not a no-thrashing guarantee."
+    },
+    {
+      "case": "document",
+      "prompt_tokens": 506,
+      "generated_tokens": 384,
+      "decode_steps": 383,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 506,
+            "batch": 2048,
+            "milliseconds": 86780.4,
+            "tokens_per_second": 5.83081
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 383,
+            "milliseconds": 89000.4,
+            "tokens_per_second": 4.30335
+          }
+        ],
+        "median_prefill_tok_s": 5.83081,
+        "median_decode_tok_s": 4.30335,
+        "peak_allocated_gpu_mib": 10835.3,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4347.63,
+              "other": 806.414,
+              "prefill": 1550.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4347.63,
+              "other": 6213.6,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 218239,
+            "minor": 1216325
+          }
+        ]
+      },
+      "wall_seconds": 187.5917441220081,
+      "peak_ram_gib": 60.0,
+      "min_free_vram_mib": 4329,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 4217,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "major_faults": 376768,
+      "file_refaults": 5800635,
+      "process_read_gib": 91.82770538330078,
+      "interference": [],
+      "routing_trace_sha256": "a631c758686b4a24e124c906429b59beabc3d0183d6205b62449deca02fc9f02",
+      "note": "Paging diagnostic; harness clean flag is not a no-thrashing guarantee."
+    }
+  ],
+  "ssd_summary": [
+    {
+      "workers": 1,
+      "median_GiB_s": 1.26461,
+      "median_expert_service_ms": 8.739295,
+      "median_p95_expert_service_ms": 9.463225
+    },
+    {
+      "workers": 4,
+      "median_GiB_s": 1.514015,
+      "median_expert_service_ms": 29.24,
+      "median_p95_expert_service_ms": 30.5911
+    },
+    {
+      "workers": 8,
+      "median_GiB_s": 1.4988700000000001,
+      "median_expert_service_ms": 59.07105,
+      "median_p95_expert_service_ms": 63.6435
+    },
+    {
+      "workers": 16,
+      "median_GiB_s": 1.462405,
+      "median_expert_service_ms": 105.8125,
+      "median_p95_expert_service_ms": 174.001
+    }
+  ],
+  "replay_candidate": [
+    {
+      "case": "code",
+      "policy": "lru",
+      "cpu_cache_gib": 56.0,
+      "gpu_cache_gib": 8.0,
+      "gpu_resident_gib": 7.998046875,
+      "cpu_pinned_gib": 0.0,
+      "cpu_resident_at_evaluation_start_gib": 39.701416015625,
+      "proactive_initial_load_gib": 7.998046875,
+      "cpu_final_lru_gib": 53.9312744140625,
+      "gpu_hit_fraction": 0.29665808329601434,
+      "cpu_hit_fraction": 0.6913905060456784,
+      "miss_fraction": 0.01195141065830721,
+      "miss_gib_per_token": 0.04460770657817398,
+      "miss_gib_per_token_p95": 0.155517578125,
+      "cold_read_gib": 14.2298583984375,
+      "cpu_evictions": 0,
+      "evaluated_tokens": 319,
+      "required_ssd_gib_s_for_10_tok_s": 0.4460770657817398
+    },
+    {
+      "case": "document",
+      "policy": "lru",
+      "cpu_cache_gib": 56.0,
+      "gpu_cache_gib": 8.0,
+      "gpu_resident_gib": 7.998046875,
+      "cpu_pinned_gib": 0.0,
+      "cpu_resident_at_evaluation_start_gib": 35.8690185546875,
+      "proactive_initial_load_gib": 7.998046875,
+      "cpu_final_lru_gib": 52.4205322265625,
+      "gpu_hit_fraction": 0.2712251828631139,
+      "cpu_hit_fraction": 0.7148734885803851,
+      "miss_fraction": 0.01390132855650097,
+      "miss_gib_per_token": 0.051885622795846395,
+      "miss_gib_per_token_p95": 0.1888427734375,
+      "cold_read_gib": 16.551513671875,
+      "cpu_evictions": 0,
+      "evaluated_tokens": 319,
+      "required_ssd_gib_s_for_10_tok_s": 0.518856227958464
+    },
+    {
+      "case": "mixed",
+      "policy": "lru",
+      "cpu_cache_gib": 56.0,
+      "gpu_cache_gib": 8.0,
+      "gpu_resident_gib": 7.998046875,
+      "cpu_pinned_gib": 0.0,
+      "cpu_resident_at_evaluation_start_gib": 39.701416015625,
+      "proactive_initial_load_gib": 7.998046875,
+      "cpu_final_lru_gib": 55.9974365234375,
+      "gpu_hit_fraction": 0.23624253832587166,
+      "cpu_hit_fraction": 0.7570080382580383,
+      "miss_fraction": 0.006749423416090083,
+      "miss_gib_per_token": 0.025191695601851853,
+      "miss_gib_per_token_p95": 0.111083984375,
+      "cold_read_gib": 17.529052734375,
+      "cpu_evictions": 125,
+      "evaluated_tokens": 702,
+      "required_ssd_gib_s_for_10_tok_s": 0.25191695601851855
+    }
+  ],
+  "large_gpu_control": {
+    "status": "stopped; no completed prefill/decode",
+    "requested_cache_mib": 9728,
+    "ram_limit_gib": 60,
+    "gpu_free_reserve_mib": 512,
+    "reason": "Concurrent rsync/mv storage activity; not a cache-setting performance result",
+    "observed_device_read_MiB_s": 51.03,
+    "observed_device_write_MiB_s": 24.52,
+    "observed_rsync_write_MiB_s": 55.15,
+    "observed_mv_write_MiB_s": 33.71
+  },
+  "conclusion": "Implement an experimental bounded exclusive cache for Q3; no measured speedup or full-100-GB-model throughput promise."
+}

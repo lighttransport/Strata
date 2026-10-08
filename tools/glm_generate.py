@@ -90,14 +90,15 @@ def main():
     else:
         metadata = GGUFFile(shard).metadata
         tokenizer = Tokenizer.from_gguf(shard)
-    if metadata.get("general.architecture") != "glm5next":
+    if metadata.get("general.architecture") not in ("glm5next", "glm5-next"):
         parser.error("expected a glm5next artifact")
     prompt = text if args.raw else chat_prompt(metadata, text, args.system)
     ids = tokenizer.encode(prompt, parse_special=True)
     if not ids or args.tokens < 1 or args.dense_cache_mib < 64 or args.expert_cache_mib < 0 or args.threads < 1:
         parser.error("empty prompt or invalid decode settings")
+    model_context = metadata.get("glm5next.context_length", metadata.get("glm5-next.context_length"))
     if args.context is not None and (args.context < len(ids) + args.tokens or
-                                    args.context > metadata["glm5next.context_length"]):
+                                    args.context > model_context):
         parser.error("prompt plus output exceeds the requested or model context")
     if native and args.context > 65536: parser.error("native EXL3 context above 64K requires deferred host KV offload")
     encoded = ",".join(map(str, ids))

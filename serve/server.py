@@ -576,6 +576,7 @@ class StrataEngine:
     (`temperature=F top_p=F top_k=N seed=N`, the engine's own spelling).  An absent temperature keeps the
     engine's default, which is greedy; `temperature=0` means the same thing, so it is not forwarded.
     """
+    solo_promotion = True
     silence_s = ENGINE_SILENCE_S         # #481: main() sets the config's engine_silence_s (survives restart())
     silent_note = None                   # #481: why the server ended a silent engine (death_note says it)
     gpu_busy = None                      # #1317: () -> bool, "the GPU is working" (the telemetry's reading); a GPU at work is not frozen
@@ -1176,7 +1177,8 @@ class StrataEngine:
     def generate_batched(self, ids, max_new, sampling, cancel, embeddings=None):
         """--batch.  Alone (no slot busy, nobody waiting): the solo path (GEN, with drafts: the fastest stream)
         - and when another request arrives meanwhile, this one is STOPped and continues in a batch slot (BGEN with
-        its prompt + what it generated: the engine reuses that prefix).  Otherwise: BGEN into a free slot, then the
+        its prompt + what it generated: the engine reuses that prefix). Engines without solo_promotion go
+        directly to BGEN. Otherwise: BGEN into a free slot, then the
         slot's own BT lines until BDONE.  Several requests run at once; the control lines (prompt reading, admission)
         are taken one request at a time - and a long prompt read gives way at a chunk boundary to a waiting request
         with a much shorter prompt (#656: `BYIELD <slot>`; the part read waits in a slot and the read goes on after).
@@ -1209,7 +1211,7 @@ class StrataEngine:
                     holding, born = True, self.gen                  # (the engine it now has the control lines of)
                 with self.slot_cv:
                     alone = not any(self.slot_busy) and self.waiting == 0
-                if alone and left > 1:
+                if alone and left > 1 and self.solo_promotion:
                     head = f"GENI {left}{keys} {embeddings}" if embeddings else f"GEN {left}{keys}"
                     self._send(f"{head} {','.join(str(int(t)) for t in prompt)}")
                     phase = "solo"
@@ -1818,6 +1820,10 @@ def vision_start_error(line: str, log=None) -> str:
 class GlmEngine(StrataEngine):
     """Experimental GLM resident process; greedy text requests only."""
 
+    # GLM has no reusable prefix cache. Admit parallel requests directly into slots:
+    # promotion would re-prefill generated tokens and can change rounding and logits.
+    solo_promotion = False
+
     @staticmethod
     def sampling_keys(sampling):
         neutral = {"temperature": 0, "top_p": 1, "top_k": 0, "min_p": 0,
@@ -1835,8 +1841,7 @@ class GlmEngine(StrataEngine):
     def generate(self, ids, max_new, sampling, cancel, embeddings=None):
         if embeddings is not None:
             raise ValueError("GLM currently supports text input only")
-        # reject non-greedy settings before any engine I/O; upstream's generate checks alive() first
-        self.sampling_keys(sampling)
+        self.sampling_keys(sampling)  # reject unsupported settings before touching the process or a slot
         yield from super().generate(ids, max_new, sampling, cancel)
 
 
@@ -3720,6 +3725,8 @@ class Service:
                                 "reasoning_repeat_coverage": round(repeat_coverage, 3),
                                 "engine_generated": last.get("generated"),
                                 "prompt_ms": last.get("prompt_ms"), "decode_ms": last.get("decode_ms"),
+                                "prefill_tok_s": getattr(self.engine, "prefill_tok_s_mean", None)
+                                if not getattr(self.engine, "batch", 0) else None,
                                 "decode_tok_s": round(last["generated"] / (last["decode_ms"] / 1000), 1)
                                 if n and last.get("generated") and last.get("decode_ms") else None,
                                 "hit_rate": hit_rate, "pcie_share": pcie_share, "ram_blobs": last.get("ram_blobs"),
@@ -4558,6 +4565,7 @@ def make_handler(svc: Service):
             elif path in ("/health", "/api/health"):
                 self._json(200, {"status": "ok", "max_context": svc.reported_ctx(), "model": svc.model,
                                  "images": svc.vision is not None, "api_key": bool(svc.api_key),
+                                 "greedy_only": isinstance(svc.engine, GlmEngine),
                                  "loaded": svc.loaded(), "service": "strata"})
             elif path == "/status":
                 if not self._authorized():                  # #212: it shows the end of the last answer
@@ -5712,7 +5720,7 @@ def main() -> int:
         else:
             glm_metadata = GGUFFile(shard).metadata
             tok = Tokenizer.from_gguf(shard)
-        if glm_metadata.get("general.architecture") != "glm5next":
+        if glm_metadata.get("general.architecture") not in ("glm5next", "glm5-next"):
             ap.error("--engine glm requires a glm5next artifact")
     elif (tpath / "vocab.json").exists():
         import strata_tokenizer as ST
@@ -5725,6 +5733,14 @@ def main() -> int:
         tok = ST.Tokenizer(tokens, merges, types)
     hub = hub_from_config(cfg, a.mcp_config)            # before the minutes of loading: a bad entry stops here
     if a.engine == "glm":
+        glm_stop_ids = {int(glm_metadata[k]) for k in
+                        ("tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id")
+                        if k in glm_metadata}
+        # GLM GGUF exports may declare only EOS; these role tokens also end an
+        # assistant turn. Resolve from this model's vocabulary, never fixed IDs.
+        glm_stop_ids.update(i for i, token in enumerate(glm_metadata.get("tokenizer.ggml.tokens", []))
+                            if token in ("<|user|>", "<|observation|>"))
+        effort_end = None  # GLM does not implement Strata's movable effort turn.
         if cfg.get("decode_experts", "cpu") not in ("cpu", "gpu"):
             ap.error("GLM decode_experts must be cpu or gpu")
         if cfg.get("speculative", "none") not in ("none", "lookup", "mtp"):
@@ -5738,23 +5754,36 @@ def main() -> int:
             ap.error("native EXL3 requires context <=64K, CPU decode experts and speculative=none")
         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
                 str(cfg.get("threads", 15 if glm_native else 6)), str(cfg.get("expert_cache_mib", 0)),
-                str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(str(glm_metadata[k]) for k in
-                    ("tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id")
-                    if k in glm_metadata), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native else "none"), str(cfg.get("cpu_prepack_mib", 0))]
+                str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(map(str, sorted(glm_stop_ids))), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native else "none"), str(cfg.get("cpu_prepack_mib", 0))]
         devices = cfg.get("gpu_devices", "0")
         if isinstance(devices, list): devices = ",".join(map(str, devices))
         args.extend((str(devices), str(cfg.get("prefill_expert_cache_mib", 0)), str(int(bool(cfg.get("lock_weights", False)))),
                      str(int(bool(cfg.get("decode_prefill_cache", False)))), str(cfg.get("decode_cache_mib", 0)), str(int(bool(cfg.get("decode_graphs", False)))), str(cfg.get("decode_cache_window", 256)),
                      str(int(bool(cfg.get("decode_cache_adapt", False))))))
+        prefill_experts = cfg.get("prefill_experts", "mmq")
+        if prefill_experts not in ("mmq", "f16", "f16-batched"):
+            ap.error("GLM prefill_experts must be mmq, f16 or f16-batched")
+        if glm_native and prefill_experts != "mmq":
+            ap.error("native EXL3 requires prefill_experts=mmq")
+        args.append(prefill_experts)
         if glm_native:
             pages = cfg.get("weight_pages", "4k")
             if pages not in ("4k", "huge"): ap.error("GLM weight_pages must be 4k or huge")
-            args.extend(("mmq", pages))
+            args.append(pages)
         elif cfg.get("expert_pack"):
             backend = cfg.get("cpu_expert_backend", "auto")
             if backend not in ("native", "auto", "packed-dot", "packed-lut"):
                 ap.error("invalid GLM CPU expert backend")
-            args.extend(("mmq", "4k", cfg["expert_pack"], cfg.get("expert_pack_profile", ""), backend))
+            args.extend(("4k", cfg["expert_pack"], cfg.get("expert_pack_profile", ""), backend))
+        batch_args = parallel_args(cfg, [])
+        if batch_args:
+            if glm_native:
+                ap.error("GLM parallel requests currently require GGUF weights")
+            # Preserve all positional fields before appending named batch options.
+            defaults = ["mmq", "4k", "", "", "auto"]
+            while len(args) < 27:
+                args.append(defaults[len(args) - 22])
+            args += batch_args
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
         vision, sampling_defaults = None, {}
     elif a.engine == "strata":
@@ -5819,9 +5848,7 @@ def main() -> int:
                   model_name=cfg.get("model_name", "glm-5.3-flash" if glm_metadata else "qwen3.8-flash-next"), vision=vision,
                   sampling_defaults=sampling_defaults,
                   fit_max_tokens=a.fit_max_tokens or cfg.get("fit_max_tokens") is True,
-                  stop_ids={int(glm_metadata[k]) for k in ("tokenizer.ggml.eos_token_id",
-                      "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id") if k in glm_metadata}
-                      if glm_metadata else None)
+                  stop_ids=glm_stop_ids if glm_metadata else None)
     svc.reasoning_close_retry = cfg.get("reasoning_close_retry") is True    # #1053: opt-in, off by default
     svc.codex_thread_titles = cfg.get("codex_thread_titles") is True    # #923: opt-in, off by default
     svc.codex_compaction_cache = cfg.get("codex_compaction_cache") is True   # #924: opt-in, off by default

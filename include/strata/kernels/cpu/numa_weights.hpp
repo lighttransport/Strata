@@ -36,7 +36,13 @@ public:
             throw std::invalid_argument("NUMA packed tensor view: invalid geometry");
         bytes=row*rows*count;
         data_[0]=const_cast<uint8_t*>(source);data_[1]=const_cast<uint8_t*>(source)+half_rows*row;
-        if(lazy)return;
+        if(!lazy)relocate_view_pages();
+    }
+    // A lazy view can be placed after streamed prefill has populated it,
+    // without re-encoding, copying or checksumming the expert weights.
+    void relocate_view_pages() {
+        if(!view_)throw std::invalid_argument("NUMA relocation requires mapped tensor rows");
+        unmoved_pages=0;
 #ifdef __linux__
         // move_pages instead of mbind: binding each half would split the mapping into one VMA per half-expert,
         // more than the default vm.max_map_count on a full model.
@@ -54,8 +60,8 @@ public:
                 else for(size_t i=0;i<pages.size();++i)if(status[i]!=node)retry[node].push_back(pages[i]);
                 pages.clear();
             };
-            for(size_t e=0;e<count;++e) {
-                const auto begin=reinterpret_cast<uintptr_t>(data_[node]+e*stride_),end=begin+half_rows*row;
+            for(size_t e=0;e<experts;++e) {
+                const auto begin=reinterpret_cast<uintptr_t>(data_[node]+e*stride_),end=begin+half_rows*row_bytes;
 #ifdef MADV_POPULATE_READ
                 // move_pages moves only mapped pages: map this half first (a pack's checksum pass already did).
                 if(end>(begin+page-1)/page*page)

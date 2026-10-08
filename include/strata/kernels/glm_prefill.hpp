@@ -59,6 +59,9 @@ void glm_mhc_write_batch(const float *r, const float *c, const float *y, float *
                          void *stream);
 void glm_kda_gate_batch(const float *x, const float *bias, const float *a, float *y, int heads, int dim,
                         float lower, int tokens, void *stream);
+// prepared_qi requires key/decay/beta transformed by glm_kda_prepare. With
+// row_parts=1 the recurrence retains the unprepared accumulation order.
+// Prepared inputs cannot be combined with rollback snapshots.
 void glm_kda_chunk(float *state, const float *q, const float *key, const float *value, const float *decay,
                    const float *beta, float *out, int heads, int dim, int tokens, void *stream,
                    int columns = 128, int row_parts = 1, const float *prepared_qi = nullptr,
@@ -67,13 +70,19 @@ void glm_kda_prepare(const float *q, float *key, float *decay, float *beta, floa
                      int heads, int tokens, void *stream);
 void glm_kda_output_batch(const float *x, const float *gate, const float *weight, float *out, int heads,
                           int dim, float eps, int tokens, void *stream);
+// Position data is updated outside graph capture; consumers retain stable addresses across replay.
+void glm_decode_position(int *position, int value, void *stream);
+void glm_cache_rows(const float *rows, float *cache, int width, int tokens,
+                    const int *position, void *stream);
 void glm_index_prepare(const float *keys, const float *gates, const float *ape, float *pending_keys,
                        float *pending_gates, float *pooled, int pos, int tokens, int pool, int dim,
-                       void *stream);
+                       void *stream, const int *device_pos = nullptr, int position_offset = 0);
 void glm_index_reduce(const float *dots, const float *weights, float *scores, int heads, int pools,
-                      int queries, int query_pos, int pool, int dim, void *stream);
+                      int queries, int query_pos, int pool, int dim, void *stream,
+                      const int *device_pos = nullptr, int position_offset = 0);
 void glm_index_select_batch(const float *scores, int *ids, int *counts, int pools, int query_pos, int queries,
-                            int pool, int top_k, int stride, void *stream);
+                            int pool, int top_k, int stride, void *stream,
+                            const int *device_pos = nullptr, int position_offset = 0);
 void glm_mla_gather(const float *cache, const int *ids, const int *counts, float *gathered, int queries,
                     int stride, int latent, void *stream);
 void glm_mla_gather_f16(const float *cache, const int *ids, const int *counts, uint16_t *gathered, int queries,

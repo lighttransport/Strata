@@ -79,6 +79,7 @@ bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt
     f.lossless = false;
     f.q23_layout = 0;
     f.observer = nullptr;
+    f.hidden_transform = nullptr;
     f.observer_layer = -1;
     f.fuse_h_quant = false;
     f.gu_type = gu_type;

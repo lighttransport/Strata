@@ -1,0 +1,10 @@
+{
+  "scoring": "manual review of full final answer against fixture expected values",
+  "questions_correct": 8,
+  "questions_total": 8,
+  "citations_correct": true,
+  "unsupported_identity": false,
+  "summary": "Covers objective, date revision, allocations, verification progress, both named risks, ownership, rollback and handling policy accurately.",
+  "next_actions": "Generally grounded; keeping contingency unspent is a conservative recommendation, not an explicit permanent prohibition in the source.",
+  "verdict": "passes this synthetic document-QA smoke; not broad chat qualification"
+}

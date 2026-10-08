@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-08",
+  "host": "b550",
+  "cpu": "Ryzen 9 3950X",
+  "gpu": "RX 9070 XT 16 GB, gfx1201",
+  "source_commit": "036c926e6db07e8f66d6b125b3139ef282dad327",
+  "source_note": "uncommitted GLM integration; see prior release candidate source snapshot",
+  "executable_sha256": "685b1344f3e46b9d29e5fe599f96b01db6372218a5cab235bd7b2331399a150f",
+  "executed_runner_sha256": "6af027064df4650d57645e8e0dea9a3638ad0b3d273f81c97f7594fc25329155",
+  "model_sha256_previously_verified": "c3b0cfb144556bd28e265d8255d48eeafce3d127aba5b9b5dd4e326322a34aa9",
+  "model_declared_context": 1048576,
+  "decode_cache_mib": 3072,
+  "ram_limit_gib": 60,
+  "minimum_free_vram_mib": 2048,
+  "source_results": "b550:~/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3",
+  "trials_per_length": 1,
+  "prefill_scope": "first request after expert-page warmup; no prefix reuse",
+  "output_scope": "10% maximum includes reasoning; natural stop honored",
+  "fixture_scope": "same eight fact questions at four document lengths; synthetic low-density dossier"
+}

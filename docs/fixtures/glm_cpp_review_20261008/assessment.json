@@ -1,0 +1,51 @@
+{
+  "host": "b550",
+  "date": "2026-10-08",
+  "executable_sha256": "685b1344f3e46b9d29e5fe599f96b01db6372218a5cab235bd7b2331399a150f",
+  "prompt_sha256": "41bec70bc475dd47de6cf5314f75cb694c7dbb28db17a91add4dbf8f54653b2e",
+  "scoring": "manual against frozen rubric; no model judge",
+  "seeded_findings_identified": 5,
+  "seeded_findings_total": 5,
+  "spurious_defect_findings": 0,
+  "safe_control_correct": true,
+  "finish_reason": "stop",
+  "complete_review": true,
+  "explanation_errors": [
+    "UINT64_MAX - 1 + 2 wraps to 0, not 1. The proposed trigger still bypasses the original check.",
+    "The for-init variable i lives for the whole loop, not one iteration; it dies when the loop ends. The dangling-reference finding and value-capture fix are correct.",
+    "display_name contract permits a view only until the next invocation; testing continued use after that call as required behavior contradicts the contract."
+  ],
+  "test_plan_limitations": [
+    "TSan is not the right primary check for a single-thread dangling-stack reference; use ASan with stack-use-after-scope detection plus behavioral checks.",
+    "Correction snippets were assessed manually; no complete model-generated patch was compiled."
+  ],
+  "verdict": "qualified smoke only: all seeded findings, imperfect explanations and test plan",
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 6511,
+    "prompt_ms": 37839.2,
+    "prompt_per_token_ms": 5.812,
+    "prompt_per_second": 172.1,
+    "predicted_n": 1965,
+    "predicted_ms": 186187.5,
+    "predicted_per_token_ms": 94.752,
+    "predicted_per_second": 10.6,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  },
+  "wall_seconds": 224.0810111519968,
+  "peak_cgroup_gib": 57.17973709106445,
+  "peak_rss_gib": 53.097713470458984,
+  "minimum_free_global_vram_mib": 2816,
+  "memory_events": {
+    "low": 0,
+    "high": 0,
+    "max": 0,
+    "oom": 0,
+    "oom_kill": 0,
+    "oom_group_kill": 0,
+    "sock_throttled": 0
+  },
+  "swap_bytes": 0,
+  "guard_rejected": null
+}

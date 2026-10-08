@@ -22,6 +22,10 @@
 #define cublasSetStream rocblas_set_stream
 #define cublasSetWorkspace rocblas_set_workspace
 #define cublasStatus_t rocblas_status
+#define cublasSaxpy rocblas_saxpy
+#define cublasSgemm rocblas_sgemm
+#define cublasSgemmStridedBatched rocblas_sgemm_strided_batched
+#define cublasSgemv rocblas_sgemv
 
 inline rocblas_status cublasSetMathMode(rocblas_handle h, int mode) {
     // This API has only its default arithmetic; GEMM below explicitly selects
@@ -68,4 +72,8 @@ inline rocblas_status cublasGemmStridedBatchedEx(rocblas_handle h, rocblas_opera
 #define cublasSetStream hipblasSetStream
 #define cublasSetWorkspace hipblasSetWorkspace
 #define cublasStatus_t hipblasStatus_t
+#define cublasSaxpy hipblasSaxpy
+#define cublasSgemm hipblasSgemm
+#define cublasSgemmStridedBatched hipblasSgemmStridedBatched
+#define cublasSgemv hipblasSgemv
 #endif

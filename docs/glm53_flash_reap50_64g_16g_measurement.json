@@ -1,0 +1,1179 @@
+{
+  "measurement_utc": "2026-10-07T19:49:40.303622+00:00",
+  "hardware": {
+    "cpu": "AMD Ryzen Threadripper 1950X",
+    "physical_cores": 16,
+    "numa_nodes": 2,
+    "ram_gb": 128,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti 16 GB",
+    "framebuffer_total_mib": 16311,
+    "nvidia_reserved_mib": 404,
+    "cuda_usable_mib": 15907,
+    "original_model_drive": "/mnt/nvme01",
+    "expert_pack_drive": "/mnt/nvme01"
+  },
+  "budgets": {
+    "system_ram_gib": 64,
+    "engine_and_file_cache_gib": 60,
+    "os_ram_allowance_gib": 4,
+    "swap_bytes": 0,
+    "gpu_nominal_mib": 16384,
+    "total_gpu_use_ceiling_mib": 14336,
+    "minimum_actual_gpu_free_mib": 2048,
+    "effective_reported_gpu_use_limit_mib": 13859,
+    "effective_use_including_reserved_limit_mib": 14263
+  },
+  "model": {
+    "experts_per_layer": 144,
+    "selected_experts_per_token": 8,
+    "original_gguf_bytes": 99330938048,
+    "q23_pack_bytes": 55094298560,
+    "mapped_expert_bytes": 55094280192,
+    "compact_staging_slot_mib": 140,
+    "staged_prefetch": false,
+    "routing_affinity": 0
+  },
+  "targets": {
+    "decode_tok_s": 20,
+    "warm_prefill_tok_s": 300,
+    "additional_perplexity_ratio": 1.01,
+    "decode_achieved": false,
+    "warm_8k_prefill_achieved": true,
+    "quality_achieved": false
+  },
+  "decoder_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+  "saved_configs": [
+    "configs/glm53f-reap50-q23-64g-16g-experimental-short.json",
+    "configs/glm53f-reap50-q23-64g-16g-experimental-long.json"
+  ],
+  "cases": [
+    {
+      "name": "short-1024x256",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+          "model_name": "glm-5.3-flash-reap50-q23-v9-64g-16g-safe-short",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 1024,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme01/models/glm53f/reap-50/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          },
+          "log": "build-q2-v9-reap50/short-engine.log"
+        },
+        "prompt_tokens": 1024,
+        "prompt_sha256": "664796e1c7b7baee9b7e19632b72e393dd4b4b893e922a44e4a8a5961e9e6c9e",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1670868",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/short.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-1024.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/short-1024x256",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "256",
+          "--trials",
+          "3",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336"
+        ],
+        "guard_source_sha256": "6034bd61cc4cd9b6b8969f6c6d3b863c6172dee51aff99f930f2e05db7ae6b6f",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+            "bytes": 99330938048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+            "bytes": 55094298560,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60
+      },
+      "artifact_prefix": "/mnt/nvme02/work/Strata/build-q2-v9-reap50/short-1024x256",
+      "started_utc": "2026-10-07T19:49:40.303622+00:00",
+      "clean": true,
+      "complete": true,
+      "exit_code": 0,
+      "rejection": null,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 9947.88,
+            "tokens_per_second": 102.937
+          },
+          {
+            "trial": 1,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 9961.06,
+            "tokens_per_second": 102.8
+          },
+          {
+            "trial": 2,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 9952.58,
+            "tokens_per_second": 102.888
+          }
+        ],
+        "decode": [
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 17165.4,
+            "tokens_per_second": 14.8554
+          },
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 15305.1,
+            "tokens_per_second": 16.6611
+          },
+          {
+            "kind": "mtp",
+            "tokens": 256,
+            "milliseconds": 15141.5,
+            "tokens_per_second": 16.8412
+          }
+        ],
+        "median_prefill_tok_s": 102.888,
+        "median_decode_tok_s": 16.6611,
+        "peak_allocated_gpu_mib": 11029.4,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 142.324,
+              "prefill": 1400.0,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 142.324,
+              "prefill": 1400.0,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 142.324,
+              "prefill": 1400.0,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "dense_mtp": 159.628,
+              "other": 4323.61,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "dense_mtp": 159.628,
+              "other": 4323.61,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "dense_mtp": 159.628,
+              "other": 4323.61,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 0,
+            "minor": 16397
+          },
+          {
+            "trial": 1,
+            "major": 0,
+            "minor": 16536
+          },
+          {
+            "trial": 2,
+            "major": 0,
+            "minor": 16537
+          }
+        ]
+      },
+      "wall_seconds": 159.44036787000368,
+      "cgroup_peak_gib": 59.46883773803711,
+      "peak_process_rss_gib": 59.336605072021484,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2346,
+      "peak_gpu_use_including_reserved_mib": 13967,
+      "ssd_read_gib": 57.7515754699707,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "interference_events": 0,
+      "memory_pass": true,
+      "actual_gpu_cache": [
+        {
+          "slots": 494,
+          "mib": 4291.62,
+          "fingerprint": "10026808557401597613"
+        }
+      ],
+      "mtp_trials": [
+        {
+          "generated": 256,
+          "rounds": 123,
+          "proposed": 246,
+          "accepted": 131,
+          "replayed": 0
+        },
+        {
+          "generated": 256,
+          "rounds": 123,
+          "proposed": 246,
+          "accepted": 131,
+          "replayed": 0
+        },
+        {
+          "generated": 256,
+          "rounds": 123,
+          "proposed": 246,
+          "accepted": 131,
+          "replayed": 0
+        }
+      ],
+      "cpu_expert_trials": [
+        {
+          "layer_flow_ms": 12232.7,
+          "bytes": 774062735360
+        },
+        {
+          "layer_flow_ms": 11188.9,
+          "bytes": 742680494080
+        },
+        {
+          "layer_flow_ms": 11224.4,
+          "bytes": 741405163520
+        }
+      ],
+      "hashes": {
+        "log": "e50e6284a9c13aea841b345cb22f7aea047ed18b574d1a3fb50f21bd64e3b149",
+        "stdout": "35f58513d32d6e38cf1a2368076fc948ab3eb7073ee40415ffa5338a33d76af1",
+        "manifest.json": "0bc39fb91d291d57425fd23f16ab3b078d64c1ad065ed14f43f59a5c682cffae",
+        "result.json": "ab1e1916a3291d023c557850d7654543dc6e93ebdeba03337905fc95fb66a511"
+      },
+      "output": {
+        "tokens": 768,
+        "repetitions_identical": true,
+        "stop_token_positions": []
+      },
+      "prefill_scope": "three timed repetitions after an untimed prefill warmup; initialization and warmup excluded"
+    },
+    {
+      "name": "long-8192x128",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+          "model_name": "glm-5.3-flash-reap50-q23-v9-64g-16g-safe-long",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 8192,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme01/models/glm53f/reap-50/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          },
+          "log": "build-q2-v9-reap50/long-engine.log"
+        },
+        "prompt_tokens": 8192,
+        "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1671676",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=930",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/long.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-8192.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/long-8192x128",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "128",
+          "--trials",
+          "3",
+          "--timeout",
+          "900",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336"
+        ],
+        "guard_source_sha256": "6034bd61cc4cd9b6b8969f6c6d3b863c6172dee51aff99f930f2e05db7ae6b6f",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+            "bytes": 99330938048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+            "bytes": 55094298560,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60
+      },
+      "artifact_prefix": "/mnt/nvme02/work/Strata/build-q2-v9-reap50/long-8192x128",
+      "started_utc": "2026-10-07T19:53:16.868117+00:00",
+      "clean": true,
+      "complete": true,
+      "exit_code": 0,
+      "rejection": null,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 19971.7,
+            "tokens_per_second": 410.181
+          },
+          {
+            "trial": 1,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 19987.7,
+            "tokens_per_second": 409.851
+          },
+          {
+            "trial": 2,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 19997.8,
+            "tokens_per_second": 409.644
+          }
+        ],
+        "decode": [
+          {
+            "kind": "mtp",
+            "tokens": 128,
+            "milliseconds": 9677.97,
+            "tokens_per_second": 13.1226
+          },
+          {
+            "kind": "mtp",
+            "tokens": 128,
+            "milliseconds": 6802.59,
+            "tokens_per_second": 18.6694
+          },
+          {
+            "kind": "mtp",
+            "tokens": 128,
+            "milliseconds": 6602.65,
+            "tokens_per_second": 19.2347
+          }
+        ],
+        "median_prefill_tok_s": 409.851,
+        "median_decode_tok_s": 18.6694,
+        "peak_allocated_gpu_mib": 11029.4,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 926.98,
+              "prefill": 2616.0,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 926.98,
+              "prefill": 2616.0,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 926.98,
+              "prefill": 2616.0,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "dense_mtp": 159.628,
+              "other": 4323.61,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "dense_mtp": 159.628,
+              "other": 4323.61,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "dense_mtp": 159.628,
+              "other": 4323.61,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 0,
+            "minor": 131074
+          },
+          {
+            "trial": 1,
+            "major": 0,
+            "minor": 131224
+          },
+          {
+            "trial": 2,
+            "major": 0,
+            "minor": 131224
+          }
+        ]
+      },
+      "wall_seconds": 202.43558637800743,
+      "cgroup_peak_gib": 60.0,
+      "peak_process_rss_gib": 59.904090881347656,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2358,
+      "peak_gpu_use_including_reserved_mib": 13955,
+      "ssd_read_gib": 58.632137298583984,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 44,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "interference_events": 0,
+      "memory_pass": true,
+      "actual_gpu_cache": [
+        {
+          "slots": 494,
+          "mib": 4291.62,
+          "fingerprint": "14462947106041303518"
+        }
+      ],
+      "mtp_trials": [
+        {
+          "generated": 128,
+          "rounds": 56,
+          "proposed": 112,
+          "accepted": 71,
+          "replayed": 0
+        },
+        {
+          "generated": 128,
+          "rounds": 56,
+          "proposed": 112,
+          "accepted": 71,
+          "replayed": 0
+        },
+        {
+          "generated": 128,
+          "rounds": 56,
+          "proposed": 112,
+          "accepted": 71,
+          "replayed": 0
+        }
+      ],
+      "cpu_expert_trials": [
+        {
+          "layer_flow_ms": 5754.87,
+          "bytes": 379242872832
+        },
+        {
+          "layer_flow_ms": 4841.77,
+          "bytes": 332656869376
+        },
+        {
+          "layer_flow_ms": 4754.03,
+          "bytes": 327400685568
+        }
+      ],
+      "hashes": {
+        "log": "b3821345ea0efa1773cfe7e3d493ae9551b7d6c8bab41f3bd2c48686f59d6240",
+        "stdout": "0ee57781213923632480f1bbff70462c85c252e90543edb30e522153b31b1061",
+        "manifest.json": "52cccfd7fcb31bce56d9b6fc1e227227bfb6ed2aa1c14ea2f91735c60bc438ff",
+        "result.json": "caddc442acaac89b70e4b922ed87545ee7e0c3dfe281cf2389a9af173c4f4a64"
+      },
+      "output": {
+        "tokens": 384,
+        "repetitions_identical": true,
+        "stop_token_positions": []
+      },
+      "prefill_scope": "three timed repetitions after an untimed prefill warmup; initialization and warmup excluded"
+    },
+    {
+      "name": "long-cold-8192x128",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+          "model_name": "glm-5.3-flash-reap50-q23-v9-64g-16g-safe-long",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 8192,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme01/models/glm53f/reap-50/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          },
+          "log": "build-q2-v9-reap50/long-engine.log"
+        },
+        "prompt_tokens": 8192,
+        "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1673037",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=630",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/long.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-8192.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/long-cold-8192x128",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "128",
+          "--trials",
+          "1",
+          "--timeout",
+          "600",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336"
+        ],
+        "guard_source_sha256": "6034bd61cc4cd9b6b8969f6c6d3b863c6172dee51aff99f930f2e05db7ae6b6f",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+            "bytes": 99330938048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+            "bytes": 55094298560,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60
+      },
+      "artifact_prefix": "/mnt/nvme02/work/Strata/build-q2-v9-reap50/long-cold-8192x128",
+      "started_utc": "2026-10-07T19:59:49.625099+00:00",
+      "clean": true,
+      "complete": true,
+      "exit_code": 0,
+      "rejection": null,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 75073.6,
+            "tokens_per_second": 109.12
+          }
+        ],
+        "decode": [
+          {
+            "kind": "mtp",
+            "tokens": 128,
+            "milliseconds": 8055.18,
+            "tokens_per_second": 15.7663
+          }
+        ],
+        "median_prefill_tok_s": 109.12,
+        "median_decode_tok_s": 15.7663,
+        "peak_allocated_gpu_mib": 11029.4,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 926.98,
+              "prefill": 2616.0,
+              "state": 426.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "dense_mtp": 159.628,
+              "other": 4323.61,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105,
+              "verify_history": 291.211
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 82311,
+            "minor": 1448751
+          }
+        ]
+      },
+      "wall_seconds": 128.45323055100744,
+      "cgroup_peak_gib": 60.0,
+      "peak_process_rss_gib": 59.83448028564453,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2356,
+      "peak_gpu_use_including_reserved_mib": 13956,
+      "ssd_read_gib": 58.63568115234375,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 1,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "interference_events": 0,
+      "memory_pass": true,
+      "actual_gpu_cache": [
+        {
+          "slots": 494,
+          "mib": 4291.62,
+          "fingerprint": "14462947106041303518"
+        }
+      ],
+      "mtp_trials": [
+        {
+          "generated": 128,
+          "rounds": 56,
+          "proposed": 112,
+          "accepted": 71,
+          "replayed": 0
+        }
+      ],
+      "cpu_expert_trials": [
+        {
+          "layer_flow_ms": 5481.34,
+          "bytes": 379242872832
+        }
+      ],
+      "hashes": {
+        "log": "5bef2dafc3a4dfed521d0c737d025efa2bb0403215942473b981a0b9258b4d25",
+        "stdout": "fb00652dc6660ca2e5a053b37776f70a0f1e5d04fcac2a2760206679d5f34d8b",
+        "manifest.json": "6a294952a118b811996a05d51826dff22aa1ec6f75a13379cdd6919fab6696b3",
+        "result.json": "7d2f7697a0f1ca8044124e18dd1a447cf3603c82ed16962875feab3c74372af4"
+      },
+      "output": {
+        "tokens": 128,
+        "repetitions_identical": true,
+        "stop_token_positions": []
+      },
+      "prefill_scope": "cold cache, one trial"
+    },
+    {
+      "name": "quality-smoke",
+      "manifest": {
+        "config": {
+          "exe": "build-q2-v8-64g/strata-glm-decode",
+          "model": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+          "expert_pack": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+          "model_name": "glm-5.3-flash-reap50-q23-v9-64g-16g-safe-short",
+          "context": 12288,
+          "dense_cache_mib": 4096,
+          "gpu_budget_mib": 14336,
+          "gpu_devices": "0",
+          "threads": 15,
+          "cpu_affinity": "numa",
+          "prefill_batch": 1024,
+          "decode_experts": "cpu",
+          "speculative": "mtp",
+          "draft_depth": 2,
+          "decode_graphs": true,
+          "decode_cache_mib": 4800,
+          "env": {
+            "STRATA_GLM_QUANT_ONCE": "1",
+            "STRATA_NATIVE_NUMA_LOCAL": "0",
+            "STRATA_POOL_SPIN_US": "20000",
+            "STRATA_IQ2_TABLE_SIGNS": "1",
+            "STRATA_GLM_LAYER_GRAPHS": "1",
+            "STRATA_GLM_VERIFY_GRAPHS": "1",
+            "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+            "STRATA_GLM_STEP_PIPELINE": "1",
+            "STRATA_GLM_Q8_DECODE": "1",
+            "STRATA_GLM_LAYER_FLOW": "1",
+            "STRATA_GLM_MAPPED_OWNED": "1",
+            "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme01/models/glm53f/reap-50/calibration/coverage.json",
+            "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+            "STRATA_GLM_SPLIT_VERIFY": "1",
+            "STRATA_GLM_CANON": "1",
+            "STRATA_GLM_TIER_ADAPT": "1",
+            "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+            "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+            "STRATA_GLM_Q23_WIDE": "1",
+            "STRATA_GLM_ROUTE_AFFINITY": "0",
+            "STRATA_GLM_MLA_GRAPHS": "1",
+            "STRATA_GLM_STAGE_WORKERS": "4",
+            "STRATA_GLM_DEFER_COPY_WAIT": "1",
+            "STRATA_GLM_DEQUANT_ONCE": "1",
+            "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+            "STRATA_GLM_KDA_PREPARE": "1",
+            "STRATA_GLM_KDA_COLUMNS": "128",
+            "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+            "STRATA_GLM_MLA_F16": "1",
+            "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+            "STRATA_GLM_MAPPED_LAZY": "1",
+            "STRATA_GLM_COMPACT_STAGING": "1"
+          },
+          "log": "build-q2-v9-reap50/short-engine.log"
+        },
+        "prompt_tokens": 1024,
+        "prompt_sha256": "664796e1c7b7baee9b7e19632b72e393dd4b4b893e922a44e4a8a5961e9e6c9e",
+        "executable_sha256": "623eeeb906a3b164a9d87df2a168738487f22d1c29d925dd08ce95acc8e4cbbb",
+        "command": [
+          "systemd-run",
+          "--user",
+          "--wait",
+          "--pipe",
+          "--unit=strata-lowmem-1672577",
+          "--property=MemoryMax=60G",
+          "--property=MemorySwapMax=0",
+          "--property=IOAccounting=yes",
+          "--property=OOMPolicy=kill",
+          "--property=RuntimeMaxSec=630",
+          "--property=WorkingDirectory=/mnt/nvme02/work/Strata",
+          "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+          "/mnt/nvme02/work/Strata/tools/glm_low_memory_bench.py",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/short.json",
+          "/mnt/nvme02/work/Strata/build-q2-v4/single-1024.ids",
+          "--output",
+          "/mnt/nvme02/work/Strata/build-q2-v9-reap50/quality-smoke",
+          "--ram-gib",
+          "60",
+          "--tokens",
+          "1",
+          "--trials",
+          "1",
+          "--timeout",
+          "600",
+          "--worker",
+          "--gpu-capacity-mib",
+          "16384",
+          "--gpu-used-limit-mib",
+          "14336",
+          "--eval-corpus",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+          "--eval-reference",
+          "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+        ],
+        "guard_source_sha256": "6034bd61cc4cd9b6b8969f6c6d3b863c6172dee51aff99f930f2e05db7ae6b6f",
+        "cache_clear": [
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+            "bytes": 99330938048,
+            "cached_bytes_after": 0
+          },
+          {
+            "path": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+            "bytes": 55094298560,
+            "cached_bytes_after": 0
+          }
+        ],
+        "capacity_simulation": true,
+        "fit_only": false,
+        "compute_gpu": "installed GPU",
+        "memory_gib": 60,
+        "evaluation_corpus": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke.ids",
+        "evaluation_targets": 512,
+        "evaluation_corpus_sha256": "7bc350b1a931a2849890fe6dfbf6aaf815aa308d823c622cbaaef34d1ac8d9c1",
+        "evaluation_reference": "/mnt/nvme02/work/Strata/build-q2-v6/screen/smoke-reference.logits"
+      },
+      "artifact_prefix": "/mnt/nvme02/work/Strata/build-q2-v9-reap50/quality-smoke",
+      "started_utc": "2026-10-07T19:57:22.930963+00:00",
+      "clean": true,
+      "complete": true,
+      "exit_code": 0,
+      "rejection": null,
+      "measurements": {
+        "prefill": [],
+        "decode": [],
+        "median_prefill_tok_s": null,
+        "median_decode_tok_s": null,
+        "peak_allocated_gpu_mib": 10624.6,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 4806.35,
+              "dense_fp32": 839.0,
+              "other": 4463.17,
+              "prefill": 32.0,
+              "resident_exec": 5.88576,
+              "state": 426.105
+            }
+          }
+        ],
+        "page_faults": []
+      },
+      "wall_seconds": 92.02541334999842,
+      "cgroup_peak_gib": 55.56031036376953,
+      "peak_process_rss_gib": 55.16633987426758,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 2754,
+      "peak_gpu_use_including_reserved_mib": 13559,
+      "ssd_read_gib": 54.48544692993164,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "interference_events": 0,
+      "memory_pass": true,
+      "actual_gpu_cache": [
+        {
+          "slots": 519,
+          "mib": 4508.81,
+          "fingerprint": "11781671529322311666"
+        },
+        {
+          "slots": 513,
+          "mib": 4456.69,
+          "fingerprint": "13240948171405530949"
+        }
+      ],
+      "mtp_trials": [],
+      "cpu_expert_trials": [
+        {
+          "layer_flow_ms": 67491.2,
+          "bytes": 932366843904
+        }
+      ],
+      "hashes": {
+        "log": "f911a0ef4242255746cd4a33e11fdb5a0959bff87f335c1169a356877e5ef6dd",
+        "stdout": "29dc5343f74ca3cc7f3a9e58ad05bc5a6265f1757692534a156445bd722ed1cd",
+        "manifest.json": "2874d29c00b643e4d98e77d2168978036e62769a6ca73162dfbb0243798d8da9",
+        "result.json": "2114d2eff63a6463e0f4f17d1aa3fea1670ec0a2c4ebd9de1ce5531653dd859f"
+      },
+      "quality": {
+        "baseline": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 2.9849414060860626
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 10.690692176208964
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 5.64899015191
+          }
+        },
+        "metrics": {
+          "code": {
+            "tokens": 256,
+            "perplexity": 3.1217666761735696
+          },
+          "prose": {
+            "tokens": 256,
+            "perplexity": 11.823538194842978
+          },
+          "all": {
+            "tokens": 512,
+            "perplexity": 6.07538702726
+          }
+        },
+        "perplexity_ratios": {
+          "code": 1.0458385112044515,
+          "prose": 1.1059656381422194,
+          "all": 1.0754819647199827
+        },
+        "separate_category_gate_pass": false,
+        "targets": 512,
+        "kl": 0.549131435236,
+        "top1_agreement": 0.763671875,
+        "scope": "512 tuning targets, 256 code and 256 prose; ordinary teacher-forced decode"
+      }
+    }
+  ],
+  "historical_controls": {
+    "full_ram_v5": {
+      "source": "build-q2-v5/selected-performance-1024x1024.memory.json",
+      "peak_rss_gib": 114.24312973022461,
+      "ram_cap_gib": null,
+      "decode_tok_s": [
+        22.14,
+        23.1,
+        22.57
+      ],
+      "gpu_route_affinity": 0.1,
+      "actual_gpu_expert_cache_mib": 4908.44
+    },
+    "older_reap_quality": {
+      "targets": 32768,
+      "reference": "original UD-Q2_K_XL; older non-canonical expert path",
+      "baseline_perplexity": 8.56567495386,
+      "reap_q23_perplexity": 11.1150635462,
+      "perplexity_ratio": 1.297628453808086,
+      "kl": 0.586801336621,
+      "top1_agreement": 0.698150634766,
+      "source": "build-q2-v2/quality/quality-reap-q23.stdout"
+    }
+  },
+  "validation": {
+    "ordinary_decode_smoke_only": true,
+    "fast_prefill_quality_qualified": false,
+    "full_task_quality_qualified": false,
+    "note": "REAP pruning plus Q23 conversion is a combined model change; these measurements do not isolate pure pruning quality."
+  }
+}

@@ -1,0 +1,246 @@
+{
+  "date": "2026-10-08",
+  "host": "b550",
+  "cpu": "AMD Ryzen 9 3950X, 16 cores, 1 NUMA node",
+  "gpu": "RX 9070 XT gfx1201",
+  "physical_vram_mib": 16304,
+  "ram_limit_gib": 60,
+  "vram_reserve_mib": 2048,
+  "config": "configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json",
+  "model": {
+    "source_model": "/mnt/nvme01/models/glm53f/reap-50/GLM-5.3-Flash-REAP50-Q4_K_M.gguf",
+    "source_pack": "/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf",
+    "source_fingerprint": "6144163346887289936",
+    "calibrated": true,
+    "verified_expert_checksums": 126,
+    "assembly_requantized": false,
+    "assembly_bytes": 63205406688,
+    "assembly_sha256": "c3b0cfb144556bd28e265d8255d48eeafce3d127aba5b9b5dd4e326322a34aa9",
+    "census": {
+      "experts": 144,
+      "top_k": 8,
+      "has_expert_pack": 1,
+      "main_experts": 55094280192,
+      "main_fixed": 5642030712,
+      "draft": 2459569728,
+      "total": 63195880632
+    },
+    "destination": "b550:/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "source_file_type_metadata": "inherited from Q4_K_M base; actual tensor types are Q2_K/Q3_K for main routed experts"
+  },
+  "upstream_merge": "036c926e6db07e8f66d6b125b3139ef282dad327",
+  "uncommitted_integration": true,
+  "gpu_power_observation": {
+    "mode": "manual",
+    "memory_clock_mhz": 96,
+    "listed_max_memory_clock_mhz": 1258,
+    "gpu_busy_percent": 91,
+    "scope": "read during warm prefill; no auto-mode comparison yet"
+  },
+  "runs": {
+    "cold": {
+      "started_utc": "2026-10-08T09:35:49.542755+00:00",
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "exit_code": 0,
+      "wall_seconds": 104.82034290498996,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 79591.8,
+            "tokens_per_second": 12.8656
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 63,
+            "milliseconds": 14361.8,
+            "tokens_per_second": 4.38663
+          }
+        ],
+        "median_prefill_tok_s": 12.8656,
+        "median_decode_tok_s": 4.38663,
+        "peak_allocated_gpu_mib": 11516.4,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 182.321,
+              "prefill": 1080.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 6213.17,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 188781,
+            "minor": 1066004
+          }
+        ]
+      },
+      "minimum_gpu_free_mib": 2863,
+      "peak_ram_gib": 52.00834274291992,
+      "peak_rss_gib": 51.681854248046875,
+      "peak_gpu_used_mib": 13441,
+      "swap_bytes": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "executable_sha256": "794cd840f9e39e4123e74c0d7138023b53cf5c0dcdebd0f1e40271b5eb58844e",
+      "prompt_sha256": "664796e1c7b7baee9b7e19632b72e393dd4b4b893e922a44e4a8a5961e9e6c9e",
+      "guard_sha256": "e2c879c5c34b2a71c4bec8b4f99cf644881d74162d1292e98aeeb07db19a0908"
+    },
+    "warm": {
+      "started_utc": "2026-10-08T09:38:27.249347+00:00",
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "exit_code": 0,
+      "wall_seconds": 227.46889626499615,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 54311.9,
+            "tokens_per_second": 18.8541
+          },
+          {
+            "trial": 1,
+            "tokens": 1024,
+            "batch": 1024,
+            "milliseconds": 54227.9,
+            "tokens_per_second": 18.8833
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 63,
+            "milliseconds": 14353.2,
+            "tokens_per_second": 4.38925
+          },
+          {
+            "kind": "single",
+            "tokens": 63,
+            "milliseconds": 13902.8,
+            "tokens_per_second": 4.53145
+          }
+        ],
+        "median_prefill_tok_s": 18.868699999999997,
+        "median_decode_tok_s": 4.46035,
+        "peak_allocated_gpu_mib": 11516.4,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 182.321,
+              "prefill": 1080.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 182.321,
+              "prefill": 1080.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 6213.17,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 6213.17,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 0,
+            "minor": 16388
+          },
+          {
+            "trial": 1,
+            "major": 0,
+            "minor": 16385
+          }
+        ]
+      },
+      "minimum_gpu_free_mib": 2863,
+      "peak_ram_gib": 51.99453353881836,
+      "peak_rss_gib": 51.88145065307617,
+      "peak_gpu_used_mib": 13441,
+      "swap_bytes": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "executable_sha256": "794cd840f9e39e4123e74c0d7138023b53cf5c0dcdebd0f1e40271b5eb58844e",
+      "prompt_sha256": "664796e1c7b7baee9b7e19632b72e393dd4b4b893e922a44e4a8a5961e9e6c9e",
+      "guard_sha256": "e2c879c5c34b2a71c4bec8b4f99cf644881d74162d1292e98aeeb07db19a0908"
+    }
+  },
+  "target_met": false,
+  "quality_scope": "exact sidecar expert checksums and byte-preserving assembly; kernel parity tests; no broad end-to-end quality evaluation",
+  "service": {
+    "url_on_b550": "http://127.0.0.1:8080",
+    "unit": "strata-glm-b550.service",
+    "model_id": "glm53f-reap50-q23-b550-rx9070xt",
+    "healthy": true,
+    "chat_smoke": {
+      "content": "hello",
+      "finish_reason": "stop",
+      "max_tokens": 320,
+      "completion_tokens": 159,
+      "wall_seconds": 45.58890891200281
+    },
+    "peak_rss_gib": 41.289527893066406,
+    "peak_global_vram_mib": 13353
+  }
+}

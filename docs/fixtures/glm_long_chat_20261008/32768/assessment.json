@@ -1,0 +1,13 @@
+{
+  "scoring": "manual review of full final answer against fixture expected values",
+  "questions_correct": 8,
+  "questions_total": 8,
+  "citations_correct": true,
+  "unsupported_identity": false,
+  "summary": "Core objective, date revision, funding, progress and risks are accurate.",
+  "errors": [
+    "Next action 2 says await supervisor checks before treating working copies as local-only. The source says working copies remain local until checked; the ordering is reversed."
+  ],
+  "instruction_following": "Next actions appear before the eight questions, although the user requested them at the end.",
+  "verdict": "all factual QA items pass; next-action wording and ordering are imperfect"
+}

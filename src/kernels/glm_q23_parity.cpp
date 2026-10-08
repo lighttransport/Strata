@@ -2,7 +2,7 @@
 //
 //     glm_q23_parity [--bench]
 //
-// Each case builds experts from random Q2_K/Q3_K bytes with finite fp16 scales, routes one to four tokens through
+// Each case builds experts from random Q2_K/Q3_K bytes with finite fp16 scales, routes one to eight tokens through
 // them in groups, and compares every output row of glm_q23_expert_grouped with the CPU pool's kernels in canonical
 // mode (canon_quant_q8k, q23_gu_rows, q23_rows). Inputs include a zero block, a clamped SwiGLU and both down
 // formats. --bench also times the GPU kernels on expert-sized groups.
@@ -51,7 +51,7 @@ void fill_rows(std::vector<uint8_t>& w, int type, std::mt19937& rng) {
         } else std::memcpy(&w[at + 108], &d, 2);
     }
 }
-struct Case { int gu, down, hidden, ff, experts, tokens; float limit; float skip = 0; };
+struct Case { int gu, down, hidden, ff, experts, tokens; float limit; float skip = 0; int ragged = 0; };
 
 template <class T> struct DeviceBuffer {
     T* p = nullptr;
@@ -121,19 +121,23 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
         ok(cudaMemcpy(weights.p + (size_t)e * L.bytes, blobs[e].data(), L.bytes, cudaMemcpyHostToDevice), "weights");
     std::vector<unsigned long long> ptr(c.experts);
     std::vector<int32_t> start(c.experts + 1), dst(routes), tok(routes), count{c.experts};
+    int entries = 0;
     for (int e = 0; e < c.experts; ++e) {
         ptr[e] = (unsigned long long)(weights.p + (size_t)e * L.bytes);
-        start[e] = e * c.tokens;
-        for (int t = 0; t < c.tokens; ++t) { dst[e * c.tokens + t] = t * c.experts + e; tok[e * c.tokens + t] = t; }
+        start[e] = entries;
+        const int width = c.ragged ? 1 + e % std::min(c.tokens, c.ragged) : c.tokens;
+        for (int t = 0; t < width; ++t) { dst[entries] = t * c.experts + e; tok[entries++] = t; }
+        for (int t = width; t < c.tokens; ++t)
+            std::fill_n(expected.data() + (size_t)(t * c.experts + e) * c.hidden, c.hidden, 0.f);
     }
-    start[c.experts] = routes;
+    start[c.experts] = entries;
     DeviceBuffer<unsigned long long> dptr(c.experts);
     DeviceBuffer<int32_t> dstart(c.experts + 1), ddst(routes), dtok(routes), dcount(1);
     DeviceBuffer<float> dx(x.size()), dout(expected.size());
     DeviceBuffer<uint8_t> scratch(k::glm_q23_scratch_bytes(L, c.tokens, routes));
     dptr.put(ptr.data(), ptr.size()); dstart.put(start.data(), start.size()); ddst.put(dst.data(), dst.size());
     dtok.put(tok.data(), tok.size()); dcount.put(count.data(), 1); dx.put(x.data(), x.size());
-    ok(cudaMemset(dout.p, 0xff, expected.size() * 4), "memset");
+    ok(cudaMemset(dout.p, c.ragged ? 0 : 0xff, expected.size() * 4), "memset");
     auto launch = [&] {
         k::glm_q23_expert_grouped(L, dptr.p, dstart.p, dcount.p, ddst.p, dtok.p, c.experts, routes, dx.p, c.tokens,
                                   scratch.p, dout.p, nullptr);
@@ -154,8 +158,8 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
         }
         largest = std::max(largest, (double)std::fabs(expected[i]));
     }
-    std::printf("gu=%d down=%d %dx%d experts=%d tokens=%d limit=%g skip=%g: %zu of %zu outputs differ, %zu non-finite, max |y| %.4g\n",
-                c.gu, c.down, c.hidden, c.ff, c.experts, c.tokens, c.limit, c.skip, differing, expected.size(), nonfinite, largest);
+    std::printf("gu=%d down=%d %dx%d experts=%d tokens=%d limit=%g skip=%g ragged=%d: %zu of %zu outputs differ, %zu non-finite, max |y| %.4g\n",
+                c.gu, c.down, c.hidden, c.ff, c.experts, c.tokens, c.limit, c.skip, int(c.ragged), differing, expected.size(), nonfinite, largest);
     if (bench) {
         const int rounds = 50;
         const auto begin = std::chrono::steady_clock::now();
@@ -163,7 +167,7 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
         ok(cudaDeviceSynchronize(), "bench");
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count() / rounds;
         std::printf("  bench: %.3f ms per call, %.1f GB/s of expert bytes (%.1f GB/s x tokens)\n", ms,
-                    c.experts * double(L.bytes) / ms / 1e6, routes * double(L.bytes) / ms / 1e6);
+                    c.experts * double(L.bytes) / ms / 1e6, entries * double(L.bytes) / ms / 1e6);
     }
     return !differing && !nonfinite && largest > 0;
 }
@@ -173,13 +177,20 @@ int main(int argc, char** argv) {
     const bool bench = argc > 1 && std::string(argv[1]) == "--bench";
     std::mt19937 rng(20261007);
     bool pass = true;
-    for (const Case& c : {Case{10, 11, 4096, 2048, 2, 1, 10.f}, Case{10, 11, 4096, 2048, 3, 3, 10.f},
+    for (const Case& c : {Case{10, 11, 4096, 2048, 2, 1, 10.f}, Case{10, 11, 4096, 2048, 3, 2, 10.f},
+                          Case{10, 11, 4096, 2048, 3, 3, 10.f},
                           Case{10, 11, 4096, 2048, 2, 4, 0.f}, Case{10, 10, 4096, 2048, 2, 2, 10.f},
                           Case{11, 11, 4096, 2048, 1, 3, 10.f}, Case{10, 11, 1024, 512, 5, 6, 10.f},
-                          Case{10, 11, 4096, 2048, 2, 3, 10.f, 0.25f}, Case{10, 10, 4096, 2048, 2, 2, 10.f, 2.f}})
+                          Case{10, 11, 4096, 2048, 2, 5, 10.f}, Case{10, 11, 4096, 2048, 2, 7, 10.f},
+                          Case{10, 11, 4096, 2048, 3, 8, 10.f}, Case{10, 11, 4096, 2048, 8, 8, 10.f, 0.f, 8}, Case{10, 10, 4096, 2048, 2, 8, 10.f},
+                          Case{11, 11, 4096, 2048, 1, 8, 10.f}, Case{10, 11, 4096, 2048, 2, 8, 10.f, 0.25f}, Case{10, 10, 4096, 2048, 2, 2, 10.f, 2.f}})
         pass = run(c, false, rng) && pass;
     if (bench)
-        for (const Case& c : {Case{10, 11, 4096, 2048, 8, 1, 10.f}, Case{10, 11, 4096, 2048, 8, 3, 10.f},
+        for (const Case& c : {Case{10, 11, 4096, 2048, 8, 1, 10.f}, Case{10, 11, 4096, 2048, 8, 2, 10.f},
+                              Case{10, 11, 4096, 2048, 24, 2, 10.f}, Case{10, 11, 4096, 2048, 8, 3, 10.f},
+                              Case{10, 11, 4096, 2048, 8, 8, 10.f}, Case{10, 11, 4096, 2048, 24, 8, 10.f},
+                              Case{10, 11, 4096, 2048, 24, 8, 10.f, 0.f, 8},
+                              Case{10, 11, 4096, 2048, 24, 8, 10.f, 0.f, 2},
                               Case{10, 11, 4096, 2048, 24, 1, 10.f}, Case{10, 11, 4096, 2048, 1, 1, 10.f}})
             pass = run(c, true, rng) && pass;
     std::printf("%s\n", pass ? "PASS" : "FAIL");

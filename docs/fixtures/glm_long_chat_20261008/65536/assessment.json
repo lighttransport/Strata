@@ -1,0 +1,14 @@
+{
+  "scoring": "manual review of full final answer against fixture expected values",
+  "questions_correct": 7,
+  "questions_partially_correct": 1,
+  "questions_total": 8,
+  "citations_match_records": true,
+  "unsupported_identity": false,
+  "summary": "Retrieves the objective, dates, allocations, owners, risks and handling policy.",
+  "errors": [
+    "Q3 correctly computes 525 remaining crates and 37.5% complete, but compares that completion percentage to the 99.7% checksum-agreement threshold. These measure different things.",
+    "Next action 1 compounds the error by inventing an acceptance goal of approximately 838 verified crates. The document never defines such a completion-count goal."
+  ],
+  "verdict": "substantive interpretation error despite successful retrieval; not a clean quality pass"
+}

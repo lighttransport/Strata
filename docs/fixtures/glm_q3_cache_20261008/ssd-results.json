@@ -1,0 +1,101 @@
+{
+  "mode": "O_RDONLY|O_DIRECT; no file modifications; aligned real expert projections; isolated from inference",
+  "rows": [
+    {
+      "workers": 1,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 3.37966,
+      "GiB_s": 1.26345,
+      "expert_service_ms_p50": 8.7577,
+      "expert_service_ms_p95": 9.45421,
+      "expert_service_ms_p99": 9.59941,
+      "trial": 0
+    },
+    {
+      "workers": 4,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 2.82412,
+      "GiB_s": 1.51198,
+      "expert_service_ms_p50": 29.2293,
+      "expert_service_ms_p95": 30.6918,
+      "expert_service_ms_p99": 31.9029,
+      "trial": 0
+    },
+    {
+      "workers": 8,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 2.84243,
+      "GiB_s": 1.50224,
+      "expert_service_ms_p50": 58.9448,
+      "expert_service_ms_p95": 64.2294,
+      "expert_service_ms_p99": 67.6423,
+      "trial": 0
+    },
+    {
+      "workers": 16,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 2.91761,
+      "GiB_s": 1.46353,
+      "expert_service_ms_p50": 102.221,
+      "expert_service_ms_p95": 171.044,
+      "expert_service_ms_p99": 180.335,
+      "trial": 0
+    },
+    {
+      "workers": 16,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 2.9221,
+      "GiB_s": 1.46128,
+      "expert_service_ms_p50": 109.404,
+      "expert_service_ms_p95": 176.958,
+      "expert_service_ms_p99": 183.546,
+      "trial": 1
+    },
+    {
+      "workers": 8,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 2.85525,
+      "GiB_s": 1.4955,
+      "expert_service_ms_p50": 59.1973,
+      "expert_service_ms_p95": 63.0576,
+      "expert_service_ms_p99": 65.5251,
+      "trial": 1
+    },
+    {
+      "workers": 4,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 2.81654,
+      "GiB_s": 1.51605,
+      "expert_service_ms_p50": 29.2507,
+      "expert_service_ms_p95": 30.4904,
+      "expert_service_ms_p99": 31.0262,
+      "trial": 1
+    },
+    {
+      "workers": 1,
+      "experts": 384,
+      "aligned_bytes": 4584898560,
+      "process_read_bytes": 4584898560,
+      "seconds": 3.37345,
+      "GiB_s": 1.26577,
+      "expert_service_ms_p50": 8.72089,
+      "expert_service_ms_p95": 9.47224,
+      "expert_service_ms_p99": 9.59527,
+      "trial": 1
+    }
+  ]
+}

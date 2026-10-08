@@ -1,0 +1,40 @@
+Oct 08 21:19:17 b550 python[144974]: [strata] answering: 632 of max 3276 tokens, 9.3 tok/s, 218 s
+Oct 08 21:19:18 b550 python[144974]: [strata] answering: 642 of max 3276 tokens, 9.3 tok/s, 220 s
+Oct 08 21:19:19 b550 python[144974]: [strata] answering: 652 of max 3276 tokens, 9.3 tok/s, 221 s
+Oct 08 21:19:20 b550 python[144974]: [strata] answering: 662 of max 3276 tokens, 9.3 tok/s, 222 s
+Oct 08 21:19:21 b550 python[144974]: [strata] answering: 672 of max 3276 tokens, 9.3 tok/s, 223 s
+Oct 08 21:19:22 b550 python[144974]: [strata] answering: 682 of max 3276 tokens, 9.3 tok/s, 224 s
+Oct 08 21:19:23 b550 python[144974]: [strata] answering: 692 of max 3276 tokens, 9.3 tok/s, 225 s
+Oct 08 21:19:24 b550 python[144974]: [strata] answering: 701 of max 3276 tokens, 9.3 tok/s, 226 s
+Oct 08 21:19:25 b550 python[144974]: [strata] answering: 710 of max 3276 tokens, 9.3 tok/s, 227 s
+Oct 08 21:19:26 b550 python[144974]: [strata] answering: 720 of max 3276 tokens, 9.3 tok/s, 228 s
+Oct 08 21:19:28 b550 python[144974]: [strata] answering: 730 of max 3276 tokens, 9.3 tok/s, 229 s
+Oct 08 21:19:29 b550 python[144974]: [strata] answering: 740 of max 3276 tokens, 9.3 tok/s, 230 s
+Oct 08 21:19:30 b550 python[144974]: [strata] answering: 750 of max 3276 tokens, 9.3 tok/s, 231 s
+Oct 08 21:19:31 b550 python[144974]: [strata] answering: 760 of max 3276 tokens, 9.3 tok/s, 232 s
+Oct 08 21:19:32 b550 python[144974]: [strata] answering: 770 of max 3276 tokens, 9.3 tok/s, 233 s
+Oct 08 21:19:33 b550 python[144974]: [strata] answering: 780 of max 3276 tokens, 9.3 tok/s, 234 s
+Oct 08 21:19:34 b550 python[144974]: [strata] answering: 790 of max 3276 tokens, 9.3 tok/s, 235 s
+Oct 08 21:19:35 b550 python[144974]: [strata] answering: 800 of max 3276 tokens, 9.3 tok/s, 236 s
+Oct 08 21:19:36 b550 python[144974]: [strata] answering: 810 of max 3276 tokens, 9.3 tok/s, 238 s
+Oct 08 21:19:37 b550 python[144974]: [strata] answering: 820 of max 3276 tokens, 9.3 tok/s, 239 s
+Oct 08 21:19:38 b550 python[144974]: [strata] answering: 830 of max 3276 tokens, 9.3 tok/s, 240 s
+Oct 08 21:19:39 b550 python[144974]: [strata] answering: 840 of max 3276 tokens, 9.3 tok/s, 241 s
+Oct 08 21:19:40 b550 python[144974]: [strata] answering: 850 of max 3276 tokens, 9.3 tok/s, 242 s
+Oct 08 21:19:41 b550 python[144974]: [strata] answering: 860 of max 3276 tokens, 9.3 tok/s, 243 s
+Oct 08 21:19:42 b550 python[144974]: [strata] answering: 870 of max 3276 tokens, 9.3 tok/s, 244 s
+Oct 08 21:19:43 b550 python[144974]: [strata] answering: 880 of max 3276 tokens, 9.3 tok/s, 245 s
+Oct 08 21:19:44 b550 python[144974]: [strata] answering: 890 of max 3276 tokens, 9.4 tok/s, 246 s
+Oct 08 21:19:45 b550 python[144974]: [strata] answering: 900 of max 3276 tokens, 9.4 tok/s, 247 s
+Oct 08 21:19:46 b550 python[144974]: [strata] answering: 910 of max 3276 tokens, 9.4 tok/s, 248 s
+Oct 08 21:19:47 b550 python[144974]: [strata] answering: 920 of max 3276 tokens, 9.4 tok/s, 249 s
+Oct 08 21:19:48 b550 python[144974]: [strata] answering: 930 of max 3276 tokens, 9.4 tok/s, 250 s
+Oct 08 21:19:50 b550 python[144974]: [strata] answering: 940 of max 3276 tokens, 9.4 tok/s, 251 s
+Oct 08 21:19:51 b550 python[144974]: [strata] answering: 950 of max 3276 tokens, 9.4 tok/s, 252 s
+Oct 08 21:19:52 b550 python[144974]: [strata] answering: 960 of max 3276 tokens, 9.4 tok/s, 253 s
+Oct 08 21:19:52 b550 python[144974]: [strata] done: 965 tokens in 254 s (9.4 tok/s) (stop, cancel=False)
+Oct 08 21:19:52 b550 python[144974]: [strata] stopping (Ctrl+C again to end the engine at once) ...
+Oct 08 21:19:52 b550 systemd[3387]: Stopping strata-glm-long-chat.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata/tools/glm_guarded_serve.py /home/syoyo/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/32768/config.json --ram-gib 60 --reserve-mib 2048 --port 8080 --telemetry /home/syoyo/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/32768/memory.json...
+Oct 08 21:19:53 b550 python[144974]: [strata] stopped
+Oct 08 21:19:53 b550 systemd[3387]: Stopped strata-glm-long-chat.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata/tools/glm_guarded_serve.py /home/syoyo/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/32768/config.json --ram-gib 60 --reserve-mib 2048 --port 8080 --telemetry /home/syoyo/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/32768/memory.json.
+Oct 08 21:19:53 b550 systemd[3387]: strata-glm-long-chat.service: Consumed 32min 30.184s CPU time.

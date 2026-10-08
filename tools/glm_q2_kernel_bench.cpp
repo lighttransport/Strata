@@ -19,7 +19,7 @@ int main(int argc,char** argv){try {
     if(argc<3)throw std::runtime_error("usage: strata-glm-q2-kernel-bench MODEL ROUTES [mmap|numa] [nt=1] [workers=15] [rounds=5] [native|q2|q23] [first-layer=3] [last-layer=44] [row|direct|lut] [skip-positions=0]");
     if(argc>3 && std::string(argv[3])!="numa" && std::string(argv[3])!="mmap")throw std::runtime_error("invalid placement policy");
     bool owned=argc>3 && std::string(argv[3])=="numa";int nt=argc>4?std::stoi(argv[4]):1,workers=argc>5?std::stoi(argv[5]):15,rounds=argc>6?std::stoi(argv[6]):5;
-    if(nt<1||nt>4||workers<1||rounds<1||rounds>20)throw std::runtime_error("invalid benchmark bounds");
+    if(nt<1||nt>MAXT||workers<1||rounds<1||rounds>20)throw std::runtime_error("invalid benchmark bounds");
     const std::string conversion=argc>7?argv[7]:"native";
     if(conversion!="native" && conversion!="q2" && conversion!="q23")throw std::runtime_error("invalid conversion");
     const int first=argc>8?std::stoi(argv[8]):3,last=argc>9?std::stoi(argv[9]):44;

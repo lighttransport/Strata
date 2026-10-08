@@ -1,0 +1,76 @@
+Review this C++17 code in depth. Explain every correctness bug, provide corrected code and a detailed test plan.
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+// Contract: accept any unsigned 64-bit offset and length from an untrusted file.
+// Return false unless the entire requested range is inside the mapped input.
+bool copy_range(const std::vector<char>& input, uint64_t offset, uint64_t length,
+                char* output) {
+    if (offset + length > input.size()) return false;
+    std::memcpy(output, input.data() + offset, length);
+    return true;
+}
+
+// Contract: caller can use the returned view until the next invocation.
+std::string_view display_name(unsigned id) {
+    std::string result = "worker-" + std::to_string(id);
+    return result;
+}
+
+// Contract: get() and put() can run concurrently. A returned shared_ptr owns
+// its value and remains usable after subsequent put() calls.
+class Cache {
+    std::mutex mutex_;
+    std::unordered_map<int, std::shared_ptr<const std::string>> values_;
+public:
+    void put(int key, std::string value) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        values_[key] = std::make_shared<const std::string>(std::move(value));
+    }
+    std::shared_ptr<const std::string> get(int key) {
+        auto it = values_.find(key);
+        return it == values_.end() ? nullptr : it->second;
+    }
+};
+
+// Contract: caller invokes all tasks after make_tasks returns. Exactly one
+// callback for each index [0, count), in any order, is expected.
+std::vector<std::function<unsigned()>> make_tasks(unsigned count) {
+    std::vector<std::function<unsigned()>> tasks;
+    for (unsigned i = 0; i < count; ++i) {
+        tasks.push_back([&i] { return i; });
+    }
+    return tasks;
+}
+
+// Contract: independently checks an index without reading the array.
+// Empty arrays have no valid index.
+bool valid_index(std::size_t size, std::size_t index) {
+    return index <= size;
+}
+
+// Contract: snapshot remains valid after unlock and later replacement.
+// This is a control example; report only defects justified by its contract.
+class Snapshot {
+    std::mutex mutex_;
+    std::shared_ptr<const std::string> value_;
+public:
+    std::shared_ptr<const std::string> read() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return value_;
+    }
+    void replace(std::string value) {
+        auto next = std::make_shared<const std::string>(std::move(value));
+        std::lock_guard<std::mutex> lock(mutex_);
+        value_ = std::move(next);
+    }
+};

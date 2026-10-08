@@ -32,6 +32,7 @@ struct NativeFmt {
     bool lossless = false;          ///< direct magnitude planes for IQ2_S/IQ3_S
     int q23_layout = 0;             ///< 0: GGML rows; 1: tiled direct; 2: tiled lookup (Q2_K/Q3_K only)
     ExpertObserver* observer = nullptr;
+    ExpertHiddenTransform* hidden_transform = nullptr;
     int observer_layer = -1;
     bool fuse_h_quant = false;
     bool canon = false;               ///< canonical Q2_K/Q3_K arithmetic (canon_expert.hpp): the bits the GPU tier computes

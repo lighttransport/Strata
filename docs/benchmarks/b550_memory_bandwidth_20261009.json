@@ -1,0 +1,823 @@
+{
+  "hardware": "B550 / Ryzen 9 3950X / 62.69 GiB RAM",
+  "date": "2026-10-09",
+  "compiler": "g++ 13.3.0 -O3 -march=znver2 -std=c++20 -fopenmp",
+  "kernel": "7.0.0-38-generic",
+  "governor": "powersave",
+  "driver": "amd-pstate-epp",
+  "boost": true,
+  "dimm_speed": "Unavailable without sudo authentication; not inferred from bandwidth",
+  "array_bytes": 1073741824,
+  "arrays": 3,
+  "warmup_iterations": 1,
+  "measured_iterations": 7,
+  "units": "decimal GB/s, logical bytes",
+  "binding": "OMP_PROC_BIND=close; OMP_PLACES={0},{1},...,{31}; OMP_WAIT_POLICY=PASSIVE",
+  "memory_limit_gib": 6,
+  "swap_limit_bytes": 0,
+  "source_sha256": "c7b091aad6d19d08ade122d667f12f1d7edae056bca5442ce2a1d66761afa57f",
+  "sweep": [
+    {
+      "threads": 1,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 16.5758,
+      "best_GB_s": 16.6717,
+      "worst_GB_s": 15.9821
+    },
+    {
+      "threads": 1,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 23.012,
+      "best_GB_s": 23.0256,
+      "worst_GB_s": 23.0008
+    },
+    {
+      "threads": 1,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 13.7572,
+      "best_GB_s": 13.7646,
+      "worst_GB_s": 13.6763
+    },
+    {
+      "threads": 1,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 15.4329,
+      "best_GB_s": 15.4446,
+      "worst_GB_s": 15.2705
+    },
+    {
+      "threads": 2,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 26.7886,
+      "best_GB_s": 26.8148,
+      "worst_GB_s": 26.7749
+    },
+    {
+      "threads": 2,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 28.0312,
+      "best_GB_s": 28.0472,
+      "worst_GB_s": 28.0166
+    },
+    {
+      "threads": 2,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 19.1838,
+      "best_GB_s": 19.2822,
+      "worst_GB_s": 19.0975
+    },
+    {
+      "threads": 2,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 25.2441,
+      "best_GB_s": 25.2577,
+      "worst_GB_s": 25.1079
+    },
+    {
+      "threads": 4,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 28.786,
+      "best_GB_s": 28.8144,
+      "worst_GB_s": 26.9239
+    },
+    {
+      "threads": 4,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 28.5514,
+      "best_GB_s": 28.5691,
+      "worst_GB_s": 28.53
+    },
+    {
+      "threads": 4,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 21.1671,
+      "best_GB_s": 21.1939,
+      "worst_GB_s": 21.0106
+    },
+    {
+      "threads": 4,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 29.1493,
+      "best_GB_s": 29.1672,
+      "worst_GB_s": 29.1264
+    },
+    {
+      "threads": 8,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 27.6255,
+      "best_GB_s": 27.6464,
+      "worst_GB_s": 27.3942
+    },
+    {
+      "threads": 8,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 27.7557,
+      "best_GB_s": 27.7724,
+      "worst_GB_s": 27.4288
+    },
+    {
+      "threads": 8,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.2626,
+      "best_GB_s": 20.2754,
+      "worst_GB_s": 20.1712
+    },
+    {
+      "threads": 8,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 28.3525,
+      "best_GB_s": 28.3832,
+      "worst_GB_s": 28.2149
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.2651,
+      "best_GB_s": 29.3125,
+      "worst_GB_s": 29.0726
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 27.7285,
+      "best_GB_s": 27.7421,
+      "worst_GB_s": 27.6841
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.7777,
+      "best_GB_s": 20.7874,
+      "worst_GB_s": 20.6816
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 28.3294,
+      "best_GB_s": 28.3507,
+      "worst_GB_s": 28.1342
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.9,
+      "best_GB_s": 29.9272,
+      "worst_GB_s": 29.8794
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 26.851,
+      "best_GB_s": 26.8753,
+      "worst_GB_s": 26.8375
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.7992,
+      "best_GB_s": 20.8236,
+      "worst_GB_s": 20.709
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 27.631,
+      "best_GB_s": 27.6515,
+      "worst_GB_s": 27.6123
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 28.8961,
+      "best_GB_s": 28.9236,
+      "worst_GB_s": 27.862
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 26.091,
+      "best_GB_s": 26.1044,
+      "worst_GB_s": 25.8014
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 19.9736,
+      "best_GB_s": 19.977,
+      "worst_GB_s": 19.7946
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 26.4935,
+      "best_GB_s": 26.5013,
+      "worst_GB_s": 26.0655
+    },
+    {
+      "threads": 1,
+      "pages": "thp",
+      "anon_huge_mib": 3020,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 21.5445,
+      "best_GB_s": 21.6044,
+      "worst_GB_s": 21.4598
+    },
+    {
+      "threads": 1,
+      "pages": "thp",
+      "anon_huge_mib": 3020,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 23.8154,
+      "best_GB_s": 23.836,
+      "worst_GB_s": 23.7188
+    },
+    {
+      "threads": 1,
+      "pages": "thp",
+      "anon_huge_mib": 3020,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 12.5829,
+      "best_GB_s": 12.59,
+      "worst_GB_s": 12.5712
+    },
+    {
+      "threads": 1,
+      "pages": "thp",
+      "anon_huge_mib": 3020,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 17.0767,
+      "best_GB_s": 17.085,
+      "worst_GB_s": 17.0686
+    },
+    {
+      "threads": 2,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.2728,
+      "best_GB_s": 29.3185,
+      "worst_GB_s": 29.2584
+    },
+    {
+      "threads": 2,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 28.6609,
+      "best_GB_s": 28.6807,
+      "worst_GB_s": 28.449
+    },
+    {
+      "threads": 2,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 17.9605,
+      "best_GB_s": 18.0292,
+      "worst_GB_s": 17.8601
+    },
+    {
+      "threads": 2,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 26.3303,
+      "best_GB_s": 26.3499,
+      "worst_GB_s": 26.1808
+    },
+    {
+      "threads": 4,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 28.6129,
+      "best_GB_s": 28.6578,
+      "worst_GB_s": 27.272
+    },
+    {
+      "threads": 4,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 29.1923,
+      "best_GB_s": 29.2252,
+      "worst_GB_s": 29.1638
+    },
+    {
+      "threads": 4,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.2696,
+      "best_GB_s": 20.2912,
+      "worst_GB_s": 18.1552
+    },
+    {
+      "threads": 4,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 29.1876,
+      "best_GB_s": 29.2148,
+      "worst_GB_s": 29.1689
+    },
+    {
+      "threads": 8,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 27.6569,
+      "best_GB_s": 27.6656,
+      "worst_GB_s": 27.6211
+    },
+    {
+      "threads": 8,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 27.9806,
+      "best_GB_s": 28.0032,
+      "worst_GB_s": 27.7046
+    },
+    {
+      "threads": 8,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 19.6624,
+      "best_GB_s": 19.6797,
+      "worst_GB_s": 19.5584
+    },
+    {
+      "threads": 8,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 27.3789,
+      "best_GB_s": 27.4013,
+      "worst_GB_s": 27.0919
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.3353,
+      "best_GB_s": 29.3679,
+      "worst_GB_s": 29.3145
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 28.0056,
+      "best_GB_s": 28.041,
+      "worst_GB_s": 27.751
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.2095,
+      "best_GB_s": 20.2227,
+      "worst_GB_s": 20.1139
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 28.1037,
+      "best_GB_s": 28.1329,
+      "worst_GB_s": 27.8127
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.9183,
+      "best_GB_s": 29.9256,
+      "worst_GB_s": 29.2609
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 27.4148,
+      "best_GB_s": 27.4436,
+      "worst_GB_s": 27.3846
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.2385,
+      "best_GB_s": 20.2634,
+      "worst_GB_s": 20.1207
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 27.3845,
+      "best_GB_s": 27.4465,
+      "worst_GB_s": 27.3733
+    },
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 28.8623,
+      "best_GB_s": 28.9437,
+      "worst_GB_s": 28.8219
+    },
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 26.2408,
+      "best_GB_s": 26.2782,
+      "worst_GB_s": 26.0816
+    },
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 19.8234,
+      "best_GB_s": 19.8354,
+      "worst_GB_s": 19.6727
+    },
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 26.2294,
+      "best_GB_s": 26.2959,
+      "worst_GB_s": 25.9423
+    }
+  ],
+  "reverse_repeat": [
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 28.924,
+      "best_GB_s": 28.9421,
+      "worst_GB_s": 28.8251
+    },
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 26.2762,
+      "best_GB_s": 26.3214,
+      "worst_GB_s": 25.944
+    },
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 19.8233,
+      "best_GB_s": 19.8453,
+      "worst_GB_s": 19.6646
+    },
+    {
+      "threads": 32,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 25.6242,
+      "best_GB_s": 25.6626,
+      "worst_GB_s": 25.2419
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.9054,
+      "best_GB_s": 29.9306,
+      "worst_GB_s": 29.2805
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 27.4012,
+      "best_GB_s": 27.4454,
+      "worst_GB_s": 27.3756
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.2612,
+      "best_GB_s": 20.2747,
+      "worst_GB_s": 20.0799
+    },
+    {
+      "threads": 16,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 27.381,
+      "best_GB_s": 27.3904,
+      "worst_GB_s": 27.3562
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.3052,
+      "best_GB_s": 29.3366,
+      "worst_GB_s": 29.273
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 28.0078,
+      "best_GB_s": 28.0111,
+      "worst_GB_s": 27.7291
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.2037,
+      "best_GB_s": 20.2182,
+      "worst_GB_s": 20.112
+    },
+    {
+      "threads": 12,
+      "pages": "thp",
+      "anon_huge_mib": 3072,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 27.3136,
+      "best_GB_s": 27.3357,
+      "worst_GB_s": 27.0644
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 28.8994,
+      "best_GB_s": 28.9428,
+      "worst_GB_s": 25.8672
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 26.1797,
+      "best_GB_s": 26.203,
+      "worst_GB_s": 26.0347
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.0076,
+      "best_GB_s": 20.0203,
+      "worst_GB_s": 19.5266
+    },
+    {
+      "threads": 32,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 26.501,
+      "best_GB_s": 26.5228,
+      "worst_GB_s": 26.0918
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.8905,
+      "best_GB_s": 29.9365,
+      "worst_GB_s": 29.2861
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 26.9352,
+      "best_GB_s": 26.9597,
+      "worst_GB_s": 26.911
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.846,
+      "best_GB_s": 20.853,
+      "worst_GB_s": 20.769
+    },
+    {
+      "threads": 16,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 27.6446,
+      "best_GB_s": 27.6531,
+      "worst_GB_s": 27.6019
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "read_avx2",
+      "median_GB_s": 29.2681,
+      "best_GB_s": 29.2843,
+      "worst_GB_s": 29.2238
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "memcpy",
+      "median_GB_s": 27.7508,
+      "best_GB_s": 27.7705,
+      "worst_GB_s": 27.54
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "triad",
+      "median_GB_s": 20.8,
+      "best_GB_s": 20.8132,
+      "worst_GB_s": 20.6927
+    },
+    {
+      "threads": 12,
+      "pages": "4k",
+      "anon_huge_mib": 0,
+      "array_bytes": 1073741824,
+      "kernel": "copy_nt",
+      "median_GB_s": 28.337,
+      "best_GB_s": 28.3581,
+      "worst_GB_s": 28.0757
+    }
+  ]
+}

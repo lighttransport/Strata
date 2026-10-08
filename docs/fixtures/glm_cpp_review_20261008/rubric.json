@@ -1,0 +1,11 @@
+{
+  "seeded_bugs": [
+    "copy_range unsigned addition overflow; subtraction-based bounds check",
+    "display_name dangling view into local string; return owning string or stable storage",
+    "Cache::get unsynchronized map access concurrent with put; lock same mutex",
+    "make_tasks captures destroyed loop variable by reference; capture i by value",
+    "valid_index accepts index == size including empty array; use strict less-than"
+  ],
+  "control": "Snapshot::read returns an owning shared_ptr under lock; lifetime safe",
+  "scoring": "Manually verify each mechanism and correction; record false positives, truncation, normal stop. This single synthetic case is a smoke test, not broad qualification."
+}

@@ -1,0 +1,17 @@
+{
+  "context": 32768,
+  "prompt_tokens": 30552,
+  "max_output_tokens": 2208,
+  "prompt_sha256": "9e3e572a65f67cabd54125556ae6bfc952fe0346670134defb7966df3fd8b3a5",
+  "kind": "multi-turn follow-up",
+  "source_case": "/home/syoyo/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/32768",
+  "expected": {
+    "date": "2031-10-21",
+    "budget": 480000,
+    "contingency": "included, not extra",
+    "rollback": "no; 99.8% is above threshold and one audit is insufficient",
+    "authorizer": "Mira Solano, not Tomas",
+    "completion_metric": "99.7% is checksum agreement, not crate completion",
+    "working_copy": "remains local until supervisor checks"
+  }
+}

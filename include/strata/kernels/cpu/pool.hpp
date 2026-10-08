@@ -141,6 +141,15 @@ void restore_thread_affinity(const ThreadAffinity& previous);
 
 class ExpertPool {
 public:
+    // A split verification pass may publish its first token group while the
+    // pool finishes experts used only by the second group. Callbacks run on a
+    // worker and must not throw or call the pool again.
+    struct LayerGroups {
+        int split = 0;
+        float *sum[2]{};
+        void (*complete)(void *, int) noexcept = nullptr;
+        void *context = nullptr;
+    };
     /// `n_workers <= 0` means "every physical core except the first".  Workers are pinned to physical cores
     /// (minus core 0 by default) and each owns one `ExpertScratch`, so nothing in the token path allocates.
     ///
@@ -201,6 +210,8 @@ public:
     /// them. Outputs and `sum` are bitwise those of `run_split_multi_native` followed by `reduce_routed`.
     void run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
                           const float* weights, float* sum, int nt, int top_k);
+    void run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
+                          const float* weights, const LayerGroups& groups, int nt, int top_k);
     double ms_layer_flow = 0;
     // Diagnostic tuning between completed batches; the host owns scheduling.
     void set_native_tasks_per_thread(int count) {
@@ -246,7 +257,13 @@ public:
 
 private:
     // run_layer_native (mode 8): per-expert gate/up countdowns, ready tags, per-chunk countdowns.
-    struct alignas(64) FlowCounter { std::atomic<int32_t> left{0}; std::atomic<uint32_t> ready{0}; };
+    struct alignas(64) FlowCounter {
+        std::atomic<int32_t> left{0}; std::atomic<uint32_t> ready{0};
+        std::atomic<int32_t> group_left[2]{}, group_chunks[2]{};
+        unsigned group_mask = 0;
+        const LayerGroups *groups = nullptr;
+    };
+    static_assert(sizeof(FlowCounter) == 64); // use the existing cache-line padding
     std::unique_ptr<FlowCounter[]> flow_experts_, flow_chunks_;
     size_t flow_chunk_capacity_ = 0;
     const float* flow_results_ = nullptr;
@@ -256,6 +273,8 @@ private:
     bool flow_owned_ = false;
     uint32_t flow_tag_ = 0;
     void flow_task(int i);
+    void run_layer_native_impl(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
+                               const float* weights, float* sum, const LayerGroups* groups, int nt, int top_k);
     const float* reduce_results_=nullptr;
     const float* reduce_weights_=nullptr;
     float* reduce_output_=nullptr;

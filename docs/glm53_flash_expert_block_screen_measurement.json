@@ -1,0 +1,368 @@
+{
+  "date_utc": "2026-10-07",
+  "hardware": {
+    "cpu": "AMD Ryzen Threadripper 1950X",
+    "physical_cores": 16,
+    "numa_nodes": 2,
+    "host_ram_gb": 128,
+    "gpu": "NVIDIA GeForce RTX 5060 Ti 16 GB"
+  },
+  "settings": {
+    "context": 8192,
+    "teacher_forcing_width": 4,
+    "workers_plus_host": 16,
+    "target_experts": "CPU",
+    "gpu_expert_cache": false,
+    "routing_affinity": 0,
+    "canonical_q23": true,
+    "numa_placement": "lazy",
+    "block_channels": 16
+  },
+  "source_identity": "c3157c3865d0db6c",
+  "corpus_revision": "f858ea3262292f7fa7534d5cff9e0da518259552",
+  "corpus_splits": {
+    "fit": {
+      "sha256": "b12bf497c4f24a0bce152a5d55dbdd3b44cbaefc29ec443b395a6cf14d2a94b3",
+      "targets": 24576,
+      "sequences": 48
+    },
+    "tune": {
+      "sha256": "3e9062309c6f170cadfd6f5e31d05536aa4815f94f2fb0bae26cdb514389b7b0",
+      "targets": 8192,
+      "sequences": 16
+    },
+    "smoke": {
+      "sha256": "7bc350b1a931a2849890fe6dfbf6aaf815aa308d823c622cbaaef34d1ac8d9c1",
+      "targets": 512,
+      "sequences": 2
+    },
+    "evaluation": {
+      "sha256": "690a06e82c0b8eb0a9b36df7795e9775a26cf0bd9e224b9f0c84b1a640afb245",
+      "targets": 32768,
+      "sequences": 64
+    }
+  },
+  "diagnostic_only": true,
+  "qualified": false,
+  "decode_target_tok_s": 35,
+  "measured_optimized_decode_tok_s": null,
+  "all_blocks_control": {
+    "smoke_targets": 512,
+    "smoke_compared_logits": 79298560,
+    "tuning_targets": 8192,
+    "tuning_compared_logits": 1268776960,
+    "different_logits": 0
+  },
+  "uniform_smoke": {
+    "32": {
+      "retained_blocks": 32,
+      "retained_fraction": 0.25,
+      "perplexity_ratios": {
+        "code": 1.34218042117343,
+        "prose": 1.774421316786687,
+        "all": 1.5432412482472482
+      },
+      "quality_screen_pass": false,
+      "metrics": {
+        "code": {
+          "tokens": 256,
+          "perplexity": 4.006329913598602
+        },
+        "prose": {
+          "tokens": 256,
+          "perplexity": 18.96979208866984
+        },
+        "all": {
+          "tokens": 512,
+          "perplexity": 8.71775461337
+        }
+      },
+      "kl": 0.755837855494,
+      "top1_agreement": 0.693359375
+    },
+    "48": {
+      "retained_blocks": 48,
+      "retained_fraction": 0.375,
+      "perplexity_ratios": {
+        "code": 1.3384758400142778,
+        "prose": 1.3981677797390608,
+        "all": 1.3679962695344987
+      },
+      "quality_screen_pass": false,
+      "metrics": {
+        "code": {
+          "tokens": 256,
+          "perplexity": 3.995271955904442
+        },
+        "prose": {
+          "tokens": 256,
+          "perplexity": 14.947381343883835
+        },
+        "all": {
+          "tokens": 512,
+          "perplexity": 7.72779745445
+        }
+      },
+      "kl": 0.601691209218,
+      "top1_agreement": 0.712890625
+    },
+    "64": {
+      "retained_blocks": 64,
+      "retained_fraction": 0.5,
+      "perplexity_ratios": {
+        "code": 1.1685588629561279,
+        "prose": 1.26176131735746,
+        "all": 1.2142661859431199
+      },
+      "quality_screen_pass": false,
+      "metrics": {
+        "code": {
+          "tokens": 256,
+          "perplexity": 3.488079735486595
+        },
+        "prose": {
+          "tokens": 256,
+          "perplexity": 13.489101843716513
+        },
+        "all": {
+          "tokens": 512,
+          "perplexity": 6.85937772619
+        }
+      },
+      "kl": 0.441417857864,
+      "top1_agreement": 0.779296875
+    },
+    "80": {
+      "retained_blocks": 80,
+      "retained_fraction": 0.625,
+      "perplexity_ratios": {
+        "code": 1.1125572313887417,
+        "prose": 1.1704486192575334,
+        "all": 1.141135870668925
+      },
+      "quality_screen_pass": false,
+      "metrics": {
+        "code": {
+          "tokens": 256,
+          "perplexity": 3.3209181466127276
+        },
+        "prose": {
+          "tokens": 256,
+          "perplexity": 12.512905896551098
+        },
+        "all": {
+          "tokens": 512,
+          "perplexity": 6.4462652954
+        }
+      },
+      "kl": 0.327315545527,
+      "top1_agreement": 0.822265625
+    },
+    "96": {
+      "retained_blocks": 96,
+      "retained_fraction": 0.75,
+      "perplexity_ratios": {
+        "code": 1.025314415282172,
+        "prose": 1.1300256119953476,
+        "all": 1.0763974868170165
+      },
+      "quality_screen_pass": false,
+      "metrics": {
+        "code": {
+          "tokens": 256,
+          "perplexity": 3.060503452432676
+        },
+        "prose": {
+          "tokens": 256,
+          "perplexity": 12.080755969074408
+        },
+        "all": {
+          "tokens": 512,
+          "perplexity": 6.08055880257
+        }
+      },
+      "kl": 0.189079413954,
+      "top1_agreement": 0.861328125
+    },
+    "112": {
+      "retained_blocks": 112,
+      "retained_fraction": 0.875,
+      "perplexity_ratios": {
+        "code": 1.0227792678547851,
+        "prose": 1.0349979151008604,
+        "all": 1.0288704533809212
+      },
+      "quality_screen_pass": false,
+      "metrics": {
+        "code": {
+          "tokens": 256,
+          "perplexity": 3.0529361859061357
+        },
+        "prose": {
+          "tokens": 256,
+          "perplexity": 11.064844113361357
+        },
+        "all": {
+          "tokens": 512,
+          "perplexity": 5.81207905874
+        }
+      },
+      "kl": 0.0853918225367,
+      "top1_agreement": 0.90625
+    }
+  },
+  "layer_sensitivity": {
+    "cases": 78,
+    "allocation": {
+      "layers": {
+        "5": 64,
+        "10": 64,
+        "17": 64,
+        "23": 32,
+        "25": 32,
+        "30": 32,
+        "33": 64,
+        "38": 32,
+        "39": 32,
+        "42": 32,
+        "43": 32,
+        "37": 64,
+        "26": 32,
+        "28": 64,
+        "40": 32,
+        "41": 32,
+        "8": 64
+      },
+      "estimated_additive_nll_change": {
+        "code": 0.007656405740000186,
+        "prose": 0.0017129158799991213
+      },
+      "ideal_saved_bytes": 276287769088.0,
+      "ideal_saved_fraction": 0.23519779700368082,
+      "requires_combined_validation": true,
+      "not_an_error_bound": true
+    }
+  },
+  "adaptive_profile": {
+    "version": 1,
+    "mode": "oracle",
+    "block_channels": 16,
+    "source_identity": "c3157c3865d0db6c",
+    "norms": "down-norms.bin",
+    "retained_blocks": 128,
+    "layers": {
+      "5": 64,
+      "10": 64,
+      "17": 64,
+      "23": 32,
+      "25": 32,
+      "30": 32,
+      "33": 64,
+      "38": 32,
+      "39": 32,
+      "42": 32,
+      "43": 32,
+      "37": 64,
+      "26": 32,
+      "28": 64,
+      "40": 32,
+      "41": 32,
+      "8": 64
+    }
+  },
+  "adaptive_smoke": {
+    "diagnostic_only": true,
+    "qualified": false,
+    "split": "smoke",
+    "profile_sha256": "50371d7f199d0837f52a6a5124e4cbc24c0eb75d69439024a0884e98f13dc9ab",
+    "perplexity_ratios": {
+      "code": 0.9537606857351081,
+      "prose": 1.0077861673603103,
+      "all": 0.9804013596797356
+    },
+    "quality_screen_pass": true,
+    "ideal_union_byte_reduction": 0.2326577629194,
+    "kl": 0.208008343192,
+    "top1_agreement": 0.84375,
+    "different_logits": 79298555
+  },
+  "tuning_baseline": {
+    "code": {
+      "tokens": 4096,
+      "perplexity": 3.4522049219070547
+    },
+    "prose": {
+      "tokens": 4096,
+      "perplexity": 13.641553501747731
+    },
+    "all": {
+      "tokens": 8192,
+      "perplexity": 6.86246589361
+    }
+  },
+  "adaptive_tuning": {
+    "diagnostic_only": true,
+    "qualified": false,
+    "split": "tune",
+    "profile_sha256": "50371d7f199d0837f52a6a5124e4cbc24c0eb75d69439024a0884e98f13dc9ab",
+    "perplexity_ratios": {
+      "code": 1.0403738031594039,
+      "prose": 1.1002021696524065,
+      "all": 1.069869859137146
+    },
+    "quality_screen_pass": false,
+    "ideal_union_byte_reduction": 0.232005933208836,
+    "kl": 0.172599634683,
+    "top1_agreement": 0.835693359375,
+    "different_logits": 1268776835
+  },
+  "memory": {
+    "tune-baseline": {
+      "peak_rss_kib": 116034872,
+      "peak_swap_kib": 0,
+      "minimum_available_kib": 124284524,
+      "minimum_gpu_free_mib": 5450,
+      "required_gpu_free_mib": 512,
+      "rejected": null,
+      "exit_code": 0
+    },
+    "tune-control": {
+      "peak_rss_kib": 116138708,
+      "peak_swap_kib": 0,
+      "minimum_available_kib": 124104492,
+      "minimum_gpu_free_mib": 5475,
+      "required_gpu_free_mib": 512,
+      "rejected": null,
+      "exit_code": 0
+    },
+    "tune-adaptive": {
+      "peak_rss_kib": 116069620,
+      "peak_swap_kib": 0,
+      "minimum_available_kib": 124338180,
+      "minimum_gpu_free_mib": 5475,
+      "required_gpu_free_mib": 512,
+      "rejected": null,
+      "exit_code": 0
+    }
+  },
+  "capture_validation": {
+    "layers": 42,
+    "matched_routed_records": 172032,
+    "all_routes_matched": true,
+    "different_logits": 0
+  },
+  "decoder_sha256": "682aae1bad872aee268546e898d4886f481f3fb0364a9a5e45ce2866d3e927c9",
+  "raw_records": "build-q2-v6/screen",
+  "outcome": "The tested diagonal-energy block selection failed the 1% code/prose perplexity gate on the 8192-target tuning set. Stopped before tiled-layout implementation and predictor training.",
+  "tests": {
+    "cpp": [
+      "expert_block_screen_test",
+      "q23_test",
+      "canon_expert_test",
+      "native_pool_test",
+      "flow_pool_test"
+    ],
+    "python": "tools/test_glm_block_screen.py: 6 passed",
+    "gpu_reserve_guard": "512 MiB pass; 20000 MiB rejects own test child"
+  }
+}

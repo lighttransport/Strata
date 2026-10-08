@@ -1,0 +1,518 @@
+{
+  "check": {
+    "measurements": {
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 634,
+          "batch": 2048,
+          "milliseconds": 87200.1,
+          "tokens_per_second": 7.27064
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 15,
+          "milliseconds": 12852.9,
+          "tokens_per_second": 1.16705
+        }
+      ],
+      "median_prefill_tok_s": 7.27064,
+      "median_decode_tok_s": 1.16705,
+      "peak_allocated_gpu_mib": 13028.4,
+      "gpu_live": [
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 806.414,
+            "prefill": 1550.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 8261.1,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 221871,
+          "minor": 1254745
+        }
+      ]
+    },
+    "decode_latency": [
+      {
+        "steps": 15,
+        "median_ms": 871.114,
+        "p95_ms": 1237.07,
+        "last128_tok_s": null,
+        "cpu_layer_flow_ms": 1990.8
+      }
+    ],
+    "complete": true,
+    "clean": true,
+    "rejected": null,
+    "wall_seconds": 145.19175114699465,
+    "peak_ram_gib": 59.84601593017578,
+    "minimum_gpu_free_mib": 2053,
+    "memory_events": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    },
+    "max_swap_bytes": 0,
+    "last50s_peak_ram_gib": 59.453304290771484,
+    "last50s_process_read_bytes": 41170264064,
+    "gpu_cache": [
+      "DECODE_CACHE prefix_trained=1 slots=720 MiB=8190 fingerprint=2373325011609391998"
+    ],
+    "cache_stats": [
+      "EXACT_CACHE_STATS position=640 hits=792 misses=1026 evictions=0 read_bytes=12250275840 resident_bytes=12250275840 wait_ms=8431.58",
+      "EXACT_CACHE_STATS position=640 hits=2130 misses=1702 evictions=0 read_bytes=20321607680 resident_bytes=20321607680 wait_ms=14237.4",
+      "EXACT_CACHE_STATS position=649 hits=3377 misses=2285 evictions=0 read_bytes=27282534400 resident_bytes=27282534400 wait_ms=19398"
+    ],
+    "output_count": 16,
+    "repeat_output_equal": null,
+    "interference": []
+  },
+  "code": {
+    "measurements": {
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 634,
+          "batch": 2048,
+          "milliseconds": 87756.3,
+          "tokens_per_second": 7.22455
+        },
+        {
+          "trial": 1,
+          "tokens": 634,
+          "batch": 2048,
+          "milliseconds": 53416.5,
+          "tokens_per_second": 11.869
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 383,
+          "milliseconds": 99757.0,
+          "tokens_per_second": 3.83933
+        },
+        {
+          "kind": "single",
+          "tokens": 383,
+          "milliseconds": 57770.8,
+          "tokens_per_second": 6.62964
+        }
+      ],
+      "median_prefill_tok_s": 9.546775,
+      "median_decode_tok_s": 5.234485,
+      "peak_allocated_gpu_mib": 12882.8,
+      "gpu_live": [
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 806.414,
+            "prefill": 1550.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 806.414,
+            "prefill": 1550.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 8261.1,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 8261.1,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 214472,
+          "minor": 891722
+        },
+        {
+          "trial": 1,
+          "major": 184084,
+          "minor": 277050
+        }
+      ]
+    },
+    "decode_latency": [
+      {
+        "steps": 383,
+        "median_ms": 176.522,
+        "p95_ms": 777.735,
+        "last128_tok_s": 6.27786168968255,
+        "cpu_layer_flow_ms": 49491.4
+      },
+      {
+        "steps": 383,
+        "median_ms": 151.426,
+        "p95_ms": 171.702,
+        "last128_tok_s": 6.824588715894452,
+        "cpu_layer_flow_ms": 49225.5
+      }
+    ],
+    "complete": true,
+    "clean": false,
+    "rejected": null,
+    "wall_seconds": 411.2169477280113,
+    "peak_ram_gib": 60.0,
+    "minimum_gpu_free_mib": 2198,
+    "memory_events": {
+      "low": 0,
+      "high": 0,
+      "max": 8644,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    },
+    "max_swap_bytes": 0,
+    "last50s_peak_ram_gib": 53.686458587646484,
+    "last50s_process_read_bytes": 43638784,
+    "gpu_cache": [
+      "DECODE_CACHE prefix_trained=1 slots=720 MiB=8190 fingerprint=3539328210273421559"
+    ],
+    "cache_stats": [
+      "EXACT_CACHE_STATS position=640 hits=718 misses=1036 evictions=0 read_bytes=12369674240 resident_bytes=12369674240 wait_ms=8550.67",
+      "EXACT_CACHE_STATS position=672 hits=6316 misses=3155 evictions=0 read_bytes=37670195200 resident_bytes=37670195200 wait_ms=27212.7",
+      "EXACT_CACHE_STATS position=704 hits=13455 misses=3739 evictions=0 read_bytes=44643061760 resident_bytes=44643061760 wait_ms=32557.2",
+      "EXACT_CACHE_STATS position=736 hits=21032 misses=3971 evictions=0 read_bytes=47413104640 resident_bytes=47413104640 wait_ms=34726.5",
+      "EXACT_CACHE_STATS position=768 hits=28442 misses=4163 evictions=0 read_bytes=49705553920 resident_bytes=49705553920 wait_ms=36509.4",
+      "EXACT_CACHE_STATS position=800 hits=36364 misses=4325 evictions=0 read_bytes=51639808000 resident_bytes=51639808000 wait_ms=38030.8",
+      "EXACT_CACHE_STATS position=832 hits=44385 misses=4382 evictions=0 read_bytes=52320378880 resident_bytes=52320378880 wait_ms=38581.8",
+      "EXACT_CACHE_STATS position=864 hits=51576 misses=4481 evictions=0 read_bytes=53502423040 resident_bytes=53502423040 wait_ms=39513.6",
+      "EXACT_CACHE_STATS position=896 hits=58791 misses=4554 evictions=0 read_bytes=54374031360 resident_bytes=54374031360 wait_ms=40211.3",
+      "EXACT_CACHE_STATS position=928 hits=66290 misses=4602 evictions=0 read_bytes=54947143680 resident_bytes=54947143680 wait_ms=40672.4",
+      "EXACT_CACHE_STATS position=960 hits=74051 misses=4631 evictions=0 read_bytes=55293399040 resident_bytes=55293399040 wait_ms=40959.1",
+      "EXACT_CACHE_STATS position=992 hits=81292 misses=4690 evictions=0 read_bytes=55997849600 resident_bytes=55997849600 wait_ms=41526.6",
+      "EXACT_CACHE_STATS position=640 hits=88109 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41772.1",
+      "EXACT_CACHE_STATS position=672 hits=95826 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41782.8",
+      "EXACT_CACHE_STATS position=704 hits=103549 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41793.8",
+      "EXACT_CACHE_STATS position=736 hits=111358 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41805",
+      "EXACT_CACHE_STATS position=768 hits=118960 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41816",
+      "EXACT_CACHE_STATS position=800 hits=127044 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41827.7",
+      "EXACT_CACHE_STATS position=832 hits=135122 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41839.4",
+      "EXACT_CACHE_STATS position=864 hits=142412 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41850.1",
+      "EXACT_CACHE_STATS position=896 hits=149700 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41860.9",
+      "EXACT_CACHE_STATS position=928 hits=157247 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41872",
+      "EXACT_CACHE_STATS position=960 hits=165037 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41883.2",
+      "EXACT_CACHE_STATS position=992 hits=172337 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41893.8",
+      "EXACT_CACHE_STATS position=1017 hits=177425 misses=4715 evictions=0 read_bytes=56296345600 resident_bytes=56296345600 wait_ms=41901.3"
+    ],
+    "output_count": 768,
+    "repeat_output_equal": true,
+    "interference": [
+      {
+        "seconds": 87.44159350200789,
+        "pid": 245,
+        "name": "kswapd0",
+        "cpu_percent": 99.12590643540629
+      },
+      {
+        "seconds": 176.9162866250117,
+        "pid": 245,
+        "name": "kswapd0",
+        "cpu_percent": 100.14622548729908
+      },
+      {
+        "seconds": 177.97443103000114,
+        "pid": 245,
+        "name": "kswapd0",
+        "cpu_percent": 94.50474105811307
+      }
+    ]
+  },
+  "baseline": {
+    "measurements": {
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 634,
+          "batch": 2048,
+          "milliseconds": 82108.1,
+          "tokens_per_second": 7.72153
+        },
+        {
+          "trial": 1,
+          "tokens": 634,
+          "batch": 2048,
+          "milliseconds": 41213.3,
+          "tokens_per_second": 15.3834
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 383,
+          "milliseconds": 87520.9,
+          "tokens_per_second": 4.3761
+        },
+        {
+          "kind": "single",
+          "tokens": 383,
+          "milliseconds": 58673.5,
+          "tokens_per_second": 6.52765
+        }
+      ],
+      "median_prefill_tok_s": 11.552465,
+      "median_decode_tok_s": 5.451875,
+      "peak_allocated_gpu_mib": 12882.8,
+      "gpu_live": [
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 806.414,
+            "prefill": 1550.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 806.414,
+            "prefill": 1550.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 8261.1,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 8261.1,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 212065,
+          "minor": 879732
+        },
+        {
+          "trial": 1,
+          "major": 182792,
+          "minor": 269221
+        }
+      ]
+    },
+    "decode_latency": [
+      {
+        "steps": 383,
+        "median_ms": 185.46,
+        "p95_ms": 428.921,
+        "last128_tok_s": 5.264149251791661,
+        "cpu_layer_flow_ms": 79060.5
+      },
+      {
+        "steps": 383,
+        "median_ms": 152.768,
+        "p95_ms": 174.368,
+        "last128_tok_s": 6.604518150867008,
+        "cpu_layer_flow_ms": 50369.2
+      }
+    ],
+    "complete": true,
+    "clean": false,
+    "rejected": null,
+    "wall_seconds": 372.36609964499075,
+    "peak_ram_gib": 60.0,
+    "minimum_gpu_free_mib": 2198,
+    "memory_events": {
+      "low": 0,
+      "high": 0,
+      "max": 11680,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    },
+    "max_swap_bytes": 0,
+    "last50s_peak_ram_gib": 59.99992752075195,
+    "last50s_process_read_bytes": 45850624,
+    "gpu_cache": [
+      "DECODE_CACHE prefix_trained=1 slots=720 MiB=8190 fingerprint=17965611007255736204"
+    ],
+    "cache_stats": [],
+    "output_count": 768,
+    "repeat_output_equal": true,
+    "interference": [
+      {
+        "seconds": 172.13106052498915,
+        "pid": 245,
+        "name": "kswapd0",
+        "cpu_percent": 99.81691722354981
+      },
+      {
+        "seconds": 173.19429730100092,
+        "pid": 245,
+        "name": "kswapd0",
+        "cpu_percent": 100.6381231073557
+      }
+    ]
+  },
+  "eviction-final": {
+    "measurements": {
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 634,
+          "batch": 2048,
+          "milliseconds": 87550.1,
+          "tokens_per_second": 7.24157
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 1,
+          "milliseconds": 4772.19,
+          "tokens_per_second": 0.209547
+        }
+      ],
+      "median_prefill_tok_s": 7.24157,
+      "median_decode_tok_s": 0.209547,
+      "peak_allocated_gpu_mib": 13028.4,
+      "gpu_live": [
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 806.414,
+            "prefill": 1550.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 4347.63,
+            "other": 8261.1,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 221901,
+          "minor": 1253703
+        }
+      ]
+    },
+    "decode_latency": [
+      {
+        "steps": 1,
+        "median_ms": 4771.94,
+        "p95_ms": 4771.94,
+        "last128_tok_s": null,
+        "cpu_layer_flow_ms": 146.511
+      }
+    ],
+    "complete": true,
+    "clean": true,
+    "rejected": null,
+    "wall_seconds": 141.301031711002,
+    "peak_ram_gib": 60.0,
+    "minimum_gpu_free_mib": 2053,
+    "memory_events": {
+      "low": 0,
+      "high": 0,
+      "max": 460,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    },
+    "max_swap_bytes": 0,
+    "last50s_peak_ram_gib": 59.99726867675781,
+    "last50s_process_read_bytes": 44674932736,
+    "gpu_cache": [
+      "DECODE_CACHE prefix_trained=1 slots=720 MiB=8190 fingerprint=11493570991603589937"
+    ],
+    "cache_stats": [
+      "EXACT_CACHE_STATS position=640 hits=0 misses=1807 evictions=1796 read_bytes=21575290880 resident_bytes=131338240 wait_ms=13498.3",
+      "EXACT_CACHE_STATS position=635 hits=0 misses=2336 evictions=2325 read_bytes=27891466240 resident_bytes=131338240 wait_ms=20490.3"
+    ],
+    "output_count": 2,
+    "repeat_output_equal": null,
+    "interference": []
+  },
+  "parity": {
+    "eight_steps_all_logits_bitwise_equal": true,
+    "eight_steps_route_rows_equal": true,
+    "final_forced_eviction_logits_equal": true,
+    "final_forced_eviction_routes_equal": true
+  },
+  "comparison": {
+    "output_ids_equal": false,
+    "route_rows_equal": false,
+    "gpu_cache_equal": false
+  },
+  "final_binary_sha256": "6f4951b463803750e6f77c8dda51cf5eab368c9314b516567aac0bc7fd91958b",
+  "binary_sha256": "f57c3cd3f69023c3a63686f39186e17632d0e6d35c05979bb1c47a4a14810d02",
+  "notes": [
+    "Linux B550 Ryzen 9 3950X / RX 9070 XT; REAP50 Q3_K_M; 60 GiB cgroup, swap disabled.",
+    "Code and baseline each run one untimed prefill, two timed prefills, then two 383-step decode passes from the same checkpoint.",
+    "Exact cache starts empty for decode pass 0 and retains entries for repeated pass 1. Prefill is unchanged.",
+    "One process per arm; repeated identical output is a warm best case, not a new conversation or long-context qualification."
+  ]
+}

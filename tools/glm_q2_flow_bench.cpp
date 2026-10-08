@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
         const bool flow = argc <= 4 || std::string(argv[4]) == "flow";
         const int workers = argc > 5 ? std::atoi(argv[5]) : 15;
         const int K = 8, H = 4096, FF = 2048;
-        if (nt < 1 || nt > 4 || count < K * nt || layers < 1) throw std::invalid_argument("invalid arguments");
+        if (nt < 1 || nt > MAXT || count < K * nt || layers < 1) throw std::invalid_argument("invalid arguments");
         ExpertPool pool(workers, true);
         if (!pool.numa_rows_available()) throw std::runtime_error("node-owned rows unavailable");
         const auto previous = pin_current_thread(physical_cores(false).front());
@@ -31,6 +31,8 @@ int main(int argc, char** argv) {
         if (!native_fmt(10, 11, H, FF, f, error)) throw std::runtime_error(error);
         f.swiglu_limit = 10;
         f.fuse_h_quant = true;
+        const char* canonical = std::getenv("STRATA_GLM_CANON");
+        f.canon = canonical && std::string(canonical) == "1";
         std::mt19937 rng(2026);
         const size_t gu_bytes = f.up_off, d_bytes = f.bytes - f.down_off;
         std::vector<uint8_t> g((size_t)count * gu_bytes), u(g.size()), d((size_t)count * d_bytes);
@@ -88,8 +90,13 @@ int main(int argc, char** argv) {
             if (layer >= 0) { seconds += s; bytes += double(jobs.size()) * f.bytes; experts += jobs.size(); }
         }
         restore_thread_affinity(previous);
-        std::printf("FLOW_BENCH mode=%s tokens=%d workers=%d experts_per_layer=%.1f us_per_layer=%.1f GB_s=%.2f\n",
-                    flow ? "flow" : "phased", nt, workers, experts / layers, seconds / layers * 1e6, bytes / seconds / 1e9);
+        uint64_t checksum = 14695981039346656037ull;
+        const auto* output_bytes = reinterpret_cast<const uint8_t*>(sum.data());
+        for (size_t i = 0; i < sum.size() * sizeof(float); ++i)
+            checksum = (checksum ^ output_bytes[i]) * 1099511628211ull;
+        std::printf("FLOW_BENCH mode=%s tokens=%d workers=%d experts_per_layer=%.1f us_per_layer=%.1f GB_s=%.2f canon=%d checksum=%llu\n",
+                    flow ? "flow" : "phased", nt, workers, experts / layers, seconds / layers * 1e6, bytes / seconds / 1e9,
+                    int(f.canon), static_cast<unsigned long long>(checksum));
     } catch (const std::exception& e) {
         std::fprintf(stderr, "%s\n", e.what());
         return 1;

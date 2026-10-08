@@ -1,5 +1,7 @@
 # GLM5.3Flash with Strata
 
+Current configurations and reproduction: [experimental release candidate](GLM_RELEASE_CANDIDATE.md), covering Threadripper 1950X and Ryzen 9 3950X / RX 9070 XT. The initial Q2 results below are historical.
+
 For the 128 GB, two-node Threadripper configuration and current Q2 decode work, see [the NUMA decode report](GLM_Q2_NUMA_DECODE.md).
 
 For Xeon Gold with one or two Tesla V100 GPUs, see the [V100 hardware measurement report](GLM53_V100.md). It covers the dual-GPU reference, single-socket worker comparison and 16GB VRAM-capacity forecast.

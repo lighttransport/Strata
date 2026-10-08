@@ -1,0 +1,10 @@
+{
+  "scoring": "manual review of full final answer against fixture expected values",
+  "questions_correct": 8,
+  "questions_total": 8,
+  "citations_correct": true,
+  "unsupported_identity": false,
+  "summary": "Accurately covers objective, provisional and signed decisions, finances, progress, ownership and risks.",
+  "next_actions": "Grounded in dossier; keeps checksum agreement separate from crate completion, unlike the 64K response.",
+  "verdict": "passes this synthetic document-QA smoke; one case does not establish general 128K chat quality"
+}

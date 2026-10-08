@@ -1,0 +1,271 @@
+{
+  "provenance": {
+    "date": "2026-10-08",
+    "host": "b550",
+    "cpu": "Ryzen 9 3950X",
+    "gpu": "RX 9070 XT 16 GB, gfx1201",
+    "source_commit": "036c926e6db07e8f66d6b125b3139ef282dad327",
+    "source_note": "uncommitted GLM integration; see prior release candidate source snapshot",
+    "executable_sha256": "685b1344f3e46b9d29e5fe599f96b01db6372218a5cab235bd7b2331399a150f",
+    "executed_runner_sha256": "6af027064df4650d57645e8e0dea9a3638ad0b3d273f81c97f7594fc25329155",
+    "model_sha256_previously_verified": "c3b0cfb144556bd28e265d8255d48eeafce3d127aba5b9b5dd4e326322a34aa9",
+    "model_declared_context": 1048576,
+    "decode_cache_mib": 3072,
+    "ram_limit_gib": 60,
+    "minimum_free_vram_mib": 2048,
+    "source_results": "b550:~/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3",
+    "trials_per_length": 1,
+    "prefill_scope": "first request after expert-page warmup; no prefix reuse",
+    "output_scope": "10% maximum includes reasoning; natural stop honored",
+    "fixture_scope": "same eight fact questions at four document lengths; synthetic low-density dossier"
+  },
+  "cases": [
+    {
+      "case": "16384",
+      "context": 16384,
+      "prompt_tokens": 14736,
+      "output_allowance": 1638,
+      "actual_output_tokens": 1255,
+      "finish_reason": "stop",
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 14736,
+        "prompt_ms": 74664.2,
+        "prompt_per_token_ms": 5.067,
+        "prompt_per_second": 197.4,
+        "predicted_n": 1255,
+        "predicted_ms": 131830.4,
+        "predicted_per_token_ms": 105.044,
+        "predicted_per_second": 9.5,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      },
+      "wall_seconds": 206.58187060100317,
+      "peak_cgroup_gib": 56.98033905029297,
+      "peak_summed_rss_gib": 53.01942443847656,
+      "minimum_free_global_vram_mib": 6262,
+      "swap_bytes": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "guard_rejected": null,
+      "assessment": {
+        "scoring": "manual review of full final answer against fixture expected values",
+        "questions_correct": 8,
+        "questions_total": 8,
+        "citations_correct": true,
+        "unsupported_identity": false,
+        "summary": "Covers objective, date revision, allocations, verification progress, both named risks, ownership, rollback and handling policy accurately.",
+        "next_actions": "Generally grounded; keeping contingency unspent is a conservative recommendation, not an explicit permanent prohibition in the source.",
+        "verdict": "passes this synthetic document-QA smoke; not broad chat qualification"
+      }
+    },
+    {
+      "case": "32768",
+      "context": 32768,
+      "prompt_tokens": 29482,
+      "output_allowance": 3276,
+      "actual_output_tokens": 965,
+      "finish_reason": "stop",
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 29482,
+        "prompt_ms": 150731.8,
+        "prompt_per_token_ms": 5.113,
+        "prompt_per_second": 195.6,
+        "predicted_n": 965,
+        "predicted_ms": 102913.0,
+        "predicted_per_token_ms": 106.646,
+        "predicted_per_second": 9.4,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      },
+      "wall_seconds": 253.8119008460053,
+      "peak_cgroup_gib": 57.002750396728516,
+      "peak_summed_rss_gib": 53.084529876708984,
+      "minimum_free_global_vram_mib": 5888,
+      "swap_bytes": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "guard_rejected": null,
+      "assessment": {
+        "scoring": "manual review of full final answer against fixture expected values",
+        "questions_correct": 8,
+        "questions_total": 8,
+        "citations_correct": true,
+        "unsupported_identity": false,
+        "summary": "Core objective, date revision, funding, progress and risks are accurate.",
+        "errors": [
+          "Next action 2 says await supervisor checks before treating working copies as local-only. The source says working copies remain local until checked; the ordering is reversed."
+        ],
+        "instruction_following": "Next actions appear before the eight questions, although the user requested them at the end.",
+        "verdict": "all factual QA items pass; next-action wording and ordering are imperfect"
+      }
+    },
+    {
+      "case": "65536",
+      "context": 65536,
+      "prompt_tokens": 58973,
+      "output_allowance": 6553,
+      "actual_output_tokens": 1075,
+      "finish_reason": "stop",
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 58973,
+        "prompt_ms": 317731.3,
+        "prompt_per_token_ms": 5.388,
+        "prompt_per_second": 185.6,
+        "predicted_n": 1075,
+        "predicted_ms": 115292.1,
+        "predicted_per_token_ms": 107.248,
+        "predicted_per_second": 9.3,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      },
+      "wall_seconds": 433.356949752997,
+      "peak_cgroup_gib": 57.1190071105957,
+      "peak_summed_rss_gib": 53.05998611450195,
+      "minimum_free_global_vram_mib": 5140,
+      "swap_bytes": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "guard_rejected": null,
+      "assessment": {
+        "scoring": "manual review of full final answer against fixture expected values",
+        "questions_correct": 7,
+        "questions_partially_correct": 1,
+        "questions_total": 8,
+        "citations_match_records": true,
+        "unsupported_identity": false,
+        "summary": "Retrieves the objective, dates, allocations, owners, risks and handling policy.",
+        "errors": [
+          "Q3 correctly computes 525 remaining crates and 37.5% complete, but compares that completion percentage to the 99.7% checksum-agreement threshold. These measure different things.",
+          "Next action 1 compounds the error by inventing an acceptance goal of approximately 838 verified crates. The document never defines such a completion-count goal."
+        ],
+        "verdict": "substantive interpretation error despite successful retrieval; not a clean quality pass"
+      }
+    },
+    {
+      "case": "131072",
+      "context": 131072,
+      "prompt_tokens": 117955,
+      "output_allowance": 13107,
+      "actual_output_tokens": 1056,
+      "finish_reason": "stop",
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 117955,
+        "prompt_ms": 680263.4,
+        "prompt_per_token_ms": 5.767,
+        "prompt_per_second": 173.4,
+        "predicted_n": 1056,
+        "predicted_ms": 114407.5,
+        "predicted_per_token_ms": 108.34,
+        "predicted_per_second": 9.2,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      },
+      "wall_seconds": 795.3309168080013,
+      "peak_cgroup_gib": 57.157875061035156,
+      "peak_summed_rss_gib": 53.09469985961914,
+      "minimum_free_global_vram_mib": 3644,
+      "swap_bytes": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "guard_rejected": null,
+      "assessment": {
+        "scoring": "manual review of full final answer against fixture expected values",
+        "questions_correct": 8,
+        "questions_total": 8,
+        "citations_correct": true,
+        "unsupported_identity": false,
+        "summary": "Accurately covers objective, provisional and signed decisions, finances, progress, ownership and risks.",
+        "next_actions": "Grounded in dossier; keeps checksum agreement separate from crate completion, unlike the 64K response.",
+        "verdict": "passes this synthetic document-QA smoke; one case does not establish general 128K chat quality"
+      }
+    },
+    {
+      "case": "followup-32k",
+      "context": 32768,
+      "prompt_tokens": 30552,
+      "output_allowance": 2208,
+      "actual_output_tokens": 537,
+      "finish_reason": "stop",
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 30552,
+        "prompt_ms": 152329.3,
+        "prompt_per_token_ms": 4.986,
+        "prompt_per_second": 200.6,
+        "predicted_n": 537,
+        "predicted_ms": 58870.1,
+        "predicted_per_token_ms": 109.628,
+        "predicted_per_second": 9.1,
+        "draft_n": 0,
+        "draft_n_accepted": 0
+      },
+      "wall_seconds": 211.37409116400522,
+      "peak_cgroup_gib": 57.11359786987305,
+      "peak_summed_rss_gib": 53.0430908203125,
+      "minimum_free_global_vram_mib": 5888,
+      "swap_bytes": 0,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "guard_rejected": null,
+      "assessment": {
+        "scoring": "manual assessment of six corrections requested in the follow-up",
+        "checks_correct": 5,
+        "checks_total": 6,
+        "correct": [
+          "signed launch date",
+          "funding ceiling and contingency included",
+          "no rollback from one 99.8% audit; correct two-audit trigger",
+          "Mira Solano authorizes rollback, not Tomas",
+          "working copies stay local until checked"
+        ],
+        "errors": [
+          "Accepts the user's false 838-crate premise by applying 99.7% checksum agreement to a count of verified crates. OPS-043 does not support this conclusion."
+        ],
+        "minor_errors": [
+          "Introduces four assumptions but enumerates five headings."
+        ],
+        "verdict": "fails the metric-distinction check; five other corrections succeed"
+      }
+    }
+  ],
+  "conclusion": "128K configuration fits this 118K-input workload; synthetic QA mostly correct, but metric confusion recurs in 64K answer and multi-turn follow-up. No broad quality qualification or 13K generated-output claim."
+}

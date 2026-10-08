@@ -1,0 +1,67 @@
+{
+  "note": "Greedy frequency/size static ranking on historical calibration routes; in-sample estimate, not temporal replay, decode-only trace, or B550 speed prediction. Includes original expert tensors absent from the sidecar. GU/down counted once.",
+  "routed_tensor_gib": 103.552734375,
+  "expert_count_per_layer": 288,
+  "top_k": 8,
+  "layers": 42,
+  "logical_expert_gib_per_token": 2.87646484375,
+  "host_ram_gib": 62.693153381347656,
+  "gpu_vram_gib": 15.921875,
+  "estimates": [
+    {
+      "combined_unique_expert_cache_gib": 55,
+      "static_in_sample_hit_fraction": 0.8137650262741816,
+      "miss_gib_per_token": 0.5378025323152542
+    },
+    {
+      "combined_unique_expert_cache_gib": 58,
+      "static_in_sample_hit_fraction": 0.8346817379906064,
+      "miss_gib_per_token": 0.47736640833318233
+    },
+    {
+      "combined_unique_expert_cache_gib": 60,
+      "static_in_sample_hit_fraction": 0.848037356422061,
+      "miss_gib_per_token": 0.438682621344924
+    },
+    {
+      "combined_unique_expert_cache_gib": 62,
+      "static_in_sample_hit_fraction": 0.8608097803025019,
+      "miss_gib_per_token": 0.4017898142337799
+    },
+    {
+      "combined_unique_expert_cache_gib": 64,
+      "static_in_sample_hit_fraction": 0.8730196271623883,
+      "miss_gib_per_token": 0.36643763445317745
+    },
+    {
+      "combined_unique_expert_cache_gib": 66,
+      "static_in_sample_hit_fraction": 0.8847589038667225,
+      "miss_gib_per_token": 0.33244316652417183
+    },
+    {
+      "combined_unique_expert_cache_gib": 68,
+      "static_in_sample_hit_fraction": 0.8959328787667411,
+      "miss_gib_per_token": 0.30035566724836826
+    },
+    {
+      "combined_unique_expert_cache_gib": 70,
+      "static_in_sample_hit_fraction": 0.906617936633882,
+      "miss_gib_per_token": 0.26948591507971287
+    },
+    {
+      "combined_unique_expert_cache_gib": 75,
+      "static_in_sample_hit_fraction": 0.9306957608177548,
+      "miss_gib_per_token": 0.20007358863949776
+    },
+    {
+      "combined_unique_expert_cache_gib": 80,
+      "static_in_sample_hit_fraction": 0.951102302187965,
+      "miss_gib_per_token": 0.14100080728530884
+    },
+    {
+      "combined_unique_expert_cache_gib": 90,
+      "static_in_sample_hit_fraction": 0.9815699259440104,
+      "miss_gib_per_token": 0.05300815775990486
+    }
+  ]
+}

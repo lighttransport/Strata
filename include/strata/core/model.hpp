@@ -271,6 +271,26 @@ class ModelArtifact {
         }
         if (declared_tensors && tensors_.size() != declared_tensors)
             throw std::runtime_error("model: split tensor count mismatch");
+        // A compact assembly contains the exact overlay bytes plus the base's
+        // other tensors. Keep the same expert execution path without requiring
+        // the large original GGUF on the deployment machine.
+        if (const auto* assembled = files_.front()->get("strata.expert_pack.assembled")) {
+            const auto* version = files_.front()->get("strata.expert_pack.version");
+            const auto* source = files_.front()->get("strata.expert_pack.source");
+            if (assembled->type != MetaType::BOOL || assembled->u != 1 ||
+                !version || version->type != MetaType::U32 || version->u != 1 ||
+                !source || source->type != MetaType::U64)
+                throw std::runtime_error("model: invalid assembled expert provenance");
+            for (int l=3;l<=44;++l) for (const auto* part : {"gate", "up", "down"}) {
+                const auto& t = at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight");
+                const auto* hash = t.file->get("strata.expert_pack.hash."+t.tensor->name);
+                const bool down = std::string(part) == "down";
+                if (!hash || hash->type != MetaType::U64 ||
+                    (t.tensor->type != 10 && !(down && t.tensor->type == 11)))
+                    throw std::runtime_error("model: incomplete assembled Q23 experts");
+            }
+            assembled_experts_ = true;
+        }
     }
 
     bool is_exl3()const { return bool(native_); }
@@ -293,7 +313,7 @@ class ModelArtifact {
         return hash;
     }
     void overlay_experts(const std::filesystem::path& path,const std::set<std::string>& retained={}) {
-        if(native_ || !expert_pack_.empty())throw std::invalid_argument("expert pack requires an original GGUF model");
+        if(native_ || has_expert_pack())throw std::invalid_argument("expert pack requires an original GGUF model");
         auto pack=std::make_unique<GgufFile>(path.string());
         if(pack->tensors().empty())throw std::runtime_error("expert pack: empty sidecar");
         const auto* version=pack->get("strata.expert_pack.version"),*source=pack->get("strata.expert_pack.source");
@@ -328,7 +348,7 @@ class ModelArtifact {
         }
         expert_pack_=path.string();files_.push_back(std::move(pack));
     }
-    bool has_expert_pack()const{return !expert_pack_.empty();}
+    bool has_expert_pack()const{return assembled_experts_ || !expert_pack_.empty();}
     void discard_original_experts()const {for(const auto& [name,t]:original_experts_)t.file->discard_tensor_pages(*t.tensor,t.bytes);}
     const ArtifactTensor &at(const std::string &name) const {
         auto i = tensors_.find(name);
@@ -373,6 +393,7 @@ class ModelArtifact {
     std::map<std::string, ArtifactTensor> tensors_;
     std::map<std::string, ArtifactTensor> original_experts_;
     std::string expert_pack_;
+    bool assembled_experts_ = false;
 };
 
 } // namespace strata::core

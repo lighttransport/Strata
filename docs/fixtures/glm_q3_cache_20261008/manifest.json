@@ -1,0 +1,126 @@
+{
+  "source_commit": "036c926e6db07e8f66d6b125b3139ef282dad327",
+  "note": "working-tree GLM integration; measured inference executable identity is in each run manifest",
+  "files": {
+    "code-large-gpu-run.log": {
+      "bytes": 7577,
+      "sha256": "02ed34a6d757843b72bbe96fdeae06dc4ff6d0a93e14dc631bcb1c05f986f02a"
+    },
+    "code-replay.json": {
+      "bytes": 32713,
+      "sha256": "cc609d7150ed0d9b553413321eec4426a8d2c13475b1741f1a4b43db0205c502"
+    },
+    "code-run.log": {
+      "bytes": 21669,
+      "sha256": "6be230e51c11760e117b6c0f60c21a1d5bfc9e0fcacab1503b0b7d40362dd140"
+    },
+    "document-run.stdout": {
+      "bytes": 1815,
+      "sha256": "4a440e6409c230958e26f9f83beb15a035410b4b91ec32e6e59bf9ae04537645"
+    },
+    "code-run.stdout": {
+      "bytes": 1765,
+      "sha256": "bb73cb9d54ee04fe245fd10f44b39326aec7f8d41b87bc5bab401f1c47ea7dd6"
+    },
+    "code.ids": {
+      "bytes": 2905,
+      "sha256": "895eb6b3238d553c77f21dc22a5d302096e41b19941ed374271c8b139cdfa610"
+    },
+    "inventory.json": {
+      "bytes": 1552923,
+      "sha256": "4b6f21d1fbd9426d67796bb55381f6b8061c3fa0666badb4e8ccfeb56ac153de"
+    },
+    "document.json": {
+      "bytes": 2132,
+      "sha256": "ab11db3765afcf868440a86a697a91b5cfd01bb988b4a213e24c9189ce5c83c3"
+    },
+    "mixed_replay.py": {
+      "bytes": 1121,
+      "sha256": "a5bea2b829915df0a444a9609ef215f72b039d62d553ed33198aff5406a66edb"
+    },
+    "document-run.manifest.json": {
+      "bytes": 3772,
+      "sha256": "12886af9c7df331ded95359ed7f0cbee175354b4de003b77ec785241c3f696f4"
+    },
+    "ssd-spans.txt": {
+      "bytes": 22990,
+      "sha256": "a58c2d5d12aa407425b0ae8f9239eab1b466ac803af6123887a3e78ac0947938"
+    },
+    "prepare.py": {
+      "bytes": 2330,
+      "sha256": "63848e624474b1b1bf4641ef6a9a91c81901b4d126b38c6cf9c92b55f4ecbcfc"
+    },
+    "code-large-gpu.json": {
+      "bytes": 2141,
+      "sha256": "3b3791670a91d00b1f1bf3708ca4eda2c7988c14333d6c6a38a66aa3ec240856"
+    },
+    "code.json": {
+      "bytes": 2128,
+      "sha256": "8246c6e6352cfc27009445eb0312e513bbfbeaceee73e6c691e09a53e0cefa50"
+    },
+    "document.ids": {
+      "bytes": 2441,
+      "sha256": "eb8df79d6f95c3eff5591cdd923a1fe46daabbc9bd44ae762614ac392e965424"
+    },
+    "ssd-results.json": {
+      "bytes": 2666,
+      "sha256": "364728d210fb13a53b3d8051db48f13196ebebffd2afe96fcfa54b9f6d7bf914"
+    },
+    "code.routes.csv": {
+      "bytes": 528621,
+      "sha256": "c443fcfe1f109b4a526df83f0990541b49435478b28820d6e91e9e79065021f0"
+    },
+    "code-run.result.json": {
+      "bytes": 294721,
+      "sha256": "1431283c798122207fa2d389e76cf1f362d9b90378ae125b0dd625bcfc71d24c"
+    },
+    "code-run.manifest.json": {
+      "bytes": 3756,
+      "sha256": "860a98f4150b72fecf4a11c9acbbe508c36cfe621fadb69fee596b1bd67766fb"
+    },
+    "document-replay.json": {
+      "bytes": 32689,
+      "sha256": "b042d11a812b78d8637120acd882c5003e6e559714aff9a354dd57ce8885ae48"
+    },
+    "run_ssd.py": {
+      "bytes": 799,
+      "sha256": "aa58dfccdecf215e5caeaa1f0c75bb08f5489778fa298a03f61c137386a1ff8b"
+    },
+    "code.prompt.txt": {
+      "bytes": 2674,
+      "sha256": "3d1e45e2b23f7b5b2849c069c717f4657454e033dbac2d58814fa7f4416d1f7c"
+    },
+    "ssd-plan.json": {
+      "bytes": 5257,
+      "sha256": "6a03bb3d42e6fc338463742aa3407bba780bd3e87f0ea83d1f71b0ba5f846a78"
+    },
+    "document-run.result.json": {
+      "bytes": 277025,
+      "sha256": "891019266403727cb3d9522ba5848094e6b353cbe877674e5e78f29b26f2f8fb"
+    },
+    "document.routes.csv": {
+      "bytes": 529113,
+      "sha256": "a631c758686b4a24e124c906429b59beabc3d0183d6205b62449deca02fc9f02"
+    },
+    "code-large-gpu-run.result.json": {
+      "bytes": 591810,
+      "sha256": "d3a914cbec9ddaf6a5bb9acce6f720ab6520c8a3f4cdb4b8fe0034ec348e13f2"
+    },
+    "document.prompt.txt": {
+      "bytes": 2337,
+      "sha256": "51946b6849c5826c87bfa058d4ee06f8c630eba21ed99644c46b0b0da2b2478c"
+    },
+    "document-run.log": {
+      "bytes": 21661,
+      "sha256": "63c83528f850544f001f77d355081bdcc5d4a5fc777c5f61b8158a255e8fda4c"
+    },
+    "mixed-replay.json": {
+      "bytes": 32699,
+      "sha256": "53220ee26fb9a04858ee9cfb4bce8ae83a09e56bf5770fde7c4834ec6e67690f"
+    },
+    "README.md": {
+      "bytes": 3086,
+      "sha256": "00f58cde7b5371d42d1fe2d587fb1315eed5ca5fe813a535be44feaf06119571"
+    }
+  }
+}

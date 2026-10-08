@@ -1,0 +1,15 @@
+{
+  "host": "b550",
+  "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+  "source_commit": "036c926e6db07e8f66d6b125b3139ef282dad327",
+  "executable_sha256": "685b1344f3e46b9d29e5fe599f96b01db6372218a5cab235bd7b2331399a150f",
+  "runner_sha256": "7802d3447da995d6682d2bd13e6335c4f01bbe7416f7fc87a821dc515fefb2ca",
+  "model_path": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "model_bytes": 63205406688,
+  "contexts": [
+    32768
+  ],
+  "decode_cache_mib": 3072,
+  "ram_limit_gib": 60,
+  "vram_reserve_mib": 2048
+}

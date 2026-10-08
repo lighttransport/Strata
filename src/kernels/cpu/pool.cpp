@@ -937,7 +937,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         if (jobs[i].nt < 1 || jobs[i].nt > MAXT)
             throw std::invalid_argument("native expert pool: invalid token count");
     const bool owned=jobs[0].numa[0].gate!=nullptr;
-    if(f.fuse_h_quant && (!owned||f.observer||f.n_ff%512||f.d_type==42))throw std::invalid_argument("fused hidden quantization requires owned 256-row chunks without observation");
+    if(f.fuse_h_quant && (!owned||f.observer||f.hidden_transform||f.n_ff%512||f.d_type==42))throw std::invalid_argument("fused hidden quantization requires owned 256-row chunks without observation or transformation");
     if(owned && (!numa_rows_available_ || f.gu_type==42 || f.d_type==42 || f.n_ff%2 || f.n_embd%2))
         throw std::invalid_argument("native NUMA rows require pinned workers on both nodes and native IQ geometry");
     for(int e=0;e<n;++e)for(int node=0;node<2;++node) {
@@ -963,6 +963,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         if(!f.fuse_h_quant)for (int e = 0; e < nb; ++e)
             for (int t = 0; t < mjobs_[e].nt; ++t) {
                 if(f.observer)f.observer->hidden(f.observer_layer,mjobs_[e].expert_id,split_multi_[(size_t)e].ff[t],f.n_ff);
+                if(f.hidden_transform)f.hidden_transform->apply(f.observer_layer,mjobs_[e].expert_id,t,split_multi_[(size_t)e].ff[t],f.n_ff);
                 if (q2_native_kernels(f.d_type)) act_quant_any(split_multi_[(size_t) e].ff[t], FF, split_multi_[(size_t) e].a2[t]);
                 else native_quant_h(f, split_multi_[(size_t) e].ff[t], split_multi_[(size_t) e].hq[t]);
             }
@@ -1010,7 +1011,7 @@ void ExpertPool::flow_task(int i) {
         }
         return;
     }
-    // Every gate/up part was claimed before any down part, so this wait ends once running parts finish.
+    // Each expert's gate/up parts precede its down parts in both node queues.
     const int d = i - flow_gu_tasks_, parts = flow_down_parts_, e = d / (sides * parts);
     const int node = flow_owned_ ? (d / parts) % 2 : 0, part = d % parts;
     // A gate/up part that never completes (a bug, not a slow row) stops the engine like the pool's other
@@ -1044,6 +1045,23 @@ void ExpertPool::flow_task(int i) {
         for (int t = 0; t < j.nt; ++t) out[t] = j.out[t];
         native_down_rows(f, j.blob, hq, j.nt, out, first, last, j.native_down);
     }
+    const auto *groups = flow_experts_[0].groups;
+    if (groups) {
+        const unsigned mask = flow_experts_[e].group_mask;
+        const int hidden = (int)f.n_embd;
+        for (int group = 0; group < 2; ++group) {
+            if (!(mask & (1u << group)) ||
+                flow_chunks_[chunk].group_left[group].fetch_sub(1, std::memory_order_acq_rel) != 1) continue;
+            const int begin = group ? groups->split : 0, end = group ? flow_tokens_ : groups->split;
+            for (int t = begin; t < end; ++t)
+                canon_route_sum(flow_results_ + (size_t)t * flow_k_ * hidden, flow_weights_ + t * flow_k_,
+                                groups->sum[group] + (size_t)(t - begin) * hidden, flow_k_, hidden, first, last);
+            // The final chunk sees every sum store before publishing the group.
+            if (flow_experts_[0].group_chunks[group].fetch_sub(1, std::memory_order_acq_rel) == 1)
+                groups->complete(groups->context, group);
+        }
+        return;
+    }
     if (flow_chunks_[chunk].left.fetch_sub(1, std::memory_order_acq_rel) != 1) return;
     // The last expert through this chunk writes its routed sum in reduce_routed's order.
     const int hidden = (int) f.n_embd;
@@ -1067,14 +1085,32 @@ void ExpertPool::flow_task(int i) {
 
 void ExpertPool::run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
                                   const float* weights, float* sum, int nt, int top_k) {
+    run_layer_native_impl(f, jobs, n, results, weights, sum, nullptr, nt, top_k);
+}
+void ExpertPool::run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
+                                  const float* weights, const LayerGroups& groups, int nt, int top_k) {
+    if (!f.canon || groups.split < 1 || groups.split >= nt || !groups.sum[0] || !groups.sum[1] || !groups.complete)
+        throw std::invalid_argument("layer groups: canonical rows, two sums and a completion callback required");
+    run_layer_native_impl(f, jobs, n, results, weights, groups.sum[0], &groups, nt, top_k);
+}
+void ExpertPool::run_layer_native_impl(const NativeFmt& f, ExpertJobMulti* jobs, int n, const float* results,
+                                       const float* weights, float* sum, const LayerGroups* groups, int nt, int top_k) {
     if (nt < 1 || nt > MAXT || top_k < 1 || top_k > 32 || !results || !weights || !sum)
         throw std::invalid_argument("layer dataflow: invalid routed geometry");
     const bool owned = n > 0 && jobs[0].numa[0].gate != nullptr;
     // Paths this scheduler does not cover keep the phased execution.
-    if (n <= 0 || n > kMaxSplitMulti || n_ == 1 || f.observer || f.gu_type == 42 || f.d_type == 42 ||
+    if (n <= 0 || n > kMaxSplitMulti || n_ == 1 || f.observer || f.hidden_transform || f.gu_type == 42 || f.d_type == 42 ||
         native_local_enabled_ || (owned && !numa_rows_available_)) {
         if (n > 0) run_split_multi_native(f, jobs, n);
-        reduce_routed(results, weights, sum, nt, top_k, (int) f.n_embd, f.canon);
+        if (groups) {
+            for (int group = 0; group < 2; ++group) {
+                const int begin = group ? groups->split : 0, end = group ? nt : groups->split;
+                for (int t = begin; t < end; ++t)
+                    canon_route_sum(results + (size_t)t * top_k * f.n_embd, weights + t * top_k,
+                                    groups->sum[group] + (size_t)(t - begin) * f.n_embd, top_k, f.n_embd, 0, f.n_embd);
+                groups->complete(groups->context, group);
+            }
+        } else reduce_routed(results, weights, sum, nt, top_k, (int) f.n_embd, f.canon);
         return;
     }
     if (f.n_ff <= 0 || f.n_ff > kNativeFF || f.act_bytes > kNativeActBytes || f.h_bytes > kNativeHBytes)
@@ -1103,24 +1139,55 @@ void ExpertPool::run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int 
         flow_chunks_ = std::make_unique<FlowCounter[]>(chunks);
         flow_chunk_capacity_ = chunks;
     }
-    for (int e = 0; e < n; ++e) flow_experts_[e].left.store(sides * flow_gu_parts_, std::memory_order_relaxed);
-    for (int c = 0; c < chunks; ++c) flow_chunks_[c].left.store(n, std::memory_order_relaxed);
+    int group_jobs[2]{};
+    for (int e = 0; e < n; ++e) {
+        flow_experts_[e].left.store(sides * flow_gu_parts_, std::memory_order_relaxed);
+        unsigned mask = 0;
+        if (groups)
+            for (int t = 0; t < jobs[e].nt; ++t) {
+                const auto base = reinterpret_cast<uintptr_t>(results), ptr = reinterpret_cast<uintptr_t>(jobs[e].out[t]);
+                const size_t row = (size_t)f.n_embd * sizeof(float), bytes = (size_t)nt * top_k * row;
+                if (ptr < base || ptr - base >= bytes || (ptr - base) % row)
+                    throw std::invalid_argument("layer groups: each job output must be a routed row");
+                mask |= 1u << ((ptr - base) / row / top_k >= (size_t)groups->split);
+            }
+        flow_experts_[e].group_mask = mask;
+        for (int g = 0; g < 2; ++g) group_jobs[g] += bool(mask & (1u << g));
+    }
+    flow_experts_[0].groups = groups;
+    for (int g = 0; g < 2; ++g) flow_experts_[0].group_chunks[g].store(group_jobs[g] ? chunks : 0, std::memory_order_relaxed);
+    for (int c = 0; c < chunks; ++c) {
+        flow_chunks_[c].left.store(n, std::memory_order_relaxed);
+        for (int g = 0; g < 2; ++g) flow_chunks_[c].group_left[g].store(group_jobs[g], std::memory_order_relaxed);
+    }
     mjobs_ = jobs; nfmt_ = &f;
     flow_results_ = results; flow_weights_ = weights; flow_sum_ = sum; flow_k_ = top_k; flow_tokens_ = nt;
     flow_owned_ = owned;
     flow_tag_ = epoch_.load(std::memory_order_relaxed) + 1;   // the epoch begin_batch publishes
+    if (groups)
+        for (int group = 0; group < 2; ++group)
+            if (!group_jobs[group]) {
+                const int begin = group ? groups->split : 0, end = group ? nt : groups->split;
+                for (int t = begin; t < end; ++t)
+                    canon_route_sum(results + (size_t)t * top_k * f.n_embd, weights + t * top_k,
+                                    groups->sum[group] + (size_t)(t - begin) * f.n_embd, top_k, f.n_embd, 0, f.n_embd);
+                groups->complete(groups->context, group);
+            }
     mode_ = 8;
     njobs_ = total;
     if (owned) {
         // Each node's queue lists all of its gate/up parts before any down part.
         local_tasks_[0].clear(); local_tasks_[1].clear();
         for (int node = 0; node < 2; ++node) {
-            for (int e = 0; e < n; ++e)
-                for (int part = 0; part < flow_gu_parts_; ++part)
-                    local_tasks_[node].push_back((e * 2 + node) * flow_gu_parts_ + part);
-            for (int e = 0; e < n; ++e)
-                for (int part = 0; part < flow_down_parts_; ++part)
-                    local_tasks_[node].push_back(flow_gu_tasks_ + (e * 2 + node) * flow_down_parts_ + part);
+            for (int stage = 0; stage < (groups ? 2 : 1); ++stage) {
+                auto in_stage = [&](int e) { return !groups || int(!(flow_experts_[e].group_mask & 1u)) == stage; };
+                for (int e = 0; e < n; ++e) if (in_stage(e))
+                    for (int part = 0; part < flow_gu_parts_; ++part)
+                        local_tasks_[node].push_back((e * 2 + node) * flow_gu_parts_ + part);
+                for (int e = 0; e < n; ++e) if (in_stage(e))
+                    for (int part = 0; part < flow_down_parts_; ++part)
+                        local_tasks_[node].push_back(flow_gu_tasks_ + (e * 2 + node) * flow_down_parts_ + part);
+            }
         }
         local_next0_.store(pack_head(flow_tag_, local_tasks_[0].size(), 0), std::memory_order_release);
         local_next1_.store(pack_head(flow_tag_, local_tasks_[1].size(), 0), std::memory_order_release);
@@ -1138,6 +1205,7 @@ void ExpertPool::run_layer_native(const NativeFmt& f, ExpertJobMulti* jobs, int 
     hstate_ms_.store(now_ms(), std::memory_order_relaxed);
     native_owned_phase_ = false; native_local_phase_ = false;
     mode_ = 0;
+    flow_experts_[0].groups = nullptr;
     multi_bytes += (int64_t) n * (int64_t) f.bytes;
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     ms_layer_flow += ms;

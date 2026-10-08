@@ -1,0 +1,36 @@
+{
+  "context": 16384,
+  "prompt_tokens": 14736,
+  "max_output_tokens": 1638,
+  "prompt_sha256": "37d298470d6fb5b77e470bb609849312706223f7d7593b729e0938b01949ce09",
+  "background_records": 83,
+  "fact_positions_approx": {
+    "DEC-001": 53,
+    "DEC-014": 1734,
+    "FIN-028": 3426,
+    "OPS-043": 5278,
+    "SEC-057": 6962,
+    "OWN-069": 8650,
+    "DEC-082": 10505,
+    "CLOSE-096": 12208
+  },
+  "expected": {
+    "final_date": "2031-10-21",
+    "old_date": "2031-09-12",
+    "budget": 480000,
+    "allocations": [
+      180000,
+      210000,
+      90000
+    ],
+    "remaining_crates": 525,
+    "completed_percent": 37.5,
+    "rollback": "below 99.7% for two consecutive daily audits",
+    "rollback_owner": "Mira Solano",
+    "lead": "Tomas Ibarra",
+    "risk": "damp storage; sealed bins and humidity checks",
+    "privacy": "remove visitor names",
+    "phrase": "amber otter lantern",
+    "auditor": "not identified"
+  }
+}

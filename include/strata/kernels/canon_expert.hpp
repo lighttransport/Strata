@@ -18,7 +18,7 @@
 // CUDA translation units must not use --use_fast_math; the CPU one is built with -ffp-contract=off.
 #include <cstdint>
 #include <cstring>
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
 #define STRATA_CANON_FN __device__ __forceinline__
 #define STRATA_CANON_FMA(a, b, c) __fmaf_rn((a), (b), (c))
 #define STRATA_CANON_MUL(a, b) __fmul_rn((a), (b))
@@ -76,7 +76,7 @@ STRATA_CANON_FN float swiglu(float gate, float up, float limit, float skip = 0.f
 
 }  // namespace strata::kernels::canon
 
-#if !defined(__CUDACC__)
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
 namespace strata::kernels::cpu {
 /// Out-of-line canon::swiglu for translation units built with other floating-point flags.
 float canon_swiglu(float gate, float up, float limit, float skip = 0.f);

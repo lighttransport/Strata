@@ -62,7 +62,8 @@ Weights make(int gu_type, int down_type, int hidden, int ff, int count, bool qua
     w.nd = std::make_unique<NumaTensor>(w.d.data(), w.f.d_row, hidden, count, pool.numa_cores());
     return w;
 }
-int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_expert, std::mt19937 &rng) {
+int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_expert, std::mt19937 &rng,
+        bool grouped = false, int resident_tokens = 0) {
     const int K = 8, H = (int)w.f.n_embd;
     w.f.fuse_h_quant = fuse;
     std::vector<int> selected(nt * K);
@@ -71,6 +72,8 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
         for (int e = 0; e < w.count; ++e) pool_ids[e] = e;
         std::shuffle(pool_ids.begin(), pool_ids.end(), rng);
         for (int k = 0; k < K; ++k) selected[t * K + k] = pool_ids[k];
+        if (grouped && ((resident_tokens & 1) && t < nt / 2 || (resident_tokens & 2) && t >= nt / 2))
+            for (int k = 0; k < K; ++k) selected[t * K + k] = skip_expert;
     }
     std::vector<std::vector<uint8_t>> act(nt, std::vector<uint8_t>(w.f.act_bytes));
     std::vector<float> input(H);
@@ -86,7 +89,8 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
         for (int j = 0; j < nt * K; ++j) {
             const int e = selected[j];
             if (e == skip_expert) {
-                std::fill_n(results.data() + (size_t)j * H, H, 0.f);
+                // Stand in for GPU-resident rows with nonzero routing weights.
+                for (int r = 0; r < H; ++r) results[(size_t)j * H + r] = grouped ? float((r + j) % 17 - 8) * .01f : 0.f;
                 continue;
             }
             if (job_of[e] < 0) {
@@ -108,17 +112,37 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
     };
     std::vector<float> masked = weights;
     for (int j = 0; j < nt * K; ++j)
-        if (selected[j] == skip_expert) masked[j] = 0.f;
+        if (!grouped && selected[j] == skip_expert) masked[j] = 0.f;
     std::vector<float> ref_results((size_t)nt * K * H), ref_sum((size_t)nt * H);
     std::vector<ExpertJobMulti> jobs;
     build(ref_results, jobs);
     pool.run_split_multi_native(w.f, jobs.data(), (int)jobs.size());
-    pool.reduce_routed(ref_results.data(), masked.data(), ref_sum.data(), nt, K, H);
+    pool.reduce_routed(ref_results.data(), masked.data(), ref_sum.data(), nt, K, H, w.f.canon);
     for (int repeat = 0; repeat < 6; ++repeat) {
         std::vector<float> results((size_t)nt * K * H, std::numeric_limits<float>::quiet_NaN()),
             sum((size_t)nt * H, std::numeric_limits<float>::quiet_NaN());
         build(results, jobs);
-        pool.run_layer_native(w.f, jobs.data(), (int)jobs.size(), results.data(), masked.data(), sum.data(), nt, K);
+        if (grouped) {
+            std::vector<float> second_sum((size_t)(nt - nt / 2) * H, std::numeric_limits<float>::quiet_NaN());
+            struct Ready {
+                const float *expected; float *actual[2]; int split, nt, hidden;
+                std::atomic<int> calls[2]{}; std::atomic<bool> failed{false};
+            } ready{ref_sum.data(), {sum.data(), second_sum.data()}, nt / 2, nt, H};
+            ExpertPool::LayerGroups groups;
+            groups.split = ready.split; groups.sum[0] = sum.data(); groups.sum[1] = second_sum.data();
+            groups.context = &ready;
+            groups.complete = [](void *context, int group) noexcept {
+                auto &r = *static_cast<Ready *>(context);
+                const int first = group ? r.split : 0, count = group ? r.nt - r.split : r.split;
+                if (std::memcmp(r.expected + (size_t)first * r.hidden, r.actual[group],
+                                (size_t)count * r.hidden * sizeof(float))) r.failed = true;
+                ++r.calls[group];
+            };
+            pool.run_layer_native(w.f, jobs.data(), (int)jobs.size(), results.data(), masked.data(), groups, nt, K);
+            if (ready.failed || ready.calls[0] != 1 || ready.calls[1] != 1)
+                throw std::runtime_error("group published incomplete rows or completed more than once");
+            std::copy(second_sum.begin(), second_sum.end(), sum.begin() + (size_t)ready.split * H);
+        } else pool.run_layer_native(w.f, jobs.data(), (int)jobs.size(), results.data(), masked.data(), sum.data(), nt, K);
         if (std::memcmp(results.data(), ref_results.data(), results.size() * 4) ||
             std::memcmp(sum.data(), ref_sum.data(), sum.size() * 4))
             throw std::runtime_error("layer dataflow differs: owned=" + std::to_string(owned) + " fuse=" +
@@ -146,6 +170,11 @@ int main() {
         for (int nt : {1, 4}) checks += run(pool, iq, true, false, nt, 3, rng);
         q23.view();
         for (int nt : {1, 3}) checks += run(pool, q23, true, true, nt, -1, rng);
+        q23.f.canon = true;
+        for (bool owned : {false, true})
+            for (int nt : {2, 3, 4, 8})
+                for (int resident : {0, 1, 2, 3})
+                    checks += run(pool, q23, owned, owned, nt, 5, rng, true, resident);
         restore_thread_affinity(previous);
         std::cout << "Layer dataflow PASS " << checks << " runs bitwise equal to phased execution\n";
     } catch (const std::exception &e) {

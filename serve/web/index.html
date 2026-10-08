@@ -46,6 +46,11 @@
       </div>
     </div>
     <div class="composer-wrap">
+      <div class="chat-throughput" aria-label="Generation throughput">
+        <span title="Prompt processing; updates after each prefill chunk">PP <strong id="chat-pp">—</strong> tok/s</span>
+        <span title="Token generation; rolling live rate">TG <strong id="chat-tg">—</strong> tok/s</span>
+        <span id="chat-rate-phase">Waiting for a request</span>
+      </div>
       <form class="st-composer" id="composer">
         <div class="attachments" id="attachments" hidden></div>
         <textarea id="input" rows="2" placeholder="Ask anything&hellip;" aria-label="Message"></textarea>
