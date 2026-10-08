@@ -1,0 +1,761 @@
+{
+ "machine": "tr16: Threadripper 1950X, 2 NUMA nodes, 125 GiB DDR4, RTX 5060 Ti 16 GB, PCIe Gen3 x8",
+ "notes": "Numbers copied from docs/*.md and docs/*_measurement.json; 'quiet' rows had no recorded interference. 'fit' rows are used by `glm_sim.py fit`; tolerance is the relative error `validate` accepts.",
+ "records": [
+  {
+   "name": "q2_orig ordinary, no tier",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/glm53_flash_q2_numa_decode_measurement.json coding_control; docs/GLM_Q2_DECODE_REDESIGN.md:666-703",
+   "config": {
+    "pack": "q2_orig",
+    "mtp_depth": 0,
+    "decode_cache_mib": 0,
+    "split_verify": false,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 9.74,
+    "cpu_ms": 72.0,
+    "cpu_gb_per_token": 2.751,
+    "gpu_ms": 24.0
+   }
+  },
+  {
+   "name": "q23 ordinary, static tier 3.5 GiB",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": true,
+   "tolerance": 0.2,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md (13.1 tok/s: CPU 2.88 GB at 55 GB/s, GPU 24 ms)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 0,
+    "decode_cache_mib": 3584,
+    "tier_policy": "static",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 13.1,
+    "cpu_ms": 52.0,
+    "gpu_ms": 24.0
+   }
+  },
+  {
+   "name": "q23 MTP2 split, adaptive 4.8 GiB, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:544 (static 18.0 vs adaptive 21.0 on the same answer); v3 lossless prime 20.6",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "tier_policy": "adaptive",
+    "acceptance": "prime",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 21.0,
+    "range": [
+     20.6,
+     21.0
+    ],
+    "round_ms": 125.0,
+    "cpu_ms": 98.0
+   }
+  },
+  {
+   "name": "q23 MTP2 split, adaptive 4.8 GiB, json_escape",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md v3 lossless (canonical + adaptive 4.8 GiB): json 23.6",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "tier_policy": "adaptive",
+    "acceptance": "json",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 23.6
+   }
+  },
+  {
+   "name": "q23 MTP2 split, static 4.8 GiB, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:544",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "tier_policy": "static",
+    "acceptance": "prime",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 18.0
+   }
+  },
+  {
+   "name": "q23 MTP2 unsplit, static 3.5 GiB, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.25,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md split verify section: unsplit 15.5-15.96 (CPU 130 ms, GPU wait 31.6 ms per round)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 3584,
+    "tier_policy": "static",
+    "acceptance": "prime",
+    "split_verify": false,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 15.8,
+    "range": [
+     15.5,
+     15.96
+    ]
+   }
+  },
+  {
+   "name": "q23 MTP2 split, static 3.5 GiB, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.25,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md split verify section: 17.55-18.30 (CPU 137.5 ms, GPU wait 4.4 ms per round)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 3584,
+    "tier_policy": "static",
+    "acceptance": "prime",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 18.0,
+    "range": [
+     17.55,
+     18.3
+    ]
+   }
+  },
+  {
+   "name": "q23 MTP2 split, affinity 0.02, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:560-574 (GPU share 28.6 %)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "tier_policy": "adaptive",
+    "acceptance": "prime",
+    "affinity": 0.02,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 24.5,
+    "hit_bytes_share": 0.286
+   }
+  },
+  {
+   "name": "q23 MTP2 split, affinity 0.05, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:560-574 (GPU share 37.9 %)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "tier_policy": "adaptive",
+    "acceptance": "prime",
+    "affinity": 0.05,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 25.4,
+    "hit_bytes_share": 0.379
+   }
+  },
+  {
+   "name": "q23 MTP2 split, affinity 0.10, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:560-574 (27.0-28.6; GPU share 52.8 %; GPU becomes the bottleneck)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "tier_policy": "adaptive",
+    "acceptance": "prime",
+    "affinity": 0.1,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 27.8,
+    "range": [
+     27.0,
+     28.6
+    ],
+    "hit_bytes_share": 0.528
+   }
+  },
+  {
+   "name": "q23 MTP2 split, affinity 0.15, prime",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:560-574 (28.1-28.6; CPU experts 49 ms/round, CPU waits 37 ms for the GPU)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "tier_policy": "adaptive",
+    "acceptance": "prime",
+    "affinity": 0.15,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 28.3,
+    "range": [
+     28.1,
+     28.6
+    ],
+    "hit_bytes_share": 0.62
+   }
+  },
+  {
+   "name": "q23 v5 selected, affinity 0.10, 1K/1K",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_SINGLE_OPTIMIZATION.md:280-282; build-q2-v5/selected-performance-1024x1024 (22.14 / 23.10 / 22.57; tier 4908 MiB)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4908,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "affinity": 0.1,
+    "threads": 15,
+    "prompt": 1024,
+    "generate": 1024,
+    "context": 4096
+   },
+   "measured": {
+    "tok_s": 22.57,
+    "range": [
+     22.14,
+     23.1
+    ]
+   }
+  },
+  {
+   "name": "q23 v5 selected, affinity 0.10, 8K/1K",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.2,
+   "source": "build-q2-v5/selected-performance-8192x1024 (20.51 / 21.73 / 20.35)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4908,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "affinity": 0.1,
+    "threads": 15,
+    "prompt": 8192,
+    "generate": 1024,
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 20.86,
+    "range": [
+     20.35,
+     21.73
+    ]
+   }
+  },
+  {
+   "name": "q23 MTP1 lossless, 1K/512 (v11)",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_DUAL_128G_64G.md short table: MTP1 19.243; + prefetch 19.662",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 1,
+    "decode_cache_mib": 4400,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "threads": 15,
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 19.45,
+    "range": [
+     19.24,
+     19.66
+    ],
+    "cpu_gb_per_token": 2.85
+   }
+  },
+  {
+   "name": "q23 MTP2 lossless, 1K/512 (v11)",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.2,
+   "source": "docs/GLM_DUAL_128G_64G.md: NUMA placement after prefill, MTP depth two 17.508",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4400,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "threads": 15,
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 17.51,
+    "cpu_gb_per_token": 3.17
+   }
+  },
+  {
+   "name": "q23 MTP1 lossless, 8K/128 (v11)",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.2,
+   "source": "docs/GLM_DUAL_128G_64G.md long table: 21.231 (guard recorded kernel reclaim)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 1,
+    "decode_cache_mib": 4400,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "threads": 15,
+    "prompt": 8192,
+    "generate": 128,
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 21.23,
+    "cpu_gb_per_token": 2.57
+   }
+  },
+  {
+   "name": "REAP-50 q23 MTP1, Q8 dense, 12K ctx, prefetch",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_DUAL_128G_64G.md: 23.022 / 23.486; docs/glm53_flash_reap50_v10_measurement.json tier 509 slots",
+   "config": {
+    "pack": "reap50_q23",
+    "mtp_depth": 1,
+    "decode_cache_mib": 4421,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "threads": 15,
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 23.25,
+    "range": [
+     23.02,
+     23.49
+    ],
+    "cpu_gb_per_token": 2.32
+   }
+  },
+  {
+   "name": "REAP-50 q23 MTP1, 8K/128",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.2,
+   "source": "docs/GLM_DUAL_128G_64G.md long table: 23.967 (trials 21.03 / 23.97 / 24.59)",
+   "config": {
+    "pack": "reap50_q23",
+    "mtp_depth": 1,
+    "decode_cache_mib": 4421,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "threads": 15,
+    "prompt": 8192,
+    "generate": 128,
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 23.97,
+    "cpu_gb_per_token": 2.15
+   }
+  },
+  {
+   "name": "batch 8 sequences, MTP2 split, affinity 0.05, 1K/1K",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.4,
+   "source": "docs/GLM_BATCH_DECODE.md:142-167 (all-decode 23.43 tok/s aggregate; 2.05 GB CPU bytes per token; tier 2962 MiB)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 2962,
+    "tier_policy": "adaptive",
+    "acceptance": "mixed",
+    "affinity": 0.05,
+    "batch": 8,
+    "threads": 15,
+    "prompt": 1024,
+    "generate": 1024,
+    "context": 2048
+   },
+   "measured": {
+    "tok_s": 23.43,
+    "cpu_gb_per_token": 2.05
+   }
+  },
+  {
+   "name": "64 GB exact (lazy disk fetch), MTP2",
+   "kind": "decode",
+   "hw": "tr16",
+   "hw_set": {
+    "memory.gib": 60
+   },
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.6,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:628-635 (exact lazy 2.4 tok/s from the x4 disk)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "placement": "ram_tier",
+    "ram_mode": "exact",
+    "acceptance": "prime",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 2.4
+   }
+  },
+  {
+   "name": "64 GB frozen 48 GB set, MTP2",
+   "kind": "decode",
+   "hw": "tr16",
+   "hw_set": {
+    "memory.gib": 60
+   },
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:628-635 (frozen set 23 tok/s, 79.8 % top-1)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "placement": "ram_tier",
+    "ram_mode": "frozen",
+    "acceptance": "prime",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 23.0
+   }
+  },
+  {
+   "name": "64 GB hybrid margin 0.10, MTP2",
+   "kind": "decode",
+   "hw": "tr16",
+   "hw_set": {
+    "memory.gib": 60
+   },
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.4,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:628-635 (hybrid 0.10: 15.1 tok/s)",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "decode_cache_mib": 4800,
+    "placement": "ram_tier",
+    "ram_mode": "hybrid",
+    "ram_margin": 0.1,
+    "acceptance": "prime",
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 15.1
+   }
+  },
+  {
+   "name": "remote TP over IB, 75 % local, ordinary, tier 3.5 GiB",
+   "kind": "decode",
+   "hw": "tr16+b550-ib",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.25,
+   "source": "docs/GLM_REMOTE_TP_COMM.md (16.97-17.13 two nodes vs 11.71-12.63 single; tr16 load 6-13)",
+   "config": {
+    "pack": "reap50_q23",
+    "mtp_depth": 0,
+    "decode_cache_mib": 3584,
+    "tier_policy": "static",
+    "remote_share": 0.25,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 17.05,
+    "range": [
+     16.97,
+     17.13
+    ]
+   }
+  },
+  {
+   "name": "remote TP over IB, 50 % local, ordinary",
+   "kind": "decode",
+   "hw": "tr16+b550-ib",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/GLM_REMOTE_TP_COMM.md (b550 is the long pole: 9.4-9.6 tok/s)",
+   "config": {
+    "pack": "reap50_q23",
+    "mtp_depth": 0,
+    "decode_cache_mib": 3584,
+    "tier_policy": "static",
+    "remote_share": 0.5,
+    "threads": 15
+   },
+   "measured": {
+    "tok_s": 9.5,
+    "range": [
+     9.4,
+     9.6
+    ]
+   }
+  },
+  {
+   "name": "prefill q23, 1K prompt, chunk 1024, prefetch",
+   "kind": "prefill",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "build-q2-v5/selected-performance-1024x1024 (66.05); docs/GLM_DUAL_128G_64G.md 65.9",
+   "config": {
+    "pack": "q23",
+    "prompt": 1024,
+    "prefill_chunk": 1024,
+    "prefetch_groups": 8,
+    "context": 4096
+   },
+   "measured": {
+    "tok_s": 66.0
+   }
+  },
+  {
+   "name": "prefill q23, 8K prompt, chunk 8192, prefetch 12",
+   "kind": "prefill",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_SINGLE_OPTIMIZATION.md:259-262 P11 402-403; v5 selected 385-399",
+   "config": {
+    "pack": "q23",
+    "prompt": 8192,
+    "prefill_chunk": 8192,
+    "prefetch_groups": 12,
+    "context": 12288,
+    "prefill_scratch_mib": 2048
+   },
+   "measured": {
+    "tok_s": 395.0,
+    "range": [
+     385.0,
+     403.0
+    ]
+   }
+  },
+  {
+   "name": "prefill REAP-50 q23, 1K prompt, chunk 1024",
+   "kind": "prefill",
+   "hw": "tr16",
+   "hw_set": {
+    "memory.gib": 60
+   },
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.25,
+   "source": "docs/GLM_DUAL_128G_64G.md: 102.5-103 (60 GiB cgroup)",
+   "config": {
+    "pack": "reap50_q23",
+    "prompt": 1024,
+    "prefill_chunk": 1024,
+    "prefetch_groups": 8,
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 102.7
+   }
+  },
+  {
+   "name": "prefill REAP-50 q23, 8K prompt, chunk 8192",
+   "kind": "prefill",
+   "hw": "tr16",
+   "hw_set": {
+    "memory.gib": 60
+   },
+   "quiet": true,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "docs/GLM_DUAL_128G_64G.md: 405-410",
+   "config": {
+    "pack": "reap50_q23",
+    "prompt": 8192,
+    "prefill_chunk": 8192,
+    "prefetch_groups": 8,
+    "context": 12288,
+    "prefill_scratch_mib": 2048
+   },
+   "measured": {
+    "tok_s": 407.4,
+    "range": [
+     405.0,
+     410.0
+    ]
+   }
+  },
+  {
+   "name": "prefill q23 (older code: no prefetch, FP32 MLA), chunk 2048",
+   "kind": "prefill",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:592-606 (89 tok/s; code state before the P-series optimizations)",
+   "config": {
+    "pack": "q23",
+    "prompt": 7807,
+    "prefill_chunk": 2048,
+    "prefetch_groups": 0,
+    "context": 12288,
+    "prefill_legacy": true
+   },
+   "measured": {
+    "tok_s": 89.0
+   }
+  },
+  {
+   "name": "prefill q23 (older code), chunk 4096",
+   "kind": "prefill",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:592-606 (153 tok/s)",
+   "config": {
+    "pack": "q23",
+    "prompt": 7807,
+    "prefill_chunk": 4096,
+    "prefetch_groups": 0,
+    "context": 12288,
+    "prefill_legacy": true
+   },
+   "measured": {
+    "tok_s": 153.0
+   }
+  },
+  {
+   "name": "prefill q23 (older code), chunk 8192",
+   "kind": "prefill",
+   "hw": "tr16",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/GLM_Q2_DECODE_REDESIGN.md:592-606 (220 tok/s)",
+   "config": {
+    "pack": "q23",
+    "prompt": 7807,
+    "prefill_chunk": 8192,
+    "prefetch_groups": 0,
+    "context": 12288,
+    "prefill_legacy": true
+   },
+   "measured": {
+    "tok_s": 220.0
+   }
+  },
+  {
+   "name": "prefill q23, 64 GB lazy (SSD), 1K",
+   "kind": "prefill",
+   "hw": "tr16",
+   "hw_set": {
+    "memory.gib": 60
+   },
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.4,
+   "source": "docs/glm53_flash_64g_16g_safe_measurement.json (13.48 tok/s, staging 76.6 of 78.7 s)",
+   "config": {
+    "pack": "q23",
+    "prompt": 1024,
+    "prefill_chunk": 1024,
+    "prefetch_groups": 8,
+    "placement": "ram_tier",
+    "ram_mode": "exact",
+    "context": 12288
+   },
+   "measured": {
+    "tok_s": 13.48
+   }
+  }
+ ]
+}

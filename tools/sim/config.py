@@ -1,0 +1,56 @@
+"""Run configuration: the engine knobs the simulator understands (names follow configs/glm53f-*.json)."""
+import dataclasses
+
+
+@dataclasses.dataclass
+class RunConfig:
+    pack: str = "q23"
+    threads: int = 0                   # expert workers; 0 = physical cores minus one (host thread)
+    context: int = 4096
+    prompt: int = 1024
+    generate: int = 512
+    speculation: str = "mtp"           # none | mtp (GLM's own draft block, sequential) | dflash (block-diffusion drafter)
+    mtp_depth: int = 2                 # mtp: drafts per round; 0 = ordinary greedy decode
+    acceptance: str = "mixed"          # mtp: routing.ACCEPTANCE profile
+    draft_block: int = 8               # dflash: verify width per round (block of 7 drafts + anchor), DFlash2 default 8
+    draft_acceptance: str = "dflash_code"  # dflash: routing.ACCEPTANCE profile (dflash_chat / dflash_code / dflash_math)
+    draft_model_mib: float = 1536      # dflash: drafter weights resident on the GPU (read once per round)
+    draft_layers: int = 5              # dflash: drafter depth (launch overhead per forward)
+    max_verify_width: int = 8          # engine cap on tokens per step (cpu::MAXT = 8); raise to explore
+    expert_skip: float = 0.0           # share of routed expert bytes skipped by gate thresholds (lossy)
+    dense_format: str = "q8"           # GPU copies of the fixed weights: q8 (default) | orig (Q5_K/Q6_K) | q4 (lossy)
+    split_verify: bool = True          # STRATA_GLM_SPLIT_VERIFY (needs mtp_depth >= 1)
+    skip_anchor: bool = True           # STRATA_GLM_MTP_SKIP_ANCHOR
+    decode_cache_mib: float = -1       # GPU expert tier; -1 = fill what the budget leaves, 0 = none
+    tier_policy: str = "adaptive"      # static | adaptive (STRATA_GLM_TIER_ADAPT)
+    affinity: float = 0.0              # STRATA_GLM_ROUTE_AFFINITY (lossy above 0)
+    gpu_draft_experts: bool = False    # draft experts on the GPU (forced to CPU when a tier exists)
+    gpu_budget_mib: float = 0          # --gpu-budget-mib; 0 = usable VRAM minus desktop
+    reserve_mib: float = 512           # STRATA_GLM_GPU_RESERVE_MIB
+    prefill_scratch_mib: float = 1024  # STRATA_GLM_PREFILL_SCRATCH_CAP_MIB
+    prefill_chunk: int = 4096          # prefill_batch
+    prefetch_groups: int = 8           # STRATA_GLM_STAGE_PREFETCH groups; 0 = off
+    prefill_expert_cache_mib: float = 0
+    prefill_legacy: bool = False        # code state before the P-series prefill work (FP32 MLA, no dequant-once)
+    batch: int = 1                     # independent sequences decoded per step (<= 8)
+    placement: str = "cpu"             # cpu | gpu_stream (decode_experts=gpu) | ram_tier (64 GB modes)
+    ram_mode: str = "exact"            # ram_tier: exact | frozen | hybrid
+    ram_margin: float = 0.10           # hybrid routing margin
+    ram_expert_gib: float = 0          # RAM budget for experts in ram_tier; 0 = what hw.memory leaves
+    remote_share: float = 0.0          # share of each expert's rows computed by hw.remote (0.25/0.5/0.75)
+    remote_reply: str = "f16"
+    gpus: int = 1
+    trace: str = ""                    # optional routing trace CSV for exact union / hit rates
+    prior: str = ""                    # coverage.json for trace replay
+    numa_placement: bool = True
+
+    def copy(self, **changes):
+        return dataclasses.replace(self, **changes)
+
+    @classmethod
+    def from_dict(cls, data):
+        names = {f.name for f in dataclasses.fields(cls)}
+        unknown = set(data) - names
+        if unknown:
+            raise ValueError(f"unknown config keys: {sorted(unknown)}")
+        return cls(**data)
