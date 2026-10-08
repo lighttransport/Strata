@@ -30,6 +30,7 @@ class Params:
     prefill_group_fixed_ms: float = 0.73     # per group: staging handoff, gather/scatter launches
     prefill_layer_fixed_ms: float = 30.8     # per MoE layer: router, hc, norms, events
     prefill_dense_us: float = 0.62      # dense layers and head per token
+    prefill_mla_pos_us: float = 0.5    # MLA prefill cost per token per 1k tokens of position (guess; indexer top-2048 caps it)
     prefill_lazy_gain: float = 1.0     # SSD reads overlap with PCIe this much (1 = fully serialized)
     ram_tier_wait_ms: float = 1.5      # exposed wait per disk-fetched expert on top of its bytes
     prefetch_accuracy: float = 0.9     # share of predicted next-layer routes that are right (FATE: 97 %, DraftExpert: 86-88 %)

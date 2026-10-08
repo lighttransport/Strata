@@ -54,6 +54,6 @@ def estimate_kl(cfg):
         parts["ram_hybrid"] = _interp(AFFINITY, cfg.ram_margin) * 0.5
     if cfg.cold_share > 0:
         parts["cold_experts"] = 0.08 * cfg.cold_share * (1 - cfg.cold_scale) / 0.4   # guess: IQ1-class cold experts
-    if cfg.speculation == "selfspec" and cfg.tail_affinity == 0:
-        pass
+    if cfg.cold_layers > 0:
+        parts["cold_layers"] = 0.08 * (cfg.cold_layers / 42) * (1 - cfg.cold_scale) / 0.4   # guess, same rate as cold experts
     return sum(parts.values()), parts

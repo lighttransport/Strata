@@ -113,7 +113,7 @@ def ram_hit_share(hw, cfg, pack, curve=None):
     curve = curve or routing.TierCurve()
     expert_gib = cfg.ram_expert_gib or max(0.0, hw.memory.gib - 6.0 - 0.04 * cfg.context / 1024)
     # with remote TP the worker keeps its share of every expert's rows in its own RAM
-    total_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share) * (1 - cfg.cold_share * (1 - cfg.cold_scale))
+    total_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share) * (1 - cfg.cold_share * (1 - cfg.cold_scale)) * (1 - min(1.0, cfg.cold_layers / GEOMETRY.moe_layers) * (1 - cfg.cold_scale))
     if expert_gib >= total_gib or cfg.ram_mode == "frozen":
         return 1.0, expert_gib
     h = curve.hit(expert_gib / total_gib, policy="adaptive", skew=pack.skew)
@@ -183,6 +183,8 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
         # routes to the coldest experts (by prior) carry cold_scale bytes; hot share of routes from the tier curve
         hot_routes = routing.TierCurve().hit(1 - cfg.cold_share, "static_prior", skew=pack.skew)
         cold_factor = hot_routes + (1 - hot_routes) * cfg.cold_scale
+    if cfg.cold_layers > 0:
+        cold_factor *= 1 - min(1.0, cfg.cold_layers / g.moe_layers) * (1 - cfg.cold_scale)
     keep = 1.0 - cfg.expert_skip
     for layer in range(g.layers):
         fixed = model.layer_fixed_bytes(layer) * dense_scale
@@ -370,7 +372,7 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
     if cfg.placement == "gpu_stream":
         plan = dataclasses.replace(plan, slots=0, tier_mib=0.0)
     hit = tier_hit_share(hw, cfg, pack, plan, params, trace=trace, prior=prior)
-    local_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share) * (1 - cfg.cold_share * (1 - cfg.cold_scale))
+    local_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share) * (1 - cfg.cold_share * (1 - cfg.cold_scale)) * (1 - min(1.0, cfg.cold_layers / GEOMETRY.moe_layers) * (1 - cfg.cold_scale))
     if cfg.placement == "cpu" and local_gib + 7 > hw.memory.gib + hw.memory.page_cache_gib:
         notes.append(f"local expert rows ({local_gib:.1f} GiB) do not fit host RAM; use placement=ram_tier")
     if cfg.remote_share > 0 and hw.remote.ram_gib and pack.routed_total_bytes() / 2 ** 30 * cfg.remote_share + 2 > hw.remote.ram_gib:
@@ -381,8 +383,14 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
     lossless = (cfg.affinity == 0 and not (cfg.placement == "ram_tier" and cfg.ram_mode != "exact")
                 and not pack.name.startswith("reap") and cfg.expert_skip == 0 and cfg.tier_compress <= 1.0
                 and model.DENSE_FORMATS[cfg.dense_format]["lossless"] and not cfg.expert_deferral
-                and cfg.spec_tail_topk >= GEOMETRY.top_k and cfg.tail_affinity == 0 and cfg.cold_share == 0)
+                and cfg.spec_tail_topk >= GEOMETRY.top_k and cfg.tail_affinity == 0 and cfg.cold_share == 0 and cfg.cold_layers == 0)
     depth = spec_depth(cfg)
+    if cfg.batch > 1 and depth > 0 and cfg.batch_mtp:
+        # all rows' windows share one step of at most max_verify_width tokens
+        capped = max(0, cfg.max_verify_width // cfg.batch - 1)
+        if capped < depth:
+            notes.append(f"batched windows: draft depth {depth} -> {capped} per row (step cap {cfg.max_verify_width})")
+            depth = capped
     if cfg.adaptive_window and depth >= 2:
         # drafts stop at low confidence: of the positions that would be rejected, truncation_efficiency are never
         # drafted, so the verify window is shorter while the accepted tokens stay (lossless)

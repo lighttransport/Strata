@@ -472,6 +472,36 @@ class RemainingItemsTest(unittest.TestCase):
         self.assertIn("pack", out.getvalue())
 
 
+class LastItemsTest(unittest.TestCase):
+    def setUp(self):
+        self.H = hw.tr16(); self.params = kernels.Params()
+
+    def test_batched_windows_capped(self):
+        d = decode.simulate(self.H, RunConfig(pack="q22", mtp_depth=3, batch=4), self.params)
+        self.assertEqual(d.step.width, 2)
+        self.assertTrue(any("batched windows" in n for n in d.notes))
+
+    def test_prefill_position_cost_grows(self):
+        cfg = RunConfig(pack="q23", prefill_chunk=4096, prefetch_groups=0, context=40000)
+        short = prefill.simulate(self.H, cfg.copy(prompt=4096), self.params).tok_s
+        long = prefill.simulate(self.H, cfg.copy(prompt=32768), self.params).tok_s
+        self.assertLess(long, short)
+
+    def test_prefill_cache_cuts_uploads(self):
+        cfg = RunConfig(pack="q23", prompt=1024, prefill_chunk=1024)
+        a = prefill.simulate(self.H, cfg, self.params)
+        b = prefill.simulate(self.H, cfg.copy(prefill_expert_cache_mib=4096), self.params)
+        self.assertLess(b.pcie_gb_per_chunk, a.pcie_gb_per_chunk)
+        self.assertGreater(b.tok_s, a.tok_s)
+
+    def test_cold_layers(self):
+        cfg = RunConfig(pack="q23", mtp_depth=2)
+        a = decode.simulate(self.H, cfg, self.params)
+        b = decode.simulate(self.H, cfg.copy(cold_layers=14), self.params)
+        self.assertGreater(b.tok_s, a.tok_s)
+        self.assertFalse(b.lossless)
+
+
 class CliTest(unittest.TestCase):
     def run_cli(self, *argv):
         out = io.StringIO()

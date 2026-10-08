@@ -43,11 +43,12 @@ def groups_touched(chunk, experts, group=16, top_k=8):
 REFERENCE_GPU = dict(tflops=47.0, bandwidth_gbps=448.0)   # the terms below were fitted on the RTX 5060 Ti
 
 
-def _mixer_ms(hw, cfg, params, layer, tokens):
+def _mixer_ms(hw, cfg, params, layer, tokens, position=0):
     # the mixers are bandwidth- and latency-bound kernels: scale with the card's memory bandwidth
     scale = REFERENCE_GPU["bandwidth_gbps"] / max(1.0, hw.gpu.bandwidth_gbps)
     if layer in GEOMETRY.mla_layers:
         us = params.prefill_mla_us * (params.prefill_mla_f16_factor if cfg.prefill_mla_f16 else 1.0)
+        us += params.prefill_mla_pos_us * (position + tokens / 2) / 1024
     else:
         us = params.prefill_kda_us * (params.prefill_kda_parts_factor if cfg.prefill_kda_parts else 1.0)
     return tokens * us * 1e-3 * scale + params.prefill_layer_fixed_ms
@@ -73,7 +74,7 @@ def _cpu_expert_ms(hw, cfg, params, pack, layer, tokens, ram_fraction=1.0):
     return ms
 
 
-def chunk_seconds(hw, cfg, params, pack, chunk, ram_fraction=1.0):
+def chunk_seconds(hw, cfg, params, pack, chunk, ram_fraction=1.0, position=0):
     g = GEOMETRY
     groups_per_layer = pack.experts / 16
     touched = groups_touched(chunk, pack.experts)
@@ -86,6 +87,9 @@ def chunk_seconds(hw, cfg, params, pack, chunk, ram_fraction=1.0):
         cpu_est = sum(_cpu_expert_ms(hw, cfg, params, pack, l, chunk, ram_fraction) for l in g.moe_layer_ids())
         experts = "cpu" if cpu_est < gpu_est else "gpu"
 
+    # prefill expert cache: resident groups (most-routed first) skip the upload; above ~64 tokens every group is
+    # touched, so the saving is the cached share of the pack's bytes
+    cached_share = min(1.0, cfg.prefill_expert_cache_mib * 2 ** 20 / max(1.0, pack.routed_total_bytes()))
     pcie_bytes = 0.0
     pcie_ms = disk_ms = gemm_ms = mixer_ms = cpu_ms = 0.0
     total_ms = 0.0
@@ -96,18 +100,18 @@ def chunk_seconds(hw, cfg, params, pack, chunk, ram_fraction=1.0):
         upload_s = groups * g.moe_layers * kernels.pcie_ms(hw, group_bytes) / 1e3 / gpus
         cpu_tokens = int(min(chunk // 2, upload_s * rate * 0.8))
     for layer in g.moe_layer_ids():
-        mixer = _mixer_ms(hw, cfg, params, layer, chunk)
+        mixer = _mixer_ms(hw, cfg, params, layer, chunk, position)
         mixer_ms += mixer
         if experts == "cpu":
             cpu = _cpu_expert_ms(hw, cfg, params, pack, layer, chunk, ram_fraction)
             cpu_ms += cpu
             total_ms += mixer + cpu + kernels.handoff_ms(hw)
             continue
-        per_group = kernels.pcie_ms(hw, group_bytes) / gpus
+        per_group = kernels.pcie_ms(hw, group_bytes) / gpus * (1 - cached_share)
         if ram_fraction < 1.0:
             per_group += kernels.disk_ms(hw, group_bytes * (1 - ram_fraction)) * params.prefill_lazy_gain / gpus
         uploads = groups * per_group
-        pcie_bytes += groups * group_bytes
+        pcie_bytes += groups * group_bytes * (1 - cached_share)
         pcie_ms += uploads
         gemm = _gemm_ms(hw, cfg, params, chunk - cpu_tokens, groups) / gpus
         gemm_ms += gemm
@@ -153,7 +157,7 @@ def simulate(hw, cfg, params=None):
     last = None
     for i in range(chunks):
         tokens = min(chunk, cfg.prompt - i * chunk)
-        last = chunk_seconds(hw, cfg, params, pack, tokens, ram_fraction)
+        last = chunk_seconds(hw, cfg, params, pack, tokens, ram_fraction, i * chunk)
         total += last["seconds"]
     return PrefillResult(tok_s=cfg.prompt / total, total_s=total, chunks=chunks, chunk_tokens=chunk,
                          pcie_gb_per_chunk=last["pcie_bytes"] / 1e9, pcie_s_per_chunk=last["pcie_s"],

@@ -79,6 +79,8 @@ def add_config_args(ap, sweep=False):
     opt("--cost-aware-drafts", "cost_aware_drafts", help="1 = EcoSpec-style draft choice that reuses active experts")
     opt("--draft-prefetch", "draft_prefetch", help="1 = fetch RAM-tier misses a round ahead from the drafts' routes")
     opt("--cold-share", "cold_share", help="share of experts (coldest) stored in a smaller format (lossy)")
+    opt("--cold-layers", "cold_layers", help="MoE layers stored at --cold-scale (per-layer bit budget)")
+    opt("--batch-mtp", "batch_mtp", help="1 = rows' draft windows share one step capped at --max-verify-width")
     opt("--cold-scale", "cold_scale", help="cold expert bytes relative to the pack format")
     opt("--tail-affinity", "tail_affinity", help="route affinity for draft positions >= 2 only (lossy)")
     opt("--tier-compress", "tier_compress", help="GPU tier expert format density: slots x this (lossy above 1)")
@@ -116,7 +118,7 @@ def config_from_args(args, **overrides):
     data = {name: getattr(args, name) for name in CONFIG_FIELDS if hasattr(args, name)}
     data.update(overrides)
     for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral", "adaptive_window",
-                "prefill_mla_f16", "prefill_kda_parts", "prefill_cpu_assist", "cost_aware_drafts", "draft_prefetch"):
+                "prefill_mla_f16", "prefill_kda_parts", "prefill_cpu_assist", "cost_aware_drafts", "draft_prefetch", "batch_mtp"):
         if key in data:
             data[key] = bool(data[key])
     return RunConfig.from_dict(data)

@@ -33,6 +33,8 @@ class RunConfig:
     cost_aware_drafts: bool = False    # EcoSpec: prefer draft tokens whose experts the window already uses (lossless)
     draft_prefetch: bool = False       # drafts' routes known a round ahead: RAM-tier disk fetches overlap the CPU pass
     cold_share: float = 0.0            # share of experts (coldest by prior) stored in a smaller format (lossy)
+    cold_layers: int = 0               # MoE layers stored at cold_scale (per-layer bit budget; lossy)
+    batch_mtp: bool = True             # STRATA_GLM_BATCH_MTP: all rows' windows share one step capped at max_verify_width
     cold_scale: float = 0.6            # bytes of a cold expert relative to the pack's format (0.6: ~1.6 bpw)
     tail_affinity: float = 0.0         # route affinity applied only to draft positions >= 2 (our variant: the
                                        # routing bias lands on the tokens most likely to be rejected anyway)

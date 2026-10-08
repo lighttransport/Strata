@@ -114,6 +114,11 @@ format; the lever that fits q23 into 64 GB: 3.5 -> 21 tok/s at 70 % cold, lossy,
 `estimate --mc N` (p10/p50/p90 over parameter ranges) and `plan --pareto` (configurations no other beats on decode,
 prefill and KL together).
 
+**Last items**: batched draft windows share one step capped at `--max-verify-width` (`--batch-mtp`, on by
+default: 4 rows get depth 1 each), MLA prefill cost grows with position (`prefill_mla_pos_us`, a guess), the
+prefill expert cache skips its share of the uploads, and `--cold-layers n` stores n MoE layers at `--cold-scale`
+(per-layer bit budget, lossy).
+
 **Architecture knobs for what-ifs**: `--pcie-share` streams a share of each layer's non-resident experts over
 PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores resident experts in a denser format
 (more slots, lossy); `--param name=value` overrides any calibrated parameter (for example
