@@ -1660,3 +1660,49 @@ if(STRATA_HIP_GFX906)
   endif()
   set_source_files_properties(${_strata_cu} PROPERTIES LANGUAGE HIP)
 endif()
+
+# GLM-5.3-Flash regression tests (tools/glm_regression.py, tests/glm/regression.json).
+#   ctest -L "^glm$"        kernel and logic tests on synthetic data (seconds; -L is a regex, plain "glm" selects all)
+#   ctest -L glm_model      (cmake -DSTRATA_GLM_MODEL_TESTS=ON) short-context decode against golden tokens, decoder self-checks, model parity (~3 min)
+#   ctest -L glm_quality    held-out KL / top-1 / perplexity gate (~10 min after weight load)
+# Model tests exit 77 (skipped) when the model files are missing; they share one lock so the weights are never
+# loaded twice at once.
+if(STRATA_BUILD_TESTS)
+  foreach(_glm_test glm_parity glm_prefill_parity glm_kda_column_tiles_parity glm_q23_parity glm_mailbox_test
+                    glm_q8_test prefill_mmq_q23_test q23_test q23_pool_test canon_expert_test flow_pool_test numa_pool_test)
+    if(TEST ${_glm_test})
+      set_property(TEST ${_glm_test} APPEND PROPERTY LABELS glm)
+    endif()
+  endforeach()
+  find_package(Python3 QUIET COMPONENTS Interpreter)
+  option(STRATA_GLM_MODEL_TESTS "Register the GLM-5.3-Flash model regression tests (need the model files; ~15 min)" OFF)
+  if(TARGET strata-glm-decode AND Python3_Interpreter_FOUND)
+    add_test(NAME glm_regression_unit
+             COMMAND ${Python3_EXECUTABLE} -m unittest test_glm_regression
+             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+    set_tests_properties(glm_regression_unit PROPERTIES LABELS glm TIMEOUT 120)
+  endif()
+  if(TARGET strata-glm-decode AND Python3_Interpreter_FOUND AND STRATA_GLM_MODEL_TESTS)
+    foreach(_glm_case decode check_replay check_verify check_decode_graphs mtp_split_verify mtp_adaptive_tier)
+      add_test(NAME glm_model_${_glm_case}
+               COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/glm_regression.py case ${_glm_case}
+                       --decoder $<TARGET_FILE:strata-glm-decode>)
+      set_tests_properties(glm_model_${_glm_case} PROPERTIES LABELS glm_model TIMEOUT 900 SKIP_RETURN_CODE 77
+                           RESOURCE_LOCK glm_weights)
+    endforeach()
+    foreach(_glm_parity glm_native_expert_parity glm_quant_parity glm_cache_parity)
+      if(TARGET ${_glm_parity})
+        add_test(NAME glm_model_${_glm_parity}
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/glm_regression.py parity ${_glm_parity}
+                         --bindir $<TARGET_FILE_DIR:${_glm_parity}>)
+        set_tests_properties(glm_model_${_glm_parity} PROPERTIES LABELS glm_model TIMEOUT 600 SKIP_RETURN_CODE 77
+                             RESOURCE_LOCK glm_weights)
+      endif()
+    endforeach()
+    add_test(NAME glm_quality_gate
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/glm_regression.py quality
+                     --decoder $<TARGET_FILE:strata-glm-decode>)
+    set_tests_properties(glm_quality_gate PROPERTIES LABELS glm_quality TIMEOUT 1800 SKIP_RETURN_CODE 77
+                         RESOURCE_LOCK glm_weights)
+  endif()
+endif()

@@ -1,0 +1,181 @@
+{
+ "description": "GLM-5.3-Flash model regression tests (tools/glm_regression.py). Paths can be overridden with STRATA_GLM_TEST_MODEL, STRATA_GLM_TEST_PACK, STRATA_GLM_TEST_EVAL_REFERENCE; tests exit 77 (skipped) when the files are missing.",
+ "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+ "pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+ "env": {
+  "STRATA_GLM_MAPPED_OWNED": "1",
+  "STRATA_GLM_MAPPED_LAZY": "1",
+  "STRATA_GLM_STEP_PIPELINE": "1",
+  "STRATA_GLM_CANON": "1",
+  "STRATA_POOL_SPIN_US": "20000"
+ },
+ "short_context": {
+  "prompt_source": "first 48 tokens of build-q2-v2/quality/evaluation1.ids",
+  "prompt": [
+   154822,
+   8700,
+   7063,
+   8748,
+   14348,
+   10130,
+   18,
+   198,
+   12593,
+   2580,
+   459,
+   28331,
+   32262,
+   320,
+   443,
+   31012,
+   3119,
+   11,
+   8574,
+   220,
+   16,
+   3019,
+   220,
+   16,
+   13,
+   17,
+   3593,
+   12474,
+   82,
+   279,
+   41494,
+   1714,
+   320,
+   26936,
+   76557,
+   14,
+   115937,
+   21,
+   12,
+   100614,
+   12,
+   99869,
+   29487,
+   12,
+   15,
+   98965,
+   19,
+   1648
+  ],
+  "steps": 16,
+  "args": [
+   "4096",
+   "15",
+   "--context=2048",
+   "--prefill-batch=64",
+   "--gpu-budget-mib=10240",
+   "--cpu-affinity=numa",
+   "--decode-graphs"
+  ],
+  "golden": [
+   220,
+   20,
+   19021,
+   345,
+   99064,
+   10572,
+   1817,
+   11,
+   220,
+   18,
+   50598,
+   817,
+   2484,
+   11,
+   220,
+   17
+  ],
+  "golden_note": "greedy canonical decode on tr16 2026-10-09 (glm53f after the 0.1.41 merge); identical with replay, verify, decode-graph checks, MTP2 split verify and an adaptive 2 GiB tier",
+  "cases": {
+   "decode": {
+    "flags": []
+   },
+   "check_replay": {
+    "flags": [
+     "--check-replay"
+    ]
+   },
+   "check_verify": {
+    "flags": [
+     "--check-verify"
+    ]
+   },
+   "check_decode_graphs": {
+    "flags": [
+     "--check-decode-graphs"
+    ]
+   },
+   "mtp_split_verify": {
+    "flags": [
+     "--speculative=mtp",
+     "--draft-depth=2",
+     "--mtp-experts=cpu"
+    ],
+    "env": {
+     "STRATA_GLM_SPLIT_VERIFY": "1"
+    }
+   },
+   "mtp_adaptive_tier": {
+    "flags": [
+     "--speculative=mtp",
+     "--draft-depth=2",
+     "--mtp-experts=cpu",
+     "--decode-cache-mib=2048"
+    ],
+    "env": {
+     "STRATA_GLM_SPLIT_VERIFY": "1",
+     "STRATA_GLM_TIER_ADAPT": "1"
+    }
+   }
+  },
+  "known_failures": {
+   "check_prefill": "batched GPU prefill KDA state differs from sequential by 11-14 % relative L2 (limit 2 %) in 124 buffers; same with the pre-merge e5 decoder; greedy token equal"
+  }
+ },
+ "parity": {
+  "glm_native_expert_parity": [],
+  "glm_quant_parity": [],
+  "glm_cache_parity": []
+ },
+ "quality": {
+  "corpus": "build-q2-v2/quality/evaluation16.ids",
+  "reference": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits",
+  "args": [
+   "0",
+   "1",
+   "4096",
+   "15",
+   "--context=8192",
+   "--prefill-batch=256",
+   "--gpu-budget-mib=12288",
+   "--cpu-affinity=numa",
+   "--decode-graphs"
+  ],
+  "env": {
+   "STRATA_GLM_QUANT_ONCE": "1",
+   "STRATA_GLM_LAYER_FLOW": "1",
+   "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+   "STRATA_GLM_Q8_DECODE": "1"
+  },
+  "baseline": {
+   "tokens": 8192,
+   "kl": 0.136671986559,
+   "top1_agreement": 0.876831054688,
+   "perplexity": 4.82544736674,
+   "nll": 1.57390344899,
+   "recorded": "2026-10-09",
+   "build": "glm53f after the upstream 0.1.41 merge (b6e9919f + uncommitted engine work); 523 s on tr16; matches the documented q23 0.137 / 87.7 % / 4.825"
+  },
+  "tolerance": {
+   "kl_abs": 0.003,
+   "kl_rel": 0.03,
+   "top1_abs": 0.005,
+   "ppl_rel": 0.01
+  },
+  "note": "baseline is the q23 pack in canonical mode over the 16 held-out sequences; the reference file holds more sequences than the corpus, so the decoder's 'trailing evaluation baseline records' exit is expected"
+ }
+}
