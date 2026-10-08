@@ -119,6 +119,12 @@ default: 4 rows get depth 1 each), MLA prefill cost grows with position (`prefil
 prefill expert cache skips its share of the uploads, and `--cold-layers n` stores n MoE layers at `--cold-scale`
 (per-layer bit budget, lossy).
 
+**From upstream Strata 0.1.41** (Qwen engine; the GLM engine is unchanged by the merge): `--affinity-rank-lo r`
+models `STRATA_ROUTE_RESIDENT` with `_RANKS=r-...`: only the routes ranked r and below may move to a resident
+expert, so the hit gain and the quality cost scale with the eligible share (3/8 of GLM's routes for ranks 6-8).
+Foresight swap (`STRATA_FS_SLOTS`, router look-ahead refilling per-layer VRAM slots) is the same mechanism as
+`--pcie-prefetch`, and the CPU prefill share is `--prefill-cpu-assist`.
+
 **Architecture knobs for what-ifs**: `--pcie-share` streams a share of each layer's non-resident experts over
 PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores resident experts in a denser format
 (more slots, lossy); `--param name=value` overrides any calibrated parameter (for example

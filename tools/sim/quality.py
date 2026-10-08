@@ -36,6 +36,9 @@ def estimate_kl(cfg):
     parts = {"pack": BASE.get(cfg.pack, 0.15)}
     if cfg.affinity > 0:
         parts["affinity"] = _interp(AFFINITY, cfg.affinity)
+        if cfg.affinity_rank_lo > 1:
+            # the eligible routes are the lowest-weight ones: their share of routes, at half the per-route cost (guess)
+            parts["affinity"] *= 0.5 * max(0, 8 - cfg.affinity_rank_lo + 1) / 8
     if cfg.tail_affinity > cfg.affinity:
         parts["tail_affinity"] = 0.5 * (_interp(AFFINITY, cfg.tail_affinity) - _interp(AFFINITY, cfg.affinity))
     if cfg.expert_skip > 0:

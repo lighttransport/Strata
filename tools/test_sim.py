@@ -502,6 +502,20 @@ class LastItemsTest(unittest.TestCase):
         self.assertFalse(b.lossless)
 
 
+class RankLimitedAffinityTest(unittest.TestCase):
+    def test_between_none_and_full(self):
+        import quality
+        H = hw.tr16(); params = kernels.Params()
+        cfg = RunConfig(pack="q22", mtp_depth=3, acceptance="prime")
+        none = decode.simulate(H, cfg, params)
+        full = decode.simulate(H, cfg.copy(affinity=0.15), params)
+        ranks = decode.simulate(H, cfg.copy(affinity=0.15, affinity_rank_lo=6), params)
+        self.assertGreater(ranks.hit_bytes_share, none.hit_bytes_share)
+        self.assertLess(ranks.hit_bytes_share, full.hit_bytes_share)
+        self.assertLess(quality.estimate_kl(cfg.copy(affinity=0.15, affinity_rank_lo=6))[0],
+                        quality.estimate_kl(cfg.copy(affinity=0.15))[0])
+
+
 class CliTest(unittest.TestCase):
     def run_cli(self, *argv):
         out = io.StringIO()

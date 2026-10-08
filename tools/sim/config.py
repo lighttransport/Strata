@@ -36,6 +36,8 @@ class RunConfig:
     cold_layers: int = 0               # MoE layers stored at cold_scale (per-layer bit budget; lossy)
     batch_mtp: bool = True             # STRATA_GLM_BATCH_MTP: all rows' windows share one step capped at max_verify_width
     cold_scale: float = 0.6            # bytes of a cold expert relative to the pack's format (0.6: ~1.6 bpw)
+    affinity_rank_lo: int = 0          # upstream STRATA_ROUTE_RESIDENT_RANKS: only routes ranked >= this (1-based) may
+                                       # move to resident experts; 0 = every route (Strata GLM affinity)
     tail_affinity: float = 0.0         # route affinity applied only to draft positions >= 2 (our variant: the
                                        # routing bias lands on the tokens most likely to be rejected anyway)
     tier_compress: float = 1.0         # GPU tier stores experts in a denser format: slots x this (lossy above 1)

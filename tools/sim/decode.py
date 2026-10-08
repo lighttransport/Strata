@@ -105,7 +105,13 @@ def tier_hit_share(hw, cfg, pack, plan, params, curve=None, trace=None, prior=No
         if cfg.affinity > 0:
             h = h + (1 - h) * (1 - math.exp(-cfg.affinity / curve.affinity_tau))
         return h
-    return curve.hit(fraction, policy=cfg.tier_policy, affinity=cfg.affinity, skew=pack.skew)
+    h = curve.hit(fraction, policy=cfg.tier_policy, affinity=cfg.affinity, skew=pack.skew)
+    if cfg.affinity > 0 and cfg.affinity_rank_lo > 1:
+        # only the weakest routes (ranks lo..top_k) may switch to a resident expert
+        base = curve.hit(fraction, policy=cfg.tier_policy, skew=pack.skew)
+        eligible = max(0, GEOMETRY.top_k - cfg.affinity_rank_lo + 1) / GEOMETRY.top_k
+        h = base + (h - base) * eligible
+    return h
 
 
 def ram_hit_share(hw, cfg, pack, curve=None):

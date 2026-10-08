@@ -82,6 +82,7 @@ def add_config_args(ap, sweep=False):
     opt("--cold-layers", "cold_layers", help="MoE layers stored at --cold-scale (per-layer bit budget)")
     opt("--batch-mtp", "batch_mtp", help="1 = rows' draft windows share one step capped at --max-verify-width")
     opt("--cold-scale", "cold_scale", help="cold expert bytes relative to the pack format")
+    opt("--affinity-rank-lo", "affinity_rank_lo", help="only routes ranked >= this may move to residents (upstream ROUTE_RESIDENT ranks)")
     opt("--tail-affinity", "tail_affinity", help="route affinity for draft positions >= 2 only (lossy)")
     opt("--tier-compress", "tier_compress", help="GPU tier expert format density: slots x this (lossy above 1)")
     opt("--dense-format", "dense_format", choices=list(model.DENSE_FORMATS))
