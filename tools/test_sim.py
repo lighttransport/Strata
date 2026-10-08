@@ -279,8 +279,10 @@ class ResearchKnobTest(unittest.TestCase):
     def test_expert_deferral_helps_ordinary_decode_most(self):
         plain = RunConfig(pack="q22", speculation="none")
         a = decode.simulate(self.H, plain, self.params)
-        b = decode.simulate(self.H, plain.copy(expert_deferral=True), self.params)
-        self.assertGreater(b.tok_s, a.tok_s * 1.3)
+        b = decode.simulate(self.H, plain.copy(expert_deferral=True), self.params)          # default share 0.3
+        c = decode.simulate(self.H, plain.copy(expert_deferral=True, deferral_share=1.0), self.params)
+        self.assertGreater(b.tok_s, a.tok_s * 1.05)
+        self.assertGreater(c.tok_s, a.tok_s * 1.3)
         self.assertFalse(b.lossless)
         split = decode.simulate(self.H, self.cfg.copy(expert_deferral=True), self.params)
         self.assertLess(split.tok_s / decode.simulate(self.H, self.cfg, self.params).tok_s, 1.05)
@@ -291,6 +293,59 @@ class ResearchKnobTest(unittest.TestCase):
         self.assertLess(b.step.cpu_bytes, a.step.cpu_bytes * 0.9)
         self.assertLess(b.tokens_per_round, a.tokens_per_round)
         self.assertFalse(b.lossless)
+
+
+class PolishTest(unittest.TestCase):
+    def setUp(self):
+        self.params = kernels.Params()
+        self.H = hw.tr16()
+
+    def test_graded_deferral(self):
+        plain = RunConfig(pack="q22", speculation="none")
+        base = decode.simulate(self.H, plain, self.params).tok_s
+        small = decode.simulate(self.H, plain.copy(expert_deferral=True, deferral_share=0.3), self.params).tok_s
+        full = decode.simulate(self.H, plain.copy(expert_deferral=True, deferral_share=1.0), self.params).tok_s
+        self.assertGreater(small, base)
+        self.assertGreater(full, small)
+
+    def test_adaptive_window_shortens_verify(self):
+        cfg = RunConfig(pack="q22", speculation="dflash", draft_block=8, draft_acceptance="dflash_chat")
+        a = decode.simulate(self.H, cfg, self.params)
+        b = decode.simulate(self.H, cfg.copy(adaptive_window=True), self.params)
+        self.assertLess(b.step.width, a.step.width)
+        self.assertGreater(b.tok_s, a.tok_s)
+        self.assertTrue(b.lossless)
+
+    def test_prediction_hides_disk_wait(self):
+        H = hw.tr16(); H.memory.gib = 60
+        cfg = RunConfig(pack="q22", mtp_depth=2, placement="ram_tier", ram_mode="exact")
+        a = decode.simulate(H, cfg, self.params)
+        b = decode.simulate(H, cfg.copy(pcie_prefetch=True), self.params)
+        self.assertGreater(b.tok_s, a.tok_s)
+        self.assertGreater(b.disk_gb_per_token, 0)
+
+    def test_presets_load_and_run(self):
+        for name in hw.PRESETS:
+            H = hw.load(name)
+            d = decode.simulate(H, RunConfig(pack="reap50_q23", mtp_depth=1), self.params)
+            self.assertGreater(d.tok_s, 0)
+
+    def test_xeon_out_of_sample_rows_within_tolerance(self):
+        rows = [r for r in calibration.evaluate(calibration.load_records(), self.params) if r["name"].startswith("xeon_v100")]
+        self.assertEqual(len(rows), 3)
+        self.assertTrue(all(r["within"] for r in rows), [(r["name"], round(r["error"], 2)) for r in rows])
+
+
+class OwnIdeaTest(unittest.TestCase):
+    def test_tail_affinity_between_none_and_full(self):
+        H = hw.tr16(); params = kernels.Params()
+        cfg = RunConfig(pack="q22", mtp_depth=3, acceptance="prime")
+        none = decode.simulate(H, cfg, params).tok_s
+        tail = decode.simulate(H, cfg.copy(tail_affinity=0.1), params)
+        full = decode.simulate(H, cfg.copy(affinity=0.1), params).tok_s
+        self.assertGreater(tail.tok_s, none)
+        self.assertLess(tail.tok_s, full)
+        self.assertFalse(tail.lossless)
 
 
 class CliTest(unittest.TestCase):

@@ -27,6 +27,7 @@ class Params:
     ram_tier_wait_ms: float = 1.5      # exposed wait per disk-fetched expert on top of its bytes
     prefetch_accuracy: float = 0.9     # share of predicted next-layer routes that are right (FATE: 97 %, DraftExpert: 86-88 %)
     tail_topk_acceptance: float = 0.97  # acceptance multiplier per halving of experts on tapered draft positions (AcceptMoE: -0.27 pt)
+    truncation_efficiency: float = 0.5  # share of would-be-rejected draft positions an adaptive window leaves out
 
 
 def cpu_roofline(hw, params, bytes_, macs, width, workers, kernel_efficiency):

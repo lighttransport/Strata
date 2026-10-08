@@ -756,6 +756,80 @@
    "measured": {
     "tok_s": 13.48
    }
+  },
+  {
+   "name": "xeon_v100: 2 GPUs x 32 GB, 35 workers, ordinary (out of sample)",
+   "kind": "decode",
+   "hw": "xeon_v100",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/glm53_flash_xeon_v100_measurement.json (28.91 long decode; tier hits 0.82-0.84; original Q2 pack)",
+   "config": {
+    "pack": "q2_orig",
+    "speculation": "none",
+    "mtp_depth": 0,
+    "gpus": 2,
+    "threads": 35,
+    "context": 8192,
+    "prompt": 1024,
+    "split_verify": false,
+    "prefetch_groups": 0
+   },
+   "measured": {
+    "tok_s": 28.91,
+    "hit_bytes_share": 0.83,
+    "cpu_gb_per_token": 0.445
+   }
+  },
+  {
+   "name": "xeon_v100: 1 GPU capped at 16 GB, both sockets, 35 workers (out of sample)",
+   "kind": "decode",
+   "hw": "xeon_v100",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/GLM53_V100.md table: 18.07 decode (GPU hit fraction about 25 %)",
+   "config": {
+    "pack": "q2_orig",
+    "speculation": "none",
+    "mtp_depth": 0,
+    "gpus": 1,
+    "threads": 35,
+    "context": 8192,
+    "prompt": 1024,
+    "split_verify": false,
+    "prefetch_groups": 0,
+    "gpu_budget_mib": 16000
+   },
+   "measured": {
+    "tok_s": 18.07,
+    "hit_bytes_share": 0.25
+   }
+  },
+  {
+   "name": "xeon_v100: 2 GPUs, MTP depth 1 (out of sample)",
+   "kind": "decode",
+   "hw": "xeon_v100",
+   "quiet": true,
+   "fit": false,
+   "tolerance": 0.3,
+   "source": "docs/glm53_flash_xeon_v100_measurement.json (29.06 long decode)",
+   "config": {
+    "pack": "q2_orig",
+    "speculation": "mtp",
+    "mtp_depth": 1,
+    "acceptance": "mixed",
+    "gpus": 2,
+    "threads": 35,
+    "context": 8192,
+    "prompt": 1024,
+    "split_verify": false,
+    "prefetch_groups": 0
+   },
+   "measured": {
+    "tok_s": 29.06
+   }
   }
  ]
 }

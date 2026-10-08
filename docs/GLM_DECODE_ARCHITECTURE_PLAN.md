@@ -83,6 +83,45 @@ lossless, 31-33 with tapering, and the lossy stack to 64 (75 with two rows).
 MTP deeper than 4, blocks wider than 8, a faster CPU dot kernel below 8 rows, codebook 2-bit formats on the CPU
 (compute-bound at 37-42 GB/s). A second 16 GB card is the lossless route: 32-33 tok/s single-stream.
 
+## 3b. Polished algorithms, our own additions, and four machines
+
+The literature round (docs/GLM_DECODE_RESEARCH.md) added four algorithms; this round refines them and adds two
+of our own. All are simulator knobs; `plan` now switches the lossless ones on by default (`--baseline` for today's
+algorithms).
+
+- **Graded expert deferral** (`--deferral-share f`). The all-or-nothing version overstated the gain: hiding the
+  whole GPU chain under the CPU pass of a single token would defer 85 % of the routed work. With f = 0.3 ordinary
+  decode goes 15.3 -> 16.7 tok/s, with f = 0.6 to 20.3; batched 4 rows 24.3 -> 28.1 at f = 0.3. Split-verify MTP
+  already overlaps, so deferral is a tool for the ordinary and batched paths only.
+- **Adaptive window** (ours; `--adaptive-window 1`, builds on `STRATA_GLM_MTP_CONTINUATION_MARGIN`). Drafting
+  stops when the draft's confidence is low, so about half of the positions that would be rejected are never
+  verified. Lossless; +1-3 % on MTP, +15 % on an 8-block drafter with chat-like acceptance.
+- **Prediction-driven disk prefetch** (ours, same predictor as the PCIe prefetch). In the RAM tier the next
+  layer's predicted misses are read from NVMe before they are needed, so only bandwidth remains: 64 GB exact mode
+  4.5 -> 5.6 tok/s on one drive, 10.2 with two.
+- **Tail-only affinity** (ours; `--tail-affinity x`). The routing bias is applied only to draft positions >= 2,
+  the tokens most likely to be rejected anyway: 26.1 -> 30.1 tok/s at x = 0.10 (full affinity 0.10 gives 32.5),
+  with the quality change confined to about half of the accepted tokens. Combined with 4-expert tapering and
+  MTP5: 33.3.
+- **Verifier tapering** (`--spec-tail-topk 4`) now also scales the routed MACs: lossless base 23.7 -> 28.3 (MTP3),
+  29.5 (MTP5); the lossy 50 tok/s stack 57 -> 64, 75 with two rows.
+
+Predicted decode tok/s per machine (prime fixture; lossless rows change no output, "experts lossless" keeps the
+experts exact but uses Q4 dense copies; today's GPU kernels unless noted):
+
+| Machine | Lossless, polished | Mild lossy | Full lossy stack |
+|---|---:|---:|---:|
+| tr16: 1950X, 124 GiB, 5060 Ti 16 GB | 26.1 (q22, MTP3, LRU + prefetch) | 32-33 (tail top-k 4, tail affinity); 36-38 (+ Q4 dense, skip 10 %, affinity 0.05) | 47 with today's GPU kernels; 64 with graphs, a 380 GB/s tier kernel and a block drafter |
+| tr16 with 60 GiB RAM | 5.7 (exact RAM tier, one NVMe); 10 with two drives | 26-33 (REAP-50 or a frozen q22 set) | 46 (REAP-50, dflash, affinity 0.10) |
+| Xeon 6240 x2 + 1 V100 32 GB | 42.6 (q23, MTP3); 52.6 (q2_orig, dflash 8) | 58 (dflash + tail top-k 4) | 61 |
+| Xeon 6240 x2 + 2 V100 32 GB | 45.8 (MTP3); 58 (dflash 8); batch 4: 90 | 62 | 66 |
+| B550: 3950X, 32 GB DDR4-2666, 3070 8 GB (unmeasured) | experts lossless: 2.8 (one NVMe), 4.5 (two), 6.4 (four); no verify history fits, so no MTP | 15.9 (frozen 22 GB q22 set, affinity 0.10, skip 10 %) | 18.7 (+ deferral 0.5) |
+
+What the table says: with two V100s the experts are 95 % resident and a block drafter is the right speculation
+(58 lossless); with one V100 and 20 GB of tier the same drafter already wins (52.6); on 16 GB cards the CPU
+stream binds and MTP3 with LRU + prefetch is the lossless optimum; on 8 GB cards the dense copies fill the VRAM,
+so only RAM-side levers (frozen or hybrid expert set, deferral) and faster disks matter.
+
 ## 4. Predicted ladder (single stream, q22 pack, prime fixture)
 
 ```
@@ -114,7 +153,7 @@ Batched, same base (`--batch N`): MTP2 per row 39 / 51 / 60 tok/s aggregate for 
 
 | Mode | Predicted | Hard ceiling | What binds |
 |---|---:|---:|---|
-| single stream, lossless, one GPU | 25-27 | 30 (CPU dot), 39 (DRAM with 4 GiB tier) | CPU expert bytes |
+| single stream, lossless, one GPU | 25-27 (26.1 with LRU + prefetch) | 30 (CPU dot), 39 (DRAM with 4 GiB tier) | CPU expert bytes |
 | single stream, lossless, two 16 GB GPUs | 32-33 | 44 | CPU expert bytes |
 | single stream, lossy (A + B + C + D + E) | 47-60 by text type, 50 on code | 59 CPU / 58 GPU at 64 % share | both, balanced |
 | single stream, affinity 0.20 | 58 | 72 CPU / 57 GPU | GPU dense reads |

@@ -71,8 +71,11 @@ def add_config_args(ap, sweep=False):
     opt("--expert-skip", "expert_skip", help="share of routed expert bytes skipped by gate thresholds (lossy)")
     opt("--pcie-share", "pcie_share", help="share of non-resident expert bytes the GPU streams over PCIe and computes")
     opt("--pcie-prefetch", "pcie_prefetch", help="1 = predict next-layer routes and prefetch those experts over PCIe (lossless)")
-    opt("--expert-deferral", "expert_deferral", help="1 = add part of each layer's routed output one layer late (lossy; full overlap)")
+    opt("--expert-deferral", "expert_deferral", help="1 = add part of each layer's routed output one layer late (lossy)")
+    opt("--deferral-share", "deferral_share", help="share of routed work that may be deferred (quality cost grows with it)")
+    opt("--adaptive-window", "adaptive_window", help="1 = stop drafting at low confidence; shorter verify windows (lossless)")
     opt("--spec-tail-topk", "spec_tail_topk", help="experts per route for draft positions >= 2 (AcceptMoE-style; lossy below 8)")
+    opt("--tail-affinity", "tail_affinity", help="route affinity for draft positions >= 2 only (lossy)")
     opt("--tier-compress", "tier_compress", help="GPU tier expert format density: slots x this (lossy above 1)")
     opt("--dense-format", "dense_format", choices=list(model.DENSE_FORMATS))
     opt("--split-verify", "split_verify")
@@ -101,7 +104,7 @@ CONFIG_FIELDS = [f.name for f in dataclasses.fields(RunConfig)]
 def config_from_args(args, **overrides):
     data = {name: getattr(args, name) for name in CONFIG_FIELDS if hasattr(args, name)}
     data.update(overrides)
-    for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral"):
+    for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral", "adaptive_window"):
         if key in data:
             data[key] = bool(data[key])
     return RunConfig.from_dict(data)
@@ -243,16 +246,21 @@ def plan(args):
     ram_gib = hw.memory.gib + hw.memory.page_cache_gib
     candidates = []
     packs = args.packs or ["q23", "q22", "reap50_q23", "q2_orig"]
+    if not args.baseline:
+        base = base.copy(tier_policy="lru", pcie_prefetch=True, adaptive_window=True)
     affinities = [0.0] if args.lossless else [0.0, 0.05, 0.1]
-    specs = [("none", 0), ("mtp", 1), ("mtp", 2), ("mtp", 3), ("dflash", 8)]
+    tails = [8] if args.lossless else [8, 4]
+    specs = [("none", 0), ("mtp", 1), ("mtp", 2), ("mtp", 3), ("mtp", 5), ("dflash", 8)]
     if args.max_verify_width > 8:
         specs.append(("dflash", args.max_verify_width))
     skips = [0.0] if args.lossless else [0.0, 0.1]
     denses = ["q8"] if args.lossless else ["q8", "q4"]
     chunks = [1024, 2048, 4096, 8192]
     shares = [0.0] + ([0.25, 0.5] if hw.remote.expert_gbps > 0 else [])
-    for pack_name, (spec, depth), aff, chunk, share, skip, dense in itertools.product(
-            packs, specs, affinities, chunks, shares, skips, denses):
+    for pack_name, (spec, depth), aff, chunk, share, skip, dense, tail in itertools.product(
+            packs, specs, affinities, chunks, shares, skips, denses, tails):
+        if tail < 8 and depth < 2:
+            continue
         pack = model.pack(pack_name)
         fits = pack.routed_total_bytes() / 2 ** 30 * (1 - share) + 7 <= ram_gib
         if share > 0 and hw.remote.ram_gib and pack.routed_total_bytes() / 2 ** 30 * share + 2 > hw.remote.ram_gib:
@@ -261,16 +269,21 @@ def plan(args):
         for placement in placements:
             modes = ["exact"] if placement == "cpu" else (["exact"] if args.lossless else ["exact", "hybrid", "frozen"])
             for mode in modes:
+                small_card = hw.gpu.vram_mib < 12000     # 8 GB class: trim scratch and reserve to leave room for a tier
                 cfg = base.copy(pack=pack_name, speculation=spec, mtp_depth=depth if spec == "mtp" else 0,
                                 draft_block=depth if spec == "dflash" else base.draft_block,
                                 affinity=aff, prefill_chunk=chunk, remote_share=share, expert_skip=skip, dense_format=dense,
+                                spec_tail_topk=tail,
                                 placement=placement, ram_mode=mode, split_verify=depth >= 1,
-                                prefill_scratch_mib=max(1024, 1024 * chunk // 4096))
+                                prefill_scratch_mib=256 if small_card else max(1024, 1024 * chunk // 4096),
+                                reserve_mib=128 if small_card else base.reserve_mib,
+                                context=min(base.context, 2048) if small_card else base.context)
                 if chunk > cfg.prompt:
                     continue
+                vplan = decode.make_plan(hw, cfg, pack)
+                if sum(vplan.items.values()) > vplan.budget_mib:
+                    continue        # the fixed residents alone do not fit this card
                 d = decode.simulate(hw, cfg, params)
-                if d.tier_slots <= 0 and cfg.decode_cache_mib != 0:
-                    continue
                 p = prefill.simulate(hw, cfg, params)
                 if args.lossless and not d.lossless:
                     continue
@@ -280,13 +293,13 @@ def plan(args):
     for tok_s, pf, cfg, d, p in candidates[:args.top]:
         spec = f"mtp{cfg.mtp_depth}" if cfg.speculation == "mtp" and cfg.mtp_depth else (
             f"dflash{min(cfg.draft_block, cfg.max_verify_width)}" if cfg.speculation == "dflash" else "none")
-        rows.append(dict(pack=cfg.pack, spec=spec, affinity=cfg.affinity, skip=cfg.expert_skip, dense=cfg.dense_format,
+        rows.append(dict(pack=cfg.pack, spec=spec, affinity=cfg.affinity, skip=cfg.expert_skip, dense=cfg.dense_format, tail=cfg.spec_tail_topk,
                          placement=cfg.placement if cfg.placement == "cpu" else f"{cfg.placement}/{cfg.ram_mode}",
                          remote=cfg.remote_share, chunk=cfg.prefill_chunk, decode=f"{tok_s:.1f}", prefill=f"{pf:.0f}",
                          tier_mib=f"{d.tier_mib:.0f}", tok_round=f"{d.tokens_per_round:.2f}", bottleneck=d.bottleneck, lossless=d.lossless))
     print(f"target {args.target_decode} tok/s decode on {hw.name} ({ram_gib:.0f} GiB RAM, {hw.gpu.vram_mib:.0f} MiB VRAM, "
           f"{'lossless only' if args.lossless else 'lossy allowed'}): best {len(candidates)} candidates")
-    print(fmt_table(rows, ["pack", "spec", "affinity", "skip", "dense", "placement", "remote", "chunk", "decode", "prefill", "tier_mib", "tok_round", "bottleneck", "lossless"]))
+    print(fmt_table(rows, ["pack", "spec", "affinity", "skip", "dense", "tail", "placement", "remote", "chunk", "decode", "prefill", "tier_mib", "tok_round", "bottleneck", "lossless"]))
     if candidates:
         best = candidates[0]
         d = best[3]
@@ -331,6 +344,7 @@ def main(argv=None):
     add_hw_args(p); add_config_args(p)
     p.add_argument("--target-decode", type=float, default=30.0)
     p.add_argument("--lossless", action="store_true", help="exclude affinity, REAP packs and non-exact RAM modes")
+    p.add_argument("--baseline", action="store_true", help="today's algorithms only (no LRU tier, route prefetch, adaptive window)")
     p.add_argument("--packs", nargs="*")
     p.add_argument("--top", type=int, default=15)
     p.add_argument("--output")

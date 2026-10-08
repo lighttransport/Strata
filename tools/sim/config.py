@@ -22,10 +22,15 @@ class RunConfig:
                                        # and computes itself, concurrently with the CPU pass (architecture option)
     pcie_prefetch: bool = False        # predict next layer's routes (cross-layer gate) and upload those experts
                                        # during this layer's CPU pass; the GPU computes them (lossless, FATE/SpecPrefetch)
-    expert_deferral: bool = False      # add part of a layer's routed output one layer late so the GPU chain never
-                                       # waits for the CPU (KTransformers expert deferral; lossy approximation)
+    expert_deferral: bool = False      # add part of a layer's routed output one layer late so the GPU chain can run
+                                       # ahead of the CPU (KTransformers expert deferral; lossy approximation)
+    deferral_share: float = 0.3        # share of each layer's routed work that may be deferred (quality cost grows with it)
+    adaptive_window: bool = False      # stop drafting at low confidence (STRATA_GLM_MTP_CONTINUATION_MARGIN / DraftExpert
+                                       # truncation): fewer rejected positions are verified; lossless
     spec_tail_topk: int = 8            # experts per route for draft positions >= 2 in a verify window (AcceptMoE
                                        # style verifier sizing; lossy below 8)
+    tail_affinity: float = 0.0         # route affinity applied only to draft positions >= 2 (our variant: the
+                                       # routing bias lands on the tokens most likely to be rejected anyway)
     tier_compress: float = 1.0         # GPU tier stores experts in a denser format: slots x this (lossy above 1)
     dense_format: str = "q8"           # GPU copies of the fixed weights: q8 (default) | orig (Q5_K/Q6_K) | q4 (lossy)
     split_verify: bool = True          # STRATA_GLM_SPLIT_VERIFY (needs mtp_depth >= 1)

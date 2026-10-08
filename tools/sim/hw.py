@@ -184,15 +184,36 @@ def b550():
 
 
 def xeon_v100():
-    """2 x Xeon Gold 6240 (36 cores, interleaved memory) + 2 x V100 32 GB on PCIe Gen3 x16."""
+    """2 x Xeon Gold 6240 (36 cores, interleaved memory) + 1-2 x V100 32 GB on PCIe Gen3 x16 (docs/GLM53_V100.md).
+
+    The measured runs (28.9 tok/s with two cards, 0.82-0.84 tier hits) used the pre-canonical tier kernels at
+    about 50-100 GB/s and the original Q2 pack; `tier_gbps` reflects that. Use `--set gpu.tier_gbps=400` for the
+    current kernel.
+    """
     return HardwareConfig(
         name="xeon_v100",
         cpu=Cpu(name="2x Intel Xeon Gold 6240", cores=36, ghz=2.6, numa_nodes=2, simd="avx512"),
         memory=Memory(gib=160.0, dram_gbps=150.0, per_core_gbps=8.0),
         gpu=Gpu(name="NVIDIA V100 PCIe 32 GB", count=2, vram_mib=32000, bandwidth_gbps=900.0, tflops=112.0,
-                gemv_efficiency=0.8, tier_gbps=400.0, launch_us=4.0),
+                gemv_efficiency=0.8, tier_gbps=100.0, launch_us=4.0),
         pcie=Pcie(gen=3, lanes=16, h2d_gbps=12.0, latency_us=20.0),
-        disk=Disk(read_gbps=2.0),
+        disk=Disk(read_gbps=2.0, fetch_gbps=2.0),
+    )
+
+
+def b550_32g_3070():
+    """Unmeasured: the B550's Ryzen 9 3950X (16 cores Zen 2) with 2 x 16 GB DDR4-2666 (42.7 GB/s peak, about
+    34 GB/s for the expert stream) and an RTX 3070 8 GB (448 GB/s, PCIe Gen4 x16), one NVMe. Estimated from
+    specs; the 3950X's expert rows measured 26 GB/s while the box ran other jobs (GLM_REMOTE_TP_COMM.md)."""
+    return HardwareConfig(
+        name="b550_32g_3070",
+        cpu=Cpu(name="AMD Ryzen 9 3950X", cores=16, ghz=3.5, numa_nodes=1, simd="avx2"),
+        memory=Memory(gib=30.0, dram_gbps=34.0, per_core_gbps=5.0),
+        gpu=Gpu(name="NVIDIA GeForce RTX 3070 8 GB", vram_mib=7900, bandwidth_gbps=448.0, tflops=40.0,
+                gemv_efficiency=0.85, tier_gbps=235.0, launch_us=3.5, desktop_mib=600),
+        pcie=Pcie(gen=4, lanes=16, h2d_gbps=22.0, latency_us=15.0),
+        disk=Disk(read_gbps=2.5, fetch_gbps=2.5),
+        notes="unmeasured preset: B550 board with 32 GB and an RTX 3070 instead of the 9070 XT",
     )
 
 
@@ -217,6 +238,7 @@ PRESETS = {
     "tr16": tr16,
     "b550": b550,
     "xeon_v100": xeon_v100,
+    "b550_32g_3070": b550_32g_3070,
     "tr16+b550-ib": tr16_plus_b550_ib,
     "tr16+b550-1gbe": tr16_plus_b550_gbe,
 }

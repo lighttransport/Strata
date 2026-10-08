@@ -32,7 +32,8 @@ bandwidth, RAM). Presets:
 |---|---|---|
 | `tr16` | Threadripper 1950X, 2 NUMA nodes, 125 GiB DDR4, RTX 5060 Ti 16 GB, PCIe Gen3 x8 | 72 GB/s plain 15-thread stream with the q23 kernel, 7.18 GB/s H2D (nsys), 380-393 GB/s dense GEMVs, 235 GB/s tier kernel (GLM_Q2_DECODE_REDESIGN.md, GLM_SINGLE_OPTIMIZATION.md) |
 | `b550` | Ryzen 9 3950X, 1 node, 60 GiB, RX 9070 XT | GLM_B550_REAP50.md, GLM_REMOTE_TP_COMM.md (26 GB/s expert rows) |
-| `xeon_v100` | 2 x Xeon Gold 6240, 2 x V100 32 GB | GLM53_V100.md; not validated |
+| `xeon_v100` | 2 x Xeon Gold 6240, 1-2 x V100 32 GB | GLM53_V100.md; three measured rows are out-of-sample checks (within 8-25 %); the tier kernel of those runs was the old 50-100 GB/s one, pass `--set gpu.tier_gbps=400` for the current kernel |
+| `b550_32g_3070` | Ryzen 9 3950X (16 cores Zen 2), 2 x 16 GB DDR4-2666 (34 GB/s expert stream assumed), RTX 3070 8 GB, PCIe Gen4 x16 | unmeasured, estimated from specs |
 | `tr16+b550-ib`, `tr16+b550-1gbe` | tr16 decoder with b550 as remote worker | GLM_REMOTE_TP_COMM.md (20.9 us / 401 us round trips) |
 
 Only `tr16` is validated; the other presets exist to explore.
@@ -84,8 +85,13 @@ worker's RAM), `--gpus 2` (a second tier), `--batch M` independent sequences.
 
 **Algorithms from the literature** (docs/GLM_DECODE_RESEARCH.md): `--tier-policy lru` (recency cache, fitted to
 an LRU replay of the routing traces), `--pcie-prefetch 1` (next-layer routes predicted one layer ahead and
-uploaded during the CPU pass; lossless), `--expert-deferral 1` (routed output added one layer late so the GPU
-chain never waits; lossy), `--spec-tail-topk N` (fewer experts for draft positions >= 2; lossy).
+uploaded during the CPU pass, or fetched from disk ahead of time in the RAM tier; lossless),
+`--expert-deferral 1 --deferral-share f` (a share f of each layer's routed output joins the residual one layer
+late, so the GPU chain of the next layer starts after the other 1 - f; lossy, cost grows with f),
+`--spec-tail-topk N` (fewer experts for draft positions >= 2; lossy). Our own additions: `--adaptive-window 1`
+(drafting stops at low confidence, so about half of the positions that would be rejected are never verified;
+lossless) and `--tail-affinity x` (route affinity applied only to draft positions >= 2). `plan` turns the three
+lossless ones on by default; `--baseline` plans with today's algorithms.
 
 **Architecture knobs for what-ifs**: `--pcie-share` streams a share of each layer's non-resident experts over
 PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores resident experts in a denser format
@@ -101,9 +107,10 @@ PCIe-bound (15.5 s). `--prefill-legacy` reproduces the pre-optimization state (F
 
 ## Validation
 
-`validate` runs 32 recorded configurations (`tools/sim/data/measured_tr16.json`, each with its source). All are
-within their tolerance (15 % for quiet runs, up to 40-60 % for the noisy, batch and disk-bound rows). Mean
-absolute error over the 15 calibration rows is 4.8 %. Selected rows:
+`validate` runs 35 recorded configurations (`tools/sim/data/measured_tr16.json`, each with its source): 32 from
+this machine and 3 Xeon + V100 rows as out-of-sample checks. All are within their tolerance (15 % for quiet
+runs, up to 40-60 % for the noisy, batch and disk-bound rows, 30 % for the Xeon rows, which land at -8 / +21 /
++25 %). Mean absolute error over the 15 calibration rows is 4.8 %. Selected rows:
 
 | Case | Measured tok/s | Predicted | Error |
 |---|---:|---:|---:|
