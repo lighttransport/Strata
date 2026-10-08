@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
+#include <stdexcept>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -439,8 +440,9 @@ void ExpertPool::diag(std::FILE* f) const {
     std::fprintf(f, " for %lld ms\n", (long long) (now_ms() - hstate_ms_.load()));
 }
 
-ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity)
-    : host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
+ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
+    : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
+    if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
     if (const char* e = std::getenv("STRATA_NATIVE_NUMA_LOCAL")) {
         if (std::string(e) != "0" && std::string(e) != "1")
             throw std::invalid_argument("STRATA_NATIVE_NUMA_LOCAL must be 0 or 1");
@@ -883,6 +885,10 @@ void ExpertPool::run_split(ExpertJob* jobs, int n) {
     ms_drain_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
 
+int ExpertPool::phase_tasks(int64_t rows) const {
+    return tasks_ == 0 ? 3 * (n_ + (host_works_ ? 1 : 0)) : (int) (std::min)(rows, (int64_t) tasks_);
+}
+
 void ExpertPool::run_split_multi(ExpertJobMulti* jobs, int n) {
     if (n <= 0) return;
     if (n > kMaxSplitMulti || expert_oracle_q8_0_enabled()) {
@@ -902,9 +908,8 @@ void ExpertPool::run_split_multi(ExpertJobMulti* jobs, int n) {
     }
     const auto t0 = std::chrono::steady_clock::now();
     mjobs_ = jobs;
-    const int threads = n_ + (host_works_ ? 1 : 0);
-    mtasks_ = 3 * threads;
     mrows_ = (int64_t) n * FF;
+    mtasks_ = phase_tasks(mrows_);
     run_phase(3, mtasks_);
     const auto t1 = std::chrono::steady_clock::now();
     for (int e = 0; e < n; ++e)
@@ -912,6 +917,7 @@ void ExpertPool::run_split_multi(ExpertJobMulti* jobs, int n) {
             act_quant_q8_1(split_multi_[(size_t) e].ff[t], FF, split_multi_[(size_t) e].a2[t]);
     const auto t2 = std::chrono::steady_clock::now();
     mrows_ = (int64_t) n * H;
+    mtasks_ = phase_tasks(mrows_);
     run_phase(4, mtasks_);
     const auto t3 = std::chrono::steady_clock::now();
     ms_multi_gu += std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -947,8 +953,9 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         nfmt_ = &f;
         const int threads = n_ + (host_works_ ? 1 : 0);
         native_owned_phase_=owned;
-        native_owned_parts_=f.fuse_h_quant?f.n_ff/512:std::max(1,(native_tasks_per_thread_*threads+2*nb-1)/(2*nb));
-        mtasks_ = owned?2*nb*native_owned_parts_:native_tasks_per_thread_ * threads;
+        const int gu_target = tasks_ ? phase_tasks(int64_t(nb) * f.n_ff) : native_tasks_per_thread_ * threads;
+        native_owned_parts_=f.fuse_h_quant?f.n_ff/512:std::max(1,(gu_target+2*nb-1)/(2*nb));
+        mtasks_ = owned?2*nb*native_owned_parts_:gu_target;
         mrows_ = (int64_t) nb * f.n_ff;
         const auto a = std::chrono::steady_clock::now();
         run_phase(5, mtasks_);
@@ -960,7 +967,8 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
                 else native_quant_h(f, split_multi_[(size_t) e].ff[t], split_multi_[(size_t) e].hq[t]);
             }
         const auto c = std::chrono::steady_clock::now();
-        if(f.fuse_h_quant){native_owned_parts_=std::max(1,(native_tasks_per_thread_*threads+2*nb-1)/(2*nb));mtasks_=2*nb*native_owned_parts_;}
+        const int down_target = tasks_ ? phase_tasks(int64_t(nb) * f.n_embd) : native_tasks_per_thread_ * threads;
+        if(f.fuse_h_quant || tasks_){native_owned_parts_=std::max(1,(down_target+2*nb-1)/(2*nb));mtasks_=owned?2*nb*native_owned_parts_:down_target;}
         mrows_ = (int64_t) nb * f.n_embd;
         run_phase(6, mtasks_);
         const auto d = std::chrono::steady_clock::now();

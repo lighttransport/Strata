@@ -156,7 +156,9 @@ public:
     /// threads on six cores. `false` is the A/B arm and exists so the change is measurable rather than
     /// asserted - the counter it moves is `pool phases ... drain`, which is host-side and needs no profiler.
     explicit ExpertPool(int n_workers = 0, bool pin = true, bool host_works = true,
-                        PoolAffinity affinity = PoolAffinity::All);
+                        PoolAffinity affinity = PoolAffinity::All, int tasks = 0);
+    /// Batched row phases: 0 keeps three tasks per participating thread; explicit counts are capped by rows.
+    static constexpr int kMaxTasks = 4096;
     /// The watchdog's view of the pool (issue #31): the batch, the counters, every thread's state.
     void diag(std::FILE* f) const;
     ~ExpertPool();
@@ -259,6 +261,8 @@ private:
     float* reduce_output_=nullptr;
     int reduce_experts_=0,reduce_hidden_=0;
     bool reduce_canon_=false;
+    int phase_tasks(int64_t rows) const;
+    int tasks_ = 0;
     void worker(int id);
     void drain(int id, ExpertScratch& scratch, uint32_t epoch);
     void run_phase(int mode, int n_tasks);

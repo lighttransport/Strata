@@ -94,15 +94,25 @@ void canon_check(const NativeFmt& f) {
         f.d_act != GGML_TYPE_Q8_K || f.q23_layout || f.lossless)
         throw std::invalid_argument("canonical expert arithmetic needs Q2_K/Q3_K experts in GGML rows");
 }
+// Q8_K (the activations of every i-quant row): ggml-cpu's x86 quantizer is the scalar reference, ~3 us per token
+// and layer on the host before the pool can start; q8k_quant_avx2 writes the same bytes.  cpu_avx2_ok() too:
+// iq_avx2.cpp is compiled for AVX2 (an AVX-only CPU, or STRATA_FORCE_ISA=avx, keeps ggml's).  STRATA_NO_Q8K_AVX2=1:
+// ggml's on any CPU.
+bool q8k_avx2(int type) {
+    static const bool on = cpu_avx2_ok() && std::getenv("STRATA_NO_Q8K_AVX2") == nullptr;
+    return on && type == (int) GGML_TYPE_Q8_K;
 }
+}  // namespace
 
 void native_quant_act(const NativeFmt& f, const float* x, void* dst) {
     if (f.canon) { canon_check(f); canon_quant_q8k(x, dst, (int) f.n_embd); return; }
+    if (q8k_avx2(f.gu_act)) { q8k_quant_avx2(x, dst, f.n_embd); return; }
     traits(f.gu_act)->from_float(x, dst, f.n_embd);
 }
 
 void native_quant_h(const NativeFmt& f, const float* h, void* dst) {
     if (f.canon) { canon_check(f); canon_quant_q8k(h, dst, (int) f.n_ff); return; }
+    if (q8k_avx2(f.d_act)) { q8k_quant_avx2(h, dst, f.n_ff); return; }
     traits(f.d_act)->from_float(h, dst, f.n_ff);
 }
 void native_quant_h_rows(const NativeFmt& f,const float* h,void* dst,int first,int last) {
