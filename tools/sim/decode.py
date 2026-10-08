@@ -62,6 +62,8 @@ class DecodeResult:
     bottleneck: str
     lossless: bool
     notes: list
+    cpu_ceiling_tok_s: float = 0.0   # tokens per round over the CPU expert time alone (perfect GPU overlap)
+    gpu_ceiling_tok_s: float = 0.0   # tokens per round over all GPU work alone (perfect CPU overlap)
 
     def to_dict(self):
         return dataclasses.asdict(self)
@@ -83,7 +85,7 @@ def make_plan(hw, cfg, pack):
     return vram.plan(hw, pack, cfg.context, mtp, cfg.gpu_draft_experts, cfg.dense_format,
                      cfg.gpu_budget_mib or None, cfg.reserve_mib,
                      None if cfg.decode_cache_mib < 0 else cfg.decode_cache_mib,
-                     cfg.prefill_scratch_mib, cfg.prefetch_groups, cfg.gpus, drafter, depth)
+                     cfg.prefill_scratch_mib, cfg.prefetch_groups, cfg.gpus, drafter, depth, cfg.tier_compress)
 
 
 def tier_hit_share(hw, cfg, pack, plan, params, curve=None, trace=None, prior=None):
@@ -169,8 +171,8 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                    + kernels.gpu_gemv_ms(hw, FIXED_BYTES["shared_expert"], cols, params)
                    + kernels.gpu_launch_ms(hw, params) + params.gpu_layer_fixed_us * 1e-3 + attn)
             union_bytes = one * u * keep
-            resident = union_bytes * hit
-            nonres = union_bytes - resident
+            resident = union_bytes * hit / cfg.tier_compress
+            nonres = union_bytes * (1 - hit)
             routes = cols * g.top_k * (1 - hit) * keep
             macs = routes * g.expert_macs()
             gpu_bytes += resident
@@ -190,6 +192,15 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                 cpu_g.append(0.0)
                 gpu_g.append(gpu)
                 continue
+            if cfg.pcie_share > 0:
+                # the GPU pulls a share of this layer's experts over PCIe and computes them while the CPU streams the rest
+                streamed = nonres * cfg.pcie_share
+                nonres -= streamed
+                macs *= 1 - cfg.pcie_share
+                pcie_bytes += streamed
+                stream_ms = kernels.pcie_ms(hw, streamed) + kernels.gpu_tier_ms(hw, streamed)
+                pcie += stream_ms
+                gpu += stream_ms
             local_bytes = nonres * (1 - cfg.remote_share)
             t_cpu, bound = kernels.cpu_roofline(hw, params, local_bytes, macs * (1 - cfg.remote_share), w, workers, eff)
             if cfg.remote_share > 0 and hw.remote.expert_gbps > 0:
@@ -296,7 +307,7 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         h, gib = ram_hit_share(hw, cfg, pack)
         notes.append(f"RAM expert set {gib:.1f} GiB serves {h * 100:.1f} % of routed bytes ({cfg.ram_mode})")
     lossless = (cfg.affinity == 0 and not (cfg.placement == "ram_tier" and cfg.ram_mode != "exact")
-                and not pack.name.startswith("reap") and cfg.expert_skip == 0
+                and not pack.name.startswith("reap") and cfg.expert_skip == 0 and cfg.tier_compress <= 1.0
                 and model.DENSE_FORMATS[cfg.dense_format]["lossless"])
     depth = spec_depth(cfg)
     if cfg.speculation == "dflash" and cfg.draft_block > cfg.max_verify_width:
@@ -327,8 +338,12 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         tokens = per_row * rows
     tok_s = tokens / round_ms * 1e3
     cpu_gbps = s.cpu_bytes / max(1e-9, s.cpu_ms) / 1e6 if s.cpu_ms else 0.0
+    gpu_round = s.gpu_ms + s.head_ms + s.tail_ms + draft + resync
+    cpu_ceiling = tokens / max(1e-9, s.cpu_ms + s.disk_ms) * 1e3 if s.cpu_ms else float("inf")
+    gpu_ceiling = tokens / max(1e-9, gpu_round) * 1e3
     return DecodeResult(tok_s=tok_s, tokens_per_round=tokens, round_ms=round_ms, draft_ms=draft, verify_ms=verify,
                         resync_ms=resync, step=s, tier_mib=plan.tier_mib, tier_slots=plan.slots,
                         hit_bytes_share=hit, cpu_gb_per_token=s.cpu_bytes / 1e9 / tokens,
                         gpu_gb_per_token=s.gpu_bytes / 1e9 / tokens, disk_gb_per_token=s.disk_bytes / 1e9 / tokens,
-                        cpu_gbps=cpu_gbps, bottleneck=s.bottleneck, lossless=lossless, notes=notes)
+                        cpu_gbps=cpu_gbps, bottleneck=s.bottleneck, lossless=lossless, notes=notes,
+                        cpu_ceiling_tok_s=cpu_ceiling, gpu_ceiling_tok_s=gpu_ceiling)

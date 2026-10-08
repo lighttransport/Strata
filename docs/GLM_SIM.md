@@ -82,6 +82,13 @@ routing to the resident set, `hybrid` adds a margin), remote tensor parallelism 
 expert's rows on the worker; per layer `max(local, remote + round trip)`; the worker's share also lives in the
 worker's RAM), `--gpus 2` (a second tier), `--batch M` independent sequences.
 
+**Architecture knobs for what-ifs**: `--pcie-share` streams a share of each layer's non-resident experts over
+PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores resident experts in a denser format
+(more slots, lossy); `--param name=value` overrides any calibrated parameter (for example
+`gpu_kernels_per_layer=10` for graphs, `cpu_quant_scale=2` for a faster dot kernel); `--set gpu.tier_gbps=380`
+for a better resident-expert kernel. `estimate` prints the CPU-expert-bound and GPU-bound ceilings of the
+configuration. docs/GLM_DECODE_ARCHITECTURE_PLAN.md uses these to rank the paths to 50 tok/s.
+
 **Prefill** (`prefill.py`): every chunk streams the touched 16-expert groups over PCIe (all of them above about
 64 tokens, 111 GB for q23); `chunk time = max(PCIe + disk + layer sync, GPU fixed + per-token work)`. The GPU
 side is fitted (4 s + 2.0 ms/token on the 5060 Ti): 8K chunks are GPU-bound (~20 s), 1K chunks are

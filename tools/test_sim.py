@@ -212,6 +212,45 @@ class SpeculationTest(unittest.TestCase):
         self.assertEqual(d.tokens_per_round, 1.0)
 
 
+class ArchitectureKnobTest(unittest.TestCase):
+    def setUp(self):
+        self.params = kernels.Params()
+        self.H = hw.tr16()
+        self.cfg = RunConfig(pack="q22", mtp_depth=3, acceptance="prime")
+
+    def test_tier_compress_adds_slots_and_is_lossy(self):
+        a = decode.simulate(self.H, self.cfg, self.params)
+        b = decode.simulate(self.H, self.cfg.copy(tier_compress=1.4), self.params)
+        self.assertAlmostEqual(b.tier_slots / a.tier_slots, 1.4, delta=0.02)
+        self.assertGreater(b.hit_bytes_share, a.hit_bytes_share)
+        self.assertLess(b.gpu_gb_per_token / b.hit_bytes_share, a.gpu_gb_per_token / a.hit_bytes_share)
+        self.assertFalse(b.lossless)
+        self.assertTrue(a.lossless)
+
+    def test_pcie_share_moves_bytes_and_hurts_on_gen3(self):
+        a = decode.simulate(self.H, self.cfg, self.params)
+        b = decode.simulate(self.H, self.cfg.copy(pcie_share=0.1), self.params)
+        self.assertGreater(b.step.pcie_bytes, 0)
+        self.assertLess(b.cpu_gb_per_token, a.cpu_gb_per_token)
+        self.assertGreater(b.cpu_ceiling_tok_s, a.cpu_ceiling_tok_s)
+        self.assertLess(b.tok_s, a.tok_s)      # 7 GB/s of PCIe cannot keep up with the alternation
+        self.assertTrue(b.lossless)
+
+    def test_ceilings_bracket_the_prediction(self):
+        d = decode.simulate(self.H, self.cfg, self.params)
+        self.assertLessEqual(d.tok_s, d.cpu_ceiling_tok_s + 1e-6)
+        self.assertLessEqual(d.tok_s, d.gpu_ceiling_tok_s + 1e-6)
+
+    def test_param_override_cli(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            glm_sim.main(["estimate", "--hw", "tr16", "--pack", "q22", "--mtp", "3", "--param", "gpu_kernels_per_layer=10"])
+        self.assertIn("GPU-bound", out.getvalue())
+        with self.assertRaises(SystemExit):
+            with redirect_stdout(io.StringIO()):
+                glm_sim.main(["estimate", "--hw", "tr16", "--param", "no_such_param=1"])
+
+
 class CliTest(unittest.TestCase):
     def run_cli(self, *argv):
         out = io.StringIO()

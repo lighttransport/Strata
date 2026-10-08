@@ -21,7 +21,7 @@ class VramPlan:
 
 def plan(hw, pack, context, mtp_depth=0, gpu_draft_experts=False, dense_format="q8", budget_mib=None,
          reserve_mib=512, decode_cache_mib=None, prefill_scratch_mib=1024, prefetch_groups=0, gpus=1,
-         draft_model_mib=0.0, verify_width=None):
+         draft_model_mib=0.0, verify_width=None, tier_compress=1.0):
     """Returns the VramPlan. `decode_cache_mib` caps the tier (the engine's --decode-cache-mib); None = fill.
 
     mtp_depth > 0 adds GLM's draft block; draft_model_mib > 0 adds a separate drafter (block diffusion);
@@ -51,7 +51,7 @@ def plan(hw, pack, context, mtp_depth=0, gpu_draft_experts=False, dense_format="
     secondary_free = (gpus - 1) * max(0.0, hw.gpu.vram_mib - reserve_mib - items["staging"] - prefill_scratch_mib)
     free = primary_free + secondary_free
     tier = free if decode_cache_mib is None else min(free, decode_cache_mib)
-    expert_bytes = pack.mean_expert_bytes()
+    expert_bytes = pack.mean_expert_bytes() / tier_compress
     slots = int(tier * 2 ** 20 / expert_bytes)
     tier_mib = slots * expert_bytes / 2 ** 20
     primary = min(primary_free, tier_mib) if gpus == 1 else tier_mib * primary_free / max(1e-9, free)

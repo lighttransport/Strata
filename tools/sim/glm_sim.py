@@ -37,6 +37,8 @@ def add_hw_args(ap):
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override a hardware field, e.g. memory.dram_gbps=90, pcie.h2d_gbps=25, gpu.vram_mib=24000")
     ap.add_argument("--params", default=None, help="params.json (default: tools/sim/data/params.json if present)")
+    ap.add_argument("--param", action="append", default=[], metavar="NAME=VALUE",
+                    help="override a calibrated parameter (kernels.Params), e.g. gpu_kernels_per_layer=10, cpu_quant_scale=2")
 
 
 def add_config_args(ap, sweep=False):
@@ -67,6 +69,8 @@ def add_config_args(ap, sweep=False):
     opt("--draft-model-mib", "draft_model_mib")
     opt("--max-verify-width", "max_verify_width", help="engine cap on tokens per step (cpu::MAXT = 8); raise to explore")
     opt("--expert-skip", "expert_skip", help="share of routed expert bytes skipped by gate thresholds (lossy)")
+    opt("--pcie-share", "pcie_share", help="share of non-resident expert bytes the GPU streams over PCIe and computes")
+    opt("--tier-compress", "tier_compress", help="GPU tier expert format density: slots x this (lossy above 1)")
     opt("--dense-format", "dense_format", choices=list(model.DENSE_FORMATS))
     opt("--split-verify", "split_verify")
     opt("--decode-cache-mib", "decode_cache_mib", help="GPU expert tier MiB; -1 = fill the budget, 0 = none")
@@ -108,6 +112,17 @@ def hardware_from_args(args):
     return hw
 
 
+def params_from_args(args):
+    params = calibration.load_params(args.params)
+    for item in getattr(args, "param", []):
+        key, _, value = item.partition("=")
+        if not hasattr(params, key):
+            raise SystemExit(f"unknown parameter {key}; see kernels.Params")
+        current = getattr(params, key)
+        setattr(params, key, type(current)(float(value)) if isinstance(current, int) else float(value))
+    return params
+
+
 def load_trace(args):
     if not args.trace:
         return None, None
@@ -126,7 +141,7 @@ def fmt_table(rows, columns):
 
 def estimate(args):
     hw = hardware_from_args(args)
-    params = calibration.load_params(args.params)
+    params = params_from_args(args)
     cfg = config_from_args(args)
     trace, prior = load_trace(args)
     d = decode.simulate(hw, cfg, params, trace=trace, prior=prior)
@@ -152,6 +167,8 @@ def estimate(args):
           f"| tier uploads {s.tier_upload_ms:.1f} | disk {s.disk_ms:.1f} | pcie {s.pcie_ms:.1f} | remote {s.remote_ms:.1f} ms")
     print(f"  bytes/token: CPU {d.cpu_gb_per_token:.2f} GB ({d.cpu_gbps:.1f} GB/s, {s.cpu_bound}-bound), GPU tier {d.gpu_gb_per_token:.2f} GB "
           f"(hit {d.hit_bytes_share * 100:.1f} %), disk {d.disk_gb_per_token:.2f} GB; union ratio {s.union_ratio:.2f}")
+    print(f"  ceilings: CPU-expert-bound {d.cpu_ceiling_tok_s:.1f} tok/s, GPU-bound {d.gpu_ceiling_tok_s:.1f} tok/s "
+          f"(each with the other side fully overlapped)")
     for note in d.notes:
         print(f"  note: {note}")
     print()
@@ -168,7 +185,7 @@ def estimate(args):
 
 def sweep(args):
     hw = hardware_from_args(args)
-    params = calibration.load_params(args.params)
+    params = params_from_args(args)
     names = [n for n in CONFIG_FIELDS if hasattr(args, n) and isinstance(getattr(args, n), list)]
     varying = [n for n in names if len(getattr(args, n)) > 1]
     rows = []
@@ -177,11 +194,11 @@ def sweep(args):
         d = decode.simulate(hw, cfg, params)
         p = prefill.simulate(hw, cfg, params)
         row = {n: getattr(cfg, n) for n in varying}
-        row.update(decode_tok_s=f"{d.tok_s:.2f}", tok_round=f"{d.tokens_per_round:.2f}", round_ms=f"{d.round_ms:.0f}", prefill_tok_s=f"{p.tok_s:.1f}", tier_mib=f"{d.tier_mib:.0f}",
+        row.update(decode_tok_s=f"{d.tok_s:.2f}", tok_round=f"{d.tokens_per_round:.2f}", round_ms=f"{d.round_ms:.0f}", cpu_ceiling=f"{d.cpu_ceiling_tok_s:.1f}", gpu_ceiling=f"{d.gpu_ceiling_tok_s:.1f}", prefill_tok_s=f"{p.tok_s:.1f}", tier_mib=f"{d.tier_mib:.0f}",
                    hit=f"{d.hit_bytes_share:.2f}", cpu_ms=f"{d.step.cpu_ms:.1f}", gpu_ms=f"{d.step.gpu_ms:.1f}",
                    bottleneck=d.bottleneck, lossless=d.lossless)
         rows.append(row)
-    print(fmt_table(rows, varying + ["decode_tok_s", "tok_round", "round_ms", "prefill_tok_s", "tier_mib", "hit", "cpu_ms", "gpu_ms", "bottleneck", "lossless"]))
+    print(fmt_table(rows, varying + ["decode_tok_s", "tok_round", "round_ms", "cpu_ceiling", "gpu_ceiling", "prefill_tok_s", "tier_mib", "hit", "cpu_ms", "gpu_ms", "bottleneck", "lossless"]))
     if args.output:
         pathlib.Path(args.output).write_text(json.dumps(rows, indent=2) + "\n")
 
@@ -218,7 +235,7 @@ def fit(args):
 
 def plan(args):
     hw = hardware_from_args(args)
-    params = calibration.load_params(args.params)
+    params = params_from_args(args)
     base = config_from_args(args)
     ram_gib = hw.memory.gib + hw.memory.page_cache_gib
     candidates = []

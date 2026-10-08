@@ -18,6 +18,9 @@ class RunConfig:
     draft_layers: int = 5              # dflash: drafter depth (launch overhead per forward)
     max_verify_width: int = 8          # engine cap on tokens per step (cpu::MAXT = 8); raise to explore
     expert_skip: float = 0.0           # share of routed expert bytes skipped by gate thresholds (lossy)
+    pcie_share: float = 0.0            # share of each layer's non-resident expert bytes the GPU streams over PCIe
+                                       # and computes itself, concurrently with the CPU pass (architecture option)
+    tier_compress: float = 1.0         # GPU tier stores experts in a denser format: slots x this (lossy above 1)
     dense_format: str = "q8"           # GPU copies of the fixed weights: q8 (default) | orig (Q5_K/Q6_K) | q4 (lossy)
     split_verify: bool = True          # STRATA_GLM_SPLIT_VERIFY (needs mtp_depth >= 1)
     skip_anchor: bool = True           # STRATA_GLM_MTP_SKIP_ANCHOR
