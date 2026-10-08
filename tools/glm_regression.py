@@ -161,6 +161,9 @@ def run_quality(cfg, decoder, sequences=None, update_baseline=False, config_path
     if sequences:
         log("subset run: metrics printed, thresholds apply to the full corpus only")
         return 0
+    if final.get("different_logits") is not None and final.get("different_logits") == baseline.get("different_logits") \
+            and abs(final["kl"] - baseline["kl"]) < 1e-12 and abs(final["nll"] - baseline["nll"]) < 1e-12:
+        log("quality: bit-identical to the baseline")
     failures = check_quality(final, baseline, q["tolerance"])
     for f in failures:
         log("FAIL quality: " + f)

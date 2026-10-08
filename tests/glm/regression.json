@@ -168,14 +168,16 @@
    "perplexity": 4.82544736674,
    "nll": 1.57390344899,
    "recorded": "2026-10-09",
-   "build": "glm53f after the upstream 0.1.41 merge (b6e9919f + uncommitted engine work); 523 s on tr16; matches the documented q23 0.137 / 87.7 % / 4.825"
+   "build": "glm53f after the upstream 0.1.41 merge (b6e9919f + uncommitted engine work); 523 s on tr16; matches the documented q23 0.137 / 87.7 % / 4.825",
+   "different_logits": 1268776815
   },
   "tolerance": {
-   "kl_abs": 0.003,
-   "kl_rel": 0.03,
-   "top1_abs": 0.005,
-   "ppl_rel": 0.01
+   "kl_abs": 0.0002,
+   "kl_rel": 0.002,
+   "top1_abs": 0.001,
+   "ppl_rel": 0.002
   },
-  "note": "baseline is the q23 pack in canonical mode over the 16 held-out sequences; the reference file holds more sequences than the corpus, so the decoder's 'trailing evaluation baseline records' exit is expected"
+  "note": "baseline is the q23 pack in canonical mode over the 16 held-out sequences; the reference file holds more sequences than the corpus, so the decoder's 'trailing evaluation baseline records' exit is expected",
+  "tolerance_note": "the evaluation is bit-for-bit repeatable in canonical mode (three runs on 2026-10-09 gave the same KL, nll and different_logits count); the limits only absorb intended rounding changes. They catch route affinity 0.05 (KL 0.143). Re-record the baseline after an intended quality change."
  }
 }

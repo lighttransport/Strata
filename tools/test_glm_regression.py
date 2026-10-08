@@ -139,6 +139,16 @@ class QualityTest(Fixture):
         self.assertAlmostEqual(stored["kl"], 0.137)
         self.assertEqual(stored["tokens"], 4)
 
+    def test_configured_tolerance_catches_affinity_005(self):
+        cfg = gr.load_config()
+        base, tol = cfg["quality"]["baseline"], cfg["quality"]["tolerance"]
+        same = {k: base[k] for k in ("tokens", "kl", "top1_agreement", "perplexity")}
+        self.assertEqual(gr.check_quality(same, base, tol), [])
+        affinity = dict(same, kl=0.143)        # measured KL at route affinity 0.05
+        self.assertTrue(gr.check_quality(affinity, base, tol))
+        eight_tokens = dict(same, top1_agreement=base["top1_agreement"] - 9 / 8192)
+        self.assertTrue(gr.check_quality(eight_tokens, base, tol))
+
     def test_tolerance_math(self):
         base = {"tokens": 10, "kl": 0.1, "top1_agreement": 0.9, "perplexity": 5.0}
         tol = {"kl_abs": 0.003, "kl_rel": 0.03, "top1_abs": 0.005, "ppl_rel": 0.01}
