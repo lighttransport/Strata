@@ -100,15 +100,24 @@ PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores res
 for a better resident-expert kernel. `estimate` prints the CPU-expert-bound and GPU-bound ceilings of the
 configuration. docs/GLM_DECODE_ARCHITECTURE_PLAN.md uses these to rank the paths to 50 tok/s.
 
-**Prefill** (`prefill.py`): every chunk streams the touched 16-expert groups over PCIe (all of them above about
-64 tokens, 111 GB for q23); `chunk time = max(PCIe + disk + layer sync, GPU fixed + per-token work)`. The GPU
-side is fitted (4 s + 2.0 ms/token on the 5060 Ti): 8K chunks are GPU-bound (~20 s), 1K chunks are
-PCIe-bound (15.5 s). `--prefill-legacy` reproduces the pre-optimization state (FP32 MLA, no dequant-once).
+**Prefill** (`prefill.py`): per MoE layer the GPU runs the mixer, the host stages and uploads every 16-expert
+group the chunk touches (all 18 above about 64 tokens, 110 GB for q23), and the GPU runs the MoE GEMMs as groups
+arrive. With staged prefetch, `--prefetch-groups` upload under the mixer; the rest go through the 2-slot ring,
+whose uploads overlap the GEMMs only partly (`prefill_overlap`, fitted 0.58). The per-token terms (KDA and MLA
+mixers, GEMMs, FP16-MLA and KDA-row-part factors, dequantize-per-use factor) were fitted on the P-series ladder
+of docs/GLM_SINGLE_OPTIMIZATION.md: 220 / 241 / 313 / 315 / 377 / 403 tok/s at 8K for P02 / P05 / P07 / P08 /
+P10 / P11, all reproduced within 6 %, and the P05-era chunk sweep (14 / 89 / 153 at 256 / 2048 / 4096) within
+4 %. The GPU terms scale with the card's bandwidth (mixers) and tensor throughput (GEMMs) relative to the 5060 Ti.
+Knobs beyond the engine's: `--prefill-stream-depth 18` (uploads stream continuously across layers: the layer
+costs max(mixer + GEMM, uploads)), `--prefill-gemm-scale` (a faster MoE GEMM, what-if), `--prefill-experts
+cpu|auto` (the CPU computes the chunk's union of experts; wins below about 450 tokens), `--prefill-cpu-assist 1`
+(the CPU takes part of the tokens' expert work while the GPU is upload-bound). docs/GLM_DECODE_ARCHITECTURE_PLAN.md
+section 8 has the prefill plan.
 
 ## Validation
 
-`validate` runs 35 recorded configurations (`tools/sim/data/measured_tr16.json`, each with its source): 32 from
-this machine and 3 Xeon + V100 rows as out-of-sample checks. All are within their tolerance (15 % for quiet
+`validate` runs 42 recorded configurations (`tools/sim/data/measured_tr16.json`, each with its source): 37 from
+this machine and 5 Xeon + V100 rows (3 decode, 2 prefill) as out-of-sample checks. All are within their tolerance (15 % for quiet
 runs, up to 40-60 % for the noisy, batch and disk-bound rows, 30 % for the Xeon rows, which land at -8 / +21 /
 +25 %). Mean absolute error over the 15 calibration rows is 4.8 %. Selected rows:
 
@@ -125,7 +134,8 @@ runs, up to 40-60 % for the noisy, batch and disk-bound rows, 30 % for the Xeon 
 | 64 GB exact / frozen / hybrid | 2.4 / 23 / 15.1 | 2.9 / 19.4 / 19.0 | approximate |
 | remote TP over IB, 75 % local | 17.1 | 15.6 | -8 % |
 | batch of 8 sequences, MTP2 | 23.4 | 32.4 | +38 % (acceptance of the 8 prompts unknown) |
-| prefill q23 1K / 8K | 66 / 395 | 64 / 402 | -3 / +2 % |
+| prefill q23 1K / 8K (P11) | 66 / 403 | 64 / 403 | -3 / 0 % |
+| prefill P-series ladder P02 / P05 / P07 / P08 / P10 | 220 / 241 / 313 / 315 / 377 | 221 / 238 / 305 / 317 / 356 | 0 / -1 / -3 / +1 / -6 % |
 | prefill REAP-50 1K / 8K | 103 / 407 | 124 / 402 | +21 / -1 % |
 
 The affinity series also reproduces the measured turn to a GPU-bound round at 0.10, and the ordinary-decode

@@ -188,13 +188,14 @@ def xeon_v100():
 
     The measured runs (28.9 tok/s with two cards, 0.82-0.84 tier hits) used the pre-canonical tier kernels at
     about 50-100 GB/s and the original Q2 pack; `tier_gbps` reflects that. Use `--set gpu.tier_gbps=400` for the
-    current kernel.
+    current kernel. `tflops` is the throughput the MMQ prefill GEMMs reach on SM70 (dp4a, no int8 tensor cores),
+    fitted to the measured 501 / 304 tok/s prefill, not the card's FP16 tensor peak.
     """
     return HardwareConfig(
         name="xeon_v100",
         cpu=Cpu(name="2x Intel Xeon Gold 6240", cores=36, ghz=2.6, numa_nodes=2, simd="avx512"),
         memory=Memory(gib=160.0, dram_gbps=150.0, per_core_gbps=8.0),
-        gpu=Gpu(name="NVIDIA V100 PCIe 32 GB", count=2, vram_mib=32000, bandwidth_gbps=900.0, tflops=112.0,
+        gpu=Gpu(name="NVIDIA V100 PCIe 32 GB", count=2, vram_mib=32000, bandwidth_gbps=900.0, tflops=50.0,
                 gemv_efficiency=0.8, tier_gbps=100.0, launch_us=4.0),
         pcie=Pcie(gen=3, lanes=16, h2d_gbps=12.0, latency_us=20.0),
         disk=Disk(read_gbps=2.0, fetch_gbps=2.0),

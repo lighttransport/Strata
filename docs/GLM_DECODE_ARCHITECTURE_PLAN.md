@@ -186,3 +186,42 @@ so the remaining predictions are re-calibrated.
   fewer experts between consecutive tokens.
 - The simulator's GPU terms were calibrated with today's kernels; the 380 GB/s and 50 us assumptions are targets,
   not measurements.
+
+## 8. Prefill: where the time goes and the levers
+
+Prefill streams every routed expert over PCIe once per chunk (110 GB for q23: 15.3 s on this Gen3 x8 link), so
+it is a fixed cost per chunk plus GPU work that grows with the tokens. Today (P11: 12 prefetched groups, FP16
+MLA, KDA row parts) an 8K chunk takes 20.3 s = 403 tok/s; the simulator's breakdown of that chunk: uploads
+15.3 s, mixers 10.2 s (KDA 7.1, MLA 3.1), MoE GEMMs 7.9 s, of which about 5 s are exposed because the ring
+overlaps only part of the GEMMs with the remaining uploads. Short prompts pay the whole upload: 53 tokens take
+15.6 s (3.4 tok/s), 1K takes 16 s (64 tok/s).
+
+| Step | Change | 8K tok/s | Bound | Note |
+|---|---|---:|---|---|
+| P0 | today (P11) | 403 | PCIe + exposed GEMM | |
+| P1 | 18 prefetched groups | 404 | | needs ~900 MiB more VRAM; the mixer already hides 12 |
+| P2 | continuous streaming across layers (deep ring, uploads never wait for the GPU) | 453 | GPU | uploads for layer l+1 start during layer l's GEMMs; routes are not needed since every group is uploaded anyway |
+| P3 | P2 + MoE GEMM 2x faster (grouped int8 tensor-core GEMM instead of MMQ: 7.9 s is 8 % of the card's int8 peak) | 534 | PCIe | the PCIe floor: 110 GB / 7.2 GB/s |
+| P4 | P3 + 16K chunks (scratch ~4 GB) | 608 | GPU (mixers) | the fixed upload amortises over twice the tokens |
+| P5 | P4 + GEMM 4x | 704 | GPU (mixers) | KDA/MLA mixers (19 s at 16K) are the next target |
+| P6 | P3 + CPU assist (the CPU computes experts for ~450 tokens of the chunk) | 528 | | within noise at 8K; useless once PCIe-bound |
+| P7 | P3 on two cards | 667 | GPU | uploads halve per card |
+| P8 | P3 on PCIe Gen4 x16 | 569 | GPU | the link stops being the floor |
+
+Short prompts: compute the experts on the CPU instead of streaming them (`--prefill-experts cpu`, auto below
+about 450 tokens): 53 tokens 15.6 -> 3.1 s (17 tok/s), 128 tokens 5.7 s, 256 tokens 10.2 s; at 512 tokens the
+two paths cross (19 vs 16 s). The CPU path is compute-bound at 8.45 GMAC per token, so it never exceeds about
+28 tok/s, but it removes the 15 s floor that makes every short request slow today.
+
+Other machines (8K; today -> continuous streaming + 2x GEMM): 64 GB with REAP-50 460 -> 580; Xeon + 1 V100
+559 -> 842 (PCIe Gen3 x16 and a 900 GB/s card; the two measured Xeon prefill rows, 501 and 304 tok/s with the
+old code, are reproduced within 6 %); Xeon + 2 V100 812 -> 1061; B550 + 9070 XT with REAP-50 856 (its measured
+19 tok/s came from a card stuck at 96 MHz). The 64 GB lazy mode stays disk-bound (q23 from one NVMe: 15 tok/s at 1K; the CPU path does not help
+because the union of experts must still come from disk).
+
+Order of work for prefill: (1) the deep upload ring (P2, +12 %, lossless, no VRAM beyond the ring), (2) the GEMM
+kernel (P3, +18 % and the prerequisite for larger chunks), (3) CPU-expert prefill for short prompts (5x on
+53-token requests), (4) 16K chunks when the GEMM is fast enough, (5) mixer work (KDA chunk kernel, MLA indexer)
+once the mixers bind. Measure first: the GEMM's achieved TOPS at 8K rows and the ring's actual overlap (the fit
+says 58 %).
+

@@ -332,7 +332,7 @@ class PolishTest(unittest.TestCase):
 
     def test_xeon_out_of_sample_rows_within_tolerance(self):
         rows = [r for r in calibration.evaluate(calibration.load_records(), self.params) if r["name"].startswith("xeon_v100")]
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 5)
         self.assertTrue(all(r["within"] for r in rows), [(r["name"], round(r["error"], 2)) for r in rows])
 
 
@@ -346,6 +346,52 @@ class OwnIdeaTest(unittest.TestCase):
         self.assertGreater(tail.tok_s, none)
         self.assertLess(tail.tok_s, full)
         self.assertFalse(tail.lossless)
+
+
+class PrefillKnobTest(unittest.TestCase):
+    def setUp(self):
+        self.params = kernels.Params()
+        self.H = hw.tr16()
+        self.cfg = RunConfig(pack="q23", prompt=8192, prefill_chunk=8192, prefetch_groups=12, context=12288, prefill_scratch_mib=2048)
+
+    def test_p_series_ladder_is_monotonic(self):
+        steps = [dict(prefetch_groups=0, prefill_mla_f16=False, prefill_kda_parts=False, prefill_legacy=True),
+                 dict(prefetch_groups=0, prefill_mla_f16=False, prefill_kda_parts=False),
+                 dict(prefetch_groups=12, prefill_mla_f16=False, prefill_kda_parts=False),
+                 dict(prefetch_groups=12, prefill_mla_f16=True, prefill_kda_parts=False),
+                 dict(prefetch_groups=12, prefill_mla_f16=True, prefill_kda_parts=True)]
+        speeds = [prefill.simulate(self.H, self.cfg.copy(**s), self.params).tok_s for s in steps]
+        self.assertEqual(speeds, sorted(speeds))
+        self.assertAlmostEqual(speeds[-1], 403, delta=25)
+
+    def test_more_prefetch_never_hurts(self):
+        a = prefill.simulate(self.H, self.cfg.copy(prefetch_groups=12), self.params).tok_s
+        b = prefill.simulate(self.H, self.cfg.copy(prefetch_groups=18), self.params).tok_s
+        self.assertGreaterEqual(b, a - 1e-6)
+
+    def test_continuous_streaming_and_gemm_scale(self):
+        base = prefill.simulate(self.H, self.cfg, self.params)
+        stream = prefill.simulate(self.H, self.cfg.copy(prefill_stream_depth=18), self.params)
+        fast = prefill.simulate(self.H, self.cfg.copy(prefill_stream_depth=18, prefill_gemm_scale=2), self.params)
+        self.assertGreater(stream.tok_s, base.tok_s)
+        self.assertGreater(fast.tok_s, stream.tok_s)
+        self.assertEqual(fast.bottleneck, "pcie")   # PCIe floor: 110 GB at 7.2 GB/s
+        self.assertAlmostEqual(fast.total_s, 15.3, delta=0.5)
+
+    def test_cpu_experts_win_short_prompts_only(self):
+        short = self.cfg.copy(prompt=53)
+        gpu = prefill.simulate(self.H, short, self.params).total_s
+        cpu = prefill.simulate(self.H, short.copy(prefill_experts="cpu"), self.params).total_s
+        self.assertLess(cpu, gpu / 3)
+        auto_long = prefill.simulate(self.H, self.cfg.copy(prompt=2048, prefill_experts="auto"), self.params)
+        self.assertEqual(auto_long.experts, "gpu")
+        auto_short = prefill.simulate(self.H, short.copy(prefill_experts="auto"), self.params)
+        self.assertEqual(auto_short.experts, "cpu")
+
+    def test_cpu_assist_helps_a_little(self):
+        a = prefill.simulate(self.H, self.cfg.copy(prefill_stream_depth=18, prefill_gemm_scale=2), self.params).tok_s
+        b = prefill.simulate(self.H, self.cfg.copy(prefill_stream_depth=18, prefill_gemm_scale=2, prefill_cpu_assist=True), self.params).tok_s
+        self.assertGreaterEqual(b, a * 0.98)
 
 
 class CliTest(unittest.TestCase):

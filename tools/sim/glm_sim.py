@@ -87,7 +87,13 @@ def add_config_args(ap, sweep=False):
     opt("--prefill-scratch-mib", "prefill_scratch_mib")
     opt("--prefill-chunk", "prefill_chunk")
     opt("--prefetch-groups", "prefetch_groups")
-    opt("--prefill-legacy", "prefill_legacy")
+    opt("--prefill-legacy", "prefill_legacy", help="1 = dequantize-per-use GEMMs (before P04)")
+    opt("--prefill-mla-f16", "prefill_mla_f16")
+    opt("--prefill-kda-parts", "prefill_kda_parts")
+    opt("--prefill-stream-depth", "prefill_stream_depth", help="groups in flight beyond the ring; >= 18 = continuous streaming")
+    opt("--prefill-gemm-scale", "prefill_gemm_scale", help="relative MoE GEMM speed (what-if)")
+    opt("--prefill-experts", "prefill_experts", choices=["gpu", "cpu", "auto"])
+    opt("--prefill-cpu-assist", "prefill_cpu_assist", help="1 = CPU computes experts for part of the chunk alongside the GPU")
     opt("--batch", "batch")
     opt("--placement", "placement", choices=["cpu", "gpu_stream", "ram_tier"])
     opt("--ram-mode", "ram_mode", choices=["exact", "frozen", "hybrid"])
@@ -104,7 +110,8 @@ CONFIG_FIELDS = [f.name for f in dataclasses.fields(RunConfig)]
 def config_from_args(args, **overrides):
     data = {name: getattr(args, name) for name in CONFIG_FIELDS if hasattr(args, name)}
     data.update(overrides)
-    for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral", "adaptive_window"):
+    for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral", "adaptive_window",
+                "prefill_mla_f16", "prefill_kda_parts", "prefill_cpu_assist"):
         if key in data:
             data[key] = bool(data[key])
     return RunConfig.from_dict(data)
@@ -179,8 +186,9 @@ def estimate(args):
         print(f"  note: {note}")
     print()
     print(f"PREFILL {p.tok_s:6.1f} tok/s   ({cfg.prompt} tokens in {p.total_s:.1f} s, {p.chunks} chunk(s) of {p.chunk_tokens}; bottleneck: {p.bottleneck})")
-    print(f"  per chunk: PCIe {p.pcie_gb_per_chunk:.1f} GB in {p.pcie_s_per_chunk:.1f} s, GPU {p.gpu_s_per_chunk:.1f} s, "
-          f"disk {p.disk_s_per_chunk:.1f} s, layer sync {p.sync_s_per_chunk:.1f} s")
+    print(f"  per chunk: PCIe {p.pcie_gb_per_chunk:.1f} GB in {p.pcie_s_per_chunk:.1f} s, GPU {p.gpu_s_per_chunk:.1f} s "
+          f"(mixers {p.mixer_s_per_chunk:.1f}, GEMMs {p.gemm_s_per_chunk:.1f}), CPU experts {p.cpu_s_per_chunk:.1f} s, "
+          f"disk {p.disk_s_per_chunk:.1f} s; experts via {p.experts}")
     print()
     print("VRAM plan (MiB): " + ", ".join(f"{k} {v:.0f}" for k, v in plan.table()))
     if args.output:

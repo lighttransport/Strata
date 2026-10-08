@@ -19,10 +19,17 @@ class Params:
     gpu_layer_fixed_us: float = 100.0  # router, mHC, mailbox publish/wait kernels per MoE layer per token group
     draft_fixed_ms: float = 1.3        # per draft step beyond its head and experts (MLA, norms, launches)
     tier_upload_ms: float = 1.0        # exposed GPU time per step from adaptive-tier uploads
-    prefill_fixed_s: float = 4.0       # per-chunk GPU work independent of chunk size
-    prefill_ms_per_token: float = 2.0  # GEMM + attention + gather per token of chunk
-    prefill_sync_ms_per_layer: float = 45.0  # router-before-upload serialization per MoE layer per chunk
-    prefill_legacy_factor: float = 1.9  # GPU prefill work before FP16 MLA / dequant-once / KDA row parts
+    # prefill (per MoE layer of one chunk): mixer, 18 group uploads, MoE GEMMs; see prefill.py
+    prefill_kda_us: float = 36.0       # KDA mixer per token per layer (FP32 chunked recurrence)
+    prefill_kda_parts_factor: float = 0.7   # with 4 row parts (P11)
+    prefill_mla_us: float = 58.8      # MLA mixer per token per layer with FP32 products
+    prefill_mla_f16_factor: float = 0.468     # with FP16 products (P10)
+    prefill_gemm_us: float = 21.4      # routed-expert GEMMs (MMQ) per token per layer
+    prefill_legacy_gemm: float = 1.87  # dequantize-per-use before P04
+    prefill_overlap: float = 0.58      # share of the GEMM time hidden under the ring's remaining uploads
+    prefill_group_fixed_ms: float = 0.73     # per group: staging handoff, gather/scatter launches
+    prefill_layer_fixed_ms: float = 30.8     # per MoE layer: router, hc, norms, events
+    prefill_dense_us: float = 0.62      # dense layers and head per token
     prefill_lazy_gain: float = 1.0     # SSD reads overlap with PCIe this much (1 = fully serialized)
     ram_tier_wait_ms: float = 1.5      # exposed wait per disk-fetched expert on top of its bytes
     prefetch_accuracy: float = 0.9     # share of predicted next-layer routes that are right (FATE: 97 %, DraftExpert: 86-88 %)

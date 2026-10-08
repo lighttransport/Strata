@@ -23,8 +23,12 @@ MEASURED_FILE = DATA / "measured_tr16.json"
 FIT_PARAMETERS = [
     "cpu_bw_scale", "cpu_width_penalty", "cpu_layer_overhead_ms", "cpu_quant_scale", "gpu_width_factor",
     "gpu_layer_fixed_us", "draft_fixed_ms", "tier_upload_ms",
-    "prefill_fixed_s", "prefill_ms_per_token", "prefill_sync_ms_per_layer",
+    "prefill_kda_us", "prefill_mla_us", "prefill_gemm_us", "prefill_overlap", "prefill_group_fixed_ms",
+    "prefill_layer_fixed_ms", "prefill_dense_us",
 ]
+PREFILL_PARAMETERS = ["prefill_kda_us", "prefill_kda_parts_factor", "prefill_mla_us", "prefill_mla_f16_factor",
+                      "prefill_gemm_us", "prefill_legacy_gemm", "prefill_overlap", "prefill_group_fixed_ms",
+                      "prefill_layer_fixed_ms", "prefill_dense_us"]
 
 
 def load_params(path=None):
@@ -82,7 +86,8 @@ def evaluate(records, params, only_fit=False):
             extra = dict(cpu_ms=result.step.cpu_ms, gpu_ms=result.step.gpu_ms, hit=result.hit_bytes_share,
                          cpu_gb_per_token=result.cpu_gb_per_token, bottleneck=result.bottleneck)
         else:
-            extra = dict(bottleneck=result.bottleneck, pcie_s=result.pcie_s_per_chunk, gpu_s=result.gpu_s_per_chunk)
+            extra = dict(bottleneck=result.bottleneck, pcie_s=result.pcie_s_per_chunk, gpu_s=result.gpu_s_per_chunk,
+                         hit=0.0, cpu_ms=0.0, gpu_ms=0.0, cpu_gb_per_token=0.0)
         rows.append(dict(name=record["name"], kind=record["kind"], measured=measured, predicted=predicted,
                          error=error, tolerance=tolerance, within=abs(error) <= tolerance,
                          quiet=record.get("quiet", False), fit=record.get("fit", False), **extra))

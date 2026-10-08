@@ -45,7 +45,14 @@ class RunConfig:
     prefill_chunk: int = 4096          # prefill_batch
     prefetch_groups: int = 8           # STRATA_GLM_STAGE_PREFETCH groups; 0 = off
     prefill_expert_cache_mib: float = 0
-    prefill_legacy: bool = False        # code state before the P-series prefill work (FP32 MLA, no dequant-once)
+    prefill_legacy: bool = False       # expert weights dequantized per use (before P04 dequant-once)
+    prefill_mla_f16: bool = True       # STRATA_GLM_MLA_F16 in prefill (P10)
+    prefill_kda_parts: bool = True     # STRATA_GLM_PREFILL_KDA_ROW_PARTS=4 (P11)
+    prefill_stream_depth: int = 0      # expert groups in flight beyond the 2-slot ring; >= 18 streams continuously
+                                       # across layers (uploads never wait for the GPU; architecture option)
+    prefill_gemm_scale: float = 1.0    # relative speed of the MoE GEMM path (what-if for a better kernel)
+    prefill_experts: str = "gpu"       # gpu (stream over PCIe) | cpu (CPU computes the union of experts) | auto
+    prefill_cpu_assist: bool = False   # CPU computes experts for part of the chunk while the GPU streams the rest
     batch: int = 1                     # independent sequences decoded per step (<= 8)
     placement: str = "cpu"             # cpu | gpu_stream (decode_experts=gpu) | ram_tier (64 GB modes)
     ram_mode: str = "exact"            # ram_tier: exact | frozen | hybrid
