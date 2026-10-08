@@ -394,6 +394,39 @@ class PrefillKnobTest(unittest.TestCase):
         self.assertGreaterEqual(b, a * 0.98)
 
 
+class QualityAndReplayTest(unittest.TestCase):
+    def test_kl_anchors(self):
+        import quality
+        self.assertAlmostEqual(quality.estimate_kl(RunConfig(pack="q23"))[0], 0.137, delta=1e-6)
+        self.assertAlmostEqual(quality.estimate_kl(RunConfig(pack="q23", affinity=0.10))[0], 0.165, delta=1e-3)
+        self.assertAlmostEqual(quality.estimate_kl(RunConfig(pack="q23", affinity=0.15))[0], 0.198, delta=1e-3)
+        self.assertAlmostEqual(quality.estimate_kl(RunConfig(pack="q22"))[0], 0.164, delta=1e-6)
+
+    def test_kl_budget_filters_plan(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            glm_sim.main(["plan", "--hw", "tr16", "--packs", "q23", "--kl-budget", "0.15", "--top", "30"])
+        for line in out.getvalue().splitlines():
+            parts = line.split()
+            if parts and parts[0] == "q23":
+                self.assertLessEqual(float(parts[-2]), 0.15)
+
+    def test_replay_curve_continuity_and_saturation(self):
+        c = routing.TierCurve()
+        below = c.hit(c.knee - 1e-6, "static_prior")
+        above = c.hit(c.knee + 1e-6, "static_prior")
+        self.assertAlmostEqual(below, above, delta=0.002)
+        self.assertAlmostEqual(c.hit(1.0, "static_prior"), 1.0, delta=1e-6)
+        mids = [c.hit(f, "static_prior") for f in (0.1, 0.2, 0.4, 0.8)]
+        self.assertEqual(mids, sorted(mids))
+
+    def test_xeon_two_card_hit_near_measured(self):
+        H = hw.xeon_v100()
+        d = decode.simulate(H, RunConfig(pack="q2_orig", speculation="none", mtp_depth=0, gpus=2, threads=35,
+                                         context=8192, split_verify=False, prefetch_groups=0), kernels.Params())
+        self.assertAlmostEqual(d.hit_bytes_share, 0.83, delta=0.08)
+
+
 class CliTest(unittest.TestCase):
     def run_cli(self, *argv):
         out = io.StringIO()

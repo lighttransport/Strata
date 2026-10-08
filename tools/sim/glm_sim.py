@@ -27,6 +27,7 @@ import calibration  # noqa: E402
 import decode  # noqa: E402
 import hw as hwmod  # noqa: E402
 import model  # noqa: E402
+import quality  # noqa: E402
 import prefill  # noqa: E402
 import routing  # noqa: E402
 from config import RunConfig  # noqa: E402
@@ -180,6 +181,8 @@ def estimate(args):
           f"| tier uploads {s.tier_upload_ms:.1f} | disk {s.disk_ms:.1f} | pcie {s.pcie_ms:.1f} | remote {s.remote_ms:.1f} ms")
     print(f"  bytes/token: CPU {d.cpu_gb_per_token:.2f} GB ({d.cpu_gbps:.1f} GB/s, {s.cpu_bound}-bound), GPU tier {d.gpu_gb_per_token:.2f} GB "
           f"(hit {d.hit_bytes_share * 100:.1f} %), disk {d.disk_gb_per_token:.2f} GB; union ratio {s.union_ratio:.2f}")
+    kl, parts = quality.estimate_kl(cfg)
+    print(f"  quality (rough): KL ~{kl:.3f} = " + " + ".join(f"{k} {v:.3f}" for k, v in parts.items()))
     print(f"  ceilings: CPU-expert-bound {d.cpu_ceiling_tok_s:.1f} tok/s, GPU-bound {d.gpu_ceiling_tok_s:.1f} tok/s "
           f"(each with the other side fully overlapped)")
     for note in d.notes:
@@ -208,11 +211,11 @@ def sweep(args):
         d = decode.simulate(hw, cfg, params)
         p = prefill.simulate(hw, cfg, params)
         row = {n: getattr(cfg, n) for n in varying}
-        row.update(decode_tok_s=f"{d.tok_s:.2f}", tok_round=f"{d.tokens_per_round:.2f}", round_ms=f"{d.round_ms:.0f}", cpu_ceiling=f"{d.cpu_ceiling_tok_s:.1f}", gpu_ceiling=f"{d.gpu_ceiling_tok_s:.1f}", prefill_tok_s=f"{p.tok_s:.1f}", tier_mib=f"{d.tier_mib:.0f}",
+        row.update(kl=f"{d.kl_estimate:.3f}", decode_tok_s=f"{d.tok_s:.2f}", tok_round=f"{d.tokens_per_round:.2f}", round_ms=f"{d.round_ms:.0f}", cpu_ceiling=f"{d.cpu_ceiling_tok_s:.1f}", gpu_ceiling=f"{d.gpu_ceiling_tok_s:.1f}", prefill_tok_s=f"{p.tok_s:.1f}", tier_mib=f"{d.tier_mib:.0f}",
                    hit=f"{d.hit_bytes_share:.2f}", cpu_ms=f"{d.step.cpu_ms:.1f}", gpu_ms=f"{d.step.gpu_ms:.1f}",
                    bottleneck=d.bottleneck, lossless=d.lossless)
         rows.append(row)
-    print(fmt_table(rows, varying + ["decode_tok_s", "tok_round", "round_ms", "cpu_ceiling", "gpu_ceiling", "prefill_tok_s", "tier_mib", "hit", "cpu_ms", "gpu_ms", "bottleneck", "lossless"]))
+    print(fmt_table(rows, varying + ["kl", "decode_tok_s", "tok_round", "round_ms", "cpu_ceiling", "gpu_ceiling", "prefill_tok_s", "tier_mib", "hit", "cpu_ms", "gpu_ms", "bottleneck", "lossless"]))
     if args.output:
         pathlib.Path(args.output).write_text(json.dumps(rows, indent=2) + "\n")
 
@@ -295,6 +298,8 @@ def plan(args):
                 p = prefill.simulate(hw, cfg, params)
                 if args.lossless and not d.lossless:
                     continue
+                if args.kl_budget is not None and d.kl_estimate > args.kl_budget:
+                    continue
                 candidates.append((d.tok_s, p.tok_s, cfg, d, p))
     candidates.sort(key=lambda c: (-(c[0] if c[0] <= args.target_decode else args.target_decode + 1e-3 * c[0]), -c[1]))
     rows = []
@@ -304,10 +309,11 @@ def plan(args):
         rows.append(dict(pack=cfg.pack, spec=spec, affinity=cfg.affinity, skip=cfg.expert_skip, dense=cfg.dense_format, tail=cfg.spec_tail_topk,
                          placement=cfg.placement if cfg.placement == "cpu" else f"{cfg.placement}/{cfg.ram_mode}",
                          remote=cfg.remote_share, chunk=cfg.prefill_chunk, decode=f"{tok_s:.1f}", prefill=f"{pf:.0f}",
-                         tier_mib=f"{d.tier_mib:.0f}", tok_round=f"{d.tokens_per_round:.2f}", bottleneck=d.bottleneck, lossless=d.lossless))
+                         tier_mib=f"{d.tier_mib:.0f}", tok_round=f"{d.tokens_per_round:.2f}", bottleneck=d.bottleneck, lossless=d.lossless,
+                         kl=f"{d.kl_estimate:.3f}"))
     print(f"target {args.target_decode} tok/s decode on {hw.name} ({ram_gib:.0f} GiB RAM, {hw.gpu.vram_mib:.0f} MiB VRAM, "
           f"{'lossless only' if args.lossless else 'lossy allowed'}): best {len(candidates)} candidates")
-    print(fmt_table(rows, ["pack", "spec", "affinity", "skip", "dense", "tail", "placement", "remote", "chunk", "decode", "prefill", "tier_mib", "tok_round", "bottleneck", "lossless"]))
+    print(fmt_table(rows, ["pack", "spec", "affinity", "skip", "dense", "tail", "placement", "remote", "chunk", "decode", "prefill", "tier_mib", "tok_round", "bottleneck", "kl", "lossless"]))
     if candidates:
         best = candidates[0]
         d = best[3]
@@ -352,6 +358,7 @@ def main(argv=None):
     add_hw_args(p); add_config_args(p)
     p.add_argument("--target-decode", type=float, default=30.0)
     p.add_argument("--lossless", action="store_true", help="exclude affinity, REAP packs and non-exact RAM modes")
+    p.add_argument("--kl-budget", type=float, default=None, help="drop configurations whose rough KL estimate exceeds this (q23 lossless: 0.137)")
     p.add_argument("--baseline", action="store_true", help="today's algorithms only (no LRU tier, route prefetch, adaptive window)")
     p.add_argument("--packs", nargs="*")
     p.add_argument("--top", type=int, default=15)

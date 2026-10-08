@@ -93,6 +93,17 @@ late, so the GPU chain of the next layer starts after the other 1 - f; lossy, co
 lossless) and `--tail-affinity x` (route affinity applied only to draft positions >= 2). `plan` turns the three
 lossless ones on by default; `--baseline` plans with today's algorithms.
 
+**Hit model above 5 % coverage** (`data/lru_curve.json`): an ideal per-layer LRU replayed on the routing traces
+over the full coverage range, with cold-start misses removed (the traces reach only 88.5 % at full coverage), is
+scaled to meet the calibrated power law at 5 % and to reach 100 % at full residency. This replaces the power-law
+extrapolation for two-card, 32 GB-card and large RAM-set predictions; the two-V100 decode row now predicts 81 %
+GPU hits against the measured 82-84 %.
+
+**Quality model** (`quality.py`): a rough mean KL to BF16 per configuration, adding per-lever terms anchored on
+measured points (q23 0.137, affinity 0.05 / 0.10 / 0.15 -> 0.143 / 0.165 / 0.198, q22 0.164) and on guesses
+marked in the module for levers never measured on GLM (skip, deferral, tapering, Q4 dense, REAP, frozen sets).
+`estimate` prints it; `plan --kl-budget x` drops configurations above x. It ranks; it does not certify.
+
 **Architecture knobs for what-ifs**: `--pcie-share` streams a share of each layer's non-resident experts over
 PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores resident experts in a denser format
 (more slots, lossy); `--param name=value` overrides any calibrated parameter (for example

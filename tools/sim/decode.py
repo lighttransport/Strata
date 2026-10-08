@@ -11,6 +11,7 @@ import math
 
 import kernels
 import model
+import quality
 import routing
 import vram
 from model import GEOMETRY, FIXED_BYTES
@@ -63,6 +64,7 @@ class DecodeResult:
     lossless: bool
     notes: list
     cpu_ceiling_tok_s: float = 0.0   # tokens per round over the CPU expert time alone (perfect GPU overlap)
+    kl_estimate: float = 0.0         # quality.estimate_kl: rough mean KL to BF16 (ranking only)
     gpu_ceiling_tok_s: float = 0.0   # tokens per round over all GPU work alone (perfect CPU overlap)
 
     def to_dict(self):
@@ -400,4 +402,5 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
                         hit_bytes_share=hit, cpu_gb_per_token=s.cpu_bytes / 1e9 / tokens,
                         gpu_gb_per_token=s.gpu_bytes / 1e9 / tokens, disk_gb_per_token=s.disk_bytes / 1e9 / tokens,
                         cpu_gbps=cpu_gbps, bottleneck=s.bottleneck, lossless=lossless, notes=notes,
-                        cpu_ceiling_tok_s=cpu_ceiling, gpu_ceiling_tok_s=gpu_ceiling)
+                        cpu_ceiling_tok_s=cpu_ceiling, gpu_ceiling_tok_s=gpu_ceiling,
+                        kl_estimate=quality.estimate_kl(cfg)[0])

@@ -4,8 +4,11 @@ serves, and how MTP drafts are accepted.
 Two sources: the synthetic model (parameters fitted to measurements in docs/GLM_Q2_DECODE_REDESIGN.md and
 docs/GLM_BATCH_DECODE.md) and replay of real routing traces through tools/glm_residency_sim.py.
 """
+import bisect
 import collections
 import dataclasses
+import functools
+import json
 import math
 import pathlib
 import sys
@@ -60,6 +63,26 @@ def union_ratio(width, experts=288, top_k=8, consecutive=True):
     return min(measured, independent)
 
 
+@functools.lru_cache(maxsize=1)
+def lru_table():
+    """Warm LRU replay table: coverage -> share of routes, cold-start misses removed (data/lru_curve.json)."""
+    data = json.loads((pathlib.Path(__file__).resolve().parent / "data" / "lru_curve.json").read_text())
+    pts = data["points"]
+    full = pts[-1][1]
+    return [p[0] for p in pts], [min(1.0, p[1] / full) for p in pts]
+
+
+def lru_replay_hit(fraction):
+    xs, ys = lru_table()
+    if fraction <= xs[0]:
+        return ys[0] * fraction / xs[0]
+    if fraction >= xs[-1]:
+        return 1.0
+    i = bisect.bisect_right(xs, fraction)
+    x0, x1, y0, y1 = xs[i - 1], xs[i], ys[i - 1], ys[i]
+    return y0 + (y1 - y0) * (fraction - x0) / (x1 - x0)
+
+
 @dataclasses.dataclass
 class TierCurve:
     """Share of routed bytes served by a tier holding a fraction f of all expert slots.
@@ -74,6 +97,7 @@ class TierCurve:
     lru_gain: float = 1.22          # ideal per-layer LRU replayed on the build-q2-v3 traces: 26.9 % at 4.7 % of
                                     # slots, 41.2 % at 10 %, 57.7 % at 20 % (adaptive curve 23.7 / 35.7 / 52.1)
     affinity_tau: float = 0.22      # affinity margin x: resident share rises as 1 - exp(-x / tau)
+    knee: float = 0.05              # power law below (fitted to the 3-6 % tier measurements), trace replay above
 
     def hit(self, fraction, policy="adaptive", affinity=0.0, skew=1.0, adaptive=None):
         """policy: static (prompt routes), static_prior (calibration prior), adaptive."""
@@ -82,6 +106,12 @@ class TierCurve:
         if fraction <= 0:
             return 0.0
         h = min(1.0, self.a * skew * fraction ** self.b)
+        if fraction > self.knee:
+            # above the calibrated range, follow the shape of the trace replay: scaled to meet the power law at the
+            # knee and to reach full residency at full coverage
+            scale = self.a * skew * self.knee ** self.b / lru_replay_hit(self.knee)
+            s = scale + (1 - scale) * (fraction - self.knee) / (1 - self.knee)
+            h = min(1.0, lru_replay_hit(fraction) * s)
         if policy == "adaptive":
             h = min(1.0, h * self.adaptive_gain)
         elif policy == "lru":
