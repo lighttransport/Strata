@@ -163,6 +163,40 @@ not reach. Every lossy lever buys bytes: affinity is the largest single one (0.0
 cards (`--gpus 2`) lossless q22 MTP3 predicts 32 tok/s and q23 29 tok/s, because the second tier removes about
 45 % of the CPU bytes.
 
+## B550 + RX 9070 XT (preset `b550`, not validated)
+
+Ryzen 9 3950X, one NUMA node, 60 GiB RAM, 40 GB/s expert bandwidth assumed (26 GB/s was measured while the
+box ran other jobs), 16 GB VRAM at 640 GB/s, PCIe Gen4 x16. Only REAP-50 q23 fits the RAM; q22/q23 need the
+RAM tier. `plan --hw b550 --target-decode 30`:
+
+| Pack | Speculation | Affinity | Skip | Dense | Placement | Decode tok/s | Prefill 1K tok/s | Lossless |
+|---|---|---:|---:|---|---|---:|---:|---|
+| q2_orig | MTP2 | 0 | 0 | q8 | RAM tier, exact | 5.0 | 39 | yes (disk-bound) |
+| REAP-50 q23 | MTP3 | 0.10 | 0.1 | q4 | cpu | 24.1 | 308 | no |
+| REAP-50 q23 | MTP3 | 0.10 | 0.1 | q8 | cpu | 23.5 | 308 | no |
+| REAP-50 q23 | MTP1 | 0.10 | 0.1 | q4 | cpu | 22.9 | 308 | no |
+| q22 | MTP3 | 0.10 | 0.1 | q4 | RAM tier, frozen | 21.8 | 37 | no |
+
+Lossless decode is disk-bound at 5 tok/s because no lossless pack fits 60 GiB. The best lossy configuration
+reaches 24 tok/s with 120 ms of CPU experts against 91 ms of GPU work per round, so the 9070 XT is close to a
+second limit; 30 tok/s would need CPU expert bytes under 0.9 GB per token or about 50 GB/s of sustained expert
+bandwidth. If the 3950X's quiet rate is the measured 26 GB/s rather than 40, all decode figures drop by about
+a third.
+
+DFlash2 block drafting on this box (REAP-50 q23, 512 MiB drafter; MTP rows use the `mixed` profile):
+
+| Method | Tokens per round | Round ms | Decode tok/s |
+|---|---:|---:|---:|
+| MTP depth 2 | 2.64 | 188 | 14.1 |
+| DFlash block 4, chat / code / math | 3.2 / 3.4 / 3.6 | 227 | 14.2 / 14.8 / 16.0 |
+| DFlash block 6 | 4.3 / 4.5 / 5.1 | 318 | 13.4 / 14.2 / 16.1 |
+| DFlash block 8 (DFlash2 default) | 5.0 / 5.4 / 6.4 | 423 | 11.8 / 12.8 / 15.1 |
+
+Block drafting is a wash against MTP here and gets worse with the block size, for the same reason as on tr16
+but stronger: at 35-40 GB/s the verify step's distinct expert bytes (5.3x one token at block 8) dominate the
+round. Math-style text with 6.4 accepted tokens is the one case where blocks of 4-6 beat MTP, by about 2 tok/s.
+With q22 in a frozen RAM set, DFlash8 gives 12.0 vs MTP2's 13.4 tok/s (14.4 vs 15.5 with affinity 0.05).
+
 ## What the model says about this machine
 
 - Single-stream decode is bound by the CPU expert pass: 2.4 GB of expert bytes per token at 63-65 GB/s, with
