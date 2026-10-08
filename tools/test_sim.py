@@ -427,6 +427,51 @@ class QualityAndReplayTest(unittest.TestCase):
         self.assertAlmostEqual(d.hit_bytes_share, 0.83, delta=0.08)
 
 
+class RemainingItemsTest(unittest.TestCase):
+    def setUp(self):
+        self.H = hw.tr16(); self.params = kernels.Params()
+        self.cfg = RunConfig(pack="q22", mtp_depth=3, acceptance="prime")
+
+    def test_cost_aware_drafts_lossless_gain(self):
+        a = decode.simulate(self.H, self.cfg, self.params)
+        b = decode.simulate(self.H, self.cfg.copy(cost_aware_drafts=True), self.params)
+        self.assertGreater(b.tok_s, a.tok_s)
+        self.assertTrue(b.lossless)
+
+    def test_selfspec_runs_and_is_slower_than_mtp_here(self):
+        a = decode.simulate(self.H, self.cfg, self.params).tok_s
+        b = decode.simulate(self.H, self.cfg.copy(speculation="selfspec"), self.params)
+        self.assertGreater(b.tok_s, 0)
+        self.assertLess(b.tok_s, a)
+
+    def test_cold_experts_fit_64gb(self):
+        H = hw.tr16(); H.memory.gib = 60
+        base = RunConfig(pack="q23", mtp_depth=2, placement="ram_tier", pcie_prefetch=True, draft_prefetch=True)
+        a = decode.simulate(H, base, self.params)
+        b = decode.simulate(H, base.copy(cold_share=0.7, cold_scale=0.55), self.params)
+        self.assertGreater(b.tok_s, 3 * a.tok_s)
+        self.assertFalse(b.lossless)
+
+    def test_draft_prefetch_helps_disk_bound(self):
+        H = hw.tr16(); H.memory.gib = 60
+        base = RunConfig(pack="q23", mtp_depth=2, placement="ram_tier", pcie_prefetch=True)
+        self.assertGreater(decode.simulate(H, base.copy(draft_prefetch=True), self.params).tok_s,
+                           decode.simulate(H, base, self.params).tok_s)
+
+    def test_estimate_mc_and_request(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            glm_sim.main(["estimate", "--hw", "tr16", "--mc", "5"])
+        self.assertIn("UNCERTAINTY", out.getvalue())
+        self.assertIn("REQUEST", out.getvalue())
+
+    def test_pareto(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            glm_sim.main(["plan", "--hw", "tr16", "--packs", "q23", "--pareto", "--top", "20"])
+        self.assertIn("pack", out.getvalue())
+
+
 class CliTest(unittest.TestCase):
     def run_cli(self, *argv):
         out = io.StringIO()

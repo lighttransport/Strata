@@ -62,7 +62,7 @@ def add_config_args(ap, sweep=False):
     opt("--context", "context")
     opt("--prompt", "prompt")
     opt("--generate", "generate")
-    opt("--speculation", "speculation", choices=["none", "mtp", "dflash"])
+    opt("--speculation", "speculation", choices=["none", "mtp", "dflash", "selfspec"])
     opt("--mtp", "mtp_depth", help="mtp: draft tokens per round (0 = ordinary decode)")
     opt("--acceptance", "acceptance", choices=list(routing.ACCEPTANCE))
     opt("--draft-block", "draft_block", help="dflash: tokens verified per round (DFlash2: 8)")
@@ -76,6 +76,10 @@ def add_config_args(ap, sweep=False):
     opt("--deferral-share", "deferral_share", help="share of routed work that may be deferred (quality cost grows with it)")
     opt("--adaptive-window", "adaptive_window", help="1 = stop drafting at low confidence; shorter verify windows (lossless)")
     opt("--spec-tail-topk", "spec_tail_topk", help="experts per route for draft positions >= 2 (AcceptMoE-style; lossy below 8)")
+    opt("--cost-aware-drafts", "cost_aware_drafts", help="1 = EcoSpec-style draft choice that reuses active experts")
+    opt("--draft-prefetch", "draft_prefetch", help="1 = fetch RAM-tier misses a round ahead from the drafts' routes")
+    opt("--cold-share", "cold_share", help="share of experts (coldest) stored in a smaller format (lossy)")
+    opt("--cold-scale", "cold_scale", help="cold expert bytes relative to the pack format")
     opt("--tail-affinity", "tail_affinity", help="route affinity for draft positions >= 2 only (lossy)")
     opt("--tier-compress", "tier_compress", help="GPU tier expert format density: slots x this (lossy above 1)")
     opt("--dense-format", "dense_format", choices=list(model.DENSE_FORMATS))
@@ -112,7 +116,7 @@ def config_from_args(args, **overrides):
     data = {name: getattr(args, name) for name in CONFIG_FIELDS if hasattr(args, name)}
     data.update(overrides)
     for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral", "adaptive_window",
-                "prefill_mla_f16", "prefill_kda_parts", "prefill_cpu_assist"):
+                "prefill_mla_f16", "prefill_kda_parts", "prefill_cpu_assist", "cost_aware_drafts", "draft_prefetch"):
         if key in data:
             data[key] = bool(data[key])
     return RunConfig.from_dict(data)
@@ -193,6 +197,27 @@ def estimate(args):
           f"(mixers {p.mixer_s_per_chunk:.1f}, GEMMs {p.gemm_s_per_chunk:.1f}), CPU experts {p.cpu_s_per_chunk:.1f} s, "
           f"disk {p.disk_s_per_chunk:.1f} s; experts via {p.experts}")
     print()
+    req = decode.request_seconds(hw, cfg, params, d, p)
+    print(f"REQUEST {cfg.prompt} + {cfg.generate} tokens: {req:.1f} s (first {min(cfg.generate, params.cold_tier_tokens):.0f} "
+          f"tokens at {params.cold_tier_speed:.0%} speed while the tier warms)")
+    if args.mc:
+        import random
+        rng = random.Random(1)
+        ranges = dict(cpu_bw_scale=0.08, gpu_layer_fixed_us=0.3, tier_upload_ms=0.5, prefetch_accuracy=0.1,
+                      truncation_efficiency=0.4, ecospec_union=0.08, tail_topk_acceptance=0.02, tier_expert_us=0.5,
+                      prefill_overlap=0.2, prefill_layer_fixed_ms=0.3)
+        dec, pre = [], []
+        for _ in range(args.mc):
+            q = dataclasses.replace(params)
+            for k, r in ranges.items():
+                setattr(q, k, getattr(q, k) * (1 + rng.uniform(-r, r)))
+            q.prefetch_accuracy = min(1.0, q.prefetch_accuracy)
+            dec.append(decode.simulate(hw, cfg, q).tok_s)
+            pre.append(prefill.simulate(hw, cfg, q).tok_s)
+        dec.sort(); pre.sort()
+        pick = lambda xs, f: xs[min(len(xs) - 1, int(f * len(xs)))]
+        print(f"UNCERTAINTY ({args.mc} samples over parameter ranges): decode p10/p50/p90 {pick(dec, .1):.1f} / "
+              f"{pick(dec, .5):.1f} / {pick(dec, .9):.1f} tok/s, prefill {pick(pre, .1):.0f} / {pick(pre, .5):.0f} / {pick(pre, .9):.0f}")
     print("VRAM plan (MiB): " + ", ".join(f"{k} {v:.0f}" for k, v in plan.table()))
     if args.output:
         pathlib.Path(args.output).write_text(json.dumps(dict(
@@ -301,7 +326,16 @@ def plan(args):
                 if args.kl_budget is not None and d.kl_estimate > args.kl_budget:
                     continue
                 candidates.append((d.tok_s, p.tok_s, cfg, d, p))
-    candidates.sort(key=lambda c: (-(c[0] if c[0] <= args.target_decode else args.target_decode + 1e-3 * c[0]), -c[1]))
+    if args.pareto:
+        front = []
+        for c in candidates:
+            dominated = any(o[0] >= c[0] and o[1] >= c[1] and o[3].kl_estimate <= c[3].kl_estimate
+                            and (o[0], o[1], o[3].kl_estimate) != (c[0], c[1], c[3].kl_estimate) for o in candidates)
+            if not dominated:
+                front.append(c)
+        candidates = sorted(front, key=lambda c: c[3].kl_estimate)
+    else:
+        candidates.sort(key=lambda c: (-(c[0] if c[0] <= args.target_decode else args.target_decode + 1e-3 * c[0]), -c[1]))
     rows = []
     for tok_s, pf, cfg, d, p in candidates[:args.top]:
         spec = f"mtp{cfg.mtp_depth}" if cfg.speculation == "mtp" and cfg.mtp_depth else (
@@ -338,6 +372,7 @@ def main(argv=None):
 
     p = sub.add_parser("estimate", help="one configuration")
     add_hw_args(p); add_config_args(p); p.add_argument("--output")
+    p.add_argument("--mc", type=int, default=0, help="Monte Carlo samples over uncertain parameters (prints p10/p50/p90)")
     p.set_defaults(func=estimate)
 
     p = sub.add_parser("sweep", help="grid over knobs; every config option accepts several values")
@@ -358,6 +393,7 @@ def main(argv=None):
     add_hw_args(p); add_config_args(p)
     p.add_argument("--target-decode", type=float, default=30.0)
     p.add_argument("--lossless", action="store_true", help="exclude affinity, REAP packs and non-exact RAM modes")
+    p.add_argument("--pareto", action="store_true", help="list the configurations no other beats on decode, prefill and KL at once")
     p.add_argument("--kl-budget", type=float, default=None, help="drop configurations whose rough KL estimate exceeds this (q23 lossless: 0.137)")
     p.add_argument("--baseline", action="store_true", help="today's algorithms only (no LRU tier, route prefetch, adaptive window)")
     p.add_argument("--packs", nargs="*")

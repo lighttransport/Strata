@@ -104,6 +104,16 @@ measured points (q23 0.137, affinity 0.05 / 0.10 / 0.15 -> 0.143 / 0.165 / 0.198
 marked in the module for levers never measured on GLM (skip, deferral, tapering, Q4 dense, REAP, frozen sets).
 `estimate` prints it; `plan --kl-budget x` drops configurations above x. It ranks; it does not certify.
 
+**Remaining algorithm items, now modelled**: `--cost-aware-drafts 1` (EcoSpec: drafts that reuse the window's
+experts; union x0.85, acceptance x0.98; lossless, 26.1 -> 27.9 tok/s on q22 MTP3), `--speculation selfspec`
+(DraftExpert: each draft re-runs the dense path on the GPU with a resident draft expert per layer; 15.9 tok/s here,
+too costly while the dense GEMVs take 17 ms), `--cold-share s --cold-scale c` (coldest experts in a ~1.6 bpw
+format; the lever that fits q23 into 64 GB: 3.5 -> 21 tok/s at 70 % cold, lossy, KL guessed), `--draft-prefetch 1`
+(RAM-tier fetches start a round ahead and overlap the CPU pass), a per-expert cost in the resident kernel
+(`tier_expert_us`, from the GLM_BATCH_DECODE.md timings), request time with a cold-tier start (`REQUEST` line),
+`estimate --mc N` (p10/p50/p90 over parameter ranges) and `plan --pareto` (configurations no other beats on decode,
+prefill and KL together).
+
 **Architecture knobs for what-ifs**: `--pcie-share` streams a share of each layer's non-resident experts over
 PCIe for the GPU to compute alongside the CPU pass; `--tier-compress` stores resident experts in a denser format
 (more slots, lossy); `--param name=value` overrides any calibrated parameter (for example

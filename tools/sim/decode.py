@@ -77,6 +77,8 @@ def spec_depth(cfg):
         return min(cfg.mtp_depth, cfg.max_verify_width - 1)
     if cfg.speculation == "dflash":
         return max(1, min(cfg.draft_block, cfg.max_verify_width) - 1)
+    if cfg.speculation == "selfspec":
+        return min(cfg.mtp_depth, cfg.max_verify_width - 1)
     return 0
 
 
@@ -84,6 +86,8 @@ def make_plan(hw, cfg, pack):
     depth = spec_depth(cfg)
     mtp = depth if cfg.speculation == "mtp" else 0
     drafter = cfg.draft_model_mib if (cfg.speculation == "dflash" and depth > 0) else 0.0
+    if cfg.speculation == "selfspec" and depth > 0:
+        drafter = GEOMETRY.moe_layers * 24.0
     return vram.plan(hw, pack, cfg.context, mtp, cfg.gpu_draft_experts, cfg.dense_format,
                      cfg.gpu_budget_mib or None, cfg.reserve_mib,
                      None if cfg.decode_cache_mib < 0 else cfg.decode_cache_mib,
@@ -109,7 +113,7 @@ def ram_hit_share(hw, cfg, pack, curve=None):
     curve = curve or routing.TierCurve()
     expert_gib = cfg.ram_expert_gib or max(0.0, hw.memory.gib - 6.0 - 0.04 * cfg.context / 1024)
     # with remote TP the worker keeps its share of every expert's rows in its own RAM
-    total_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share)
+    total_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share) * (1 - cfg.cold_share * (1 - cfg.cold_scale))
     if expert_gib >= total_gib or cfg.ram_mode == "frozen":
         return 1.0, expert_gib
     h = curve.hit(expert_gib / total_gib, policy="adaptive", skew=pack.skew)
@@ -159,6 +163,10 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             hits.append(hit * (1 - tail) + tail_hit * tail)
     unions = [_union(w, rows, pack, consecutive, union if len(widths) == 1 else None, cfg.spec_tail_topk, start)
               for w, start in zip(widths, starts)]
+    if cfg.cost_aware_drafts and width >= 2:
+        # draft positions reuse the window's experts: only the part beyond one token shrinks
+        unions = [1 + (u - 1) * params.ecospec_union if start == 0 else u * params.ecospec_union
+                  for u, start in zip(unions, starts)]
     # tapered draft positions route to fewer experts, so their MACs shrink with their bytes
     tapers = [u / _union(w, rows, pack, consecutive, union if len(widths) == 1 else None, GEOMETRY.top_k, start)
               for u, w, start in zip(unions, widths, starts)]
@@ -170,6 +178,11 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
     bound = "memory"
     layer_total = 0.0
     dense_scale = model.DENSE_FORMATS[cfg.dense_format]["bytes_scale"]
+    cold_factor = 1.0
+    if cfg.cold_share > 0:
+        # routes to the coldest experts (by prior) carry cold_scale bytes; hot share of routes from the tier curve
+        hot_routes = routing.TierCurve().hit(1 - cfg.cold_share, "static_prior", skew=pack.skew)
+        cold_factor = hot_routes + (1 - hot_routes) * cfg.cold_scale
     keep = 1.0 - cfg.expert_skip
     for layer in range(g.layers):
         fixed = model.layer_fixed_bytes(layer) * dense_scale
@@ -190,12 +203,14 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             gpu = (kernels.gpu_gemv_ms(hw, fixed - FIXED_BYTES["shared_expert"], cols, params)
                    + kernels.gpu_gemv_ms(hw, FIXED_BYTES["shared_expert"], cols, params)
                    + kernels.gpu_launch_ms(hw, params) + params.gpu_layer_fixed_us * 1e-3 + attn)
-            union_bytes = one * u * keep
+            union_bytes = one * u * keep * cold_factor
             resident = union_bytes * hit / cfg.tier_compress
             nonres = union_bytes * (1 - hit)
             routes = cols * g.top_k * (1 - hit) * keep * taper
             macs = routes * g.expert_macs()
             gpu_bytes += resident
+            resident_experts = g.top_k * u * keep * hit
+            gpu += params.tier_expert_us * 1e-3 * resident_experts
             if cfg.gpus > 1 and plan.tier_mib > 0:
                 # the primary's chain only carries its own tier share; the other card's share runs in parallel
                 # and its partial sums come back through the host (one extra handoff each way)
@@ -252,7 +267,11 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                     wait *= 1 - params.prefetch_accuracy
                 fetch_ms = kernels.disk_ms(hw, fetched, parallel=True) + wait * fetched / pack.expert_bytes(layer)
                 disk += fetch_ms
-                t_cpu += fetch_ms
+                if cfg.draft_prefetch:
+                    # routes of the drafted tokens are known a round ahead: the fetch runs under the CPU pass
+                    t_cpu = max(t_cpu, fetch_ms - wait * fetched / pack.expert_bytes(layer))
+                else:
+                    t_cpu += fetch_ms
             cpu_g.append(t_cpu)
             gpu_g.append(gpu)
         gpu_ms += sum(gpu_g)
@@ -325,6 +344,14 @@ def draft_step_ms(hw, cfg, params, pack, head=True, plan=None, rows=1):
     return ms
 
 
+def request_seconds(hw, cfg, params, decode_result, prefill_result):
+    """Wall time of one request: prefill, then `generate` tokens with the first cold_tier_tokens at reduced speed."""
+    cold = min(cfg.generate, params.cold_tier_tokens) if cfg.tier_policy != "static" else 0.0
+    warm = cfg.generate - cold
+    rate = decode_result.tok_s
+    return prefill_result.total_s + warm / rate + cold / (rate * params.cold_tier_speed)
+
+
 def block_draft_ms(hw, cfg, params, rows=1):
     """One block-diffusion drafter forward (DFlash): the drafter's weights stream once per round, conditioned
     on target hidden states that the verify step already produced; no recurrent state, so no resync."""
@@ -343,7 +370,7 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
     if cfg.placement == "gpu_stream":
         plan = dataclasses.replace(plan, slots=0, tier_mib=0.0)
     hit = tier_hit_share(hw, cfg, pack, plan, params, trace=trace, prior=prior)
-    local_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share)
+    local_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share) * (1 - cfg.cold_share * (1 - cfg.cold_scale))
     if cfg.placement == "cpu" and local_gib + 7 > hw.memory.gib + hw.memory.page_cache_gib:
         notes.append(f"local expert rows ({local_gib:.1f} GiB) do not fit host RAM; use placement=ram_tier")
     if cfg.remote_share > 0 and hw.remote.ram_gib and pack.routed_total_bytes() / 2 ** 30 * cfg.remote_share + 2 > hw.remote.ram_gib:
@@ -354,7 +381,7 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
     lossless = (cfg.affinity == 0 and not (cfg.placement == "ram_tier" and cfg.ram_mode != "exact")
                 and not pack.name.startswith("reap") and cfg.expert_skip == 0 and cfg.tier_compress <= 1.0
                 and model.DENSE_FORMATS[cfg.dense_format]["lossless"] and not cfg.expert_deferral
-                and cfg.spec_tail_topk >= GEOMETRY.top_k and cfg.tail_affinity == 0)
+                and cfg.spec_tail_topk >= GEOMETRY.top_k and cfg.tail_affinity == 0 and cfg.cold_share == 0)
     depth = spec_depth(cfg)
     if cfg.adaptive_window and depth >= 2:
         # drafts stop at low confidence: of the positions that would be rejected, truncation_efficiency are never
@@ -372,6 +399,18 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         tokens = float(rows)
         draft = resync = 0.0
         round_ms = verify = s.ms
+    elif cfg.speculation == "selfspec":
+        # DraftExpert: each draft runs the target's dense path once on the GPU with one resident draft expert per layer
+        per_row = routing.tokens_per_round(depth, "selfspec")
+        s = step(hw, cfg, params, depth + 1, pack, plan, hit, rows=rows, union=union)
+        one_draft = (kernels.gpu_gemv_ms(hw, model.dense_gpu_bytes_per_token() * model.DENSE_FORMATS[cfg.dense_format]["bytes_scale"], rows, params)
+                     + kernels.gpu_gemv_ms(hw, GEOMETRY.moe_layers * params.selfspec_expert_mib * 2 ** 20, rows, params)
+                     + kernels.gpu_launch_ms(hw, params, GEOMETRY.layers))
+        draft = depth * one_draft
+        resync = 0.0
+        verify = s.ms
+        round_ms = draft + verify
+        tokens = per_row * rows
     elif cfg.speculation == "dflash":
         per_row = routing.tokens_per_round(depth, cfg.draft_acceptance)
         s = step(hw, cfg, params, depth + 1, pack, plan, hit, rows=rows, union=union)
@@ -392,6 +431,8 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         verify = s.ms
         round_ms = draft + verify + resync
         tokens = per_row * rows
+    if cfg.cost_aware_drafts and depth >= 1:
+        tokens = rows + (tokens - rows) * params.ecospec_acceptance
     tok_s = tokens / round_ms * 1e3
     cpu_gbps = s.cpu_bytes / max(1e-9, s.cpu_ms) / 1e6 if s.cpu_ms else 0.0
     gpu_round = s.gpu_ms + s.head_ms + s.tail_ms + draft + resync

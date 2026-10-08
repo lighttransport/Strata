@@ -9,7 +9,8 @@ class RunConfig:
     context: int = 4096
     prompt: int = 1024
     generate: int = 512
-    speculation: str = "mtp"           # none | mtp (GLM's own draft block, sequential) | dflash (block-diffusion drafter)
+    speculation: str = "mtp"           # none | mtp | dflash (block-diffusion drafter) | selfspec (DraftExpert: target
+                                       # attention + one GPU draft expert per layer, sequential drafts)
     mtp_depth: int = 2                 # mtp: drafts per round; 0 = ordinary greedy decode
     acceptance: str = "mixed"          # mtp: routing.ACCEPTANCE profile
     draft_block: int = 8               # dflash: verify width per round (block of 7 drafts + anchor), DFlash2 default 8
@@ -29,6 +30,10 @@ class RunConfig:
                                        # truncation): fewer rejected positions are verified; lossless
     spec_tail_topk: int = 8            # experts per route for draft positions >= 2 in a verify window (AcceptMoE
                                        # style verifier sizing; lossy below 8)
+    cost_aware_drafts: bool = False    # EcoSpec: prefer draft tokens whose experts the window already uses (lossless)
+    draft_prefetch: bool = False       # drafts' routes known a round ahead: RAM-tier disk fetches overlap the CPU pass
+    cold_share: float = 0.0            # share of experts (coldest by prior) stored in a smaller format (lossy)
+    cold_scale: float = 0.6            # bytes of a cold expert relative to the pack's format (0.6: ~1.6 bpw)
     tail_affinity: float = 0.0         # route affinity applied only to draft positions >= 2 (our variant: the
                                        # routing bias lands on the tokens most likely to be rejected anyway)
     tier_compress: float = 1.0         # GPU tier stores experts in a denser format: slots x this (lossy above 1)

@@ -34,6 +34,12 @@ class Params:
     ram_tier_wait_ms: float = 1.5      # exposed wait per disk-fetched expert on top of its bytes
     prefetch_accuracy: float = 0.9     # share of predicted next-layer routes that are right (FATE: 97 %, DraftExpert: 86-88 %)
     tail_topk_acceptance: float = 0.97  # acceptance multiplier per halving of experts on tapered draft positions (AcceptMoE: -0.27 pt)
+    ecospec_union: float = 0.85        # window union multiplier with cost-aware drafts (EcoSpec reuses active experts)
+    ecospec_acceptance: float = 0.98   # acceptance multiplier for the cost-aware choice
+    selfspec_expert_mib: float = 24.0  # one DraftExpert per layer (about a routed expert's size at Q8)
+    tier_expert_us: float = 30.0       # per-expert launch/tile cost of the resident kernel (0.575 ms for 8 x 8 rows)
+    cold_tier_tokens: float = 256.0    # tokens after prefill before the adaptive tier is warm
+    cold_tier_speed: float = 0.75      # decode speed during that period relative to warm (measured 13-18 vs 21)
     truncation_efficiency: float = 0.5  # share of would-be-rejected draft positions an adaptive window leaves out
 
 
@@ -71,8 +77,10 @@ def gpu_gemv_ms(hw, bytes_, width, params):
     return bytes_ / (bw * 1e9) * 1e3 * gpu_width_factor(params, width)
 
 
-def gpu_tier_ms(hw, bytes_):
-    return bytes_ / (hw.gpu.tier_gbps * 1e9) * 1e3
+def gpu_tier_ms(hw, bytes_, experts=0.0, params=None):
+    """Resident-expert kernel: bytes at the tier rate plus a per-expert tile cost (GLM_BATCH_DECODE.md table)."""
+    per = (params.tier_expert_us if params else 0.0) * 1e-3 * experts
+    return bytes_ / (hw.gpu.tier_gbps * 1e9) * 1e3 + per
 
 
 def gpu_launch_ms(hw, params, layers=1):

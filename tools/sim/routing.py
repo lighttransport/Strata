@@ -32,6 +32,7 @@ ACCEPTANCE = {
     "mixed":  [0.90, 0.82, 0.75, 0.70, 0.65, 0.60, 0.55],
     # DFlash2 block drafter (block 8): accepted lengths 4.10 MT-Bench, 4.39 HumanEval, 5.46 GSM8K (z-lab model card);
     # a flat per-position probability p gives sum_{i=1..7} p^i = that length.
+    "selfspec": [0.86] * 15,         # DraftExpert: 84-87 % draft acceptance
     "dflash_chat": [0.86] * 15,
     "dflash_code": [0.885] * 15,
     "dflash_math": [0.935] * 15,
