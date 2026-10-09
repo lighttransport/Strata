@@ -7,7 +7,7 @@ directory, so it can be used to compare placements, packs, MTP depths and even m
 machine is busy or absent. It is an estimate: on the rows it was calibrated on it is within 5 % on average,
 and on the other recorded runs within 10-25 % (see "Validation").
 
-B550 has a separate [measurement report and reproducible calibration](GLM_B550_SIM.md). Its fit is provisional and must be selected with `--params tools/sim/data/params_b550.json`; no 20 tok/s configuration is qualified.
+B550 has a separate [measurement report and reproducible calibration](GLM_B550_SIM.md). Its 512-token lever checkpoint averages 2.01% error on same-fixture timing checks, with one continuation-margin forecast outside tolerance. Its fit is provisional and must be selected with `--params tools/sim/data/params_b550.json`; no 20 tok/s configuration is qualified.
 
 Run it with the system `python3` (numpy is needed only for routing-trace replay):
 

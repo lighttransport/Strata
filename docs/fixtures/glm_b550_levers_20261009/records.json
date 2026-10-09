@@ -1,0 +1,644 @@
+{
+  "records": [
+    {
+      "name": "000-base",
+      "kind": "decode",
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/000-base.result.json",
+      "status": "complete",
+      "lever": "BASE",
+      "attempt": 1,
+      "measured": {
+        "tok_s": 10.71575,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47679.7,
+            "tokens_per_second": 10.7174
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47694.1,
+            "tokens_per_second": 10.7141
+          }
+        ],
+        "all_trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47596.2,
+            "tokens_per_second": 10.7361
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47679.7,
+            "tokens_per_second": 10.7174
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47694.1,
+            "tokens_per_second": 10.7141
+          }
+        ],
+        "prefill_tok_s": 231.12900000000002,
+        "prefill_trials": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8886.85,
+            "tokens_per_second": 230.453
+          },
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8857.6,
+            "tokens_per_second": 231.214
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8864.11,
+            "tokens_per_second": 231.044
+          }
+        ]
+      },
+      "diagnostic": {
+        "raw_lines": {
+          "SPECULATIVE": [],
+          "DECODE": [
+            "DECODE steps=511 ms=47596.2 tok_s=10.7361",
+            "DECODE steps=511 ms=47679.7 tok_s=10.7174",
+            "DECODE steps=511 ms=47694.1 tok_s=10.7141"
+          ],
+          "PREFILL": [
+            "PREFILL trial=0 tokens=2048 batch=2048 ms=8886.85 tok_s=230.453",
+            "PREFILL trial=1 tokens=2048 batch=2048 ms=8857.6 tok_s=231.214",
+            "PREFILL trial=2 tokens=2048 batch=2048 ms=8864.11 tok_s=231.044"
+          ],
+          "STEP_TRACE": [],
+          "STEP_TRACE_SLOTS": [],
+          "CPU_EXPERT": [
+            "CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0",
+            "CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0",
+            "CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0",
+            "CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=34326.5 bytes=959376523264",
+            "CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=34427.5 bytes=965898928128",
+            "CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=34414.6 bytes=965898928128"
+          ],
+          "DECODE_CACHE": [
+            "DECODE_CACHE prefix_trained=1 slots=707 MiB=6142.06 fingerprint=5327851552226284523"
+          ],
+          "GPU_LIVE": [
+            "GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=806.414 prefill_MiB=1464 state_MiB=239.105",
+            "GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=806.414 prefill_MiB=1464 state_MiB=239.105",
+            "GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=806.414 prefill_MiB=1464 state_MiB=239.105",
+            "GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=6213.17 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105",
+            "GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=6213.17 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105",
+            "GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=6213.17 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105"
+          ],
+          "MTP_TIMING": [],
+          "MTP_POSITION": []
+        },
+        "step_trace_note": "Not enabled in reference BASE flags; no profiling flag silently added.",
+        "parsed": {
+          "prefill": [
+            {
+              "trial": 0,
+              "tokens": 2048,
+              "batch": 2048,
+              "milliseconds": 8886.85,
+              "tokens_per_second": 230.453
+            },
+            {
+              "trial": 1,
+              "tokens": 2048,
+              "batch": 2048,
+              "milliseconds": 8857.6,
+              "tokens_per_second": 231.214
+            },
+            {
+              "trial": 2,
+              "tokens": 2048,
+              "batch": 2048,
+              "milliseconds": 8864.11,
+              "tokens_per_second": 231.044
+            }
+          ],
+          "decode": [
+            {
+              "kind": "single",
+              "tokens": 511,
+              "milliseconds": 47596.2,
+              "tokens_per_second": 10.7361
+            },
+            {
+              "kind": "single",
+              "tokens": 511,
+              "milliseconds": 47679.7,
+              "tokens_per_second": 10.7174
+            },
+            {
+              "kind": "single",
+              "tokens": 511,
+              "milliseconds": 47694.1,
+              "tokens_per_second": 10.7141
+            }
+          ],
+          "cpu_expert": [
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 34326.5,
+              "bytes": 959376523264
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 34427.5,
+              "bytes": 965898928128
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 34414.6,
+              "bytes": 965898928128
+            }
+          ],
+          "mtp_timing": [],
+          "mtp_positions": [],
+          "step_trace": [],
+          "decode_cache": [
+            {
+              "prefix_trained": 1,
+              "slots": 707,
+              "MiB": 6142.06,
+              "fingerprint": 5327851552226284523
+            }
+          ],
+          "speculation": [],
+          "affinity_quality": [],
+          "lookup_parity": [],
+          "median_prefill_tok_s": 231.044,
+          "median_decode_tok_s": 10.7174,
+          "peak_allocated_gpu_mib": 11516.4,
+          "gpu_live": [
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 806.414,
+                "prefill": 1464.0,
+                "state": 239.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 806.414,
+                "prefill": 1464.0,
+                "state": 239.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 806.414,
+                "prefill": 1464.0,
+                "state": 239.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 6213.17,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 239.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 6213.17,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 239.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 6213.17,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 239.105
+              }
+            }
+          ],
+          "page_faults": [
+            {
+              "trial": 0,
+              "major": 16,
+              "minor": 33321
+            },
+            {
+              "trial": 1,
+              "major": 3,
+              "minor": 32849
+            },
+            {
+              "trial": 2,
+              "major": 5,
+              "minor": 32928
+            }
+          ]
+        },
+        "load_start": [
+          0.0,
+          0.0,
+          0.169921875
+        ],
+        "load_end": [
+          12.15966796875,
+          5.8896484375,
+          2.439453125
+        ],
+        "quiet_gate_samples": [
+          {
+            "utc": "2026-10-09T01:02:48.962956+00:00",
+            "load": [
+              0.0,
+              0.00830078125,
+              0.216796875
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:02:58.963884+00:00",
+            "load": [
+              0.0,
+              0.00732421875,
+              0.2138671875
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:03:08.965150+00:00",
+            "load": [
+              0.0,
+              0.00634765625,
+              0.2109375
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:03:18.966272+00:00",
+            "load": [
+              0.0,
+              0.00537109375,
+              0.2080078125
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:03:28.967453+00:00",
+            "load": [
+              0.0,
+              0.00439453125,
+              0.205078125
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:03:38.968451+00:00",
+            "load": [
+              0.0,
+              0.00341796875,
+              0.2021484375
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:03:48.969552+00:00",
+            "load": [
+              0.0,
+              0.00244140625,
+              0.19921875
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:03:58.970695+00:00",
+            "load": [
+              0.0,
+              0.00146484375,
+              0.1962890625
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:04:08.971862+00:00",
+            "load": [
+              0.0,
+              0.00048828125,
+              0.193359375
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:04:18.972926+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.1904296875
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:04:28.974114+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.1875
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:04:38.975173+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.1845703125
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:04:48.976304+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.181640625
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:04:58.977451+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.1796875
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:05:08.978397+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.177734375
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:05:18.979533+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.17578125
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:05:28.980879+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.173828125
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:05:38.982021+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.171875
+            ]
+          },
+          {
+            "utc": "2026-10-09T01:05:48.983195+00:00",
+            "load": [
+              0.0,
+              0.0,
+              0.169921875
+            ]
+          }
+        ],
+        "clock_start": {
+          "utc": "2026-10-09T01:05:49.557605+00:00",
+          "amd_smi": {
+            "command": [
+              "amd-smi",
+              "metric",
+              "--clock"
+            ],
+            "exit_code": 0,
+            "stdout": "GPU: 0\n    CLOCK:\n        GFX_0:\n            CLK: 1703 MHz\n            MAX_CLK: 0 MHz\n        MEM_0:\n            CLK: 772 MHz\n            MIN_CLK: 97 MHz\n            MAX_CLK: 1259 MHz\n            DEEP_SLEEP: DISABLED\n        VCLK_0:\n            CLK: 2933 MHz\n        DCLK_0:\n            CLK: 2200 MHz\n        FCLK_0:\n            CLK: 2400 MHz\n            MAX_CLK: 0 MHz\n        SOCCLK_0:\n            CLK: 1371 MHz\n            MIN_CLK: 417 MHz\n            MAX_CLK: 1476 MHz\n            DEEP_SLEEP: DISABLED\n\n",
+            "stderr": ""
+          },
+          "rocm_smi": {
+            "command": [
+              "rocm-smi",
+              "--showclocks",
+              "--showuse"
+            ],
+            "exit_code": 0,
+            "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (1800Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2400Mhz)\nGPU[0]\t\t: mclk clock level: 2: (772Mhz)\nGPU[0]\t\t: sclk clock level: S: (41Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1371Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 3\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+            "stderr": ""
+          },
+          "sysfs": {
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz *\n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz \n"
+          },
+          "memory_clock_mhz": 772.0
+        },
+        "clock_end": {
+          "utc": "2026-10-09T01:10:05.037508+00:00",
+          "amd_smi": {
+            "command": [
+              "amd-smi",
+              "metric",
+              "--clock"
+            ],
+            "exit_code": 0,
+            "stdout": "GPU: 0\n    CLOCK:\n        GFX_0:\n            CLK: 79 MHz\n            MAX_CLK: 0 MHz\n            DEEP_SLEEP: 79\n        MEM_0:\n            CLK: 96 MHz\n            MIN_CLK: 97 MHz\n            MAX_CLK: 1259 MHz\n            DEEP_SLEEP: ENABLED\n        VCLK_0:\n            CLK: 25 MHz\n        DCLK_0:\n            CLK: 25 MHz\n        FCLK_0:\n            CLK: 582 MHz\n            MAX_CLK: 0 MHz\n        SOCCLK_0:\n            CLK: 417 MHz\n            MIN_CLK: 417 MHz\n            MAX_CLK: 1476 MHz\n            DEEP_SLEEP: DISABLED\n\n",
+            "stderr": ""
+          },
+          "rocm_smi": {
+            "command": [
+              "rocm-smi",
+              "--showclocks",
+              "--showuse"
+            ],
+            "exit_code": 0,
+            "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (582Mhz)\nGPU[0]\t\t: mclk clock level: 0: (96Mhz)\nGPU[0]\t\t: sclk clock level: S: (42Mhz)\nGPU[0]\t\t: socclk clock level: 0: (417Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 3\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+            "stderr": ""
+          },
+          "sysfs": {
+            "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 96Mhz *\n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz \n"
+          },
+          "memory_clock_mhz": 96.0
+        },
+        "exit_code": 0,
+        "engine_exit_code": 0,
+        "wall_seconds": 255.28438265697332,
+        "engine_wall_seconds": 251.49239510801272,
+        "cgroup": {
+          "memory.current": 55118405632,
+          "memory.peak": 56783175680,
+          "memory.swap.current": 0,
+          "memory.max": 64424509440,
+          "memory.swap.max": 0,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory.stat": {
+            "anon": 17035264,
+            "file": 54968926208,
+            "kernel": 128905216,
+            "kernel_stack": 0,
+            "pagetables": 126976,
+            "sec_pagetables": 0,
+            "percpu": 1088,
+            "sock": 0,
+            "vmalloc": 0,
+            "shmem": 0,
+            "zswap": 0,
+            "zswapped": 0,
+            "file_mapped": 0,
+            "file_dirty": 626688,
+            "file_writeback": 0,
+            "swapcached": 0,
+            "anon_thp": 0,
+            "file_thp": 0,
+            "shmem_thp": 0,
+            "inactive_anon": 0,
+            "active_anon": 16957440,
+            "inactive_file": 1044480,
+            "active_file": 54967246848,
+            "unevictable": 0,
+            "slab_reclaimable": 128661872,
+            "slab_unreclaimable": 67080,
+            "slab": 128728952,
+            "workingset_refault_anon": 0,
+            "workingset_refault_file": 0,
+            "workingset_activate_anon": 0,
+            "workingset_activate_file": 0,
+            "workingset_restore_anon": 0,
+            "workingset_restore_file": 0,
+            "workingset_nodereclaim": 0,
+            "pgdemote_kswapd": 0,
+            "pgdemote_direct": 0,
+            "pgdemote_khugepaged": 0,
+            "pgdemote_proactive": 0,
+            "pgpromote_success": 0,
+            "pgscan": 0,
+            "pgsteal": 0,
+            "pswpin": 0,
+            "pswpout": 0,
+            "pgscan_kswapd": 0,
+            "pgscan_direct": 0,
+            "pgscan_khugepaged": 0,
+            "pgscan_proactive": 0,
+            "pgsteal_kswapd": 0,
+            "pgsteal_direct": 0,
+            "pgsteal_khugepaged": 0,
+            "pgsteal_proactive": 0,
+            "pgfault": 1694656,
+            "pgmajfault": 178080,
+            "pgrefill": 0,
+            "pgactivate": 0,
+            "pgdeactivate": 0,
+            "pglazyfree": 0,
+            "pglazyfreed": 0,
+            "swpin_zero": 0,
+            "swpout_zero": 0,
+            "zswpin": 0,
+            "zswpout": 0,
+            "zswpwb": 0,
+            "thp_fault_alloc": 0,
+            "thp_collapse_alloc": 0,
+            "thp_swpout": 0,
+            "thp_swpout_fallback": 0,
+            "numa_pages_migrated": 0,
+            "numa_pte_updates": 0,
+            "numa_hint_faults": 0
+          },
+          "io.stat": {}
+        },
+        "rejected": null,
+        "interference": [],
+        "binary_sha256": "8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f",
+        "token_ids_file": "docs/fixtures/glm_b550_levers_20261009/000-base.tokens.json",
+        "repeated_ids_equal": true
+      }
+    }
+  ],
+  "status": "baseline_gate_passed",
+  "reference": {
+    "decode_tok_s": 10.46455,
+    "prefill_tok_s": 230.93
+  },
+  "baseline_ratios": {
+    "decode": 1.0240048544849039,
+    "prefill": 1.0008617329926819
+  }
+}

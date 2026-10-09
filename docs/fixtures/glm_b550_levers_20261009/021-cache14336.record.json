@@ -1,0 +1,528 @@
+{
+  "name": "021-cache14336",
+  "kind": "decode",
+  "hw": "b550",
+  "config": {
+    "pack": "reap50_q23",
+    "quality_reference": "reap50_q23",
+    "threads": 12,
+    "context": 4096,
+    "prompt": 2048,
+    "generate": 512,
+    "prefill_chunk": 2048,
+    "speculation": "none",
+    "mtp_depth": 1,
+    "acceptance": "b550_screen",
+    "decode_cache_mib": 14336,
+    "gpu_budget_mib": 14336,
+    "reserve_mib": 2048.0,
+    "split_verify": true,
+    "tier_policy": "adaptive",
+    "affinity": 0.0,
+    "prefetch_groups": 0,
+    "tier_owned_reserve": true,
+    "prefill_scratch_mib": 1024,
+    "adaptive_window": false,
+    "prefill_experts": "gpu"
+  },
+  "fit": false,
+  "quiet": true,
+  "provenance": "docs/fixtures/glm_b550_levers_20261009/021-cache14336.result.json",
+  "status": "failed",
+  "lever": "largest-admitted-cache",
+  "attempt": 1,
+  "measured": {
+    "tok_s": null,
+    "trials": [],
+    "all_trials": [],
+    "prefill_tok_s": null,
+    "prefill_trials": []
+  },
+  "diagnostic": {
+    "raw_lines": {
+      "SPECULATIVE": [],
+      "DECODE": [],
+      "PREFILL": [],
+      "STEP_TRACE": [],
+      "STEP_TRACE_SLOTS": [],
+      "CPU_EXPERT": [],
+      "DECODE_CACHE": [],
+      "GPU_LIVE": [],
+      "MTP_TIMING": [],
+      "MTP_POSITION": [],
+      "DECODE_TRIAL": [],
+      "PREFETCH_STAGED": [],
+      "DECODE_ADAPT": [],
+      "MTP_CONTINUATION": []
+    },
+    "step_trace_note": "Enabled in all interleaved cases and controls after the uninstrumented reference BASE gate.",
+    "parsed": {
+      "prefill": [],
+      "decode": [],
+      "cpu_expert": [],
+      "mtp_timing": [],
+      "mtp_positions": [],
+      "step_trace": [],
+      "decode_cache": [],
+      "speculation": [],
+      "affinity_quality": [],
+      "lookup_parity": [],
+      "median_prefill_tok_s": null,
+      "median_decode_tok_s": null,
+      "peak_allocated_gpu_mib": null,
+      "gpu_live": [],
+      "page_faults": []
+    },
+    "load_start": [
+      0.1416015625,
+      2.99072265625,
+      4.1591796875
+    ],
+    "load_end": [
+      0.193359375,
+      2.908203125,
+      4.11962890625
+    ],
+    "quiet_gate_samples": [
+      {
+        "utc": "2026-10-09T04:17:48.756584+00:00",
+        "load": [
+          13.11474609375,
+          7.40771484375,
+          5.5791015625
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:17:58.757520+00:00",
+        "load": [
+          11.09814453125,
+          7.16357421875,
+          5.5185546875
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:18:08.758593+00:00",
+        "load": [
+          9.39111328125,
+          6.92724609375,
+          5.458984375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:18:18.759678+00:00",
+        "load": [
+          7.94677734375,
+          6.69873046875,
+          5.39990234375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:18:28.760732+00:00",
+        "load": [
+          6.724609375,
+          6.47802734375,
+          5.34130859375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:18:38.761907+00:00",
+        "load": [
+          5.6904296875,
+          6.26416015625,
+          5.28369140625
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:18:48.762985+00:00",
+        "load": [
+          4.81494140625,
+          6.0576171875,
+          5.2265625
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:18:58.763834+00:00",
+        "load": [
+          4.07421875,
+          5.85791015625,
+          5.169921875
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:19:08.764866+00:00",
+        "load": [
+          3.447265625,
+          5.66455078125,
+          5.1142578125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:19:18.766083+00:00",
+        "load": [
+          2.91650390625,
+          5.4775390625,
+          5.05908203125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:19:28.767269+00:00",
+        "load": [
+          2.4677734375,
+          5.29638671875,
+          5.00439453125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:19:38.768943+00:00",
+        "load": [
+          2.087890625,
+          5.12109375,
+          4.9501953125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:19:48.770036+00:00",
+        "load": [
+          1.7666015625,
+          4.95166015625,
+          4.896484375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:19:58.771263+00:00",
+        "load": [
+          1.49462890625,
+          4.7880859375,
+          4.84375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:20:08.772483+00:00",
+        "load": [
+          1.26416015625,
+          4.6298828125,
+          4.79150390625
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:20:18.773607+00:00",
+        "load": [
+          1.0693359375,
+          4.47705078125,
+          4.73974609375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:20:28.774795+00:00",
+        "load": [
+          0.904296875,
+          4.3291015625,
+          4.6884765625
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:20:38.775970+00:00",
+        "load": [
+          0.7646484375,
+          4.18603515625,
+          4.6376953125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:20:48.777347+00:00",
+        "load": [
+          0.646484375,
+          4.0478515625,
+          4.58740234375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:20:58.778520+00:00",
+        "load": [
+          0.54638671875,
+          3.9140625,
+          4.53759765625
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:21:08.779705+00:00",
+        "load": [
+          0.4619140625,
+          3.78466796875,
+          4.48876953125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:21:18.780891+00:00",
+        "load": [
+          0.390625,
+          3.65966796875,
+          4.43994140625
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:21:28.782125+00:00",
+        "load": [
+          0.330078125,
+          3.53857421875,
+          4.39208984375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:21:38.783154+00:00",
+        "load": [
+          0.27880859375,
+          3.42138671875,
+          4.34423828125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:21:48.784324+00:00",
+        "load": [
+          0.2353515625,
+          3.30810546875,
+          4.29736328125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:21:58.785545+00:00",
+        "load": [
+          0.19873046875,
+          3.19873046875,
+          4.25048828125
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:22:08.786707+00:00",
+        "load": [
+          0.16796875,
+          3.09326171875,
+          4.20458984375
+        ]
+      },
+      {
+        "utc": "2026-10-09T04:22:18.787383+00:00",
+        "load": [
+          0.1416015625,
+          2.99072265625,
+          4.1591796875
+        ]
+      }
+    ],
+    "clock_start": {
+      "utc": "2026-10-09T04:22:19.367518+00:00",
+      "amd_smi": {
+        "command": [
+          "amd-smi",
+          "metric",
+          "--clock"
+        ],
+        "exit_code": 0,
+        "stdout": "GPU: 0\n    CLOCK:\n        GFX_0:\n            CLK: 1752 MHz\n            MAX_CLK: 0 MHz\n        MEM_0:\n            CLK: 772 MHz\n            MIN_CLK: 97 MHz\n            MAX_CLK: 1259 MHz\n            DEEP_SLEEP: DISABLED\n        VCLK_0:\n            CLK: 2933 MHz\n        DCLK_0:\n            CLK: 2200 MHz\n        FCLK_0:\n            CLK: 2400 MHz\n            MAX_CLK: 0 MHz\n        SOCCLK_0:\n            CLK: 1371 MHz\n            MIN_CLK: 417 MHz\n            MAX_CLK: 1476 MHz\n            DEEP_SLEEP: DISABLED\n\n",
+        "stderr": ""
+      },
+      "rocm_smi": {
+        "command": [
+          "rocm-smi",
+          "--showclocks",
+          "--showuse"
+        ],
+        "exit_code": 0,
+        "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (1800Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2400Mhz)\nGPU[0]\t\t: mclk clock level: 2: (772Mhz)\nGPU[0]\t\t: sclk clock level: S: (42Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1371Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 3\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+        "stderr": ""
+      },
+      "sysfs": {
+        "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz *\n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz \n"
+      },
+      "memory_clock_mhz": 772.0
+    },
+    "clock_end": {
+      "utc": "2026-10-09T04:22:25.952177+00:00",
+      "amd_smi": {
+        "command": [
+          "amd-smi",
+          "metric",
+          "--clock"
+        ],
+        "exit_code": 0,
+        "stdout": "GPU: 0\n    CLOCK:\n        GFX_0:\n            CLK: 18 MHz\n            MAX_CLK: 0 MHz\n            DEEP_SLEEP: 18\n        MEM_0:\n            CLK: 96 MHz\n            MIN_CLK: 97 MHz\n            MAX_CLK: 1259 MHz\n            DEEP_SLEEP: ENABLED\n        VCLK_0:\n            CLK: 25 MHz\n        DCLK_0:\n            CLK: 25 MHz\n        FCLK_0:\n            CLK: 582 MHz\n            MAX_CLK: 0 MHz\n        SOCCLK_0:\n            CLK: 417 MHz\n            MIN_CLK: 417 MHz\n            MAX_CLK: 1476 MHz\n            DEEP_SLEEP: DISABLED\n\n",
+        "stderr": ""
+      },
+      "rocm_smi": {
+        "command": [
+          "rocm-smi",
+          "--showclocks",
+          "--showuse"
+        ],
+        "exit_code": 0,
+        "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (582Mhz)\nGPU[0]\t\t: mclk clock level: 0: (96Mhz)\nGPU[0]\t\t: sclk clock level: S: (42Mhz)\nGPU[0]\t\t: socclk clock level: 0: (417Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 4\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+        "stderr": ""
+      },
+      "sysfs": {
+        "/sys/class/drm/card1/device/pp_dpm_mclk": "0: 96Mhz *\n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz \n"
+      },
+      "memory_clock_mhz": 96.0
+    },
+    "exit_code": 1,
+    "engine_exit_code": 1,
+    "wall_seconds": 6.3915660709899385,
+    "engine_wall_seconds": 0.5451858330052346,
+    "cgroup": {
+      "memory.current": 16134144,
+      "memory.peak": 42000384,
+      "memory.swap.current": 0,
+      "memory.max": 64424509440,
+      "memory.swap.max": 0,
+      "memory.events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory.stat": {
+        "anon": 15405056,
+        "file": 12288,
+        "kernel": 299008,
+        "kernel_stack": 0,
+        "pagetables": 122880,
+        "sec_pagetables": 0,
+        "percpu": 1088,
+        "sock": 0,
+        "vmalloc": 0,
+        "shmem": 0,
+        "zswap": 0,
+        "zswapped": 0,
+        "file_mapped": 0,
+        "file_dirty": 12288,
+        "file_writeback": 0,
+        "swapcached": 0,
+        "anon_thp": 0,
+        "file_thp": 0,
+        "shmem_thp": 0,
+        "inactive_anon": 0,
+        "active_anon": 15319040,
+        "inactive_file": 12288,
+        "active_file": 0,
+        "unevictable": 0,
+        "slab_reclaimable": 111560,
+        "slab_unreclaimable": 50816,
+        "slab": 162376,
+        "workingset_refault_anon": 0,
+        "workingset_refault_file": 0,
+        "workingset_activate_anon": 0,
+        "workingset_activate_file": 0,
+        "workingset_restore_anon": 0,
+        "workingset_restore_file": 0,
+        "workingset_nodereclaim": 0,
+        "pgdemote_kswapd": 0,
+        "pgdemote_direct": 0,
+        "pgdemote_khugepaged": 0,
+        "pgdemote_proactive": 0,
+        "pgpromote_success": 0,
+        "pgscan": 0,
+        "pgsteal": 0,
+        "pswpin": 0,
+        "pswpout": 0,
+        "pgscan_kswapd": 0,
+        "pgscan_direct": 0,
+        "pgscan_khugepaged": 0,
+        "pgscan_proactive": 0,
+        "pgsteal_kswapd": 0,
+        "pgsteal_direct": 0,
+        "pgsteal_khugepaged": 0,
+        "pgsteal_proactive": 0,
+        "pgfault": 13304,
+        "pgmajfault": 0,
+        "pgrefill": 0,
+        "pgactivate": 0,
+        "pgdeactivate": 0,
+        "pglazyfree": 0,
+        "pglazyfreed": 0,
+        "swpin_zero": 0,
+        "swpout_zero": 0,
+        "zswpin": 0,
+        "zswpout": 0,
+        "zswpwb": 0,
+        "thp_fault_alloc": 0,
+        "thp_collapse_alloc": 0,
+        "thp_swpout": 0,
+        "thp_swpout_fallback": 0,
+        "numa_pages_migrated": 0,
+        "numa_pte_updates": 0,
+        "numa_hint_faults": 0
+      },
+      "io.stat": {}
+    },
+    "rejected": null,
+    "interference": [],
+    "binary_sha256": "8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f",
+    "token_ids_file": "docs/fixtures/glm_b550_levers_20261009/021-cache14336.tokens.json",
+    "repeated_ids_equal": false,
+    "engine_env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "6",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "2048",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512",
+      "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+      "STRATA_GLM_PACK_FUSE_QUANT": "0",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "/mnt/disk01/models/glm53f-reap/reap50-coverage.json",
+      "STRATA_GLM_FLOATING_Q8": "all",
+      "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576",
+      "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "256",
+      "STRATA_GLM_STEP_TRACE": "1"
+    },
+    "decode_trial_lines": {},
+    "step_trace_totals_trials_2_3": {},
+    "guard_mclk_range_mhz": [
+      96,
+      96
+    ],
+    "loaded_mclk_range_mhz": null,
+    "loaded_mclk_max_mhz": null,
+    "clock_note": "GPU may return to 96 MHz after exit and during brief idle gaps; a loaded peak above 100 MHz shows it did not remain stuck there. Clock settings were not reset or changed.",
+    "actual_decode_cache": [],
+    "minimum_gpu_free_mib": 16246,
+    "step_trace_status": "not_emitted"
+  },
+  "cohort": "ordinary256",
+  "runtime_headroom_mib": 256,
+  "tolerance": 0.1,
+  "scope": "Measurement only; no fit",
+  "neighbour_base_names": [
+    "020-base-ordinary256",
+    "022-base-ordinary256"
+  ],
+  "neighbour_base_tok_s": 10.56125,
+  "ratio_to_base": null,
+  "ids_equal_to_base": null
+}

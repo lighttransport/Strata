@@ -1,0 +1,6 @@
+__pycache__/
+*.logits.bin
+*.progress.json
+progress.json
+agent-state.json
+stop_requested

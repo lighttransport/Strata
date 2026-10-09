@@ -34,6 +34,12 @@ ACCEPTANCE = {
     "coding": [0.70, 0.55, 0.45, 0.40, 0.35, 0.30, 0.25],    # REAP 1K: 131/246 at depth 2
     "mixed":  [0.90, 0.82, 0.75, 0.70, 0.65, 0.60, 0.55],
     "b550_screen": [96/171, 64/96, 49/64], # Q23 B550 screen, MTP3, 3 x 128 tokens; not a universal acceptance rate
+    # Fixed 2048-input/512-output fixture, binary 8c2c7542, 2026-10-09. Pool position 0 from
+    # MTP1/2 (199/311 and 164/233); position 1 is conditional 114/164. Position 2 retains
+    # the historical screen estimate: MTP3 timing is held out. Different processes have
+    # different target streams, so this is a fixture prior, not a runtime quality certificate.
+    "b550_levers512": [(199+164)/(311+233), 114/164, 49/64],
+    "b550_levers512_unsplit": [161/256, 94/161, 49/64],
     # DFlash2 block drafter (block 8): accepted lengths 4.10 MT-Bench, 4.39 HumanEval, 5.46 GSM8K (z-lab model card);
     # a flat per-position probability p gives sum_{i=1..7} p^i = that length.
     "selfspec": [0.86] * 15,         # DraftExpert: 84-87 % draft acceptance

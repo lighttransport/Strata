@@ -1,0 +1,37 @@
+{
+  "reference_manifest": "docs/fixtures/glm_b550_sim_20261009/corrected-baseline512.manifest.json",
+  "reference_binary_sha256": "7454c50f9bb03efabf5b93649dd20e67ed5b4a81b62d3ef20e2348be015580a4",
+  "authorized_binary_sha256": "8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f",
+  "binary_override_authorization": "User: sorry ignore it. use binary you built in the b550 side",
+  "reference_prompt_sha256": "e950c36c328437ab6e018d7695f313dbc0f81ce52be1df6ed88e167075041fd4",
+  "reference_decode_tok_s": 10.46455,
+  "reference_prefill_tok_s": 230.93,
+  "aggregation": "mean of zero-based trials 1 and 2 (human trials 2-3); exactly 512 generated tokens per decode trial; no stop ids",
+  "params_b550_before_sha256": "4e8dcb56fa90172915a119e0ba9c85533d7857075b8c42afb7be4196417a46b1",
+  "engine_change": false,
+  "refit": false,
+  "commit": false,
+  "protocol_authorizations": {
+    "mtp": "User selected compatible MTP with matched 512 MiB-reserve BASE controls.",
+    "step_trace": "User selected STEP_TRACE consistently after unchanged-flags BASE gate.",
+    "prefill": "User selected 2 GiB scratch with matched prefill controls."
+  },
+  "static_flag_semantics": "This engine checks TIER_ADAPT presence; static run unsets it rather than setting 0.",
+  "prefetch_zero_semantics": "Zero groups are represented by disabled/unset prefetch flags; literal PREFETCH_GROUPS=0 is rejected by this binary.",
+  "prefill_only_protocol": {
+    "context": 8192,
+    "scratch_mib": 2048,
+    "engine_output_arg": 1,
+    "decoder_steps": 0,
+    "reason": "Unchanged engine requires steps>=1 and prompt+steps<=context. All prefill cases and controls share 8K context; only the already-computed first token is emitted. Existing memory guard is reused with a measurement-only adapter, preserving its original result."
+  },
+  "supported_max_cache_followup": "The initial 14336 MiB cache request exceeds the unchanged CLI maximum 12288 MiB. Keep its failed attempts, then run run_max_cache.py after the main sweep to measure allocator admission at the supported cap with fresh matched BASE controls. No engine change.",
+  "params_b550_expected_sha256": "6786b52fe952e5ec3b86af363964c35d80570ba1a3f8e62573e1cb5c563ad9b6",
+  "user_authorized_calibration_checkpoint": {
+    "after_run": "022-base-ordinary256",
+    "instruction": "write current measurement summary and update simulator and its config. then commit, then resume measurement",
+    "raw_rows_remain_fit_false": true,
+    "engine_unchanged": true,
+    "simulator_validation": "simulator-update-validation.json"
+  }
+}

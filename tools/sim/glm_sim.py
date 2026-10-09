@@ -66,8 +66,7 @@ def add_config_args(ap, sweep=False):
     opt("--speculation", "speculation", choices=["none", "mtp", "dflash", "selfspec"])
     opt("--mtp", "mtp_depth", help="mtp: draft tokens per round (0 = ordinary decode)")
     opt("--acceptance", "acceptance", choices=list(routing.ACCEPTANCE))
-    if not sweep:
-        ap.set_defaults(acceptance=None)
+    ap.set_defaults(acceptance=[None] if sweep else None)
     opt("--draft-block", "draft_block", help="dflash: tokens verified per round (DFlash2: 8)")
     opt("--draft-acceptance", "draft_acceptance", choices=[k for k in routing.ACCEPTANCE if k.startswith("dflash")])
     opt("--draft-model-mib", "draft_model_mib")
@@ -98,6 +97,7 @@ def add_config_args(ap, sweep=False):
     opt("--prefill-scratch-mib", "prefill_scratch_mib")
     opt("--prefill-chunk", "prefill_chunk")
     opt("--prefetch-groups", "prefetch_groups")
+    ap.set_defaults(prefetch_groups=[None] if sweep else None)
     opt("--prefill-legacy", "prefill_legacy", help="1 = dequantize-per-use GEMMs (before P04)")
     opt("--prefill-mla-f16", "prefill_mla_f16")
     opt("--prefill-kda-parts", "prefill_kda_parts")
@@ -120,9 +120,11 @@ CONFIG_FIELDS = [f.name for f in dataclasses.fields(RunConfig)]
 
 def config_from_args(args, **overrides):
     data = {name: getattr(args, name) for name in CONFIG_FIELDS if hasattr(args, name)}
-    if data.get("acceptance") is None:
-        data["acceptance"] = "b550_screen" if getattr(args, "hw", "") == "b550" else "mixed"
     data.update(overrides)
+    if data.get("acceptance") is None:
+        data["acceptance"] = ("b550_levers512" if data.get("split_verify", True) else "b550_levers512_unsplit") if getattr(args, "hw", "") == "b550" else "mixed"
+    if data.get("prefetch_groups") is None:
+        data["prefetch_groups"] = 0 if getattr(args, "hw", "") == "b550" else RunConfig().prefetch_groups
     for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral", "adaptive_window",
                 "prefill_mla_f16", "prefill_kda_parts", "prefill_cpu_assist", "cost_aware_drafts", "draft_prefetch", "batch_mtp"):
         if key in data:
@@ -293,6 +295,8 @@ def check_implemented_config(cfg):
                        prefill_cpu_assist=False, batch=1, gpus=1)
     invalid = [name for name, value in unsupported.items() if getattr(cfg, name) != value]
     if cfg.tier_policy == "lru": invalid.append("tier_policy=lru")
+    if cfg.pack.startswith("reap50") and cfg.prefetch_groups:
+        invalid.append("REAP staged prefetch")
     if invalid:
         raise ValueError("implemented-only plan excludes: " + ", ".join(invalid) +
                          "; use --hypothetical without --implemented-only to explore them")
@@ -313,8 +317,8 @@ def plan(args):
     if implemented:
         base = base.copy(quality_reference=base.quality_reference or packs[0])
         print("Implemented candidates only; predictions require held-out hardware validation.")
-        if hw.name == "b550" and base.acceptance == "b550_screen":
-            print("MTP acceptance uses a historical screening profile; validate each workload before deployment.")
+        if hw.name == "b550" and base.acceptance.startswith("b550_"):
+            print("MTP acceptance uses a frozen-fixture profile; validate each workload before deployment.")
     if not args.baseline:
         base = base.copy(tier_policy="lru", pcie_prefetch=True, adaptive_window=True)
     affinities = [0.0] if args.lossless else [0.0, 0.05, 0.1]

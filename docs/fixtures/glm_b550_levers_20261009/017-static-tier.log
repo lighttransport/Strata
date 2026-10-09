@@ -1,0 +1,1711 @@
+STAGING compact=1 slot_MiB=140
+FLOATING_Q8 tensor=blk.0.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.0.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.1.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.1.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.10.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.10.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.11.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.11.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.11.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.11.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.12.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.12.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.13.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.13.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.14.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.14.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.15.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.15.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.15.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.15.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.16.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.16.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.17.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.17.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.18.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.18.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.19.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.19.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.19.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.19.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.2.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.2.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.20.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.20.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.21.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.21.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.22.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.22.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.23.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.23.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.23.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.23.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.24.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.24.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.25.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.25.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.26.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.26.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.27.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.27.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.27.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.27.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.28.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.28.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.29.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.29.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.3.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.3.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.3.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.3.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.30.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.30.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.31.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.31.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.31.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.31.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.32.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.32.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.33.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.33.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.34.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.34.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.35.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.35.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.35.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.35.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.36.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.36.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.37.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.37.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.38.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.38.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.39.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.39.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.39.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.39.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.4.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.4.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.40.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.40.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.41.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.41.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.42.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.42.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.43.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.43.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.43.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.43.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.44.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.44.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.5.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.5.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.6.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.6.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.7.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.7.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.7.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.7.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.8.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.8.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.9.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.9.hc_ffn_fn source_type=0 MiB=0.398438
+GPU prefill chunk=2048 staging_workers=4 numa_cpus=0,1,2,3
+GPU allocated_MiB=7154.73 reserved_runtime_MiB=1024 budget_MiB=14336
+GPU_DENSE_HOST_RELEASE phase=main tensors=1256 source_MiB_advised=5040.35 ms=123.89
+PREFILL_PARTITION primary_groups=9 secondary_groups=0
+PREFILL_CACHE device=0 budget_MiB=0 reserve_MiB=768
+PREFILL_CACHE_PLAN device=0 base_groups=0 unused_MiB=0
+MAPPED_EXPERTS numa_rows=0 lazy=1 bytes=55094280192
+PREFILL trial=0 tokens=2048 batch=2048 ms=8899.93 tok_s=230.114
+FAULTS trial=0 major=8 minor=33159
+HOST_RSS peak_MiB=53673.6
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0
+GPU peak_allocated_MiB=7538.73 native_expert_bytes=55101150720 expert_groups=378 staging_ms=5230.47
+PREFILL_SCRATCH device=0 peak_MiB=696.564 capacity_MiB=1024
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=806.414 prefill_MiB=1464 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=7538.73 live_MiB=7538.73 native_expert_bytes=55101150720 staging_ms=5230.47 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=8310 free_MiB=7994
+PREFILL trial=1 tokens=2048 batch=2048 ms=8892.97 tok_s=230.294
+FAULTS trial=1 major=4 minor=32924
+HOST_RSS peak_MiB=53716.4
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0
+GPU peak_allocated_MiB=7538.73 native_expert_bytes=55101150720 expert_groups=378 staging_ms=5236.07
+PREFILL_SCRATCH device=0 peak_MiB=696.564 capacity_MiB=1024
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=806.414 prefill_MiB=1464 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=7538.73 live_MiB=7538.73 native_expert_bytes=55101150720 staging_ms=5236.07 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=8310 free_MiB=7994
+PREFILL trial=2 tokens=2048 batch=2048 ms=8887.78 tok_s=230.429
+FAULTS trial=2 major=3 minor=32848
+HOST_RSS peak_MiB=53733.1
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0
+GPU peak_allocated_MiB=7538.73 native_expert_bytes=55101150720 expert_groups=378 staging_ms=5237.22
+PREFILL_SCRATCH device=0 peak_MiB=696.564 capacity_MiB=1024
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=806.414 prefill_MiB=1464 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=7538.73 live_MiB=7538.73 native_expert_bytes=55101150720 staging_ms=5237.22 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=8310 free_MiB=7994
+MAPPED_EXPERTS numa_rows=0 lazy=1 bytes=55094280192
+PREFILL_WORK device=0 transferred_bytes=55101150720 staging_ms=5237.22 actual_rows=688128 padded_rows=2233632 dequant_values=298768662528
+DECODE_RUNTIME override_reserve_MiB=256
+DECODE_CACHE prefix_trained=1 slots=707 MiB=6142.06 fingerprint=4523849860597886615
+RESPONSE_PREPARE kind=decode_cache ms=1031.12
+RESPONSE_PREPARE kind=cpu ms=0.002425
+DECODE_TRIAL index=0
+DECODE_STEP index=1 ms=109.843
+DECODE_STEP index=2 ms=90.5575
+DECODE_STEP index=3 ms=80.8738
+DECODE_STEP index=4 ms=91.5015
+DECODE_STEP index=5 ms=85.462
+DECODE_STEP index=6 ms=86.0503
+DECODE_STEP index=7 ms=96.3197
+DECODE_STEP index=8 ms=93.2995
+DECODE_STEP index=9 ms=90.6634
+DECODE_STEP index=10 ms=101.062
+DECODE_STEP index=11 ms=96.2833
+DECODE_STEP index=12 ms=90.5672
+DECODE_STEP index=13 ms=94.0161
+DECODE_STEP index=14 ms=95.3978
+DECODE_STEP index=15 ms=88.094
+DECODE_STEP index=16 ms=95.6086
+DECODE_STEP index=17 ms=89.5154
+DECODE_STEP index=18 ms=95.217
+DECODE_STEP index=19 ms=93.2753
+DECODE_STEP index=20 ms=86.1405
+DECODE_STEP index=21 ms=86.4214
+DECODE_STEP index=22 ms=95.1329
+DECODE_STEP index=23 ms=93.6464
+DECODE_STEP index=24 ms=104.321
+DECODE_STEP index=25 ms=109.355
+DECODE_STEP index=26 ms=87.7673
+DECODE_STEP index=27 ms=92.7821
+DECODE_STEP index=28 ms=98.287
+DECODE_STEP index=29 ms=104.163
+DECODE_STEP index=30 ms=109.162
+DECODE_STEP index=31 ms=98.2741
+DECODE_STEP index=32 ms=104.866
+DECODE_STEP index=33 ms=96.268
+DECODE_STEP index=34 ms=97.3542
+DECODE_STEP index=35 ms=91.7008
+DECODE_STEP index=36 ms=89.2205
+DECODE_STEP index=37 ms=91.944
+DECODE_STEP index=38 ms=86.5933
+DECODE_STEP index=39 ms=101.671
+DECODE_STEP index=40 ms=97.0133
+DECODE_STEP index=41 ms=97.904
+DECODE_STEP index=42 ms=107.251
+DECODE_STEP index=43 ms=97.856
+DECODE_STEP index=44 ms=86.1821
+DECODE_STEP index=45 ms=93.9606
+DECODE_STEP index=46 ms=99.4396
+DECODE_STEP index=47 ms=95.7837
+DECODE_STEP index=48 ms=91.3529
+DECODE_STEP index=49 ms=88.4726
+DECODE_STEP index=50 ms=87.93
+DECODE_STEP index=51 ms=94.481
+DECODE_STEP index=52 ms=95.4622
+DECODE_STEP index=53 ms=91.0033
+DECODE_STEP index=54 ms=98.8755
+DECODE_STEP index=55 ms=100.095
+DECODE_STEP index=56 ms=99.5129
+DECODE_STEP index=57 ms=97.188
+DECODE_STEP index=58 ms=95.1252
+DECODE_STEP index=59 ms=110.76
+DECODE_STEP index=60 ms=106.131
+DECODE_STEP index=61 ms=110.469
+DECODE_STEP index=62 ms=119.269
+DECODE_STEP index=63 ms=101.102
+DECODE_STEP index=64 ms=96.8475
+DECODE_STEP index=65 ms=84.6763
+DECODE_STEP index=66 ms=98.7746
+DECODE_STEP index=67 ms=92.5497
+DECODE_STEP index=68 ms=85.7476
+DECODE_STEP index=69 ms=109.833
+DECODE_STEP index=70 ms=100.725
+DECODE_STEP index=71 ms=104.207
+DECODE_STEP index=72 ms=91.7352
+DECODE_STEP index=73 ms=85.9972
+DECODE_STEP index=74 ms=82.1686
+DECODE_STEP index=75 ms=83.3292
+DECODE_STEP index=76 ms=83.8673
+DECODE_STEP index=77 ms=85.9839
+DECODE_STEP index=78 ms=100.832
+DECODE_STEP index=79 ms=96.8776
+DECODE_STEP index=80 ms=98.2239
+DECODE_STEP index=81 ms=97.8449
+DECODE_STEP index=82 ms=101.912
+DECODE_STEP index=83 ms=92.8418
+DECODE_STEP index=84 ms=110.638
+DECODE_STEP index=85 ms=107.475
+DECODE_STEP index=86 ms=105.668
+DECODE_STEP index=87 ms=98.5912
+DECODE_STEP index=88 ms=91.5999
+DECODE_STEP index=89 ms=109.986
+DECODE_STEP index=90 ms=106.847
+DECODE_STEP index=91 ms=111.392
+DECODE_STEP index=92 ms=91.1648
+DECODE_STEP index=93 ms=93.1561
+DECODE_STEP index=94 ms=84.8379
+DECODE_STEP index=95 ms=85.6021
+DECODE_STEP index=96 ms=90.1767
+DECODE_STEP index=97 ms=102.676
+DECODE_STEP index=98 ms=93.1883
+DECODE_STEP index=99 ms=90.3691
+DECODE_STEP index=100 ms=95.5273
+DECODE_STEP index=101 ms=93.4846
+DECODE_STEP index=102 ms=102.616
+DECODE_STEP index=103 ms=91.3204
+DECODE_STEP index=104 ms=92.9628
+DECODE_STEP index=105 ms=97.582
+DECODE_STEP index=106 ms=108.235
+DECODE_STEP index=107 ms=91.352
+DECODE_STEP index=108 ms=90.386
+DECODE_STEP index=109 ms=85.0408
+DECODE_STEP index=110 ms=95.3913
+DECODE_STEP index=111 ms=95.082
+DECODE_STEP index=112 ms=102.633
+DECODE_STEP index=113 ms=99.8802
+DECODE_STEP index=114 ms=97.9041
+DECODE_STEP index=115 ms=111.36
+DECODE_STEP index=116 ms=100.063
+DECODE_STEP index=117 ms=104.588
+DECODE_STEP index=118 ms=94.458
+DECODE_STEP index=119 ms=86.8748
+DECODE_STEP index=120 ms=91.3725
+DECODE_STEP index=121 ms=88.9228
+DECODE_STEP index=122 ms=92.1921
+DECODE_STEP index=123 ms=103.372
+DECODE_STEP index=124 ms=104.121
+DECODE_STEP index=125 ms=95.0893
+DECODE_STEP index=126 ms=102.177
+DECODE_STEP index=127 ms=108.297
+DECODE_STEP index=128 ms=105.803
+DECODE_STEP index=129 ms=100.125
+DECODE_STEP index=130 ms=93.8678
+DECODE_STEP index=131 ms=105.042
+DECODE_STEP index=132 ms=94.2282
+DECODE_STEP index=133 ms=103.858
+DECODE_STEP index=134 ms=103.769
+DECODE_STEP index=135 ms=96.3429
+DECODE_STEP index=136 ms=104.982
+DECODE_STEP index=137 ms=93.8628
+DECODE_STEP index=138 ms=96.0525
+DECODE_STEP index=139 ms=93.8099
+DECODE_STEP index=140 ms=98.8739
+DECODE_STEP index=141 ms=95.0877
+DECODE_STEP index=142 ms=104.604
+DECODE_STEP index=143 ms=101.931
+DECODE_STEP index=144 ms=97.5221
+DECODE_STEP index=145 ms=107.864
+DECODE_STEP index=146 ms=107.523
+DECODE_STEP index=147 ms=105.355
+DECODE_STEP index=148 ms=95.0632
+DECODE_STEP index=149 ms=100.677
+DECODE_STEP index=150 ms=91.6909
+DECODE_STEP index=151 ms=81.797
+DECODE_STEP index=152 ms=84.7856
+DECODE_STEP index=153 ms=98.8109
+DECODE_STEP index=154 ms=95.3806
+DECODE_STEP index=155 ms=95.3901
+DECODE_STEP index=156 ms=88.0077
+DECODE_STEP index=157 ms=94.9354
+DECODE_STEP index=158 ms=79.7161
+DECODE_STEP index=159 ms=93.6467
+DECODE_STEP index=160 ms=92.2609
+DECODE_STEP index=161 ms=88.2243
+DECODE_STEP index=162 ms=109.272
+DECODE_STEP index=163 ms=108.572
+DECODE_STEP index=164 ms=100.597
+DECODE_STEP index=165 ms=95.587
+DECODE_STEP index=166 ms=91.6968
+DECODE_STEP index=167 ms=85.3987
+DECODE_STEP index=168 ms=80.896
+DECODE_STEP index=169 ms=95.2974
+DECODE_STEP index=170 ms=105.777
+DECODE_STEP index=171 ms=94.1181
+DECODE_STEP index=172 ms=93.9123
+DECODE_STEP index=173 ms=96.5847
+DECODE_STEP index=174 ms=88.7889
+DECODE_STEP index=175 ms=96.6442
+DECODE_STEP index=176 ms=101.116
+DECODE_STEP index=177 ms=101.106
+DECODE_STEP index=178 ms=106.954
+DECODE_STEP index=179 ms=112.872
+DECODE_STEP index=180 ms=106.403
+DECODE_STEP index=181 ms=101.018
+DECODE_STEP index=182 ms=102.653
+DECODE_STEP index=183 ms=106.087
+DECODE_STEP index=184 ms=96.4252
+DECODE_STEP index=185 ms=97.565
+DECODE_STEP index=186 ms=82.5279
+DECODE_STEP index=187 ms=92.8401
+DECODE_STEP index=188 ms=92.7613
+DECODE_STEP index=189 ms=107.058
+DECODE_STEP index=190 ms=104.919
+DECODE_STEP index=191 ms=91.4433
+DECODE_STEP index=192 ms=91.4943
+DECODE_STEP index=193 ms=92.2268
+DECODE_STEP index=194 ms=96.9729
+DECODE_STEP index=195 ms=102.384
+DECODE_STEP index=196 ms=101.699
+DECODE_STEP index=197 ms=107.43
+DECODE_STEP index=198 ms=111.037
+DECODE_STEP index=199 ms=109.31
+DECODE_STEP index=200 ms=102.188
+DECODE_STEP index=201 ms=111.689
+DECODE_STEP index=202 ms=106.499
+DECODE_STEP index=203 ms=82.8845
+DECODE_STEP index=204 ms=91.1212
+DECODE_STEP index=205 ms=95.7064
+DECODE_STEP index=206 ms=106.744
+DECODE_STEP index=207 ms=97.6187
+DECODE_STEP index=208 ms=97.2832
+DECODE_STEP index=209 ms=82.1027
+DECODE_STEP index=210 ms=83.4766
+DECODE_STEP index=211 ms=81.1597
+DECODE_STEP index=212 ms=89.7749
+DECODE_STEP index=213 ms=80.6508
+DECODE_STEP index=214 ms=80.5992
+DECODE_STEP index=215 ms=99.4479
+DECODE_STEP index=216 ms=92.3178
+DECODE_STEP index=217 ms=90.1967
+DECODE_STEP index=218 ms=107.634
+DECODE_STEP index=219 ms=84.2355
+DECODE_STEP index=220 ms=109.275
+DECODE_STEP index=221 ms=100.735
+DECODE_STEP index=222 ms=94.9983
+DECODE_STEP index=223 ms=89.9273
+DECODE_STEP index=224 ms=80.449
+DECODE_STEP index=225 ms=85.4674
+DECODE_STEP index=226 ms=101.962
+DECODE_STEP index=227 ms=98.1905
+DECODE_STEP index=228 ms=88.186
+DECODE_STEP index=229 ms=86.1234
+DECODE_STEP index=230 ms=95.9663
+DECODE_STEP index=231 ms=94.4433
+DECODE_STEP index=232 ms=94.8258
+DECODE_STEP index=233 ms=83.4372
+DECODE_STEP index=234 ms=97.2769
+DECODE_STEP index=235 ms=101.773
+DECODE_STEP index=236 ms=104.288
+DECODE_STEP index=237 ms=92.5548
+DECODE_STEP index=238 ms=108.289
+DECODE_STEP index=239 ms=111.134
+DECODE_STEP index=240 ms=109.894
+DECODE_STEP index=241 ms=106.181
+DECODE_STEP index=242 ms=105.726
+DECODE_STEP index=243 ms=94.7383
+DECODE_STEP index=244 ms=101.965
+DECODE_STEP index=245 ms=106.092
+DECODE_STEP index=246 ms=102.915
+DECODE_STEP index=247 ms=96.9197
+DECODE_STEP index=248 ms=104.309
+DECODE_STEP index=249 ms=98.3924
+DECODE_STEP index=250 ms=87.4741
+DECODE_STEP index=251 ms=88.5788
+DECODE_STEP index=252 ms=88.2289
+DECODE_STEP index=253 ms=95.4402
+DECODE_STEP index=254 ms=99.1948
+DECODE_STEP index=255 ms=89.7754
+DECODE_STEP index=256 ms=91.4411
+DECODE_STEP index=257 ms=109.821
+DECODE_STEP index=258 ms=108.552
+DECODE_STEP index=259 ms=103.545
+DECODE_STEP index=260 ms=95.0993
+DECODE_STEP index=261 ms=106.344
+DECODE_STEP index=262 ms=91.2859
+DECODE_STEP index=263 ms=81.9114
+DECODE_STEP index=264 ms=102.389
+DECODE_STEP index=265 ms=101.648
+DECODE_STEP index=266 ms=99.0035
+DECODE_STEP index=267 ms=110.685
+DECODE_STEP index=268 ms=98.92
+DECODE_STEP index=269 ms=94.153
+DECODE_STEP index=270 ms=87.6706
+DECODE_STEP index=271 ms=83.5242
+DECODE_STEP index=272 ms=91.058
+DECODE_STEP index=273 ms=99.5625
+DECODE_STEP index=274 ms=89.1049
+DECODE_STEP index=275 ms=85.6356
+DECODE_STEP index=276 ms=106.448
+DECODE_STEP index=277 ms=95.0674
+DECODE_STEP index=278 ms=98.524
+DECODE_STEP index=279 ms=112.167
+DECODE_STEP index=280 ms=105.983
+DECODE_STEP index=281 ms=115.034
+DECODE_STEP index=282 ms=108.322
+DECODE_STEP index=283 ms=105.5
+DECODE_STEP index=284 ms=94.5464
+DECODE_STEP index=285 ms=104.537
+DECODE_STEP index=286 ms=92.3186
+DECODE_STEP index=287 ms=91.1968
+DECODE_STEP index=288 ms=103.24
+DECODE_STEP index=289 ms=105.711
+DECODE_STEP index=290 ms=92.9857
+DECODE_STEP index=291 ms=131.38
+DECODE_STEP index=292 ms=96.1308
+DECODE_STEP index=293 ms=105.826
+DECODE_STEP index=294 ms=102.635
+DECODE_STEP index=295 ms=88.0717
+DECODE_STEP index=296 ms=95.8125
+DECODE_STEP index=297 ms=102.274
+DECODE_STEP index=298 ms=102.584
+DECODE_STEP index=299 ms=100.756
+DECODE_STEP index=300 ms=107.723
+DECODE_STEP index=301 ms=92.642
+DECODE_STEP index=302 ms=105.472
+DECODE_STEP index=303 ms=91.1829
+DECODE_STEP index=304 ms=98.3609
+DECODE_STEP index=305 ms=94.7408
+DECODE_STEP index=306 ms=98.2722
+DECODE_STEP index=307 ms=105.763
+DECODE_STEP index=308 ms=93.8883
+DECODE_STEP index=309 ms=99.4777
+DECODE_STEP index=310 ms=100.056
+DECODE_STEP index=311 ms=108.107
+DECODE_STEP index=312 ms=105.92
+DECODE_STEP index=313 ms=96.6254
+DECODE_STEP index=314 ms=107.028
+DECODE_STEP index=315 ms=109.282
+DECODE_STEP index=316 ms=106.193
+DECODE_STEP index=317 ms=105.782
+DECODE_STEP index=318 ms=81.3112
+DECODE_STEP index=319 ms=92.5509
+DECODE_STEP index=320 ms=105.619
+DECODE_STEP index=321 ms=108.321
+DECODE_STEP index=322 ms=90.4059
+DECODE_STEP index=323 ms=96.0109
+DECODE_STEP index=324 ms=92.9484
+DECODE_STEP index=325 ms=92.2815
+DECODE_STEP index=326 ms=98.2208
+DECODE_STEP index=327 ms=104.203
+DECODE_STEP index=328 ms=104.599
+DECODE_STEP index=329 ms=97.2552
+DECODE_STEP index=330 ms=92.2104
+DECODE_STEP index=331 ms=98.1878
+DECODE_STEP index=332 ms=105.087
+DECODE_STEP index=333 ms=101.507
+DECODE_STEP index=334 ms=96.9648
+DECODE_STEP index=335 ms=101.714
+DECODE_STEP index=336 ms=107.683
+DECODE_STEP index=337 ms=104.881
+DECODE_STEP index=338 ms=100.729
+DECODE_STEP index=339 ms=106.036
+DECODE_STEP index=340 ms=101.27
+DECODE_STEP index=341 ms=95.7851
+DECODE_STEP index=342 ms=100.55
+DECODE_STEP index=343 ms=95.0145
+DECODE_STEP index=344 ms=94.2801
+DECODE_STEP index=345 ms=107.294
+DECODE_STEP index=346 ms=94.1806
+DECODE_STEP index=347 ms=105.205
+DECODE_STEP index=348 ms=107.45
+DECODE_STEP index=349 ms=97.9274
+DECODE_STEP index=350 ms=96.289
+DECODE_STEP index=351 ms=99.2184
+DECODE_STEP index=352 ms=100.183
+DECODE_STEP index=353 ms=99.4236
+DECODE_STEP index=354 ms=107.339
+DECODE_STEP index=355 ms=104.856
+DECODE_STEP index=356 ms=109.897
+DECODE_STEP index=357 ms=95.9732
+DECODE_STEP index=358 ms=103.851
+DECODE_STEP index=359 ms=103.269
+DECODE_STEP index=360 ms=100.321
+DECODE_STEP index=361 ms=94.4547
+DECODE_STEP index=362 ms=90.6799
+DECODE_STEP index=363 ms=88.0334
+DECODE_STEP index=364 ms=89.2878
+DECODE_STEP index=365 ms=94.998
+DECODE_STEP index=366 ms=99.593
+DECODE_STEP index=367 ms=107.019
+DECODE_STEP index=368 ms=104.511
+DECODE_STEP index=369 ms=97.2685
+DECODE_STEP index=370 ms=92.7117
+DECODE_STEP index=371 ms=91.3251
+DECODE_STEP index=372 ms=93.267
+DECODE_STEP index=373 ms=106.081
+DECODE_STEP index=374 ms=99.7568
+DECODE_STEP index=375 ms=97.8116
+DECODE_STEP index=376 ms=98.3126
+DECODE_STEP index=377 ms=107.066
+DECODE_STEP index=378 ms=101.688
+DECODE_STEP index=379 ms=94.3664
+DECODE_STEP index=380 ms=93.7078
+DECODE_STEP index=381 ms=95.0695
+DECODE_STEP index=382 ms=97.6419
+DECODE_STEP index=383 ms=112.04
+DECODE_STEP index=384 ms=96.0203
+DECODE_STEP index=385 ms=108.541
+DECODE_STEP index=386 ms=105.929
+DECODE_STEP index=387 ms=103.173
+DECODE_STEP index=388 ms=101.129
+DECODE_STEP index=389 ms=98.8577
+DECODE_STEP index=390 ms=97.7876
+DECODE_STEP index=391 ms=99.4307
+DECODE_STEP index=392 ms=108.706
+DECODE_STEP index=393 ms=97.6536
+DECODE_STEP index=394 ms=98.8871
+DECODE_STEP index=395 ms=106.987
+DECODE_STEP index=396 ms=104.909
+DECODE_STEP index=397 ms=101.026
+DECODE_STEP index=398 ms=103.48
+DECODE_STEP index=399 ms=103.263
+DECODE_STEP index=400 ms=101.537
+DECODE_STEP index=401 ms=104.802
+DECODE_STEP index=402 ms=100.793
+DECODE_STEP index=403 ms=105.459
+DECODE_STEP index=404 ms=105.853
+DECODE_STEP index=405 ms=102.531
+DECODE_STEP index=406 ms=110.869
+DECODE_STEP index=407 ms=97.5849
+DECODE_STEP index=408 ms=93.8938
+DECODE_STEP index=409 ms=105.766
+DECODE_STEP index=410 ms=97.8702
+DECODE_STEP index=411 ms=98.8281
+DECODE_STEP index=412 ms=99.8491
+DECODE_STEP index=413 ms=102.214
+DECODE_STEP index=414 ms=101.765
+DECODE_STEP index=415 ms=101.632
+DECODE_STEP index=416 ms=97.9166
+DECODE_STEP index=417 ms=95.9843
+DECODE_STEP index=418 ms=104.768
+DECODE_STEP index=419 ms=108.033
+DECODE_STEP index=420 ms=103.948
+DECODE_STEP index=421 ms=101.63
+DECODE_STEP index=422 ms=101.375
+DECODE_STEP index=423 ms=97.2462
+DECODE_STEP index=424 ms=115.011
+DECODE_STEP index=425 ms=98.7805
+DECODE_STEP index=426 ms=105.41
+DECODE_STEP index=427 ms=99.3837
+DECODE_STEP index=428 ms=98.7194
+DECODE_STEP index=429 ms=107.883
+DECODE_STEP index=430 ms=104.632
+DECODE_STEP index=431 ms=103.894
+DECODE_STEP index=432 ms=97.836
+DECODE_STEP index=433 ms=100.859
+DECODE_STEP index=434 ms=100.037
+DECODE_STEP index=435 ms=101.944
+DECODE_STEP index=436 ms=104.268
+DECODE_STEP index=437 ms=93.1812
+DECODE_STEP index=438 ms=90.3475
+DECODE_STEP index=439 ms=105.333
+DECODE_STEP index=440 ms=110.992
+DECODE_STEP index=441 ms=110.27
+DECODE_STEP index=442 ms=101.016
+DECODE_STEP index=443 ms=109.849
+DECODE_STEP index=444 ms=98.5515
+DECODE_STEP index=445 ms=102.324
+DECODE_STEP index=446 ms=95.6862
+DECODE_STEP index=447 ms=101.696
+DECODE_STEP index=448 ms=95.1585
+DECODE_STEP index=449 ms=93.8758
+DECODE_STEP index=450 ms=95.8344
+DECODE_STEP index=451 ms=95.3561
+DECODE_STEP index=452 ms=98.2285
+DECODE_STEP index=453 ms=99.1689
+DECODE_STEP index=454 ms=99.7464
+DECODE_STEP index=455 ms=102.655
+DECODE_STEP index=456 ms=98.2498
+DECODE_STEP index=457 ms=111.975
+DECODE_STEP index=458 ms=98.1628
+DECODE_STEP index=459 ms=104.713
+DECODE_STEP index=460 ms=104.834
+DECODE_STEP index=461 ms=102.117
+DECODE_STEP index=462 ms=104.073
+DECODE_STEP index=463 ms=106.388
+DECODE_STEP index=464 ms=99.5934
+DECODE_STEP index=465 ms=95.3933
+DECODE_STEP index=466 ms=102.913
+DECODE_STEP index=467 ms=106.43
+DECODE_STEP index=468 ms=86.9376
+DECODE_STEP index=469 ms=93.785
+DECODE_STEP index=470 ms=104.735
+DECODE_STEP index=471 ms=100.722
+DECODE_STEP index=472 ms=109.456
+DECODE_STEP index=473 ms=101.669
+DECODE_STEP index=474 ms=93.3032
+DECODE_STEP index=475 ms=101.953
+DECODE_STEP index=476 ms=102.63
+DECODE_STEP index=477 ms=101.7
+DECODE_STEP index=478 ms=99.1175
+DECODE_STEP index=479 ms=99.6916
+DECODE_STEP index=480 ms=97.6995
+DECODE_STEP index=481 ms=107.079
+DECODE_STEP index=482 ms=99.9834
+DECODE_STEP index=483 ms=102.496
+DECODE_STEP index=484 ms=103.805
+DECODE_STEP index=485 ms=104.383
+DECODE_STEP index=486 ms=107.944
+DECODE_STEP index=487 ms=85.0207
+DECODE_STEP index=488 ms=94.161
+DECODE_STEP index=489 ms=99.652
+DECODE_STEP index=490 ms=98.8567
+DECODE_STEP index=491 ms=104.147
+DECODE_STEP index=492 ms=103.541
+DECODE_STEP index=493 ms=108.884
+DECODE_STEP index=494 ms=97.3377
+DECODE_STEP index=495 ms=101.097
+DECODE_STEP index=496 ms=102.316
+DECODE_STEP index=497 ms=104.539
+DECODE_STEP index=498 ms=101.797
+DECODE_STEP index=499 ms=114.616
+DECODE_STEP index=500 ms=105.583
+DECODE_STEP index=501 ms=106.422
+DECODE_STEP index=502 ms=106.002
+DECODE_STEP index=503 ms=111.713
+DECODE_STEP index=504 ms=108.774
+DECODE_STEP index=505 ms=106.95
+DECODE_STEP index=506 ms=98.7288
+DECODE_STEP index=507 ms=105.751
+DECODE_STEP index=508 ms=92.8422
+DECODE_STEP index=509 ms=99.4802
+DECODE_STEP index=510 ms=110.222
+DECODE_STEP index=511 ms=106.404
+DECODE steps=511 ms=50502.1 tok_s=10.1184
+HOST_RSS peak_MiB=53733.1
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=38823 bytes=1108535541760
+STEP_TRACE steps=511 moe_layers=21462 pipelined=1 head_ms=1239.27 cpu_ms=39277 between_ms=9295.86 tail_ms=573.626 enqueue_ms=2623.75 tier_swaps=0 split_windows=0 per_step_ms=98.6022
+GPU peak_allocated_MiB=11516.4 native_expert_bytes=0 expert_groups=0 staging_ms=0
+PREFILL_SCRATCH device=0 peak_MiB=5.07568 capacity_MiB=32
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=6213.17 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=11516.4 live_MiB=11516.4 native_expert_bytes=0 staging_ms=0 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=13194 free_MiB=3110
+DECODE_TRIAL index=1
+DECODE_STEP index=1 ms=95.7846
+DECODE_STEP index=2 ms=87.5705
+DECODE_STEP index=3 ms=80.9581
+DECODE_STEP index=4 ms=91.5285
+DECODE_STEP index=5 ms=84.9853
+DECODE_STEP index=6 ms=85.7016
+DECODE_STEP index=7 ms=96.2259
+DECODE_STEP index=8 ms=92.8728
+DECODE_STEP index=9 ms=90.4172
+DECODE_STEP index=10 ms=100.671
+DECODE_STEP index=11 ms=95.085
+DECODE_STEP index=12 ms=90.1493
+DECODE_STEP index=13 ms=93.4639
+DECODE_STEP index=14 ms=95.0786
+DECODE_STEP index=15 ms=88.6844
+DECODE_STEP index=16 ms=95.5521
+DECODE_STEP index=17 ms=88.8284
+DECODE_STEP index=18 ms=95.294
+DECODE_STEP index=19 ms=93.2228
+DECODE_STEP index=20 ms=86.0737
+DECODE_STEP index=21 ms=86.4235
+DECODE_STEP index=22 ms=95.064
+DECODE_STEP index=23 ms=92.5819
+DECODE_STEP index=24 ms=104.25
+DECODE_STEP index=25 ms=98.5523
+DECODE_STEP index=26 ms=87.9846
+DECODE_STEP index=27 ms=93.5883
+DECODE_STEP index=28 ms=98.1713
+DECODE_STEP index=29 ms=104.412
+DECODE_STEP index=30 ms=109.308
+DECODE_STEP index=31 ms=97.9653
+DECODE_STEP index=32 ms=104.926
+DECODE_STEP index=33 ms=95.7737
+DECODE_STEP index=34 ms=96.6504
+DECODE_STEP index=35 ms=91.6173
+DECODE_STEP index=36 ms=89.2061
+DECODE_STEP index=37 ms=92.1062
+DECODE_STEP index=38 ms=87.4309
+DECODE_STEP index=39 ms=101.919
+DECODE_STEP index=40 ms=97.0954
+DECODE_STEP index=41 ms=97.9426
+DECODE_STEP index=42 ms=107.258
+DECODE_STEP index=43 ms=97.9623
+DECODE_STEP index=44 ms=86.0695
+DECODE_STEP index=45 ms=92.8557
+DECODE_STEP index=46 ms=99.5827
+DECODE_STEP index=47 ms=95.663
+DECODE_STEP index=48 ms=91.3463
+DECODE_STEP index=49 ms=89.6948
+DECODE_STEP index=50 ms=87.879
+DECODE_STEP index=51 ms=94.4675
+DECODE_STEP index=52 ms=95.5501
+DECODE_STEP index=53 ms=90.9478
+DECODE_STEP index=54 ms=98.9192
+DECODE_STEP index=55 ms=99.8436
+DECODE_STEP index=56 ms=98.9659
+DECODE_STEP index=57 ms=96.6306
+DECODE_STEP index=58 ms=95.0741
+DECODE_STEP index=59 ms=110.748
+DECODE_STEP index=60 ms=107.239
+DECODE_STEP index=61 ms=110.59
+DECODE_STEP index=62 ms=106.349
+DECODE_STEP index=63 ms=101.1
+DECODE_STEP index=64 ms=96.6916
+DECODE_STEP index=65 ms=84.7344
+DECODE_STEP index=66 ms=98.8623
+DECODE_STEP index=67 ms=91.5425
+DECODE_STEP index=68 ms=85.7266
+DECODE_STEP index=69 ms=109.87
+DECODE_STEP index=70 ms=100.89
+DECODE_STEP index=71 ms=105.305
+DECODE_STEP index=72 ms=91.7282
+DECODE_STEP index=73 ms=86.0367
+DECODE_STEP index=74 ms=82.2588
+DECODE_STEP index=75 ms=83.2247
+DECODE_STEP index=76 ms=83.8772
+DECODE_STEP index=77 ms=86.0551
+DECODE_STEP index=78 ms=100.742
+DECODE_STEP index=79 ms=95.7105
+DECODE_STEP index=80 ms=98.259
+DECODE_STEP index=81 ms=98.1469
+DECODE_STEP index=82 ms=102.156
+DECODE_STEP index=83 ms=93.8181
+DECODE_STEP index=84 ms=110.525
+DECODE_STEP index=85 ms=107.346
+DECODE_STEP index=86 ms=105.788
+DECODE_STEP index=87 ms=98.6152
+DECODE_STEP index=88 ms=91.6451
+DECODE_STEP index=89 ms=109.559
+DECODE_STEP index=90 ms=106.612
+DECODE_STEP index=91 ms=111.357
+DECODE_STEP index=92 ms=91.2182
+DECODE_STEP index=93 ms=93.8346
+DECODE_STEP index=94 ms=85.3936
+DECODE_STEP index=95 ms=85.3751
+DECODE_STEP index=96 ms=90.1617
+DECODE_STEP index=97 ms=102.69
+DECODE_STEP index=98 ms=93.1627
+DECODE_STEP index=99 ms=90.442
+DECODE_STEP index=100 ms=95.5223
+DECODE_STEP index=101 ms=92.7541
+DECODE_STEP index=102 ms=102.688
+DECODE_STEP index=103 ms=91.3417
+DECODE_STEP index=104 ms=92.9588
+DECODE_STEP index=105 ms=98.9116
+DECODE_STEP index=106 ms=108.048
+DECODE_STEP index=107 ms=91.2516
+DECODE_STEP index=108 ms=90.4151
+DECODE_STEP index=109 ms=85.0205
+DECODE_STEP index=110 ms=95.3483
+DECODE_STEP index=111 ms=95.2607
+DECODE_STEP index=112 ms=101.722
+DECODE_STEP index=113 ms=99.8241
+DECODE_STEP index=114 ms=97.9588
+DECODE_STEP index=115 ms=111.375
+DECODE_STEP index=116 ms=100.969
+DECODE_STEP index=117 ms=104.615
+DECODE_STEP index=118 ms=94.4313
+DECODE_STEP index=119 ms=86.9727
+DECODE_STEP index=120 ms=91.3734
+DECODE_STEP index=121 ms=89.0269
+DECODE_STEP index=122 ms=92.5968
+DECODE_STEP index=123 ms=102.747
+DECODE_STEP index=124 ms=103.974
+DECODE_STEP index=125 ms=95.0359
+DECODE_STEP index=126 ms=101.982
+DECODE_STEP index=127 ms=109.171
+DECODE_STEP index=128 ms=105.883
+DECODE_STEP index=129 ms=100.135
+DECODE_STEP index=130 ms=93.8382
+DECODE_STEP index=131 ms=105.148
+DECODE_STEP index=132 ms=94.3655
+DECODE_STEP index=133 ms=104.02
+DECODE_STEP index=134 ms=92.0048
+DECODE_STEP index=135 ms=96.3387
+DECODE_STEP index=136 ms=104.896
+DECODE_STEP index=137 ms=93.83
+DECODE_STEP index=138 ms=97.0598
+DECODE_STEP index=139 ms=93.906
+DECODE_STEP index=140 ms=98.8775
+DECODE_STEP index=141 ms=95.204
+DECODE_STEP index=142 ms=104.703
+DECODE_STEP index=143 ms=101.959
+DECODE_STEP index=144 ms=97.3777
+DECODE_STEP index=145 ms=107.005
+DECODE_STEP index=146 ms=107.477
+DECODE_STEP index=147 ms=105.405
+DECODE_STEP index=148 ms=95.2623
+DECODE_STEP index=149 ms=101.557
+DECODE_STEP index=150 ms=91.65
+DECODE_STEP index=151 ms=81.9232
+DECODE_STEP index=152 ms=84.9129
+DECODE_STEP index=153 ms=98.8384
+DECODE_STEP index=154 ms=95.4912
+DECODE_STEP index=155 ms=95.401
+DECODE_STEP index=156 ms=86.9215
+DECODE_STEP index=157 ms=94.7417
+DECODE_STEP index=158 ms=79.7186
+DECODE_STEP index=159 ms=93.4871
+DECODE_STEP index=160 ms=92.6179
+DECODE_STEP index=161 ms=88.8782
+DECODE_STEP index=162 ms=109.175
+DECODE_STEP index=163 ms=108.749
+DECODE_STEP index=164 ms=100.423
+DECODE_STEP index=165 ms=95.743
+DECODE_STEP index=166 ms=91.6918
+DECODE_STEP index=167 ms=84.7841
+DECODE_STEP index=168 ms=80.3896
+DECODE_STEP index=169 ms=95.2743
+DECODE_STEP index=170 ms=105.722
+DECODE_STEP index=171 ms=94.166
+DECODE_STEP index=172 ms=94.8849
+DECODE_STEP index=173 ms=84.6461
+DECODE_STEP index=174 ms=88.7572
+DECODE_STEP index=175 ms=96.6913
+DECODE_STEP index=176 ms=101.059
+DECODE_STEP index=177 ms=101.047
+DECODE_STEP index=178 ms=106.394
+DECODE_STEP index=179 ms=111.97
+DECODE_STEP index=180 ms=106.395
+DECODE_STEP index=181 ms=101.006
+DECODE_STEP index=182 ms=102.8
+DECODE_STEP index=183 ms=107.132
+DECODE_STEP index=184 ms=96.3501
+DECODE_STEP index=185 ms=97.6455
+DECODE_STEP index=186 ms=82.1997
+DECODE_STEP index=187 ms=92.2086
+DECODE_STEP index=188 ms=91.7537
+DECODE_STEP index=189 ms=106.318
+DECODE_STEP index=190 ms=97.6038
+DECODE_STEP index=191 ms=86.3329
+DECODE_STEP index=192 ms=86.3104
+DECODE_STEP index=193 ms=91.6799
+DECODE_STEP index=194 ms=97.9679
+DECODE_STEP index=195 ms=102.509
+DECODE_STEP index=196 ms=101.809
+DECODE_STEP index=197 ms=107.344
+DECODE_STEP index=198 ms=110.851
+DECODE_STEP index=199 ms=109.539
+DECODE_STEP index=200 ms=101.473
+DECODE_STEP index=201 ms=111.398
+DECODE_STEP index=202 ms=106.388
+DECODE_STEP index=203 ms=83.1233
+DECODE_STEP index=204 ms=91.2019
+DECODE_STEP index=205 ms=96.5183
+DECODE_STEP index=206 ms=106.768
+DECODE_STEP index=207 ms=97.6233
+DECODE_STEP index=208 ms=97.1099
+DECODE_STEP index=209 ms=82.1289
+DECODE_STEP index=210 ms=83.5219
+DECODE_STEP index=211 ms=80.9675
+DECODE_STEP index=212 ms=89.1715
+DECODE_STEP index=213 ms=80.6614
+DECODE_STEP index=214 ms=80.6733
+DECODE_STEP index=215 ms=99.8166
+DECODE_STEP index=216 ms=92.5914
+DECODE_STEP index=217 ms=91.0077
+DECODE_STEP index=218 ms=107.564
+DECODE_STEP index=219 ms=84.2398
+DECODE_STEP index=220 ms=109.239
+DECODE_STEP index=221 ms=100.713
+DECODE_STEP index=222 ms=95.0561
+DECODE_STEP index=223 ms=89.1757
+DECODE_STEP index=224 ms=80.2612
+DECODE_STEP index=225 ms=85.6443
+DECODE_STEP index=226 ms=102.111
+DECODE_STEP index=227 ms=98.2094
+DECODE_STEP index=228 ms=89.0672
+DECODE_STEP index=229 ms=86.0911
+DECODE_STEP index=230 ms=95.7736
+DECODE_STEP index=231 ms=94.4184
+DECODE_STEP index=232 ms=94.8729
+DECODE_STEP index=233 ms=83.4174
+DECODE_STEP index=234 ms=97.3275
+DECODE_STEP index=235 ms=100.785
+DECODE_STEP index=236 ms=104.524
+DECODE_STEP index=237 ms=92.7225
+DECODE_STEP index=238 ms=108.304
+DECODE_STEP index=239 ms=111.853
+DECODE_STEP index=240 ms=109.878
+DECODE_STEP index=241 ms=106.566
+DECODE_STEP index=242 ms=105.852
+DECODE_STEP index=243 ms=94.7872
+DECODE_STEP index=244 ms=102.124
+DECODE_STEP index=245 ms=105.656
+DECODE_STEP index=246 ms=101.984
+DECODE_STEP index=247 ms=96.5705
+DECODE_STEP index=248 ms=101.1
+DECODE_STEP index=249 ms=95.472
+DECODE_STEP index=250 ms=88.1691
+DECODE_STEP index=251 ms=88.6397
+DECODE_STEP index=252 ms=88.2119
+DECODE_STEP index=253 ms=95.4413
+DECODE_STEP index=254 ms=99.1323
+DECODE_STEP index=255 ms=89.8781
+DECODE_STEP index=256 ms=91.5485
+DECODE_STEP index=257 ms=108.994
+DECODE_STEP index=258 ms=108.618
+DECODE_STEP index=259 ms=103.589
+DECODE_STEP index=260 ms=94.9221
+DECODE_STEP index=261 ms=107.436
+DECODE_STEP index=262 ms=91.2008
+DECODE_STEP index=263 ms=81.9047
+DECODE_STEP index=264 ms=102.277
+DECODE_STEP index=265 ms=101.707
+DECODE_STEP index=266 ms=99.0628
+DECODE_STEP index=267 ms=110.143
+DECODE_STEP index=268 ms=98.2532
+DECODE_STEP index=269 ms=94.0764
+DECODE_STEP index=270 ms=87.6865
+DECODE_STEP index=271 ms=83.436
+DECODE_STEP index=272 ms=91.8166
+DECODE_STEP index=273 ms=100.011
+DECODE_STEP index=274 ms=89.1307
+DECODE_STEP index=275 ms=85.6545
+DECODE_STEP index=276 ms=106.833
+DECODE_STEP index=277 ms=95.1723
+DECODE_STEP index=278 ms=98.577
+DECODE_STEP index=279 ms=111.088
+DECODE_STEP index=280 ms=105.917
+DECODE_STEP index=281 ms=114.906
+DECODE_STEP index=282 ms=108.316
+DECODE_STEP index=283 ms=106.511
+DECODE_STEP index=284 ms=94.5976
+DECODE_STEP index=285 ms=104.491
+DECODE_STEP index=286 ms=92.3438
+DECODE_STEP index=287 ms=90.7149
+DECODE_STEP index=288 ms=103.275
+DECODE_STEP index=289 ms=105.129
+DECODE_STEP index=290 ms=92.3017
+DECODE_STEP index=291 ms=100.147
+DECODE_STEP index=292 ms=96.0649
+DECODE_STEP index=293 ms=105.72
+DECODE_STEP index=294 ms=103.695
+DECODE_STEP index=295 ms=87.8473
+DECODE_STEP index=296 ms=95.9731
+DECODE_STEP index=297 ms=102.328
+DECODE_STEP index=298 ms=102.564
+DECODE_STEP index=299 ms=100.731
+DECODE_STEP index=300 ms=106.466
+DECODE_STEP index=301 ms=92.6109
+DECODE_STEP index=302 ms=105.546
+DECODE_STEP index=303 ms=91.2374
+DECODE_STEP index=304 ms=98.2687
+DECODE_STEP index=305 ms=95.9643
+DECODE_STEP index=306 ms=98.4252
+DECODE_STEP index=307 ms=105.766
+DECODE_STEP index=308 ms=93.9093
+DECODE_STEP index=309 ms=99.4231
+DECODE_STEP index=310 ms=99.8876
+DECODE_STEP index=311 ms=107.055
+DECODE_STEP index=312 ms=105.794
+DECODE_STEP index=313 ms=96.7227
+DECODE_STEP index=314 ms=107.035
+DECODE_STEP index=315 ms=109.624
+DECODE_STEP index=316 ms=106.956
+DECODE_STEP index=317 ms=105.786
+DECODE_STEP index=318 ms=81.2799
+DECODE_STEP index=319 ms=92.5545
+DECODE_STEP index=320 ms=105.439
+DECODE_STEP index=321 ms=108.102
+DECODE_STEP index=322 ms=89.8213
+DECODE_STEP index=323 ms=96.0738
+DECODE_STEP index=324 ms=92.9218
+DECODE_STEP index=325 ms=92.2981
+DECODE_STEP index=326 ms=98.819
+DECODE_STEP index=327 ms=105.075
+DECODE_STEP index=328 ms=104.627
+DECODE_STEP index=329 ms=97.3148
+DECODE_STEP index=330 ms=92.0376
+DECODE_STEP index=331 ms=98.2167
+DECODE_STEP index=332 ms=104.976
+DECODE_STEP index=333 ms=100.817
+DECODE_STEP index=334 ms=96.9283
+DECODE_STEP index=335 ms=101.649
+DECODE_STEP index=336 ms=107.897
+DECODE_STEP index=337 ms=105.431
+DECODE_STEP index=338 ms=101.216
+DECODE_STEP index=339 ms=106.094
+DECODE_STEP index=340 ms=101.085
+DECODE_STEP index=341 ms=95.7254
+DECODE_STEP index=342 ms=100.427
+DECODE_STEP index=343 ms=94.5263
+DECODE_STEP index=344 ms=93.802
+DECODE_STEP index=345 ms=107.324
+DECODE_STEP index=346 ms=94.3979
+DECODE_STEP index=347 ms=105.152
+DECODE_STEP index=348 ms=108.337
+DECODE_STEP index=349 ms=97.9478
+DECODE_STEP index=350 ms=96.0816
+DECODE_STEP index=351 ms=99.169
+DECODE_STEP index=352 ms=100.106
+DECODE_STEP index=353 ms=99.4714
+DECODE_STEP index=354 ms=106.397
+DECODE_STEP index=355 ms=104.294
+DECODE_STEP index=356 ms=110.222
+DECODE_STEP index=357 ms=95.9508
+DECODE_STEP index=358 ms=103.948
+DECODE_STEP index=359 ms=104.126
+DECODE_STEP index=360 ms=100.244
+DECODE_STEP index=361 ms=94.4996
+DECODE_STEP index=362 ms=90.7615
+DECODE_STEP index=363 ms=87.5545
+DECODE_STEP index=364 ms=88.8772
+DECODE_STEP index=365 ms=94.0326
+DECODE_STEP index=366 ms=99.6259
+DECODE_STEP index=367 ms=107.041
+DECODE_STEP index=368 ms=104.529
+DECODE_STEP index=369 ms=97.3749
+DECODE_STEP index=370 ms=93.5826
+DECODE_STEP index=371 ms=91.3721
+DECODE_STEP index=372 ms=93.3253
+DECODE_STEP index=373 ms=106.072
+DECODE_STEP index=374 ms=99.7152
+DECODE_STEP index=375 ms=97.9248
+DECODE_STEP index=376 ms=97.6097
+DECODE_STEP index=377 ms=107.021
+DECODE_STEP index=378 ms=101.671
+DECODE_STEP index=379 ms=94.3817
+DECODE_STEP index=380 ms=93.5507
+DECODE_STEP index=381 ms=96.2367
+DECODE_STEP index=382 ms=97.6518
+DECODE_STEP index=383 ms=112.022
+DECODE_STEP index=384 ms=96.0493
+DECODE_STEP index=385 ms=108.661
+DECODE_STEP index=386 ms=106.125
+DECODE_STEP index=387 ms=102.33
+DECODE_STEP index=388 ms=101.099
+DECODE_STEP index=389 ms=98.7841
+DECODE_STEP index=390 ms=97.5964
+DECODE_STEP index=391 ms=99.7736
+DECODE_STEP index=392 ms=109.397
+DECODE_STEP index=393 ms=97.5484
+DECODE_STEP index=394 ms=98.8272
+DECODE_STEP index=395 ms=107.005
+DECODE_STEP index=396 ms=105.229
+DECODE_STEP index=397 ms=100.495
+DECODE_STEP index=398 ms=103.037
+DECODE_STEP index=399 ms=103.252
+DECODE_STEP index=400 ms=101.462
+DECODE_STEP index=401 ms=104.852
+DECODE_STEP index=402 ms=101.712
+DECODE_STEP index=403 ms=105.483
+DECODE_STEP index=404 ms=105.835
+DECODE_STEP index=405 ms=102.576
+DECODE_STEP index=406 ms=111.139
+DECODE_STEP index=407 ms=97.7892
+DECODE_STEP index=408 ms=92.9749
+DECODE_STEP index=409 ms=105.752
+DECODE_STEP index=410 ms=97.6313
+DECODE_STEP index=411 ms=98.8391
+DECODE_STEP index=412 ms=100.046
+DECODE_STEP index=413 ms=103.218
+DECODE_STEP index=414 ms=101.322
+DECODE_STEP index=415 ms=101.686
+DECODE_STEP index=416 ms=98.287
+DECODE_STEP index=417 ms=96.0118
+DECODE_STEP index=418 ms=104.524
+DECODE_STEP index=419 ms=107.347
+DECODE_STEP index=420 ms=103.645
+DECODE_STEP index=421 ms=101.69
+DECODE_STEP index=422 ms=101.303
+DECODE_STEP index=423 ms=97.758
+DECODE_STEP index=424 ms=104.063
+DECODE_STEP index=425 ms=98.793
+DECODE_STEP index=426 ms=105.659
+DECODE_STEP index=427 ms=99.5293
+DECODE_STEP index=428 ms=98.622
+DECODE_STEP index=429 ms=106.787
+DECODE_STEP index=430 ms=104.326
+DECODE_STEP index=431 ms=103.828
+DECODE_STEP index=432 ms=97.8746
+DECODE_STEP index=433 ms=100.776
+DECODE_STEP index=434 ms=101.631
+DECODE_STEP index=435 ms=102.906
+DECODE_STEP index=436 ms=104.3
+DECODE_STEP index=437 ms=93.1444
+DECODE_STEP index=438 ms=90.4423
+DECODE_STEP index=439 ms=105.109
+DECODE_STEP index=440 ms=109.937
+DECODE_STEP index=441 ms=110.3
+DECODE_STEP index=442 ms=101.16
+DECODE_STEP index=443 ms=109.852
+DECODE_STEP index=444 ms=99.0631
+DECODE_STEP index=445 ms=103.234
+DECODE_STEP index=446 ms=95.6867
+DECODE_STEP index=447 ms=101.77
+DECODE_STEP index=448 ms=95.1432
+DECODE_STEP index=449 ms=93.4702
+DECODE_STEP index=450 ms=95.4994
+DECODE_STEP index=451 ms=94.7961
+DECODE_STEP index=452 ms=98.2833
+DECODE_STEP index=453 ms=99.1781
+DECODE_STEP index=454 ms=99.6863
+DECODE_STEP index=455 ms=103.295
+DECODE_STEP index=456 ms=98.907
+DECODE_STEP index=457 ms=112.123
+DECODE_STEP index=458 ms=98.1838
+DECODE_STEP index=459 ms=104.553
+DECODE_STEP index=460 ms=104.83
+DECODE_STEP index=461 ms=101.453
+DECODE_STEP index=462 ms=103.868
+DECODE_STEP index=463 ms=106.443
+DECODE_STEP index=464 ms=99.5135
+DECODE_STEP index=465 ms=95.5984
+DECODE_STEP index=466 ms=103.993
+DECODE_STEP index=467 ms=106.55
+DECODE_STEP index=468 ms=87.0066
+DECODE_STEP index=469 ms=93.6217
+DECODE_STEP index=470 ms=104.876
+DECODE_STEP index=471 ms=100.704
+DECODE_STEP index=472 ms=108.368
+DECODE_STEP index=473 ms=101.634
+DECODE_STEP index=474 ms=92.8944
+DECODE_STEP index=475 ms=102.252
+DECODE_STEP index=476 ms=102.749
+DECODE_STEP index=477 ms=102.844
+DECODE_STEP index=478 ms=99.2442
+DECODE_STEP index=479 ms=99.4514
+DECODE_STEP index=480 ms=97.7311
+DECODE_STEP index=481 ms=107.059
+DECODE_STEP index=482 ms=99.846
+DECODE_STEP index=483 ms=101.716
+DECODE_STEP index=484 ms=103.933
+DECODE_STEP index=485 ms=104.691
+DECODE_STEP index=486 ms=108.021
+DECODE_STEP index=487 ms=85.3674
+DECODE_STEP index=488 ms=95.0033
+DECODE_STEP index=489 ms=99.5331
+DECODE_STEP index=490 ms=98.8154
+DECODE_STEP index=491 ms=104.106
+DECODE_STEP index=492 ms=103.632
+DECODE_STEP index=493 ms=108.32
+DECODE_STEP index=494 ms=97.0225
+DECODE_STEP index=495 ms=101.239
+DECODE_STEP index=496 ms=102.448
+DECODE_STEP index=497 ms=104.553
+DECODE_STEP index=498 ms=102.496
+DECODE_STEP index=499 ms=103.591
+DECODE_STEP index=500 ms=105.518
+DECODE_STEP index=501 ms=106.352
+DECODE_STEP index=502 ms=105.983
+DECODE_STEP index=503 ms=111.544
+DECODE_STEP index=504 ms=108.236
+DECODE_STEP index=505 ms=107.039
+DECODE_STEP index=506 ms=98.8773
+DECODE_STEP index=507 ms=105.79
+DECODE_STEP index=508 ms=92.9598
+DECODE_STEP index=509 ms=100.359
+DECODE_STEP index=510 ms=110.182
+DECODE_STEP index=511 ms=106.378
+DECODE steps=511 ms=50360.9 tok_s=10.1468
+HOST_RSS peak_MiB=53733.1
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=38699.8 bytes=1108535541760
+STEP_TRACE steps=511 moe_layers=21462 pipelined=1 head_ms=1229.9 cpu_ms=39153.3 between_ms=9291.26 tail_ms=572.975 enqueue_ms=2581.04 tier_swaps=0 split_windows=0 per_step_ms=98.3316
+GPU peak_allocated_MiB=11516.4 native_expert_bytes=0 expert_groups=0 staging_ms=0
+PREFILL_SCRATCH device=0 peak_MiB=5.07568 capacity_MiB=32
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=6213.17 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=11516.4 live_MiB=11516.4 native_expert_bytes=0 staging_ms=0 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=13194 free_MiB=3110
+DECODE_TRIAL index=2
+DECODE_STEP index=1 ms=95.7536
+DECODE_STEP index=2 ms=87.6583
+DECODE_STEP index=3 ms=80.6129
+DECODE_STEP index=4 ms=91.0459
+DECODE_STEP index=5 ms=85.0262
+DECODE_STEP index=6 ms=85.7236
+DECODE_STEP index=7 ms=95.9911
+DECODE_STEP index=8 ms=92.9858
+DECODE_STEP index=9 ms=91.3753
+DECODE_STEP index=10 ms=100.815
+DECODE_STEP index=11 ms=95.1501
+DECODE_STEP index=12 ms=90.1465
+DECODE_STEP index=13 ms=93.4989
+DECODE_STEP index=14 ms=95.3381
+DECODE_STEP index=15 ms=87.9991
+DECODE_STEP index=16 ms=95.4591
+DECODE_STEP index=17 ms=88.8558
+DECODE_STEP index=18 ms=95.0921
+DECODE_STEP index=19 ms=93.7217
+DECODE_STEP index=20 ms=86.3355
+DECODE_STEP index=21 ms=87.062
+DECODE_STEP index=22 ms=95.1174
+DECODE_STEP index=23 ms=92.5734
+DECODE_STEP index=24 ms=104.245
+DECODE_STEP index=25 ms=98.768
+DECODE_STEP index=26 ms=87.9118
+DECODE_STEP index=27 ms=92.9039
+DECODE_STEP index=28 ms=98.2417
+DECODE_STEP index=29 ms=104.242
+DECODE_STEP index=30 ms=109.289
+DECODE_STEP index=31 ms=98.0832
+DECODE_STEP index=32 ms=105.819
+DECODE_STEP index=33 ms=95.9229
+DECODE_STEP index=34 ms=96.6279
+DECODE_STEP index=35 ms=91.8681
+DECODE_STEP index=36 ms=89.2862
+DECODE_STEP index=37 ms=92.0128
+DECODE_STEP index=38 ms=86.639
+DECODE_STEP index=39 ms=101.669
+DECODE_STEP index=40 ms=97.107
+DECODE_STEP index=41 ms=97.9163
+DECODE_STEP index=42 ms=107.416
+DECODE_STEP index=43 ms=98.9389
+DECODE_STEP index=44 ms=86.0616
+DECODE_STEP index=45 ms=93.2287
+DECODE_STEP index=46 ms=99.479
+DECODE_STEP index=47 ms=95.7708
+DECODE_STEP index=48 ms=91.4314
+DECODE_STEP index=49 ms=88.5582
+DECODE_STEP index=50 ms=87.9283
+DECODE_STEP index=51 ms=94.4934
+DECODE_STEP index=52 ms=95.5335
+DECODE_STEP index=53 ms=91.0295
+DECODE_STEP index=54 ms=99.2938
+DECODE_STEP index=55 ms=100.497
+DECODE_STEP index=56 ms=99.3046
+DECODE_STEP index=57 ms=96.616
+DECODE_STEP index=58 ms=95.2271
+DECODE_STEP index=59 ms=110.785
+DECODE_STEP index=60 ms=106.288
+DECODE_STEP index=61 ms=110.631
+DECODE_STEP index=62 ms=106.443
+DECODE_STEP index=63 ms=101.061
+DECODE_STEP index=64 ms=96.7001
+DECODE_STEP index=65 ms=85.4417
+DECODE_STEP index=66 ms=99.2927
+DECODE_STEP index=67 ms=91.6137
+DECODE_STEP index=68 ms=85.7637
+DECODE_STEP index=69 ms=109.935
+DECODE_STEP index=70 ms=100.784
+DECODE_STEP index=71 ms=104.304
+DECODE_STEP index=72 ms=91.801
+DECODE_STEP index=73 ms=85.9905
+DECODE_STEP index=74 ms=82.2263
+DECODE_STEP index=75 ms=83.2341
+DECODE_STEP index=76 ms=83.8703
+DECODE_STEP index=77 ms=87.2015
+DECODE_STEP index=78 ms=100.806
+DECODE_STEP index=79 ms=95.7153
+DECODE_STEP index=80 ms=98.1996
+DECODE_STEP index=81 ms=97.9122
+DECODE_STEP index=82 ms=102.034
+DECODE_STEP index=83 ms=92.8978
+DECODE_STEP index=84 ms=110.549
+DECODE_STEP index=85 ms=107.322
+DECODE_STEP index=86 ms=105.722
+DECODE_STEP index=87 ms=99.1735
+DECODE_STEP index=88 ms=92.5645
+DECODE_STEP index=89 ms=109.555
+DECODE_STEP index=90 ms=106.438
+DECODE_STEP index=91 ms=111.934
+DECODE_STEP index=92 ms=91.378
+DECODE_STEP index=93 ms=95.5634
+DECODE_STEP index=94 ms=86.6843
+DECODE_STEP index=95 ms=87.2595
+DECODE_STEP index=96 ms=90.1554
+DECODE_STEP index=97 ms=102.81
+DECODE_STEP index=98 ms=93.3162
+DECODE_STEP index=99 ms=91.3268
+DECODE_STEP index=100 ms=95.4851
+DECODE_STEP index=101 ms=92.6384
+DECODE_STEP index=102 ms=102.628
+DECODE_STEP index=103 ms=91.2884
+DECODE_STEP index=104 ms=92.955
+DECODE_STEP index=105 ms=97.8381
+DECODE_STEP index=106 ms=107.92
+DECODE_STEP index=107 ms=91.5133
+DECODE_STEP index=108 ms=90.396
+DECODE_STEP index=109 ms=85.0838
+DECODE_STEP index=110 ms=95.975
+DECODE_STEP index=111 ms=95.4616
+DECODE_STEP index=112 ms=101.758
+DECODE_STEP index=113 ms=99.8426
+DECODE_STEP index=114 ms=98.0466
+DECODE_STEP index=115 ms=111.413
+DECODE_STEP index=116 ms=99.987
+DECODE_STEP index=117 ms=104.708
+DECODE_STEP index=118 ms=94.6398
+DECODE_STEP index=119 ms=86.9777
+DECODE_STEP index=120 ms=91.3238
+DECODE_STEP index=121 ms=89.5571
+DECODE_STEP index=122 ms=92.6778
+DECODE_STEP index=123 ms=102.637
+DECODE_STEP index=124 ms=104.01
+DECODE_STEP index=125 ms=95.1862
+DECODE_STEP index=126 ms=101.972
+DECODE_STEP index=127 ms=108.381
+DECODE_STEP index=128 ms=106.072
+DECODE_STEP index=129 ms=100.138
+DECODE_STEP index=130 ms=93.8385
+DECODE_STEP index=131 ms=105.069
+DECODE_STEP index=132 ms=95.1175
+DECODE_STEP index=133 ms=104.083
+DECODE_STEP index=134 ms=91.9482
+DECODE_STEP index=135 ms=96.4143
+DECODE_STEP index=136 ms=104.957
+DECODE_STEP index=137 ms=93.8564
+DECODE_STEP index=138 ms=96.301
+DECODE_STEP index=139 ms=93.9377
+DECODE_STEP index=140 ms=98.9263
+DECODE_STEP index=141 ms=95.1018
+DECODE_STEP index=142 ms=104.574
+DECODE_STEP index=143 ms=103.244
+DECODE_STEP index=144 ms=97.7206
+DECODE_STEP index=145 ms=106.975
+DECODE_STEP index=146 ms=107.598
+DECODE_STEP index=147 ms=106.242
+DECODE_STEP index=148 ms=95.3446
+DECODE_STEP index=149 ms=100.724
+DECODE_STEP index=150 ms=91.8004
+DECODE_STEP index=151 ms=81.8284
+DECODE_STEP index=152 ms=84.8595
+DECODE_STEP index=153 ms=98.8563
+DECODE_STEP index=154 ms=96.1259
+DECODE_STEP index=155 ms=95.5526
+DECODE_STEP index=156 ms=86.9651
+DECODE_STEP index=157 ms=94.7869
+DECODE_STEP index=158 ms=79.6604
+DECODE_STEP index=159 ms=93.7485
+DECODE_STEP index=160 ms=92.2279
+DECODE_STEP index=161 ms=88.133
+DECODE_STEP index=162 ms=109.273
+DECODE_STEP index=163 ms=108.571
+DECODE_STEP index=164 ms=100.527
+DECODE_STEP index=165 ms=96.2218
+DECODE_STEP index=166 ms=92.2434
+DECODE_STEP index=167 ms=84.7442
+DECODE_STEP index=168 ms=80.4282
+DECODE_STEP index=169 ms=95.5738
+DECODE_STEP index=170 ms=105.682
+DECODE_STEP index=171 ms=94.1583
+DECODE_STEP index=172 ms=93.9286
+DECODE_STEP index=173 ms=84.4296
+DECODE_STEP index=174 ms=88.8621
+DECODE_STEP index=175 ms=96.6424
+DECODE_STEP index=176 ms=101.11
+DECODE_STEP index=177 ms=102.001
+DECODE_STEP index=178 ms=106.511
+DECODE_STEP index=179 ms=112.291
+DECODE_STEP index=180 ms=106.494
+DECODE_STEP index=181 ms=100.996
+DECODE_STEP index=182 ms=102.771
+DECODE_STEP index=183 ms=106.04
+DECODE_STEP index=184 ms=96.3467
+DECODE_STEP index=185 ms=97.574
+DECODE_STEP index=186 ms=82.2074
+DECODE_STEP index=187 ms=92.2482
+DECODE_STEP index=188 ms=92.653
+DECODE_STEP index=189 ms=106.379
+DECODE_STEP index=190 ms=97.5713
+DECODE_STEP index=191 ms=86.3186
+DECODE_STEP index=192 ms=86.4423
+DECODE_STEP index=193 ms=91.5056
+DECODE_STEP index=194 ms=96.9732
+DECODE_STEP index=195 ms=102.886
+DECODE_STEP index=196 ms=101.752
+DECODE_STEP index=197 ms=107.341
+DECODE_STEP index=198 ms=110.768
+DECODE_STEP index=199 ms=110.363
+DECODE_STEP index=200 ms=101.731
+DECODE_STEP index=201 ms=111.483
+DECODE_STEP index=202 ms=106.431
+DECODE_STEP index=203 ms=82.9023
+DECODE_STEP index=204 ms=91.2116
+DECODE_STEP index=205 ms=95.7381
+DECODE_STEP index=206 ms=106.712
+DECODE_STEP index=207 ms=97.4792
+DECODE_STEP index=208 ms=97.0328
+DECODE_STEP index=209 ms=82.158
+DECODE_STEP index=210 ms=84.638
+DECODE_STEP index=211 ms=81.1444
+DECODE_STEP index=212 ms=89.2462
+DECODE_STEP index=213 ms=80.6729
+DECODE_STEP index=214 ms=80.6221
+DECODE_STEP index=215 ms=99.4351
+DECODE_STEP index=216 ms=92.3452
+DECODE_STEP index=217 ms=90.2314
+DECODE_STEP index=218 ms=107.622
+DECODE_STEP index=219 ms=84.0807
+DECODE_STEP index=220 ms=109.384
+DECODE_STEP index=221 ms=101.099
+DECODE_STEP index=222 ms=96.0058
+DECODE_STEP index=223 ms=89.1858
+DECODE_STEP index=224 ms=80.2576
+DECODE_STEP index=225 ms=85.3236
+DECODE_STEP index=226 ms=101.958
+DECODE_STEP index=227 ms=98.251
+DECODE_STEP index=228 ms=88.2574
+DECODE_STEP index=229 ms=85.9286
+DECODE_STEP index=230 ms=95.7483
+DECODE_STEP index=231 ms=94.4766
+DECODE_STEP index=232 ms=94.9878
+DECODE_STEP index=233 ms=83.7462
+DECODE_STEP index=234 ms=98.009
+DECODE_STEP index=235 ms=100.768
+DECODE_STEP index=236 ms=104.255
+DECODE_STEP index=237 ms=92.6275
+DECODE_STEP index=238 ms=108.285
+DECODE_STEP index=239 ms=111.188
+DECODE_STEP index=240 ms=109.681
+DECODE_STEP index=241 ms=106.079
+DECODE_STEP index=242 ms=106.048
+DECODE_STEP index=243 ms=94.7615
+DECODE_STEP index=244 ms=103.12
+DECODE_STEP index=245 ms=105.509
+DECODE_STEP index=246 ms=102.128
+DECODE_STEP index=247 ms=96.6605
+DECODE_STEP index=248 ms=101.145
+DECODE_STEP index=249 ms=95.3886
+DECODE_STEP index=250 ms=87.2746
+DECODE_STEP index=251 ms=88.4817
+DECODE_STEP index=252 ms=88.4507
+DECODE_STEP index=253 ms=95.4656
+DECODE_STEP index=254 ms=99.1353
+DECODE_STEP index=255 ms=90.3418
+DECODE_STEP index=256 ms=91.7725
+DECODE_STEP index=257 ms=108.994
+DECODE_STEP index=258 ms=108.674
+DECODE_STEP index=259 ms=103.524
+DECODE_STEP index=260 ms=94.8171
+DECODE_STEP index=261 ms=106.329
+DECODE_STEP index=262 ms=91.402
+DECODE_STEP index=263 ms=81.9702
+DECODE_STEP index=264 ms=102.421
+DECODE_STEP index=265 ms=101.648
+DECODE_STEP index=266 ms=99.6198
+DECODE_STEP index=267 ms=110.438
+DECODE_STEP index=268 ms=98.262
+DECODE_STEP index=269 ms=94.1764
+DECODE_STEP index=270 ms=87.5806
+DECODE_STEP index=271 ms=83.3717
+DECODE_STEP index=272 ms=91.2141
+DECODE_STEP index=273 ms=99.4803
+DECODE_STEP index=274 ms=89.1861
+DECODE_STEP index=275 ms=85.6768
+DECODE_STEP index=276 ms=106.453
+DECODE_STEP index=277 ms=95.3068
+DECODE_STEP index=278 ms=99.2798
+DECODE_STEP index=279 ms=111.117
+DECODE_STEP index=280 ms=105.886
+DECODE_STEP index=281 ms=114.934
+DECODE_STEP index=282 ms=108.471
+DECODE_STEP index=283 ms=105.563
+DECODE_STEP index=284 ms=94.5332
+DECODE_STEP index=285 ms=104.563
+DECODE_STEP index=286 ms=92.2129
+DECODE_STEP index=287 ms=90.6964
+DECODE_STEP index=288 ms=104.194
+DECODE_STEP index=289 ms=105.24
+DECODE_STEP index=290 ms=92.291
+DECODE_STEP index=291 ms=100.119
+DECODE_STEP index=292 ms=96.2035
+DECODE_STEP index=293 ms=105.783
+DECODE_STEP index=294 ms=102.841
+DECODE_STEP index=295 ms=87.8873
+DECODE_STEP index=296 ms=95.8087
+DECODE_STEP index=297 ms=102.319
+DECODE_STEP index=298 ms=102.665
+DECODE_STEP index=299 ms=101.79
+DECODE_STEP index=300 ms=106.41
+DECODE_STEP index=301 ms=92.5229
+DECODE_STEP index=302 ms=105.686
+DECODE_STEP index=303 ms=91.2186
+DECODE_STEP index=304 ms=98.5251
+DECODE_STEP index=305 ms=94.7711
+DECODE_STEP index=306 ms=98.216
+DECODE_STEP index=307 ms=105.868
+DECODE_STEP index=308 ms=93.844
+DECODE_STEP index=309 ms=99.4017
+DECODE_STEP index=310 ms=100.875
+DECODE_STEP index=311 ms=107.056
+DECODE_STEP index=312 ms=106.116
+DECODE_STEP index=313 ms=96.6015
+DECODE_STEP index=314 ms=107.037
+DECODE_STEP index=315 ms=109.471
+DECODE_STEP index=316 ms=106.116
+DECODE_STEP index=317 ms=105.713
+DECODE_STEP index=318 ms=81.3024
+DECODE_STEP index=319 ms=92.5087
+DECODE_STEP index=320 ms=105.745
+DECODE_STEP index=321 ms=108.752
+DECODE_STEP index=322 ms=89.8985
+DECODE_STEP index=323 ms=96.1472
+DECODE_STEP index=324 ms=92.9272
+DECODE_STEP index=325 ms=92.1918
+DECODE_STEP index=326 ms=98.1587
+DECODE_STEP index=327 ms=104.262
+DECODE_STEP index=328 ms=104.572
+DECODE_STEP index=329 ms=97.2757
+DECODE_STEP index=330 ms=91.9594
+DECODE_STEP index=331 ms=98.3713
+DECODE_STEP index=332 ms=106.039
+DECODE_STEP index=333 ms=100.777
+DECODE_STEP index=334 ms=97.0305
+DECODE_STEP index=335 ms=101.643
+DECODE_STEP index=336 ms=107.773
+DECODE_STEP index=337 ms=104.85
+DECODE_STEP index=338 ms=100.898
+DECODE_STEP index=339 ms=106.192
+DECODE_STEP index=340 ms=101.067
+DECODE_STEP index=341 ms=95.7072
+DECODE_STEP index=342 ms=101.344
+DECODE_STEP index=343 ms=94.7498
+DECODE_STEP index=344 ms=93.9626
+DECODE_STEP index=345 ms=107.344
+DECODE_STEP index=346 ms=94.0881
+DECODE_STEP index=347 ms=105.148
+DECODE_STEP index=348 ms=107.479
+DECODE_STEP index=349 ms=97.8689
+DECODE_STEP index=350 ms=96.0444
+DECODE_STEP index=351 ms=99.2426
+DECODE_STEP index=352 ms=100.51
+DECODE_STEP index=353 ms=100.4
+DECODE_STEP index=354 ms=106.608
+DECODE_STEP index=355 ms=104.182
+DECODE_STEP index=356 ms=109.914
+DECODE_STEP index=357 ms=96.0294
+DECODE_STEP index=358 ms=103.903
+DECODE_STEP index=359 ms=103.305
+DECODE_STEP index=360 ms=100.166
+DECODE_STEP index=361 ms=94.4587
+DECODE_STEP index=362 ms=90.9209
+DECODE_STEP index=363 ms=87.62
+DECODE_STEP index=364 ms=89.7705
+DECODE_STEP index=365 ms=94.2124
+DECODE_STEP index=366 ms=99.4771
+DECODE_STEP index=367 ms=107.085
+DECODE_STEP index=368 ms=104.533
+DECODE_STEP index=369 ms=97.2695
+DECODE_STEP index=370 ms=92.5746
+DECODE_STEP index=371 ms=91.2639
+DECODE_STEP index=372 ms=93.2801
+DECODE_STEP index=373 ms=106.386
+DECODE_STEP index=374 ms=99.874
+DECODE_STEP index=375 ms=98.8782
+DECODE_STEP index=376 ms=97.3782
+DECODE_STEP index=377 ms=107.021
+DECODE_STEP index=378 ms=101.718
+DECODE_STEP index=379 ms=94.3103
+DECODE_STEP index=380 ms=93.5342
+DECODE_STEP index=381 ms=95.1287
+DECODE_STEP index=382 ms=97.5736
+DECODE_STEP index=383 ms=112.306
+DECODE_STEP index=384 ms=96.0303
+DECODE_STEP index=385 ms=108.603
+DECODE_STEP index=386 ms=106.718
+DECODE_STEP index=387 ms=102.283
+DECODE_STEP index=388 ms=101.134
+DECODE_STEP index=389 ms=98.8694
+DECODE_STEP index=390 ms=97.6499
+DECODE_STEP index=391 ms=99.52
+DECODE_STEP index=392 ms=108.883
+DECODE_STEP index=393 ms=97.6283
+DECODE_STEP index=394 ms=98.8869
+DECODE_STEP index=395 ms=107.053
+DECODE_STEP index=396 ms=105.598
+DECODE_STEP index=397 ms=100.927
+DECODE_STEP index=398 ms=102.944
+DECODE_STEP index=399 ms=103.269
+DECODE_STEP index=400 ms=101.438
+DECODE_STEP index=401 ms=104.767
+DECODE_STEP index=402 ms=101.099
+DECODE_STEP index=403 ms=105.418
+DECODE_STEP index=404 ms=105.827
+DECODE_STEP index=405 ms=102.593
+DECODE_STEP index=406 ms=110.868
+DECODE_STEP index=407 ms=98.5868
+DECODE_STEP index=408 ms=93.0428
+DECODE_STEP index=409 ms=105.721
+DECODE_STEP index=410 ms=97.6072
+DECODE_STEP index=411 ms=98.8569
+DECODE_STEP index=412 ms=100.263
+DECODE_STEP index=413 ms=102.324
+DECODE_STEP index=414 ms=101.331
+DECODE_STEP index=415 ms=101.671
+DECODE_STEP index=416 ms=98.0447
+DECODE_STEP index=417 ms=96.1992
+DECODE_STEP index=418 ms=105.498
+DECODE_STEP index=419 ms=107.302
+DECODE_STEP index=420 ms=103.669
+DECODE_STEP index=421 ms=101.63
+DECODE_STEP index=422 ms=101.786
+DECODE_STEP index=423 ms=97.2826
+DECODE_STEP index=424 ms=103.529
+DECODE_STEP index=425 ms=98.7504
+DECODE_STEP index=426 ms=105.463
+DECODE_STEP index=427 ms=99.3779
+DECODE_STEP index=428 ms=99.3116
+DECODE_STEP index=429 ms=107.111
+DECODE_STEP index=430 ms=104.159
+DECODE_STEP index=431 ms=104.059
+DECODE_STEP index=432 ms=97.9522
+DECODE_STEP index=433 ms=100.805
+DECODE_STEP index=434 ms=100.106
+DECODE_STEP index=435 ms=102.03
+DECODE_STEP index=436 ms=104.329
+DECODE_STEP index=437 ms=93.1955
+DECODE_STEP index=438 ms=90.3619
+DECODE_STEP index=439 ms=106.147
+DECODE_STEP index=440 ms=110.016
+DECODE_STEP index=441 ms=110.433
+DECODE_STEP index=442 ms=101.093
+DECODE_STEP index=443 ms=109.861
+DECODE_STEP index=444 ms=98.722
+DECODE_STEP index=445 ms=102.336
+DECODE_STEP index=446 ms=95.7328
+DECODE_STEP index=447 ms=101.699
+DECODE_STEP index=448 ms=95.1622
+DECODE_STEP index=449 ms=93.8218
+DECODE_STEP index=450 ms=96.1874
+DECODE_STEP index=451 ms=95.151
+DECODE_STEP index=452 ms=98.3122
+DECODE_STEP index=453 ms=99.2849
+DECODE_STEP index=454 ms=99.7172
+DECODE_STEP index=455 ms=102.73
+DECODE_STEP index=456 ms=98.351
+DECODE_STEP index=457 ms=112.058
+DECODE_STEP index=458 ms=98.1718
+DECODE_STEP index=459 ms=104.538
+DECODE_STEP index=460 ms=105.437
+DECODE_STEP index=461 ms=101.967
+DECODE_STEP index=462 ms=103.779
+DECODE_STEP index=463 ms=106.384
+DECODE_STEP index=464 ms=99.5411
+DECODE_STEP index=465 ms=95.416
+DECODE_STEP index=466 ms=102.986
+DECODE_STEP index=467 ms=106.384
+DECODE_STEP index=468 ms=87.068
+DECODE_STEP index=469 ms=93.4798
+DECODE_STEP index=470 ms=104.859
+DECODE_STEP index=471 ms=101.844
+DECODE_STEP index=472 ms=108.412
+DECODE_STEP index=473 ms=101.722
+DECODE_STEP index=474 ms=92.92
+DECODE_STEP index=475 ms=101.982
+DECODE_STEP index=476 ms=102.709
+DECODE_STEP index=477 ms=101.679
+DECODE_STEP index=478 ms=99.1329
+DECODE_STEP index=479 ms=99.3689
+DECODE_STEP index=480 ms=97.65
+DECODE_STEP index=481 ms=107.278
+DECODE_STEP index=482 ms=100.681
+DECODE_STEP index=483 ms=101.623
+DECODE_STEP index=484 ms=103.875
+DECODE_STEP index=485 ms=104.436
+DECODE_STEP index=486 ms=107.995
+DECODE_STEP index=487 ms=85.0787
+DECODE_STEP index=488 ms=94.2229
+DECODE_STEP index=489 ms=99.5113
+DECODE_STEP index=490 ms=98.8991
+DECODE_STEP index=491 ms=104.321
+DECODE_STEP index=492 ms=104.034
+DECODE_STEP index=493 ms=108.967
+DECODE_STEP index=494 ms=97.0205
+DECODE_STEP index=495 ms=101.092
+DECODE_STEP index=496 ms=102.399
+DECODE_STEP index=497 ms=104.484
+DECODE_STEP index=498 ms=101.793
+DECODE_STEP index=499 ms=103.202
+DECODE_STEP index=500 ms=105.468
+DECODE_STEP index=501 ms=106.63
+DECODE_STEP index=502 ms=106.085
+DECODE_STEP index=503 ms=112.52
+DECODE_STEP index=504 ms=108.025
+DECODE_STEP index=505 ms=107.007
+DECODE_STEP index=506 ms=98.7693
+DECODE_STEP index=507 ms=105.782
+DECODE_STEP index=508 ms=92.6705
+DECODE_STEP index=509 ms=99.5153
+DECODE_STEP index=510 ms=110.432
+DECODE_STEP index=511 ms=106.404
+DECODE steps=511 ms=50369.9 tok_s=10.1449
+HOST_RSS peak_MiB=53733.1
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=38707 bytes=1108535541760
+STEP_TRACE steps=511 moe_layers=21462 pipelined=1 head_ms=1230.38 cpu_ms=39160.5 between_ms=9291.39 tail_ms=573.772 enqueue_ms=2576.26 tier_swaps=0 split_windows=0 per_step_ms=98.3485
+GPU peak_allocated_MiB=11516.4 native_expert_bytes=0 expert_groups=0 staging_ms=0
+PREFILL_SCRATCH device=0 peak_MiB=5.07568 capacity_MiB=32
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=6213.17 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=11516.4 live_MiB=11516.4 native_expert_bytes=0 staging_ms=0 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=13194 free_MiB=3110
+resident expert entries=150018/515088

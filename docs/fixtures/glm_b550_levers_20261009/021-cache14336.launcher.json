@@ -1,0 +1,6 @@
+{
+  "exit_code": 1,
+  "stdout": "{\"exit_code\": 1, \"wall_seconds\": 0.5451858330052346, \"complete\": false, \"clean\": false, \"rejected\": null, \"measurements\": {\"prefill\": [], \"decode\": [], \"cpu_expert\": [], \"mtp_timing\": [], \"mtp_positions\": [], \"step_trace\": [], \"decode_cache\": [], \"speculation\": [], \"affinity_quality\": [], \"lookup_parity\": [], \"median_prefill_tok_s\": null, \"median_decode_tok_s\": null, \"peak_allocated_gpu_mib\": null, \"gpu_live\": [], \"page_faults\": []}}\n",
+  "stderr": "Running as unit: strata-lowmem-261332.service; invocation ID: 09684ede3bf94124856383eff877ba02\nFinished with result: exit-code\nMain processes terminated with: code=exited/status=1\nService runtime: 632ms\nCPU time consumed: 289ms\nMemory peak: 256.0K\nMemory swap peak: 0B\n",
+  "service_properties": "Result=exit-code\nExecMainCode=1\nExecMainStatus=1\nMemoryPeak=262144\nMemorySwapPeak=0\n"
+}

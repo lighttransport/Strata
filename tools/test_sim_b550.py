@@ -22,9 +22,32 @@ from config import RunConfig
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from glm_low_memory_bench import parse_log
 from glm_b550_sim_records import import_run
+from glm_b550_fit_levers import acceptance as lever_acceptance
 
 
 class B550Test(unittest.TestCase):
+    def test_fixture_profile_is_b550_only_and_explicit_profile_wins(self):
+        args=SimpleNamespace(hw='b550',acceptance=None,split_verify=1,prefetch_groups=None)
+        self.assertEqual(glm_sim.config_from_args(args).acceptance,'b550_levers512')
+        self.assertEqual(glm_sim.config_from_args(args).prefetch_groups,0)
+        args.split_verify=0
+        self.assertEqual(glm_sim.config_from_args(args).acceptance,'b550_levers512_unsplit')
+        args.hw='tr16'
+        self.assertEqual(glm_sim.config_from_args(args).acceptance,'mixed')
+        self.assertEqual(glm_sim.config_from_args(args).prefetch_groups,8)
+        args.hw='b550';args.acceptance='b550_screen'
+        self.assertEqual(glm_sim.config_from_args(args).acceptance,'b550_screen')
+        args.prefetch_groups=8
+        self.assertEqual(glm_sim.config_from_args(args).prefetch_groups,8)
+
+    def test_lever_acceptance_excludes_warmup_and_is_conditional(self):
+        record=dict(config=dict(mtp_depth=2),diagnostic=dict(parsed=dict(
+            speculation=[dict(rounds=100),dict(rounds=10),dict(rounds=10)],
+            mtp_positions=[dict(index=0,accepted=99),dict(index=1,accepted=99),
+                           dict(index=0,accepted=7),dict(index=1,accepted=4),
+                           dict(index=0,accepted=7),dict(index=1,accepted=3)])))
+        self.assertEqual(lever_acceptance(record),[.7,.5])
+
     def test_lossy_calibration_cannot_change_ordinary_prediction(self):
         record = dict(kind='decode', hw='b550', config=dict(pack='reap50_q23', speculation='none'))
         original = kernels.Params()
@@ -145,6 +168,9 @@ class B550Test(unittest.TestCase):
             glm_sim.check_implemented_config(RunConfig(pcie_share=.5))
         with self.assertRaises(ValueError):
             glm_sim.check_implemented_config(RunConfig(tier_policy='lru'))
+        with self.assertRaisesRegex(ValueError,'REAP staged prefetch'):
+            glm_sim.check_implemented_config(RunConfig(pack='reap50_q23',prefetch_groups=8))
+        glm_sim.check_implemented_config(RunConfig(pack='reap50_q23',prefetch_groups=0))
 
     def test_quality_reference_is_explicit(self):
         cfg=RunConfig(pack='reap50_q23',speculation='none')

@@ -1,0 +1,125 @@
+{
+  "partial": true,
+  "records_checked": 23,
+  "successful": 21,
+  "failed": 2,
+  "errors": [],
+  "checks": [
+    {
+      "name": "000-base",
+      "status": "complete",
+      "quiet_seconds": 180.020239
+    },
+    {
+      "name": "001-base-mtp512",
+      "status": "complete",
+      "quiet_seconds": 180.018911
+    },
+    {
+      "name": "002-mtp1",
+      "status": "complete",
+      "quiet_seconds": 180.018607
+    },
+    {
+      "name": "003-base-mtp512",
+      "status": "complete",
+      "quiet_seconds": 180.019268
+    },
+    {
+      "name": "004-mtp2",
+      "status": "complete",
+      "quiet_seconds": 180.018647
+    },
+    {
+      "name": "005-base-mtp512",
+      "status": "complete",
+      "quiet_seconds": 180.018203
+    },
+    {
+      "name": "006-mtp3",
+      "status": "complete",
+      "quiet_seconds": 180.020516
+    },
+    {
+      "name": "007-base-mtp512",
+      "status": "complete",
+      "quiet_seconds": 180.018842
+    },
+    {
+      "name": "008-mtp2-unsplit",
+      "status": "complete",
+      "quiet_seconds": 180.021144
+    },
+    {
+      "name": "009-base-mtp512",
+      "status": "complete",
+      "quiet_seconds": 180.018448
+    },
+    {
+      "name": "010-mtp2-aff05",
+      "status": "complete",
+      "quiet_seconds": 180.011846
+    },
+    {
+      "name": "012-mtp2-aff10",
+      "status": "complete",
+      "quiet_seconds": 180.018953
+    },
+    {
+      "name": "013-base-mtp512",
+      "status": "complete",
+      "quiet_seconds": 180.020247
+    },
+    {
+      "name": "014-mtp3-margin2",
+      "status": "complete",
+      "quiet_seconds": 180.02002
+    },
+    {
+      "name": "015-base-mtp512",
+      "status": "complete",
+      "quiet_seconds": 180.018922
+    },
+    {
+      "name": "016-base-ordinary256",
+      "status": "complete",
+      "quiet_seconds": 180.020792
+    },
+    {
+      "name": "017-static-tier",
+      "status": "complete",
+      "quiet_seconds": 180.022262
+    },
+    {
+      "name": "018-base-ordinary256",
+      "status": "complete",
+      "quiet_seconds": 180.01908
+    },
+    {
+      "name": "019-cache3072",
+      "status": "complete",
+      "quiet_seconds": 180.02114
+    },
+    {
+      "name": "020-base-ordinary256",
+      "status": "complete",
+      "quiet_seconds": 180.018367
+    },
+    {
+      "name": "022-base-ordinary256",
+      "status": "complete",
+      "quiet_seconds": 180.020699
+    },
+    {
+      "name": "011-base-mtp512",
+      "status": "failed",
+      "quiet_seconds": 180.021955
+    },
+    {
+      "name": "021-cache14336",
+      "status": "failed",
+      "quiet_seconds": 180.0213
+    }
+  ],
+  "params_sha256": "6786b52fe952e5ec3b86af363964c35d80570ba1a3f8e62573e1cb5c563ad9b6"
+}

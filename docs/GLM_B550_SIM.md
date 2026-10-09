@@ -96,7 +96,41 @@ The importer rejects traced or parity-check runs as throughput fitting data.
 
 Fit rows and held-out rows are separate. The optimizer does not use held-out rows by default, and validation fails if any required row exceeds its tolerance. `--observed-routing` records are conditional component diagnostics, not workload forecasts. The B550 planner defaults to implemented ordinary/MTP candidates; hypothetical architectures require explicit opt-in. `lossless` describes the selected arithmetic/model transformations, not a passed runtime quality certificate.
 
-`params_b550.json` is **provisional, fitted only to the corrected 6 GiB baseline**. The corrected larger-cache run and new workload fixtures are held out. Earlier pre-fix fit/records are preserved under the fixture directory, separate from the current fit. CPU bandwidth is anchored to corrected-run counters, width penalty to the independent real-input CPU matrix, and prefill staging to the recorded 10.53 GB/s. Exposed graph-launch fraction and effective prefill GEMM time remain aggregate fit terms. The very small fitted launch fraction must not be interpreted as an independent kernel measurement. New-workload acceptance, actual GPU component timing, and long-context memory growth still need validation. The pre-fix ordinary-decode predictions were within about 2%; generic acceptance overpredicted its MTP1/2/3 rows by 23%, 49%, and 51%. Those failed forecasts are retained as historical evidence. The corrected capacity holdout is predicted within 1.3%. The planner’s `b550_screen` acceptance profile comes from the historical screen. Corrected MTP1 checks it on the same prompt, but it is not a forecast for arbitrary prompts or a requalification of MTP2/3.
+The original parameter checkpoint, preserved as `params-before-user-update.json` in the lever fixture, was **provisional, fitted only to the corrected 6 GiB baseline**. The current parameter file uses the lever checkpoint described below. The corrected larger-cache run and new workload fixtures are held out. Earlier pre-fix fit/records are preserved under the fixture directory, separate from the current fit. CPU bandwidth is anchored to corrected-run counters, width penalty to the independent real-input CPU matrix, and prefill staging to the recorded 10.53 GB/s. Exposed graph-launch fraction and effective prefill GEMM time remain aggregate fit terms. The very small fitted launch fraction must not be interpreted as an independent kernel measurement. New-workload acceptance, actual GPU component timing, and long-context memory growth still need validation. The pre-fix ordinary-decode predictions were within about 2%; generic acceptance overpredicted its MTP1/2/3 rows by 23%, 49%, and 51%. Those failed forecasts are retained as historical evidence. The corrected capacity holdout is predicted within 1.3%. The planner’s `b550_screen` acceptance profile comes from the historical screen. Corrected MTP1 checks it on the same prompt, but it is not a forecast for arbitrary prompts or a requalification of MTP2/3.
+
+## Lever checkpoint, 2026-10-09
+
+The current-binary sweep is recorded in [glm_b550_levers_20261009](fixtures/glm_b550_levers_20261009/CHECKPOINT.md).
+At the user-requested calibration checkpoint, 21 runs qualified and two attempts failed. All successful
+decode runs emit 512 IDs per trial; rates use trials 2–3. BASE reproduced at **10.716 decode / 231.129
+prefill tok/s**. The engine and serving config are unchanged.
+
+`params_b550.json` now selects the new frozen 42-row simulator view. Only the unchanged-flags BASE decode
+and prefill timing trains the aggregate launch/GEMM terms. CPU bandwidth is anchored at **28.061 GB/s**
+from that run's counters; the independent width penalty and staging bandwidth are retained. The very small
+launch term is an aggregate exposed cost, not an independent kernel measurement. The prefill view explicitly
+sets `prefetch_groups=0`; the earlier import omitted it and inherited the simulator's default eight groups.
+The prior parameter file is retained in the checkpoint fixture.
+
+B550 CLI estimates now default to `b550_levers512`, pooling MTP1/2 acceptance counts on the frozen prompt;
+the third-position estimate remains historical. Unsplit verification has a separate profile. Explicit
+`--acceptance b550_screen` preserves the previous prior, and other hardware presets keep their defaults.
+B550 CLI prefetch defaults to zero, matching the measured engine flags; implemented-only REAP plans exclude staged prefetch, which this binary does not support. The static lever maps to `static_prior` because its engine config retains the same expert prior as BASE.
+
+Forecast mean absolute error is **6.26% over the nine decode levers**, **3.46% over all decode rows**, and **2.01%** across the 42 same-fixture decode/prefill timing rows; continuation-margin 2 is
+**12.84% high**, outside its 10% tolerance. This miss remains visible. Supplying each run's observed
+acceptance as a conditional diagnostic gives **1.56% mean / 9.10% maximum** error, with no tolerance
+misses. These are timing checks on a shared input, not independent workload forecasts. BASE controls differ
+across processes; no output-identity or quality qualification is claimed. Worker counts, the prefill ladder,
+failed-case retries and the supported-maximum cache run remain pending.
+
+```sh
+python3 tools/glm_b550_fit_levers.py
+python3 tools/sim/glm_sim.py validate --records tools/sim/data/measured_b550_levers_forecast.json \
+  --params tools/sim/data/params_b550.json  # intentionally reports the margin-2 miss
+python3 tools/sim/glm_sim.py validate --records tools/sim/data/measured_b550_levers_conditional.json \
+  --params tools/sim/data/params_b550.json
+```
 
 ## Quality gate
 

@@ -1,0 +1,2509 @@
+{
+  "records": [
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/000-base.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "000-base",
+        "step_trace": "disabled_reference_gate",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "000-base-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.71575,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47679.7,
+            "tokens_per_second": 10.7174
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47694.1,
+            "tokens_per_second": 10.7141
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/000-base.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "000-base",
+        "step_trace": "disabled_reference_gate",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "000-base-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 231.12900000000002,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8857.6,
+            "tokens_per_second": 231.214
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8864.11,
+            "tokens_per_second": 231.044
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/001-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "001-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "001-base-mtp512-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.710650000000001,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47707.7,
+            "tokens_per_second": 10.7111,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47711.6,
+            "tokens_per_second": 10.7102,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/001-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "001-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "001-base-mtp512-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.0665,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8902.12,
+            "tokens_per_second": 230.058
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8901.45,
+            "tokens_per_second": 230.075
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 1,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/002-mtp1.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "002-mtp1",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "002-mtp1-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.57995,
+        "trials": [
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 48271.8,
+            "tokens_per_second": 10.5859,
+            "trial_number": 2
+          },
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 48326.0,
+            "tokens_per_second": 10.574,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 1,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/002-mtp1.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "002-mtp1",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "002-mtp1-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.4425,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8888.17,
+            "tokens_per_second": 230.419
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8886.34,
+            "tokens_per_second": 230.466
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/003-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "003-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "003-base-mtp512-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.82545,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47223.0,
+            "tokens_per_second": 10.821,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47184.0,
+            "tokens_per_second": 10.8299,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/003-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "003-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "003-base-mtp512-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.26999999999998,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8899.3,
+            "tokens_per_second": 230.13
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8888.52,
+            "tokens_per_second": 230.41
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/004-mtp2.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "004-mtp2",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "004-mtp2-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.344650000000001,
+        "trials": [
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 49421.8,
+            "tokens_per_second": 10.3396,
+            "trial_number": 2
+          },
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 49373.6,
+            "tokens_per_second": 10.3497,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/004-mtp2.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "004-mtp2",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "004-mtp2-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.67,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8877.35,
+            "tokens_per_second": 230.7
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8879.64,
+            "tokens_per_second": 230.64
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/005-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "005-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "005-base-mtp512-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.78885,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47374.9,
+            "tokens_per_second": 10.7863,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47352.5,
+            "tokens_per_second": 10.7914,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/005-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "005-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "005-base-mtp512-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.8105,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8911.78,
+            "tokens_per_second": 229.808
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8911.6,
+            "tokens_per_second": 229.813
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 3,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/006-mtp3.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "006-mtp3",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "006-mtp3-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 8.32489,
+        "trials": [
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 61376.2,
+            "tokens_per_second": 8.32571,
+            "trial_number": 2
+          },
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 61388.2,
+            "tokens_per_second": 8.32407,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 3,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/006-mtp3.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "006-mtp3",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "006-mtp3-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.997,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8902.16,
+            "tokens_per_second": 230.057
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8906.8,
+            "tokens_per_second": 229.937
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/007-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "007-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "007-base-mtp512-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.8565,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47053.7,
+            "tokens_per_second": 10.8599,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47083.2,
+            "tokens_per_second": 10.8531,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/007-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "007-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "007-base-mtp512-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.9065,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8907.66,
+            "tokens_per_second": 229.914
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8908.27,
+            "tokens_per_second": 229.899
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512_unsplit",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": false,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/008-mtp2-unsplit.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "008-mtp2-unsplit",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "008-mtp2-unsplit-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 8.29604,
+        "trials": [
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 61613.8,
+            "tokens_per_second": 8.29359,
+            "trial_number": 2
+          },
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 61577.4,
+            "tokens_per_second": 8.29849,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512_unsplit",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": false,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/008-mtp2-unsplit.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "008-mtp2-unsplit",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "008-mtp2-unsplit-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.2525,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8893.14,
+            "tokens_per_second": 230.29
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8896.04,
+            "tokens_per_second": 230.215
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/009-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "009-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "009-base-mtp512-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.6038,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 48191.9,
+            "tokens_per_second": 10.6034,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 48188.5,
+            "tokens_per_second": 10.6042,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/009-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "009-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "009-base-mtp512-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.916,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8917.73,
+            "tokens_per_second": 229.655
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8897.49,
+            "tokens_per_second": 230.177
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.05,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/010-mtp2-aff05.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "010-mtp2-aff05",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "010-mtp2-aff05-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 12.05345,
+        "trials": [
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 41382.3,
+            "tokens_per_second": 12.3483,
+            "trial_number": 2
+          },
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 43457.6,
+            "tokens_per_second": 11.7586,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.05,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/010-mtp2-aff05.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "010-mtp2-aff05",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "010-mtp2-aff05-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.785,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8875.24,
+            "tokens_per_second": 230.754
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8872.87,
+            "tokens_per_second": 230.816
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.1,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/012-mtp2-aff10.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "012-mtp2-aff10",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "012-mtp2-aff10-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 15.609449999999999,
+        "trials": [
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 32890.5,
+            "tokens_per_second": 15.5364,
+            "trial_number": 2
+          },
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 32584.1,
+            "tokens_per_second": 15.6825,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 2,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.1,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/012-mtp2-aff10.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "012-mtp2-aff10",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "012-mtp2-aff10-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.613,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8935.67,
+            "tokens_per_second": 229.194
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8903.11,
+            "tokens_per_second": 230.032
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/013-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "013-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "013-base-mtp512-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.39525,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 49131.0,
+            "tokens_per_second": 10.4008,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 49183.3,
+            "tokens_per_second": 10.3897,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/013-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "013-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "013-base-mtp512-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.1705,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8899.13,
+            "tokens_per_second": 230.135
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8896.38,
+            "tokens_per_second": 230.206
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 3,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": true,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/014-mtp3-margin2.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "014-mtp3-margin2",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "014-mtp3-margin2-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 8.867944999999999,
+        "trials": [
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 57664.2,
+            "tokens_per_second": 8.86165,
+            "trial_number": 2
+          },
+          {
+            "kind": "mtp",
+            "tokens": 512,
+            "milliseconds": 57582.4,
+            "tokens_per_second": 8.87424,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "mtp",
+        "mtp_depth": 3,
+        "acceptance": "b550_levers512",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": true,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/014-mtp3-margin2.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "014-mtp3-margin2",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "014-mtp3-margin2-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.9885,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8905.29,
+            "tokens_per_second": 229.976
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8904.32,
+            "tokens_per_second": 230.001
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/015-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "015-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "015-base-mtp512-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.757349999999999,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47483.1,
+            "tokens_per_second": 10.7617,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47521.7,
+            "tokens_per_second": 10.753,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/015-base-mtp512.result.json",
+      "runtime_headroom_mib": 512,
+      "diagnostic": {
+        "source_record": "015-base-mtp512",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "015-base-mtp512-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.026,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8903.68,
+            "tokens_per_second": 230.017
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8903.0,
+            "tokens_per_second": 230.035
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/016-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "016-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "016-base-ordinary256-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.2432,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 49900.8,
+            "tokens_per_second": 10.2403,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 49872.5,
+            "tokens_per_second": 10.2461,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/016-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "016-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "016-base-ordinary256-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.10399999999998,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8891.17,
+            "tokens_per_second": 230.341
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8909.52,
+            "tokens_per_second": 229.867
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "static_prior",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/017-static-tier.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "017-static-tier",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "017-static-tier-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.14585,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 50360.9,
+            "tokens_per_second": 10.1468,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 50369.9,
+            "tokens_per_second": 10.1449,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "static_prior",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/017-static-tier.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "017-static-tier",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "017-static-tier-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.3615,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8892.97,
+            "tokens_per_second": 230.294
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8887.78,
+            "tokens_per_second": 230.429
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/018-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "018-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "018-base-ordinary256-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.7928,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47388.8,
+            "tokens_per_second": 10.7831,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47303.9,
+            "tokens_per_second": 10.8025,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/018-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "018-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "018-base-ordinary256-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.445,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8880.62,
+            "tokens_per_second": 230.615
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8893.7,
+            "tokens_per_second": 230.275
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 3072,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/019-cache3072.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "019-cache3072",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "019-cache3072-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 9.712959999999999,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 52609.5,
+            "tokens_per_second": 9.71308,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 52610.8,
+            "tokens_per_second": 9.71284,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 3072,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/019-cache3072.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "019-cache3072",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": false,
+        "control_ids_equal": false
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "019-cache3072-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.9235,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8896.48,
+            "tokens_per_second": 230.203
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8918.16,
+            "tokens_per_second": 229.644
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/020-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "020-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "020-base-ordinary256-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.67305,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47863.7,
+            "tokens_per_second": 10.6762,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 47891.8,
+            "tokens_per_second": 10.6699,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/020-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "020-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "020-base-ordinary256-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 229.515,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8919.19,
+            "tokens_per_second": 229.617
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8927.11,
+            "tokens_per_second": 229.413
+          }
+        ]
+      },
+      "tolerance": 0.15
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/022-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "022-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "022-base-ordinary256-decode",
+      "kind": "decode",
+      "measured": {
+        "tok_s": 10.449449999999999,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 48903.8,
+            "tokens_per_second": 10.4491,
+            "trial_number": 2
+          },
+          {
+            "kind": "single",
+            "tokens": 511,
+            "milliseconds": 48900.3,
+            "tokens_per_second": 10.4498,
+            "trial_number": 3
+          }
+        ]
+      },
+      "tolerance": 0.1
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 512,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 6144,
+        "gpu_budget_mib": 14336,
+        "reserve_mib": 2048.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.0,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 1024,
+        "adaptive_window": false,
+        "prefill_experts": "gpu"
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "docs/fixtures/glm_b550_levers_20261009/022-base-ordinary256.result.json",
+      "runtime_headroom_mib": 256,
+      "diagnostic": {
+        "source_record": "022-base-ordinary256",
+        "step_trace": "emitted",
+        "token_ids_equal_to_controls": null,
+        "control_ids_equal": null
+      },
+      "scope": "same-fixture forecast; acceptance prior calibrated on MTP counters",
+      "name": "022-base-ordinary256-prefill",
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 230.1135,
+        "trials": [
+          {
+            "trial": 1,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8906.34,
+            "tokens_per_second": 229.949
+          },
+          {
+            "trial": 2,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 8893.6,
+            "tokens_per_second": 230.278
+          }
+        ]
+      },
+      "tolerance": 0.15
+    }
+  ],
+  "source": "tools/sim/data/measured_b550_levers.json",
+  "source_runs": [
+    "000-base",
+    "001-base-mtp512",
+    "002-mtp1",
+    "003-base-mtp512",
+    "004-mtp2",
+    "005-base-mtp512",
+    "006-mtp3",
+    "007-base-mtp512",
+    "008-mtp2-unsplit",
+    "009-base-mtp512",
+    "010-mtp2-aff05",
+    "012-mtp2-aff10",
+    "013-base-mtp512",
+    "014-mtp3-margin2",
+    "015-base-mtp512",
+    "016-base-ordinary256",
+    "017-static-tier",
+    "018-base-ordinary256",
+    "019-cache3072",
+    "020-base-ordinary256",
+    "022-base-ordinary256"
+  ],
+  "excluded_failed": [
+    "011-base-mtp512",
+    "021-cache14336"
+  ],
+  "note": "Frozen snapshot. Instrumented timing checks are retained separately from the uninstrumented training BASE. Acceptance counters are calibration inputs; these are not independent workload holdouts or quality passes."
+}
