@@ -1,0 +1,21 @@
+{
+  "completed_utc": "2026-10-09T06:21:02.817984+00:00",
+  "runs": 9,
+  "successful_timing_runs": 9,
+  "failed_timing_runs": 0,
+  "selected_gpu_budget_mib": 15360,
+  "budget_fallbacks": 0,
+  "params_sha256": "6786b52fe952e5ec3b86af363964c35d80570ba1a3f8e62573e1cb5c563ad9b6",
+  "engine_binary_sha256": "8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f",
+  "engine_source_sha256": "d443603a73c3b5986ef24ed6ffe0563a1c7bab48a5b9eee4aa0d8bba07db7dd6",
+  "minimum_guard_gpu_free_mib": 764,
+  "maximum_cgroup_memory_peak_bytes": 59214880768,
+  "total_generated_ids": 13824,
+  "old_records_preserved": 24,
+  "new_records_appended": 9,
+  "engine_changed": false,
+  "parameters_refit": false,
+  "new_commit": false,
+  "mtp1_identity_bug": true,
+  "old_sweep_terminated": true
+}

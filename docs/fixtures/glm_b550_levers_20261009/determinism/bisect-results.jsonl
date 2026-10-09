@@ -1,0 +1,13 @@
+{"variant": "B_no_floating_q8", "identical": false, "first_diff": 1, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 20.263757169246674, "seconds": [30, 30]}
+{"variant": "C_no_q23_prefetch", "identical": false, "first_diff": 1, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 23.340424180030823, "seconds": [31, 31]}
+{"variant": "D_static_tier", "identical": false, "first_diff": 6, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 20.846572160720825, "seconds": [29, 30]}
+{"variant": "E_no_tier", "identical": false, "first_diff": 17, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 14.576269149780273, "seconds": [31, 31]}
+{"variant": "F_no_numa_weights", "identical": false, "first_diff": 14, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 16.74765157699585, "seconds": [30, 30]}
+{"variant": "G_no_tier_no_floating_q8", "identical": false, "first_diff": 6, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 20.893835067749023, "seconds": [31, 31]}
+{"variant": "H_prefill_mmq", "identical": true, "first_diff": null, "n": 64, "logits_bitwise": true, "logits_max_abs_diff": 0.0, "seconds": [38, 38]}
+{"variant": "I_no_layer_flow", "identical": false, "first_diff": 6, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 10.295880317687988, "seconds": [30, 30]}
+{"variant": "J_no_graphs", "identical": false, "first_diff": 6, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 21.46076726913452, "seconds": [30, 30]}
+{"variant": "K_no_tier_no_layer_flow", "identical": false, "first_diff": 11, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 14.389549612998962, "seconds": [31, 31]}
+{"variant": "L_no_tier_prefill_mmq", "identical": true, "first_diff": null, "n": 64, "logits_bitwise": true, "logits_max_abs_diff": 0.0, "seconds": [38, 38]}
+{"variant": "A_base_rerun", "identical": false, "first_diff": 1, "n": 64, "logits_bitwise": false, "logits_max_abs_diff": 26.93418061733246, "seconds": [30, 30]}
+{"variant": "M_mmq_mtp1", "identical": true, "first_diff": null, "n": 64, "logits_bitwise": true, "logits_max_abs_diff": 0.0, "seconds": [55, 54]}

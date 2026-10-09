@@ -1,0 +1,365 @@
+{
+  "samples": [
+    {
+      "utc": "2026-10-09T05:16:14.475960+00:00",
+      "seconds": 115.14138651901158,
+      "trial_index": 0,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3258Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:19.614366+00:00",
+      "seconds": 120.27977014300996,
+      "trial_index": 0,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3294Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:24.745494+00:00",
+      "seconds": 125.41089564599679,
+      "trial_index": 0,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3293Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:29.875635+00:00",
+      "seconds": 130.5410377140215,
+      "trial_index": 0,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3282Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:35.005256+00:00",
+      "seconds": 135.6706767489959,
+      "trial_index": 0,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3324Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:40.136360+00:00",
+      "seconds": 140.80176150400075,
+      "trial_index": 0,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3295Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 98\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:45.260745+00:00",
+      "seconds": 145.92615603702143,
+      "trial_index": 1,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3303Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:50.382633+00:00",
+      "seconds": 151.0480502860155,
+      "trial_index": 1,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3301Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:16:55.507995+00:00",
+      "seconds": 156.17339724500198,
+      "trial_index": 1,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3286Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:00.633183+00:00",
+      "seconds": 161.29858643299667,
+      "trial_index": 1,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3282Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:05.761513+00:00",
+      "seconds": 166.4269158889947,
+      "trial_index": 1,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3282Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:10.885157+00:00",
+      "seconds": 171.55056341999443,
+      "trial_index": 1,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3300Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:16.013038+00:00",
+      "seconds": 176.67846402301802,
+      "trial_index": 2,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3292Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 98\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:21.138486+00:00",
+      "seconds": 181.80390122701647,
+      "trial_index": 2,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3286Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:26.263523+00:00",
+      "seconds": 186.92892556401785,
+      "trial_index": 2,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3276Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:31.393796+00:00",
+      "seconds": 192.05921259801835,
+      "trial_index": 2,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3283Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:36.516029+00:00",
+      "seconds": 197.18145664600888,
+      "trial_index": 2,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3278Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 100\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    },
+    {
+      "utc": "2026-10-09T05:17:41.641649+00:00",
+      "seconds": 202.30705141901853,
+      "trial_index": 2,
+      "confirmed_decode": true,
+      "command": [
+        "rocm-smi",
+        "--showmeminfo",
+        "vram",
+        "--showclocks",
+        "--showuse"
+      ],
+      "exit_code": 0,
+      "stdout": "\n\n============================ ROCm System Management Interface ============================\n=============================== Current clock frequencies ================================\nGPU[0]\t\t: dcefclk clock level: 1: (219Mhz)\nGPU[0]\t\t: fclk clock level: 1: (2016Mhz)\nGPU[0]\t\t: mclk clock level: 5: (1258Mhz)\nGPU[0]\t\t: sclk clock level: 1: (3276Mhz)\nGPU[0]\t\t: socclk clock level: 1: (1280Mhz)\nGPU[0]\t\t: pcie clock level: 1 (16.0GT/s x16)\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 97\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 17095983104\nGPU[0]\t\t: VRAM Total Used Memory (B): 16139268096\n==========================================================================================\n================================== End of ROCm SMI Log ===================================\n",
+      "stderr": "",
+      "vram_used_mib": 15391.60546875,
+      "vram_total_mib": 16304.0,
+      "sysfs_mclk": "0: 96Mhz \n1: 456Mhz \n2: 772Mhz \n3: 875Mhz \n4: 1124Mhz \n5: 1258Mhz *",
+      "memory_clock_mhz": 1258
+    }
+  ],
+  "interval_seconds": 5
+}

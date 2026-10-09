@@ -1,0 +1,10 @@
+{
+  "partial": false,
+  "runs_checked": 9,
+  "selected_budget_mib": 15360,
+  "errors": [],
+  "mtp1_identity_bugs": [
+    "step1-b15360-06-mtp1"
+  ],
+  "params_sha256": "6786b52fe952e5ec3b86af363964c35d80570ba1a3f8e62573e1cb5c563ad9b6"
+}

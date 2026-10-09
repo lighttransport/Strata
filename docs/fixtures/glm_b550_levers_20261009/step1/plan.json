@@ -1,0 +1,67 @@
+{
+  "cases": [
+    [
+      "base15",
+      0,
+      false
+    ],
+    [
+      "aff06",
+      0.06,
+      false
+    ],
+    [
+      "base15",
+      0,
+      false
+    ],
+    [
+      "aff08",
+      0.08,
+      false
+    ],
+    [
+      "base15",
+      0,
+      false
+    ],
+    [
+      "mtp1",
+      0,
+      true
+    ],
+    [
+      "base15",
+      0,
+      false
+    ],
+    [
+      "aff08-mtp1",
+      0.08,
+      true
+    ],
+    [
+      "base15",
+      0,
+      false
+    ]
+  ],
+  "budgets": [
+    15360,
+    14848,
+    14336
+  ],
+  "reserve_mib": 512,
+  "cache_request_mib": 12288,
+  "runtime_headroom_mib": 512,
+  "runtime_note": "Previously approved matched 512 MiB runtime headroom; MTP rejects 256.",
+  "params_sha256": "6786b52fe952e5ec3b86af363964c35d80570ba1a3f8e62573e1cb5c563ad9b6",
+  "binary_sha256": "8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f",
+  "simulator_reference": {
+    "base15": 12.3,
+    "aff06": 15.6,
+    "aff08": 16.9,
+    "aff08_mtp1": 17.9,
+    "tier_GB": 8.6
+  }
+}

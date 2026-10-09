@@ -13,7 +13,8 @@
 | static-tier | decode | 10.1458 | 10.5180 | 0.965 | no | 707 / 6142.06 | 0.29 / 12.27 | 772.0 / 96.0 / 1258 | complete |
 | cache3072 | decode | 9.7130 | 10.7329 | 0.905 | no | 353 / 3066.69 | 0.14 / 13.42 | 772.0 / 96.0 / 1258 | complete |
 | largest-admitted-cache | decode | — | 10.5612 | — | — | — | 0.14 / 0.19 | 772.0 / 96.0 / — | failed |
+| workers8 | decode | 10.4478 | — | — | — | 707 / 6142.06 | 0.01 / 9.47 | 772.0 / 96.0 / 1258 | complete |
 
 Rates are means of trials 2–3. Each ratio uses the mean of the two neighbouring matched BASE runs. Token equality uses all three 512-token streams and both BASE neighbours. Prefill has no decoder steps; its one emitted token per trial was already computed by prefill. End load includes the benchmark itself. A 96 MHz clock after exit is an idle reading; loaded peaks are reported separately.
 
-Successful runs: 21; failed attempts: 2. Failed attempts are retained separately from importable records, with null tok/s. See each manifest, result, log, token file and record for exact flags and diagnostics.
+Successful runs: 22; failed attempts: 2. Failed attempts are retained separately from importable records, with null tok/s. See each manifest, result, log, token file and record for exact flags and diagnostics.
