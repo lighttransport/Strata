@@ -47,8 +47,11 @@ def plan(hw, pack, context, mtp_depth=0, gpu_draft_experts=False, dense_format="
     items["misc"] = VRAM["misc"]
     items["reserve"] = reserve_mib
     overrides = dict(hw.runtime_vram.get(pack.name, {}))
-    if tier_owned_reserve and "misc" in overrides:
-        overrides["misc"] -= 1280 - 512   # measured runtime misc includes the default 1,280 MiB MTP tier-fill reserve
+    # tier-fill reserve the engine keeps while MTP captures hidden states (declared per preset where measured);
+    # STRATA_GLM_TIER_OWNED_RESERVE=1 lowers it to 512 MiB
+    fill_reserve = overrides.pop("tier_fill_reserve", 0.0)
+    if fill_reserve and mtp_depth > 0:
+        overrides["tier_fill_reserve"] = min(fill_reserve, 512.0) if tier_owned_reserve else fill_reserve
     compact_history = overrides.pop("verify_history_by_depth", {})
     mtp_dense_mib = overrides.pop("mtp_dense_mib", None)
     if overrides:

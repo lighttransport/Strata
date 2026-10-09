@@ -1,7 +1,7 @@
 {
   "params": {
     "biased_resident_gpu_scale": 1.0,
-    "routing_affinity_tau": 0.22,
+    "routing_affinity_tau": 0.12,
     "tier_hit_scale": 1.1519309562131959,
     "gpu_launch_scale": 0.0002373819922353954,
     "cpu_bw_scale": 0.9587047138838019,
@@ -16,7 +16,7 @@
     "head_fixed_ms": 0.8,
     "tail_fixed_ms": 1.0,
     "gpu_layer_fixed_us": 100.0,
-    "draft_fixed_ms": 1.3,
+    "draft_fixed_ms": 3.0,
     "tier_upload_ms": 1.0,
     "prefill_kda_us": 36.0,
     "prefill_kda_parts_factor": 0.7,
@@ -103,5 +103,17 @@
     "prefill_gemm_us"
   ],
   "acceptance_profile": "b550_levers512; pooled MTP1/2 counts, historical third-position estimate; unsplit has separate counts",
-  "note": "Only unchanged-flags BASE timing trains aggregate terms. Other rows check timing on the same input. STEP_TRACE rows remain fit:false in the raw dataset; no independent workload or output-identity qualification is claimed. Affinity retries, worker sweep and prefill ladder are still pending."
+  "note": "Only unchanged-flags BASE timing trains aggregate terms. Other rows check timing on the same input. STEP_TRACE rows remain fit:false in the raw dataset; no independent workload or output-identity qualification is claimed. Affinity retries, worker sweep and prefill ladder are still pending.",
+  "step1_fit": {
+    "date": "2026-10-09",
+    "records": "tools/sim/data/measured_b550_levers.json (31 decode runs incl. step1-)",
+    "changed": {
+      "routing_affinity_tau": 0.12,
+      "tier_expert_us": 30.0,
+      "draft_fixed_ms": 3.0,
+      "biased_resident_gpu_scale": 1.0
+    },
+    "mean_abs_log_error": "0.041 -> 0.028",
+    "note": "affinity response stronger than tr16 (tau 0.12 vs 0.22); MTP draft step 3.0 ms; MTP2 still predicted 14 % low"
+  }
 }

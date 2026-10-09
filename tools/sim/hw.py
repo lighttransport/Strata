@@ -173,9 +173,9 @@ def tr16():
         disk=Disk(read_gbps=1.0, fetch_gbps=1.0),
         # Decode-time VRAM from GPU_LIVE on 2026-10-09 (build-levers/il, q23, MTP2, --gpu-budget-mib=12800): prefill
         # scratch shrinks to 32 MiB and staging/prefetch are freed before decode; misc = the 1,280 MiB tier-fill
-        # reserve kept while MTP captures hidden states + 16 x 16 MiB adaptive staging - 28 MiB, which reproduces
-        # the measured 439-slot / 3,814 MiB tier.
-        runtime_vram={pack: dict(staging=0, prefetch=0, prefill_scratch=32, misc=1508, runtime_headroom=1024,
+        # reserve kept while MTP captures hidden states (tier_fill_reserve) + 16 x 16 MiB adaptive staging - 28 MiB
+        # (misc), which reproduces the measured 439-slot / 3,814 MiB tier.
+        runtime_vram={pack: dict(staging=0, prefetch=0, prefill_scratch=32, misc=228, tier_fill_reserve=1280, runtime_headroom=1024,
                                  mtp_dense_mib=156.84, verify_history_by_depth={"1": 145.6, "2": 291.2, "3": 436.8})
                       for pack in ("q23", "q22")},
         notes="calibration machine; model drive nvme0n1 is x1 (~1 GB/s), pack drive nvme1n1 is x4",
@@ -192,7 +192,9 @@ def b550():
                 gemv_efficiency=0.7, tier_gbps=200.0, launch_us=5.0, desktop_mib=1786),
         pcie=Pcie(gen=4, lanes=16, h2d_gbps=27.21, latency_us=25.0),
         disk=Disk(read_gbps=2.0),
-        runtime_vram={"reap50_q23": dict(dense=5029.21, staging=0, prefetch=0, prefill_scratch=32, misc=74, runtime_headroom=768, mtp_dense_mib=112.628,
+        # tier_fill_reserve: the extra MTP-time tier holdback measured in step 1 (7,714 vs 7,958 MiB tier, 2026-10-09)
+        runtime_vram={"reap50_q23": dict(dense=5029.21, staging=0, prefetch=0, prefill_scratch=32, misc=74, runtime_headroom=768,
+                                         tier_fill_reserve=244, mtp_dense_mib=112.628,
                                                   verify_history_by_depth={"1":145.605,"2":163.79,"3":177.685})},
         notes="Automatic GPU clocks. RAM read 29.27 GB/s at 12 workers (2026-10-09); quantized expert efficiency is fitted separately. Decode VRAM tags from the 2026-10-08 Q23 run; desktop_mib includes untracked driver allocations, not just desktop clients.",
     )
