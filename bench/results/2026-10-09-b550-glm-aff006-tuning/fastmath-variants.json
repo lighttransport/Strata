@@ -1,0 +1,1 @@
+[{"name":"native-arithmetic","config":{"prefill_batch":8192},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"4096","STRATA_GLM_CANON":"0"}}]

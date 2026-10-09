@@ -46,6 +46,19 @@ def plan(hw, pack, context, mtp_depth=0, gpu_draft_experts=False, dense_format="
     items["prefill_scratch"] = prefill_scratch_mib
     items["misc"] = VRAM["misc"]
     items["reserve"] = reserve_mib
+    overrides = dict(hw.runtime_vram.get(pack.name, {}))
+    compact_history = overrides.pop("verify_history_by_depth", {})
+    mtp_dense_mib = overrides.pop("mtp_dense_mib", None)
+    if overrides:
+        items.update(overrides)
+        if mtp_depth > 0 and "runtime_headroom" in overrides:
+            items["runtime_headroom"] = 512
+            if mtp_dense_mib is not None:
+                items["mtp_dense"] = mtp_dense_mib
+            if str(history) in compact_history:
+                items["verify_history"] = compact_history[str(history)]
+        # Engine allocation ceiling and global free-memory guard are separate.
+        budget = min(budget + reserve_mib, hw.gpu.vram_mib - hw.gpu.desktop_mib)
     used = sum(items.values())
     primary_free = max(0.0, budget - used)
     secondary_free = (gpus - 1) * max(0.0, hw.gpu.vram_mib - reserve_mib - items["staging"] - prefill_scratch_mib)

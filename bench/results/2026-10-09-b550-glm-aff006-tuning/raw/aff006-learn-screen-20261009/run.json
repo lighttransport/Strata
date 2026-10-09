@@ -1,0 +1,50 @@
+{
+  "decoder_sha256": "d84217a529e9c10aaac88870520df8e0b92905d33d40528cdf9b24a77fdb8d70",
+  "runner_sha256": "0a7c4f4b2bce4416c0684ee0191b36ab89aef8a23e7a00faf40abf76efe95c5e",
+  "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "cache_mib": 8192,
+  "reserve_mib": 512,
+  "context": 8192,
+  "order": [
+    "document"
+  ],
+  "trials": 1,
+  "variants": [
+    {
+      "name": "baseline4k",
+      "config": {
+        "prefill_batch": 4096
+      },
+      "env": {
+        "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048"
+      }
+    },
+    {
+      "name": "unbiased4k",
+      "config": {
+        "prefill_batch": 4096
+      },
+      "env": {
+        "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048",
+        "STRATA_GLM_TIER_LEARN_UNBIASED": "1"
+      }
+    },
+    {
+      "name": "unbiasedfast4k",
+      "config": {
+        "prefill_batch": 4096
+      },
+      "env": {
+        "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048",
+        "STRATA_GLM_TIER_LEARN_UNBIASED": "1",
+        "STRATA_GLM_TIER_SEED": "10",
+        "STRATA_GLM_TIER_DECAY": "0.95",
+        "STRATA_GLM_TIER_MARGIN": "1.2"
+      }
+    }
+  ],
+  "affinities": [
+    0.06
+  ],
+  "notes": "One request/task/setting. Real EOS honored. Model pages/buffers stay warm, but decoder state and expert tier reset per request; no prefix reuse or untimed request."
+}

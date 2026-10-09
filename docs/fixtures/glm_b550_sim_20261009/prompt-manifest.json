@@ -1,0 +1,50 @@
+[
+  {
+    "name": "train-code",
+    "split": "train",
+    "source": "tools/glm_low_memory_bench.py",
+    "tokens": 2048,
+    "sha256": "846b9a46aeefc6df419bf8d8b0dfbe65e27519d50ad88520572b3caa61a8930d",
+    "question": "Review this Python benchmark for correctness, measurement bias and failure handling. Explain concrete bugs and propose patches."
+  },
+  {
+    "name": "train-doc",
+    "split": "train",
+    "source": "docs/AMD_HIP.md",
+    "tokens": 2048,
+    "sha256": "ac21a7f469c47828f43c2d8336e4e19164315ef81488939e99fb2ee5b2f11ad2",
+    "question": "Summarize this document in detail. Explain supported devices, setup steps, limitations and the evidence behind performance claims."
+  },
+  {
+    "name": "train-chat",
+    "split": "train",
+    "source": "docs/DETAILS.md",
+    "tokens": 2048,
+    "sha256": "594b9971321dc6f01c7228a2762be3bd790eae7097d974d7f7bbd90c6b5f1907",
+    "question": "Explain how this inference engine works to a curious programmer. Use examples and discuss memory bandwidth, caching and latency."
+  },
+  {
+    "name": "holdout-code",
+    "split": "holdout",
+    "source": "include/strata/kernels/cpu/pool.hpp",
+    "tokens": 2048,
+    "sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+    "question": "Review this C++ code for concurrency and memory safety. Give a detailed review with concrete invariants, edge cases, and test cases."
+  },
+  {
+    "name": "holdout-doc",
+    "split": "holdout",
+    "source": "docs/MULTI_GPU.md",
+    "tokens": 2048,
+    "sha256": "a2e2e9ae765e793657c61eb0e39aec0ca5e3ac800b2cc0a7fed0097dd29bad43",
+    "question": "Summarize this document, then answer: how are GPUs selected, what constrains speed, and which details would you verify before deployment?"
+  },
+  {
+    "name": "holdout-chat",
+    "split": "holdout",
+    "source": "docs/AI_SETUP.md",
+    "tokens": 2048,
+    "sha256": "804788a6c9a1248e13e051117bd7c6b8ad7c2f711a4b2c77257bead351286376",
+    "question": "Help a new user understand installation and troubleshooting. Explain the process clearly, with a worked example and questions to diagnose a slow machine."
+  }
+]

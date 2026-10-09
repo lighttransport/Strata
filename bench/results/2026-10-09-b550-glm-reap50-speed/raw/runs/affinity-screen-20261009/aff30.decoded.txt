@@ -1,0 +1,20 @@
+: one encoded processor per call, one per
+/// ApxProcessorSetDcBlew
+/// ApxProcessorSetDcBlew
+/// doc: one encoded processor per call, .hpp: one encoded processor under a reversible CPU Set selection
+/// ApxProcessorTestDcBlew
+/// THE RESERVATION IS A FICTION UNsuitable
+/// THE RES typo
+/// THE RES typo
+typo
+typo
+typo
+typ GoogleTest
+typ GoogleTest
+typ GoogleTest
+typ GoogleTest
+typ GoogleTest
+typ GoogleFill
+typ GoogleFill
+typ GoogleFill
+typ

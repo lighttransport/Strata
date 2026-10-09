@@ -1,0 +1,7 @@
+{
+  "affinity": 0.06,
+  "variant": "probe16",
+  "status": "failed",
+  "error": "<HTTPError 400: 'Bad Request'>",
+  "http_body": "{\"error\": {\"type\": \"invalid_request_error\", \"message\": \"GLM: cache probe needs ordinary canonical fixed-cache single-GPU decode with context headroom\"}}"
+}

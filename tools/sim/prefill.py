@@ -108,6 +108,8 @@ def chunk_seconds(hw, cfg, params, pack, chunk, ram_fraction=1.0, position=0):
             total_ms += mixer + cpu + kernels.handoff_ms(hw)
             continue
         per_group = kernels.pcie_ms(hw, group_bytes) / gpus * (1 - cached_share)
+        if params.prefill_stage_gbps > 0:
+            per_group = max(per_group, group_bytes / (params.prefill_stage_gbps * 1e6) / gpus * (1 - cached_share))
         if ram_fraction < 1.0:
             per_group += kernels.disk_ms(hw, group_bytes * (1 - ram_fraction)) * params.prefill_lazy_gain / gpus
         uploads = groups * per_group

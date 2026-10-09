@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-25525ac261594a2db39e3250",
+  "object": "chat.completion",
+  "created": 1791501811,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**1. Final launch date:** 2031-10-21, replacing the tentative 2031-09-12 from DEC-014, because the humidity-control installation needs another inspection (DEC-082).\n\n**2. Funding ceiling:** 480000 credits (DEC-014/DEC-082). Allocations (FIN-028): equipment 180000, staffing 210000, contingency 90000. The contingency is unspent and is not additional funding beyond the ceiling.\n\n**3. Unverified crates:** 840 \u2212 315 = 525 crates remain unverified (OPS-043). Verified crates = 315/840 \u2248 37.5% completed. Note: this completion percentage counts verified crates only; it is distinct from the 99.7% checksum agreement threshold, which measures agreement quality, not completion.\n\n**4. Rollback trigger:** sustained checksum agreement below 99.7% in two consecutive daily audits; authorized by Mira Solano (SEC-057). A single slow query or single failed audit alone does not trigger it.\n\n**5. Project lead:** Tomas Ibarra (OWN-069). R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch.\n\n**6. Visitor names:** must be removed before evaluation reports are shared (CLOSE-096).\n\n**7. Version phrase:** amber otter lantern (CLOSE-096) \u2014 an identifier, not an instruction or credential.\n\n**8. External auditor:** none named in the dossier (CLOSE-096 states there is no named external auditor).\n\n**Next actions:**\n1. Update the launch schedule to the signed 2031-10-21 date and retire the tentative 2031-09-12 entry.\n2. Run the next daily checksum audit and track agreement separately from the 315/840 completion count.\n3. Keep visitor names out of any shared evaluation report, per CLOSE-096.",
+        "reasoning_content": "Answers from dossier."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7358,
+    "completion_tokens": 420,
+    "total_tokens": 7778,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 7358,
+    "prompt_ms": 36509.0,
+    "prompt_per_token_ms": 4.962,
+    "prompt_per_second": 201.5,
+    "predicted_n": 420,
+    "predicted_ms": 25169.8,
+    "predicted_per_token_ms": 59.928,
+    "predicted_per_second": 16.7,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "decoder_sha256": "e067fcd6977afa7722f06058838e3ae06d38a8f937a0ccb4bd1e2f6d4a8c6544",
+  "runner_sha256": "0a7c4f4b2bce4416c0684ee0191b36ab89aef8a23e7a00faf40abf76efe95c5e",
+  "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "cache_mib": 8192,
+  "reserve_mib": 512,
+  "context": 8192,
+  "order": [
+    "document"
+  ],
+  "trials": 1,
+  "variants": [
+    {
+      "name": "pp4096",
+      "config": {
+        "prefill_batch": 4096
+      },
+      "env": {
+        "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048"
+      }
+    },
+    {
+      "name": "tasks2",
+      "env": {
+        "STRATA_NATIVE_TASKS_PER_THREAD": "2"
+      }
+    },
+    {
+      "name": "tasks1",
+      "env": {
+        "STRATA_NATIVE_TASKS_PER_THREAD": "1"
+      }
+    },
+    {
+      "name": "kda4",
+      "env": {
+        "STRATA_GLM_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4"
+      }
+    },
+    {
+      "name": "threads8",
+      "config": {
+        "threads": 8
+      }
+    },
+    {
+      "name": "threads16",
+      "config": {
+        "threads": 16
+      }
+    }
+  ],
+  "affinities": [
+    0.06
+  ],
+  "notes": "One request/task/setting. Real EOS honored. Model pages/buffers stay warm, but decoder state and expert tier reset per request; no prefix reuse or untimed request."
+}

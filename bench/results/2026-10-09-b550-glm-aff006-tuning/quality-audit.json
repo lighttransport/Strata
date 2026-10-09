@@ -1,0 +1,103 @@
+{
+  "scope": "Manual review of synthetic 7358-token dossier Q&A and 4082-token C++ review at affinity .06; no general quality equivalence claim.",
+  "prefill8k": {
+    "document": [
+      {
+        "trial": 0,
+        "finish_reason": "stop",
+        "factual_answers_correct": 8,
+        "requested_answers": 8,
+        "action_metric_conflation": true
+      },
+      {
+        "trial": 1,
+        "finish_reason": "stop",
+        "factual_answers_correct": 8,
+        "requested_answers": 8,
+        "action_metric_conflation": true
+      },
+      {
+        "trial": 2,
+        "finish_reason": "stop",
+        "factual_answers_correct": 8,
+        "requested_answers": 8,
+        "action_metric_conflation": false
+      }
+    ],
+    "cpp_review": [
+      {
+        "trial": 0,
+        "finish_reason": "length",
+        "complete_parser": false,
+        "quality_pass": false,
+        "notes": "Cap reached before a complete parser; numeric triggering examples are also inaccurate."
+      },
+      {
+        "trial": 1,
+        "finish_reason": "length",
+        "complete_parser": false,
+        "quality_pass": false,
+        "notes": "Cap reached before a complete parser; numeric triggering examples are also inaccurate."
+      },
+      {
+        "trial": 2,
+        "finish_reason": "length",
+        "complete_parser": false,
+        "quality_pass": false,
+        "notes": "Cap reached before a complete parser; numeric triggering examples are also inaccurate."
+      }
+    ]
+  },
+  "prefill8k-probe32": {
+    "document": [
+      {
+        "trial": 0,
+        "finish_reason": "stop",
+        "factual_answers_correct": 8,
+        "requested_answers": 8,
+        "action_metric_conflation": true,
+        "notes": "Action links crate completion to the agreement target."
+      },
+      {
+        "trial": 1,
+        "finish_reason": "stop",
+        "factual_answers_correct": 8,
+        "requested_answers": 8,
+        "action_metric_conflation": true,
+        "notes": "Trial 1 also states that the metrics are separate, but its action still says to track verified crates toward the agreement threshold."
+      },
+      {
+        "trial": 2,
+        "finish_reason": "stop",
+        "factual_answers_correct": 8,
+        "requested_answers": 8,
+        "action_metric_conflation": true,
+        "notes": "Action links crate completion to the agreement target."
+      }
+    ],
+    "cpp_review": [
+      {
+        "trial": 0,
+        "finish_reason": "stop",
+        "complete_parser": true,
+        "parser_test": "pass_5020",
+        "notes": "Five core defects identified; wrong numeric example claims 12x leaves 0 instead of 12."
+      },
+      {
+        "trial": 1,
+        "finish_reason": "stop",
+        "complete_parser": true,
+        "parser_test": "fail",
+        "notes": "Unsigned 0 - digit overflow threshold wrongly rejects valid strings containing a zero after a nonzero value; malformed-input numeric example and empty-input behavior also wrong."
+      },
+      {
+        "trial": 2,
+        "finish_reason": "length",
+        "complete_parser": true,
+        "closed_code_fence": false,
+        "parser_test": "pass_5020",
+        "notes": "All five core defects and complete parser supplied; cap cuts a trailing Registry comment and closing code fence. Wrong malformed-input example again claims 12x leaves 0 instead of 12."
+      }
+    ]
+  }
+}

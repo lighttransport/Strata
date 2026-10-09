@@ -54,7 +54,9 @@ def read_scores(path):
 
 def load_prior(path, experts):
     prior = {}
-    for projection in json.load(open(path))["projections"]:
+    with open(path) as file:
+        projections = json.load(file)["projections"]
+    for projection in projections:
         if projection["name"].endswith(".gu"):
             layer = int(projection["name"].split(".")[1])
             counts = np.array(projection["counts"], dtype=np.float64)

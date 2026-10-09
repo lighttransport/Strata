@@ -1,0 +1,86 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "recent256",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39455.0,
+      "prompt_per_token_ms": 5.362,
+      "prompt_per_second": 186.5,
+      "predicted_n": 443,
+      "predicted_ms": 27971.9,
+      "predicted_per_token_ms": 63.142,
+      "predicted_per_second": 15.8,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 443,
+      "total_tokens": 7801,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "recent512",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39638.8,
+      "prompt_per_token_ms": 5.387,
+      "prompt_per_second": 185.6,
+      "predicted_n": 509,
+      "predicted_ms": 32554.8,
+      "predicted_per_token_ms": 63.958,
+      "predicted_per_second": 15.6,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 509,
+      "total_tokens": 7867,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "sdma0",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 40946.6,
+      "prompt_per_token_ms": 5.565,
+      "prompt_per_second": 179.7,
+      "predicted_n": 468,
+      "predicted_ms": 30275.9,
+      "predicted_per_token_ms": 64.692,
+      "predicted_per_second": 15.5,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 468,
+      "total_tokens": 7826,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  }
+]

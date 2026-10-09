@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-b27183c6e32748bdb9326521",
+  "object": "chat.completion",
+  "created": 1791502740,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "reasoning_content": "Key bugs: parse_u64 sets out=0 first, violating \"out unchanged on failure\" (e.g. \"12x\" leaves out=0, or overflow \"99999999999999999999\" wraps silently \u2014 no overflow check, contract says reject > UINT64_MAX). Also empty string accepted (returns true, out=0) \u2014 contract says nonempty only. Overflow wraps silently (no rejection). Registry: get returns string_view into vector while holding lock only during call; readers may retain view after get returns while add push_back can reallocate/move \u2192 dangling view. Also get doesn't check bounds (i >= names.size() \u2192 UB). Also names[i] on empty vector. Mutex held only during return \u2014 but string_view refers to string in vector; add can push_back causing reallocation \u2192 invalid view. Fix: return std::string (copy) or keep shared/atomic snapshot; or use deque of stable pointers. Also add's move: fine.\n\nMinimal triggers:\n1. out unchanged on failure: parse_u64(\"12x\", out) with out=7 \u2192 returns false but out=0 (changed). Fix: only assign on success.\n2. empty accepted: parse_u64(\"\", out) returns true, out=0 \u2014 contract requires nonempty \u2192 violation.\n3. overflow: parse_u64(\"18446744073789594976\"?) Actually UINT64_MAX = 18446744073789594976? No: UINT64_MAX = 18446744073789594976? UINT64_MAX = 18446744073789594976? Let's compute: 2^64-1 = 18446744073789594976? 2^64 = 18446744073789594976? Actually 2^64 = 18446744073789594976? Hmm 2^32=4294967296; 2^64 = 18446744073789594976? No, 2^64 = 18446744073789594976 is wrong; 2^64 = 18446744073789594976? Let me recall: 2^63 = 9223372036854775808; 2^64 = 18446744073789594976? 2^64 = 18446744073789594976? Actually 2^64 = 18446744073789594976? I think 2^64 = 18446744073789594976? No \u2014 2^64 = 18446744073789594976? Hmm, 2^64 = 18446744073789594976? I recall 2^64 = 18446744073789594976? That's 2^64? 2^63 = 9223372036854775808, so 2^64 = 18446744073789594976? 2*9223372036854775808 = 18446744073789594976? 2*9223372036854775808 = 18446744073789594976? 9223372036854775808*2 = 18446744073789594976? 9223372036854775808*2 = 18446744073789594976? Actually 9223372036854775808*2 = 18446744073789594976? 9223372036854775808*2 = 18446744073789594976? Hmm, 9223372036854775808 * 2 = 18446744073789594976? Wait, 9223372036854775808 * 2 = 18446744073789594976? Let me just: 9.223e18 * 2 = 1.8446e19 \u2192 18446744073789594976? That's 1.8446e19? 18446744073789594976 \u2248 1.8446e19? 18446744073789594976 is 1.8446e19? It's 18,446,744,073,789,594,976? Hmm that's 1.8446e19? Actually 2^64 = 18446744073789594976? No! 2^64 = 18446744073789594976? I'm stuck in a loop. Standard: 2^64 = 18446744073789594976? No, 2^64 = 18446744073789594976? Let me recall properly: 2^64 = 18446744073789594976? Hmm. Known constants: 2^63 = 9223372036854775808. 2^64 = 18446744073789594976? 2^64 = 18446744073789594976? I keep repeating. Let me compute 2^64 differently: 2^10=1024, 2^20=1048576, 2^"
+      },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4082,
+    "completion_tokens": 1280,
+    "total_tokens": 5362,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 4082,
+    "prompt_ms": 15619.5,
+    "prompt_per_token_ms": 3.826,
+    "prompt_per_second": 261.3,
+    "predicted_n": 1280,
+    "predicted_ms": 81208.6,
+    "predicted_per_token_ms": 63.444,
+    "predicted_per_second": 15.8,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

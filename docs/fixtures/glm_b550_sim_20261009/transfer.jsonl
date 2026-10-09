@@ -1,0 +1,9 @@
+{"workers":0,"trial":0,"seconds":2.00003,"h2d_GB_s":26.5323,"cpu_read_GB_s":0,"checksum":0,"copy_exact":true}
+{"workers":0,"trial":1,"seconds":2.00033,"h2d_GB_s":27.2123,"cpu_read_GB_s":0,"checksum":0,"copy_exact":true}
+{"workers":0,"trial":2,"seconds":2.0003,"h2d_GB_s":27.2317,"cpu_read_GB_s":0,"checksum":0,"copy_exact":true}
+{"workers":8,"trial":0,"seconds":2.01156,"h2d_GB_s":20.3281,"cpu_read_GB_s":10.3754,"checksum":44350570496,"copy_exact":true}
+{"workers":8,"trial":1,"seconds":2.00965,"h2d_GB_s":20.3568,"cpu_read_GB_s":10.3185,"checksum":44065357824,"copy_exact":true}
+{"workers":8,"trial":2,"seconds":2.00415,"h2d_GB_s":20.4269,"cpu_read_GB_s":10.2799,"checksum":43780145152,"copy_exact":true}
+{"workers":12,"trial":0,"seconds":2.00795,"h2d_GB_s":10.885,"cpu_read_GB_s":19.6296,"checksum":83757455346,"copy_exact":true}
+{"workers":12,"trial":1,"seconds":2.00843,"h2d_GB_s":10.8777,"cpu_read_GB_s":19.6249,"checksum":83757455329,"copy_exact":true}
+{"workers":12,"trial":2,"seconds":2.01349,"h2d_GB_s":10.8503,"cpu_read_GB_s":19.6645,"checksum":84137738903,"copy_exact":true}

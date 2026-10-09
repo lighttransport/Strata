@@ -96,12 +96,19 @@ def make_plan(hw, cfg, pack):
 
 def tier_hit_share(hw, cfg, pack, plan, params, curve=None, trace=None, prior=None):
     """Share of routed bytes served by the GPU tier for this configuration."""
+    if cfg.measured_hit_share >= 0:
+        if not 0 <= cfg.measured_hit_share <= 1:
+            raise ValueError("invalid measured hit share")
+        return cfg.measured_hit_share
     if plan.slots <= 0 or cfg.placement == "gpu_stream":
         return 0.0
-    curve = curve or routing.TierCurve()
+    curve = curve or routing.TierCurve(affinity_tau=params.routing_affinity_tau)
+    if not curve.affinity_tau > 0:
+        raise ValueError("affinity response constant must be positive")
     fraction = plan.slots / pack.slots()
-    if trace is not None and prior is not None and pack.experts == 288:
-        h = routing.trace_tier_hit(trace, prior, plan.slots, cfg.tier_policy == "adaptive")
+    if trace is not None and prior is not None:
+        h = routing.trace_tier_hit(trace, prior, plan.slots, cfg.tier_policy == "adaptive",
+                                   experts=pack.experts, layer_bytes={l: pack.expert_bytes(l) for l in pack.formats})
         if cfg.affinity > 0:
             h = h + (1 - h) * (1 - math.exp(-cfg.affinity / curve.affinity_tau))
         return h
@@ -111,7 +118,7 @@ def tier_hit_share(hw, cfg, pack, plan, params, curve=None, trace=None, prior=No
         base = curve.hit(fraction, policy=cfg.tier_policy, skew=pack.skew)
         eligible = max(0, GEOMETRY.top_k - cfg.affinity_rank_lo + 1) / GEOMETRY.top_k
         h = base + (h - base) * eligible
-    return h
+    return min(1.0, h * params.tier_hit_scale)
 
 
 def ram_hit_share(hw, cfg, pack, curve=None):
@@ -177,6 +184,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
     tapers = [u / _union(w, rows, pack, consecutive, union if len(widths) == 1 else None, GEOMETRY.top_k, start)
               for u, w, start in zip(unions, widths, starts)]
     ram_hit, _ = ram_hit_share(hw, cfg, pack) if cfg.placement == "ram_tier" else (1.0, 0)
+    unions = [cfg.union_ratios.get(str(w), u) for w, u in zip(widths, unions)]
     handoff = kernels.handoff_ms(hw)
 
     cpu_ms = gpu_ms = gpu_exposed = cpu_exposed = handoffs = disk = pcie = remote = 0.0
@@ -218,7 +226,10 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             macs = routes * g.expert_macs()
             gpu_bytes += resident
             resident_experts = g.top_k * u * keep * hit
-            gpu += params.tier_expert_us * 1e-3 * resident_experts
+            biased_scale = params.biased_resident_gpu_scale if cfg.affinity > 0 else 1.0
+            if not biased_scale > 0:
+                raise ValueError("biased resident GPU scale must be positive")
+            gpu += biased_scale * params.tier_expert_us * 1e-3 * resident_experts
             if cfg.gpus > 1 and plan.tier_mib > 0:
                 # the primary's chain only carries its own tier share; the other card's share runs in parallel
                 # and its partial sums come back through the host (one extra handoff each way)
@@ -226,7 +237,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                 secondary = kernels.gpu_tier_ms(hw, resident * (1 - primary_share)) + 2 * handoff
                 gpu = max(gpu + kernels.gpu_tier_ms(hw, resident * primary_share), secondary)
             else:
-                gpu += kernels.gpu_tier_ms(hw, resident)
+                gpu += biased_scale * kernels.gpu_tier_ms(hw, resident)
             if cfg.placement == "gpu_stream":
                 pcie_bytes += nonres
                 stream = kernels.pcie_ms(hw, nonres) + kernels.gpu_tier_ms(hw, nonres)
@@ -235,6 +246,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                 cpu_g.append(0.0)
                 gpu_g.append(gpu)
                 continue
+            host_streamed = 0.0
             if cfg.pcie_prefetch and hw.pcie.h2d() > 0:
                 # routes of the next layer predicted one layer ahead: the upload overlaps this layer's CPU pass,
                 # so the bytes it can move are bounded by PCIe bandwidth x the layer's CPU time (solved in closed
@@ -245,6 +257,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                 moved = nonres * extra / (cpu_bw + extra)
                 nonres -= moved
                 macs *= 1 - moved / max(1e-9, nonres + moved)
+                host_streamed += moved / max(1e-9, params.prefetch_accuracy)
                 pcie_bytes += moved
                 gpu += kernels.gpu_tier_ms(hw, moved)
             if cfg.pcie_share > 0:
@@ -252,12 +265,18 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                 streamed = nonres * cfg.pcie_share
                 nonres -= streamed
                 macs *= 1 - cfg.pcie_share
+                host_streamed += streamed
                 pcie_bytes += streamed
                 stream_ms = kernels.pcie_ms(hw, streamed) + kernels.gpu_tier_ms(hw, streamed)
                 pcie += stream_ms
                 gpu += stream_ms
             local_bytes = nonres * (1 - cfg.remote_share)
             t_cpu, bound = kernels.cpu_roofline(hw, params, local_bytes, macs * (1 - cfg.remote_share), w, workers, eff)
+            if host_streamed:
+                # DMA and CPU expert reads share DRAM; staging traffic must not
+                # become a fictitious second memory channel. This is a lower bound.
+                shared_ms = (local_bytes + host_streamed) / (hw.memory.dram_gbps * 1e6)
+                t_cpu = max(t_cpu, shared_ms)
             if cfg.remote_share > 0 and hw.remote.expert_gbps > 0:
                 remote_bytes = nonres * cfg.remote_share
                 t_remote = remote_bytes / (hw.remote.expert_gbps * 1e9) * 1e3 + hw.link.rtt_us * 1e-3
@@ -387,7 +406,7 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         h, gib = ram_hit_share(hw, cfg, pack)
         notes.append(f"RAM expert set {gib:.1f} GiB serves {h * 100:.1f} % of routed bytes ({cfg.ram_mode})")
     lossless = (cfg.affinity == 0 and not (cfg.placement == "ram_tier" and cfg.ram_mode != "exact")
-                and not pack.name.startswith("reap") and cfg.expert_skip == 0 and cfg.tier_compress <= 1.0
+                and ((not cfg.quality_reference and not pack.name.startswith("reap")) or cfg.quality_reference == pack.name) and cfg.expert_skip == 0 and cfg.tier_compress <= 1.0
                 and model.DENSE_FORMATS[cfg.dense_format]["lossless"] and not cfg.expert_deferral
                 and cfg.spec_tail_topk >= GEOMETRY.top_k and cfg.tail_affinity == 0 and cfg.cold_share == 0 and cfg.cold_layers == 0)
     depth = spec_depth(cfg)
@@ -434,7 +453,7 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         round_ms = draft + verify
         tokens = per_row * rows
     else:
-        per_row = routing.tokens_per_round(depth, cfg.acceptance)
+        per_row = routing.tokens_per_round(depth, cfg.acceptance_probabilities or cfg.acceptance)
         if cfg.spec_tail_topk < GEOMETRY.top_k and depth >= 2:
             halvings = math.log2(GEOMETRY.top_k / cfg.spec_tail_topk)
             per_row = 1 + (per_row - 1) * params.tail_topk_acceptance ** halvings

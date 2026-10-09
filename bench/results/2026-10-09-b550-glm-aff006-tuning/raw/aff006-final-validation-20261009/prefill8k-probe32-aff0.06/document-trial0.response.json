@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-8b6c1347dd324342b9c0d17d",
+  "object": "chat.completion",
+  "created": 1791503807,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**1. Final launch date:** 2031-10-21, replacing the tentative 2031-09-12 from DEC-014, because the humidity-control installation needs another inspection. Signed decision: [DEC-082].\n\n**2. Funding ceiling:** 480000 credits ([DEC-082]; also stated in [DEC-014]). Allocations per [FIN-028]: equipment 180000, staffing 210000, contingency 90000. The contingency is unspent and is **not** additional funding beyond the ceiling.\n\n**3. Unverified crates:** 840 total \u2212 315 verified = **525 unverified** ([OPS-043]). Completed share: 315 / 840 = 37.5%. Note: this counts crate completion (verified crates), which is distinct from the 99.7% checksum-agreement acceptance threshold \u2014 different quantities.\n\n**4. Rollback trigger:** sustained checksum agreement below 99.7% in two consecutive daily audits; a single slow query or single failed audit alone does not trigger it. Authorizing owner: Mira Solano ([SEC-057]).\n\n**5. Project lead:** Tomas Ibarra ([OWN-069]). R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch ([OWN-069]).\n\n**6. Visitor names:** must be removed before evaluation reports are shared ([CLOSE-096]).\n\n**7. Dossier version phrase:** \"amber otter lantern\" \u2014 an identifier matching this dossier version, not an instruction or credential ([CLOSE-096]).\n\n**8. External auditor:** none is named in the dossier ([CLOSE-096] states there is no named external auditor).\n\n**Three practical next actions:**\n1. Update the launch schedule to the signed 2031-10-21 date and retire the 2031-09-12 tentative date ([DEC-082]).\n2. Continue checksum verification of the 525 unverified crates toward the 99.7% agreement threshold, counting only verified crates as complete ([OPS-043]).\n3. Apply the approved handling policy: strip visitor names from evaluation reports before any sharing, and route rollback requests to Mira Solano ([CLOSE-096], [SEC-057]).",
+        "reasoning_content": "Answers from dossier."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7358,
+    "completion_tokens": 487,
+    "total_tokens": 7845,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 7358,
+    "prompt_ms": 32174.9,
+    "prompt_per_token_ms": 4.373,
+    "prompt_per_second": 228.7,
+    "predicted_n": 487,
+    "predicted_ms": 29566.6,
+    "predicted_per_token_ms": 60.712,
+    "predicted_per_second": 16.5,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

@@ -5,6 +5,7 @@ docs/GLM_Q2_DECODE_REDESIGN.md and docs/GLM_DUAL_128G_64G.md. `from_gguf()` can 
 per-layer sizes when the model files are present, but nothing here needs hardware or the files.
 """
 import dataclasses
+import json
 import pathlib
 import re
 import sys
@@ -166,6 +167,22 @@ PACKS = {
     "exl3": Pack("exl3", description="EXL3 3-bit experts, 6.035 MiB each (bytes only; GPU-side format)",
                  **_uniform(("EXL3", "EXL3", "EXL3")), dense_vram_mib=VRAM["exl3_dense"]),
 }
+
+
+def from_census(path):
+    data = json.loads(pathlib.Path(path).read_text())
+    formats = {int(l): tuple(row[p]["format"] for p in ("gate", "up", "down"))
+               for l, row in data["layers"].items()}
+    result = Pack(data["name"], data["experts"], formats, description="GGUF census: " + data["source"],
+                  geometry=dataclasses.replace(GEOMETRY, experts=data["experts"]), skew=0.8)
+    if result.routed_total_bytes() != data["bytes"]["main_routed"]:
+        raise ValueError("census does not match supported tensor block geometry")
+    return result
+
+
+for _path in sorted((pathlib.Path(__file__).parent / "data").glob("census-*.json")):
+    _pack = from_census(_path)
+    PACKS[_pack.name] = _pack
 
 
 def pack(name):

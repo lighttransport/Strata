@@ -1,0 +1,20 @@
+{
+  "source_baseline": "15b787b5",
+  "glm_decode_cpp_sha256": "d443603a73c3b5986ef24ed6ffe0563a1c7bab48a5b9eee4aa0d8bba07db7dd6",
+  "hip_binary_sha256": "8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f",
+  "cuda_binary_sha256": "4c1a655f0a52525090eef0a102cc0c3ea7fb3b3bc90ab93accccc50cb88c7ecd",
+  "cuda_build": "CUDA 13.2, architecture 120, Release, one low-priority compile worker; no GPU/model run",
+  "cuda_ggml_dependency_revision": "e45ca254acfb328dcc24a0c2e0b931c291a294d4",
+  "cuda_dependency_note": "Used the available reference source, rather than the repository-pinned fetch; this is a compilation check, not release qualification.",
+  "sycl": "No GLM target exists in the separate SYCL engine.",
+  "tests": "91 Python simulator/low-memory checks passed; final runner/importer/parser-checker syntax and git diff --check passed. Generated parser quality: 2 pass, 1 fails 678/5020, 3 replies have no parser.",
+  "cuda_compiler_version": "13.2.86",
+  "commit_verification": {
+    "tests_run": 91,
+    "tests_passed": 90,
+    "tests_skipped": 1,
+    "skip_reason": "Exported staged tree has no local routing traces.",
+    "scope": "Exact staged B550 sources, excluding concurrent TR16 simulator edits.",
+    "whitespace": "Source, docs and data pass; unified-diff artifacts retain required blank context prefixes."
+  }
+}

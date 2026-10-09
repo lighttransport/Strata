@@ -1,0 +1,2 @@
+: group*64+proc, group*1... no wait, group*64+proc is the excerpt's encoding: group*64+ API: group*64+proc encoding: group*1... let me read the excerpt: group*64+proc encoding: group*64+small... let me group*64+affinity... group*0... group* list: group*64+proc encoding: group* tensor ownership and row addressing. Include helpers, at NUMA tensor ownership and row addressing. Reference code excerpts:
+// include/strata/kernels/cpu/pool.hpp - P2.S3: the CPU

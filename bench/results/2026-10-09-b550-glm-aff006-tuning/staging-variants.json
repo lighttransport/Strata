@@ -1,0 +1,8 @@
+[
+  {
+    "name": "stage8-original-batch",
+    "env": {
+      "STRATA_GLM_STAGE_WORKERS": "8"
+    }
+  }
+]

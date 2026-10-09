@@ -1,0 +1,47 @@
+[
+  {
+    "answer": "prefill8k-aff0.06/cpp-review-trial0.answer.md",
+    "finish_reason": "length",
+    "closed_code_fence": true,
+    "status": "no_unique_complete_parser",
+    "blocks": 0
+  },
+  {
+    "answer": "prefill8k-aff0.06/cpp-review-trial1.answer.md",
+    "finish_reason": "length",
+    "closed_code_fence": true,
+    "status": "no_unique_complete_parser",
+    "blocks": 0
+  },
+  {
+    "answer": "prefill8k-aff0.06/cpp-review-trial2.answer.md",
+    "finish_reason": "length",
+    "closed_code_fence": true,
+    "status": "no_unique_complete_parser",
+    "blocks": 0
+  },
+  {
+    "answer": "prefill8k-probe32-aff0.06/cpp-review-trial0.answer.md",
+    "finish_reason": "stop",
+    "closed_code_fence": true,
+    "function_sha256": "d301e533869a74ed25103a68e383be88274f556685afda0cb0cf8341056f71d1",
+    "status": "pass",
+    "result": "d301e533869a74ed.result.json"
+  },
+  {
+    "answer": "prefill8k-probe32-aff0.06/cpp-review-trial1.answer.md",
+    "finish_reason": "stop",
+    "closed_code_fence": true,
+    "function_sha256": "fe32e43b7442e5ac6aa0dc434392363bd329b77de10d0a9a65f07c079fefdcdd",
+    "status": "fail",
+    "result": "fe32e43b7442e5ac.result.json"
+  },
+  {
+    "answer": "prefill8k-probe32-aff0.06/cpp-review-trial2.answer.md",
+    "finish_reason": "length",
+    "closed_code_fence": false,
+    "function_sha256": "23321e2a8cb55f92975d1bd0f2c649e6fa6f2d27a5c598cca9902917124f1aa0",
+    "status": "pass",
+    "result": "23321e2a8cb55f92.result.json"
+  }
+]

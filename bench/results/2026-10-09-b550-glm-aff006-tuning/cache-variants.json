@@ -1,0 +1,5 @@
+[
+  {"name":"recent256","env":{"STRATA_GLM_DECODE_CACHE_RECENT":"1"}},
+  {"name":"recent512","config":{"decode_cache_window":512},"env":{"STRATA_GLM_DECODE_CACHE_RECENT":"1"}},
+  {"name":"sdma0","env":{"HSA_ENABLE_SDMA":"0"}}
+]

@@ -1,0 +1,5 @@
+[
+  {"name":"probe16","config":{"prefill_batch":4096},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"2048","STRATA_GLM_CACHE_PROBE":"16"}},
+  {"name":"probe24","config":{"prefill_batch":4096},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"2048","STRATA_GLM_CACHE_PROBE":"24"}},
+  {"name":"probe24unbiased","config":{"prefill_batch":4096},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"2048","STRATA_GLM_CACHE_PROBE":"24","STRATA_GLM_TIER_LEARN_UNBIASED":"1"}}
+]

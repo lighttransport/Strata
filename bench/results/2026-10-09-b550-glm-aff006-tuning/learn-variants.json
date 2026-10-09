@@ -1,0 +1,5 @@
+[
+  {"name":"baseline4k","config":{"prefill_batch":4096},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"2048"}},
+  {"name":"unbiased4k","config":{"prefill_batch":4096},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"2048","STRATA_GLM_TIER_LEARN_UNBIASED":"1"}},
+  {"name":"unbiasedfast4k","config":{"prefill_batch":4096},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"2048","STRATA_GLM_TIER_LEARN_UNBIASED":"1","STRATA_GLM_TIER_SEED":"10","STRATA_GLM_TIER_DECAY":"0.95","STRATA_GLM_TIER_MARGIN":"1.2"}}
+]

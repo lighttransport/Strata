@@ -1,0 +1,30 @@
+Oct 09 07:58:45 b550 python[219461]: [strata] answering: 374 of max 768 tokens, 15.1 tok/s, 55 s
+Oct 09 07:58:46 b550 python[219461]: [strata] answering: 391 of max 768 tokens, 15.2 tok/s, 56 s
+Oct 09 07:58:47 b550 python[219461]: [strata] answering: 406 of max 768 tokens, 15.1 tok/s, 57 s
+Oct 09 07:58:48 b550 python[219461]: [strata] answering: 421 of max 768 tokens, 15.1 tok/s, 58 s
+Oct 09 07:58:49 b550 python[219461]: [strata] answering: 438 of max 768 tokens, 15.2 tok/s, 59 s
+Oct 09 07:58:50 b550 python[219461]: [strata] answering: 455 of max 768 tokens, 15.2 tok/s, 60 s
+Oct 09 07:58:51 b550 python[219461]: [strata] done: 471 tokens in 61 s (15.2 tok/s) (stop, cancel=False)
+Oct 09 07:58:51 b550 python[219461]: [strata] stopping (Ctrl+C again to end the engine at once) ...
+Oct 09 07:58:51 b550 systemd[3387]: Stopping strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-learn-screen-20261009/unbiasedfast4k-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-learn-screen-20261009/unbiasedfast4k-aff0.06/memory.json...
+Oct 09 07:58:52 b550 python[219461]: [strata] stopped
+Oct 09 07:58:52 b550 systemd[3387]: Stopped strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-learn-screen-20261009/unbiasedfast4k-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-learn-screen-20261009/unbiasedfast4k-aff0.06/memory.json.
+Oct 09 07:58:52 b550 systemd[3387]: strata-glm-sweet-quality.service: Consumed 8min 59.796s CPU time.
+Oct 09 08:00:10 b550 systemd[3387]: Started strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-probe-screen-20261009/probe16-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-probe-screen-20261009/probe16-aff0.06/memory.json.
+Oct 09 08:00:13 b550 python[219856]: WARM_EXPERT_PAGES tensors=126 bytes=55094280192
+Oct 09 08:01:10 b550 python[219856]: WARM_EXPERT_PAGES complete {"tensors": 126, "bytes": 55094280192, "seconds": 57.05435755199869}
+Oct 09 08:01:11 b550 python[219891]: [strata] starting the engine: reading the model's weights ...
+Oct 09 08:01:21 b550 python[219891]: ready: http://127.0.0.1:8081/v1  (OpenAI: /v1/chat/completions, Anthropic: /v1/messages, context 8192 tokens)
+Oct 09 08:01:21 b550 python[219891]:        open http://127.0.0.1:8081/ in a browser to chat; close this window to stop the model
+Oct 09 08:01:32 b550 python[219891]: [strata] reading the prompt: 7,358 tokens, 10 s so far
+Oct 09 08:01:39 b550 python[219891]: [strata] reading the prompt: 4,096 of 7,358 tokens, 17 s so far
+Oct 09 08:01:49 b550 python[219891]: [strata] reading the prompt: 4,096 of 7,358 tokens, 27 s so far
+Oct 09 08:01:51 b550 python[219891]: [strata] reading the prompt: 7,358 of 7,358 tokens, 29 s so far
+Oct 09 08:01:51 b550 python[219891]: [strata] the engine reported an error: GLM: cache probe needs ordinary canonical fixed-cache single-GPU decode with context headroom
+Oct 09 08:01:51 b550 python[219891]: [strata] done: 0 tokens in 29 s (0.0 tok/s) (error, cancel=False)
+Oct 09 08:01:51 b550 python[219891]: [strata] 400 invalid request: GLM: cache probe needs ordinary canonical fixed-cache single-GPU decode with context headroom
+Oct 09 08:01:51 b550 python[219891]: [strata] stopping (Ctrl+C again to end the engine at once) ...
+Oct 09 08:01:51 b550 systemd[3387]: Stopping strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-probe-screen-20261009/probe16-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-probe-screen-20261009/probe16-aff0.06/memory.json...
+Oct 09 08:01:52 b550 python[219891]: [strata] stopped
+Oct 09 08:01:52 b550 systemd[3387]: Stopped strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-probe-screen-20261009/probe16-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-probe-screen-20261009/probe16-aff0.06/memory.json.
+Oct 09 08:01:52 b550 systemd[3387]: strata-glm-sweet-quality.service: Consumed 1min 43.099s CPU time.

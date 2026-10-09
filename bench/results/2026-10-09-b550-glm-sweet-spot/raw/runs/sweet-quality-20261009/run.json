@@ -1,0 +1,20 @@
+{
+  "decoder_sha256": "e067fcd6977afa7722f06058838e3ae06d38a8f937a0ccb4bd1e2f6d4a8c6544",
+  "runner_sha256": "99b511342b3ef1e09af0bfdeba812e77f225cafbf36e16a8c213c255aee481a8",
+  "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "cache_mib": 8192,
+  "reserve_mib": 512,
+  "context": 8192,
+  "order": [
+    "document",
+    "cpp-review"
+  ],
+  "affinities": [
+    0.0,
+    0.04,
+    0.06,
+    0.08,
+    0.1
+  ],
+  "notes": "One request/task/setting. Real EOS honored. Warm expert pages, first-request prefill; no untimed request. Cache carries between tasks."
+}

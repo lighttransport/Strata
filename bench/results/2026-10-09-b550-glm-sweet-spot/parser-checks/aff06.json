@@ -1,0 +1,9 @@
+{
+  "compile_exit": 0,
+  "test_exit": 0,
+  "cases": 5020,
+  "failures": 0,
+  "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "command": "nice -n 19 g++ -std=c++17 -O2 -Wall -Wextra SOURCE -o BIN; BIN",
+  "scope": "Local CPU-only parser validation; no local model/GPU performance test."
+}

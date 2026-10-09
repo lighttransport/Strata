@@ -1,0 +1,36 @@
+[
+  {
+    "variant": "prefill8k-probe32-aff0.06",
+    "peak_rss_gib": 53.473793029785156,
+    "peak_cgroup_gib": 57.187782287597656,
+    "peak_gpu_mib": 15647,
+    "minimum_gpu_free_mib": 657,
+    "swap_bytes": 0,
+    "events": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    }
+  },
+  {
+    "variant": "prefill8k-aff0.06",
+    "peak_rss_gib": 53.41987609863281,
+    "peak_cgroup_gib": 57.148353576660156,
+    "peak_gpu_mib": 15656,
+    "minimum_gpu_free_mib": 648,
+    "swap_bytes": 0,
+    "events": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    }
+  }
+]

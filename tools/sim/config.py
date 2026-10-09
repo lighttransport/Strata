@@ -4,6 +4,10 @@ import dataclasses
 
 @dataclasses.dataclass
 class RunConfig:
+    quality_reference: str = ""     # explicit unchanged quantized target for exact-output experiments
+    acceptance_probabilities: list = dataclasses.field(default_factory=list)
+    union_ratios: dict = dataclasses.field(default_factory=dict) # observed execution-group width -> byte union
+    measured_hit_share: float = -1.0 # diagnostic calibration only; never inferred on held-out routes
     pack: str = "q23"
     threads: int = 0                   # expert workers; 0 = physical cores minus one (host thread)
     context: int = 4096

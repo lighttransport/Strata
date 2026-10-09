@@ -1,0 +1,817 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f48c15fe..479fa8a9 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -438,8 +438,10 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
+     # FMA changes tie results. The embedding gather also relies on separately rounded operations.
+     # GLM's routed sum also specifies separate multiply/add rounding; HIP can
+     # contract its __fmul_rn / __fadd_rn calls unless contraction is disabled.
++    # The canonical Q23 kernel quantizes both input and SwiGLU output to Q8_K;
++    # a contracted bias addition can change a code at a half-integer boundary.
+     set_source_files_properties(src/kernels/cuda/elementwise.cu src/kernels/cuda/quantize_act.cu
+-      src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu
++      src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_q23.cu
+       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+   endif()
+ 
+diff --git a/src/kernels/glm_q23_parity.cpp b/src/kernels/glm_q23_parity.cpp
+index 32511ec4..24cebb12 100644
+--- a/src/kernels/glm_q23_parity.cpp
++++ b/src/kernels/glm_q23_parity.cpp
+@@ -17,6 +17,7 @@
+ #include <cstdint>
+ #include <cstdio>
+ #include <cstring>
++#include <fstream>
+ #include <random>
+ #include <string>
+ #include <vector>
+@@ -38,20 +39,20 @@ uint16_t half_of(float value) {   // exact for the powers of two times small man
+     return uint16_t(((bits >> 31) << 15) | (exponent << 10) | ((bits >> 13) & 1023));
+ }
+ // Random block bytes with finite scales: Q2_K keeps d and dmin in its last four bytes, Q3_K d in its last two.
+-void fill_rows(std::vector<uint8_t>& w, int type, std::mt19937& rng) {
++void fill_rows(std::vector<uint8_t>& w, int type, std::mt19937& rng, bool tiny = false) {
+     for (auto& b : w) b = uint8_t(rng());
+     const size_t block = type == 10 ? 84 : 110;
+     std::uniform_real_distribution<float> scale(1.f / 4096, 1.f / 256);
+     for (size_t at = 0; at + block <= w.size(); at += block) {
+-        const uint16_t d = half_of(scale(rng) * (rng() & 1 ? 1.f : -1.f));
++        const uint16_t d = tiny ? uint16_t((rng() % 1024) | ((rng() & 1) << 15)) : half_of(scale(rng) * (rng() & 1 ? 1.f : -1.f));
+         if (type == 10) {
+-            const uint16_t dm = half_of(scale(rng));
++            const uint16_t dm = tiny ? uint16_t(rng() % 1024) : half_of(scale(rng));
+             std::memcpy(&w[at + 80], &d, 2);
+             std::memcpy(&w[at + 82], &dm, 2);
+         } else std::memcpy(&w[at + 108], &d, 2);
+     }
+ }
+-struct Case { int gu, down, hidden, ff, experts, tokens; float limit; float skip = 0; int ragged = 0; };
++struct Case { int gu, down, hidden, ff, experts, tokens; float limit; float skip = 0; int ragged = 0; bool tiny = false; bool rounding_boundary = false; };
+ 
+ template <class T> struct DeviceBuffer {
+     T* p = nullptr;
+@@ -60,7 +61,7 @@ template <class T> struct DeviceBuffer {
+     void put(const void* host, size_t n) { ok(cudaMemcpy(p, host, n * sizeof(T), cudaMemcpyHostToDevice), "upload"); }
+ };
+ 
+-bool run(const Case& c, bool bench, std::mt19937& rng) {
++bool run(const Case& c, bool bench, std::mt19937& rng, std::istream* fixture = nullptr) {
+     auto L = k::native_expert_layout(c.gu, c.down, c.hidden, c.ff);
+     L.swiglu_limit = c.limit;
+     L.gate_skip = c.skip;
+@@ -70,7 +71,7 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
+     std::vector<std::vector<uint8_t>> blobs(c.experts, std::vector<uint8_t>(L.bytes));
+     for (auto& blob : blobs) {
+         std::vector<uint8_t> gate(L.up_off), up(L.up_off), down(L.bytes - L.down_off);
+-        fill_rows(gate, c.gu, rng); fill_rows(up, c.gu, rng); fill_rows(down, c.down, rng);
++        fill_rows(gate, c.gu, rng, c.tiny); fill_rows(up, c.gu, rng, c.tiny); fill_rows(down, c.down, rng, c.tiny);
+         std::memcpy(blob.data(), gate.data(), gate.size());
+         std::memcpy(blob.data() + L.up_off, up.data(), up.size());
+         std::memcpy(blob.data() + L.down_off, down.data(), down.size());
+@@ -80,11 +81,24 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
+     for (auto& v : x) v = normal(rng);
+     std::fill_n(x.begin() + 256, 256, 0.f);                 // a zero Q8_K block
+     x[700] = 40.f;                                          // a dominant value: most of its block rounds to zero
++    if (fixture) {
++        fixture->read((char *)blobs[0].data(), L.bytes);
++        fixture->read((char *)x.data(), x.size() * sizeof(float));
++        if (!*fixture) { std::fprintf(stderr, "truncated fixture\n"); return false; }
++    }
++    if (c.rounding_boundary) {
++        // A separately rounded multiply lands on 1.5; a contracted FMA lands just below it.
++        // HIP __fmul_rn/__fadd_rn wrappers alone do not prevent contraction.
++        std::fill_n(x.begin(), 256, 0.f);
++        const uint32_t bits[]{0x3f8ccccd, 0xbc54dced};
++        std::memcpy(x.data(), bits, sizeof(bits));
++    }
+     // CPU reference.
+     const size_t act_bytes = (size_t)c.hidden / 256 * 292, h_bytes = (size_t)c.ff / 256 * 292;
+     std::vector<std::vector<uint8_t>> xq(c.tokens, std::vector<uint8_t>(act_bytes));
+     for (int t = 0; t < c.tokens; ++t) cpu::canon_quant_q8k(x.data() + (size_t)t * c.hidden, xq[t].data(), c.hidden);
+-    std::vector<float> expected((size_t)routes * c.hidden);
++    std::vector<float> expected((size_t)routes * c.hidden), fixture_h;
++    std::vector<uint8_t> fixture_hq;
+     for (int e = 0; e < c.experts; ++e) {
+         std::vector<std::vector<float>> h(c.tokens, std::vector<float>(c.ff));
+         std::vector<std::vector<uint8_t>> hq(c.tokens, std::vector<uint8_t>(h_bytes));
+@@ -97,6 +111,7 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
+         cpu::q23_gu_rows(c.gu, blobs[e].data(), blobs[e].data() + L.up_off, L.gu_row, c.hidden, act.data(), c.tokens,
+                          hp.data(), 0, c.ff, c.limit, true, c.skip);
+         for (int t = 0; t < c.tokens; ++t) cpu::canon_quant_q8k(h[t].data(), hq[t].data(), c.ff);
++        if (fixture) { fixture_h = h[0]; fixture_hq = hq[0]; }
+         cpu::q23_rows(c.down, blobs[e].data() + L.down_off, L.d_row, c.ff, hact.data(), c.tokens, out.data(), 0, c.hidden);
+         // Width invariance: each token alone gives the rows it gets in the group.
+         for (int t = 0; t < c.tokens; ++t) {
+@@ -146,6 +161,30 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
+     ok(cudaDeviceSynchronize(), "kernels");
+     std::vector<float> actual(expected.size());
+     ok(cudaMemcpy(actual.data(), dout.p, actual.size() * 4, cudaMemcpyDeviceToHost), "download");
++    bool input_quant_equal = true;
++    if (c.rounding_boundary) {
++        std::vector<uint8_t> actual_xq(act_bytes);
++        ok(cudaMemcpy(actual_xq.data(), scratch.p, act_bytes, cudaMemcpyDeviceToHost), "input quant download");
++        input_quant_equal = actual_xq == xq[0];
++        std::printf("rounding_boundary input_quant_equal=%d\n", int(input_quant_equal));
++    }
++    if (fixture) {
++        std::vector<uint8_t> bytes(k::glm_q23_scratch_bytes(L, c.tokens, routes));
++        ok(cudaMemcpy(bytes.data(), scratch.p, bytes.size(), cudaMemcpyDeviceToHost), "scratch download");
++        const size_t ho = (act_bytes + 255) & ~size_t(255);
++        const size_t hqo = ho + ((size_t(c.ff) * 4 + 255) & ~size_t(255));
++        auto compare = [&](const char *name, const void *a, const void *b, size_t n) {
++            size_t diff = 0;
++            for (size_t i = 0; i < n; ++i) if (((const uint8_t*)a)[i] != ((const uint8_t*)b)[i]) {
++                if (diff < 8) std::printf("%s byte=%zu cpu=%u gpu=%u\n", name, i, ((const uint8_t*)a)[i], ((const uint8_t*)b)[i]);
++                ++diff;
++            }
++            std::printf("%s differing_bytes=%zu\n", name, diff);
++        };
++        compare("xq", xq[0].data(), bytes.data(), act_bytes);
++        compare("hidden", fixture_h.data(), bytes.data() + ho, c.ff * 4);
++        compare("hq", fixture_hq.data(), bytes.data() + hqo, h_bytes);
++    }
+     size_t differing = 0, nonfinite = 0;
+     double largest = 0;
+     for (size_t i = 0; i < expected.size(); ++i) {
+@@ -169,7 +208,7 @@ bool run(const Case& c, bool bench, std::mt19937& rng) {
+         std::printf("  bench: %.3f ms per call, %.1f GB/s of expert bytes (%.1f GB/s x tokens)\n", ms,
+                     c.experts * double(L.bytes) / ms / 1e6, entries * double(L.bytes) / ms / 1e6);
+     }
+-    return !differing && !nonfinite && largest > 0;
++    return input_quant_equal && !differing && !nonfinite && largest > 0;
+ }
+ }  // namespace
+ 
+@@ -177,13 +216,25 @@ int main(int argc, char** argv) {
+     const bool bench = argc > 1 && std::string(argv[1]) == "--bench";
+     std::mt19937 rng(20261007);
+     bool pass = true;
++    if (argc == 3 && std::string(argv[1]) == "--fixture") {
++        std::ifstream fixture(argv[2], std::ios::binary);
++        int32_t h[4]{}; float limit = 0;
++        fixture.read((char *)h, sizeof(h)); fixture.read((char *)&limit, sizeof(limit));
++        if (!fixture || h[2] != 4096 || h[3] != 2048) return 2;
++        pass = run(Case{h[0], h[1], h[2], h[3], 1, 1, limit}, false, rng, &fixture);
++        std::printf("%s\n", pass ? "PASS" : "FAIL");
++        return pass ? 0 : 1;
++    }
+     for (const Case& c : {Case{10, 11, 4096, 2048, 2, 1, 10.f}, Case{10, 11, 4096, 2048, 3, 2, 10.f},
+                           Case{10, 11, 4096, 2048, 3, 3, 10.f},
+                           Case{10, 11, 4096, 2048, 2, 4, 0.f}, Case{10, 10, 4096, 2048, 2, 2, 10.f},
+                           Case{11, 11, 4096, 2048, 1, 3, 10.f}, Case{10, 11, 1024, 512, 5, 6, 10.f},
+                           Case{10, 11, 4096, 2048, 2, 5, 10.f}, Case{10, 11, 4096, 2048, 2, 7, 10.f},
+                           Case{10, 11, 4096, 2048, 3, 8, 10.f}, Case{10, 11, 4096, 2048, 8, 8, 10.f, 0.f, 8}, Case{10, 10, 4096, 2048, 2, 8, 10.f},
+-                          Case{11, 11, 4096, 2048, 1, 8, 10.f}, Case{10, 11, 4096, 2048, 2, 8, 10.f, 0.25f}, Case{10, 10, 4096, 2048, 2, 2, 10.f, 2.f}})
++                          Case{11, 11, 4096, 2048, 1, 8, 10.f}, Case{10, 11, 4096, 2048, 2, 8, 10.f, 0.25f}, Case{10, 10, 4096, 2048, 2, 2, 10.f, 2.f},
++                          Case{10, 11, 4096, 2048, 2, 1, 10.f, 0.f, 0, true},
++                          Case{10, 11, 4096, 2048, 2, 4, 10.f, 0.f, 0, true},
++                          Case{10, 11, 4096, 2048, 1, 1, 10.f, 0.f, 0, false, true}})
+         pass = run(c, false, rng) && pass;
+     if (bench)
+         for (const Case& c : {Case{10, 11, 4096, 2048, 8, 1, 10.f}, Case{10, 11, 4096, 2048, 8, 2, 10.f},
+diff --git a/src/program/glm_decode.cpp b/src/program/glm_decode.cpp
+index dddf3aab..4662c85f 100644
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -83,6 +83,12 @@ constexpr auto glm_blas_math_mode = CUBLAS_DEFAULT_MATH;
+ #else
+ constexpr auto glm_blas_math_mode = CUBLAS_PEDANTIC_MATH;
+ #endif
++bool cached_lookup_enabled() {
++    const char *value = std::getenv("STRATA_GLM_CACHE_LOOKUP");
++    if (!value || std::string(value) == "0") return false;
++    if (std::string(value) != "1") throw std::invalid_argument("GLM: cache lookup must be 0 or 1");
++    return true;
++}
+ int mtp_lookup_depth() {
+     static const int depth = [] {
+         const char *value = std::getenv("STRATA_GLM_MTP_LOOKUP_DEPTH");
+@@ -1807,7 +1813,7 @@ class Decoder {
+         if (const char *rows = std::getenv("STRATA_GLM_MULTI_ROWS")) k::native_mmvq_set_multi_rows(std::atoi(rows));
+         return on;
+     }();
+-    bool pipelining = false, pipeline_residents = false;
++    bool pipelining = false, pipeline_residents = false, check_cpu_residency = false;
+     // Decode reads the Q8_0 MLA absorb and mHC projection weights directly instead of their FP32 copies.
+     bool q8_decode = [] {
+         const char *value = std::getenv("STRATA_GLM_Q8_DECODE");
+@@ -1901,6 +1907,38 @@ class Decoder {
+     std::function<bool()> cancelled;
+     bool cache_frozen = false;
+     std::ofstream routing_trace;
++    uint64_t routing_event = 0;
++    int routing_request = 0, routing_round = -1;
++    const char *routing_phase = "target";
++    bool routing_events = std::getenv("STRATA_GLM_ROUTING_EVENTS") != nullptr;
++    void trace_routes(int layer, int position, int nt, int k, const int *ids) {
++        if (!routing_trace.is_open()) return;
++        if (routing_events) {
++            routing_trace << "{\"request\":" << routing_request << ",\"round\":" << routing_round
++                << ",\"phase\":\"" << routing_phase << "\",\"event\":" << routing_event++
++                << ",\"position\":" << position << ",\"layer\":" << layer << ",\"routes\":[";
++            for (int t = 0; t < nt; ++t) {
++                if (t) routing_trace << ',';
++                routing_trace << '[';
++                for (int j = 0; j < k; ++j) { if (j) routing_trace << ','; routing_trace << ids[t*k+j]; }
++                routing_trace << ']';
++            }
++            routing_trace << "],\"resident\":[";
++            bool comma = false;
++            if (layer >= 0 && size_t(layer) < decode_resident.size()) {
++                for (const auto &[expert, entry] : decode_resident[layer]) {
++                    if (comma) routing_trace << ',';
++                    routing_trace << expert; comma = true;
++                }
++            }
++            routing_trace << "]}\n";
++        } else for (int t = 0; t < nt; ++t) {
++            routing_trace << position+t << ',' << layer;
++            for (int j = 0; j < k; ++j) routing_trace << ',' << ids[t*k+j];
++            routing_trace << '\n';
++        }
++        if (!routing_trace) throw std::runtime_error("GLM: failed writing routing trace");
++    }
+     // STRATA_GLM_ROUTER_SCORE_TRACE=path (non-pipelined CPU-expert decode): per token and MoE layer, binary
+     // records {int32 position, layer, experts; float logits[experts]}; path + ".bias" holds each layer's bias once.
+     std::ofstream router_score_trace, router_bias_trace;
+@@ -3561,14 +3599,7 @@ class Decoder {
+         if(expert_observer)expert_observer->input(l,position,nt,m.hidden,m.top_k,selected.data(),activation);
+         if(block_screen)block_screen->input(l,position,nt,m.hidden,m.top_k,selected.data(),routing,activation);
+         ram_touch(l, selected.data(), nullptr, nt * m.top_k);
+-        if (routing_trace.is_open()) {
+-            for (int t = 0; t < nt; ++t) {
+-                routing_trace << position + t << ',' << l;
+-                for (int j = 0; j < m.top_k; ++j) routing_trace << ',' << selected[t * m.top_k + j];
+-                routing_trace << '\n';
+-            }
+-            if (!routing_trace) throw std::runtime_error("GLM: failed writing routing trace");
+-        }
++        trace_routes(l, position, nt, m.top_k, selected.data());
+         if (host_router_logits) {
+             if (router_bias_written.insert(l).second) {
+                 const auto bias = weight(p + "exp_probs_b.bias").floats(m.experts);
+@@ -3880,14 +3911,7 @@ class Decoder {
+         if (expert_observer) expert_observer->input(l, position, nt, H, K, selected, activation);
+         if (block_screen) block_screen->input(l, position, nt, H, K, selected, routing, activation);
+         ram_touch(l, selected, mailbox->wanted(slot), nt * K);
+-        if (routing_trace.is_open()) {
+-            for (int t = 0; t < nt; ++t) {
+-                routing_trace << position + t << ',' << l;
+-                for (int j = 0; j < K; ++j) routing_trace << ',' << selected[t * K + j];
+-                routing_trace << '\n';
+-            }
+-            if (!routing_trace) throw std::runtime_error("GLM: failed writing routing trace");
+-        }
++        trace_routes(l, position, nt, K, selected);
+         const auto &G = artifact.at(p + "ffn_gate_exps.weight");
+         const auto &U = artifact.at(p + "ffn_up_exps.weight");
+         const auto &D = artifact.at(p + "ffn_down_exps.weight");
+@@ -4051,6 +4075,42 @@ class Decoder {
+                         std::copy_n(mailbox->rows(second_slot) + (size_t)(j - first_nt * K) * H,
+                                     H, results + (size_t)j * H);
+             }
++            if (std::getenv("STRATA_GLM_CHECK_RESIDENT_ROWS")) {
++                std::vector<float> reference(H);
++                for (int j = 0; j < nt * K; ++j) {
++                    const int e = selected[j];
++                    if (!resident[e] || routing[j] == 0.f) continue;
++                    cpu::ExpertJobMulti job{};
++                    job.expert_id = e; job.nt = 1;
++                    job.blob = G.data() + (size_t)e * f.up_off;
++                    job.native_up = U.data() + (size_t)e * f.up_off;
++                    job.native_down = D.data() + (size_t)e * (f.bytes - f.down_off);
++                    job.nact[0] = host_quant[j / K].data(); job.out[0] = reference.data();
++                    pool.run_split_multi_native(f, &job, 1);
++                    if (std::memcmp(reference.data(), results + (size_t)j * H, H * sizeof(float))) {
++                        size_t different = 0; float max_error = 0;
++                        for (int r = 0; r < H; ++r) {
++                            different += reference[r] != results[(size_t)j * H + r];
++                            max_error = std::max(max_error, std::abs(reference[r] - results[(size_t)j * H + r]));
++                        }
++                        std::cerr << "RESIDENT_PARITY layer=" << l << " expert=" << e
++                                  << " rows=" << different << " max_abs=" << max_error << '\n';
++                        if (const char *path = std::getenv("STRATA_GLM_RESIDENT_FIXTURE")) {
++                            std::ofstream out(path, std::ios::binary);
++                            const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
++                            out.write((const char *)header, sizeof(header));
++                            out.write((const char *)&f.swiglu_limit, sizeof(float));
++                            out.write((const char *)job.blob, f.up_off);
++                            out.write((const char *)job.native_up, f.up_off);
++                            out.write((const char *)job.native_down, f.bytes - f.down_off);
++                            out.write((const char *)(activation + (size_t)(j / K) * H), H * sizeof(float));
++                            if (!out) throw std::runtime_error("GLM: failed writing resident parity fixture");
++                        }
++                        throw std::runtime_error("GLM: resident CPU/GPU rows differ at layer " +
++                            std::to_string(l) + " expert " + std::to_string(e));
++                    }
++                }
++            }
+             for (int t = 0; t < nt; ++t)
+                 cpu::canon_route_sum(results + (size_t)t * K * H, routing + (size_t)t * K, mailbox->sum(slot) + (size_t)t * H, K, H, 0, H);
+         }
+@@ -4076,15 +4136,33 @@ class Decoder {
+     // STRATA_GLM_ROUTE_AFFINITY (opt-in, lossy): GPU-resident experts win selection ties within this margin, in
+     // probability units. The per-expert bonuses are rebuilt at each step start with the lookup and uploaded once;
+     // the pipelined router reads its layer's row.
+-    const float route_affinity = [] {
++    float route_affinity = [] {
+         const char *v = std::getenv("STRATA_GLM_ROUTE_AFFINITY");
+         const float x = v ? std::strtof(v, nullptr) : 0.f;
+         if (!(x >= 0.f && x <= 2.f)) throw std::invalid_argument("STRATA_GLM_ROUTE_AFFINITY must be in [0, 2]");
+         return x;
+     }();
++    // Optional per-layer overrides keep sensitive layers on their original routes.
++    // Unlisted layers inherit the scalar affinity; this never changes the default.
++    const std::vector<float> route_affinity_profile = [] {
++        std::vector<float> values(64, -1.f);
++        const char *path = std::getenv("STRATA_GLM_ROUTE_AFFINITY_PROFILE");
++        if (!path) return values;
++        const auto layer_profile = strata::artifact::read_json(path);
++        for (const auto &[layer, value] : layer_profile.at("layers").object) {
++            size_t end = 0; const auto index = std::stoul(layer, &end); const float affinity = value.real();
++            if (layer[end] || index >= values.size() || !(affinity >= 0.f && affinity <= 2.f))
++                throw std::invalid_argument("GLM: invalid affinity profile layer/value");
++            values[index] = affinity;
++        }
++        return values;
++    }();
++    const bool profile_has_affinity = std::any_of(route_affinity_profile.begin(), route_affinity_profile.end(),
++                                                 [](float value) { return value > 0.f; });
++    bool has_route_affinity() const { return route_affinity > 0.f || profile_has_affinity; }
+     std::unique_ptr<Pinned> host_route_bonus;
+     std::unique_ptr<Device> route_bonus;
+-    bool route_bonus_active = false, route_bonus_dirty = true;
++    bool route_bonus_active = false, route_bonus_dirty = true, route_bias_enabled = true;
+     const float *route_bonus_row(int l) const {
+         return route_bonus_active && l >= 0 && l < (int)m.layers.size() ? route_bonus->f((size_t)l * m.experts) : nullptr;
+     }
+@@ -4100,7 +4178,7 @@ class Decoder {
+         size_t parsed = 0, mib = std::stoull(value, &parsed);
+         if (parsed != std::strlen(value) || !mib || mib > 131072)
+             throw std::invalid_argument("GLM: exact cache MiB must be 1..131072");
+-        if (!pipeline_ready(1) || tier_adapt || decode_cache_adapt || ram_tier || route_affinity ||
++        if (!pipeline_ready(1) || tier_adapt || decode_cache_adapt || ram_tier || has_route_affinity() ||
+             !numa_experts.empty() || !prepared_experts.empty() || q23_layout || capture_hidden ||
+             artifact.has_expert_pack() || secondary || direct_upload_enabled() || block_screen ||
+             std::getenv("STRATA_GLM_ROUTE_MIN_SHARE"))
+@@ -4140,7 +4218,7 @@ class Decoder {
+     const size_t kRamInflight = (size_t)tier_setting("STRATA_GLM_RAM_INFLIGHT", 32);
+     // Called at each step start, after the resident lookup has been rebuilt and before the step is enqueued.
+     void refresh_route_bonus() {
+-        const bool affinity = route_affinity > 0 && pipelining && pipeline_residents;
++        const bool affinity = route_bias_enabled && has_route_affinity() && pipelining && pipeline_residents;
+         const bool active = affinity || ram_tier;
+         // Affinity follows the tier, which may change every step; memory residency sets the dirty flag itself.
+         if (!active) { route_bonus_active = false; return; }
+@@ -4157,7 +4235,7 @@ class Decoder {
+                 if (ram_tier->state[i] == RamTier::Resident) bonus[i] = kResidentBonus;
+         if (affinity)
+             for (size_t l = 0; l < decode_resident.size(); ++l)
+-                for (const auto &[expert, slot] : decode_resident[l]) bonus[l * m.experts + expert] += route_affinity;
++                for (const auto &[expert, slot] : decode_resident[l]) bonus[l * m.experts + expert] += route_affinity_profile[l] >= 0.f ? route_affinity_profile[l] : route_affinity;
+         check(cudaStreamSynchronize(stream));   // the previous step's kernels have finished with the old bonuses
+         route_bonus->put_async(bonus, count * sizeof(float), stream);
+         route_bonus_active = true;
+@@ -4354,10 +4432,11 @@ class Decoder {
+     // has nothing to protect, and the GPU adds its rows to the CPU's sum on the device instead: no row transfers.
+     // STRATA_GLM_CANON_COMBINE=strict|device overrides.
+     bool canon_strict() const {
++        if (!route_bias_enabled && !ram_tier) return true; // unbiased quality reference
+         static const char *mode = std::getenv("STRATA_GLM_CANON_COMBINE");
+         if (mode && std::string(mode) == "strict") return true;
+         if (mode && std::string(mode) == "device") return false;
+-        return !(route_affinity > 0) && !ram_tier;
++        return !has_route_affinity() && !ram_tier;
+     }
+     bool canon_types(int gate, int down) const {
+         return canon_experts && (gate == 10 || gate == 11) && (down == 10 || down == 11);
+@@ -4471,6 +4550,16 @@ class Decoder {
+         for (auto it = tier_copies.begin(); it != tier_copies.end();) {
+             if (!it->uploading || tier_step < it->uploaded_step + 2) { ++it; continue; }
+             check(cudaEventSynchronize(tier_events[it->staging]));
++            if (std::getenv("STRATA_GLM_CHECK_TIER_UPLOADS")) {
++                std::vector<uint8_t> actual(it->bytes);
++                check(cudaMemcpy(actual.data(), it->entry->p, it->bytes, cudaMemcpyDeviceToHost));
++                size_t offset = 0;
++                for (int part = 0; part < 3; ++part) {
++                    if (std::memcmp(actual.data() + offset, it->source[part], it->sizes[part]))
++                        throw std::runtime_error("GLM: tier upload differs from source expert bytes");
++                    offset += it->sizes[part];
++                }
++            }
+             decode_resident[it->layer].emplace(it->expert, std::move(it->entry));
+             tier_free_staging.push_back(it->staging);
+             it = tier_copies.erase(it);
+@@ -5790,7 +5879,8 @@ class Decoder {
+         pipeline_residents = false;
+         if (pipelining) {
+             tier_begin_step();
+-            for (const auto &layer : decode_resident) pipeline_residents = pipeline_residents || !layer.empty();
++            if (!check_cpu_residency)
++                for (const auto &layer : decode_resident) pipeline_residents = pipeline_residents || !layer.empty();
+             if (pipeline_residents) {
+                 // Device experts are data: the lookup is copied into each layer's GPU pass at execution time.
+                 if (m.layers.size() > 64 || m.experts > 288) throw std::runtime_error("GLM: resident lookup geometry");
+@@ -6827,6 +6917,23 @@ class Decoder {
+         if (value < 0 || value > 8192) throw std::invalid_argument("GLM: decode cache window must be 0..8192");
+         decode_cache_window = value;
+     }
++    float set_affinity_for_quality(float value) {
++        if (decode_graphs || !(value >= 0.f && value <= 2.f))
++            throw std::invalid_argument("GLM: affinity quality changes require direct launches and affinity 0..2");
++        const float previous = route_affinity; route_affinity = value; route_bonus_dirty = true;
++        return previous;
++    }
++    void set_route_bias_enabled(bool value) {
++        if (ram_tier) throw std::invalid_argument("GLM: route quality reference does not support the RAM routing tier");
++        route_bias_enabled = value; route_bonus_dirty = true;
++    }
++    void set_check_cpu_residency(bool value) { check_cpu_residency = value; }
++    bool set_tier_adaptation(bool value) {
++        tier_drain();
++        const bool previous = tier_adapt;
++        tier_adapt = value;
++        return previous;
++    }
+     void set_decode_cache_adapt(bool value) {
+         if (value && !decode_cache_auto)
+             throw std::invalid_argument("GLM: adaptive cache requires auto or extend decode cache");
+@@ -7237,6 +7344,17 @@ class Decoder {
+             std::cerr << "DECODE_RUNTIME owned_MiB=" << owned / double(MiB)
+                       << " reserve_MiB=" << scratch_reserve / double(MiB) << '\n';
+         }
++        // Opt-in measured headroom for small-memory deployments. Physical free
++        // memory and the allocator limit remain enforced for every admission.
++        if (const char *value = std::getenv("STRATA_GLM_TIER_RUNTIME_RESERVE_MIB")) {
++            size_t end = 0;
++            const auto mib = std::stoull(value, &end);
++            const size_t minimum = capture_hidden ? 512 : 256;
++            if (value[end] || mib < minimum || mib > 4096)
++                throw std::invalid_argument("GLM: tier runtime reserve must be 256..4096 MiB (at least 512 with MTP)");
++            scratch_reserve = mib * MiB;
++            std::cerr << "DECODE_RUNTIME override_reserve_MiB=" << mib << '\n';
++        }
+         for (const auto &c : candidates) {
+             check_stop();
+             if (decode_cache_slots_limit && slots >= (size_t)decode_cache_slots_limit) break;
+@@ -7302,6 +7420,17 @@ class Decoder {
+         rebalance_decode_cache();
+         if (decode_cache_slots_limit && slots != (size_t)decode_cache_slots_limit)
+             throw std::runtime_error("GLM: GPU headroom cannot reproduce requested decode cache slots");
++        if (routing_events && routing_trace.is_open()) {
++            for (size_t l = 0; l < decode_resident.size(); ++l) {
++                routing_trace << "{\"kind\":\"cache\",\"request\":" << routing_request << ",\"layer\":" << l << ",\"experts\":[";
++                bool comma = false;
++                for (const auto &[expert, entry] : decode_resident[l]) {
++                    if (comma) routing_trace << ',';
++                    routing_trace << expert; comma = true;
++                }
++                routing_trace << "]}\n";
++            }
++        }
+         std::cerr << "DECODE_CACHE prefix_trained=1 slots=" << slots
+                   << " MiB=" << used / double(MiB) << " fingerprint=" << fingerprint << '\n';
+         if (decode_cache_auto)
+@@ -7868,6 +7997,7 @@ class Decoder {
+         }
+     }
+     void set_profile(bool enabled) { profile = enabled; }
++    void set_trace_phase(int round, const char *phase) { routing_round = round; routing_phase = phase; }
+     void set_routing_trace(const std::string &path) {
+         if (path.empty()) return;
+         routing_trace.open(path);
+@@ -7970,6 +8100,7 @@ class Decoder {
+     }
+     void freeze_cache() { cache_frozen = true; }
+     void reset() {
++        ++routing_request; routing_round = -1; routing_phase = "target";
+         report_exact_cache(position);
+         exact_cache.reset();
+         finish_prefetch();
+@@ -8169,8 +8300,15 @@ struct LookupStats {
+ };
+ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
+                                    const std::vector<int> &prompt, int max_new, const std::vector<int> &stops,
+-                                   int depth, const std::function<void(int)> &emit) {
+-    strata::spec::SuffixDrafter lookup(3, 32, prompt.size() + max_new);
++                                   int depth, const std::function<void(int)> &emit, bool report = true) {
++    const int minimum_match = [] {
++        const char *value = std::getenv("STRATA_GLM_LOOKUP_MIN_MATCH");
++        if (!value) return cached_lookup_enabled() ? 6 : 3;
++        size_t used = 0; const int n = std::stoi(value, &used);
++        if (value[used] || n < 3 || n > 32) throw std::invalid_argument("GLM: lookup minimum match must be 3..32");
++        return n;
++    }();
++    strata::spec::SuffixDrafter lookup(minimum_match, 32, prompt.size() + max_new);
+     lookup.append(prompt.data(), prompt.size());
+     decoder.compact_decode();
+     auto checkpoint = decoder.checkpoint();
+@@ -8227,7 +8365,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
+     }
+     stats.milliseconds =
+         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+-    std::cerr << "SPECULATIVE source=lookup generated=" << stats.generated << " rounds=" << stats.rounds
++    if (report) std::cerr << "SPECULATIVE source=lookup generated=" << stats.generated << " rounds=" << stats.rounds
+               << " proposed=" << stats.proposed << " accepted=" << stats.accepted
+               << " replayed=" << stats.replayed << " ms=" << stats.milliseconds
+               << " tok_s=" << std::max(0, stats.generated - 1) * 1000 / stats.milliseconds << '\n';
+@@ -8320,6 +8458,7 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
+         std::vector<int> window{anchor};
+         int mtp_proposals = 0;
+         int lookup_proposals = use_lookup ? k : 0;
++        decoder.set_trace_phase(stats.rounds, "draft");
+         const auto draft_start = std::chrono::steady_clock::now();
+         if (use_lookup) window.insert(window.end(), lookup_tokens, lookup_tokens + k);
+         else for (int i = 0; i < k; ++i) {
+@@ -8347,6 +8486,7 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
+             }
+         }
+         draft_ms += elapsed_ms(draft_start);
++        decoder.set_trace_phase(stats.rounds, "verify");
+         const auto verify_start = std::chrono::steady_clock::now();
+         auto all = decoder.verify(window);
+         verify_ms += elapsed_ms(verify_start);
+@@ -8388,6 +8528,7 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
+             restore_draft();
+             logits.assign(all.end() - decoder.vocabulary(), all.end());
+         }
++        decoder.set_trace_phase(stats.rounds - 1, "resync");
+         const auto resync_start = std::chrono::steady_clock::now();
+         decoder.sync_mtp(std::vector<int>(window.begin() + resync_from, window.end()), pos + (int)resync_from);
+         resync_ms += elapsed_ms(resync_start);
+@@ -8944,8 +9085,13 @@ int main(int argc, char **argv) {
+         if (decode_cache_auto && use_mtp)
+             throw std::invalid_argument("GLM: automatic decode cache currently requires single-token decoding");
+         if (decode_cache_mib < 0 || decode_cache_mib > 12288 ||
+-            ((decode_cache_mib || decode_cache_auto) && ((use_mtp && !mtp_cpu_experts) || lookup_depth || stream_decode || expert_mib || cpu_prepack_mib)))
++            ((decode_cache_mib || decode_cache_auto) && ((use_mtp && !mtp_cpu_experts) || (lookup_depth && (!cached_lookup_enabled() || decode_cache_auto)) || stream_decode || expert_mib || cpu_prepack_mib)))
+             throw std::invalid_argument("decode-cache-mib requires CPU target experts, single or CPU-draft MTP, no prepacking, and 0..12288 MiB");
++        if (lookup_depth && decode_cache_mib) {
++            const char *canonical = std::getenv("STRATA_GLM_CANON"), *pipeline = std::getenv("STRATA_GLM_STEP_PIPELINE");
++            if (!canonical || std::string(canonical) != "1" || !pipeline || std::string(pipeline) != "1")
++                throw std::invalid_argument("GLM: cached lookup requires canonical pipelined CPU target experts");
++        }
+         if (decode_cache_slots < 0 || decode_cache_slots > 12960 ||
+             (decode_cache_slots && (!decode_cache_mib || decode_cache_auto)))
+             throw std::invalid_argument("decode-cache-slots needs a cache budget and 0..12960 slots");
+@@ -9139,6 +9285,10 @@ int main(int argc, char **argv) {
+             if(max_kl>.01 || top1!=int(window.size()))throw std::runtime_error("EXL3 dense quantization: quality smoke threshold exceeded (max KL .01, all eight greedy predictions must match)");
+         }
+         const bool mtp_prepared_for_cache = use_mtp && decoder.prepare_mtp_for_cache(tokens, draft_depth);
++        // Own retained rollback history before sizing the tier. Lookup has no draft block,
++        // but rejected windows still need the same target-state recovery as MTP.
++        if (lookup_depth && decode_cache_mib && cached_lookup_enabled())
++            decoder.enable_verify_history(lookup_depth);
+         const auto cache_prepare_start = std::chrono::steady_clock::now();
+         decoder.prepare_decode_cache();
+         decoder.freeze_cache();
+@@ -9167,6 +9317,48 @@ int main(int argc, char **argv) {
+             decoder.set_decode_graphs(decode_graphs);
+             decoder.set_decode_cache_adapt(decode_cache_adapt);
+             std::cerr << "DECODE_GRAPHS eight sequential logits and rollback identical\n";
++            if (std::getenv("STRATA_GLM_CHECK_TIER_ADAPT")) {
++                const bool old_tier = decoder.set_tier_adaptation(false);
++                decoder.save(cp);
++                std::vector<int> inputs;
++                std::vector<std::vector<float>> fixed_rows;
++                auto current = logits;
++                for (int i = 0; i < 32; ++i) {
++                    inputs.push_back(greedy(current));
++                    current = decoder.step(inputs.back());
++                    fixed_rows.push_back(current);
++                }
++                decoder.restore(cp);
++                decoder.set_tier_adaptation(true);
++                for (size_t i = 0; i < inputs.size(); ++i) {
++                    const auto actual = decoder.step(inputs[i]);
++                    if (actual != fixed_rows[i]) {
++                        size_t differences = 0; float max_error = 0;
++                        for (size_t j = 0; j < actual.size(); ++j) {
++                            differences += actual[j] != fixed_rows[i][j];
++                            max_error = std::max(max_error, std::abs(actual[j] - fixed_rows[i][j]));
++                        }
++                        std::cerr << "TIER_PARITY_MISMATCH step=" << i << " logits=" << differences
++                                  << " max_abs=" << max_error << " greedy_equal="
++                                  << (greedy(actual) == greedy(fixed_rows[i])) << '\n';
++                        throw std::runtime_error("GLM: adaptive residency changed target logits");
++                    }
++                }
++                decoder.restore(cp);
++                decoder.set_tier_adaptation(old_tier);
++                std::cerr << "TIER_PARITY steps=32 all_logits=bitwise_equal\n";
++                decoder.set_tier_adaptation(false);
++                decoder.set_check_cpu_residency(true);
++                decoder.set_decode_graphs(false);
++                for (size_t i = 0; i < inputs.size(); ++i)
++                    if (decoder.step(inputs[i]) != fixed_rows[i])
++                        throw std::runtime_error("GLM: all-CPU residency changed target logits at step " + std::to_string(i));
++                decoder.restore(cp);
++                decoder.set_check_cpu_residency(false);
++                decoder.set_decode_graphs(decode_graphs);
++                decoder.set_tier_adaptation(old_tier);
++                std::cerr << "CPU_RESIDENCY_PARITY steps=32 all_logits=bitwise_equal\n";
++            }
+         }
+         if(check_verify_graphs) {
+             auto cp=decoder.checkpoint();decoder.save(cp);
+@@ -9238,6 +9430,88 @@ int main(int argc, char **argv) {
+             decoder.restore(cp);
+             std::cerr << "VERIFY sequential logits and device rollback identical\n";
+         }
++        if (const char *value = std::getenv("STRATA_GLM_CHECK_LOOKUP")) {
++            size_t consumed = 0; int check_tokens = std::stoi(value, &consumed);
++            if (check_tokens == 1) check_tokens = 256;
++            if (value[consumed] || check_tokens < 8 || check_tokens > 512)
++                throw std::invalid_argument("GLM: lookup check needs 8..512 tokens");
++            if (!lookup_depth || use_mtp) throw std::invalid_argument("GLM: lookup check requires lookup-only decoding");
++            auto checkpoint = decoder.checkpoint(); decoder.save(checkpoint);
++            auto reference_logits = logits;
++            std::vector<int> expected, actual;
++            for (int i = 0; i < check_tokens; ++i) {
++                expected.push_back(greedy(reference_logits));
++                if (i + 1 != check_tokens) reference_logits = decoder.step(expected.back());
++            }
++            decoder.restore(checkpoint);
++            auto checked_logits = logits;
++            auto checked = generate_lookup(decoder, checked_logits, tokens, check_tokens, {}, lookup_depth,
++                                           [&](int token) { actual.push_back(token); }, false);
++            if (actual != expected) throw std::runtime_error("GLM: cached lookup changed greedy target output");
++            decoder.restore(checkpoint);
++            std::cerr << "LOOKUP_PARITY tokens=" << check_tokens << " output=identical proposed=" << checked.proposed
++                      << " accepted=" << checked.accepted << " replayed=" << checked.replayed << '\n';
++        }
++        if (const char *value = std::getenv("STRATA_GLM_CHECK_AFFINITY")) {
++            size_t consumed = 0; int rows = std::stoi(value, &consumed);
++            if (rows == 1) rows = 64;
++            if (value[consumed] || rows < 8 || rows > 256 || use_mtp || lookup_depth)
++                throw std::invalid_argument("GLM: affinity quality check needs 8..256 rows and ordinary decoding");
++            const bool old_tier = decoder.set_tier_adaptation(false);
++            decoder.set_decode_graphs(false);
++            auto state = decoder.snapshot(); // host memory: no extra GPU checkpoint
++            const float original_affinity = decoder.set_affinity_for_quality(0.f);
++            std::vector<float> grid{original_affinity};
++            if (const char *specification = std::getenv("STRATA_GLM_AFFINITY_QUALITY_GRID")) {
++                grid.clear(); std::istringstream parser(specification); std::string part;
++                while (std::getline(parser, part, ',')) {
++                    size_t end = 0; const float affinity = std::stof(part, &end);
++                    if (part[end] || !(affinity >= 0.f && affinity <= 2.f))
++                        throw std::invalid_argument("GLM: invalid affinity quality grid");
++                    grid.push_back(affinity);
++                }
++                if (grid.empty()) throw std::invalid_argument("GLM: empty affinity quality grid");
++            }
++            decoder.set_route_bias_enabled(false);
++            std::vector<int> inputs;
++            std::vector<std::vector<float>> reference;
++            auto current = logits;
++            for (int i = 0; i < rows; ++i) {
++                inputs.push_back(greedy(current));
++                current = decoder.step(inputs.back()); reference.push_back(current);
++            }
++            for (float affinity : grid) {
++                decoder.restore(state); decoder.set_route_bias_enabled(true);
++                decoder.set_affinity_for_quality(affinity);
++                double sum_kl = 0, max_kl = 0, sum_relative = 0; int top1 = 0;
++                for (int row = 0; row < rows; ++row) {
++                    auto actual = decoder.step(inputs[row]); const auto &expected = reference[row];
++                    const double amax = *std::max_element(expected.begin(), expected.end());
++                    const double bmax = *std::max_element(actual.begin(), actual.end());
++                    double az = 0, bz = 0, error = 0, energy = 0;
++                    for (size_t i = 0; i < actual.size(); ++i) {
++                        if (!std::isfinite(actual[i]) || !std::isfinite(expected[i]))
++                            throw std::runtime_error("GLM: nonfinite affinity quality logits");
++                        az += std::exp(double(expected[i]) - amax); bz += std::exp(double(actual[i]) - bmax);
++                        const double difference = double(actual[i]) - expected[i];
++                        error += difference * difference; energy += double(expected[i]) * expected[i];
++                    }
++                    az = amax + std::log(az); bz = bmax + std::log(bz); double kl = 0;
++                    for (size_t i = 0; i < actual.size(); ++i)
++                        kl += std::exp(double(expected[i]) - az) * (double(expected[i]) - az - actual[i] + bz);
++                    kl = std::max(0.0, kl); const bool equal = greedy(actual) == greedy(expected);
++                    top1 += equal; sum_kl += kl; max_kl = std::max(max_kl, kl);
++                    sum_relative += std::sqrt(error / std::max(energy, 1e-30));
++                    std::cerr << "AFFINITY_QUALITY_ROW row=" << row << " kl=" << kl << " top1_equal=" << equal << '\n';
++                }
++                std::cerr << "AFFINITY_QUALITY rows=" << rows << " affinity=" << affinity << " mean_kl=" << sum_kl / rows
++                          << " max_kl=" << max_kl << " top1_equal=" << top1 << " top1_share=" << double(top1) / rows
++                          << " mean_relative_L2=" << sum_relative / rows << " reference=unbiased_strict_same_prefill_fixed_tier\n";
++            }
++            decoder.restore(state); decoder.set_route_bias_enabled(true);
++            decoder.set_affinity_for_quality(original_affinity);
++            decoder.set_decode_graphs(decode_graphs); decoder.set_tier_adaptation(old_tier);
++        }
+         if (cpu_prepack_mib > 131072) throw std::invalid_argument("CPU packing budget must be at most 131072 MiB");
+         const auto cpu_prepare_start = std::chrono::steady_clock::now();
+         decoder.prepare_cpu(cpu_prepack_mib * MiB);
+diff --git a/tools/glm_long_chat_check.py b/tools/glm_long_chat_check.py
+index 0c0d2ade..d2bc38f7 100644
+--- a/tools/glm_long_chat_check.py
++++ b/tools/glm_long_chat_check.py
+@@ -164,25 +164,35 @@ def main():
+     ap.add_argument('--contexts',type=int,nargs='+',default=[16384,32768,65536,131072])
+     ap.add_argument('--output',type=Path,required=True)
+     ap.add_argument('--prepare-only',action='store_true')
++    ap.add_argument('--leave-demo-stopped',action='store_true',help='do not restart the serving demo after validation')
++    ap.add_argument('--config',type=Path,default=ROOT/'configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json')
++    ap.add_argument('--decoder',type=Path,help='override the engine executable for an isolated build')
++    ap.add_argument('--port',type=int,default=8080)
++    ap.add_argument('--cache-mib',type=int,default=3072)
++    ap.add_argument('--reserve-mib',type=int,default=2048)
+     ap.add_argument('--followup-from',type=Path,help='completed case directory; supplementary multi-turn test')
+     args=ap.parse_args(); out=args.output.resolve();out.mkdir(parents=True,exist_ok=False)
+     if args.followup_from:
+         args.followup_from=args.followup_from.resolve()
+         args.contexts=[json.loads((args.followup_from/'fixture.json').read_text())['context']]
+-    base=json.loads((ROOT/'configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json').read_text())
++    if not 1 <= args.port <= 65535: ap.error('invalid port')
++    if args.cache_mib < 0 or args.reserve_mib < 512: ap.error('invalid cache/reserve budget')
++    base=json.loads(args.config.read_text())
++    if args.decoder: base['exe']=str(args.decoder.resolve())
++    endpoint=f'http://127.0.0.1:{args.port}'
+     executable=ROOT/base['exe']
+     save(out/'run.json',dict(host=__import__('socket').gethostname(),
+-        python=sys.version,source_commit=command('git','rev-parse','HEAD').stdout.strip(),
++        python=sys.version,source_commit=command('git','rev-parse','HEAD',check=False).stdout.strip() or 'archive (see executable hash)',
+         executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
+         runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+         model_path=base['model'],model_bytes=Path(base['model']).stat().st_size,
+-        contexts=args.contexts,decode_cache_mib=3072,ram_limit_gib=60,vram_reserve_mib=2048))
++        contexts=args.contexts,decode_cache_mib=args.cache_mib,ram_limit_gib=60,vram_reserve_mib=args.reserve_mib))
+     cases=[]
+     for ctx in args.contexts:
+         case=out/str(ctx)
+         body,fixture=(build_followup(base['model'],args.followup_from,case) if args.followup_from
+                       else build_fixture(base['model'],ctx,case))
+-        cfg=dict(base,context=ctx,decode_cache_mib=3072,log=str(case/'engine.log'))
++        cfg=dict(base,context=ctx,decode_cache_mib=args.cache_mib,log=str(case/'engine.log'))
+         save(case/'config.json',cfg); cases.append((case,body,fixture))
+         print(json.dumps(dict(prepared=ctx,prompt=fixture['prompt_tokens'],output=fixture['max_output_tokens'])),flush=True)
+     if args.prepare_only:return
+@@ -202,13 +212,13 @@ def main():
+                     '--property=MemorySwapMax=0','--property=OOMPolicy=kill',
+                     '--property=KillMode=control-group',sys.executable,
+                     str(ROOT/'tools/glm_guarded_serve.py'),str(case/'config.json'),
+-                    '--ram-gib','60','--reserve-mib','2048','--port','8080',
++                    '--ram-gib','60','--reserve-mib',str(args.reserve_mib),'--host','127.0.0.1','--port',str(args.port),
+                     '--telemetry',str(case/'memory.json'))
+                 (case/'launch.txt').write_text(launch.stdout+launch.stderr)
+                 deadline=time.monotonic()+240
+                 while True:
+                     try:
+-                        with urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3) as r:
++                        with urllib.request.urlopen(endpoint+'/health',timeout=3) as r:
+                             health=json.load(r)
+                         if health.get('loaded') and health.get('max_context')==fixture['context']:break
+                     except (OSError,ValueError):pass
+@@ -218,7 +228,7 @@ def main():
+                     time.sleep(2)
+                 record['status']='request'; save(case/'progress.json',record)
+                 start=time.monotonic()
+-                req=urllib.request.Request('http://127.0.0.1:8080/v1/chat/completions',
++                req=urllib.request.Request(endpoint+'/v1/chat/completions',
+                     json.dumps(body).encode(),{'Content-Type':'application/json'})
+                 with urllib.request.urlopen(req,timeout=5400) as response: result=json.load(response)
+                 record.update(status='completed',wall_seconds=time.monotonic()-start,response=result)
+@@ -238,8 +248,11 @@ def main():
+                 timings=record.get('response',{}).get('timings'),error=record.get('error')))
+             save(out/'summary.json',summary);print(json.dumps(summary[-1]),flush=True)
+     finally:
+-        restored=command(str(ROOT/'tools/glm_b550_60g.sh'),'start',check=False)
+-        (out/'restore.txt').write_text(restored.stdout+restored.stderr)
++        if args.leave_demo_stopped:
++            (out/'restore.txt').write_text('Demo left stopped by explicit request.\n')
++        else:
++            restored=command(str(ROOT/'tools/glm_b550_60g.sh'),'start',check=False)
++            (out/'restore.txt').write_text(restored.stdout+restored.stderr)
+ 
+ 
+ if __name__=='__main__':main()
+diff --git a/tools/glm_low_memory_bench.py b/tools/glm_low_memory_bench.py
+index 64983960..d6378bb7 100644
+--- a/tools/glm_low_memory_bench.py
++++ b/tools/glm_low_memory_bench.py
+@@ -84,7 +84,14 @@ def parse_log(log):
+     decode += [dict(kind=kind, tokens=int(n), milliseconds=float(ms), tokens_per_second=float(rate))
+                for kind, n, ms, rate in re.findall(
+         r"SPECULATIVE source=(\w+) generated=(\d+).*? ms=([\d.]+) tok_s=([\d.]+)", log)]
++    def records(tag):
++        return [{k: int(v) if v.isdigit() else float(v) for k, v in re.findall(r"(\w+)=([0-9.eE+-]+)(?:\s|$)", line)}
++                for line in log.splitlines() if line.startswith(tag + " ")]
+     return dict(prefill=prefill, decode=decode,
++        cpu_expert=records("CPU_EXPERT"), mtp_timing=records("MTP_TIMING"),
++        mtp_positions=records("MTP_POSITION"), step_trace=records("STEP_TRACE"),
++        decode_cache=records("DECODE_CACHE"), speculation=records("SPECULATIVE"),
++        affinity_quality=records("AFFINITY_QUALITY"), lookup_parity=records("LOOKUP_PARITY"),
+         median_prefill_tok_s=statistics.median(r["tokens_per_second"] for r in prefill) if prefill else None,
+         median_decode_tok_s=statistics.median(r["tokens_per_second"] for r in decode) if decode else None,
+         peak_allocated_gpu_mib=max(map(float, re.findall(
+@@ -273,6 +280,8 @@ def worker(args):
+         command.append("--check-" + name.replace("_", "-"))
+     if not args.single and not args.eval_corpus and cfg.get("speculative") == "mtp":
+         command += ["--speculative=mtp", "--mtp-experts=cpu", "--draft-depth=" + str(cfg.get("draft_depth", 2))]
++    if not args.single and not args.eval_corpus and cfg.get("speculative") == "lookup":
++        command += ["--speculative=lookup", "--lookup-depth=" + str(cfg.get("lookup_depth", 3))]
+     group = Path("/sys/fs/cgroup" + Path("/proc/self/cgroup").read_text().strip().split(":")[-1])
+     before = group_stats(group)
+     if before["memory.max"] != args.ram_gib * 2**30 or before["memory.swap.max"] != 0:

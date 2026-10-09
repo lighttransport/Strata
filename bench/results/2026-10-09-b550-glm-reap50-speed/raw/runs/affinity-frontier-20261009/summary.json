@@ -1,0 +1,384 @@
+[
+  {
+    "case": "aff12",
+    "exit_code": 0,
+    "clean": true,
+    "rejected": null,
+    "measurement": {
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 8886.68,
+          "tokens_per_second": 230.457
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 8880.11,
+          "tokens_per_second": 230.628
+        },
+        {
+          "trial": 2,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 8871.75,
+          "tokens_per_second": 230.845
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 6661.8,
+          "tokens_per_second": 19.0639
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 6051.09,
+          "tokens_per_second": 20.9879
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 6238.07,
+          "tokens_per_second": 20.3589
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 3334.6,
+          "bytes": 92443246592
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 2816.96,
+          "bytes": 78569472000
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 2983.12,
+          "bytes": 83725451264
+        }
+      ],
+      "mtp_timing": [],
+      "mtp_positions": [],
+      "step_trace": [],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 942,
+          "MiB": 8183.62,
+          "fingerprint": 13770086147494384895
+        }
+      ],
+      "speculation": [],
+      "affinity_quality": [],
+      "lookup_parity": [],
+      "median_prefill_tok_s": 230.628,
+      "median_decode_tok_s": 20.3589,
+      "peak_allocated_gpu_mib": 13558.0,
+      "gpu_live": [
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 806.414,
+            "prefill": 1464.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 806.414,
+            "prefill": 1464.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 806.414,
+            "prefill": 1464.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 8254.75,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 8254.75,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 8254.75,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 12,
+          "minor": 33166
+        },
+        {
+          "trial": 1,
+          "major": 2,
+          "minor": 32849
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32769
+        }
+      ]
+    },
+    "output_sha256": "d73404e0bc8e37d72d57bfe4de623fedc5553b93ae854249c8885938b940d48f",
+    "repeated_tokens_equal": false,
+    "first_trial_token_sha256": "1f7d5fef74fdddf70e21249680e4846e2fe959418b2799705868d1c87b36ebe3"
+  },
+  {
+    "case": "aff15",
+    "exit_code": 0,
+    "clean": true,
+    "rejected": null,
+    "measurement": {
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 8873.1,
+          "tokens_per_second": 230.81
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 8859.29,
+          "tokens_per_second": 231.17
+        },
+        {
+          "trial": 2,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 8842.24,
+          "tokens_per_second": 231.616
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 6023.29,
+          "tokens_per_second": 21.0848
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 5522.65,
+          "tokens_per_second": 22.9962
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 5506.25,
+          "tokens_per_second": 23.0647
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 2635.62,
+          "bytes": 72329461760
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 2173.2,
+          "bytes": 60906143744
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 2230.49,
+          "bytes": 62254350336
+        }
+      ],
+      "mtp_timing": [],
+      "mtp_positions": [],
+      "step_trace": [],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 942,
+          "MiB": 8183.62,
+          "fingerprint": 5883330289898808690
+        }
+      ],
+      "speculation": [],
+      "affinity_quality": [],
+      "lookup_parity": [],
+      "median_prefill_tok_s": 231.17,
+      "median_decode_tok_s": 22.9962,
+      "peak_allocated_gpu_mib": 13558.0,
+      "gpu_live": [
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 806.414,
+            "prefill": 1464.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 806.414,
+            "prefill": 1464.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 806.414,
+            "prefill": 1464.0,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 8254.75,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 8254.75,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        },
+        {
+          "device": 0,
+          "tags": {
+            "dense": 5029.21,
+            "other": 8254.75,
+            "prefill": 32.0,
+            "resident_exec": 2.94288,
+            "state": 239.105
+          }
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 15,
+          "minor": 33241
+        },
+        {
+          "trial": 1,
+          "major": 7,
+          "minor": 33003
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32769
+        }
+      ]
+    },
+    "output_sha256": "cdac7f9f3a0356d6c2fb387a06692b9d22614b69ccc5da5edb8a1fc591987e16",
+    "repeated_tokens_equal": false,
+    "first_trial_token_sha256": "002902124b6b55f655aeb997bd0e7e7ee3a836c8ac43c0dbd4aeba90becd9570"
+  }
+]

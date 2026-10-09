@@ -1,0 +1,58 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "native-arithmetic",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 28467.7,
+      "prompt_per_token_ms": 3.869,
+      "prompt_per_second": 258.5,
+      "predicted_n": 414,
+      "predicted_ms": 31746.4,
+      "predicted_per_token_ms": 76.682,
+      "predicted_per_second": 13.0,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 414,
+      "total_tokens": 7772,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "native-arithmetic",
+    "task": "cpp-review",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 4082,
+      "prompt_ms": 15619.5,
+      "prompt_per_token_ms": 3.826,
+      "prompt_per_second": 261.3,
+      "predicted_n": 1280,
+      "predicted_ms": 81208.6,
+      "predicted_per_token_ms": 63.444,
+      "predicted_per_second": 15.8,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 4082,
+      "completion_tokens": 1280,
+      "total_tokens": 5362,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length"
+  }
+]

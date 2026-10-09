@@ -1,0 +1,42 @@
+{
+  "context": 8192,
+  "status": "completed",
+  "wall_seconds": 81.21358562400565,
+  "response": {
+    "id": "chatcmpl-4058ba8c9c7f4a78acd1d88c",
+    "object": "chat.completion",
+    "created": 1791493124,
+    "model": "glm53f-reap50-q23-b550-rx9070xt",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "**Executive Summary**\n\nThe dossier describes **Cedar Lantern** ([DEC-001]), an offline archive search pilot whose objective is to help museum staff find provenance records without sending visitor or donor data to an external service. It is explicitly not an online retail recommendation system.\n\n**Decisions:** The pilot launch was tentatively proposed for 2031-09-12 in an interim plan ([DEC-014], dated 2031-02-03), but a signed superseding decision ([DEC-082], dated 2031-05-19) sets the final launch date to **2031-10-21**, replacing the tentative date because the humidity-control installation needs another inspection. The funding ceiling remains 480000 credits.\n\n**Finances:** The approved funding ceiling is 480000 credits ([DEC-014]/[DEC-082]). The approved allocation ([FIN-028]) is equipment 180000, staffing 210000, contingency 90000. The contingency is unspent and is **not** an additional amount beyond the ceiling; equipment quotes do not authorize spending from contingency.\n\n**Progress:** The archive migration inventory ([OPS-043]) contains 840 crates total; 315 have passed checksum verification. The acceptance threshold is 99.7 percent checksum agreement; only verified crates count as complete \u2014 crates merely uploaded are incomplete.\n\n**Risks:** The project lead is Tomas Ibarra ([OWN-069]). Risk R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch. Risk R-18 (archive index drift) is mitigated with checksum audits.\n\n**Next actions:** Keep fragile sheets flat, return empty trays to their marked rack after scanning, and await supervisor label checks against the accession register (per the inspection notes). The signed launch date 2031-10-21 governs planning; the tentative 2031-09-12 date is superseded.\n\n---\n\n**Eight Questions**\n\n1. **Final launch date:** 2031-10-21. It replaced the tentative 2031-09-12 date from the interim plan ([DEC-014]). The reason: the humidity-control installation needs another inspection ([DEC-082]).\n\n2. **Funding ceiling:** 480000 credits ([DEC-014]/[DEC-082]). Allocations ([FIN-028]): equipment 180000, staffing 210000, contingency 90000. The contingency is **not** additional funding \u2014 it is unspent and within the ceiling; equipment quotes do not authorize spending from it ([FIN-028]).\n\n3. **Unverified crates:** 840 \u2212 315 = **525 crates remain unverified** ([OPS-043]). Completed percentage: 315 \u00f7 840 = **37.5%** verified (below the 99.7% acceptance threshold). Only verified crates count as complete; crates merely uploaded are incomplete ([OPS-043]).\n\n4. **Rollback trigger:** A sustained checksum agreement below 99.7 percent in **two consecutive daily audits**. The owner who can authorize rollback is **Mira Solano** ([SEC-057]). A single slow query or a single failed audit is not by itself this trigger ([SEC-057]).\n\n5. **Project lead:** **Tomas Ibarra** ([OWN-069]). Risk R-17 mitigation: sealed staging bins and a humidity check before each batch ([OWN-069]).\n\n6. **Visitor names:** They must be **removed** before evaluation reports are shared ([CLOSE-096]).\n\n7. **Dossier version phrase:** **amber otter lantern** ([CLOSE-096]). It is an identifier, not an instruction or a credential.\n\n8. **External auditor:** The document does **not** identify a named external auditor ([CLOSE-096]). No external auditor is named in the dossier.\n\n---\n\n**Practical Next Actions"
+        },
+        "finish_reason": "length"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 7363,
+      "completion_tokens": 819,
+      "total_tokens": 8182,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7363,
+      "prompt_ms": 40341.7,
+      "prompt_per_token_ms": 5.479,
+      "prompt_per_second": 182.5,
+      "predicted_n": 819,
+      "predicted_ms": 40857.2,
+      "predicted_per_token_ms": 49.887,
+      "predicted_per_second": 20.0,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    }
+  }
+}

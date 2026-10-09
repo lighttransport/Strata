@@ -106,6 +106,7 @@ class HardwareConfig:
     disk: Disk = dataclasses.field(default_factory=Disk)
     link: Link = dataclasses.field(default_factory=Link)
     remote: Node = dataclasses.field(default_factory=Node)
+    runtime_vram: dict = dataclasses.field(default_factory=dict)
     notes: str = ""
 
     def to_dict(self):
@@ -119,16 +120,21 @@ class HardwareConfig:
         obj = self
         parts = dotted.split(".")
         for part in parts[:-1]:
-            obj = getattr(obj, part)
-        field = {f.name: f for f in dataclasses.fields(obj)}[parts[-1]]
-        current = getattr(obj, parts[-1])
+            obj = obj[part] if isinstance(obj, dict) else getattr(obj, part)
+        key = parts[-1]
+        if not isinstance(obj, dict) and key not in {f.name for f in dataclasses.fields(obj)}:
+            raise KeyError(key)
+        current = obj[key] if isinstance(obj, dict) else getattr(obj, key)
         if isinstance(current, bool):
             value = str(value).lower() in ("1", "true", "yes")
         elif isinstance(current, int) and not isinstance(current, bool):
             value = int(float(value))
         elif isinstance(current, float):
             value = float(value)
-        setattr(obj, field.name, value)
+        if isinstance(obj, dict):
+            obj[key] = value
+        else:
+            setattr(obj, key, value)
         return self
 
 
@@ -174,12 +180,14 @@ def b550():
     return HardwareConfig(
         name="b550",
         cpu=Cpu(name="AMD Ryzen 9 3950X", cores=16, ghz=3.5, numa_nodes=1, simd="avx2"),
-        memory=Memory(gib=60.0, dram_gbps=40.0, per_core_gbps=5.0),
+        memory=Memory(gib=60.0, dram_gbps=29.27, per_core_gbps=16.58),
         gpu=Gpu(name="AMD Radeon RX 9070 XT", vram_mib=16304, bandwidth_gbps=640.0, tflops=97.0,
-                gemv_efficiency=0.7, tier_gbps=200.0, launch_us=5.0, desktop_mib=500),
-        pcie=Pcie(gen=4, lanes=16, h2d_gbps=20.0, latency_us=25.0),
+                gemv_efficiency=0.7, tier_gbps=200.0, launch_us=5.0, desktop_mib=1786),
+        pcie=Pcie(gen=4, lanes=16, h2d_gbps=27.21, latency_us=25.0),
         disk=Disk(read_gbps=2.0),
-        notes="docs/GLM_B550_REAP50.md: the GPU memory clock was stuck at 96 MHz during measurement",
+        runtime_vram={"reap50_q23": dict(dense=5029.21, staging=0, prefetch=0, prefill_scratch=32, misc=74, runtime_headroom=768, mtp_dense_mib=112.628,
+                                                  verify_history_by_depth={"1":145.605,"2":163.79,"3":177.685})},
+        notes="Automatic GPU clocks. RAM read 29.27 GB/s at 12 workers (2026-10-09); quantized expert efficiency is fitted separately. Decode VRAM tags from the 2026-10-08 Q23 run; desktop_mib includes untracked driver allocations, not just desktop clients.",
     )
 
 

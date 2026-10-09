@@ -1,0 +1,20 @@
+: group*64 + processor within group.
+group*64 + processor within group
+group*64 + 63 +  processor within group
+group* affinity helpers
+group*64 + Windows CPU Sets: group*64 + processor within group
+garbage
+garbage
+excerpt ends with tail garbage; valid tail: valid: helpers: helpers: valid: valid: Reference code excerpts:
+// include/strata/kernels/cpu/pool.hpp - P2.S3: the CPU expert pool.
+//
+// pool.hpp excerpt ends with tail garbage; valid tail: valid: helpers: valid: valid: garbage; valid: helpers: valid: gvalid: valid: "valid" valid: valid: tests: tests: tests: valid: "valid" need: need: tests: NumaRows: NumaRows: NumaRows: excerpt ends with NumaRows: excerpt ends with row addressing: row addressing: row addressing: valid: helpers: nested: nested: nested: repeated: repeated: valid: valid: valid: I: I: another: another: another: I: another: distinct: distinct: slot: slot: 16 tests: 16 tests:  suite: suite: GoogleTest suite covering NUMA tensor ownership and row addressing. GoogleTest GoogleTest TEST cases and explanatory comments. GoogleTest main() to run all tests. main() to prompt & report each file. main() to prompt & report each file. main() to prompt & report each file. a main() to prompt & EXPECT_EQ on each file. main() to prompt & EXPECT_EQ on per-file EXPECT_EQ per-file EXPECT_EQ per-file a main() TEST body throws on failure. TEST body throws on failure. TEST body throws each TEST body throws on failure. TEST body throws on failure. Each TEST body throws on failure. Each TEST body throws on failure. Each TEST ExpertJobMulti.NumaRows: ExpertJobMulti.Numa node-local packed half-rows; all three projections are present together.
+// Node-local packed half-rows; all three projections FFCUp, FFCDown, FFCDown_keep_w2_x, FFCUp, FFC projections are present together.
+// Node-local packed half-rows of FFCUp, FFCDown, arrays of FFCUp, arrays of F garbage
+garbage
+garbage
+ messy: messy: messy: garbage
+garbage
+garbage
+ garbage
+gar directives: gar directives: gar directives: gar directives: minimal: minimal: under: under

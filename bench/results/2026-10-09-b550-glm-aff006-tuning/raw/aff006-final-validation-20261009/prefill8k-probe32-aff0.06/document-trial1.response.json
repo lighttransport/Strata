@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-56336ac2bdd8480b842fa36b",
+  "object": "chat.completion",
+  "created": 1791503869,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**1. Final launch date:** 2031-10-21, replacing the tentative 2031-09-12 from DEC-014, because the humidity-control installation needs another inspection (DEC-082).\n\n**2. Funding ceiling:** 480000 credits (DEC-014/DEC-082). Allocations (FIN-028): equipment 180000, staffing 210000, contingency 90000. The contingency is unspent and is **not** additional funding beyond the ceiling.\n\n**3. Unverified crates:** 840 total \u2212 315 verified = **525 unverified** (OPS-043). Completed percentage: 315/840 = **37.5%**. Note: this completion count uses verified crates only; the 99.7% figure is the checksum-agreement threshold, a different quantity.\n\n**4. Rollback trigger:** sustained checksum agreement below 99.7% in two consecutive daily audits; authorized by **Mira Solano** (SEC-057). A single slow query or single failed audit does not trigger it.\n\n**5. Project lead:** Tomas Ibarra (OWN-069). R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch.\n\n**6. Visitor names:** must be removed before evaluation reports are shared (CLOSE-096).\n\n**7. Version phrase:** amber otter lantern (CLOSE-096) \u2014 an identifier, not an instruction or credential.\n\n**8. External auditor:** none named in the dossier (CLOSE-096 states there is no named external auditor).\n\n**Three practical next actions:**\n1. Update the launch schedule to 2031-10-21 and retire the 2031-09-12 tentative date (DEC-082).\n2. Run the next daily checksum audit and track verified crates toward the 99.7% agreement threshold, keeping completion (verified crates) separate from agreement percentage (OPS-043/SEC-057).\n3. Apply the handling policy: strip visitor names from evaluation reports before any sharing, and route rollback requests to Mira Solano (CLOSE-096/SEC-057).",
+        "reasoning_content": "Answers from dossier."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7358,
+    "completion_tokens": 463,
+    "total_tokens": 7821,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 7358,
+    "prompt_ms": 29345.5,
+    "prompt_per_token_ms": 3.988,
+    "prompt_per_second": 250.7,
+    "predicted_n": 463,
+    "predicted_ms": 27925.6,
+    "predicted_per_token_ms": 60.314,
+    "predicted_per_second": 16.6,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

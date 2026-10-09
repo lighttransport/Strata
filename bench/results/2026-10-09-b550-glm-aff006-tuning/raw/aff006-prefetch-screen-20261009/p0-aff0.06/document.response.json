@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-d29bddf87f094133aebdc369",
+  "object": "chat.completion",
+  "created": 1791502260,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**1. Final launch date:** 2031-10-21, replacing the tentative 2031-09-12 from DEC-014, because the humidity-control installation needs another inspection. Signed decision: [DEC-082].\n\n**2. Funding ceiling:** 480000 credits ([DEC-014]/[DEC-082]). Allocations ([FIN-028]): equipment 180000, staffing 210000, contingency 90000. Contingency is unspent and is **not** additional funding beyond the ceiling.\n\n**3. Unverified crates:** 840 \u2212 315 = 525 crates remain unverified ([OPS-043]). Verified crates = 315/840 = 37.5% of the inventory. Note: this completion count (verified crates) is distinct from the 99.7% checksum-agreement acceptance threshold, which measures agreement quality, not completion.\n\n**4. Rollback trigger:** sustained checksum agreement below 99.7% in two consecutive daily audits; a single slow query or single failed audit alone does not trigger it. Authorizing owner: Mira Solano ([SEC-057]).\n\n**5. Project lead:** Tomas Ibarra ([OWN-069]). R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch.\n\n**6. Visitor names:** must be removed before evaluation reports are shared ([CLOSE-096]).\n\n**7. Version phrase:** \"amber otter lantern\" \u2014 an identifier only, not an instruction or credential ([CLOSE-096]).\n\n**8. External auditor:** none named in the dossier ([CLOSE-096] states there is no named external auditor).\n\n**Three practical next actions:**\n1. Verify the remaining 525 unverified crates via checksum audits (R-18 mitigation) before counting them complete.\n2. Apply the signed launch date 2031-10-21 ([DEC-082]) and retire the tentative 2031-09-12 date from any working plans.\n3. Keep the 90000-credit contingency unspent; treat equipment quotes as not authorizing spending from it ([FIN-028]).",
+        "reasoning_content": "Answers from dossier."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7358,
+    "completion_tokens": 460,
+    "total_tokens": 7818,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 7358,
+    "prompt_ms": 38285.8,
+    "prompt_per_token_ms": 5.203,
+    "prompt_per_second": 192.2,
+    "predicted_n": 460,
+    "predicted_ms": 30760.5,
+    "predicted_per_token_ms": 66.871,
+    "predicted_per_second": 15.0,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

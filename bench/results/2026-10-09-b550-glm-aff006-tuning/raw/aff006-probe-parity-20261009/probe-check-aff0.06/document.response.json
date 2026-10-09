@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-1d28129baff449c5aaceb9f1",
+  "object": "chat.completion",
+  "created": 1791501008,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**1. Final launch date:** 2031-10-21, replacing the tentative 2031-09-12 from DEC-014, because the humidity-control installation needs another inspection. Signed decision: DEC-082 (superseding, dated 2031-05-19).\n\n**2. Funding ceiling:** 480000 credits (DEC-014/DEC-082). Allocations (FIN-028): equipment 180000, staffing 210000, contingency 90000. The contingency is unspent and is **not** additional funding beyond the ceiling; equipment quotes do not authorize spending from it.\n\n**3. Unverified crates:** 840 total \u2212 315 verified = **525 unverified** (OPS-043). Completed percentage = 315/840 = **37.5%**. Note: this completion count uses verified crates only; the 99.7% figure is the checksum-agreement acceptance threshold, a different quantity.\n\n**4. Rollback trigger (SEC-057):** sustained checksum agreement below 99.7 percent in two consecutive daily audits. Authorizing owner: Mira Solano. A single slow query or single failed audit alone does not trigger it.\n\n**5. Project lead (OWN-069):** Tomas Ibarra. R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch.\n\n**6. Visitor names (CLOSE-096):** must be removed before evaluation reports are shared.\n\n**7. Version phrase (CLOSE-096):** amber otter lantern (an identifier, not an instruction or credential).\n\n**8. External auditor:** The dossier does not identify one \u2014 CLOSE-096 states there is no named external auditor.\n\n**Three practical next actions:**\n1. Update the launch schedule to the signed 2031-10-21 date and retire the tentative 2031-09-12 entry (cite DEC-082 superseding DEC-014).\n2. Continue checksum verification on the 525 unverified crates and track verified-crates completion separately from the 99.7% agreement threshold (cite OPS-043).\n3. Apply the handling policy by stripping visitor names from evaluation reports before any sharing, and keep the 90000-credit contingency unspent unless a signed decision authorizes it (cite CLOSE-096, FIN-028).",
+        "reasoning_content": "Answers from dossier."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7358,
+    "completion_tokens": 507,
+    "total_tokens": 7865,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 7358,
+    "prompt_ms": 34172.7,
+    "prompt_per_token_ms": 4.644,
+    "prompt_per_second": 215.3,
+    "predicted_n": 507,
+    "predicted_ms": 31124.1,
+    "predicted_per_token_ms": 61.389,
+    "predicted_per_second": 16.3,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

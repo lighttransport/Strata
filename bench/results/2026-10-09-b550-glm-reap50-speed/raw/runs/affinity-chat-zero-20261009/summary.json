@@ -1,0 +1,20 @@
+[
+  {
+    "context": 8192,
+    "status": "completed",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7363,
+      "prompt_ms": 41661.2,
+      "prompt_per_token_ms": 5.658,
+      "prompt_per_second": 176.7,
+      "predicted_n": 819,
+      "predicted_ms": 72328.9,
+      "predicted_per_token_ms": 88.314,
+      "predicted_per_second": 11.3,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "error": null
+  }
+]

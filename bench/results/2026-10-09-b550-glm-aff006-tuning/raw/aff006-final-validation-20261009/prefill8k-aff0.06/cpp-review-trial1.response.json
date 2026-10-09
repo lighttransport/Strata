@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-f3c353aaee2746b3b6ca00a7",
+  "object": "chat.completion",
+  "created": 1791503551,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "reasoning_content": "Key bugs: parse_u64 sets out=0 before validating \u2192 violates \"out unchanged on failure\" (e.g. \"12x\" leaves out=0 instead of caller's value). Also overflow: out*10 wraps silently, accepts values above UINT64_MAX (e.g. \"18446744073789591679\" wraps) \u2014 contract violation. Also empty string accepted (returns true, out=0) \u2014 contract says nonempty only. Leading zeros allowed \u2014 fine.\n\nRegistry: get returns string_view into vector while holding lock_guard... actually lock_guard releases at end of function, so view returned after lock released \u2014 but vector push_back may reallocate/move strings while readers retain views \u2192 dangling. Also add may reallocate, invalidating existing string data \u2192 retained views dangle. Also get(i) no bounds check \u2014 out-of-range read. Also mutex doesn't protect retained views: reader holds view after get returns, writer add moves strings \u2192 dangling. Also noexcept on get? get isn't noexcept... it's fine. names[i] on vector<string> \u2014 string_view of a string that may be moved by reallocation. Also add's push_back(std::move(s)) \u2014 fine.\n\nAlso parse_u64 noexcept but overflow check needed. Also parse_u64 accepts \"+\"? no. Also \"out unchanged\" \u2014 must not assign until success.\n\nAlso Registry get returns view while lock released \u2014 that's per contract \"readers may retain returned values after get returns, while writers keep calling add\" \u2192 dangling string data when vector reallocates during add. Fix: store shared_ptr or copy, or return std::string by value, or use deque of allocated strings that never move (e.g. vector<unique_ptr<string>> or linked list), or document locking. Minimal fix: make names a std::vector<std::unique_ptr<std::string>> or copy out.\n\nAlso get lacks bounds check \u2192 UB for i>=size.\n\nAlso parse overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso parse_u64 leading zeros allowed \u2014 ok. Also \"0123\" fine.\n\nAlso parse_u64 sets out=0 upfront \u2014 violates unchanged-on-failure. Fix: use local temp, assign at end.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse_u64 overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso Registry get returns view while lock released \u2014 that's per contract \"readers may retain returned values after get returns, while writers keep calling add\" \u2192 dangling string data when vector reallocates during add. Fix: store shared_ptr or copy, or return std::string by value, or use deque of allocated strings that never move (e.g. vector<unique_ptr<string>> or linked list), or document locking. Minimal fix: make names a std::vector<std::unique_ptr<std::string>> or copy out.\n\nAlso get lacks bounds check \u2192 UB for i>=size.\n\nAlso parse overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso parse_u64 noexcept but overflow check needed. Also Registry get(i) no bounds check \u2014 out-of-range read. Also mutex doesn't protect retained views: reader holds view after get returns, writer add moves strings \u2192 dangling. Also add's push_back(std::move(s)) \u2014 fine.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse_u64 sets out=0 upfront \u2014 violates unchanged-on-failure. Fix: use local temp, assign at end.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso parse_u64 noexcept but overflow check needed. Also parse_u64 accepts \"+\"? no. Also \"0123\" fine.\n\nAlso parse_u64 sets out=0 upfront \u2014 violates unchanged-on-failure. Fix: use local temp, assign at end.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso parse_u64 noexcept but overflow check needed. Also Registry get(i) no bounds check \u2014 out-of-range read. Also mutex doesn't protect retained views: reader holds view after get returns, writer add moves strings \u2192 dangling. Also add's push_back(std::move(s)) \u2014 fine.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse_u64 sets out=0 upfront \u2014 violates unchanged-on-failure. Fix: use local temp, assign at end.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso parse_u64 noexcept but overflow check needed. Also parse_u64 accepts \"+\"? no. Also \"0123\" fine.\n\nAlso parse_u64 sets out=0 upfront \u2014 violates unchanged-on-failure. Fix: use local temp, assign at end.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso parse_u64 noexcept but overflow check needed. Also Registry get(i) no bounds check \u2014 out-of-range read. Also mutex doesn't protect retained views: reader holds view after get returns, writer add moves strings \u2192 dangling. Also add's push_back(std::move(s)) \u2014 fine.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse_u64 sets out=0 upfront \u2014 violates unchanged-on-failure. Fix: use local temp, assign at end.\n\nAlso parse_u64 accepts nonempty ASCII digits only \u2014 empty must fail.\n\nAlso parse overflow: need check out > (UINT64_MAX - d)/10 before multiply. Also empty check.\n\nAlso parse_u64 noexcept but overflow check needed. Also parse_u64 accepts \"+\"? no. Also \"0123\" fine.\n\nAlso parse_u64 sets out=0 upfront \u2014 violates unchanged-on-f"
+      },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4082,
+    "completion_tokens": 1280,
+    "total_tokens": 5362,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 4082,
+    "prompt_ms": 15557.7,
+    "prompt_per_token_ms": 3.811,
+    "prompt_per_second": 262.4,
+    "predicted_n": 1280,
+    "predicted_ms": 77042.0,
+    "predicted_per_token_ms": 60.189,
+    "predicted_per_second": 16.6,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

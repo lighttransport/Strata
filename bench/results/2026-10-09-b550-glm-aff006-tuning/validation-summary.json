@@ -1,0 +1,70 @@
+[
+  {
+    "variant": "prefill8k",
+    "task": "document",
+    "first_prefill_tok_s": 265.3,
+    "median_prefill_tok_s": 294.2,
+    "prefill_range": [
+      265.3,
+      294.3
+    ],
+    "median_decode_tok_s": 15.5,
+    "decode_range": [
+      15.4,
+      15.5
+    ],
+    "natural_stops": 3,
+    "trials": 3
+  },
+  {
+    "variant": "prefill8k",
+    "task": "cpp-review",
+    "first_prefill_tok_s": 261.8,
+    "median_prefill_tok_s": 261.9,
+    "prefill_range": [
+      261.8,
+      262.4
+    ],
+    "median_decode_tok_s": 16.1,
+    "decode_range": [
+      15.9,
+      16.6
+    ],
+    "natural_stops": 0,
+    "trials": 3
+  },
+  {
+    "variant": "prefill8k-probe32",
+    "task": "document",
+    "first_prefill_tok_s": 228.7,
+    "median_prefill_tok_s": 250.2,
+    "prefill_range": [
+      228.7,
+      250.7
+    ],
+    "median_decode_tok_s": 16.5,
+    "decode_range": [
+      16.5,
+      16.6
+    ],
+    "natural_stops": 3,
+    "trials": 3
+  },
+  {
+    "variant": "prefill8k-probe32",
+    "task": "cpp-review",
+    "first_prefill_tok_s": 204.8,
+    "median_prefill_tok_s": 206.4,
+    "prefill_range": [
+      204.8,
+      206.6
+    ],
+    "median_decode_tok_s": 16.2,
+    "decode_range": [
+      16.2,
+      16.4
+    ],
+    "natural_stops": 2,
+    "trials": 3
+  }
+]

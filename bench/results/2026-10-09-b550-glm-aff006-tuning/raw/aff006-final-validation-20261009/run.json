@@ -1,0 +1,38 @@
+{
+  "decoder_sha256": "8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f",
+  "runner_sha256": "490f82f135dee376997b4d39f37d16a03003f404069b28dba796333968a01520",
+  "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "base_cache_mib": 8192,
+  "reserve_mib": 512,
+  "context": 8192,
+  "order": [
+    "document",
+    "cpp-review"
+  ],
+  "trials": 3,
+  "variants": [
+    {
+      "name": "prefill8k",
+      "config": {
+        "prefill_batch": 8192
+      },
+      "env": {
+        "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096"
+      }
+    },
+    {
+      "name": "prefill8k-probe32",
+      "config": {
+        "prefill_batch": 8192
+      },
+      "env": {
+        "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096",
+        "STRATA_GLM_CACHE_PROBE": "32"
+      }
+    }
+  ],
+  "affinities": [
+    0.06
+  ],
+  "notes": "Sequential requests in task/trial order. Variant overrides follow the base configuration; each case config.json is authoritative. Real EOS honored. Model pages/buffers stay warm, but decoder state and expert tier reset per request; no prefix reuse or untimed request."
+}

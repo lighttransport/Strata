@@ -1,0 +1,262 @@
+[
+  {
+    "affinity": 0.0,
+    "task": "document",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 40061.4,
+      "prompt_per_token_ms": 5.445,
+      "prompt_per_second": 183.7,
+      "predicted_n": 407,
+      "predicted_ms": 36365.6,
+      "predicted_per_token_ms": 89.35,
+      "predicted_per_second": 11.2,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 407,
+      "total_tokens": 7765,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.0,
+    "task": "cpp-review",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 4082,
+      "prompt_ms": 19573.0,
+      "prompt_per_token_ms": 4.795,
+      "prompt_per_second": 208.6,
+      "predicted_n": 1280,
+      "predicted_ms": 116120.1,
+      "predicted_per_token_ms": 90.719,
+      "predicted_per_second": 11.0,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 4082,
+      "completion_tokens": 1280,
+      "total_tokens": 5362,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length"
+  },
+  {
+    "affinity": 0.04,
+    "task": "document",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39606.9,
+      "prompt_per_token_ms": 5.383,
+      "prompt_per_second": 185.8,
+      "predicted_n": 411,
+      "predicted_ms": 29214.7,
+      "predicted_per_token_ms": 71.082,
+      "predicted_per_second": 14.1,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 411,
+      "total_tokens": 7769,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.04,
+    "task": "cpp-review",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 4082,
+      "prompt_ms": 19577.9,
+      "prompt_per_token_ms": 4.796,
+      "prompt_per_second": 208.5,
+      "predicted_n": 1280,
+      "predicted_ms": 76337.9,
+      "predicted_per_token_ms": 59.639,
+      "predicted_per_second": 16.8,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 4082,
+      "completion_tokens": 1280,
+      "total_tokens": 5362,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length"
+  },
+  {
+    "affinity": 0.06,
+    "task": "document",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39746.0,
+      "prompt_per_token_ms": 5.402,
+      "prompt_per_second": 185.1,
+      "predicted_n": 420,
+      "predicted_ms": 26902.1,
+      "predicted_per_token_ms": 64.053,
+      "predicted_per_second": 15.6,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 420,
+      "total_tokens": 7778,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "task": "cpp-review",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 4082,
+      "prompt_ms": 19640.0,
+      "prompt_per_token_ms": 4.811,
+      "prompt_per_second": 207.8,
+      "predicted_n": 1165,
+      "predicted_ms": 72296.5,
+      "predicted_per_token_ms": 62.057,
+      "predicted_per_second": 16.1,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 4082,
+      "completion_tokens": 1165,
+      "total_tokens": 5247,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.08,
+    "task": "document",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39607.3,
+      "prompt_per_token_ms": 5.383,
+      "prompt_per_second": 185.8,
+      "predicted_n": 475,
+      "predicted_ms": 27745.5,
+      "predicted_per_token_ms": 58.412,
+      "predicted_per_second": 17.1,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 475,
+      "total_tokens": 7833,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.08,
+    "task": "cpp-review",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 4082,
+      "prompt_ms": 19583.2,
+      "prompt_per_token_ms": 4.797,
+      "prompt_per_second": 208.4,
+      "predicted_n": 1280,
+      "predicted_ms": 72536.2,
+      "predicted_per_token_ms": 56.669,
+      "predicted_per_second": 17.6,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 4082,
+      "completion_tokens": 1280,
+      "total_tokens": 5362,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length"
+  },
+  {
+    "affinity": 0.1,
+    "task": "document",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 40035.2,
+      "prompt_per_token_ms": 5.441,
+      "prompt_per_second": 183.8,
+      "predicted_n": 415,
+      "predicted_ms": 22861.1,
+      "predicted_per_token_ms": 55.087,
+      "predicted_per_second": 18.2,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 415,
+      "total_tokens": 7773,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.1,
+    "task": "cpp-review",
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 4082,
+      "prompt_ms": 19644.8,
+      "prompt_per_token_ms": 4.813,
+      "prompt_per_second": 207.8,
+      "predicted_n": 1280,
+      "predicted_ms": 61738.1,
+      "predicted_per_token_ms": 48.233,
+      "predicted_per_second": 20.7,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 4082,
+      "completion_tokens": 1280,
+      "total_tokens": 5362,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length"
+  }
+]

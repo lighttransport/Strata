@@ -1,0 +1,806 @@
+[
+  {
+    "width": 1,
+    "workers": 4,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 122.429,
+    "median_GB_s": 25.0005,
+    "output_hash": "11117387441367486908",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "1",
+      "4",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "123.02",
+        "packed_GB_s": "24.8805",
+        "expert_only_tok_s": "8.12878",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "1",
+        "ms": "122.331",
+        "packed_GB_s": "25.0206",
+        "expert_only_tok_s": "8.17454",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "2",
+        "ms": "123.02",
+        "packed_GB_s": "24.8805",
+        "expert_only_tok_s": "8.12879",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "3",
+        "ms": "122.429",
+        "packed_GB_s": "25.0005",
+        "expert_only_tok_s": "8.16797",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "4",
+        "ms": "122.192",
+        "packed_GB_s": "25.0491",
+        "expert_only_tok_s": "8.18385",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      }
+    ]
+  },
+  {
+    "width": 1,
+    "workers": 8,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 109.902,
+    "median_GB_s": 27.8503,
+    "output_hash": "11117387441367486908",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "1",
+      "8",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "109.839",
+        "packed_GB_s": "27.8662",
+        "expert_only_tok_s": "9.10425",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "1",
+        "ms": "109.857",
+        "packed_GB_s": "27.8617",
+        "expert_only_tok_s": "9.10277",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "2",
+        "ms": "109.902",
+        "packed_GB_s": "27.8503",
+        "expert_only_tok_s": "9.09904",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "3",
+        "ms": "110.01",
+        "packed_GB_s": "27.8229",
+        "expert_only_tok_s": "9.09009",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "4",
+        "ms": "110.386",
+        "packed_GB_s": "27.728",
+        "expert_only_tok_s": "9.0591",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      }
+    ]
+  },
+  {
+    "width": 1,
+    "workers": 12,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 105.807,
+    "median_GB_s": 28.928,
+    "output_hash": "11117387441367486908",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "1",
+      "12",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "106.182",
+        "packed_GB_s": "28.826",
+        "expert_only_tok_s": "9.41783",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "1",
+        "ms": "105.807",
+        "packed_GB_s": "28.928",
+        "expert_only_tok_s": "9.45114",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "2",
+        "ms": "105.778",
+        "packed_GB_s": "28.9361",
+        "expert_only_tok_s": "9.45379",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "3",
+        "ms": "105.846",
+        "packed_GB_s": "28.9174",
+        "expert_only_tok_s": "9.44769",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "4",
+        "ms": "105.748",
+        "packed_GB_s": "28.9443",
+        "expert_only_tok_s": "9.45646",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      }
+    ]
+  },
+  {
+    "width": 1,
+    "workers": 16,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 106.138,
+    "median_GB_s": 28.8378,
+    "output_hash": "11117387441367486908",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "1",
+      "16",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "106.504",
+        "packed_GB_s": "28.7388",
+        "expert_only_tok_s": "9.38932",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "1",
+        "ms": "106.138",
+        "packed_GB_s": "28.8378",
+        "expert_only_tok_s": "9.42168",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "2",
+        "ms": "106.109",
+        "packed_GB_s": "28.8458",
+        "expert_only_tok_s": "9.42428",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "3",
+        "ms": "106.301",
+        "packed_GB_s": "28.7936",
+        "expert_only_tok_s": "9.40723",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      },
+      {
+        "round": "4",
+        "ms": "106.056",
+        "packed_GB_s": "28.8602",
+        "expert_only_tok_s": "9.429",
+        "output_hash": "11117387441367486908",
+        "checksum": "-190.074"
+      }
+    ]
+  },
+  {
+    "width": 2,
+    "workers": 4,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 213.621,
+    "median_GB_s": 24.9036,
+    "output_hash": "4538317222593937607",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "2",
+      "4",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "213.979",
+        "packed_GB_s": "24.862",
+        "expert_only_tok_s": "9.34671",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "1",
+        "ms": "213.621",
+        "packed_GB_s": "24.9036",
+        "expert_only_tok_s": "9.36236",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "2",
+        "ms": "213.449",
+        "packed_GB_s": "24.9237",
+        "expert_only_tok_s": "9.36991",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "3",
+        "ms": "213.658",
+        "packed_GB_s": "24.8994",
+        "expert_only_tok_s": "9.36075",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "4",
+        "ms": "213.439",
+        "packed_GB_s": "24.925",
+        "expert_only_tok_s": "9.37037",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      }
+    ]
+  },
+  {
+    "width": 2,
+    "workers": 8,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 191.181,
+    "median_GB_s": 27.8268,
+    "output_hash": "4538317222593937607",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "2",
+      "8",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "191.765",
+        "packed_GB_s": "27.7421",
+        "expert_only_tok_s": "10.4295",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "1",
+        "ms": "191.745",
+        "packed_GB_s": "27.745",
+        "expert_only_tok_s": "10.4305",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "2",
+        "ms": "191.181",
+        "packed_GB_s": "27.8268",
+        "expert_only_tok_s": "10.4613",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "3",
+        "ms": "191.147",
+        "packed_GB_s": "27.8317",
+        "expert_only_tok_s": "10.4632",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "4",
+        "ms": "191.143",
+        "packed_GB_s": "27.8323",
+        "expert_only_tok_s": "10.4634",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      }
+    ]
+  },
+  {
+    "width": 2,
+    "workers": 12,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 184.036,
+    "median_GB_s": 28.9071,
+    "output_hash": "4538317222593937607",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "2",
+      "12",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "184.48",
+        "packed_GB_s": "28.8376",
+        "expert_only_tok_s": "10.8413",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "1",
+        "ms": "183.964",
+        "packed_GB_s": "28.9185",
+        "expert_only_tok_s": "10.8717",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "2",
+        "ms": "183.895",
+        "packed_GB_s": "28.9293",
+        "expert_only_tok_s": "10.8758",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "3",
+        "ms": "184.036",
+        "packed_GB_s": "28.9071",
+        "expert_only_tok_s": "10.8674",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "4",
+        "ms": "184.331",
+        "packed_GB_s": "28.8609",
+        "expert_only_tok_s": "10.8501",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      }
+    ]
+  },
+  {
+    "width": 2,
+    "workers": 16,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 185.379,
+    "median_GB_s": 28.6976,
+    "output_hash": "4538317222593937607",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "2",
+      "16",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "185.709",
+        "packed_GB_s": "28.6467",
+        "expert_only_tok_s": "10.7696",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "1",
+        "ms": "185.081",
+        "packed_GB_s": "28.7439",
+        "expert_only_tok_s": "10.8061",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "2",
+        "ms": "185.535",
+        "packed_GB_s": "28.6736",
+        "expert_only_tok_s": "10.7797",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "3",
+        "ms": "185.379",
+        "packed_GB_s": "28.6976",
+        "expert_only_tok_s": "10.7887",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      },
+      {
+        "round": "4",
+        "ms": "185.231",
+        "packed_GB_s": "28.7205",
+        "expert_only_tok_s": "10.7973",
+        "output_hash": "4538317222593937607",
+        "checksum": "130.294"
+      }
+    ]
+  },
+  {
+    "width": 4,
+    "workers": 4,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 371.076,
+    "median_GB_s": 24.4262,
+    "output_hash": "6047726180296702732",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "4",
+      "4",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "371.742",
+        "packed_GB_s": "24.3824",
+        "expert_only_tok_s": "10.7602",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "1",
+        "ms": "370.843",
+        "packed_GB_s": "24.4415",
+        "expert_only_tok_s": "10.7862",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "2",
+        "ms": "371.352",
+        "packed_GB_s": "24.408",
+        "expert_only_tok_s": "10.7714",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "3",
+        "ms": "370.838",
+        "packed_GB_s": "24.4418",
+        "expert_only_tok_s": "10.7864",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "4",
+        "ms": "371.076",
+        "packed_GB_s": "24.4262",
+        "expert_only_tok_s": "10.7795",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      }
+    ]
+  },
+  {
+    "width": 4,
+    "workers": 8,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 327.507,
+    "median_GB_s": 27.6756,
+    "output_hash": "6047726180296702732",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "4",
+      "8",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "328.254",
+        "packed_GB_s": "27.6126",
+        "expert_only_tok_s": "12.1857",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "1",
+        "ms": "327.507",
+        "packed_GB_s": "27.6756",
+        "expert_only_tok_s": "12.2135",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "2",
+        "ms": "327.32",
+        "packed_GB_s": "27.6914",
+        "expert_only_tok_s": "12.2205",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "3",
+        "ms": "327.848",
+        "packed_GB_s": "27.6468",
+        "expert_only_tok_s": "12.2008",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "4",
+        "ms": "326.982",
+        "packed_GB_s": "27.7201",
+        "expert_only_tok_s": "12.2331",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      }
+    ]
+  },
+  {
+    "width": 4,
+    "workers": 12,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 314.934,
+    "median_GB_s": 28.7805,
+    "output_hash": "6047726180296702732",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "4",
+      "12",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "315.444",
+        "packed_GB_s": "28.734",
+        "expert_only_tok_s": "12.6805",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "1",
+        "ms": "314.886",
+        "packed_GB_s": "28.7849",
+        "expert_only_tok_s": "12.703",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "2",
+        "ms": "315.183",
+        "packed_GB_s": "28.7577",
+        "expert_only_tok_s": "12.691",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "3",
+        "ms": "314.934",
+        "packed_GB_s": "28.7805",
+        "expert_only_tok_s": "12.7011",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "4",
+        "ms": "314.741",
+        "packed_GB_s": "28.7981",
+        "expert_only_tok_s": "12.7089",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      }
+    ]
+  },
+  {
+    "width": 4,
+    "workers": 16,
+    "rounds": 5,
+    "skip_positions": 16,
+    "median_ms": 320.327,
+    "median_GB_s": 28.2959,
+    "output_hash": "6047726180296702732",
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-q2-kernel-bench",
+      "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+      "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/trace-corrected/cache8.capture",
+      "mmap",
+      "4",
+      "16",
+      "5",
+      "native",
+      "3",
+      "44",
+      "row",
+      "16"
+    ],
+    "samples": [
+      {
+        "round": "0",
+        "ms": "326.736",
+        "packed_GB_s": "27.7409",
+        "expert_only_tok_s": "12.2423",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "1",
+        "ms": "325.738",
+        "packed_GB_s": "27.8259",
+        "expert_only_tok_s": "12.2798",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "2",
+        "ms": "320.327",
+        "packed_GB_s": "28.2959",
+        "expert_only_tok_s": "12.4872",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "3",
+        "ms": "316.905",
+        "packed_GB_s": "28.6015",
+        "expert_only_tok_s": "12.6221",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      },
+      {
+        "round": "4",
+        "ms": "317.17",
+        "packed_GB_s": "28.5776",
+        "expert_only_tok_s": "12.6115",
+        "output_hash": "6047726180296702732",
+        "checksum": "205.005"
+      }
+    ]
+  }
+]

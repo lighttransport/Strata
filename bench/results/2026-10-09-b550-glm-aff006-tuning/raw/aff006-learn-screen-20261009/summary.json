@@ -1,0 +1,86 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "baseline4k",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 30680.2,
+      "prompt_per_token_ms": 4.17,
+      "prompt_per_second": 239.8,
+      "predicted_n": 449,
+      "predicted_ms": 28890.0,
+      "predicted_per_token_ms": 64.343,
+      "predicted_per_second": 15.5,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 449,
+      "total_tokens": 7807,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "unbiased4k",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 30699.3,
+      "prompt_per_token_ms": 4.172,
+      "prompt_per_second": 239.7,
+      "predicted_n": 424,
+      "predicted_ms": 27824.3,
+      "predicted_per_token_ms": 65.623,
+      "predicted_per_second": 15.2,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 424,
+      "total_tokens": 7782,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "unbiasedfast4k",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 30559.4,
+      "prompt_per_token_ms": 4.153,
+      "prompt_per_second": 240.8,
+      "predicted_n": 471,
+      "predicted_ms": 30902.2,
+      "predicted_per_token_ms": 65.61,
+      "predicted_per_second": 15.2,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 471,
+      "total_tokens": 7829,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  }
+]

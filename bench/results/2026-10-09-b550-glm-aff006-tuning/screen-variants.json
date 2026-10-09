@@ -1,0 +1,42 @@
+[
+  {
+    "name": "pp4096",
+    "config": {
+      "prefill_batch": 4096
+    },
+    "env": {
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "2048"
+    }
+  },
+  {
+    "name": "tasks2",
+    "env": {
+      "STRATA_NATIVE_TASKS_PER_THREAD": "2"
+    }
+  },
+  {
+    "name": "tasks1",
+    "env": {
+      "STRATA_NATIVE_TASKS_PER_THREAD": "1"
+    }
+  },
+  {
+    "name": "kda4",
+    "env": {
+      "STRATA_GLM_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4"
+    }
+  },
+  {
+    "name": "threads8",
+    "config": {
+      "threads": 8
+    }
+  },
+  {
+    "name": "threads16",
+    "config": {
+      "threads": 16
+    }
+  }
+]

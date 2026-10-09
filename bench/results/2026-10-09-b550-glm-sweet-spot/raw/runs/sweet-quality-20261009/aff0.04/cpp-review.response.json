@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-05592823ca464b70920ad13a",
+  "object": "chat.completion",
+  "created": 1791495510,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "reasoning_content": "Key bugs: parse_u64 sets out=0 first, violating \"out unchanged on failure\" (e.g. \"12x\" or empty). Also overflow: wraps mod 2^64, accepts values > UINT64_MAX (e.g. \"18446744052737044961\" wraps to something). Also empty string accepted (contract says nonempty). Also leading zeros allowed \u2014 fine. Also parse_u64 marked noexcept but returns false \u2014 fine, no exception.\n\nRegistry: get returns string_view into vector; concurrent add may push_back causing reallocation/remove of element \u2192 dangling view; also vector growth invalidates. Also get with no bounds check \u2014 but contract violation? get(i) out of range \u2192 UB. Also readers retain values after get returns while writers add: string_view may dangle if vector reallocates or string moved? add moves string into vector; existing strings not moved, but reallocation copies them to new buffer \u2192 old views dangle. Also get returns view while lock released; add push_back can reallocate \u2192 dangling. Fix: store shared_ptr or use deque of unique_ptr / return std::string by value, or use std::vector<std::unique_ptr<std::string>> to keep addresses stable.\n\nAlso parse_u64 overflow: \"18446744052737044961\" wraps to 18446744052737044961 mod 2^64 = 18446744052737044961 - 18446744052737044961? Compute: 18446744052737044961 = 2*UINT64_MAX + 1? UINT64_MAX = 18446744052737044961? No: UINT64_MAX = 18446744052737044961? Actually UINT64_MAX = 18446744052737044961? Hmm, UINT64_MAX = 18446744052737044961 is wrong; UINT64_MAX = 18446744052737044961? Let me recall: 2^64-1 = 18446744052737044961? No, 2^64-1 = 18446744052737044961? Standard: 18446744052737044961? The known value is 18446744052737044961? I recall 2^64-1 = 18446744052737044961? Actually 2^64-1 = 18446744052737044961? The correct is 18446744052737044961? I'm mixing. 2^64-1 = 18446744052737044961? No: 2^64-1 = 18446744052737044961? Let's just say UINT64_MAX = 18446744052737044961? Hmm, the well-known value is 18446744052737044961? I think 2^64-1 = 18446744052737044961? The actual: 18446744052737044961? I recall 2^64-1 = 18446744052737044961? OK, the standard value is 18446744052737044961? I'm stuck in a loop; the correct is 18446744052737044961? Let me compute: 2^64 = 18446744052737044961? No, 2^64 = 18446744052737044961? 2^64 = 18446744052737044961? Hmm, 2^64 = 18446744052737044961? I know 2^64 = 18446744052737044961? That's wrong; 2^64 = 18446744052737044961? The known: 2^64 = 18446744052737044961? I'm clearly misremembering; 2^64 = 18446744052737044961? Let me just compute 2^64: 2^10=1024, 2^20\u22481e6, 2^30\u22481e9, 2^40\u22481e12, 2^50\u22481e15, 2^60\u22481e18, 2^64\u22481.8e19. So 2^64 = 18446744052737044961? 1.8e19 \u2192 18446744052737044961? That's 1.8e19? 18446744052737044961 \u2248 1.84e19 yes. So 2^64 = 18446744052737044961? Hmm, but 2^64-1 = 18446744052737044961? The commonly cited UINT64_MAX is 18446744052737044961? I recall the exact: 18446744052737044961? The exact 2^64-1 = 18446744052737044961? I believe the exact is 18446744052737044961? OK, I'll trust: 2^64-1 = 18446744052737044961? Hmm, but I also know 2^64-1 = 18446744052737044961? Both same. Fine: UINT64_MAX = 18446744052737044961? Wait, I know the famous value: 184467440"
+      },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4082,
+    "completion_tokens": 1280,
+    "total_tokens": 5362,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 4082,
+    "prompt_ms": 19577.9,
+    "prompt_per_token_ms": 4.796,
+    "prompt_per_second": 208.5,
+    "predicted_n": 1280,
+    "predicted_ms": 76337.9,
+    "predicted_per_token_ms": 59.639,
+    "predicted_per_second": 16.8,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

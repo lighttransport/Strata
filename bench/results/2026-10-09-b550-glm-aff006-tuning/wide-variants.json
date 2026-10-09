@@ -1,0 +1,5 @@
+[
+  {"name":"pp8192","config":{"prefill_batch":8192},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"4096"}},
+  {"name":"pp8192probe32","config":{"prefill_batch":8192},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"4096","STRATA_GLM_CACHE_PROBE":"32"}},
+  {"name":"pp8192probe64","config":{"prefill_batch":8192},"env":{"STRATA_GLM_PREFILL_SCRATCH_CAP_MIB":"4096","STRATA_GLM_CACHE_PROBE":"64"}}
+]

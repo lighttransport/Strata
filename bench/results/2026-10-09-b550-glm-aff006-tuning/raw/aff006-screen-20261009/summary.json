@@ -1,0 +1,30 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "baseline",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39708.8,
+      "prompt_per_token_ms": 5.397,
+      "prompt_per_second": 185.3,
+      "predicted_n": 422,
+      "predicted_ms": 27126.7,
+      "predicted_per_token_ms": 64.281,
+      "predicted_per_second": 15.6,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 422,
+      "total_tokens": 7780,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  }
+]

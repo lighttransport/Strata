@@ -1,0 +1,434 @@
+STAGING compact=1 slot_MiB=140
+FLOATING_Q8 tensor=blk.0.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.0.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.1.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.1.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.10.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.10.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.11.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.11.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.11.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.11.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.12.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.12.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.13.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.13.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.14.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.14.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.15.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.15.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.15.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.15.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.16.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.16.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.17.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.17.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.18.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.18.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.19.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.19.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.19.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.19.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.2.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.2.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.20.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.20.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.21.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.21.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.22.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.22.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.23.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.23.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.23.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.23.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.24.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.24.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.25.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.25.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.26.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.26.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.27.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.27.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.27.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.27.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.28.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.28.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.29.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.29.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.3.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.3.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.3.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.3.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.30.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.30.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.31.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.31.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.31.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.31.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.32.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.32.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.33.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.33.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.34.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.34.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.35.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.35.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.35.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.35.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.36.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.36.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.37.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.37.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.38.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.38.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.39.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.39.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.39.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.39.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.4.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.4.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.40.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.40.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.41.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.41.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.42.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.42.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.43.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.43.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.43.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.43.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.44.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.44.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.5.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.5.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.6.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.6.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.7.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.7.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.7.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.7.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.8.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.8.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.9.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.9.hc_ffn_fn source_type=0 MiB=0.398438
+GPU prefill chunk=2048 staging_workers=4 numa_cpus=0,1,2,3
+GPU allocated_MiB=7154.73 reserved_runtime_MiB=1024 budget_MiB=15792
+GPU_DENSE_HOST_RELEASE phase=main tensors=1256 source_MiB_advised=5040.35 ms=123.966
+PREFILL_PARTITION primary_groups=9 secondary_groups=0
+PREFILL_CACHE device=0 budget_MiB=0 reserve_MiB=768
+PREFILL_CACHE_PLAN device=0 base_groups=0 unused_MiB=0
+MAPPED_EXPERTS numa_rows=0 lazy=1 bytes=55094280192
+PREFILL trial=0 tokens=2048 batch=2048 ms=70504.7 tok_s=29.0477
+FAULTS trial=0 major=176587 minor=1085175
+HOST_RSS peak_MiB=53857
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0
+GPU peak_allocated_MiB=7538.73 native_expert_bytes=55101150720 expert_groups=378 staging_ms=63384
+PREFILL_SCRATCH device=0 peak_MiB=696.564 capacity_MiB=1024
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=806.414 prefill_MiB=1464 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=7538.73 live_MiB=7538.73 native_expert_bytes=55101150720 staging_ms=63384 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=8312 free_MiB=7992
+MAPPED_EXPERTS numa_rows=0 lazy=1 bytes=55094280192
+PREFILL_WORK device=0 transferred_bytes=55101150720 staging_ms=63384 actual_rows=688128 padded_rows=2232912 dequant_values=297158049792
+DECODE_RUNTIME override_reserve_MiB=256
+DECODE_CACHE prefix_trained=1 slots=942 MiB=8183.62 fingerprint=4758800312550990355
+RESPONSE_PREPARE kind=decode_cache ms=1391.99
+AFFINITY_QUALITY_ROW row=0 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=1 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=2 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=3 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=4 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=5 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=6 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=7 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=8 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=9 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=10 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=11 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=12 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=13 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=14 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=15 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=16 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=17 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=18 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=19 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=20 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=21 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=22 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=23 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=24 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=25 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=26 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=27 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=28 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=29 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=30 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=31 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=32 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=33 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=34 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=35 kl=2.56127e-29 top1_equal=1
+AFFINITY_QUALITY_ROW row=36 kl=1.6339e-28 top1_equal=1
+AFFINITY_QUALITY_ROW row=37 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=38 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=39 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=40 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=41 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=42 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=43 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=44 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=45 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=46 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=47 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=48 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=49 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=50 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=51 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=52 kl=5.29278e-28 top1_equal=1
+AFFINITY_QUALITY_ROW row=53 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=54 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=55 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=56 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=57 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=58 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=59 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=60 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=61 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=62 kl=0 top1_equal=1
+AFFINITY_QUALITY_ROW row=63 kl=0 top1_equal=1
+AFFINITY_QUALITY rows=64 affinity=0 mean_kl=1.12231e-29 max_kl=5.29278e-28 top1_equal=64 top1_share=1 mean_relative_L2=0 reference=unbiased_strict_same_prefill_fixed_tier
+AFFINITY_QUALITY_ROW row=0 kl=0.0912463 top1_equal=1
+AFFINITY_QUALITY_ROW row=1 kl=0.131876 top1_equal=1
+AFFINITY_QUALITY_ROW row=2 kl=4.10971e-05 top1_equal=1
+AFFINITY_QUALITY_ROW row=3 kl=0.0287832 top1_equal=1
+AFFINITY_QUALITY_ROW row=4 kl=0.312771 top1_equal=1
+AFFINITY_QUALITY_ROW row=5 kl=0.161967 top1_equal=0
+AFFINITY_QUALITY_ROW row=6 kl=0.0130899 top1_equal=1
+AFFINITY_QUALITY_ROW row=7 kl=0.0303412 top1_equal=1
+AFFINITY_QUALITY_ROW row=8 kl=2.82141 top1_equal=0
+AFFINITY_QUALITY_ROW row=9 kl=0.204925 top1_equal=1
+AFFINITY_QUALITY_ROW row=10 kl=0.209988 top1_equal=1
+AFFINITY_QUALITY_ROW row=11 kl=0.526676 top1_equal=0
+AFFINITY_QUALITY_ROW row=12 kl=1.67652 top1_equal=1
+AFFINITY_QUALITY_ROW row=13 kl=1.11118 top1_equal=1
+AFFINITY_QUALITY_ROW row=14 kl=0.19047 top1_equal=1
+AFFINITY_QUALITY_ROW row=15 kl=0.299497 top1_equal=1
+AFFINITY_QUALITY_ROW row=16 kl=8.95652 top1_equal=0
+AFFINITY_QUALITY_ROW row=17 kl=1.1839 top1_equal=0
+AFFINITY_QUALITY_ROW row=18 kl=0.0284378 top1_equal=1
+AFFINITY_QUALITY_ROW row=19 kl=1.11589 top1_equal=0
+AFFINITY_QUALITY_ROW row=20 kl=0.225776 top1_equal=1
+AFFINITY_QUALITY_ROW row=21 kl=0.0374593 top1_equal=1
+AFFINITY_QUALITY_ROW row=22 kl=0.0959747 top1_equal=1
+AFFINITY_QUALITY_ROW row=23 kl=0.147048 top1_equal=1
+AFFINITY_QUALITY_ROW row=24 kl=0.599974 top1_equal=1
+AFFINITY_QUALITY_ROW row=25 kl=0.0448034 top1_equal=1
+AFFINITY_QUALITY_ROW row=26 kl=0.00926313 top1_equal=1
+AFFINITY_QUALITY_ROW row=27 kl=0.00064265 top1_equal=1
+AFFINITY_QUALITY_ROW row=28 kl=0.144713 top1_equal=1
+AFFINITY_QUALITY_ROW row=29 kl=0.0350554 top1_equal=1
+AFFINITY_QUALITY_ROW row=30 kl=0.0756354 top1_equal=1
+AFFINITY_QUALITY_ROW row=31 kl=1.02446 top1_equal=0
+AFFINITY_QUALITY_ROW row=32 kl=0.0239735 top1_equal=1
+AFFINITY_QUALITY_ROW row=33 kl=10.1251 top1_equal=1
+AFFINITY_QUALITY_ROW row=34 kl=0.189751 top1_equal=1
+AFFINITY_QUALITY_ROW row=35 kl=0.326411 top1_equal=1
+AFFINITY_QUALITY_ROW row=36 kl=0.0013171 top1_equal=1
+AFFINITY_QUALITY_ROW row=37 kl=0.391252 top1_equal=1
+AFFINITY_QUALITY_ROW row=38 kl=0.366154 top1_equal=1
+AFFINITY_QUALITY_ROW row=39 kl=0.168147 top1_equal=1
+AFFINITY_QUALITY_ROW row=40 kl=0.0188796 top1_equal=1
+AFFINITY_QUALITY_ROW row=41 kl=7.22361 top1_equal=0
+AFFINITY_QUALITY_ROW row=42 kl=0.0706145 top1_equal=1
+AFFINITY_QUALITY_ROW row=43 kl=0.0286786 top1_equal=1
+AFFINITY_QUALITY_ROW row=44 kl=1.03777 top1_equal=1
+AFFINITY_QUALITY_ROW row=45 kl=0.39874 top1_equal=0
+AFFINITY_QUALITY_ROW row=46 kl=0.387341 top1_equal=0
+AFFINITY_QUALITY_ROW row=47 kl=0.059273 top1_equal=1
+AFFINITY_QUALITY_ROW row=48 kl=0.173005 top1_equal=0
+AFFINITY_QUALITY_ROW row=49 kl=0.000487462 top1_equal=1
+AFFINITY_QUALITY_ROW row=50 kl=0.00526666 top1_equal=1
+AFFINITY_QUALITY_ROW row=51 kl=0.00121237 top1_equal=1
+AFFINITY_QUALITY_ROW row=52 kl=0.00145969 top1_equal=1
+AFFINITY_QUALITY_ROW row=53 kl=0.0108451 top1_equal=1
+AFFINITY_QUALITY_ROW row=54 kl=0.000376962 top1_equal=1
+AFFINITY_QUALITY_ROW row=55 kl=3.87887 top1_equal=0
+AFFINITY_QUALITY_ROW row=56 kl=0.382947 top1_equal=1
+AFFINITY_QUALITY_ROW row=57 kl=0.222682 top1_equal=1
+AFFINITY_QUALITY_ROW row=58 kl=0.00128756 top1_equal=1
+AFFINITY_QUALITY_ROW row=59 kl=0.0559788 top1_equal=1
+AFFINITY_QUALITY_ROW row=60 kl=0.0124928 top1_equal=1
+AFFINITY_QUALITY_ROW row=61 kl=0.000935245 top1_equal=1
+AFFINITY_QUALITY_ROW row=62 kl=0.00985843 top1_equal=1
+AFFINITY_QUALITY_ROW row=63 kl=4.63307e-05 top1_equal=1
+AFFINITY_QUALITY rows=64 affinity=0.12 mean_kl=0.736111 max_kl=10.1251 top1_equal=52 top1_share=0.8125 mean_relative_L2=0.277423 reference=unbiased_strict_same_prefill_fixed_tier
+AFFINITY_QUALITY_ROW row=0 kl=0.11205 top1_equal=1
+AFFINITY_QUALITY_ROW row=1 kl=0.0897628 top1_equal=1
+AFFINITY_QUALITY_ROW row=2 kl=0.000236463 top1_equal=1
+AFFINITY_QUALITY_ROW row=3 kl=0.0371252 top1_equal=1
+AFFINITY_QUALITY_ROW row=4 kl=0.133595 top1_equal=1
+AFFINITY_QUALITY_ROW row=5 kl=0.0967993 top1_equal=0
+AFFINITY_QUALITY_ROW row=6 kl=0.0126256 top1_equal=1
+AFFINITY_QUALITY_ROW row=7 kl=0.0284447 top1_equal=1
+AFFINITY_QUALITY_ROW row=8 kl=5.59752 top1_equal=0
+AFFINITY_QUALITY_ROW row=9 kl=0.202789 top1_equal=1
+AFFINITY_QUALITY_ROW row=10 kl=0.176253 top1_equal=1
+AFFINITY_QUALITY_ROW row=11 kl=0.0818685 top1_equal=1
+AFFINITY_QUALITY_ROW row=12 kl=1.12306 top1_equal=1
+AFFINITY_QUALITY_ROW row=13 kl=1.47624 top1_equal=1
+AFFINITY_QUALITY_ROW row=14 kl=0.295507 top1_equal=1
+AFFINITY_QUALITY_ROW row=15 kl=0.0698597 top1_equal=1
+AFFINITY_QUALITY_ROW row=16 kl=8.46762 top1_equal=0
+AFFINITY_QUALITY_ROW row=17 kl=1.27363 top1_equal=0
+AFFINITY_QUALITY_ROW row=18 kl=0.0259688 top1_equal=1
+AFFINITY_QUALITY_ROW row=19 kl=1.02833 top1_equal=1
+AFFINITY_QUALITY_ROW row=20 kl=0.192599 top1_equal=1
+AFFINITY_QUALITY_ROW row=21 kl=0.0211522 top1_equal=1
+AFFINITY_QUALITY_ROW row=22 kl=0.0636784 top1_equal=1
+AFFINITY_QUALITY_ROW row=23 kl=0.206208 top1_equal=1
+AFFINITY_QUALITY_ROW row=24 kl=0.2897 top1_equal=1
+AFFINITY_QUALITY_ROW row=25 kl=0.0979181 top1_equal=1
+AFFINITY_QUALITY_ROW row=26 kl=0.00779062 top1_equal=1
+AFFINITY_QUALITY_ROW row=27 kl=0.00299102 top1_equal=1
+AFFINITY_QUALITY_ROW row=28 kl=0.167335 top1_equal=0
+AFFINITY_QUALITY_ROW row=29 kl=0.0431954 top1_equal=1
+AFFINITY_QUALITY_ROW row=30 kl=0.089831 top1_equal=1
+AFFINITY_QUALITY_ROW row=31 kl=1.18483 top1_equal=0
+AFFINITY_QUALITY_ROW row=32 kl=0.0942151 top1_equal=1
+AFFINITY_QUALITY_ROW row=33 kl=9.67913 top1_equal=1
+AFFINITY_QUALITY_ROW row=34 kl=0.405508 top1_equal=0
+AFFINITY_QUALITY_ROW row=35 kl=0.136906 top1_equal=1
+AFFINITY_QUALITY_ROW row=36 kl=0.00283877 top1_equal=1
+AFFINITY_QUALITY_ROW row=37 kl=0.350518 top1_equal=1
+AFFINITY_QUALITY_ROW row=38 kl=0.230526 top1_equal=1
+AFFINITY_QUALITY_ROW row=39 kl=0.103202 top1_equal=1
+AFFINITY_QUALITY_ROW row=40 kl=0.0218499 top1_equal=1
+AFFINITY_QUALITY_ROW row=41 kl=2.42293 top1_equal=0
+AFFINITY_QUALITY_ROW row=42 kl=0.373141 top1_equal=0
+AFFINITY_QUALITY_ROW row=43 kl=0.14376 top1_equal=1
+AFFINITY_QUALITY_ROW row=44 kl=0.355842 top1_equal=1
+AFFINITY_QUALITY_ROW row=45 kl=0.259822 top1_equal=1
+AFFINITY_QUALITY_ROW row=46 kl=0.436435 top1_equal=0
+AFFINITY_QUALITY_ROW row=47 kl=0.285075 top1_equal=1
+AFFINITY_QUALITY_ROW row=48 kl=0.538868 top1_equal=0
+AFFINITY_QUALITY_ROW row=49 kl=0.00167556 top1_equal=1
+AFFINITY_QUALITY_ROW row=50 kl=0.00280229 top1_equal=1
+AFFINITY_QUALITY_ROW row=51 kl=0.00161271 top1_equal=1
+AFFINITY_QUALITY_ROW row=52 kl=0.00139676 top1_equal=1
+AFFINITY_QUALITY_ROW row=53 kl=0.0229895 top1_equal=1
+AFFINITY_QUALITY_ROW row=54 kl=0.000841912 top1_equal=1
+AFFINITY_QUALITY_ROW row=55 kl=0.469819 top1_equal=1
+AFFINITY_QUALITY_ROW row=56 kl=0.505743 top1_equal=1
+AFFINITY_QUALITY_ROW row=57 kl=0.42233 top1_equal=1
+AFFINITY_QUALITY_ROW row=58 kl=0.00159973 top1_equal=1
+AFFINITY_QUALITY_ROW row=59 kl=0.0123389 top1_equal=1
+AFFINITY_QUALITY_ROW row=60 kl=0.0269419 top1_equal=1
+AFFINITY_QUALITY_ROW row=61 kl=0.00295581 top1_equal=1
+AFFINITY_QUALITY_ROW row=62 kl=0.00660413 top1_equal=1
+AFFINITY_QUALITY_ROW row=63 kl=0.00019224 top1_equal=1
+AFFINITY_QUALITY rows=64 affinity=0.15 mean_kl=0.625264 max_kl=9.67913 top1_equal=53 top1_share=0.828125 mean_relative_L2=0.285291 reference=unbiased_strict_same_prefill_fixed_tier
+AFFINITY_QUALITY_ROW row=0 kl=0.124754 top1_equal=1
+AFFINITY_QUALITY_ROW row=1 kl=0.108176 top1_equal=1
+AFFINITY_QUALITY_ROW row=2 kl=0.00027995 top1_equal=1
+AFFINITY_QUALITY_ROW row=3 kl=0.157786 top1_equal=0
+AFFINITY_QUALITY_ROW row=4 kl=0.428749 top1_equal=1
+AFFINITY_QUALITY_ROW row=5 kl=0.155905 top1_equal=0
+AFFINITY_QUALITY_ROW row=6 kl=0.00499515 top1_equal=1
+AFFINITY_QUALITY_ROW row=7 kl=0.0263273 top1_equal=1
+AFFINITY_QUALITY_ROW row=8 kl=5.40608 top1_equal=0
+AFFINITY_QUALITY_ROW row=9 kl=0.2193 top1_equal=0
+AFFINITY_QUALITY_ROW row=10 kl=0.164552 top1_equal=1
+AFFINITY_QUALITY_ROW row=11 kl=0.292771 top1_equal=1
+AFFINITY_QUALITY_ROW row=12 kl=1.14046 top1_equal=1
+AFFINITY_QUALITY_ROW row=13 kl=1.64699 top1_equal=1
+AFFINITY_QUALITY_ROW row=14 kl=0.446574 top1_equal=1
+AFFINITY_QUALITY_ROW row=15 kl=0.367359 top1_equal=1
+AFFINITY_QUALITY_ROW row=16 kl=9.98937 top1_equal=0
+AFFINITY_QUALITY_ROW row=17 kl=1.53063 top1_equal=0
+AFFINITY_QUALITY_ROW row=18 kl=0.0371825 top1_equal=1
+AFFINITY_QUALITY_ROW row=19 kl=0.511424 top1_equal=1
+AFFINITY_QUALITY_ROW row=20 kl=0.0910554 top1_equal=1
+AFFINITY_QUALITY_ROW row=21 kl=0.110501 top1_equal=1
+AFFINITY_QUALITY_ROW row=22 kl=0.0690457 top1_equal=1
+AFFINITY_QUALITY_ROW row=23 kl=0.410409 top1_equal=1
+AFFINITY_QUALITY_ROW row=24 kl=0.160616 top1_equal=1
+AFFINITY_QUALITY_ROW row=25 kl=0.292729 top1_equal=1
+AFFINITY_QUALITY_ROW row=26 kl=0.00897134 top1_equal=1
+AFFINITY_QUALITY_ROW row=27 kl=5.87925 top1_equal=0
+AFFINITY_QUALITY_ROW row=28 kl=0.195825 top1_equal=0
+AFFINITY_QUALITY_ROW row=29 kl=0.0424025 top1_equal=1
+AFFINITY_QUALITY_ROW row=30 kl=0.0157234 top1_equal=1
+AFFINITY_QUALITY_ROW row=31 kl=0.725647 top1_equal=1
+AFFINITY_QUALITY_ROW row=32 kl=0.310951 top1_equal=1
+AFFINITY_QUALITY_ROW row=33 kl=13.5257 top1_equal=1
+AFFINITY_QUALITY_ROW row=34 kl=0.104376 top1_equal=1
+AFFINITY_QUALITY_ROW row=35 kl=0.0560668 top1_equal=1
+AFFINITY_QUALITY_ROW row=36 kl=0.00134827 top1_equal=1
+AFFINITY_QUALITY_ROW row=37 kl=0.200616 top1_equal=1
+AFFINITY_QUALITY_ROW row=38 kl=0.738044 top1_equal=1
+AFFINITY_QUALITY_ROW row=39 kl=0.0742522 top1_equal=1
+AFFINITY_QUALITY_ROW row=40 kl=0.0164945 top1_equal=1
+AFFINITY_QUALITY_ROW row=41 kl=8.87284 top1_equal=0
+AFFINITY_QUALITY_ROW row=42 kl=0.283809 top1_equal=0
+AFFINITY_QUALITY_ROW row=43 kl=0.0120404 top1_equal=1
+AFFINITY_QUALITY_ROW row=44 kl=0.277992 top1_equal=1
+AFFINITY_QUALITY_ROW row=45 kl=0.456631 top1_equal=1
+AFFINITY_QUALITY_ROW row=46 kl=0.239649 top1_equal=1
+AFFINITY_QUALITY_ROW row=47 kl=0.15263 top1_equal=1
+AFFINITY_QUALITY_ROW row=48 kl=0.15652 top1_equal=0
+AFFINITY_QUALITY_ROW row=49 kl=0.00241958 top1_equal=1
+AFFINITY_QUALITY_ROW row=50 kl=0.00689818 top1_equal=1
+AFFINITY_QUALITY_ROW row=51 kl=0.00126871 top1_equal=1
+AFFINITY_QUALITY_ROW row=52 kl=0.00297153 top1_equal=1
+AFFINITY_QUALITY_ROW row=53 kl=0.0817819 top1_equal=1
+AFFINITY_QUALITY_ROW row=54 kl=0.0111165 top1_equal=1
+AFFINITY_QUALITY_ROW row=55 kl=0.715864 top1_equal=1
+AFFINITY_QUALITY_ROW row=56 kl=0.510384 top1_equal=1
+AFFINITY_QUALITY_ROW row=57 kl=0.211326 top1_equal=1
+AFFINITY_QUALITY_ROW row=58 kl=0.00299952 top1_equal=1
+AFFINITY_QUALITY_ROW row=59 kl=0.0553947 top1_equal=1
+AFFINITY_QUALITY_ROW row=60 kl=0.0365013 top1_equal=1
+AFFINITY_QUALITY_ROW row=61 kl=0.00228132 top1_equal=1
+AFFINITY_QUALITY_ROW row=62 kl=0.022883 top1_equal=1
+AFFINITY_QUALITY_ROW row=63 kl=0.000201697 top1_equal=1
+AFFINITY_QUALITY rows=64 affinity=0.2 mean_kl=0.904782 max_kl=13.5257 top1_equal=53 top1_share=0.828125 mean_relative_L2=0.317585 reference=unbiased_strict_same_prefill_fixed_tier
+RESPONSE_PREPARE kind=cpu ms=0.023664
+DECODE_TRIAL index=0
+DECODE_STEP index=1 ms=51.5615
+DECODE_STEP index=2 ms=39.4359
+DECODE_STEP index=3 ms=48.6981
+DECODE_STEP index=4 ms=46.0901
+DECODE_STEP index=5 ms=51.7269
+DECODE_STEP index=6 ms=42.7653
+DECODE_STEP index=7 ms=45.5023
+DECODE_STEP index=8 ms=42.0693
+DECODE_STEP index=9 ms=45.0746
+DECODE_STEP index=10 ms=48.3592
+DECODE_STEP index=11 ms=43.2502
+DECODE_STEP index=12 ms=40.3717
+DECODE_STEP index=13 ms=41.0275
+DECODE_STEP index=14 ms=56.4698
+DECODE_STEP index=15 ms=56.1932
+DECODE_STEP index=16 ms=50.1007
+DECODE_STEP index=17 ms=52.2998
+DECODE_STEP index=18 ms=46.1995
+DECODE_STEP index=19 ms=47.5588
+DECODE_STEP index=20 ms=49.8737
+DECODE_STEP index=21 ms=53.768
+DECODE_STEP index=22 ms=49.8847
+DECODE_STEP index=23 ms=39.6998
+DECODE_STEP index=24 ms=42.7179
+DECODE_STEP index=25 ms=44.5086
+DECODE_STEP index=26 ms=53.7165
+DECODE_STEP index=27 ms=44.0538
+DECODE_STEP index=28 ms=41.2296
+DECODE_STEP index=29 ms=46.0635
+DECODE_STEP index=30 ms=41.1395
+DECODE_STEP index=31 ms=47.3224
+DECODE steps=31 ms=1458.43 tok_s=21.2557
+HOST_RSS peak_MiB=53857.4
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=608.953 bytes=16779706368
+GPU peak_allocated_MiB=13558 native_expert_bytes=0 expert_groups=0 staging_ms=0
+PREFILL_SCRATCH device=0 peak_MiB=5.07568 capacity_MiB=32
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=8254.75 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=13558 live_MiB=13558 native_expert_bytes=0 staging_ms=0 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=15546 free_MiB=758
+resident expert entries=76309/117936

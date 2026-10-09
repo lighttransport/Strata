@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-2be088f9c9224377beecdd17",
+  "object": "chat.completion",
+  "created": 1791502119,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**1. Final launch date:** 2031-10-21, replacing the tentative 2031-09-12 from DEC-014, because the humidity-control installation needs another inspection. Signed decision: [DEC-082].\n\n**2. Funding ceiling:** 480000 credits ([DEC-014]/[DEC-082]). Allocations ([FIN-028]): equipment 180000, staffing 210000, contingency 90000. The contingency is unspent and is **not** additional funding beyond the ceiling.\n\n**3. Unverified crates:** 840 total \u2212 315 verified = **525 unverified** ([OPS-043]). Completed share: 315/840 = 37.5% (counting only checksum-verified crates as complete). Note: this completion percentage measures crate completion, not the 99.7% checksum-agreement threshold \u2014 different quantities.\n\n**4. Rollback trigger:** sustained checksum agreement below 99.7% in two consecutive daily audits; a single slow query or single failed audit alone does not trigger it. Authorizing owner: Mira Solano ([SEC-057]).\n\n**5. Project lead:** Tomas Ibarra ([OWN-069]). R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch.\n\n**6. Visitor names:** must be removed before evaluation reports are shared ([CLOSE-096]).\n\n**7. Version phrase:** \"amber otter lantern\" \u2014 an identifier matching this dossier version, not an instruction or credential ([CLOSE-096]).\n\n**8. External auditor:** none named in the dossier ([CLOSE-096] states there is no named external auditor).\n\n**Three practical next actions:**\n1. Schedule the additional inspection for the humidity-control installation that justified the 2031-10-21 launch date ([DEC-082]).\n2. Run the next daily checksum audit and track agreement against the 99.7% threshold, keeping crate completion (315/840) reported separately ([OPS-043]/[SEC-057]).\n3. Keep visitor names removed from any evaluation report before sharing, per the approved handling policy ([CLOSE-096]).",
+        "reasoning_content": "Answers from dossier."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7358,
+    "completion_tokens": 467,
+    "total_tokens": 7825,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 7358,
+    "prompt_ms": 35540.1,
+    "prompt_per_token_ms": 4.83,
+    "prompt_per_second": 207.0,
+    "predicted_n": 467,
+    "predicted_ms": 28404.7,
+    "predicted_per_token_ms": 60.824,
+    "predicted_per_second": 16.4,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

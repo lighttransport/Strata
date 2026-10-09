@@ -1,0 +1,50 @@
+{
+  "request": 1,
+  "executions": 2646,
+  "observed": {
+    "requested_bytes": 192829980672,
+    "hit_bytes": 83843874816,
+    "cpu_bytes": 108986105856,
+    "hit_share": 0.43480725623582767,
+    "upload_bytes": 2915041280,
+    "cpu_counters_match": true,
+    "staged_host_traffic_estimate_bytes": 117731229696,
+    "staged_memory_time_estimate_s": 4.204686774857143
+  },
+  "policies": [
+    {
+      "policy": "static",
+      "requested_bytes": 192829980672,
+      "hit_bytes": 74661494784,
+      "hit_share": 0.38718820861678005,
+      "upload_bytes": 0,
+      "resident_bytes": 8581152768,
+      "staged_host_traffic_estimate_bytes": 118168485888,
+      "standalone_upload_time_s": 0.0,
+      "staged_memory_time_estimate_s": 4.2203030674285715
+    },
+    {
+      "policy": "lru",
+      "requested_bytes": 192829980672,
+      "hit_bytes": 80974381056,
+      "hit_share": 0.4199263038548753,
+      "upload_bytes": 111855599616,
+      "resident_bytes": 8581152768,
+      "staged_host_traffic_estimate_bytes": 447422398464,
+      "standalone_upload_time_s": 4.110826887761852,
+      "staged_memory_time_estimate_s": 15.979371373714285
+    },
+    {
+      "policy": "protected",
+      "requested_bytes": 192829980672,
+      "hit_bytes": 85784199168,
+      "hit_share": 0.44486961451247165,
+      "upload_bytes": 107045781504,
+      "resident_bytes": 8581152768,
+      "staged_host_traffic_estimate_bytes": 428183126016,
+      "standalone_upload_time_s": 3.934060327232635,
+      "staged_memory_time_estimate_s": 15.29225450057143
+    }
+  ],
+  "caveat": "Instant admission; staging assumes source read + staging write + DMA read reach DRAM (cache reuse can reduce traffic). No promotion delay, staging capacity, GPU compute or launch costs. Not a throughput forecast."
+}

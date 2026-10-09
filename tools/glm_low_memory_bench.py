@@ -84,7 +84,14 @@ def parse_log(log):
     decode += [dict(kind=kind, tokens=int(n), milliseconds=float(ms), tokens_per_second=float(rate))
                for kind, n, ms, rate in re.findall(
         r"SPECULATIVE source=(\w+) generated=(\d+).*? ms=([\d.]+) tok_s=([\d.]+)", log)]
+    def records(tag):
+        return [{k: int(v) if v.isdigit() else float(v) for k, v in re.findall(r"(\w+)=([0-9.eE+-]+)(?:\s|$)", line)}
+                for line in log.splitlines() if line.startswith(tag + " ")]
     return dict(prefill=prefill, decode=decode,
+        cpu_expert=records("CPU_EXPERT"), mtp_timing=records("MTP_TIMING"),
+        mtp_positions=records("MTP_POSITION"), step_trace=records("STEP_TRACE"),
+        decode_cache=records("DECODE_CACHE"), speculation=records("SPECULATIVE"),
+        affinity_quality=records("AFFINITY_QUALITY"), lookup_parity=records("LOOKUP_PARITY"),
         median_prefill_tok_s=statistics.median(r["tokens_per_second"] for r in prefill) if prefill else None,
         median_decode_tok_s=statistics.median(r["tokens_per_second"] for r in decode) if decode else None,
         peak_allocated_gpu_mib=max(map(float, re.findall(
@@ -273,6 +280,8 @@ def worker(args):
         command.append("--check-" + name.replace("_", "-"))
     if not args.single and not args.eval_corpus and cfg.get("speculative") == "mtp":
         command += ["--speculative=mtp", "--mtp-experts=cpu", "--draft-depth=" + str(cfg.get("draft_depth", 2))]
+    if not args.single and not args.eval_corpus and cfg.get("speculative") == "lookup":
+        command += ["--speculative=lookup", "--lookup-depth=" + str(cfg.get("lookup_depth", 3))]
     group = Path("/sys/fs/cgroup" + Path("/proc/self/cgroup").read_text().strip().split(":")[-1])
     before = group_stats(group)
     if before["memory.max"] != args.ram_gib * 2**30 or before["memory.swap.max"] != 0:

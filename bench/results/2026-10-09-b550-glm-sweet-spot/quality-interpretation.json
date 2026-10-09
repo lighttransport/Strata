@@ -1,0 +1,25 @@
+{
+  "metadata_correction": "The measured runner note says cache carries between tasks. Source inspection of Decoder::reset confirms state and expert tier reset per API request; only model pages/buffers stay warm.",
+  "manual_assessment": {
+    "0.00": {
+      "document": "Eight answers correct, three actions complete, natural stop.",
+      "cpp": "Five main defects identified; parser complete and passes 5020 cases; wrong claimed output for 12x, cap truncates final registry suggestion."
+    },
+    "0.04": {
+      "document": "Eight answers correct, three actions complete.",
+      "cpp": "No final answer; repeated incorrect UINT64_MAX reasoning until cap, no parser to test."
+    },
+    "0.06": {
+      "document": "Eight answers correct, three actions complete, natural stop. Unsupported extra inference that no external audit engagement exists.",
+      "cpp": "Five main defects identified; natural stop; parser passes 5020 cases. Wrong claimed output for 7x, shared with baseline error pattern."
+    },
+    "0.08": {
+      "document": "Eight answers correct, three actions present; rollback action wording ambiguous.",
+      "cpp": "Only partial findings; cap reached before parser; wrong overflow example, no parser to test."
+    },
+    "0.10": {
+      "document": "Eight core answers correct; final verification action blurs checksum agreement with remaining crates.",
+      "cpp": "No final answer or parser; repetitive reasoning until cap."
+    }
+  }
+}

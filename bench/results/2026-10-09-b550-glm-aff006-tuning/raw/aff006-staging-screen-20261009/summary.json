@@ -1,0 +1,58 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "stage8-original-batch",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 40435.8,
+      "prompt_per_token_ms": 5.495,
+      "prompt_per_second": 182.0,
+      "predicted_n": 389,
+      "predicted_ms": 25179.0,
+      "predicted_per_token_ms": 64.727,
+      "predicted_per_second": 15.4,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 389,
+      "total_tokens": 7747,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "stage8-original-batch",
+    "task": "cpp-review",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 4082,
+      "prompt_ms": 20066.3,
+      "prompt_per_token_ms": 4.916,
+      "prompt_per_second": 203.4,
+      "predicted_n": 1280,
+      "predicted_ms": 71530.5,
+      "predicted_per_token_ms": 55.883,
+      "predicted_per_second": 17.9,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 4082,
+      "completion_tokens": 1280,
+      "total_tokens": 5362,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "length"
+  }
+]

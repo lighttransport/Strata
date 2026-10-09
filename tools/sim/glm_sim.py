@@ -58,6 +58,7 @@ def add_config_args(ap, sweep=False):
         ap.add_argument(flag, dest=field, default=default, **kw)
 
     opt("--pack", "pack", choices=list(model.PACKS))
+    opt("--quality-reference", "quality_reference", help="unchanged target pack for exact-output optimization")
     opt("--threads", "threads")
     opt("--context", "context")
     opt("--prompt", "prompt")
@@ -65,6 +66,8 @@ def add_config_args(ap, sweep=False):
     opt("--speculation", "speculation", choices=["none", "mtp", "dflash", "selfspec"])
     opt("--mtp", "mtp_depth", help="mtp: draft tokens per round (0 = ordinary decode)")
     opt("--acceptance", "acceptance", choices=list(routing.ACCEPTANCE))
+    if not sweep:
+        ap.set_defaults(acceptance=None)
     opt("--draft-block", "draft_block", help="dflash: tokens verified per round (DFlash2: 8)")
     opt("--draft-acceptance", "draft_acceptance", choices=[k for k in routing.ACCEPTANCE if k.startswith("dflash")])
     opt("--draft-model-mib", "draft_model_mib")
@@ -117,6 +120,8 @@ CONFIG_FIELDS = [f.name for f in dataclasses.fields(RunConfig)]
 
 def config_from_args(args, **overrides):
     data = {name: getattr(args, name) for name in CONFIG_FIELDS if hasattr(args, name)}
+    if data.get("acceptance") is None:
+        data["acceptance"] = "b550_screen" if getattr(args, "hw", "") == "b550" else "mixed"
     data.update(overrides)
     for key in ("split_verify", "prefill_legacy", "pcie_prefetch", "expert_deferral", "adaptive_window",
                 "prefill_mla_f16", "prefill_kda_parts", "prefill_cpu_assist", "cost_aware_drafts", "draft_prefetch", "batch_mtp"):
@@ -265,7 +270,7 @@ def validate(args):
     print(f"\n{len(rows)} records, {len(misses)} outside tolerance; mean |error| on fit rows {mean_err * 100:.1f}%")
     if args.output:
         pathlib.Path(args.output).write_text(json.dumps(rows, indent=2) + "\n")
-    return 1 if any(not r["within"] and r["fit"] for r in rows) else 0
+    return 1 if any(not r["within"] for r in rows) else 0
 
 
 def fit(args):
@@ -278,19 +283,46 @@ def fit(args):
     print(f"wrote {out}")
 
 
+
+def check_implemented_config(cfg):
+    """Do not let what-if flags enter a native single-stream candidate list."""
+    unsupported = dict(pcie_share=0.0, pcie_prefetch=False, expert_deferral=False,
+                       cost_aware_drafts=False, draft_prefetch=False, cold_share=0.0,
+                       cold_layers=0, tail_affinity=0.0, tier_compress=1.0,
+                       prefill_stream_depth=0, prefill_gemm_scale=1.0,
+                       prefill_cpu_assist=False, batch=1, gpus=1)
+    invalid = [name for name, value in unsupported.items() if getattr(cfg, name) != value]
+    if cfg.tier_policy == "lru": invalid.append("tier_policy=lru")
+    if invalid:
+        raise ValueError("implemented-only plan excludes: " + ", ".join(invalid) +
+                         "; use --hypothetical without --implemented-only to explore them")
+
+
 def plan(args):
     hw = hardware_from_args(args)
     params = params_from_args(args)
     base = config_from_args(args)
     ram_gib = hw.memory.gib + hw.memory.page_cache_gib
     candidates = []
-    packs = args.packs or ["q23", "q22", "reap50_q23", "q2_orig"]
+    implemented = args.implemented_only or (hw.name == "b550" and not args.hypothetical)
+    if implemented:
+        check_implemented_config(base)
+        args.baseline = True
+        args.lossless = True
+    packs = args.packs or (["reap50_q23"] if hw.name == "b550" else ["q23", "q22", "reap50_q23", "q2_orig"])
+    if implemented:
+        base = base.copy(quality_reference=base.quality_reference or packs[0])
+        print("Implemented candidates only; predictions require held-out hardware validation.")
+        if hw.name == "b550" and base.acceptance == "b550_screen":
+            print("MTP acceptance uses a historical screening profile; validate each workload before deployment.")
     if not args.baseline:
         base = base.copy(tier_policy="lru", pcie_prefetch=True, adaptive_window=True)
     affinities = [0.0] if args.lossless else [0.0, 0.05, 0.1]
     tails = [8] if args.lossless else [8, 4]
     specs = [("none", 0), ("mtp", 1), ("mtp", 2), ("mtp", 3), ("mtp", 5), ("dflash", 8)]
-    if args.max_verify_width > 8:
+    if implemented:
+        specs = [("none", 0), ("mtp", 1), ("mtp", 2), ("mtp", 3)]
+    if args.max_verify_width > 8 and not implemented:
         specs.append(("dflash", args.max_verify_width))
     skips = [0.0] if args.lossless else [0.0, 0.1]
     denses = ["q8"] if args.lossless else ["q8", "q4"]
@@ -299,6 +331,8 @@ def plan(args):
     for pack_name, (spec, depth), aff, chunk, share, skip, dense, tail in itertools.product(
             packs, specs, affinities, chunks, shares, skips, denses, tails):
         if tail < 8 and depth < 2:
+            continue
+        if implemented and pack_name != base.quality_reference:
             continue
         pack = model.pack(pack_name)
         fits = pack.routed_total_bytes() / 2 ** 30 * (1 - share) + 7 <= ram_gib
@@ -358,8 +392,12 @@ def plan(args):
               f"CPU bytes {d.cpu_gb_per_token:.2f} GB/token at {d.cpu_gbps:.0f} GB/s")
         if best[0] < args.target_decode:
             needed = args.target_decode / best[0]
-            print(f"  {args.target_decode} tok/s needs the round {needed:.2f}x faster: e.g. CPU expert bytes/token "
-                  f"{d.cpu_gb_per_token / needed:.2f} GB (more tier hits or a smaller pack) or DRAM {hw.memory.dram_gbps * needed:.0f} GB/s")
+            print(f"  target requires {needed:.2f}x end-to-end speedup; changing CPU bandwidth alone "
+                  "does not scale the GPU and fixed costs.")
+            # Necessary memory bound only: all other work takes zero time here.
+            print(f"  necessary CPU-read bound: <= {d.cpu_gbps / args.target_decode:.2f} GB/output token "
+                  f"at {d.cpu_gbps:.0f} GB/s; actual allowance is smaller after fixed costs.")
+
     if args.output:
         pathlib.Path(args.output).write_text(json.dumps(rows, indent=2) + "\n")
 
@@ -395,7 +433,9 @@ def main(argv=None):
     p = sub.add_parser("plan", help="search configurations for a decode target on given hardware")
     add_hw_args(p); add_config_args(p)
     p.add_argument("--target-decode", type=float, default=30.0)
-    p.add_argument("--lossless", action="store_true", help="exclude affinity, REAP packs and non-exact RAM modes")
+    p.add_argument("--lossless", action="store_true", help="exclude changes to the quality reference (REAP needs --quality-reference), affinity and non-exact RAM modes")
+    p.add_argument("--implemented-only", action="store_true", help="native none/MTP, exact target, no hypothetical policies")
+    p.add_argument("--hypothetical", action="store_true", help="allow hypothetical architectures on B550; not a deployment recommendation")
     p.add_argument("--pareto", action="store_true", help="list the configurations no other beats on decode, prefill and KL at once")
     p.add_argument("--kl-budget", type=float, default=None, help="drop configurations whose rough KL estimate exceeds this (q23 lossless: 0.137)")
     p.add_argument("--baseline", action="store_true", help="today's algorithms only (no LRU tier, route prefetch, adaptive window)")

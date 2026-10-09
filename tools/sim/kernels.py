@@ -5,6 +5,10 @@ import dataclasses
 @dataclasses.dataclass
 class Params:
     """Calibrated free parameters. Defaults reproduce the quiet tr16 measurements (see calibration.py)."""
+    biased_resident_gpu_scale: float = 1.0 # aggregate resident/combine cost, only for positive affinity
+    routing_affinity_tau: float = 0.22 # separately calibrated lossy resident-routing response
+    tier_hit_scale: float = 1.0      # calibrated byte-hit curve correction; trace replay bypasses it
+    gpu_launch_scale: float = 1.0    # exposed launch fraction with graph replay
     cpu_bw_scale: float = 1.0          # in-model expert bandwidth / plain stream bandwidth of the same kernel
     cpu_width_penalty: float = 0.04    # bandwidth lost per extra token of width (multi-token kernel overhead)
     cpu_layer_overhead_ms: float = 0.12  # pool phase barriers, quantization, job build per MoE layer
@@ -31,6 +35,7 @@ class Params:
     prefill_layer_fixed_ms: float = 30.8     # per MoE layer: router, hc, norms, events
     prefill_dense_us: float = 0.62      # dense layers and head per token
     prefill_mla_pos_us: float = 0.5    # MLA prefill cost per token per 1k tokens of position (guess; indexer top-2048 caps it)
+    prefill_stage_gbps: float = 0.0   # measured end-to-end staging payload rate; 0 uses link rate
     prefill_lazy_gain: float = 1.0     # SSD reads overlap with PCIe this much (1 = fully serialized)
     ram_tier_wait_ms: float = 1.5      # exposed wait per disk-fetched expert on top of its bytes
     prefetch_accuracy: float = 0.9     # share of predicted next-layer routes that are right (FATE: 97 %, DraftExpert: 86-88 %)
@@ -85,7 +90,7 @@ def gpu_tier_ms(hw, bytes_, experts=0.0, params=None):
 
 
 def gpu_launch_ms(hw, params, layers=1):
-    return params.gpu_kernels_per_layer * hw.gpu.launch_us * 1e-3 * layers
+    return params.gpu_kernels_per_layer * hw.gpu.launch_us * params.gpu_launch_scale * 1e-3 * layers
 
 
 def pcie_ms(hw, bytes_, direction="h2d"):

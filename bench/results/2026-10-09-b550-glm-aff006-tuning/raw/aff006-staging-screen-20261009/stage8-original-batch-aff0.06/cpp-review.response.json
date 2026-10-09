@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-6914e0644213465daeec97cb",
+  "object": "chat.completion",
+  "created": 1791504397,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "reasoning_content": "Key bugs: parse_u64 sets out=0 first, violating \"out unchanged on failure\" (e.g. \"12x\" leaves out=0 instead of caller's value; also overflow wraps silently, e.g. \"18446744073789595916\" wraps, no rejection above UINT64_MAX). Also empty string accepted (returns true with out=0) \u2014 contract says nonempty only. Also parse_u64 marked noexcept but fine.\n\nRegistry: get returns string_view into vector's string; concurrent add may push_back causing reallocation/remove of elements \u2014 but strings themselves: push_back moves strings; reallocation moves string objects but the character buffers? std::string's internal buffer may be allocated on stack/heap; moving a std::string copies ownership \u2014 the data pointer inside the string object moves with the object (string_view refers to the character data owned by the string, which lives in heap or in the moved object?). Actually string_view refers to the character data owned by the string, which lives in heap (or in the moved object during move construction \u2014 move ctor steals pointer, so data pointer stays valid). But if vector reallocation happens while reader holds view, the string objects move; move construction transfers the pointer, so the heap buffer stays. However small strings may be stack-allocated (C++17: \"moved\" strings? no\u2014C++17 requires move ctor to leave source valid but spec says data may be stack allocated; move ctor can copy stack buffer). If source string's buffer is inside the vector's storage (stack allocated), moving to new vector storage copies the buffer into the new location; old location still holds a copy? Move ctor leaves source in valid but unspecified state \u2014 it may have transferred pointer, leaving source empty. If buffer was stack-allocated inside vector element storage, and vector reallocates, the old element storage is freed... Actually vector reallocation: allocates new array, move-constructs elements into new array, then dealloc_block destroys old elements and frees old array. If move ctor copied stack buffer into new array, source's buffer is in old array which gets destroyed \u2014 but the moved-to new array holds its own copy, fine. But if move ctor transferred pointer (heap), fine too. The dangerous case: reader holds string_view referring to buffer inside old vector element storage; then add triggers reallocation; move ctor may leave source's buffer... C++17 move ctor: \"the move constructor is declared... the values of the source string are transferred; the source is in valid but unspecified state\". If buffer is stack-allocated, move ctor must copy the buffer to destination; source's buffer remains in old storage until old storage destroyed \u2014 but reader's view points to old storage buffer which is destroyed after move. Hmm, but reader's view was obtained before reallocation; the view points into old element's buffer. During reallocation, old element is move-constructed into new array; then old array destroyed. If move ctor transferred pointer (heap case), view still valid. If stack case, view pointed to old storage which gets destroyed \u2192 dangling. So get returning view while add pushes \u2192 potential dangling. Also names[i] with no bounds check \u2014 get(i) out of range is UB, but contract doesn't mention; still a defect: no bounds validation. Also get returns view while holding lock then releases; concurrent add may push_back causing reallocation \u2014 that's the main memory bug. Also names.push_back(std::move(s)) while another thread holds view: same as above.\n\nAlso parse_u64 overflow: out*10 wraps, returns true for values > UINT64_MAX (e.g. \"18446744073789595916\" wraps to some value, returns true) \u2014 contract violation: must reject. Also empty string: returns true, contract says nonempty only. Also out=0 on failure: contract says out unchanged on failure \u2014 violation. Also parse_u64 marked noexcept but fine.\n\nRegistry: get returns string_view into vector's string; concurrent add may push_back causing reallocation/remove of elements \u2014 but strings themselves: push_back moves strings; reallocation moves string objects but the character buffers? std::string's internal buffer may be allocated on stack/heap; moving a std::string copies ownership \u2014 the data pointer inside the string object moves with the object (string_view refers to the character data owned by the string, which lives in heap or in the moved object during move construction \u2014 move ctor steals pointer, so data pointer stays valid). But if vector reallocation happens while reader holds view, the string objects move; move construction transfers the pointer, so the heap buffer stays. However small strings may be stack-allocated (C++17: \"moved\" strings? no\u2014C++17 requires move ctor to leave source valid but spec says data may be stack allocated; move ctor can copy stack buffer). If source string's buffer is inside the vector's storage (stack allocated), moving to new vector storage copies the buffer into the new location; old location still holds a copy? Move ctor leaves source in valid but unspecified state \u2014 it may have transferred pointer, leaving source empty. If buffer was stack-allocated inside vector element storage, and vector reallocates, the old element storage is freed... Actually vector reallocation: allocates new array, move-constructs elements into new array, then dealloc_block destroys old elements and frees old array. If move ctor copied stack buffer into new array, source's buffer is in old array which gets destroyed \u2014 but the moved-to new array holds its own copy, fine. But if move ctor transferred pointer (heap), fine too. The dangerous case: reader holds string_view referring to buffer inside old vector element storage; then add triggers reallocation; move ctor may leave source's buffer... C++17 move ctor: \"the move constructor is declared... the values of the source string are transferred; the source is in valid but unspecified state\". If buffer is stack-allocated, move ctor must copy the buffer to destination; source's buffer remains in old storage until old storage destroyed \u2014 but reader's view points to old storage buffer which is destroyed after move. Hmm, but reader's view was obtained before reallocation; the view points into old element's buffer. During"
+      },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 4082,
+    "completion_tokens": 1280,
+    "total_tokens": 5362,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 4082,
+    "prompt_ms": 20066.3,
+    "prompt_per_token_ms": 4.916,
+    "prompt_per_second": 203.4,
+    "predicted_n": 1280,
+    "predicted_ms": 71530.5,
+    "predicted_per_token_ms": 55.883,
+    "predicted_per_second": 17.9,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

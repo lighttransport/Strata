@@ -1,0 +1,24 @@
+{
+  "Zero bias": {
+    "status": "completed",
+    "factual_question_answers_present": 8,
+    "coherent": true,
+    "repetitive_loop_observed": false,
+    "issues": [
+      "Incorrectly compares 37.5% crate completion to the 99.7% checksum-agreement threshold.",
+      "Final practical actions are truncated by the output cap."
+    ],
+    "scope": "Manual inspection of one document request; no general quality certification."
+  },
+  "Affinity .12": {
+    "status": "completed",
+    "factual_question_answers_present": 8,
+    "coherent": true,
+    "repetitive_loop_observed": false,
+    "issues": [
+      "Incorrectly compares 37.5% crate completion to the 99.7% checksum-agreement threshold.",
+      "Final practical actions are truncated by the output cap."
+    ],
+    "scope": "Manual inspection of one document request; no general quality certification."
+  }
+}

@@ -1,0 +1,739 @@
+{
+  "records": [
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 8192,
+        "gpu_budget_mib": 15792,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.1
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "bench/results/2026-10-09-b550-glm-reap50-speed/raw/runs/affinity-screen-20261009/aff10.result.json",
+      "diagnostic": {
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 3515.99,
+            "bytes": 97271283712
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 2902.25,
+            "bytes": 81657593856
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 3992.87,
+            "bytes": 111409233920
+          }
+        ],
+        "mtp_timing": [],
+        "acceptance_probabilities": [],
+        "actual_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 942,
+            "MiB": 8183.62,
+            "fingerprint": 1517939902338964948
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "minimum_gpu_free_mib": 652
+      },
+      "scope": "workload prediction",
+      "runtime_headroom_mib": 256,
+      "name": "aff10.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 18.5895,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 6831.81,
+            "tokens_per_second": 18.5895
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 6089.07,
+            "tokens_per_second": 20.8571
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 7206.68,
+            "tokens_per_second": 17.6225
+          }
+        ]
+      }
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 8192,
+        "gpu_budget_mib": 15792,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.2
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "bench/results/2026-10-09-b550-glm-reap50-speed/raw/runs/affinity-screen-20261009/aff20.result.json",
+      "diagnostic": {
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 2010.14,
+            "bytes": 55476879360
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 1737.91,
+            "bytes": 48371466240
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 1592.5,
+            "bytes": 44436160512
+          }
+        ],
+        "mtp_timing": [],
+        "acceptance_probabilities": [],
+        "actual_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 942,
+            "MiB": 8183.62,
+            "fingerprint": 17244889402220222887
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "minimum_gpu_free_mib": 652
+      },
+      "scope": "workload prediction",
+      "runtime_headroom_mib": 256,
+      "name": "aff20.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 24.8539,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 5407.23,
+            "tokens_per_second": 23.4871
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 5109.85,
+            "tokens_per_second": 24.8539
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 5012.02,
+            "tokens_per_second": 25.3391
+          }
+        ]
+      }
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 8192,
+        "gpu_budget_mib": 15792,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.12
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "bench/results/2026-10-09-b550-glm-reap50-speed/raw/runs/affinity-frontier-20261009/aff12.result.json",
+      "diagnostic": {
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 3334.6,
+            "bytes": 92443246592
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 2816.96,
+            "bytes": 78569472000
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 2983.12,
+            "bytes": 83725451264
+          }
+        ],
+        "mtp_timing": [],
+        "acceptance_probabilities": [],
+        "actual_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 942,
+            "MiB": 8183.62,
+            "fingerprint": 13770086147494384895
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "minimum_gpu_free_mib": 652
+      },
+      "scope": "workload prediction",
+      "runtime_headroom_mib": 256,
+      "name": "aff12.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 20.3589,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 6661.8,
+            "tokens_per_second": 19.0639
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 6051.09,
+            "tokens_per_second": 20.9879
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 6238.07,
+            "tokens_per_second": 20.3589
+          }
+        ]
+      }
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 8192,
+        "gpu_budget_mib": 15792,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.15
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "bench/results/2026-10-09-b550-glm-reap50-speed/raw/runs/affinity-frontier-20261009/aff15.result.json",
+      "diagnostic": {
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 2635.62,
+            "bytes": 72329461760
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 2173.2,
+            "bytes": 60906143744
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 2230.49,
+            "bytes": 62254350336
+          }
+        ],
+        "mtp_timing": [],
+        "acceptance_probabilities": [],
+        "actual_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 942,
+            "MiB": 8183.62,
+            "fingerprint": 5883330289898808690
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "minimum_gpu_free_mib": 652
+      },
+      "scope": "workload prediction",
+      "runtime_headroom_mib": 256,
+      "name": "aff15.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 22.9962,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 6023.29,
+            "tokens_per_second": 21.0848
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 5522.65,
+            "tokens_per_second": 22.9962
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 5506.25,
+            "tokens_per_second": 23.0647
+          }
+        ]
+      }
+    },
+    {
+      "hw": "b550",
+      "config": {
+        "pack": "reap50_q23",
+        "quality_reference": "reap50_q23",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "speculation": "none",
+        "mtp_depth": 1,
+        "acceptance": "b550_screen",
+        "decode_cache_mib": 8192,
+        "gpu_budget_mib": 15792,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.3
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "bench/results/2026-10-09-b550-glm-reap50-speed/raw/runs/affinity-screen-20261009/aff30.result.json",
+      "diagnostic": {
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 997.759,
+            "bytes": 27228307456
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 1086.69,
+            "bytes": 29970268160
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 1187.84,
+            "bytes": 32876199936
+          }
+        ],
+        "mtp_timing": [],
+        "acceptance_probabilities": [],
+        "actual_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 942,
+            "MiB": 8183.62,
+            "fingerprint": 10932445973139244192
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1464.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8254.75,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "minimum_gpu_free_mib": 652
+      },
+      "scope": "workload prediction",
+      "runtime_headroom_mib": 256,
+      "name": "aff30.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 27.1388,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 4679.65,
+            "tokens_per_second": 27.1388
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 4649.71,
+            "tokens_per_second": 27.3135
+          },
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 4728.13,
+            "tokens_per_second": 26.8605
+          }
+        ]
+      }
+    }
+  ]
+}

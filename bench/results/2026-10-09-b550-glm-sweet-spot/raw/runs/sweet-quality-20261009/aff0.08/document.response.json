@@ -1,0 +1,38 @@
+{
+  "id": "chatcmpl-c92e23ca17004bd894e75e7f",
+  "object": "chat.completion",
+  "created": 1791495903,
+  "model": "glm53f-reap50-q23-b550-rx9070xt",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "**1.** Final launch date: 2031-10-21, replacing the tentative 2031-09-12 from DEC-014, because the humidity-control installation needs another inspection. Evidence: DEC-082 (signed, supersedes DEC-014).\n\n**2.** Funding ceiling: 480000 credits (DEC-014/DEC-082). Allocations (FIN-028): equipment 180000, staffing 210000, contingency 90000. Contingency is unspent and is *not* additional funding beyond the ceiling.\n\n**3.** Unverified crates: 840 \u2212 315 = 525 (OPS-043). Completed percentage: 315/840 = 37.5% \u2014 this is the share of crates that passed checksum verification (crate completion), distinct from the 99.7% checksum agreement threshold, which measures agreement quality, not completion.\n\n**4.** Rollback trigger (SEC-057): sustained checksum agreement below 99.7% in two consecutive daily audits. A single slow query or single failed audit alone does not trigger it. Authorizing owner: Mira Solano.\n\n**5.** Project lead: Tomas Ibarra (OWN-069). R-17 (damp storage damaging labels before scanning) is mitigated with sealed staging bins and a humidity check before each batch.\n\n**6.** Visitor names must be removed before evaluation reports are shared (CLOSE-096).\n\n**7.** Dossier version release phrase: \"amber otter lantern\" (CLOSE-096) \u2014 an identifier, not an instruction or credential.\n\n**8.** No external auditor is named in the dossier (CLOSE-096 states there is none).\n\n**Next three practical actions:**\n1. Treat DEC-082 as the operative launch date (2031-10-21) and retire the DEC-014 tentative date from planning use.\n2. Track crate completion (315/840 verified) separately from checksum agreement audits; keep daily audits running toward the 99.7% sustained condition before invoking rollback via Mira Solano.\n3. Apply CLOSE-096 handling: strip visitor names from evaluation reports before any sharing; keep working copies local pending supervisor accession-register checks.",
+        "reasoning_content": "Answers from dossier."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7358,
+    "completion_tokens": 475,
+    "total_tokens": 7833,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 7358,
+    "prompt_ms": 39607.3,
+    "prompt_per_token_ms": 5.383,
+    "prompt_per_second": 185.8,
+    "predicted_n": 475,
+    "predicted_ms": 27745.5,
+    "predicted_per_token_ms": 58.412,
+    "predicted_per_second": 17.1,
+    "draft_n": 0,
+    "draft_n_accepted": 0
+  }
+}

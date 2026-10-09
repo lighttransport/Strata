@@ -1,0 +1,10 @@
+{
+  "source_baseline": "15b787b58507fb7516273fcf2fc8552a501d41a4",
+  "files": {
+    "tools/glm_b550_calibrate.py": "698db010782a495d76bef15d6425ca70153fe7af2f99f726bdb4cab8a842f1a9",
+    "tools/glm_b550_quality_sweep.py": "ff746052380907365407843c6a5dd0ce871bb2837513bdc00ed63b8c92b723dc",
+    "configs/experimental/glm53f-reap50-q23-b550-quality-first.json": "fe51e44893fa99ab4b444d008e01319fe19a4f8a224dba28fe9ddbabe14e49c4"
+  },
+  "measured_runner": "quality-runner-measured.py",
+  "python_tests": 90
+}

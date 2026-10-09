@@ -1,0 +1,30 @@
+Oct 09 07:32:50 b550 python[215094]: [strata] answering: 26 of max 768 tokens, 12.7 tok/s, 33 s
+Oct 09 07:32:51 b550 python[215094]: [strata] answering: 40 of max 768 tokens, 12.9 tok/s, 34 s
+Oct 09 07:32:52 b550 python[215094]: [strata] answering: 55 of max 768 tokens, 13.4 tok/s, 35 s
+Oct 09 07:32:54 b550 python[215094]: [strata] answering: 70 of max 768 tokens, 13.6 tok/s, 36 s
+Oct 09 07:32:55 b550 python[215094]: [strata] answering: 86 of max 768 tokens, 13.9 tok/s, 38 s
+Oct 09 07:32:56 b550 python[215094]: [strata] answering: 103 of max 768 tokens, 14.2 tok/s, 39 s
+Oct 09 07:32:57 b550 python[215094]: [strata] answering: 118 of max 768 tokens, 14.3 tok/s, 40 s
+Oct 09 07:32:58 b550 python[215094]: [strata] answering: 135 of max 768 tokens, 14.5 tok/s, 41 s
+Oct 09 07:32:59 b550 python[215094]: [strata] answering: 152 of max 768 tokens, 14.7 tok/s, 42 s
+Oct 09 07:33:00 b550 python[215094]: [strata] answering: 167 of max 768 tokens, 14.7 tok/s, 43 s
+Oct 09 07:33:01 b550 python[215094]: [strata] answering: 183 of max 768 tokens, 14.8 tok/s, 44 s
+Oct 09 07:33:02 b550 python[215094]: [strata] answering: 198 of max 768 tokens, 14.8 tok/s, 45 s
+Oct 09 07:33:03 b550 python[215094]: [strata] answering: 215 of max 768 tokens, 14.9 tok/s, 46 s
+Oct 09 07:33:04 b550 python[215094]: [strata] answering: 232 of max 768 tokens, 15.0 tok/s, 47 s
+Oct 09 07:33:05 b550 python[215094]: [strata] answering: 249 of max 768 tokens, 15.1 tok/s, 48 s
+Oct 09 07:33:06 b550 python[215094]: [strata] answering: 266 of max 768 tokens, 15.2 tok/s, 49 s
+Oct 09 07:33:07 b550 python[215094]: [strata] answering: 283 of max 768 tokens, 15.3 tok/s, 50 s
+Oct 09 07:33:08 b550 python[215094]: [strata] answering: 300 of max 768 tokens, 15.3 tok/s, 51 s
+Oct 09 07:33:09 b550 python[215094]: [strata] answering: 318 of max 768 tokens, 15.4 tok/s, 52 s
+Oct 09 07:33:10 b550 python[215094]: [strata] answering: 333 of max 768 tokens, 15.4 tok/s, 53 s
+Oct 09 07:33:11 b550 python[215094]: [strata] answering: 348 of max 768 tokens, 15.3 tok/s, 54 s
+Oct 09 07:33:12 b550 python[215094]: [strata] answering: 364 of max 768 tokens, 15.3 tok/s, 55 s
+Oct 09 07:33:13 b550 python[215094]: [strata] answering: 380 of max 768 tokens, 15.3 tok/s, 56 s
+Oct 09 07:33:14 b550 python[215094]: [strata] answering: 396 of max 768 tokens, 15.4 tok/s, 57 s
+Oct 09 07:33:15 b550 python[215094]: [strata] done: 404 tokens in 58 s (15.4 tok/s) (stop, cancel=False)
+Oct 09 07:33:15 b550 python[215094]: [strata] stopping (Ctrl+C again to end the engine at once) ...
+Oct 09 07:33:15 b550 systemd[3387]: Stopping strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-hardware-screen-20261009/pp4096-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-hardware-screen-20261009/pp4096-aff0.06/memory.json...
+Oct 09 07:33:15 b550 python[215094]: [strata] stopped
+Oct 09 07:33:15 b550 systemd[3387]: Stopped strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-hardware-screen-20261009/pp4096-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-hardware-screen-20261009/pp4096-aff0.06/memory.json.
+Oct 09 07:33:15 b550 systemd[3387]: strata-glm-sweet-quality.service: Consumed 7min 52.740s CPU time.

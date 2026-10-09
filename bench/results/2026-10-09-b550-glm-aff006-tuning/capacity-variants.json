@@ -1,0 +1,23 @@
+[
+  {
+    "name": "cache10g",
+    "config": {
+      "prefill_batch": 8192,
+      "decode_cache_mib": 10240
+    },
+    "env": {
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096"
+    }
+  },
+  {
+    "name": "cache10g-probe24",
+    "config": {
+      "prefill_batch": 8192,
+      "decode_cache_mib": 10240
+    },
+    "env": {
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096",
+      "STRATA_GLM_CACHE_PROBE": "24"
+    }
+  }
+]

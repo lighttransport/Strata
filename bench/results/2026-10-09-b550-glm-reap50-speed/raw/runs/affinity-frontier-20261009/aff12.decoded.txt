@@ -1,0 +1,4 @@
+: group*64+proc within group, encoding
+/// group*64+proc, group*64+proc, group>1 → group*64+proc + 1 bit for group>1 extra bit. Windows CPU Sets encode group*64+proc, group>1 → +1 extra bit. Windows CPU processors above  excerpt:</think>Keep reasoning brief. Task: write a complete C++17 GoogleTest suite covering NUMA tensor ownership and row addressing, with helpers, ≥16 substantive TESTs, comments, one cpp block.
+
+Reasoning: The excerpt shows `ExpertJobMulti::NumaRows` — node-local

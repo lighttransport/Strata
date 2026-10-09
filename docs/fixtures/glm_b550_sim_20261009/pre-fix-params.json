@@ -1,0 +1,71 @@
+{
+  "params": {
+    "tier_hit_scale": 1.111014375009595,
+    "gpu_launch_scale": 0.006920643600499995,
+    "cpu_bw_scale": 0.9561416528099745,
+    "cpu_width_penalty": 0.04,
+    "cpu_layer_overhead_ms": 0,
+    "cpu_quant_scale": 1.0,
+    "gpu_width_factor": 0.185,
+    "gpu_width_factor_tail": 0.3,
+    "gpu_kernels_per_layer": 44,
+    "gpu_attn_us_per_layer": 40.0,
+    "gpu_attn_ctx_us": 0.12,
+    "head_fixed_ms": 0.8,
+    "tail_fixed_ms": 1.0,
+    "gpu_layer_fixed_us": 100.0,
+    "draft_fixed_ms": 1.3,
+    "tier_upload_ms": 1.0,
+    "prefill_kda_us": 36.0,
+    "prefill_kda_parts_factor": 0.7,
+    "prefill_mla_us": 58.8,
+    "prefill_mla_f16_factor": 0.468,
+    "prefill_gemm_us": 112.84838101550002,
+    "prefill_legacy_gemm": 1.87,
+    "prefill_overlap": 0.58,
+    "prefill_group_fixed_ms": 0.73,
+    "prefill_layer_fixed_ms": 30.8,
+    "prefill_dense_us": 0.62,
+    "prefill_mla_pos_us": 0.5,
+    "prefill_stage_gbps": 10.53,
+    "prefill_lazy_gain": 1.0,
+    "ram_tier_wait_ms": 1.5,
+    "prefetch_accuracy": 0.9,
+    "tail_topk_acceptance": 0.97,
+    "ecospec_union": 0.85,
+    "ecospec_acceptance": 0.98,
+    "selfspec_expert_mib": 24.0,
+    "tier_expert_us": 30.0,
+    "cold_tier_tokens": 256.0,
+    "cold_tier_speed": 0.75,
+    "truncation_efficiency": 0.5
+  },
+  "status": "provisional pre-rounding-fix aggregate calibration; corrected-kernel and new-workload validation required",
+  "training": [
+    "baseline.result-decode",
+    "baseline.result-prefill",
+    "cache7.result-decode",
+    "cache7.result-prefill"
+  ],
+  "holdout": [
+    "cache8.result-decode",
+    "cache8.result-prefill",
+    "mtp1.result-decode",
+    "mtp1.result-prefill",
+    "mtp2.result-decode",
+    "mtp2.result-prefill",
+    "mtp3.result-decode",
+    "mtp3.result-prefill"
+  ],
+  "records": "tools/sim/data/measured_b550.json",
+  "mean_abs_log_error": 0.012679123975938383,
+  "measured_anchors": {
+    "cpu_counter_bandwidth_GB_s": 27.986266177747954,
+    "prefill_staging_GB_s": 10.53
+  },
+  "fitted_fields": [
+    "gpu_launch_scale",
+    "prefill_gemm_us"
+  ],
+  "note": "The exposed graph-launch fraction and effective GEMM cost are aggregate fit terms, not independently measured kernel rates. Initial screening preceded the HIP canonical Q23 no-contraction fix; corrected 512-token measurements are separate."
+}

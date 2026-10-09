@@ -1,0 +1,20 @@
+{
+  "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "compile_command": [
+    "nice",
+    "-n",
+    "19",
+    "g++",
+    "-std=c++17",
+    "-O2",
+    "bench/results/2026-10-09-b550-glm-aff006-tuning/parser-checks/fe32e43b7442e5ac.cpp",
+    "-o",
+    "/tmp/strata-aff006-parser-fe32e43b7442e5ac"
+  ],
+  "compile_returncode": 0,
+  "compile_stdout": "",
+  "compile_stderr": "",
+  "test_returncode": 1,
+  "test_stdout": "FAIL case=6 expected_ok=1 actual_ok=0 expected=18446744073709551615 actual=16045690981402826360\nFAIL case=22 expected_ok=1 actual_ok=0 expected=585307925452650 actual=16045690981402826360\nFAIL case=27 expected_ok=1 actual_ok=0 expected=43318960222770668 actual=16045690981402826360\nFAIL case=33 expected_ok=1 actual_ok=0 expected=6263902 actual=16045690981402826360\nFAIL case=34 expected_ok=1 actual_ok=0 expected=11423125758310 actual=16045690981402826360\nFAIL case=46 expected_ok=1 actual_ok=0 expected=71336918361650 actual=16045690981402826360\nFAIL case=61 expected_ok=1 actual_ok=0 expected=109 actual=16045690981402826360\nFAIL case=64 expected_ok=1 actual_ok=0 expected=37639723938030976 actual=16045690981402826360\nFAIL case=69 expected_ok=1 actual_ok=0 expected=34895128585035 actual=16045690981402826360\nPARSER_QUALITY cases=5020 failures=678\n",
+  "test_stderr": ""
+}

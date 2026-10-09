@@ -59,12 +59,18 @@ def hardware_for(record):
     hw = hwmod.load(record.get("hw", "tr16"))
     for key, value in record.get("hw_set", {}).items():
         hw.set(key, value)
+    if "runtime_headroom_mib" in record:
+        hw.runtime_vram[record["config"]["pack"]]["runtime_headroom"] = record["runtime_headroom_mib"]
     return hw
 
 
 def predict(record, params, trace=None, prior=None):
     hw = hardware_for(record)
     cfg = RunConfig.from_dict(record["config"])
+    if trace is None and cfg.trace:
+        trace = decode.routing.read_routes(cfg.trace)
+    if prior is None and cfg.prior:
+        prior = cfg.prior
     if record["kind"] == "prefill":
         result = prefill.simulate(hw, cfg, params)
         return result.tok_s, result
@@ -94,9 +100,11 @@ def evaluate(records, params, only_fit=False):
     return rows
 
 
-def objective(records, params, other_weight=0.3):
-    """Mean |log(predicted / measured)|; fit rows weigh 1, the other records `other_weight` so the search
-    does not improve the quiet rows at the expense of the rest."""
+def objective(records, params, other_weight=0.0):
+    """Mean |log(predicted / measured)| over training rows only by default.
+
+    Nonzero other_weight is an explicit diagnostic option, never a held-out fit.
+    """
     total = weight_sum = 0.0
     for record in records:
         weight = 1.0 if record.get("fit", False) else other_weight
@@ -111,6 +119,8 @@ def objective(records, params, other_weight=0.3):
 def fit(records, params=None, names=None, rounds=3, factors=(0.7, 0.85, 0.95, 1.0, 1.05, 1.15, 1.3), log=print):
     params = dataclasses.replace(params or kernels.Params())
     names = names or FIT_PARAMETERS
+    if not any(r.get("fit", False) for r in records):
+        raise ValueError("fitting requires at least one training record (fit:true)")
     best = objective(records, params)
     log(f"start: mean |log error| = {best:.4f}")
     for round_ in range(rounds):
@@ -121,11 +131,14 @@ def fit(records, params=None, names=None, rounds=3, factors=(0.7, 0.85, 0.95, 1.
                 continue
             candidates = []
             for factor in factors:
-                trial = dataclasses.replace(params, **{name: base * factor})
+                value = base * factor
+                if name == "gpu_launch_scale":
+                    value = min(1.0, max(0.0, value))
+                trial = dataclasses.replace(params, **{name: value})
                 candidates.append((objective(records, trial), factor))
             score, factor = min(candidates)
             if score < best - 1e-6:
-                setattr(params, name, base * factor)
+                setattr(params, name, min(1.0, base * factor) if name == "gpu_launch_scale" else base * factor)
                 best = score
                 improved = True
                 log(f"round {round_ + 1}: {name} x{factor:g} -> {getattr(params, name):.4g} (error {best:.4f})")

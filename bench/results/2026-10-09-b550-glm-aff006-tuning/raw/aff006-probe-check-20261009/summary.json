@@ -1,0 +1,9 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "probe-check",
+    "status": "failed",
+    "error": "<HTTPError 400: 'Bad Request'>",
+    "http_body": "{\"error\": {\"type\": \"invalid_request_error\", \"message\": \"GLM: unsupported cache probe setup gpu=1 budget=8589934592 auto=0 pipeline=1 canon=1 hidden=0 ram=0 secondary=0 merge=0 exl3=0 pack=1\"}}"
+  }
+]

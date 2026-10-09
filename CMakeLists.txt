@@ -438,8 +438,10 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     # FMA changes tie results. The embedding gather also relies on separately rounded operations.
     # GLM's routed sum also specifies separate multiply/add rounding; HIP can
     # contract its __fmul_rn / __fadd_rn calls unless contraction is disabled.
+    # The canonical Q23 kernel quantizes both input and SwiGLU output to Q8_K;
+    # a contracted bias addition can change a code at a half-integer boundary.
     set_source_files_properties(src/kernels/cuda/elementwise.cu src/kernels/cuda/quantize_act.cu
-      src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu
+      src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_q23.cu
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
   endif()
 

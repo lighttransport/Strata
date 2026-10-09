@@ -164,25 +164,35 @@ def main():
     ap.add_argument('--contexts',type=int,nargs='+',default=[16384,32768,65536,131072])
     ap.add_argument('--output',type=Path,required=True)
     ap.add_argument('--prepare-only',action='store_true')
+    ap.add_argument('--leave-demo-stopped',action='store_true',help='do not restart the serving demo after validation')
+    ap.add_argument('--config',type=Path,default=ROOT/'configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json')
+    ap.add_argument('--decoder',type=Path,help='override the engine executable for an isolated build')
+    ap.add_argument('--port',type=int,default=8080)
+    ap.add_argument('--cache-mib',type=int,default=3072)
+    ap.add_argument('--reserve-mib',type=int,default=2048)
     ap.add_argument('--followup-from',type=Path,help='completed case directory; supplementary multi-turn test')
     args=ap.parse_args(); out=args.output.resolve();out.mkdir(parents=True,exist_ok=False)
     if args.followup_from:
         args.followup_from=args.followup_from.resolve()
         args.contexts=[json.loads((args.followup_from/'fixture.json').read_text())['context']]
-    base=json.loads((ROOT/'configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json').read_text())
+    if not 1 <= args.port <= 65535: ap.error('invalid port')
+    if args.cache_mib < 0 or args.reserve_mib < 512: ap.error('invalid cache/reserve budget')
+    base=json.loads(args.config.read_text())
+    if args.decoder: base['exe']=str(args.decoder.resolve())
+    endpoint=f'http://127.0.0.1:{args.port}'
     executable=ROOT/base['exe']
     save(out/'run.json',dict(host=__import__('socket').gethostname(),
-        python=sys.version,source_commit=command('git','rev-parse','HEAD').stdout.strip(),
+        python=sys.version,source_commit=command('git','rev-parse','HEAD',check=False).stdout.strip() or 'archive (see executable hash)',
         executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
         runner_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         model_path=base['model'],model_bytes=Path(base['model']).stat().st_size,
-        contexts=args.contexts,decode_cache_mib=3072,ram_limit_gib=60,vram_reserve_mib=2048))
+        contexts=args.contexts,decode_cache_mib=args.cache_mib,ram_limit_gib=60,vram_reserve_mib=args.reserve_mib))
     cases=[]
     for ctx in args.contexts:
         case=out/str(ctx)
         body,fixture=(build_followup(base['model'],args.followup_from,case) if args.followup_from
                       else build_fixture(base['model'],ctx,case))
-        cfg=dict(base,context=ctx,decode_cache_mib=3072,log=str(case/'engine.log'))
+        cfg=dict(base,context=ctx,decode_cache_mib=args.cache_mib,log=str(case/'engine.log'))
         save(case/'config.json',cfg); cases.append((case,body,fixture))
         print(json.dumps(dict(prepared=ctx,prompt=fixture['prompt_tokens'],output=fixture['max_output_tokens'])),flush=True)
     if args.prepare_only:return
@@ -202,13 +212,13 @@ def main():
                     '--property=MemorySwapMax=0','--property=OOMPolicy=kill',
                     '--property=KillMode=control-group',sys.executable,
                     str(ROOT/'tools/glm_guarded_serve.py'),str(case/'config.json'),
-                    '--ram-gib','60','--reserve-mib','2048','--port','8080',
+                    '--ram-gib','60','--reserve-mib',str(args.reserve_mib),'--host','127.0.0.1','--port',str(args.port),
                     '--telemetry',str(case/'memory.json'))
                 (case/'launch.txt').write_text(launch.stdout+launch.stderr)
                 deadline=time.monotonic()+240
                 while True:
                     try:
-                        with urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3) as r:
+                        with urllib.request.urlopen(endpoint+'/health',timeout=3) as r:
                             health=json.load(r)
                         if health.get('loaded') and health.get('max_context')==fixture['context']:break
                     except (OSError,ValueError):pass
@@ -218,7 +228,7 @@ def main():
                     time.sleep(2)
                 record['status']='request'; save(case/'progress.json',record)
                 start=time.monotonic()
-                req=urllib.request.Request('http://127.0.0.1:8080/v1/chat/completions',
+                req=urllib.request.Request(endpoint+'/v1/chat/completions',
                     json.dumps(body).encode(),{'Content-Type':'application/json'})
                 with urllib.request.urlopen(req,timeout=5400) as response: result=json.load(response)
                 record.update(status='completed',wall_seconds=time.monotonic()-start,response=result)
@@ -238,8 +248,11 @@ def main():
                 timings=record.get('response',{}).get('timings'),error=record.get('error')))
             save(out/'summary.json',summary);print(json.dumps(summary[-1]),flush=True)
     finally:
-        restored=command(str(ROOT/'tools/glm_b550_60g.sh'),'start',check=False)
-        (out/'restore.txt').write_text(restored.stdout+restored.stderr)
+        if args.leave_demo_stopped:
+            (out/'restore.txt').write_text('Demo left stopped by explicit request.\n')
+        else:
+            restored=command(str(ROOT/'tools/glm_b550_60g.sh'),'start',check=False)
+            (out/'restore.txt').write_text(restored.stdout+restored.stderr)
 
 
 if __name__=='__main__':main()

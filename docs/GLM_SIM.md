@@ -7,6 +7,8 @@ directory, so it can be used to compare placements, packs, MTP depths and even m
 machine is busy or absent. It is an estimate: on the rows it was calibrated on it is within 5 % on average,
 and on the other recorded runs within 10-25 % (see "Validation").
 
+B550 has a separate [measurement report and reproducible calibration](GLM_B550_SIM.md). Its fit is provisional and must be selected with `--params tools/sim/data/params_b550.json`; no 20 tok/s configuration is qualified.
+
 Run it with the system `python3` (numpy is needed only for routing-trace replay):
 
 ```sh
@@ -36,7 +38,7 @@ bandwidth, RAM). Presets:
 | `b550_32g_3070` | Ryzen 9 3950X (16 cores Zen 2), 2 x 16 GB DDR4-2666 (34 GB/s expert stream assumed), RTX 3070 8 GB, PCIe Gen4 x16 | unmeasured, estimated from specs |
 | `tr16+b550-ib`, `tr16+b550-1gbe` | tr16 decoder with b550 as remote worker | GLM_REMOTE_TP_COMM.md (20.9 us / 401 us round trips) |
 
-Only `tr16` is validated; the other presets exist to explore.
+The original validation below covers `tr16`. B550 has a separate provisional calibration; other presets remain exploratory.
 
 ## What is modeled
 

@@ -1,0 +1,5 @@
+[
+  {"name":"adapt20","env":{"STRATA_GLM_TIER_SEED":"20","STRATA_GLM_TIER_DECAY":"0.95"}},
+  {"name":"adapt10","env":{"STRATA_GLM_TIER_SEED":"10","STRATA_GLM_TIER_DECAY":"0.95","STRATA_GLM_TIER_MARGIN":"1.2"}},
+  {"name":"adaptfast","env":{"STRATA_GLM_TIER_SEED":"10","STRATA_GLM_TIER_DECAY":"0.9","STRATA_GLM_TIER_MARGIN":"1.1","STRATA_GLM_TIER_ADMIT":"1"}}
+]

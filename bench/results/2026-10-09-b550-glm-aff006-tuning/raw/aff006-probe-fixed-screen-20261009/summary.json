@@ -1,0 +1,86 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "probe16",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 33655.9,
+      "prompt_per_token_ms": 4.574,
+      "prompt_per_second": 218.6,
+      "predicted_n": 460,
+      "predicted_ms": 28235.3,
+      "predicted_per_token_ms": 61.381,
+      "predicted_per_second": 16.3,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 460,
+      "total_tokens": 7818,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "probe24",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 33876.5,
+      "prompt_per_token_ms": 4.604,
+      "prompt_per_second": 217.2,
+      "predicted_n": 494,
+      "predicted_ms": 30253.5,
+      "predicted_per_token_ms": 61.242,
+      "predicted_per_second": 16.3,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 494,
+      "total_tokens": 7852,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "probe24unbiased",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 34749.4,
+      "prompt_per_token_ms": 4.723,
+      "prompt_per_second": 211.7,
+      "predicted_n": 427,
+      "predicted_ms": 26665.7,
+      "predicted_per_token_ms": 62.449,
+      "predicted_per_second": 16.0,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 427,
+      "total_tokens": 7785,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  }
+]

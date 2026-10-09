@@ -1,0 +1,29 @@
+{
+  "decoder_sha256": "1091b85eaaf2f26802287cfe3111a870e9f96036514c8b2cffd3d30c0dd704eb",
+  "runner_sha256": "0a7c4f4b2bce4416c0684ee0191b36ab89aef8a23e7a00faf40abf76efe95c5e",
+  "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "cache_mib": 8192,
+  "reserve_mib": 512,
+  "context": 8192,
+  "order": [
+    "document",
+    "cpp-review"
+  ],
+  "trials": 1,
+  "variants": [
+    {
+      "name": "native-arithmetic",
+      "config": {
+        "prefill_batch": 8192
+      },
+      "env": {
+        "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096",
+        "STRATA_GLM_CANON": "0"
+      }
+    }
+  ],
+  "affinities": [
+    0.06
+  ],
+  "notes": "One request/task/setting. Real EOS honored. Model pages/buffers stay warm, but decoder state and expert tier reset per request; no prefix reuse or untimed request."
+}

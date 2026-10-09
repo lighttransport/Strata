@@ -1,0 +1,10 @@
+{
+  "source_baseline": "15b787b5",
+  "hip_binary_sha256": "e067fcd6977afa7722f06058838e3ae06d38a8f937a0ccb4bd1e2f6d4a8c6544",
+  "decoder_source_sha256": "93b19b7bf7043b805e1331039f1fe064cf7471d0841c0a282529cab763ff3116",
+  "hip_os_kernel": "Linux 7.0.0-38-generic",
+  "cuda_build": "passed, architecture 120, CUDA 13.2, single low-priority CPU worker; no local GPU tests",
+  "cuda_dependency_commit": "e45ca254acfb328dcc24a0c2e0b931c291a294d4",
+  "cuda_dependency_note": "Existing local GGML source used; differs from repository pinned dependency.",
+  "python_tests": 90
+}

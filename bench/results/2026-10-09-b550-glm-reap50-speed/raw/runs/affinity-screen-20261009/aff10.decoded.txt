@@ -1,0 +1,8 @@
+: group*64+proc within group, encoding group*64+proc
+/// one-based within group, one-based within group, one-based within group, comments say "one-based within group
+/// 42.55 GB/s Windows CPU Sets: group*64+one-based within group, comments say "corresponding logical processor
+group*64+one-based within gar
+group* gar
+group*64+ gar
+gar
+group*64+one-based within group, one-based 42.55 GB/s corrupted comments say "42. excerpt is corrupted with corrupted comments say "42.55 GB 42.

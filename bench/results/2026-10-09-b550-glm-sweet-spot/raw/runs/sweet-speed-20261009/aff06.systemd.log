@@ -1,0 +1,7 @@
+Running as unit: strata-lowmem-203153.service; invocation ID: 4adfbd8a61454a3993572962beee2378
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 2min 35.285s
+CPU time consumed: 13min 9.523s
+Memory peak: 256.0K
+Memory swap peak: 0B

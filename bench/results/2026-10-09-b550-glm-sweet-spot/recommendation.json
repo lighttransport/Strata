@@ -1,0 +1,20 @@
+{
+  "affinity": 0.06,
+  "experimental": true,
+  "quality_reference": "unchanged REAP50 Q23",
+  "config": "configs/experimental/glm53f-reap50-q23-b550-quality-first.json",
+  "decode_2k512_median": 16.4629,
+  "decode_range": [
+    16.3176,
+    17.1846
+  ],
+  "prefill_2k_warm_median": 229.124,
+  "document_decode": 15.6,
+  "document_prefill": 185.1,
+  "cpp_decode": 16.1,
+  "cpp_prefill": 207.8,
+  "parser_cases": 5020,
+  "parser_failures": 0,
+  "scope": "One document and one C++ prompt; natural finishes at .06. Limited experimental recommendation, not general or 128K qualification.",
+  "serving_demo": "stopped"
+}

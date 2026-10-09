@@ -1,0 +1,86 @@
+[
+  {
+    "affinity": 0.06,
+    "variant": "adapt20",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39504.2,
+      "prompt_per_token_ms": 5.369,
+      "prompt_per_second": 186.3,
+      "predicted_n": 449,
+      "predicted_ms": 29059.3,
+      "predicted_per_token_ms": 64.72,
+      "predicted_per_second": 15.5,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 449,
+      "total_tokens": 7807,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "adapt10",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39450.1,
+      "prompt_per_token_ms": 5.362,
+      "prompt_per_second": 186.5,
+      "predicted_n": 451,
+      "predicted_ms": 29442.9,
+      "predicted_per_token_ms": 65.284,
+      "predicted_per_second": 15.3,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 451,
+      "total_tokens": 7809,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  },
+  {
+    "affinity": 0.06,
+    "variant": "adaptfast",
+    "task": "document",
+    "trial": 0,
+    "timings": {
+      "cache_n": 0,
+      "prompt_n": 7358,
+      "prompt_ms": 39517.3,
+      "prompt_per_token_ms": 5.371,
+      "prompt_per_second": 186.2,
+      "predicted_n": 529,
+      "predicted_ms": 34428.9,
+      "predicted_per_token_ms": 65.083,
+      "predicted_per_second": 15.4,
+      "draft_n": 0,
+      "draft_n_accepted": 0
+    },
+    "usage": {
+      "prompt_tokens": 7358,
+      "completion_tokens": 529,
+      "total_tokens": 7887,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "finish_reason": "stop"
+  }
+]

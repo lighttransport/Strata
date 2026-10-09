@@ -1,0 +1,20 @@
+gu=10 down=11 4096x2048 experts=2 tokens=1 limit=10 skip=0 ragged=0: 0 of 8192 outputs differ, 0 non-finite, max |y| 176.3
+gu=10 down=11 4096x2048 experts=3 tokens=2 limit=10 skip=0 ragged=0: 0 of 24576 outputs differ, 0 non-finite, max |y| 269.4
+gu=10 down=11 4096x2048 experts=3 tokens=3 limit=10 skip=0 ragged=0: 0 of 36864 outputs differ, 0 non-finite, max |y| 249.9
+gu=10 down=11 4096x2048 experts=2 tokens=4 limit=0 skip=0 ragged=0: 0 of 32768 outputs differ, 0 non-finite, max |y| 354.3
+gu=10 down=10 4096x2048 experts=2 tokens=2 limit=10 skip=0 ragged=0: 0 of 16384 outputs differ, 0 non-finite, max |y| 677
+gu=11 down=11 4096x2048 experts=1 tokens=3 limit=10 skip=0 ragged=0: 0 of 12288 outputs differ, 0 non-finite, max |y| 648.4
+gu=10 down=11 1024x512 experts=5 tokens=6 limit=10 skip=0 ragged=0: 0 of 30720 outputs differ, 0 non-finite, max |y| 60.51
+gu=10 down=11 4096x2048 experts=2 tokens=5 limit=10 skip=0 ragged=0: 0 of 40960 outputs differ, 0 non-finite, max |y| 326.4
+gu=10 down=11 4096x2048 experts=2 tokens=7 limit=10 skip=0 ragged=0: 0 of 57344 outputs differ, 0 non-finite, max |y| 337.9
+gu=10 down=11 4096x2048 experts=3 tokens=8 limit=10 skip=0 ragged=0: 0 of 98304 outputs differ, 0 non-finite, max |y| 833.7
+gu=10 down=11 4096x2048 experts=8 tokens=8 limit=10 skip=0 ragged=8: 0 of 262144 outputs differ, 0 non-finite, max |y| 447.3
+gu=10 down=10 4096x2048 experts=2 tokens=8 limit=10 skip=0 ragged=0: 0 of 65536 outputs differ, 0 non-finite, max |y| 495.4
+gu=11 down=11 4096x2048 experts=1 tokens=8 limit=10 skip=0 ragged=0: 0 of 32768 outputs differ, 0 non-finite, max |y| 788.2
+gu=10 down=11 4096x2048 experts=2 tokens=8 limit=10 skip=0.25 ragged=0: 0 of 65536 outputs differ, 0 non-finite, max |y| 602.6
+gu=10 down=10 4096x2048 experts=2 tokens=2 limit=10 skip=2 ragged=0: 0 of 16384 outputs differ, 0 non-finite, max |y| 124.6
+gu=10 down=11 4096x2048 experts=2 tokens=1 limit=10 skip=0 ragged=0: 0 of 8192 outputs differ, 0 non-finite, max |y| 0.0007356
+gu=10 down=11 4096x2048 experts=2 tokens=4 limit=10 skip=0 ragged=0: 0 of 32768 outputs differ, 0 non-finite, max |y| 0.0007203
+rounding_boundary input_quant_equal=1
+gu=10 down=11 4096x2048 experts=1 tokens=1 limit=10 skip=0 ragged=0: 0 of 4096 outputs differ, 0 non-finite, max |y| 151.5
+PASS

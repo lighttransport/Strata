@@ -30,6 +30,7 @@ ACCEPTANCE = {
     "csv":    [0.85, 0.74, 0.66, 0.60, 0.55, 0.50, 0.45],    # 300/380 at depth 2
     "coding": [0.70, 0.55, 0.45, 0.40, 0.35, 0.30, 0.25],    # REAP 1K: 131/246 at depth 2
     "mixed":  [0.90, 0.82, 0.75, 0.70, 0.65, 0.60, 0.55],
+    "b550_screen": [96/171, 64/96, 49/64], # Q23 B550 screen, MTP3, 3 x 128 tokens; not a universal acceptance rate
     # DFlash2 block drafter (block 8): accepted lengths 4.10 MT-Bench, 4.39 HumanEval, 5.46 GSM8K (z-lab model card);
     # a flat per-position probability p gives sum_{i=1..7} p^i = that length.
     "selfspec": [0.86] * 15,         # DraftExpert: 84-87 % draft acceptance
@@ -41,7 +42,9 @@ ACCEPTANCE = {
 
 def tokens_per_round(depth, profile="mixed"):
     """Expected tokens delivered by one MTP round of `depth` drafts: the anchor plus the accepted prefix."""
-    probs = ACCEPTANCE[profile]
+    probs = ACCEPTANCE[profile] if isinstance(profile, str) else profile
+    if not probs or any(not 0 <= p <= 1 for p in probs):
+        raise ValueError("acceptance probabilities must lie in [0,1]")
     expected, survive = 1.0, 1.0
     for i in range(depth):
         survive *= probs[min(i, len(probs) - 1)]
@@ -153,18 +156,22 @@ def trace_union_ratio(trace, width):
 
 
 def trace_tier_hit(trace, prior_path, slots, adaptive, expert_mb=9.1, decay=0.98, uploads=16, admit=2.0,
-                   margin=1.5, prior_tokens=256):
+                   margin=1.5, prior_tokens=256, experts=288, layer_bytes=None):
     """Replay a routing trace through glm_residency_sim.Residency; returns the share of routes served."""
     sys.path.insert(0, str(TOOLS))
     from glm_residency_sim import Residency, load_prior  # noqa: E402
     layers = sorted({layer for routes in trace.values() for layer, _ in routes})
-    prior = load_prior(prior_path, 288)
-    state = Residency(layers, 288, prior, slots, None, decay, prior_tokens)
+    prior = load_prior(prior_path, experts)
+    state = Residency(layers, experts, prior, slots, None, decay, prior_tokens)
     total = hits = 0
     for _, routes in trace.items():
-        a, b, _ = state.step(routes, adaptive, uploads, admit, margin)
-        total += a
-        hits += b
+        for layer, ids in routes:
+            weight = layer_bytes[layer] if layer_bytes else 1
+            if any(e < 0 or e >= experts for e in ids):
+                raise ValueError("expert id outside model geometry")
+            total += len(ids) * weight
+            hits += sum(bool(state.vram[state.index[layer], e]) for e in ids) * weight
+        state.step(routes, adaptive, uploads, admit, margin)
     return hits / total if total else 0.0
 
 

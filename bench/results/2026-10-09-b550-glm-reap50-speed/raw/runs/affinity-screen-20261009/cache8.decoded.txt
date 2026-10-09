@@ -1,0 +1,6 @@
+: one encoded processor per call, one per
+/// ThreadAffinity record.  Windows: one encoded processor 0..255 (0..255) encoded processor 1..255 (0.. OS
+/// processor N-1 OS processor N-1 Group*64+P, Group* excerpt: the excerpt is truncated mid-sentence in the reference, mid-sentence in the reference, mid-s GoogleTest suite covering NUMA tensor ownership and row addressing. Reference code excerpts:
+// include/strata/kernels/cpu/pool.hpp - P2.S3: the CPU expert pool.
+//
+// A layer runs TEN experts against

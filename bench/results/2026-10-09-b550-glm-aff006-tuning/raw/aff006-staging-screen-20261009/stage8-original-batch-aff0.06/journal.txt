@@ -1,0 +1,30 @@
+Oct 09 09:07:46 b550 python[243535]: [strata] thinking: 873 of max 1280 tokens, 18.0 tok/s, 68 s
+Oct 09 09:07:47 b550 python[243535]: [strata] thinking: 890 of max 1280 tokens, 18.0 tok/s, 70 s
+Oct 09 09:07:48 b550 python[243535]: [strata] thinking: 906 of max 1280 tokens, 18.0 tok/s, 71 s
+Oct 09 09:07:49 b550 python[243535]: [strata] thinking: 924 of max 1280 tokens, 17.9 tok/s, 72 s
+Oct 09 09:07:50 b550 python[243535]: [strata] thinking: 942 of max 1280 tokens, 17.9 tok/s, 73 s
+Oct 09 09:07:51 b550 python[243535]: [strata] thinking: 960 of max 1280 tokens, 17.9 tok/s, 74 s
+Oct 09 09:07:52 b550 python[243535]: [strata] thinking: 976 of max 1280 tokens, 17.9 tok/s, 75 s
+Oct 09 09:07:53 b550 python[243535]: [strata] thinking: 993 of max 1280 tokens, 17.9 tok/s, 76 s
+Oct 09 09:07:54 b550 python[243535]: [strata] thinking: 1010 of max 1280 tokens, 17.9 tok/s, 77 s
+Oct 09 09:07:55 b550 python[243535]: [strata] thinking: 1028 of max 1280 tokens, 17.8 tok/s, 78 s
+Oct 09 09:07:56 b550 python[243535]: [strata] thinking: 1047 of max 1280 tokens, 17.9 tok/s, 79 s
+Oct 09 09:07:57 b550 python[243535]: [strata] thinking: 1066 of max 1280 tokens, 17.9 tok/s, 80 s
+Oct 09 09:07:58 b550 python[243535]: [strata] thinking: 1085 of max 1280 tokens, 17.9 tok/s, 81 s
+Oct 09 09:07:59 b550 python[243535]: [strata] thinking: 1104 of max 1280 tokens, 17.9 tok/s, 82 s
+Oct 09 09:08:00 b550 python[243535]: [strata] thinking: 1123 of max 1280 tokens, 17.9 tok/s, 83 s
+Oct 09 09:08:01 b550 python[243535]: [strata] thinking: 1141 of max 1280 tokens, 17.9 tok/s, 84 s
+Oct 09 09:08:02 b550 python[243535]: [strata] thinking: 1158 of max 1280 tokens, 17.9 tok/s, 85 s
+Oct 09 09:08:03 b550 python[243535]: [strata] thinking: 1177 of max 1280 tokens, 17.9 tok/s, 86 s
+Oct 09 09:08:04 b550 python[243535]: [strata] thinking: 1195 of max 1280 tokens, 17.9 tok/s, 87 s
+Oct 09 09:08:05 b550 python[243535]: [strata] thinking: 1213 of max 1280 tokens, 17.9 tok/s, 88 s
+Oct 09 09:08:06 b550 python[243535]: [strata] thinking: 1231 of max 1280 tokens, 17.9 tok/s, 89 s
+Oct 09 09:08:07 b550 python[243535]: [strata] thinking: 1250 of max 1280 tokens, 17.9 tok/s, 90 s
+Oct 09 09:08:08 b550 python[243535]: [strata] thinking: 1268 of max 1280 tokens, 17.9 tok/s, 91 s
+Oct 09 09:08:09 b550 python[243535]: [strata] done: 1280 tokens in 92 s (17.9 tok/s) (length, cancel=False)
+Oct 09 09:08:09 b550 python[243535]: [strata] the reply reached max tokens while still thinking, so it has no answer: a thinking budget (reasoning_budget_tokens, in the request or in strata-<model>.json for every request) leaves room to answer
+Oct 09 09:08:09 b550 python[243535]: [strata] stopping (Ctrl+C again to end the engine at once) ...
+Oct 09 09:08:09 b550 systemd[3387]: Stopping strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-staging-screen-20261009/stage8-original-batch-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-staging-screen-20261009/stage8-original-batch-aff0.06/memory.json...
+Oct 09 09:08:09 b550 python[243535]: [strata] stopped
+Oct 09 09:08:10 b550 systemd[3387]: Stopped strata-glm-sweet-quality.service - /home/syoyo/work/Strata/.venv-glm-hip/bin/python /home/syoyo/work/Strata-b550-calibration-15b787b5/tools/glm_guarded_serve.py /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-staging-screen-20261009/stage8-original-batch-aff0.06/config.json --ram-gib 60 --reserve-mib 512 --host 127.0.0.1 --port 8081 --telemetry /home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-staging-screen-20261009/stage8-original-batch-aff0.06/memory.json.
+Oct 09 09:08:10 b550 systemd[3387]: strata-glm-sweet-quality.service: Consumed 28min 21.288s CPU time.

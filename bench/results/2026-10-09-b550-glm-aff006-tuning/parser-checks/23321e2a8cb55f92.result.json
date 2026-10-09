@@ -1,0 +1,20 @@
+{
+  "compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "compile_command": [
+    "nice",
+    "-n",
+    "19",
+    "g++",
+    "-std=c++17",
+    "-O2",
+    "bench/results/2026-10-09-b550-glm-aff006-tuning/parser-checks/23321e2a8cb55f92.cpp",
+    "-o",
+    "/tmp/strata-aff006-parser-23321e2a8cb55f92"
+  ],
+  "compile_returncode": 0,
+  "compile_stdout": "",
+  "compile_stderr": "",
+  "test_returncode": 0,
+  "test_stdout": "PARSER_QUALITY cases=5020 failures=0\n",
+  "test_stderr": ""
+}
