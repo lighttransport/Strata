@@ -53,6 +53,7 @@ class RunConfig:
     affinity: float = 0.0              # STRATA_GLM_ROUTE_AFFINITY (lossy above 0)
     gpu_draft_experts: bool = False    # draft experts on the GPU (forced to CPU when a tier exists)
     gpu_budget_mib: float = 0          # --gpu-budget-mib; 0 = usable VRAM minus desktop
+    tier_owned_reserve: bool = False   # STRATA_GLM_TIER_OWNED_RESERVE=1: tier-fill reserve 512 instead of 1,280 MiB with MTP
     reserve_mib: float = 512           # STRATA_GLM_GPU_RESERVE_MIB
     prefill_scratch_mib: float = 1024  # STRATA_GLM_PREFILL_SCRATCH_CAP_MIB
     prefill_chunk: int = 4096          # prefill_batch

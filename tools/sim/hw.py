@@ -171,6 +171,13 @@ def tr16():
                 gemv_efficiency=0.85, tier_gbps=235.0, launch_us=3.0, desktop_mib=2150),
         pcie=Pcie(gen=3, lanes=8, h2d_gbps=7.18, latency_us=16.0),
         disk=Disk(read_gbps=1.0, fetch_gbps=1.0),
+        # Decode-time VRAM from GPU_LIVE on 2026-10-09 (build-levers/il, q23, MTP2, --gpu-budget-mib=12800): prefill
+        # scratch shrinks to 32 MiB and staging/prefetch are freed before decode; misc = the 1,280 MiB tier-fill
+        # reserve kept while MTP captures hidden states + 16 x 16 MiB adaptive staging - 28 MiB, which reproduces
+        # the measured 439-slot / 3,814 MiB tier.
+        runtime_vram={pack: dict(staging=0, prefetch=0, prefill_scratch=32, misc=1508, runtime_headroom=1024,
+                                 mtp_dense_mib=156.84, verify_history_by_depth={"1": 145.6, "2": 291.2, "3": 436.8})
+                      for pack in ("q23", "q22")},
         notes="calibration machine; model drive nvme0n1 is x1 (~1 GB/s), pack drive nvme1n1 is x4",
     )
 

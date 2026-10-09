@@ -20,7 +20,7 @@ class Params:
     gpu_attn_ctx_us: float = 0.12      # extra per 1k context tokens per MLA layer (indexer, top-2048 cap)
     head_fixed_ms: float = 0.8         # mHC read, norms, router of the first MoE layer
     tail_fixed_ms: float = 1.0         # logits D2H, finite check, argmax, tier planning
-    gpu_layer_fixed_us: float = 100.0  # router, mHC, mailbox publish/wait kernels per MoE layer per token group
+    gpu_layer_fixed_us: float = 60.0  # router, mHC, mailbox kernels per MoE layer per token group; fitted 2026-10-09
     draft_fixed_ms: float = 1.3        # per draft step beyond its head and experts (MLA, norms, launches)
     tier_upload_ms: float = 1.0        # exposed GPU time per step from adaptive-tier uploads
     # prefill (per MoE layer of one chunk): mixer, 18 group uploads, MoE GEMMs; see prefill.py
@@ -43,7 +43,7 @@ class Params:
     ecospec_union: float = 0.85        # window union multiplier with cost-aware drafts (EcoSpec reuses active experts)
     ecospec_acceptance: float = 0.98   # acceptance multiplier for the cost-aware choice
     selfspec_expert_mib: float = 24.0  # one DraftExpert per layer (about a routed expert's size at Q8)
-    tier_expert_us: float = 30.0       # per-expert launch/tile cost of the resident kernel (0.575 ms for 8 x 8 rows)
+    tier_expert_us: float = 5.0     # per-expert tile cost of the resident kernel; fitted to the measured affinity gains (2026-10-09)
     cold_tier_tokens: float = 256.0    # tokens after prefill before the adaptive tier is warm
     cold_tier_speed: float = 0.75      # decode speed during that period relative to warm (measured 13-18 vs 21)
     truncation_efficiency: float = 0.5  # share of would-be-rejected draft positions an adaptive window leaves out

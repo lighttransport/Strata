@@ -995,6 +995,194 @@
    "measured": {
     "tok_s": 303.87
    }
+  },
+  {
+   "name": "lever matrix 2026-10-09: base (q23, MTP2 split, adaptive tier, 512 fixed tokens)",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "build-levers/il interleaved base runs: 12 runs, 16.16-19.86 tok/s; load from other jobs",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "adaptive"
+   },
+   "measured": {
+    "tok_s": 18.54,
+    "tier_slots": 439
+   }
+  },
+  {
+   "name": "lever matrix 2026-10-09: mtp1",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "build-levers/il/02_mtp1.log, interleaved with base runs",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 1,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "adaptive"
+   },
+   "measured": {
+    "tok_s": 18.71
+   }
+  },
+  {
+   "name": "lever matrix 2026-10-09: mtp3",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "build-levers/il/04_mtp3.log, interleaved with base runs",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 3,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "adaptive"
+   },
+   "measured": {
+    "tok_s": 17.08
+   }
+  },
+  {
+   "name": "lever matrix 2026-10-09: unsplit",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.15,
+   "source": "build-levers/il/27_unsplit.log, interleaved with base runs",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "adaptive",
+    "split_verify": false
+   },
+   "measured": {
+    "tok_s": 16.6
+   }
+  },
+  {
+   "name": "lever matrix 2026-10-09: static",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.15,
+   "source": "build-levers/il/08_static.log, interleaved with base runs",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "static"
+   },
+   "measured": {
+    "tok_s": 17.62
+   }
+  },
+  {
+   "name": "lever matrix 2026-10-09: aff005",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "build-levers/il/14_aff005.log, interleaved with base runs",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "adaptive",
+    "affinity": 0.05
+   },
+   "measured": {
+    "tok_s": 21.93
+   }
+  },
+  {
+   "name": "lever matrix 2026-10-09: aff010",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": true,
+   "tolerance": 0.15,
+   "source": "build-levers/il/16_aff010.log, interleaved with base runs",
+   "config": {
+    "pack": "q23",
+    "mtp_depth": 2,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "adaptive",
+    "affinity": 0.1
+   },
+   "measured": {
+    "tok_s": 23.12
+   }
+  },
+  {
+   "name": "lever matrix 2026-10-09: q22",
+   "kind": "decode",
+   "hw": "tr16",
+   "quiet": false,
+   "fit": false,
+   "tolerance": 0.15,
+   "source": "build-levers/il/18_q22.log, interleaved with base runs",
+   "config": {
+    "pack": "q22",
+    "mtp_depth": 2,
+    "acceptance": "prime512",
+    "decode_cache_mib": 4800,
+    "gpu_budget_mib": 12800,
+    "reserve_mib": 512,
+    "context": 8192,
+    "threads": 15,
+    "tier_policy": "adaptive"
+   },
+   "measured": {
+    "tok_s": 19.48
+   }
   }
  ]
 }

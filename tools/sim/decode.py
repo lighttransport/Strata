@@ -91,7 +91,8 @@ def make_plan(hw, cfg, pack):
     return vram.plan(hw, pack, cfg.context, mtp, cfg.gpu_draft_experts, cfg.dense_format,
                      cfg.gpu_budget_mib or None, cfg.reserve_mib,
                      None if cfg.decode_cache_mib < 0 else cfg.decode_cache_mib,
-                     cfg.prefill_scratch_mib, cfg.prefetch_groups, cfg.gpus, drafter, depth, cfg.tier_compress)
+                     cfg.prefill_scratch_mib, cfg.prefetch_groups, cfg.gpus, drafter, depth, cfg.tier_compress,
+                     tier_owned_reserve=cfg.tier_owned_reserve)
 
 
 def tier_hit_share(hw, cfg, pack, plan, params, curve=None, trace=None, prior=None):

@@ -26,6 +26,9 @@ UNION_POWER = (1.05, 0.763)
 # (accepted / proposed from the MTP sweeps; the per-position split is inferred from tokens per round).
 ACCEPTANCE = {
     "prime":  [0.97, 0.95, 0.90, 0.85, 0.80, 0.75, 0.70],    # 87/92 at depth 2, 3.76 tokens/round at depth 3
+    # prime fixture decoded to a fixed 512 tokens (no stop ids) on 2026-10-09: 268 / 193 / 158 rounds at depth
+    # 1 / 2 / 3 give p1 0.903, p2 0.818, p3 0.793 (build-levers interleaved matrix); later positions extrapolated
+    "prime512": [0.903, 0.818, 0.793, 0.75, 0.72, 0.70, 0.68],
     "json":   [0.96, 0.94, 0.88, 0.82, 0.78, 0.72, 0.68],    # 137/144 at depth 2
     "csv":    [0.85, 0.74, 0.66, 0.60, 0.55, 0.50, 0.45],    # 300/380 at depth 2
     "coding": [0.70, 0.55, 0.45, 0.40, 0.35, 0.30, 0.25],    # REAP 1K: 131/246 at depth 2
