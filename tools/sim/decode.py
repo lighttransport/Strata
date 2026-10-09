@@ -307,13 +307,16 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             t = sum(gpu_g) + handoff
             gpu_exposed += sum(gpu_g)
         elif cfg.expert_deferral and len(widths) == 1:
-            # a share f of the routed work joins the residual one layer late; the GPU chain of the next layer
-            # starts after the other (1 - f), so the deferred part hides under it: max(cpu, (1 - f) cpu + gpu)
+            # a share f of the routed work joins the residual one layer late: the next layer's serial GPU chain
+            # starts after the other (1 - f) and runs alongside the deferred part; the shared and resident experts
+            # still overlap the CPU pass as without deferral
             f = min(1.0, max(0.0, cfg.deferral_share))
-            cpu_sum, gpu_sum = sum(cpu_g), sum(gpu_g)
-            t = max(cpu_sum, (1 - f) * cpu_sum + gpu_sum) + handoff
-            gpu_exposed += t - handoff - cpu_sum
-            cpu_exposed += cpu_sum
+            overlap = kernels.gpu_tier_ms(hw, one * unions[0] * hit) \
+                + kernels.gpu_gemv_ms(hw, FIXED_BYTES["shared_expert"], rows * widths[0], params)
+            serial = gpu_g[0] - overlap
+            t = max((1 - f) * cpu_g[0], overlap) + max(serial, f * cpu_g[0]) + handoff
+            gpu_exposed += max(0.0, overlap - (1 - f) * cpu_g[0]) + max(0.0, serial - f * cpu_g[0])
+            cpu_exposed += cpu_g[0]
         elif len(widths) == 2:
             # group B's GPU chain runs under group A's CPU pass and vice versa
             t = max(cpu_g[0], gpu_g[1]) + max(cpu_g[1], gpu_g[0]) + 2 * handoff
