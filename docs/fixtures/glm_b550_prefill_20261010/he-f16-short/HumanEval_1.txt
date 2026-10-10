@@ -1,0 +1,43 @@
+Simple: track depth, split at depth 0.</think>```python
+from typing import List
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    result = []
+    depth = 0
+    start = 0
+    clean = ''
+    for i, c in enumerate(paren_string):
+        if c == ' ':
+            continue
+        if c == '(':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth == 0:
+                result.append(paren_string[start:i+1].replace(' ', ''))
+    return result
+```
+
+Wait — spaces must be ignored entirely, so filter first. Cleaner version:
+
+```python
+from typing import List
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    s = paren_string.replace(' ', '')
+    result, depth, start = [], 0, 0
+    for i, c in enumerate(s):
+        if c == '(':
+            if depth == 0:
+                start = i
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                result.append(s[start:i+1])
+    return result
+```
+
+This handles the example: `'( ) (( )) (( )( ))'` → `['()', '(())', '(()())']`. ✓

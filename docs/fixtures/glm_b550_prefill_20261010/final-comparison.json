@@ -1,0 +1,23 @@
+{
+  "control": "final-control-8192-01",
+  "context": 8192,
+  "input_tokens": 7936,
+  "generated_tokens": 128,
+  "preset": "configs/experimental/glm-b550-q22-fit4-prefill8k-2133.json",
+  "candidates": {
+    "final-mmq-8192-01": {
+      "clean": true,
+      "prefill_speedup": 1.3551490542786662,
+      "decode_ratio": 0.8890430207718513,
+      "all_generated_tokens_equal_control": true,
+      "decode_cache_equal_control": true
+    },
+    "final-mmq-8192-02": {
+      "clean": true,
+      "prefill_speedup": 1.2287518490321017,
+      "decode_ratio": 0.9983970949968392,
+      "all_generated_tokens_equal_control": true,
+      "decode_cache_equal_control": true
+    }
+  }
+}

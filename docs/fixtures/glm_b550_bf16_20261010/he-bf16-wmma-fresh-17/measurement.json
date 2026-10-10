@@ -1,0 +1,18 @@
+{
+  "complete": false,
+  "tasks": 1,
+  "requested_tasks_complete": true,
+  "pass_at_1": 0.0,
+  "results": [
+    {
+      "task_id": "HumanEval/17",
+      "input_tokens": 14223,
+      "generated_tokens": 85,
+      "wall_seconds": 42.63779501296813,
+      "token_sha256": "2917cc828a26a9c8c9e3111b6f0d161fc11e96d5a74907904303073044e68817",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    }
+  ]
+}

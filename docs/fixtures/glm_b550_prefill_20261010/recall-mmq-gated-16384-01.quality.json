@@ -1,0 +1,19 @@
+{
+  "context": 16384,
+  "input_tokens": 15991,
+  "expected": {
+    "A17": "cedar",
+    "B29": "indigo",
+    "C43": "marble",
+    "D71": "twilight"
+  },
+  "maximum_generated_tokens": 256,
+  "first_turn_tokens": 86,
+  "first_turn_text": "All four records show identical code (atomic HostCore::First, set_host_core, host_core_setting, detect_cpu_topology_impl). No distinguishing variation. So all four are the same value.</think>All four records contain identical code with no distinguishing variation, so they share the same value.\n\n```json\n{\"A17\":\"cedar\",\"B29\":\"indigo\",\"C43\":\"marble\",\"D71\":\"twilight\"}\n```",
+  "decoded": null,
+  "correct_facts": 0,
+  "total_facts": 4,
+  "stopped": true,
+  "valid_run": true,
+  "passed": false
+}

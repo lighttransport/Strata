@@ -1,0 +1,64 @@
+[
+  {
+    "context": 8192,
+    "tokens": 7879,
+    "expected": {
+      "A17": "cedar",
+      "B29": "indigo",
+      "C43": "marble",
+      "D71": "twilight"
+    },
+    "path": "docs/fixtures/glm_b550_prefill_20261010/recall-c8192.ids",
+    "sha256": "d43cd927c4b7d1075dc593c583853a670e6eba24ea8c2fa66a1c9105d4c44c73"
+  },
+  {
+    "context": 16384,
+    "tokens": 15991,
+    "expected": {
+      "A17": "cedar",
+      "B29": "indigo",
+      "C43": "marble",
+      "D71": "twilight"
+    },
+    "path": "docs/fixtures/glm_b550_prefill_20261010/recall-c16384.ids",
+    "sha256": "050d4c1ff5ea42c255c8e4d3a6f4dbd8d0e9ce7134ff50350f00f590cb2b76e5"
+  },
+  {
+    "context": 32768,
+    "tokens": 32215,
+    "expected": {
+      "A17": "cedar",
+      "B29": "indigo",
+      "C43": "marble",
+      "D71": "twilight"
+    },
+    "path": "docs/fixtures/glm_b550_prefill_20261010/recall-c32768.ids",
+    "sha256": "6d3748621ea40540fd7332b851b26e06393f9f6d87642dae0b68233d207ee79f"
+  },
+  {
+    "context": 12288,
+    "tokens": 9673,
+    "expected": {
+      "A17": "cedar",
+      "B29": "indigo",
+      "C43": "marble",
+      "D71": "twilight"
+    },
+    "path": "docs/fixtures/glm_b550_prefill_20261010/recall-c12288.ids",
+    "sha256": "232f5ad0611e94a593ee36cb0631de0b556ec447273b9b4e767e8fd6b8317f21",
+    "derived_from": "recall-c16384.ids; keep 3 of every 5 identical code snippets, preserving all four facts"
+  },
+  {
+    "context": 24576,
+    "tokens": 19423,
+    "expected": {
+      "A17": "cedar",
+      "B29": "indigo",
+      "C43": "marble",
+      "D71": "twilight"
+    },
+    "path": "docs/fixtures/glm_b550_prefill_20261010/recall-c24576.ids",
+    "sha256": "7d792da4e57a4984daa84a263a193dc31f5fa0db2e5f2fe84c95eb615f536b3a",
+    "derived_from": "recall-c32768.ids; keep 3 of every 5 identical snippets, preserving all four facts"
+  }
+]

@@ -1,7 +1,11 @@
-// src/prefill/wmma_gemm.h - RDNA3 WMMA FP16 & BF16 GEMM for Strata prefill.
+// src/prefill/wmma_gemm.h - RDNA3 WMMA GEMMs and the opt-in RDNA4 BF16 expert experiment.
 #pragma once
 
 #include <cstdint>
+
+/// Experimental gfx1200/gfx1201 batched BF16 X[B,T,K] * W[B,N,K]^T, FP32 output/accumulation.
+bool strata_wmma_gfx12_bf16_batched(const uint16_t* X, const uint16_t* W, float* Y,
+                                   int T, int N, int K, int batches, void* stream);
 
 /// Compute Y[t, n] = beta * Y[t, n] + sum_k W[n, k] * X[t, k] using RDNA3 WMMA instructions.
 /// X: T x K row-major (leading dim K), fp16 (uint16_t)

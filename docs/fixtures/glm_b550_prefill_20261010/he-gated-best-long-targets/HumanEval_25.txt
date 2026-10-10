@@ -1,0 +1,46 @@
+The user's question is a Python function completion task, which is unrelated to the C++ code shown above. The C++ code is just background material to ignore. The user wants me to complete the Python function `factorize(n: int) -> List[int]` that returns a list of prime factors of a given integer in order from smallest to largest, with each factor repeated according to how many times it appears in the factorization. The input number should be equal to the product of all the factors.
+
+The docstring examples:
+- factorize(8) -> [2, 2, 2]
+- factorize(25) -> [5, 5]
+- factorize(70) -> [2, 5, 7]
+
+So I need to implement trial division factorization. A simple approach: start with divisor 2, then 3, then odd numbers up to sqrt(n). For each divisor, while it divides n, append it and divide n. Continue until the remaining n is 1 or the divisor squared exceeds n.
+
+Standard implementation:
+
+```python
+def factorize(n: int) -> List[int]:
+    factors = []
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+            factors.append(d)
+            n //= d
+        else:
+            d += 1  # or d += 2 after handling 2
+    if n > 1:
+        factors.append(n)
+    return factors
+```
+
+Wait, but there's a subtlety: if n is 1 initially (n == 1), the loop `d*d <= n` with d=2: 4 <= 1 false, so we skip loop, then `if n > 1` false, return []. That's fine: factorize(1) -> [].
+
+But careful: the loop as written above with `d += 1` each time even when n % d == 0 is wrong - it should only increment when not divisible. Let me rewrite properly:
+
+```python
+def factorize(n: int) -> List[int]:
+    factors = []
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+            factors.append(d)
+            n //= d
+        else:
+            d += 1
+    if n > 1:
+        factors.append(n)
+    return factors
+```
+
+Hmm, but there's a bug: when n % d == 0, we don't increment d, so we keep trying the same d - that's correct for trial division (we want to divide out all occurrences of d). But wait, after dividing out all 2s, d becomes 3, then we try 3, 4 (4 won't divide since all 2s are gone... actually 4 might divide if n had factor 4? No - after removing all 2s, n is odd, so 4 won't divide). Then 5, 6 (6 won't divide since 2s removed), 7, 8 (won't), 9, 10 (won't), 11... So we try some composites that fail to divide - harmless but slow. The standard optimization is to increment by 2 after handling 2 separately, but correctness is the same. Actually wait - there's a subtle bug: when n % d == 0, we don't increment d, so we keep trying the same d - that's correct for trial division (we want to divide out all occurrences of d). But wait, after dividing out all 2s, d becomes 3, then we try 3, 4 (4 won't divide since all 2s are gone... actually 4 might divide if n had factor 4? No - after removing all 2s, n is odd, so 4 won't divide). Then 5, 6 (6 won't divide since 2s removed), 7, 8 (won't), 9, 10 (won't), 11... So we try some composites that fail to divide - harmless but slow. The standard optimization is to increment by 2 after handling 2 separately, but correctness is the same. Actually wait - there's a subtle bug: when n % d == 0, we don't increment d, so we keep trying the same d - that's correct for trial division (we want to divide out all occurrences of d). But wait, after dividing out all 2s, d becomes 3, then we try 3, 4 (4 won't divide since all 2s are gone... actually 4 might divide if n had factor 4? No - after removing all 2s, n is odd, so 4 won't divide). Then 5, 6 (6 won't divide since 2s removed), 7, 8 (won't), 9, 

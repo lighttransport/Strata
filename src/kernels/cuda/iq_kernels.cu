@@ -1601,6 +1601,11 @@ __global__ void __launch_bounds__(256) swiglu_q8_1_entries_kernel(const float* _
 template<typename dst_t> __device__ __forceinline__ dst_t cvt(float v);
 template<> __device__ __forceinline__ float cvt<float>(float v) { return v; }
 template<> __device__ __forceinline__ __half cvt<__half>(float v) { return __float2half(v); }
+template<> __device__ __forceinline__ uint16_t cvt<uint16_t>(float v) {
+    uint32_t u = __float_as_uint(v);
+    if ((u & 0x7fffffffu) > 0x7f800000u) return uint16_t((u >> 16) | 64u);
+    return uint16_t((u + 0x7fffu + ((u >> 16) & 1u)) >> 16);
+}
 
 template<typename dst_t>
 __device__ void dq_iq2_xxs(const void* vx, int64_t ibs, dst_t* yy, int tid) {
@@ -2794,6 +2799,11 @@ void iq_dequant_f16(int t, const void* src, int64_t n, uint16_t* dst, void* stre
     if (n % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_f16: bad arguments\n"); std::exit(1); }
     dequant_flat_kernel<__half><<<(unsigned) (n / 256), 32, 0, (cudaStream_t) stream>>>(t, src, (__half*) dst);
     check("iq_dequant_f16");
+}
+void iq_dequant_bf16(int t, const void* src, int64_t n, uint16_t* dst, void* stream) {
+    if (n % 256 != 0 || !is_iq(t)) { std::fprintf(stderr, "iq_dequant_bf16: bad arguments\n"); std::exit(1); }
+    dequant_flat_kernel<uint16_t><<<(unsigned)(n / 256), 32, 0, (cudaStream_t)stream>>>(t, src, dst);
+    check("iq_dequant_bf16");
 }
 
 namespace {

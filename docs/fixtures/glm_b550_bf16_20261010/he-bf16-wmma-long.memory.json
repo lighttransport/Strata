@@ -1,0 +1,528 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "./tools/humaneval_b550.py",
+    "models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "datasets/HumanEval.jsonl.gz",
+    "--output",
+    "./docs/fixtures/glm_b550_bf16_20261010/he-bf16-wmma-long",
+    "--decoder",
+    "./build-hip/strata-glm-decode",
+    "--limit",
+    "30",
+    "--offset",
+    "0",
+    "--tokens",
+    "1024",
+    "--gpu-budget-mib",
+    "15360",
+    "--decode-cache-mib",
+    "12288",
+    "--expert-pack",
+    "models/glm53f-reap/REAP50-Q22-down-only-experimental.gguf",
+    "--context",
+    "16384",
+    "--prefill-batch",
+    "8192",
+    "--prefill-experts",
+    "bf16-batched",
+    "--threads",
+    "12",
+    "--background",
+    "./docs/fixtures/glm_b550_prefill_20261010/background-14000.txt",
+    "--task-indices",
+    "10,11,17,25"
+  ],
+  "peak_rss_kib": 51235552,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 44231516,
+  "sample_interval_ms": 100,
+  "rejected": null,
+  "interference": [
+    {
+      "reason": "external CPU work",
+      "pid": 457091,
+      "name": "hf",
+      "cpu_percent": 128.4199453646181,
+      "elapsed_seconds": 125.58770819497295
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 99.61001070294215,
+      "elapsed_seconds": 126.6616868909914
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 457091,
+      "name": "hf",
+      "cpu_percent": 282.0732078784249,
+      "elapsed_seconds": 126.66189535398735
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.94618507044217,
+      "elapsed_seconds": 142.3207196489675
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470932,
+      "name": "clang-23",
+      "cpu_percent": 100.08339716385719,
+      "elapsed_seconds": 142.32072274497477
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.55478709390455,
+      "elapsed_seconds": 143.49424624000676
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470932,
+      "name": "clang-23",
+      "cpu_percent": 99.70262788124434,
+      "elapsed_seconds": 143.49424913496478
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.70262788124434,
+      "elapsed_seconds": 143.49425389396492
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.25783973204005,
+      "elapsed_seconds": 144.63270382297924
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.13622769427049,
+      "elapsed_seconds": 144.63271041499684
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.11649395580923,
+      "elapsed_seconds": 145.8213145689806
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.27517888055033,
+      "elapsed_seconds": 145.82132095098495
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.033773330459,
+      "elapsed_seconds": 146.96088366600452
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.033773330459,
+      "elapsed_seconds": 146.9608884549816
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.58967349917666,
+      "elapsed_seconds": 148.07546225597616
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.58967349917666,
+      "elapsed_seconds": 148.07546692498727
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.24573730271165,
+      "elapsed_seconds": 149.21273905300768
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.24573730271165,
+      "elapsed_seconds": 149.2127442029887
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.63613014977781,
+      "elapsed_seconds": 150.36698941298528
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.502531281515,
+      "elapsed_seconds": 150.36699520400725
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.26436886120334,
+      "elapsed_seconds": 151.5339107249747
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.40740844358622,
+      "elapsed_seconds": 151.53391613601707
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.33110512077864,
+      "elapsed_seconds": 152.681464452995
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.20243060429424,
+      "elapsed_seconds": 152.68146929197246
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.90426129810069,
+      "elapsed_seconds": 153.7925139850122
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.90426129810069,
+      "elapsed_seconds": 153.79251856298652
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.60202361033942,
+      "elapsed_seconds": 154.9157564159832
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.71174021555768,
+      "elapsed_seconds": 154.91576077399077
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.25649978928105,
+      "elapsed_seconds": 156.0239650119911
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.15883160554723,
+      "elapsed_seconds": 156.02396941097686
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.65745296159017,
+      "elapsed_seconds": 157.13666186801856
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.65745296159017,
+      "elapsed_seconds": 157.1366663259687
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.59023248881653,
+      "elapsed_seconds": 158.25125055201352
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.59023248881653,
+      "elapsed_seconds": 158.2512555209687
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.44623159925675,
+      "elapsed_seconds": 159.36741403699853
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.44623159925675,
+      "elapsed_seconds": 159.36741844500648
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.49144569507833,
+      "elapsed_seconds": 160.48191833897727
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.59420064422942,
+      "elapsed_seconds": 160.48192274698522
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.25675854707387,
+      "elapsed_seconds": 161.59909192699706
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.25675854707387,
+      "elapsed_seconds": 161.59909690596396
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.202067011727,
+      "elapsed_seconds": 162.71804863901343
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.09577932714795,
+      "elapsed_seconds": 162.71805421897443
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.79427753263481,
+      "elapsed_seconds": 163.82919510896318
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.89432862609343,
+      "elapsed_seconds": 163.82919950701762
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 98.73617452377587,
+      "elapsed_seconds": 164.97366028901888
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.48371743570111,
+      "elapsed_seconds": 164.97366511798464
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.31679386484436,
+      "elapsed_seconds": 166.10009317600634
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.42903462710237,
+      "elapsed_seconds": 166.10009816498496
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.92111497664959,
+      "elapsed_seconds": 167.21098507096758
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.92111497664959,
+      "elapsed_seconds": 167.21099002001574
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 101.0409394083513,
+      "elapsed_seconds": 168.32931594300317
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.14677180296769,
+      "elapsed_seconds": 168.32932046201313
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 98.54221862615377,
+      "elapsed_seconds": 169.48631560301874
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.27102947924418,
+      "elapsed_seconds": 169.4863216250087
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.07947507964914,
+      "elapsed_seconds": 170.65537791798124
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.07947507964914,
+      "elapsed_seconds": 170.65538306796225
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.16401240816155,
+      "elapsed_seconds": 171.82347772398498
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.30790973800632,
+      "elapsed_seconds": 171.82348302396713
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.89234861625465,
+      "elapsed_seconds": 172.99302001099568
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.89234861625465,
+      "elapsed_seconds": 172.99302553199232
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.30338725136562,
+      "elapsed_seconds": 174.1611304639955
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.30338725136562,
+      "elapsed_seconds": 174.1611358539667
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 100.82354465583991,
+      "elapsed_seconds": 175.33154672698583
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.96910783672263,
+      "elapsed_seconds": 175.33155224798247
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470930,
+      "name": "cc1plus",
+      "cpu_percent": 99.123020949131,
+      "elapsed_seconds": 176.50179743597982
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 99.97752975041662,
+      "elapsed_seconds": 176.50180325697875
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 470974,
+      "name": "cc1plus",
+      "cpu_percent": 100.22740192929791,
+      "elapsed_seconds": 177.66911660996266
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 88.91540160990698,
+      "elapsed_seconds": 271.8771686470136
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 90.25172808836957,
+      "elapsed_seconds": 272.9852281619678
+    }
+  ],
+  "exit_code": 1,
+  "wall_seconds": 427.6935541079729
+}

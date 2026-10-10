@@ -1,0 +1,265 @@
+{
+  "hardware": {
+    "cpu": "Ryzen 9 3950X",
+    "gpu": "RX 9070 XT gfx1201",
+    "hip_version": "7.14.60850 (local packaging; headers/share/hip/version)",
+    "ddr_mt_s": 2133,
+    "clock_changes": false,
+    "ram_limit_gib": 60,
+    "inference_swap_limit_bytes": 0,
+    "gpu_physical_mib": 16304
+  },
+  "microbench": {
+    "v1": "wmma-v1.parity-bench.txt",
+    "v2": "wmma-v2.parity-bench.txt",
+    "v3": "wmma-v3.parity-bench.txt"
+  },
+  "quality_control": "docs/fixtures/glm_b550_prefill_20261010/he-mmq-long-targets/measurement.json",
+  "quality": {
+    "he-bf16-blas-long": {
+      "record": "docs/fixtures/glm_b550_bf16_20261010/he-bf16-blas-long/measurement.json",
+      "tasks": 4,
+      "passed": 2,
+      "malformed": [
+        "HumanEval/17",
+        "HumanEval/25"
+      ],
+      "task_ids": [
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/17",
+        "HumanEval/25"
+      ],
+      "requested_tasks_complete": true,
+      "cap_hits": 1,
+      "fresh_process": false,
+      "guard_exit_code": 0,
+      "guard_rejected": null,
+      "peak_swap_kib": 0,
+      "completed_matched_protocol": true
+    },
+    "he-bf16-wmma-long": {
+      "record": "docs/fixtures/glm_b550_bf16_20261010/he-bf16-wmma-long/measurement.json",
+      "tasks": 1,
+      "passed": 0,
+      "malformed": [],
+      "task_ids": [
+        "HumanEval/10"
+      ],
+      "requested_tasks_complete": false,
+      "cap_hits": 0,
+      "fresh_process": false,
+      "guard_exit_code": 1,
+      "guard_rejected": null,
+      "peak_swap_kib": 0,
+      "completed_matched_protocol": false
+    },
+    "he-bf16-wmma-fresh-17": {
+      "record": "docs/fixtures/glm_b550_bf16_20261010/he-bf16-wmma-fresh-17/measurement.json",
+      "tasks": 1,
+      "passed": 0,
+      "malformed": [],
+      "task_ids": [
+        "HumanEval/17"
+      ],
+      "requested_tasks_complete": true,
+      "cap_hits": 0,
+      "fresh_process": true,
+      "guard_exit_code": 0,
+      "guard_rejected": null,
+      "peak_swap_kib": 0,
+      "completed_matched_protocol": false
+    },
+    "he-bf16-wmma-fresh-25": {
+      "record": "docs/fixtures/glm_b550_bf16_20261010/he-bf16-wmma-fresh-25/measurement.json",
+      "tasks": 1,
+      "passed": 0,
+      "malformed": [],
+      "task_ids": [
+        "HumanEval/25"
+      ],
+      "requested_tasks_complete": true,
+      "cap_hits": 0,
+      "fresh_process": true,
+      "guard_exit_code": 0,
+      "guard_rejected": null,
+      "peak_swap_kib": 0,
+      "completed_matched_protocol": false
+    }
+  },
+  "performance": {
+    "bf16-blas8k.result": {
+      "record": "bf16-blas8k.result.json",
+      "complete": true,
+      "clean": true,
+      "rejected": null,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 20397.0,
+          "tokens_per_second": 389.076
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3793.44,
+          "tokens_per_second": 33.4788
+        }
+      ],
+      "peak_ram_gib": 48.60537338256836,
+      "minimum_gpu_free_mib": 1310,
+      "interference": []
+    },
+    "bf16-wmma16k.result": {
+      "record": "bf16-wmma16k.result.json",
+      "complete": true,
+      "clean": true,
+      "rejected": null,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 16128,
+          "batch": 8192,
+          "milliseconds": 37789.4,
+          "tokens_per_second": 426.786
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3796.75,
+          "tokens_per_second": 33.4496
+        }
+      ],
+      "peak_ram_gib": 48.79838562011719,
+      "minimum_gpu_free_mib": 1362,
+      "interference": []
+    },
+    "bf16-wmma32k.result": {
+      "record": "bf16-wmma32k.result.json",
+      "complete": true,
+      "clean": true,
+      "rejected": null,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 32512,
+          "batch": 8192,
+          "milliseconds": 72947.2,
+          "tokens_per_second": 445.692
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3948.7,
+          "tokens_per_second": 32.1624
+        }
+      ],
+      "peak_ram_gib": 49.10423278808594,
+      "minimum_gpu_free_mib": 1370,
+      "interference": []
+    },
+    "bf16-wmma8k-final.result": {
+      "record": "bf16-wmma8k-final.result.json",
+      "complete": true,
+      "clean": true,
+      "rejected": null,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 19583.4,
+          "tokens_per_second": 405.242
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3781.76,
+          "tokens_per_second": 33.5823
+        }
+      ],
+      "peak_ram_gib": 48.29209518432617,
+      "minimum_gpu_free_mib": 1354,
+      "interference": []
+    },
+    "bf16-wmma8k.result": {
+      "record": "bf16-wmma8k.result.json",
+      "complete": true,
+      "clean": true,
+      "rejected": null,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 20208.2,
+          "tokens_per_second": 392.713
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3796.25,
+          "tokens_per_second": 33.454
+        }
+      ],
+      "peak_ram_gib": 48.2912483215332,
+      "minimum_gpu_free_mib": 1357,
+      "interference": []
+    },
+    "mmq8k-control.result": {
+      "record": "mmq8k-control.result.json",
+      "complete": true,
+      "clean": true,
+      "rejected": null,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 2048,
+          "milliseconds": 138983.0,
+          "tokens_per_second": 57.1006
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3809.45,
+          "tokens_per_second": 33.3381
+        }
+      ],
+      "peak_ram_gib": 44.05836868286133,
+      "minimum_gpu_free_mib": 1158,
+      "interference": []
+    }
+  },
+  "default_parity": {
+    "all_128_tokens_equal_previous_default": true,
+    "reference": "docs/fixtures/glm_b550_prefill_20261010/base8k-02.stdout"
+  },
+  "final_wrapper_parity": {
+    "generated_128_tokens_equal_previous_wmma": true,
+    "note": "Host API isolation moved IQ stores to an explicit expert entry point; GPU math remains unchanged."
+  },
+  "incomplete_timing": {
+    "mmq8k-optimized-control": {
+      "reason": "service/benchmark timeout, changed file-page accounting and low GPU activity",
+      "progress": "mmq8k-optimized-control.progress.json",
+      "launcher": "mmq8k-optimized-control.runner.txt"
+    }
+  },
+  "selected": false,
+  "selection_reason": "Library BF16 introduced long coding failures; WMMA resident run incomplete and fresh probes failed. No BF16 preset or default change."
+}

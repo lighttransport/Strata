@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <stdexcept>
 
 #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
 // The HIP compatibility shim maps CUDA shuffle spellings to Strata helpers.
@@ -689,6 +690,23 @@ void Gemm::f16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, in
         X, CUDA_R_16F, K, (long long)T * K, &beta,
         Y, CUDA_R_32F, N, (long long)T * N, batches, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT),
         "cublasGemmStridedBatchedEx f16");
+}
+
+void Gemm::bf16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches,
+                        bool wmma) {
+    if (T <= 0 || N <= 0 || K <= 0 || batches <= 0) return;
+    if (wmma) {
+#if defined(STRATA_USE_HIP)
+        if (strata_wmma_gfx12_bf16_batched(X, W, Y, T, N, K, batches, stream_)) return;
+#endif
+        throw std::runtime_error("BF16 WMMA prefill requires gfx1200/gfx1201 and supported batch geometry");
+    }
+    const float alpha = 1.f, beta = 0.f;
+    ck(cublasGemmStridedBatchedEx((cublasHandle_t)handle_, CUBLAS_OP_T, CUBLAS_OP_N,
+        N, T, K, &alpha, W, CUDA_R_16BF, K, (long long)N * K,
+        X, CUDA_R_16BF, K, (long long)T * K, &beta,
+        Y, CUDA_R_32F, N, (long long)T * N, batches, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT),
+        "cublasGemmStridedBatchedEx bf16");
 }
 
 void Gemm::f16_batched_nn(const uint16_t* A, const uint16_t* B, float* C, int M, int N, int K, int batches) {

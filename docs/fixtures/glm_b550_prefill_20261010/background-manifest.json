@@ -1,0 +1,19 @@
+{
+  "6000": {
+    "path": "docs/fixtures/glm_b550_prefill_20261010/background-6000.txt",
+    "tokens": 6000,
+    "sha256": "51c5ac0cbbc16fdeeb3fdc11e1aa8d3fc55efe9679af03eb9f0498af98b1416c"
+  },
+  "12000": {
+    "path": "docs/fixtures/glm_b550_prefill_20261010/background-12000.txt",
+    "tokens": 12000,
+    "sha256": "700c9113d6ee371f66aaffa4efbba43ff9a04369130ea387067e287716dee71b",
+    "derived_from": "two copies of frozen background-6000.txt separated by newline, cropped to 12000 tokens"
+  },
+  "14000": {
+    "path": "docs/fixtures/glm_b550_prefill_20261010/background-14000.txt",
+    "tokens": 14000,
+    "sha256": "eb092e5a8bd53b6a34815cb5a41fc2ed705740033b5cfd67bc7fb1df346f5c62",
+    "derived_from": "three copies of frozen background-6000.txt separated by newline, cropped to 14000 tokens"
+  }
+}

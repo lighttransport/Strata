@@ -1,0 +1,13 @@
+BF16 casts, masked gather and direct quantized dequant: PASS
+BF16 wmma T=1 N=137 K=64 B=3 max_error=0 PASS
+BF16 wmma T=17 N=137 K=64 B=3 max_error=0 PASS
+BF16 wmma T=65 N=137 K=64 B=3 max_error=0 PASS
+BF16 wmma T=129 N=137 K=64 B=3 max_error=0 PASS
+BF16 wmma T=13 N=139 K=37 B=2 max_error=7.45058e-09 PASS
+BF16 wmma T=23 N=257 K=6144 B=2 max_error=2.74181e-06 PASS
+BF16 wmma T=128 N=4096 K=4096 B=2 max_error=2.6226e-06 PASS
+BENCH backend=blas T=128 N=4096 K=4096 B=2 ms=0.0874578 TFLOPS=98.2181
+BENCH backend=wmma T=128 N=4096 K=4096 B=2 ms=0.197884 TFLOPS=43.4089
+BF16 wmma T=256 N=4096 K=2048 B=2 max_error=1.2517e-06 PASS
+BENCH backend=blas T=256 N=4096 K=2048 B=2 ms=0.0884358 TFLOPS=97.1319
+BENCH backend=wmma T=256 N=4096 K=2048 B=2 ms=0.201452 TFLOPS=42.6401

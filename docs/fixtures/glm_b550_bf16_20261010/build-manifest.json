@@ -1,0 +1,10 @@
+{
+  "CMakeLists.txt": "aeb48b073c85d122f76ed682ffb0a8a81b36bda8b288576356015774b803214e",
+  "src/prefill/wmma_gfx12.cu": "741244ce378625dde8e6387d5e5f6c8dc6788c4a7972e9db2bba77756070e266",
+  "src/prefill/gemm.cu": "d05220a4c39790d800e5dcbf40429430d56f29beac3e733201c12fc758fa96a2",
+  "src/kernels/cuda/glm_prefill.cu": "8c3cbbb432179bd227acb97d0130f9161f4695ffc0e151f202f0af810ff70501",
+  "src/kernels/cuda/dequant_bf16.cu": "467c128fbb3faf96caf706c42cd85322cbfd4e3bee4f070c5eef65ec7b74b25d",
+  "src/kernels/cuda/iq_kernels.cu": "e1a4f1a7d5e9c71930eb18e482d352e79a953f291845132f5e2aa7c2a23fdaa5",
+  "src/program/glm_decode.cpp": "a7ccfeea9c66d37e035d410ae1e692b7dede66f9d0f7fd2cb75c45b1458c0174",
+  "build-hip/strata-glm-decode": "a5e02b78e9876f60ff6e01d7243e2cd897f4aa326117603a64019eab944588a1"
+}

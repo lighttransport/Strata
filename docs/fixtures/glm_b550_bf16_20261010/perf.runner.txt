@@ -1,0 +1,12 @@
+START mmq8k-control
+END mmq8k-control exit 0
+CLEAN True
+START bf16-blas8k
+END bf16-blas8k exit 0
+CLEAN True
+START bf16-wmma8k
+END bf16-wmma8k exit 0
+CLEAN True
+START bf16-wmma16k
+END bf16-wmma16k exit 0
+CLEAN True

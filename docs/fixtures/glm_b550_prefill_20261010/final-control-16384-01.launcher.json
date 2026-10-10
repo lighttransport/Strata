@@ -1,0 +1,6 @@
+{
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": "Running as unit: strata-lowmem-464875.service; invocation ID: d0faed1d909a4fa8a085040a052183ff\nFinished with result: success\nMain processes terminated with: code=killed/status=TERM\nService runtime: 6min 19.028s\nCPU time consumed: 12min 28.445s\nMemory peak: 48.4G\nMemory swap peak: 0B\n",
+  "service_properties": "Result=success\nExecMainCode=0\nExecMainStatus=0\nMemoryPeak=[not set]\nMemorySwapPeak=[not set]\n"
+}

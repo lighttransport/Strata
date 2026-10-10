@@ -1,0 +1,16 @@
+START hybrid-b16384-32k-02
+END hybrid-b16384-32k-02 exit 0 clean True prefill 327.186 decode 32.1953
+START hybrid-buckets-8k-01
+END hybrid-buckets-8k-01 exit 0 clean True prefill 402.829 decode 33.4396
+START hybrid-buckets-rows4-8k-01
+END hybrid-buckets-rows4-8k-01 exit 0 clean True prefill 453.489 decode 33.4427
+START base32k-02
+END base32k-02 exit 0 clean True prefill 94.5277 decode 32.0426
+START base16k-01
+END base16k-01 exit 0 clean True prefill 93.9893 decode 33.0892
+START hybrid-16k-01
+END hybrid-16k-01 exit 0 clean True prefill 303.926 decode 33.1642
+START f16-default-kda8k-01
+END f16-default-kda8k-01 exit 0 clean True prefill 278.122 decode 32.6581
+START hybrid-8k-01
+END hybrid-8k-01 exit 0 clean False prefill 250.645 decode 33.1482

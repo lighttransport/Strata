@@ -444,19 +444,19 @@ int main(int argc, char** argv) {
             const auto expected_state = state.get(), expected_out = out.get();
             // Hoist only token-independent normalization and gates. Every
             // recurrence output and final state must retain the original bits.
-            for (int columns : {32, 64, 128}) {
+            for (int columns : {32, 64, 128}) for (int chunk : {64, 256, 2048}) {
                 Buffer<float> prepared_state(initial), prepared_out(B * N), pk(key.get()),
                     pg(decay.get()), pb(beta.get()), qi(B * H);
                 k::glm_kda_prepare(q.p, pk.p, pg.p, pb.p, qi.p, H, B, nullptr);
-                for (int t = 0; t < B; t += 64)
+                for (int t = 0; t < B; t += chunk)
                     k::glm_kda_chunk(prepared_state.p, q.p + t * N, pk.p + t * N, v.p + t * N,
-                        pg.p + t * N, pb.p + t * H, prepared_out.p + t * N, H, D, std::min(64, B - t),
+                        pg.p + t * N, pb.p + t * H, prepared_out.p + t * N, H, D, std::min(chunk, B - t),
                         nullptr, columns, 1, qi.p + t * H);
                 const auto actual_state = prepared_state.get(), actual_out = prepared_out.get();
                 if (std::memcmp(actual_state.data(), expected_state.data(), expected_state.size() * 4) ||
                     std::memcmp(actual_out.data(), expected_out.data(), expected_out.size() * 4))
                     throw std::runtime_error("prepared KDA column kernel differs from original float bits");
-                if (B == 64 && benchmark) {
+                if (B == 64 && chunk == 64 && benchmark) {
                     cudaEvent_t begin, end;
                     ck(cudaEventCreate(&begin)); ck(cudaEventCreate(&end));
                     float total_ms = 0;
@@ -477,16 +477,16 @@ int main(int argc, char** argv) {
                     ck(cudaEventDestroy(begin)); ck(cudaEventDestroy(end));
                 }
             }
-            for (int columns : {32, 64}) {
+            for (int columns : {32, 64, 128}) for (int chunk : {64, 256, 2048}) {
                 Buffer<float> split(initial), split_out(B * N);
-                for (int t = 0; t < B; t += 64)
+                for (int t = 0; t < B; t += chunk)
                     k::glm_kda_chunk(split.p, q.p + t * N, key.p + t * N, v.p + t * N, decay.p + t * N,
-                                     beta.p + t * H, split_out.p + t * N, H, D, std::min(64, B - t), nullptr, columns);
+                                     beta.p + t * H, split_out.p + t * N, H, D, std::min(chunk, B - t), nullptr, columns);
                 const auto actual_state = split.get(), actual_out = split_out.get();
                 if (std::memcmp(actual_state.data(), expected_state.data(), expected_state.size() * 4) ||
                     std::memcmp(actual_out.data(), expected_out.data(), expected_out.size() * 4))
                     throw std::runtime_error("KDA split columns differ from original float bits");
-                if (B == 64 && benchmark) {
+                if (B == 64 && columns != 128 && chunk == 64 && benchmark) {
                     cudaEvent_t begin, end;
                     ck(cudaEventCreate(&begin)); ck(cudaEventCreate(&end));
                     for (int variant : {128, columns}) {

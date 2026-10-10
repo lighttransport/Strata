@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "./tools/glm_low_memory_bench.py", line 527, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "./tools/glm_low_memory_bench.py", line 486, in main
+    cache = [] if args.fit_only else clear_model_cache(cfg)
+                                     ^^^^^^^^^^^^^^^^^^^^^^
+  File "./tools/glm_low_memory_bench.py", line 74, in clear_model_cache
+    raise RuntimeError(f"model cache still holds {cached / 2**20:.1f} MiB outside the new cgroup")
+RuntimeError: model cache still holds 870.4 MiB outside the new cgroup

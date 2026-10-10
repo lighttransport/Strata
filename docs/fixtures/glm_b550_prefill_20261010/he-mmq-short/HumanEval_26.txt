@@ -1,0 +1,13 @@
+Remove all elements that occur more than once, keep order.</think>```python
+from typing import List
+
+def remove_duplicates(numbers: List[int]) -> List[int]:
+    counts = {}
+    for n in numbers:
+        counts[n] = counts.get(n, 0) + 1
+    result = []
+    for n in numbers:
+        if counts[n] == 1:
+            result.append(n)
+    return result
+```

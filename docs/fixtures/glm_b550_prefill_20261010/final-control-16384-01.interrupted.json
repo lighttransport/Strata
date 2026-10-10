@@ -1,0 +1,6 @@
+{
+  "reason": "Stopped current-condition control after the same file-page accounting collapse and low GPU utilization observed in the candidate; shared-system pressure also affects original MMQ.",
+  "unit": "strata-lowmem-464875.service",
+  "progress_record": "final-control-16384-01.progress.json",
+  "selected": false
+}

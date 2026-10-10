@@ -1,0 +1,8 @@
+{
+  "reference": "base8k-01 trial 0, old executable",
+  "candidate": "base8k-02 trial 0, new executable, new controls unset",
+  "generated_tokens": 128,
+  "equal": true,
+  "canonical_token_sha256": "99f666660062c41ed3f7e168c8843c29bd2fdbba3af7e73e8f62982aad9aee3c",
+  "limits": "Final-logit dump from base8k-01 is trial 1, so it is not an identical-prefix comparison."
+}

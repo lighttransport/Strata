@@ -1,0 +1,28 @@
+The task: complete make_palindrome. Algorithm: find longest palindromic suffix of string, then append reverse of prefix before that suffix.
+
+Standard solution: for i in range(len(s)): if s[i:] is palindrome: append reverse of s[:i] to s. Return s + s[:i][::-1].
+
+Examples: 'cat' → 'catac'. Check: i=0 'cat' not pal; i=1 'at' not; i=2 't' pal → append reverse of 'ca' → 'cat'+'ac'='catac'. ✓
+'cata': i=0 no; i=1 'ata' pal → append reverse of 'ca' → 'catac'. ✓
+'' → ''.
+
+So: for i in range(len(s)): if s[i:] is palindrome: append reverse of s[:i] to s. Return s + s[:i][::-1].
+
+Implement:
+
+def make_palindrome(s):
+    for i in range(len(s)):
+        if is_palindrome(s[i:]):
+            return s + s[:i][::-1]
+    return s  # or s + s[::-1] fallback? If no palindromic suffix found (i reaches len), loop ends; return s? Actually s[len:]='' is palindrome, so loop always finds at i=len? No, range(len) excludes len. Hmm, but s[len:] is '' which is palindrome; but i only goes to len-1. If none found... e.g. 'ab': i=0 'ab' no; i=1 'b' pal → 'ab'+'a'='aba'. Fine. If string is all... always finds since single char is palindrome. So loop always returns. But to be safe, after loop return s + s[::-1]? Not needed. Just return s after loop (unreachable). I'll add fallback return s.
+
+Return code block with imports (none needed).</think>```python
+def is_palindrome(string: str) -> bool:
+    return string == string[::-1]
+
+def make_palindrome(string: str) -> str:
+    for i in range(len(string)):
+        if is_palindrome(string[i:]):
+            return string + string[:i][::-1]
+    return string
+```

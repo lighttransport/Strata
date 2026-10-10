@@ -1,0 +1,26 @@
+{
+  "model": "models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "source_files": {
+    "src/program/glm_decode.cpp": "1d1c1d71fca2f86ce6746aa3f39208fbd1568d25476a09b6e748943e864e4bf0",
+    "serve/server.py": "fa95eceb0ff11cf24bf84c766f8ebf1ec10fae7c428c358f280a61c5f734ee35",
+    "src/kernels/cpu/pool.cpp": "e72d07143273845d1fbe4954957b5f50d32eb05216299f8cb4f45531211ca977"
+  },
+  "total_tokens": 249500,
+  "prefixes": {
+    "8192": {
+      "tokens": 7936,
+      "sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "path": "docs/fixtures/glm_b550_prefill_20261010/code-7936.ids"
+    },
+    "16384": {
+      "tokens": 16128,
+      "sha256": "ece584dcde68f2c7643f10c7bb334ce5f7e7c13f49e36c5a2413a01ef5c8a379",
+      "path": "docs/fixtures/glm_b550_prefill_20261010/code-16128.ids"
+    },
+    "32768": {
+      "tokens": 32512,
+      "sha256": "8f04f3a3b3f7349c1dd456406ef6615f75717f55b740389a301360634d1b7c00",
+      "path": "docs/fixtures/glm_b550_prefill_20261010/code-32512.ids"
+    }
+  }
+}

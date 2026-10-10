@@ -1,0 +1,1082 @@
+// src/kernels/cpu/pool.cpp - P2.S3: the CPU expert pool.  Read pool.hpp first; it explains the protocol.
+#include "strata/kernels/cpu/pool.hpp"
+#include "strata/kernels/canon_expert.hpp"
+#include <stdexcept>
+#include "strata/core/progress.hpp"
+#include "strata/kernels/cpu/expert_layout.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <chrono>
+#include <immintrin.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <stdexcept>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include "pool_affinity_win.hpp"
+#else
+#include <pthread.h>
+#include <sched.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+#include "pool_affinity_linux.hpp"
+#endif
+
+namespace strata::kernels::cpu {
+
+namespace {
+constexpr uint64_t pack_head(uint32_t epoch, uint32_t n, uint32_t i) {
+    return ((uint64_t) epoch << 32) | ((uint64_t) n << 16) | (uint64_t) i;
+}
+}  // namespace
+
+namespace {
+std::atomic<int> g_host_core{(int) HostCore::First};
+}  // namespace
+
+void set_host_core(HostCore where) { g_host_core.store((int) where); }
+HostCore host_core_setting() { return (HostCore) g_host_core.load(); }
+
+static CpuTopology detect_cpu_topology_impl(bool skip_first, PoolAffinity affinity);
+
+CpuTopology detect_cpu_topology(bool skip_first, PoolAffinity affinity) {
+    CpuTopology topo = detect_cpu_topology_impl(skip_first, affinity);
+    // --host-core last: the host takes the last core, the workers the others (the first included)
+    if (skip_first && host_core_setting() == HostCore::Last && !topo.is_hybrid && topo.host_core >= 0 &&
+        !topo.worker_cores.empty()) {
+        const int last = topo.worker_cores.back();
+        topo.worker_cores.pop_back();
+        topo.worker_cores.insert(topo.worker_cores.begin(), topo.host_core);
+        topo.host_core = last;
+    }
+    return topo;
+}
+
+int planned_host_core(PoolAffinity affinity) { return detect_cpu_topology(true, affinity).host_core; }
+
+static CpuTopology detect_cpu_topology_impl(bool skip_first, PoolAffinity affinity) {
+    CpuTopology topo;
+#if defined(_WIN32)
+    // Ask the OS rather than assuming a layout.  `hardware_concurrency()` returns LOGICAL processors, and on
+    // every SMT machine half of them are siblings - pinning one worker to each of the first N would put two
+    // workers on each physical core and halve the bandwidth the expert kernel is bound by.
+    DWORD len = 0;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len);
+    if (len == 0) {
+        // Preserve group identity even when detailed core topology is unavailable.
+        const WORD groups = GetActiveProcessorGroupCount();
+        for (WORD group = 0; group < groups; ++group) {
+            const DWORD count = GetActiveProcessorCount(group);
+            if (count == 0 || count == (DWORD) -1 || count > 64) continue;
+            for (DWORD i = 0; i < count; ++i) topo.worker_cores.push_back((int) group * 64 + (int) i);
+        }
+        if (skip_first && !topo.worker_cores.empty()) {
+            topo.host_core = topo.worker_cores.front();
+            topo.worker_cores.erase(topo.worker_cores.begin());
+        }
+        return topo;
+    }
+    std::vector<char> buf(len);
+    if (GetLogicalProcessorInformationEx(RelationProcessorCore,
+                                         (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) buf.data(), &len)) {
+        const char* p = buf.data();
+        const char* end = p + len;
+        struct CoreDesc {
+            uint8_t efficiency = 0;
+            bool has_smt = false;
+            std::vector<int> lps;
+        };
+        std::vector<CoreDesc> descs;
+        while (p < end) {
+            const auto* e = (const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*) p;
+            if (e->Relationship == RelationProcessorCore) {
+                CoreDesc cd;
+                cd.efficiency = e->Processor.EfficiencyClass;
+                cd.has_smt = (e->Processor.Flags & LTP_PC_SMT) != 0;
+                for (WORD group = 0; group < e->Processor.GroupCount; ++group) {
+                    const GROUP_AFFINITY& g = e->Processor.GroupMask[group];
+                    for (int bit = 0; bit < 64; ++bit) {
+                        if (g.Mask & (KAFFINITY(1) << bit)) {
+                            cd.lps.push_back((int) (g.Group * 64 + bit));
+                        }
+                    }
+                }
+                if (!cd.lps.empty()) {
+                    descs.push_back(std::move(cd));
+                }
+            }
+            p += e->Size;
+        }
+
+        uint8_t min_eff = 255, max_eff = 0;
+        for (const auto& c : descs) {
+            min_eff = (std::min)(min_eff, c.efficiency);
+            max_eff = (std::max)(max_eff, c.efficiency);
+        }
+
+        topo.is_hybrid = (max_eff > min_eff);
+        if (topo.is_hybrid) {
+            for (const auto& c : descs) {
+                if (c.efficiency == max_eff) {
+                    topo.p_cores++;
+                    topo.p_threads += (int) c.lps.size();
+                } else {
+                    topo.e_cores++;
+                }
+            }
+        } else {
+            topo.p_cores = (int) descs.size();
+            for (const auto& c : descs) topo.p_threads += (int) c.lps.size();
+        }
+
+        if (affinity == PoolAffinity::All || !topo.is_hybrid) {
+            // #642 (from Hardin22's fork): on a hybrid CPU the P-cores first (the host takes the first of them), so a
+            // pool smaller than the core count (setup's --pool-workers for a hybrid CPU) runs on the P-cores and the
+            // first E-cores rather than on whatever the OS numbered first.  All cores alike: the order is unchanged.
+            if (topo.is_hybrid)
+                std::stable_sort(descs.begin(), descs.end(),
+                                 [](const CoreDesc& x, const CoreDesc& y) { return x.efficiency > y.efficiency; });
+            for (const auto& c : descs) topo.worker_cores.push_back(c.lps[0]);
+            if (skip_first && !topo.worker_cores.empty()) {
+                topo.host_core = topo.worker_cores.front();
+                topo.worker_cores.erase(topo.worker_cores.begin());
+            }
+            return topo;
+        }
+
+        // Hybrid CPU with Auto or PCores affinity:
+        // Prioritize Performance cores:
+        // 1. Primary logical processor of each P-core (avoids SMT resource contention)
+        // 2. SMT sibling logical processors of P-cores
+        // 3. E-cores (only as overflow in Auto mode)
+        std::vector<int> p_primaries;
+        std::vector<int> p_siblings;
+        std::vector<int> e_cores;
+
+        for (const auto& c : descs) {
+            if (c.efficiency == max_eff) {
+                p_primaries.push_back(c.lps[0]);
+                for (size_t s = 1; s < c.lps.size(); ++s) {
+                    p_siblings.push_back(c.lps[s]);
+                }
+            } else {
+                for (int lp : c.lps) e_cores.push_back(lp);
+            }
+        }
+
+        if (skip_first && !p_primaries.empty()) {
+            topo.host_core = p_primaries.front();
+            p_primaries.erase(p_primaries.begin());
+        }
+
+        for (int cpu : p_primaries) topo.worker_cores.push_back(cpu);
+        for (int cpu : p_siblings) topo.worker_cores.push_back(cpu);
+        if (affinity != PoolAffinity::PCores) {
+            for (int cpu : e_cores) topo.worker_cores.push_back(cpu);
+        }
+        return topo;
+    }
+#else
+    // The logical CPUs this process may run on, ONE PER PHYSICAL CORE (issue #40): SMT siblings share a core's
+    // load/store bandwidth, so a worker on each would put two workers on one core, as the Windows branch above
+    // explains.  sysfs names each CPU's (package, core); the first allowed CPU of each pair is kept, so a taskset
+    // that leaves out the first sibling still gets its core.  Without sysfs every allowed CPU counts, as before.
+    auto topo_read = [](int cpu, const char* what) -> long {
+        char path[96];
+        std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/topology/%s", cpu, what);
+        long v = -1;
+        if (std::FILE* f = std::fopen(path, "r")) {
+            if (std::fscanf(f, "%ld", &v) != 1) v = -1;
+            std::fclose(f);
+        }
+        return v;
+    };
+    auto cap_read = [](int cpu) -> long {
+        char path[96];
+        std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/cpu_capacity", cpu);
+        long v = -1;
+        if (std::FILE* f = std::fopen(path, "r")) {
+            if (std::fscanf(f, "%ld", &v) != 1) v = -1;
+            std::fclose(f);
+        }
+        return v;
+    };
+
+    // #798: a cpulist ("0-7,16") of one of the hybrid PMU's CPU sets: /sys/devices/cpu_core/cpus and cpu_atom/cpus
+    auto cpulist_read = [](const char* path, std::vector<int>& out) -> bool {
+        std::FILE* f = std::fopen(path, "r");
+        if (!f) return false;
+        char text[1024] = {0};
+        const size_t n = std::fread(text, 1, sizeof text - 1, f);
+        std::fclose(f);
+        text[n] = '\0';
+        for (const char* p = text; *p;) {
+            char* end = nullptr;
+            const long lo = std::strtol(p, &end, 10);
+            if (end == p) break;
+            long hi = lo;
+            if (*end == '-') {
+                p = end + 1;
+                hi = std::strtol(p, &end, 10);
+            }
+            for (long c = lo; c <= hi && c < 4096; ++c) out.push_back((int) c);
+            p = end;
+            while (*p == ',' || *p == ' ' || *p == '\n')  ++p;
+        }
+        return !out.empty();
+    };
+
+    std::vector<int> allowed;
+    std::vector<unsigned long> allowed_mask;
+    if (detail::get_thread_affinity(allowed_mask, &allowed) != 0) {
+        for (unsigned i = 0; i < std::thread::hardware_concurrency(); ++i) allowed.push_back((int) i);
+    }
+
+    struct CoreLinux {
+        int cpu = -1;
+        long pkg = -1;
+        long core = -1;
+        long cap = -1;
+        bool is_sibling = false;
+    };
+    std::vector<CoreLinux> all_cpus;
+    std::vector<std::pair<long, long>> seen_phys;
+    long max_cap = 0, min_cap = 1000000;
+
+    for (int cpu : allowed) {
+        CoreLinux cl;
+        cl.cpu = cpu;
+        cl.pkg = topo_read(cpu, "physical_package_id");
+        cl.core = topo_read(cpu, "core_id");
+        cl.cap = cap_read(cpu);
+        if (cl.cap > 0) {
+            max_cap = (std::max)(max_cap, cl.cap);
+            min_cap = (std::min)(min_cap, cl.cap);
+        }
+        if (cl.pkg >= 0 && cl.core >= 0) {
+            const std::pair<long, long> key{cl.pkg, cl.core};
+            if (std::find(seen_phys.begin(), seen_phys.end(), key) != seen_phys.end()) {
+                cl.is_sibling = true;
+            } else {
+                seen_phys.push_back(key);
+            }
+        }
+        all_cpus.push_back(cl);
+    }
+
+    // #798: which CPUs are E-cores.  Intel's hybrid PMU lists them (cpu_atom/cpus beside cpu_core/cpus); without it a
+    // CPU is an E-core when its capacity is under 90% of the largest.  Turbo Boost Max 3.0 gives the "favored"
+    // P-cores a slightly higher capacity (1024 against 1012 on a Core Ultra 7 270K Plus): "capacity == the maximum"
+    // counted 2 of its 8 P-cores and started 1 pool worker.
+    std::vector<int> pmu_core, pmu_atom;
+    const bool pmu = cpulist_read("/sys/devices/cpu_core/cpus", pmu_core) &&
+                     cpulist_read("/sys/devices/cpu_atom/cpus", pmu_atom);
+    auto is_e = [&](const CoreLinux& cl) {
+        if (pmu) return std::find(pmu_atom.begin(), pmu_atom.end(), cl.cpu) != pmu_atom.end();
+        return max_cap > 0 && cl.cap > 0 && cl.cap * 10 < max_cap * 9;
+    };
+    bool any_e = false, any_p = false;
+    for (const auto& cl : all_cpus) (is_e(cl) ? any_e : any_p) = true;
+    topo.is_hybrid = any_e && any_p;
+    if (topo.is_hybrid) {
+        for (const auto& cl : all_cpus) {
+            if (!is_e(cl)) {
+                if (!cl.is_sibling) topo.p_cores++;
+                topo.p_threads++;
+            } else {
+                if (!cl.is_sibling) topo.e_cores++;
+            }
+        }
+    } else {
+        topo.p_cores = (int) seen_phys.size();
+        topo.p_threads = (int) all_cpus.size();
+    }
+
+    if (affinity == PoolAffinity::All || !topo.is_hybrid) {
+        if (topo.is_hybrid)   // #642: the P-cores first (see the Windows branch)
+            std::stable_sort(all_cpus.begin(), all_cpus.end(),
+                             [&](const CoreLinux& x, const CoreLinux& y) {
+                                 return is_e(x) != is_e(y) ? !is_e(x) : x.cap > y.cap;
+                             });
+        for (const auto& cl : all_cpus) {
+            if (!cl.is_sibling) topo.worker_cores.push_back(cl.cpu);
+        }
+        if (skip_first && !topo.worker_cores.empty()) {
+            topo.host_core = topo.worker_cores.front();
+            topo.worker_cores.erase(topo.worker_cores.begin());
+        }
+        return topo;
+    }
+
+    // Hybrid CPU on Linux:
+    std::vector<int> p_primaries;
+    std::vector<int> p_siblings;
+    std::vector<int> e_cores;
+
+    for (const auto& cl : all_cpus) {
+        if (!is_e(cl)) {
+            if (!cl.is_sibling) p_primaries.push_back(cl.cpu);
+            else p_siblings.push_back(cl.cpu);
+        } else {
+            e_cores.push_back(cl.cpu);
+        }
+    }
+
+    if (skip_first && !p_primaries.empty()) {
+        topo.host_core = p_primaries.front();
+        p_primaries.erase(p_primaries.begin());
+    }
+
+    for (int cpu : p_primaries) topo.worker_cores.push_back(cpu);
+    for (int cpu : p_siblings) topo.worker_cores.push_back(cpu);
+    if (affinity != PoolAffinity::PCores) {
+        for (int cpu : e_cores) topo.worker_cores.push_back(cpu);
+    }
+    return topo;
+#endif
+    return topo;
+}
+
+std::vector<int> physical_cores(bool skip_first, PoolAffinity affinity) {
+    return detect_cpu_topology(skip_first, affinity).worker_cores;
+}
+
+namespace {
+
+bool pin_this_thread(int core, [[maybe_unused]] int worker = -1) {
+    if (core < 0) return false;
+#if defined(_WIN32)
+    return detail::set_thread_group_affinity(core, worker);
+#else
+    const int error = detail::pin_thread_to_cpu(core);
+    if (error != 0)
+        std::fprintf(stderr, "strata cpu pool: affinity for worker %d (CPU %d) failed: %d; previous affinity kept\n",
+                     worker, core, error);
+    return error == 0;
+#endif
+}
+
+}  // namespace
+
+ThreadAffinity pin_current_thread(int core) {
+    if (core < 0) return {};
+#if defined(_WIN32)
+    ThreadAffinity previous;
+    ULONG target = 0;
+    if (!detail::get_thread_cpu_sets(previous.cpu_sets) || !detail::cpu_set_for_core(core, target) ||
+        !SetThreadSelectedCpuSets(GetCurrentThread(), &target, 1)) {
+        std::fprintf(stderr, "strata cpu pool: host CPU Set selection for processor %d failed: %lu; previous placement kept\n",
+                     core, (unsigned long) GetLastError());
+        return {};
+    }
+    previous.valid = true;
+    return previous;
+#else
+    ThreadAffinity previous;
+    int error = detail::get_thread_affinity(previous.mask);
+    if (error == 0) error = detail::pin_thread_to_cpu(core);
+    if (error != 0) {
+        std::fprintf(stderr, "strata cpu pool: host affinity for CPU %d failed: %d; previous affinity kept\n", core, error);
+        return {};
+    }
+    previous.valid = true;
+    return previous;
+#endif
+}
+
+void restore_thread_affinity(const ThreadAffinity& previous) {
+    if (!previous.valid) return;
+#if defined(_WIN32)
+    // Clearing an originally empty selection restores process-default/all-group eligibility without
+    // turning the caller's implicit Windows 11 affinity into an explicit single-group hard mask.
+    if (!SetThreadSelectedCpuSets(GetCurrentThread(), previous.cpu_sets.empty() ? nullptr : previous.cpu_sets.data(),
+                                 (ULONG) previous.cpu_sets.size()))
+        std::fprintf(stderr, "strata cpu pool: host CPU Set restoration failed: %lu\n",
+                     (unsigned long) GetLastError());
+#else
+    const int error = detail::set_thread_affinity(previous.mask);
+    if (error != 0)
+        std::fprintf(stderr, "strata cpu pool: host affinity restoration failed: %d\n", error);
+#endif
+}
+
+namespace {
+std::atomic<const ExpertPool*> g_diag_pool{nullptr};
+void diag_active_pool(std::FILE* f) {
+    if (const ExpertPool* p = g_diag_pool.load()) p->diag(f);
+}
+int64_t now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+}  // namespace
+
+void ExpertPool::diag(std::FILE* f) const {
+    const uint64_t h = head_.load();
+    std::fprintf(f, "  expert pool: epoch %u, batch epoch %u: %u of %u jobs claimed, %u done; %u of %d workers parked, "
+                    "%u sleeping; mode %d\n", epoch_.load(), (uint32_t) (h >> 32), (uint32_t) h & 0xffffu,
+                 (uint32_t) (h >> 16) & 0xffffu, done_.load(), parked_.load(), n_, sleepers_.load(), mode_);
+    std::fprintf(f, "  expert pool threads:");
+    for (int i = 0; i < n_; ++i) {
+        const int32_t s = wstate_[(size_t) i].load();
+        if (s == kParked) std::fprintf(f, " w%d=parked", i);
+        else if (s == kSleeping) std::fprintf(f, " w%d=sleeping", i);
+        else if (s == kBetween) std::fprintf(f, " w%d=draining", i);
+        else std::fprintf(f, " w%d=job%d", i, s);
+    }
+    const int32_t hs = hstate_.load();
+    const char* hn = hs == kIdle ? "idle" : hs == kWaitParked ? "waiting for the workers to park"
+                   : hs == kWaitDone ? "waiting for the jobs to finish" : "running a job";
+    std::fprintf(f, "; host %s", hn);
+    if (hs >= 0) std::fprintf(f, " %d", hs);
+    std::fprintf(f, " for %lld ms\n", (long long) (now_ms() - hstate_ms_.load()));
+}
+
+ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
+    : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
+    if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
+    if (const char* e = std::getenv("STRATA_NATIVE_NUMA_LOCAL")) {
+        if (std::string(e) != "0" && std::string(e) != "1")
+            throw std::invalid_argument("STRATA_NATIVE_NUMA_LOCAL must be 0 or 1");
+#if defined(__linux__)
+        native_local_enabled_ = *e == '1' && access("/sys/devices/system/node/node1", F_OK) == 0 &&
+                                access("/sys/devices/system/node/node2", F_OK) != 0;
+        if (native_local_enabled_) {
+            cpu_nodes_.assign(CPU_SETSIZE, -1);
+            for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu)
+                for (int node = 0; node < 2; ++node) {
+                    char path[96];
+                    std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/node%d", cpu, node);
+                    if (access(path, F_OK) == 0) cpu_nodes_[cpu] = node;
+                }
+        }
+#endif
+    }
+#if defined(__linux__)
+    if(access("/sys/devices/system/node/node1",F_OK)==0 && access("/sys/devices/system/node/node2",F_OK)!=0 && cpu_nodes_.empty()) {
+        cpu_nodes_.assign(CPU_SETSIZE,-1);
+        for(int cpu=0;cpu<CPU_SETSIZE;++cpu)for(int node=0;node<2;++node) {
+            char path[96];std::snprintf(path,sizeof(path),"/sys/devices/system/cpu/cpu%d/node%d",cpu,node);
+            if(access(path,F_OK)==0)cpu_nodes_[cpu]=node;
+        }
+    }
+#endif
+    if (const char* e = std::getenv("STRATA_NATIVE_TASKS_PER_THREAD")) {
+        char* end = nullptr;
+        const long value = std::strtol(e, &end, 10);
+        if (end == e || *end || value < 1 || value > 16)
+            throw std::invalid_argument("STRATA_NATIVE_TASKS_PER_THREAD must be 1..16");
+        native_tasks_per_thread_ = (int) value;
+    }
+    if (const char* e = std::getenv("STRATA_POOL_SPIN_US"))   // a test knob; see kSpinBeforeSleep
+        spin_before_sleep_ = std::chrono::microseconds((std::max)(0, std::atoi(e)));
+    if (n_workers > 0) {
+        n_ = n_workers;
+    } else if (topo_.is_hybrid && affinity_ != PoolAffinity::All) {
+        n_ = (std::max)(1, topo_.p_cores - 1);
+    } else {
+        n_ = (int) topo_.worker_cores.size();
+    }
+    if (n_ < 1) n_ = 1;
+    if(pin && !cpu_nodes_.empty()) {
+        for(int i=0;i<n_ && i<int(topo_.worker_cores.size());++i) {
+            int core=topo_.worker_cores[i],node=cpu_nodes_[core];
+            if(node>=0 && node<2 && numa_cores_[node]<0)numa_cores_[node]=core;
+        }
+        numa_rows_available_=numa_cores_[0]>=0 && numa_cores_[1]>=0;
+    }
+    scratch_.resize((size_t) n_);
+    wstate_.reset(new std::atomic<int32_t>[(size_t) n_]);
+    for (int i = 0; i < n_; ++i) wstate_[(size_t) i].store(kParked);
+    hstate_ms_.store(now_ms());
+    g_diag_pool.store(this);
+    strata::core::diag_pool_fn().store(&diag_active_pool);
+    split_.resize((size_t) kMaxSplit);
+    split_multi_.resize((size_t) kMaxSplitMulti);
+    threads_.reserve((size_t) n_);
+    for (int i = 0; i < n_; ++i) {
+        const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
+        threads_.emplace_back([this, i, core] {
+            pin_this_thread(core, i);
+            worker(i);
+        });
+    }
+}
+
+ExpertPool::~ExpertPool() {
+    const ExpertPool* self = this;
+    g_diag_pool.compare_exchange_strong(self, nullptr);
+    stop_.store(true, std::memory_order_release);
+    // Bump the epoch so a PARKED worker notices the stop flag rather than sleeping through it.
+    publish();
+    for (auto& t : threads_) t.join();
+}
+
+void ExpertPool::publish() {
+    // Both sides are seq_cst, and that is the whole lost-wakeup argument: a worker going to sleep does
+    // `sleepers_++` and then reads `epoch_`, the host does `epoch_++` and then reads `sleepers_`.  In one total
+    // order at least one of them sees the other's write - the worker sees the new epoch and does not sleep, or
+    // the host sees the sleeper and notifies under the mutex the worker holds until it is inside `wait`.
+    // On x86 the fetch_add is a locked xadd either way, so this costs the token path nothing.
+    epoch_.fetch_add(1, std::memory_order_seq_cst);
+    if (sleepers_.load(std::memory_order_seq_cst) != 0) {
+        std::lock_guard<std::mutex> lk(sleep_mu_);
+        sleep_cv_.notify_all();
+    }
+}
+
+void ExpertPool::worker(int id) {
+    uint32_t seen = 0;
+    // ARRIVE at the park before the first wait, so `parked_ == n_` is true from construction.  Counting only
+    // on the RETURN from a drain leaves `parked_` at 0 until each worker has finished one batch, and the first
+    // `run()` - which waits for `parked_ == n_` before publishing - then deadlocks.  It deadlocks on the very
+    // first call, which is the good case; a version that deadlocked on the second would be
+// src/kernels/cpu/pool.cpp - P2.S3: the CPU expert pool.  Read pool.hpp first; it explains the protocol.
+#include "strata/kernels/cpu/pool.hpp"
+#include "strata/kernels/canon_expert.hpp"
+#include <stdexcept>
+#include "strata/core/progress.hpp"
+#include "strata/kernels/cpu/expert_layout.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <chrono>
+#include <immintrin.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <stdexcept>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include "pool_affinity_win.hpp"
+#else
+#include <pthread.h>
+#include <sched.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+#include "pool_affinity_linux.hpp"
+#endif
+
+namespace strata::kernels::cpu {
+
+namespace {
+constexpr uint64_t pack_head(uint32_t epoch, uint32_t n, uint32_t i) {
+    return ((uint64_t) epoch << 32) | ((uint64_t) n << 16) | (uint64_t) i;
+}
+}  // namespace
+
+namespace {
+std::atomic<int> g_host_core{(int) HostCore::First};
+}  // namespace
+
+void set_host_core(HostCore where) { g_host_core.store((int) where); }
+HostCore host_core_setting() { return (HostCore) g_host_core.load(); }
+
+static CpuTopology detect_cpu_topology_impl(bool skip_first, PoolAffinity affinity);
+
+CpuTopology detect_cpu_topology(bool skip_first, PoolAffinity affinity) {
+    CpuTopology topo = detect_cpu_topology_impl(skip_first, affinity);
+    // --host-core last: the host takes the last core, the workers the others (the first included)
+    if (skip_first && host_core_setting() == HostCore::Last && !topo.is_hybrid && topo.host_core >= 0 &&
+        !topo.worker_cores.empty()) {
+        const int last = topo.worker_cores.back();
+        topo.worker_cores.pop_back();
+        topo.worker_cores.insert(topo.worker_cores.begin(), topo.host_core);
+        topo.host_core = last;
+    }
+    return topo;
+}
+
+int planned_host_core(PoolAffinity affinity) { return detect_cpu_topology(true, affinity).host_core; }
+
+static CpuTopology detect_cpu_topology_impl(bool skip_first, PoolAffinity affinity) {
+    CpuTopology topo;
+#if defined(_WIN32)
+    // Ask the OS rather than assuming a layout.  `hardware_concurrency()` returns LOGICAL processors, and on
+    // every SMT machine half of them are siblings - pinning one worker to each of the first N would put two
+    // workers on each physical core and halve the bandwidth the expert kernel is bound by.
+    DWORD len = 0;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &len);
+    if (len == 0) {
+        // Preserve group identity even when detailed core topology is unavailable.
+        const WORD groups = GetActiveProcessorGroupCount();
+        for (WORD group = 0; group < groups; ++group) {
+            const DWORD count = GetActiveProcessorCount(group);
+            if (count == 0 || count == (DWORD) -1 || count > 64) continue;
+            for (DWORD i = 0; i < count; ++i) topo.worker_cores.push_back((int) group * 64 + (int) i);
+        }
+        if (skip_first && !topo.worker_cores.empty()) {
+            topo.host_core = topo.worker_cores.front();
+            topo.worker_cores.erase(topo.worker_cores.begin());
+        }
+        return topo;
+    }
+    std::vector<char> buf(len);
+    if (GetLogicalProcessorInformationEx(RelationProcessorCore,
+                                         (PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) buf.data(), &len)) {
+        const char* p = buf.data();
+        const char* end = p + len;
+        struct CoreDesc {
+            uint8_t efficiency = 0;
+            bool has_smt = false;
+            std::vector<int> lps;
+        };
+        std::vector<CoreDesc> descs;
+        while (p < end) {
+            const auto* e = (const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*) p;
+            if (e->Relationship == RelationProcessorCore) {
+                CoreDesc cd;
+                cd.efficiency = e->Processor.EfficiencyClass;
+                cd.has_smt = (e->Processor.Flags & LTP_PC_SMT) != 0;
+                for (WORD group = 0; group < e->Processor.GroupCount; ++group) {
+                    const GROUP_AFFINITY& g = e->Processor.GroupMask[group];
+                    for (int bit = 0; bit < 64; ++bit) {
+                        if (g.Mask & (KAFFINITY(1) << bit)) {
+                            cd.lps.push_back((int) (g.Group * 64 + bit));
+                        }
+                    }
+                }
+                if (!cd.lps.empty()) {
+                    descs.push_back(std::move(cd));
+                }
+            }
+            p += e->Size;
+        }
+
+        uint8_t min_eff = 255, max_eff = 0;
+        for (const auto& c : descs) {
+            min_eff = (std::min)(min_eff, c.efficiency);
+            max_eff = (std::max)(max_eff, c.efficiency);
+        }
+
+        topo.is_hybrid = (max_eff > min_eff);
+        if (topo.is_hybrid) {
+            for (const auto& c : descs) {
+                if (c.efficiency == max_eff) {
+                    topo.p_cores++;
+                    topo.p_threads += (int) c.lps.size();
+                } else {
+                    topo.e_cores++;
+                }
+            }
+        } else {
+            topo.p_cores = (int) descs.size();
+            for (const auto& c : descs) topo.p_threads += (int) c.lps.size();
+        }
+
+        if (affinity == PoolAffinity::All || !topo.is_hybrid) {
+            // #642 (from Hardin22's fork): on a hybrid CPU the P-cores first (the host takes the first of them), so a
+            // pool smaller than the core count (setup's --pool-workers for a hybrid CPU) runs on the P-cores and the
+            // first E-cores rather than on whatever the OS numbered first.  All cores alike: the order is unchanged.
+            if (topo.is_hybrid)
+                std::stable_sort(descs.begin(), descs.end(),
+                                 [](const CoreDesc& x, const CoreDesc& y) { return x.efficiency > y.efficiency; });
+            for (const auto& c : descs) topo.worker_cores.push_back(c.lps[0]);
+            if (skip_first && !topo.worker_cores.empty()) {
+                topo.host_core = topo.worker_cores.front();
+                topo.worker_cores.erase(topo.worker_cores.begin());
+            }
+            return topo;
+        }
+
+        // Hybrid CPU with Auto or PCores affinity:
+        // Prioritize Performance cores:
+        // 1. Primary logical processor of each P-core (avoids SMT resource contention)
+        // 2. SMT sibling logical processors of P-cores
+        // 3. E-cores (only as overflow in Auto mode)
+        std::vector<int> p_primaries;
+        std::vector<int> p_siblings;
+        std::vector<int> e_cores;
+
+        for (const auto& c : descs) {
+            if (c.efficiency == max_eff) {
+                p_primaries.push_back(c.lps[0]);
+                for (size_t s = 1; s < c.lps.size(); ++s) {
+                    p_siblings.push_back(c.lps[s]);
+                }
+            } else {
+                for (int lp : c.lps) e_cores.push_back(lp);
+            }
+        }
+
+        if (skip_first && !p_primaries.empty()) {
+            topo.host_core = p_primaries.front();
+            p_primaries.erase(p_primaries.begin());
+        }
+
+        for (int cpu : p_primaries) topo.worker_cores.push_back(cpu);
+        for (int cpu : p_siblings) topo.worker_cores.push_back(cpu);
+        if (affinity != PoolAffinity::PCores) {
+            for (int cpu : e_cores) topo.worker_cores.push_back(cpu);
+        }
+        return topo;
+    }
+#else
+    // The logical CPUs this process may run on, ONE PER PHYSICAL CORE (issue #40): SMT siblings share a core's
+    // load/store bandwidth, so a worker on each would put two workers on one core, as the Windows branch above
+    // explains.  sysfs names each CPU's (package, core); the first allowed CPU of each pair is kept, so a taskset
+    // that leaves out the first sibling still gets its core.  Without sysfs every allowed CPU counts, as before.
+    auto topo_read = [](int cpu, const char* what) -> long {
+        char path[96];
+        std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/topology/%s", cpu, what);
+        long v = -1;
+        if (std::FILE* f = std::fopen(path, "r")) {
+            if (std::fscanf(f, "%ld", &v) != 1) v = -1;
+            std::fclose(f);
+        }
+        return v;
+    };
+    auto cap_read = [](int cpu) -> long {
+        char path[96];
+        std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/cpu_capacity", cpu);
+        long v = -1;
+        if (std::FILE* f = std::fopen(path, "r")) {
+            if (std::fscanf(f, "%ld", &v) != 1) v = -1;
+            std::fclose(f);
+        }
+        return v;
+    };
+
+    // #798: a cpulist ("0-7,16") of one of the hybrid PMU's CPU sets: /sys/devices/cpu_core/cpus and cpu_atom/cpus
+    auto cpulist_read = [](const char* path, std::vector<int>& out) -> bool {
+        std::FILE* f = std::fopen(path, "r");
+        if (!f) return false;
+        char text[1024] = {0};
+        const size_t n = std::fread(text, 1, sizeof text - 1, f);
+        std::fclose(f);
+        text[n] = '\0';
+        for (const char* p = text; *p;) {
+            char* end = nullptr;
+            const long lo = std::strtol(p, &end, 10);
+            if (end == p) break;
+            long hi = lo;
+            if (*end == '-') {
+                p = end + 1;
+                hi = std::strtol(p, &end, 10);
+            }
+            for (long c = lo; c <= hi && c < 4096; ++c) out.push_back((int) c);
+            p = end;
+            while (*p == ',' || *p == ' ' || *p == '\n')  ++p;
+        }
+        return !out.empty();
+    };
+
+    std::vector<int> allowed;
+    std::vector<unsigned long> allowed_mask;
+    if (detail::get_thread_affinity(allowed_mask, &allowed) != 0) {
+        for (unsigned i = 0; i < std::thread::hardware_concurrency(); ++i) allowed.push_back((int) i);
+    }
+
+    struct CoreLinux {
+        int cpu = -1;
+        long pkg = -1;
+        long core = -1;
+        long cap = -1;
+        bool is_sibling = false;
+    };
+    std::vector<CoreLinux> all_cpus;
+    std::vector<std::pair<long, long>> seen_phys;
+    long max_cap = 0, min_cap = 1000000;
+
+    for (int cpu : allowed) {
+        CoreLinux cl;
+        cl.cpu = cpu;
+        cl.pkg = topo_read(cpu, "physical_package_id");
+        cl.core = topo_read(cpu, "core_id");
+        cl.cap = cap_read(cpu);
+        if (cl.cap > 0) {
+            max_cap = (std::max)(max_cap, cl.cap);
+            min_cap = (std::min)(min_cap, cl.cap);
+        }
+        if (cl.pkg >= 0 && cl.core >= 0) {
+            const std::pair<long, long> key{cl.pkg, cl.core};
+            if (std::find(seen_phys.begin(), seen_phys.end(), key) != seen_phys.end()) {
+                cl.is_sibling = true;
+            } else {
+                seen_phys.push_back(key);
+            }
+        }
+        all_cpus.push_back(cl);
+    }
+
+    // #798: which CPUs are E-cores.  Intel's hybrid PMU lists them (cpu_atom/cpus beside cpu_core/cpus); without it a
+    // CPU is an E-core when its capacity is under 90% of the largest.  Turbo Boost Max 3.0 gives the "favored"
+    // P-cores a slightly higher capacity (1024 against 1012 on a Core Ultra 7 270K Plus): "capacity == the maximum"
+    // counted 2 of its 8 P-cores and started 1 pool worker.
+    std::vector<int> pmu_core, pmu_atom;
+    const bool pmu = cpulist_read("/sys/devices/cpu_core/cpus", pmu_core) &&
+                     cpulist_read("/sys/devices/cpu_atom/cpus", pmu_atom);
+    auto is_e = [&](const CoreLinux& cl) {
+        if (pmu) return std::find(pmu_atom.begin(), pmu_atom.end(), cl.cpu) != pmu_atom.end();
+        return max_cap > 0 && cl.cap > 0 && cl.cap * 10 < max_cap * 9;
+    };
+    bool any_e = false, any_p = false;
+    for (const auto& cl : all_cpus) (is_e(cl) ? any_e : any_p) = true;
+    topo.is_hybrid = any_e && any_p;
+    if (topo.is_hybrid) {
+        for (const auto& cl : all_cpus) {
+            if (!is_e(cl)) {
+                if (!cl.is_sibling) topo.p_cores++;
+                topo.p_threads++;
+            } else {
+                if (!cl.is_sibling) topo.e_cores++;
+            }
+        }
+    } else {
+        topo.p_cores = (int) seen_phys.size();
+        topo.p_threads = (int) all_cpus.size();
+    }
+
+    if (affinity == PoolAffinity::All || !topo.is_hybrid) {
+        if (topo.is_hybrid)   // #642: the P-cores first (see the Windows branch)
+            std::stable_sort(all_cpus.begin(), all_cpus.end(),
+                             [&](const CoreLinux& x, const CoreLinux& y) {
+                                 return is_e(x) != is_e(y) ? !is_e(x) : x.cap > y.cap;
+                             });
+        for (const auto& cl : all_cpus) {
+            if (!cl.is_sibling) topo.worker_cores.push_back(cl.cpu);
+        }
+        if (skip_first && !topo.worker_cores.empty()) {
+            topo.host_core = topo.worker_cores.front();
+            topo.worker_cores.erase(topo.worker_cores.begin());
+        }
+        return topo;
+    }
+
+    // Hybrid CPU on Linux:
+    std::vector<int> p_primaries;
+    std::vector<int> p_siblings;
+    std::vector<int> e_cores;
+
+    for (const auto& cl : all_cpus) {
+        if (!is_e(cl)) {
+            if (!cl.is_sibling) p_primaries.push_back(cl.cpu);
+            else p_siblings.push_back(cl.cpu);
+        } else {
+            e_cores.push_back(cl.cpu);
+        }
+    }
+
+    if (skip_first && !p_primaries.empty()) {
+        topo.host_core = p_primaries.front();
+        p_primaries.erase(p_primaries.begin());
+    }
+
+    for (int cpu : p_primaries) topo.worker_cores.push_back(cpu);
+    for (int cpu : p_siblings) topo.worker_cores.push_back(cpu);
+    if (affinity != PoolAffinity::PCores) {
+        for (int cpu : e_cores) topo.worker_cores.push_back(cpu);
+    }
+    return topo;
+#endif
+    return topo;
+}
+
+std::vector<int> physical_cores(bool skip_first, PoolAffinity affinity) {
+    return detect_cpu_topology(skip_first, affinity).worker_cores;
+}
+
+namespace {
+
+bool pin_this_thread(int core, [[maybe_unused]] int worker = -1) {
+    if (core < 0) return false;
+#if defined(_WIN32)
+    return detail::set_thread_group_affinity(core, worker);
+#else
+    const int error = detail::pin_thread_to_cpu(core);
+    if (error != 0)
+        std::fprintf(stderr, "strata cpu pool: affinity for worker %d (CPU %d) failed: %d; previous affinity kept\n",
+                     worker, core, error);
+    return error == 0;
+#endif
+}
+
+}  // namespace
+
+ThreadAffinity pin_current_thread(int core) {
+    if (core < 0) return {};
+#if defined(_WIN32)
+    ThreadAffinity previous;
+    ULONG target = 0;
+    if (!detail::get_thread_cpu_sets(previous.cpu_sets) || !detail::cpu_set_for_core(core, target) ||
+        !SetThreadSelectedCpuSets(GetCurrentThread(), &target, 1)) {
+        std::fprintf(stderr, "strata cpu pool: host CPU Set selection for processor %d failed: %lu; previous placement kept\n",
+                     core, (unsigned long) GetLastError());
+        return {};
+    }
+    previous.valid = true;
+    return previous;
+#else
+    ThreadAffinity previous;
+    int error = detail::get_thread_affinity(previous.mask);
+    if (error == 0) error = detail::pin_thread_to_cpu(core);
+    if (error != 0) {
+        std::fprintf(stderr, "strata cpu pool: host affinity for CPU %d failed: %d; previous affinity kept\n", core, error);
+        return {};
+    }
+    previous.valid = true;
+    return previous;
+#endif
+}
+
+void restore_thread_affinity(const ThreadAffinity& previous) {
+    if (!previous.valid) return;
+#if defined(_WIN32)
+    // Clearing an originally empty selection restores process-default/all-group eligibility without
+    // turning the caller's implicit Windows 11 affinity into an explicit single-group hard mask.
+    if (!SetThreadSelectedCpuSets(GetCurrentThread(), previous.cpu_sets.empty() ? nullptr : previous.cpu_sets.data(),
+                                 (ULONG) previous.cpu_sets.size()))
+        std::fprintf(stderr, "strata cpu pool: host CPU Set restoration failed: %lu\n",
+                     (unsigned long) GetLastError());
+#else
+    const int error = detail::set_thread_affinity(previous.mask);
+    if (error != 0)
+        std::fprintf(stderr, "strata cpu pool: host affinity restoration failed: %d\n", error);
+#endif
+}
+
+namespace {
+std::atomic<const ExpertPool*> g_diag_pool{nullptr};
+void diag_active_pool(std::FILE* f) {
+    if (const ExpertPool* p = g_diag_pool.load()) p->diag(f);
+}
+int64_t now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+}  // namespace
+
+void ExpertPool::diag(std::FILE* f) const {
+    const uint64_t h = head_.load();
+    std::fprintf(f, "  expert pool: epoch %u, batch epoch %u: %u of %u jobs claimed, %u done; %u of %d workers parked, "
+                    "%u sleeping; mode %d\n", epoch_.load(), (uint32_t) (h >> 32), (uint32_t) h & 0xffffu,
+                 (uint32_t) (h >> 16) & 0xffffu, done_.load(), parked_.load(), n_, sleepers_.load(), mode_);
+    std::fprintf(f, "  expert pool threads:");
+    for (int i = 0; i < n_; ++i) {
+        const int32_t s = wstate_[(size_t) i].load();
+        if (s == kParked) std::fprintf(f, " w%d=parked", i);
+        else if (s == kSleeping) std::fprintf(f, " w%d=sleeping", i);
+        else if (s == kBetween) std::fprintf(f, " w%d=draining", i);
+        else std::fprintf(f, " w%d=job%d", i, s);
+    }
+    const int32_t hs = hstate_.load();
+    const char* hn = hs == kIdle ? "idle" : hs == kWaitParked ? "waiting for the workers to park"
+                   : hs == kWaitDone ? "waiting for the jobs to finish" : "running a job";
+    std::fprintf(f, "; host %s", hn);
+    if (hs >= 0) std::fprintf(f, " %d", hs);
+    std::fprintf(f, " for %lld ms\n", (long long) (now_ms() - hstate_ms_.load()));
+}
+
+ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
+    : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
+    if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
+    if (const char* e = std::getenv("STRATA_NATIVE_NUMA_LOCAL")) {
+        if (std::string(e) != "0" && std::string(e) != "1")
+            throw std::invalid_argument("STRATA_NATIVE_NUMA_LOCAL must be 0 or 1");
+#if defined(__linux__)
+        native_local_enabled_ = *e == '1' && access("/sys/devices/system/node/node1", F_OK) == 0 &&
+                                access("/sys/devices/system/node/node2", F_OK) != 0;
+        if (native_local_enabled_) {
+            cpu_nodes_.assign(CPU_SETSIZE, -1);
+            for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu)
+                for (int node = 0; node < 2; ++node) {
+                    char path[96];
+                    std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/node%d", cpu, node);
+                    if (access(path, F_OK) == 0) cpu_nodes_[cpu] = node;
+                }
+        }
+#endif
+    }
+#if defined(__linux__)
+    if(access("/sys/devices/system/node/node1",F_OK)==0 && access("/sys/devices/system/node/node2",F_OK)!=0 && cpu_nodes_.empty()) {
+        cpu_nodes_.assign(CPU_SETSIZE,-1);
+        for(int cpu=0;cpu<CPU_SETSIZE;++cpu)for(int node=0;node<2;++node) {
+            char path[96];std::snprintf(path,sizeof(path),"/sys/devices/system/cpu/cpu%d/node%d",cpu,node);
+            if(access(path,F_OK)==0)cpu_nodes_[cpu]=node;
+        }
+    }
+#endif
+    if (const char* e = std::getenv("STRATA_NATIVE_TASKS_PER_THREAD")) {
+        char* end = nullptr;
+        const long value = std::strtol(e, &end, 10);
+        if (end == e || *end || value < 1 || value > 16)
+            throw std::invalid_argument("STRATA_NATIVE_TASKS_PER_THREAD must be 1..16");
+        native_tasks_per_thread_ = (int) value;
+    }
+    if (const char* e = std::getenv("STRATA_POOL_SPIN_US"))   // a test knob; see kSpinBeforeSleep
+        spin_before_sleep_ = std::chrono::microseconds((std::max)(0, std::atoi(e)));
+    if (n_workers > 0) {
+        n_ = n_workers;
+    } else if (topo_.is_hybrid && affinity_ != PoolAffinity::All) {
+        n_ = (std::max)(1, topo_.p_cores - 1);
+    } else {
+        n_ = (int) topo_.worker_cores.size();
+    }
+    if (n_ < 1) n_ = 1;
+    if(pin && !cpu_nodes_.empty()) {
+        for(int i=0;i<n_ && i<int(topo_.worker_cores.size());++i) {
+            int core=topo_.worker_cores[i],node=cpu_nodes_[core];
+            if(node>=0 && node<2 && numa_cores_[node]<0)numa_cores_[node]=core;
+        }
+        numa_rows_available_=numa_cores_[0]>=0 && numa_cores_[1]>=0;
+    }
+    scratch_.resize((size_t) n_);
+    wstate_.reset(new std::atomic<int32_t>[(size_t) n_]);
+    for (int i = 0; i < n_; ++i) wstate_[(size_t) i].store(kParked);
+    hstate_ms_.store(now_ms());
+    g_diag_pool.store(this);
+    strata::core::diag_pool_fn().store(&diag_active_pool);
+    split_.resize((size_t) kMaxSplit);
+    split_multi_.resize((size_t) kMaxSplitMulti);
+    threads_.reserve((size_t) n_);
+    for (int i = 0; i < n_; ++i) {
+        const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
+        threads_.emplace_back([this, i, core] {
+            pin_this_thread(core, i);
+            worker(i);
+        });
+    }
+}
+
+ExpertPool::~ExpertPool() {
+    const ExpertPool* self = this;
+    g_diag_pool.compare_exchange_strong(self, nullptr);
+    stop_.store(true, std::memory_order_release);
+    // Bump the epoch so a PARKED worker notices the stop flag rather than sleeping through it.
+    publish();
+    for (auto& t : threads_) t.join();
+}
+
+void ExpertPool::publish() {
+    // Both sides are seq_cst, and that is the whole lost-wakeup argument: a worker going to sleep does
+    // `sleepers_++` and then reads `epoch_`, the host does `epoch_++` and then reads `sleepers_`.  In one total
+    // order at least one of them sees the other's write - the worker sees the new epoch and does not sleep, or
+    // the host sees the sleeper and notifies under the mutex the worker holds until it is inside `wait`.
+    // On x86 the fetch_add is a locked xadd either way, so this costs the token path nothing.
+    epoch_.fetch_add(1, std::memory_order_seq_cst);
+    if (sleepers_.load(std::memory_order_seq_cst) != 0) {
+        std::lock_guard<std::mutex> lk(sleep_mu_);
+        sleep_cv_.notify_all();
+    }
+}
+
+void ExpertPool::worker(int id) {
+    uint32_t seen = 0;
+    // ARRIVE at the park before the first wait, so `parked_ == n_` is true from construction.  Counting only
+    // on the RETURN from a drain leaves `parked_` at 0 until each worker has finished one batch, and the first
+    // `run()` - which waits for `parked_ == n_` before publishing - then deadlocks.  It deadlocks on the very
+    // first call, which is the good case; a version that deadlocked on the second would

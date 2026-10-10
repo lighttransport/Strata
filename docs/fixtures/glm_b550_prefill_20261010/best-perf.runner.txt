@@ -1,0 +1,6 @@
+START best32k-01
+END best32k-01 clean True prefill 616.434 decode 32.1229
+START best16k-01
+END best16k-01 clean True prefill 595.696 decode 33.4047
+START buckets32k-01
+END buckets32k-01 clean True prefill 341.72 decode 32.0311

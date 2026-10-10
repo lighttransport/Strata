@@ -81,7 +81,7 @@ into the GLM branch as `036c926e6db07e8f66d6b125b3139ef282dad327` before the HIP
 integration. Local GLM work is still uncommitted; the merge commit alone does not
 include these deployment changes. Existing local and B550 edits were backed up.
 
-TR16's `/mnt/nvme01/models/glm53f/reap-50/reap50-q23.gguf` contains the processed
+TR16's `models/glm53f/reap-50/reap50-q23.gguf` contains the processed
 REAP50 experts, rather than a complete model. Its source is
 `GLM-5.3-Flash-REAP50-Q4_K_M.gguf` in the same directory. The standalone assembly
 copies all 126 processed expert projections plus the source's remaining tensors,
@@ -92,8 +92,8 @@ execution path; it does not require the original base on the deployment host.
 The assembly is 63,205,406,688 bytes (58.87 GiB), SHA-256
 `c3b0cfb144556bd28e265d8255d48eeafce3d127aba5b9b5dd4e326322a34aa9`.
 B550 destination:
-`/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf`.
-`/mnt/disk1/models` resolves to `/mnt/disk01/models`; `/mmt/disk1/models` does not exist.
+`models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf`.
+`models` resolves to `models`; `/mmt/disk1/models` does not exist.
 The old Q3_K_M model is retained.
 
 Build the byte-preserving assembler with CMake's `strata-glm-assemble` target, or:
@@ -224,3 +224,36 @@ post-prefill GPU expert-cache preparation. TG uses the existing rolling decode
 rate while generating. Once idle, both counters show the last request's rates;
 the Monitor retains its detailed charts. Hard-refresh an already-open page after
 deploying the updated assets.
+
+## Q22 longer-context prefill experiments, 2026-10-10
+
+The optional [8K MMQ preset](../configs/experimental/glm-b550-q22-fit4-prefill8k-2133.json)
+measured **107.489 prefill / 33.3234 decode tok/s** on a frozen 7936-token code
+prefix with 128 generated tokens. Its same-day control measured 87.4782 / 33.3769:
+22.9% faster prefill, with all generated tokens and the cache fingerprint identical.
+The Ryzen 9 3950X and RX 9070 XT used DDR at 2133 MT/s, a 60 GiB cgroup and no
+clock changes. The first candidate run measured 118.546 / 29.6735; this timing
+variation remains in the [full report](fixtures/glm_b550_prefill_20261010/README.md).
+
+All 30 short coding outputs and all four ~14K-background coding outputs matched
+the MMQ control exactly. Faster FP16 candidates failed the long coding gate and
+were rejected. Longer-context timing became unresolved under shared-system
+pressure, also affecting an original-MMQ control; no 16K or 32K preset is selected.
+The original fit4 preset and engine defaults are unchanged. The 35+ coherent
+decode tok/s target remains unmet.
+
+## BF16 WMMA experiment, 2026-10-10
+
+The [BF16 experiment report](fixtures/glm_b550_bf16_20261010/README.md) records
+an opt-in expert-prefill mode with FP32 accumulation, adapted from the local
+`~/work/gemm/main` RDNA4 experiments. On the RX 9070 XT, clean WMMA runs measured
+405.242 / 426.786 / 445.692 prefill tok/s at 8K / 16K / 32K. The custom GEMM
+microkernel remained slower than library BF16 on the tested expert shapes.
+
+BF16 is **not selected**: library BF16 passed 2/4 matched long coding tasks
+versus MMQ 3/4, and fresh WMMA probes also failed tasks 17/25. Its resident
+four-task run was incomplete after an engine-silence timeout. The normal MMQ
+control reproduced all 128 earlier default tokens. Legacy modes and generic
+dequantization coverage remain unchanged; DDR stays at 2133 MT/s. Current
+installed HIP reports 7.14.60850 (local packaging). The 35+ decode target remains
+unmet. These throughput measurements do not override the quality gate.

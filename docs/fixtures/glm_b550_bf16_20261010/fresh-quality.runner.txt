@@ -1,0 +1,4 @@
+START he-bf16-wmma-fresh-17
+END he-bf16-wmma-fresh-17 exit 0
+START he-bf16-wmma-fresh-25
+END he-bf16-wmma-fresh-25 exit 0

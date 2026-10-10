@@ -1,0 +1,12 @@
+START hybrid-b16384-32k-01
+Traceback (most recent call last):
+  File "/tmp/b550-prefill-matrix2.py", line 17, in <module>
+    d=json.loads((fixture/(tag+'.result.json')).read_text())
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1029, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1015, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: './docs/fixtures/glm_b550_prefill_20261010/hybrid-b16384-32k-01.result.json'

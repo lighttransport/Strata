@@ -1,0 +1,5 @@
+from typing import List
+
+def rescale_to_unit(numbers: List[float]) -> List[float]:
+    lo, hi = min(numbers), max(numbers)
+    return [(x - lo) / (hi - lo) for x in numbers]

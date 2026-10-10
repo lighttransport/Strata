@@ -41,6 +41,9 @@ public:
              float beta = 0.0f);
     /// Independent contiguous expert matrices: X[B,T,K], W[B,N,K], Y[B,T,N].
     void f16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches);
+    /// BF16 inputs, FP32 accumulation/output; optional gfx12 WMMA requires supported hardware (no silent fallback).
+    void bf16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches,
+                      bool wmma = false);
 
     /// Column-major contiguous batches: C[M,N] (fp32) = A[M,K] . B[K,N], both FP16.
     void f16_batched_nn(const uint16_t* A, const uint16_t* B, float* C, int M, int N, int K, int batches);

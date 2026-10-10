@@ -1,0 +1,59 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "./tools/humaneval_b550.py",
+    "models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "datasets/HumanEval.jsonl.gz",
+    "--output",
+    "./docs/fixtures/glm_b550_bf16_20261010/he-bf16-wmma-fresh-17",
+    "--decoder",
+    "./build-hip/strata-glm-decode",
+    "--limit",
+    "30",
+    "--offset",
+    "0",
+    "--tokens",
+    "1024",
+    "--gpu-budget-mib",
+    "15360",
+    "--decode-cache-mib",
+    "12288",
+    "--expert-pack",
+    "models/glm53f-reap/REAP50-Q22-down-only-experimental.gguf",
+    "--context",
+    "16384",
+    "--prefill-batch",
+    "8192",
+    "--prefill-experts",
+    "bf16-batched",
+    "--threads",
+    "12",
+    "--background",
+    "./docs/fixtures/glm_b550_prefill_20261010/background-14000.txt",
+    "--task-indices",
+    "17"
+  ],
+  "peak_rss_kib": 51082728,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 49729640,
+  "sample_interval_ms": 100,
+  "rejected": null,
+  "interference": [
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 99.26666430209787,
+      "elapsed_seconds": 29.199252506019548
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 96.49661543208259,
+      "elapsed_seconds": 30.308102081005927
+    }
+  ],
+  "exit_code": 0,
+  "wall_seconds": 174.072996538016
+}

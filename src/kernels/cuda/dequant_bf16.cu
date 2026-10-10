@@ -261,20 +261,29 @@ void launch(int type, const void* blocks, int64_t row0, int64_t rows, int64_t co
 
 }  // namespace
 
-bool dequant_bf16_supported(int ggml_type) noexcept {
-    int a, b;
-    return geometry(ggml_type, a, b);
-}
-
 namespace {
 // plan v0.3 P6: the i-quant formats (llama.cpp's dequantizers, iq_kernels.cu)
 // Q2_K (10) has no generic geometry here; iq_kernels.cu carries llama.cpp's dequantize_block_q2_K.
 bool iq_only(int t) { return t == 16 || t == 17 || t == 18 || t == 21 || t == 22 || t == 29 || t == 10; }
 }  // namespace
 
+bool dequant_bf16_supported(int ggml_type) noexcept {
+    int a, b;
+    return geometry(ggml_type, a, b);
+}
+
 void dequant_bf16(int ggml_type, const void* blocks, int64_t row0, int64_t rows, int64_t cols, uint16_t* out,
                   void* stream) {
     launch<uint16_t>(ggml_type, blocks, row0, rows, cols, out, stream);
+}
+void dequant_expert_bf16(int ggml_type, const void* blocks, int64_t row0, int64_t rows, int64_t cols,
+                         uint16_t* out, void* stream) {
+    if (iq_only(ggml_type)) {
+        iq_dequant_bf16(ggml_type, (const uint8_t*)blocks + (size_t)row0 * iq_row_bytes(ggml_type, cols),
+                        rows * cols, out, stream);
+        return;
+    }
+    dequant_bf16(ggml_type, blocks, row0, rows, cols, out, stream);
 }
 
 void dequant_f16(int ggml_type, const void* blocks, int64_t row0, int64_t rows, int64_t cols, uint16_t* out,

@@ -5761,8 +5761,8 @@ def main() -> int:
                      str(int(bool(cfg.get("decode_prefill_cache", False)))), str(cfg.get("decode_cache_mib", 0)), str(int(bool(cfg.get("decode_graphs", False)))), str(cfg.get("decode_cache_window", 256)),
                      str(int(bool(cfg.get("decode_cache_adapt", False))))))
         prefill_experts = cfg.get("prefill_experts", "mmq")
-        if prefill_experts not in ("mmq", "f16", "f16-batched"):
-            ap.error("GLM prefill_experts must be mmq, f16 or f16-batched")
+        if prefill_experts not in ("mmq", "f16", "f16-batched", "bf16-batched"):
+            ap.error("GLM prefill_experts must be mmq, f16, f16-batched or bf16-batched")
         if glm_native and prefill_experts != "mmq":
             ap.error("native EXL3 requires prefill_experts=mmq")
         args.append(prefill_experts)

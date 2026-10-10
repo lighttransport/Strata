@@ -1,0 +1,11 @@
+{
+  "root": "references/gemm",
+  "files": {
+    "rdna4/vlm/bench_vlm_gemm.c": "e62646810ee57b4da1a30ba10e198481eff20737636d84ee377e10c81d12627b",
+    "rdna4/llm/hip_llm_runner.c": "18295a40652ce590087468856c3085191dbdf972e8e90ff581702b24b98944b6",
+    "rdna4/vlm/generated/mm0_bf16_directa_pf2.hip": "41e759636e8272898a4aecabaa375e2ab7b7efe8652f93274476eb19d4934c40",
+    "LICENSE": "acca36617caba95bf32f889e26bc778c85ca7388ae9c106bdf13460c906d87c6"
+  },
+  "used": "128x128 BF16 WMMA fragment layout; vectorized loads and LDS packing; one-panel register prefetch adapted for contiguous expert batches",
+  "edited_reference_tree": false
+}

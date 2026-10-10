@@ -1,0 +1,23 @@
+{
+  "f16-8k-smoke": {
+    "reference": "base8k-02",
+    "top1_reference": 51048,
+    "top1_candidate": 51048,
+    "kl_reference_candidate": 0.00015057360719678394,
+    "relative_l2": 0.0734860332961046
+  },
+  "hybrid-buckets-8k-01": {
+    "reference": "base8k-02",
+    "top1_reference": 51048,
+    "top1_candidate": 51048,
+    "kl_reference_candidate": 8.270769555084863e-05,
+    "relative_l2": 0.07629281711469427
+  },
+  "hybrid-buckets-rows4-8k-01": {
+    "reference": "base8k-02",
+    "top1_reference": 51048,
+    "top1_candidate": 51048,
+    "kl_reference_candidate": 0.00037486743438436233,
+    "relative_l2": 0.07668013883216714
+  }
+}

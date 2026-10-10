@@ -1,0 +1,24 @@
+{
+  "context": 12288,
+  "input_tokens": 9673,
+  "expected": {
+    "A17": "cedar",
+    "B29": "indigo",
+    "C43": "marble",
+    "D71": "twilight"
+  },
+  "maximum_generated_tokens": 256,
+  "first_turn_tokens": 84,
+  "first_turn_text": "All four records are identical in content (same code snippet repeated). The answer is just the recorded values: A17=cedar, B29=indigo, C43=marble, D71=twilight.</think>{\n  \"A17\": \"cedar\",\n  \"B29\": \"indigo\",\n  \"C43\": \"marble\",\n  \"D71\": \"twilight\"\n}",
+  "decoded": {
+    "A17": "cedar",
+    "B29": "indigo",
+    "C43": "marble",
+    "D71": "twilight"
+  },
+  "correct_facts": 4,
+  "total_facts": 4,
+  "stopped": true,
+  "valid_run": true,
+  "passed": true
+}

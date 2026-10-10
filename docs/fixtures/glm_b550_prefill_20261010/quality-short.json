@@ -1,0 +1,50 @@
+{
+  "he-mmq-short": {
+    "tasks": 30,
+    "passed": 27,
+    "malformed": [
+      "HumanEval_10.py",
+      "HumanEval_11.py"
+    ],
+    "cap_hits": 1
+  },
+  "he-f16-short": {
+    "tasks": 30,
+    "passed": 27,
+    "malformed": [
+      "HumanEval_10.py",
+      "HumanEval_17.py",
+      "HumanEval_25.py"
+    ],
+    "cap_hits": 3
+  },
+  "he-hybrid-short": {
+    "tasks": 30,
+    "passed": 27,
+    "malformed": [
+      "HumanEval_10.py",
+      "HumanEval_11.py"
+    ],
+    "cap_hits": 1
+  },
+  "he-best-short": {
+    "tasks": 30,
+    "passed": 27,
+    "malformed": [
+      "HumanEval_10.py",
+      "HumanEval_20.py",
+      "HumanEval_25.py"
+    ],
+    "cap_hits": 1
+  },
+  "he-gated-best-short": {
+    "tasks": 30,
+    "passed": 27,
+    "malformed": [
+      "HumanEval_10.py",
+      "HumanEval_11.py"
+    ],
+    "cap_hits": 1
+  },
+  "gated_best_short_token_parity": true
+}

@@ -1,0 +1,4 @@
+{
+  "generated_128_tokens_equal_previous_wmma": true,
+  "note": "Host API isolation moved IQ stores to an explicit expert entry point; GPU math remains unchanged."
+}

@@ -1,0 +1,8 @@
+Simple: map words to digits, sort, join.</think>```python
+def sort_numbers(numbers: str) -> str:
+    order = {'zero': 'zero', 'one': 'one', 'two': 'two', 'three': 'three', 'four': 'four',
+             'five': 'five', 'six': 'six', 'seven': 'seven', 'eight': 'eight', 'nine': 'nine'}
+    words = numbers.split()
+    words.sort(key=lambda w: 'zero one two three four five six seven eight nine'.split().index(w))
+    return ' '.join(words)
+```

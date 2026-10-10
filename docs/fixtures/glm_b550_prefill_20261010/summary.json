@@ -1,0 +1,1362 @@
+{
+  "final_comparison": {
+    "control": "final-control-8192-01",
+    "context": 8192,
+    "input_tokens": 7936,
+    "generated_tokens": 128,
+    "preset": "configs/experimental/glm-b550-q22-fit4-prefill8k-2133.json",
+    "candidates": {
+      "final-mmq-8192-01": {
+        "clean": true,
+        "prefill_speedup": 1.3551490542786662,
+        "decode_ratio": 0.8890430207718513,
+        "all_generated_tokens_equal_control": true,
+        "decode_cache_equal_control": true
+      },
+      "final-mmq-8192-02": {
+        "clean": true,
+        "prefill_speedup": 1.2287518490321017,
+        "decode_ratio": 0.9983970949968392,
+        "all_generated_tokens_equal_control": true,
+        "decode_cache_equal_control": true
+      }
+    }
+  },
+  "hardware": {
+    "cpu": "Ryzen 9 3950X",
+    "gpu": "RX 9070 XT gfx1201",
+    "rocm": "7.1.4",
+    "ddr_mt_s": 2133,
+    "ram_limit_gib": 60,
+    "swap_limit_bytes": 0,
+    "gpu_physical_mib": 16304,
+    "gpu_allocation_budget_mib": 15360
+  },
+  "performance": {
+    "base8k-02": {
+      "record": "base8k-02.result.json",
+      "clean": true,
+      "context": 8192,
+      "prefill_batch": 2048,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 2048,
+          "milliseconds": 89069.9,
+          "tokens_per_second": 89.0986
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3801.17,
+          "tokens_per_second": 33.4107
+        }
+      ],
+      "peak_ram_gib": 48.393863677978516,
+      "minimum_gpu_free_mib": 1157,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16272416360696841699
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 620,
+          "minor": 437180
+        }
+      ]
+    },
+    "base16k-01": {
+      "record": "base16k-01.result.json",
+      "clean": true,
+      "context": 16384,
+      "prefill_batch": 2048,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 16128,
+          "batch": 2048,
+          "milliseconds": 171594.0,
+          "tokens_per_second": 93.9893
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3838.11,
+          "tokens_per_second": 33.0892
+        }
+      ],
+      "peak_ram_gib": 48.429527282714844,
+      "minimum_gpu_free_mib": 1165,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1038,
+          "MiB": 8174.25,
+          "fingerprint": 10508142042028598188
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 822,
+          "minor": 568441
+        }
+      ]
+    },
+    "base32k-02": {
+      "record": "base32k-02.result.json",
+      "clean": true,
+      "context": 32768,
+      "prefill_batch": 2048,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 32512,
+          "batch": 2048,
+          "milliseconds": 343941.0,
+          "tokens_per_second": 94.5277
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3963.47,
+          "tokens_per_second": 32.0426
+        }
+      ],
+      "peak_ram_gib": 48.459327697753906,
+      "minimum_gpu_free_mib": 1174,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 990,
+          "MiB": 7796.25,
+          "fingerprint": 18206559362612777577
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1095,
+          "minor": 830766
+        }
+      ]
+    },
+    "best16k-01": {
+      "record": "best16k-01.result.json",
+      "clean": true,
+      "context": 16384,
+      "prefill_batch": 16384,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 16128,
+          "batch": 16384,
+          "milliseconds": 27074.2,
+          "tokens_per_second": 595.696
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3801.86,
+          "tokens_per_second": 33.4047
+        }
+      ],
+      "peak_ram_gib": 48.81382751464844,
+      "minimum_gpu_free_mib": 1383,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1038,
+          "MiB": 8174.25,
+          "fingerprint": 16109762793470392355
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 822,
+          "minor": 597864
+        }
+      ]
+    },
+    "best32k-01": {
+      "record": "best32k-01.result.json",
+      "clean": true,
+      "context": 32768,
+      "prefill_batch": 16384,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 32512,
+          "batch": 16384,
+          "milliseconds": 52742.1,
+          "tokens_per_second": 616.434
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3953.57,
+          "tokens_per_second": 32.1229
+        }
+      ],
+      "peak_ram_gib": 49.45149230957031,
+      "minimum_gpu_free_mib": 1393,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 990,
+          "MiB": 7796.25,
+          "fingerprint": 11522831035594528991
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1170,
+          "minor": 868743
+        }
+      ]
+    },
+    "hybrid-buckets-rows4-8k-01": {
+      "record": "hybrid-buckets-rows4-8k-01.result.json",
+      "clean": true,
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 17499.9,
+          "tokens_per_second": 453.489
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3797.54,
+          "tokens_per_second": 33.4427
+        }
+      ],
+      "peak_ram_gib": 48.37729263305664,
+      "minimum_gpu_free_mib": 1376,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 3072641689783902907
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 620,
+          "minor": 461682
+        }
+      ]
+    },
+    "hybrid-buckets-8k-01": {
+      "record": "hybrid-buckets-8k-01.result.json",
+      "clean": true,
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 19700.7,
+          "tokens_per_second": 402.829
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3797.89,
+          "tokens_per_second": 33.4396
+        }
+      ],
+      "peak_ram_gib": 48.44382858276367,
+      "minimum_gpu_free_mib": 1348,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 158577124527903971
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1152,
+          "minor": 460747
+        }
+      ]
+    },
+    "buckets32k-01": {
+      "record": "buckets32k-01.result.json",
+      "clean": true,
+      "context": 32768,
+      "prefill_batch": 16384,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 32512,
+          "batch": 16384,
+          "milliseconds": 95142.4,
+          "tokens_per_second": 341.72
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3964.9,
+          "tokens_per_second": 32.0311
+        }
+      ],
+      "peak_ram_gib": 49.432762145996094,
+      "minimum_gpu_free_mib": 1364,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 990,
+          "MiB": 7796.25,
+          "fingerprint": 16546581926298943911
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1102,
+          "minor": 868816
+        }
+      ]
+    },
+    "f16-16k-01": {
+      "record": "f16-16k-01.result.json",
+      "clean": true,
+      "context": 16384,
+      "prefill_batch": 8192,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 16128,
+          "batch": 8192,
+          "milliseconds": 49963.6,
+          "tokens_per_second": 322.795
+        },
+        {
+          "trial": 1,
+          "tokens": 16128,
+          "batch": 8192,
+          "milliseconds": 50023.9,
+          "tokens_per_second": 322.406
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3819.28,
+          "tokens_per_second": 33.2524
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3742.7,
+          "tokens_per_second": 33.9327
+        }
+      ],
+      "peak_ram_gib": 48.820194244384766,
+      "minimum_gpu_free_mib": 1361,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1038,
+          "MiB": 8174.25,
+          "fingerprint": 2191344276371763318
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 258050
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 258185
+        }
+      ]
+    },
+    "f16-default-kda8k-01": {
+      "record": "f16-default-kda8k-01.result.json",
+      "clean": true,
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 28534.3,
+          "tokens_per_second": 278.122
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3888.78,
+          "tokens_per_second": 32.6581
+        }
+      ],
+      "peak_ram_gib": 48.29735565185547,
+      "minimum_gpu_free_mib": 1384,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 14408108811712307616
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 620,
+          "minor": 440444
+        }
+      ]
+    },
+    "final-control-8192-01": {
+      "record": "final-control-8192-01.result.json",
+      "clean": true,
+      "context": 8192,
+      "prefill_batch": 2048,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 2048,
+          "milliseconds": 90719.7,
+          "tokens_per_second": 87.4782
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3805.02,
+          "tokens_per_second": 33.3769
+        }
+      ],
+      "peak_ram_gib": 48.716026306152344,
+      "minimum_gpu_free_mib": 1160,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16272416360696841699
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1151,
+          "minor": 436676
+        }
+      ]
+    },
+    "final-mmq-16384-01": {
+      "record": "final-mmq-16384-01.result.json",
+      "clean": false,
+      "context": 16384,
+      "prefill_batch": 8192,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 16128,
+          "batch": 8192,
+          "milliseconds": 139955.0,
+          "tokens_per_second": 115.237
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3832.14,
+          "tokens_per_second": 33.1407
+        }
+      ],
+      "peak_ram_gib": 45.0472297668457,
+      "minimum_gpu_free_mib": 1261,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1038,
+          "MiB": 8174.25,
+          "fingerprint": 10508142042028598188
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1536,
+          "minor": 568733
+        }
+      ]
+    },
+    "final-mmq-8192-01": {
+      "record": "final-mmq-8192-01.result.json",
+      "clean": true,
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 66944.7,
+          "tokens_per_second": 118.546
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 4279.91,
+          "tokens_per_second": 29.6735
+        }
+      ],
+      "peak_ram_gib": 48.37003707885742,
+      "minimum_gpu_free_mib": 1254,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16272416360696841699
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1165,
+          "minor": 437490
+        }
+      ]
+    },
+    "final-mmq-8192-02": {
+      "record": "final-mmq-8192-02.result.json",
+      "clean": true,
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 7936,
+          "batch": 8192,
+          "milliseconds": 73830.9,
+          "tokens_per_second": 107.489
+        }
+      ],
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 3811.13,
+          "tokens_per_second": 33.3234
+        }
+      ],
+      "peak_ram_gib": 48.56991958618164,
+      "minimum_gpu_free_mib": 1254,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16272416360696841699
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 1141,
+          "minor": 437500
+        }
+      ]
+    }
+  },
+  "coding": {
+    "he-mmq-short": {
+      "record": "he-mmq-short/measurement.json",
+      "task_ids": [
+        "HumanEval/0",
+        "HumanEval/1",
+        "HumanEval/2",
+        "HumanEval/3",
+        "HumanEval/4",
+        "HumanEval/5",
+        "HumanEval/6",
+        "HumanEval/7",
+        "HumanEval/8",
+        "HumanEval/9",
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/12",
+        "HumanEval/13",
+        "HumanEval/14",
+        "HumanEval/15",
+        "HumanEval/16",
+        "HumanEval/17",
+        "HumanEval/18",
+        "HumanEval/19",
+        "HumanEval/20",
+        "HumanEval/21",
+        "HumanEval/22",
+        "HumanEval/23",
+        "HumanEval/24",
+        "HumanEval/25",
+        "HumanEval/26",
+        "HumanEval/27",
+        "HumanEval/28",
+        "HumanEval/29"
+      ],
+      "requested_tasks_complete": false,
+      "passed": 27,
+      "malformed": [
+        "HumanEval/10",
+        "HumanEval/11"
+      ],
+      "cap_hits": 1,
+      "input_tokens": [
+        154,
+        145,
+        115,
+        149,
+        147,
+        122,
+        142,
+        123,
+        140,
+        130,
+        169,
+        106,
+        132,
+        100,
+        89,
+        98,
+        100,
+        202,
+        118,
+        135,
+        196,
+        153,
+        121,
+        73,
+        82,
+        156,
+        114,
+        78,
+        87,
+        117
+      ],
+      "guard_passed": true
+    },
+    "he-f16-short": {
+      "record": "he-f16-short/measurement.json",
+      "task_ids": [
+        "HumanEval/0",
+        "HumanEval/1",
+        "HumanEval/2",
+        "HumanEval/3",
+        "HumanEval/4",
+        "HumanEval/5",
+        "HumanEval/6",
+        "HumanEval/7",
+        "HumanEval/8",
+        "HumanEval/9",
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/12",
+        "HumanEval/13",
+        "HumanEval/14",
+        "HumanEval/15",
+        "HumanEval/16",
+        "HumanEval/17",
+        "HumanEval/18",
+        "HumanEval/19",
+        "HumanEval/20",
+        "HumanEval/21",
+        "HumanEval/22",
+        "HumanEval/23",
+        "HumanEval/24",
+        "HumanEval/25",
+        "HumanEval/26",
+        "HumanEval/27",
+        "HumanEval/28",
+        "HumanEval/29"
+      ],
+      "requested_tasks_complete": false,
+      "passed": 27,
+      "malformed": [
+        "HumanEval/10",
+        "HumanEval/17",
+        "HumanEval/25"
+      ],
+      "cap_hits": 3,
+      "input_tokens": [
+        154,
+        145,
+        115,
+        149,
+        147,
+        122,
+        142,
+        123,
+        140,
+        130,
+        169,
+        106,
+        132,
+        100,
+        89,
+        98,
+        100,
+        202,
+        118,
+        135,
+        196,
+        153,
+        121,
+        73,
+        82,
+        156,
+        114,
+        78,
+        87,
+        117
+      ],
+      "guard_passed": true
+    },
+    "he-hybrid-short": {
+      "record": "he-hybrid-short/measurement.json",
+      "task_ids": [
+        "HumanEval/0",
+        "HumanEval/1",
+        "HumanEval/2",
+        "HumanEval/3",
+        "HumanEval/4",
+        "HumanEval/5",
+        "HumanEval/6",
+        "HumanEval/7",
+        "HumanEval/8",
+        "HumanEval/9",
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/12",
+        "HumanEval/13",
+        "HumanEval/14",
+        "HumanEval/15",
+        "HumanEval/16",
+        "HumanEval/17",
+        "HumanEval/18",
+        "HumanEval/19",
+        "HumanEval/20",
+        "HumanEval/21",
+        "HumanEval/22",
+        "HumanEval/23",
+        "HumanEval/24",
+        "HumanEval/25",
+        "HumanEval/26",
+        "HumanEval/27",
+        "HumanEval/28",
+        "HumanEval/29"
+      ],
+      "requested_tasks_complete": false,
+      "passed": 27,
+      "malformed": [
+        "HumanEval/10",
+        "HumanEval/11"
+      ],
+      "cap_hits": 1,
+      "input_tokens": [
+        154,
+        145,
+        115,
+        149,
+        147,
+        122,
+        142,
+        123,
+        140,
+        130,
+        169,
+        106,
+        132,
+        100,
+        89,
+        98,
+        100,
+        202,
+        118,
+        135,
+        196,
+        153,
+        121,
+        73,
+        82,
+        156,
+        114,
+        78,
+        87,
+        117
+      ],
+      "guard_passed": true
+    },
+    "he-best-short": {
+      "record": "he-best-short/measurement.json",
+      "task_ids": [
+        "HumanEval/0",
+        "HumanEval/1",
+        "HumanEval/2",
+        "HumanEval/3",
+        "HumanEval/4",
+        "HumanEval/5",
+        "HumanEval/6",
+        "HumanEval/7",
+        "HumanEval/8",
+        "HumanEval/9",
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/12",
+        "HumanEval/13",
+        "HumanEval/14",
+        "HumanEval/15",
+        "HumanEval/16",
+        "HumanEval/17",
+        "HumanEval/18",
+        "HumanEval/19",
+        "HumanEval/20",
+        "HumanEval/21",
+        "HumanEval/22",
+        "HumanEval/23",
+        "HumanEval/24",
+        "HumanEval/25",
+        "HumanEval/26",
+        "HumanEval/27",
+        "HumanEval/28",
+        "HumanEval/29"
+      ],
+      "requested_tasks_complete": true,
+      "passed": 27,
+      "malformed": [
+        "HumanEval/10",
+        "HumanEval/20",
+        "HumanEval/25"
+      ],
+      "cap_hits": 1,
+      "input_tokens": [
+        154,
+        145,
+        115,
+        149,
+        147,
+        122,
+        142,
+        123,
+        140,
+        130,
+        169,
+        106,
+        132,
+        100,
+        89,
+        98,
+        100,
+        202,
+        118,
+        135,
+        196,
+        153,
+        121,
+        73,
+        82,
+        156,
+        114,
+        78,
+        87,
+        117
+      ],
+      "guard_passed": true
+    },
+    "he-gated-best-short": {
+      "record": "he-gated-best-short/measurement.json",
+      "task_ids": [
+        "HumanEval/0",
+        "HumanEval/1",
+        "HumanEval/2",
+        "HumanEval/3",
+        "HumanEval/4",
+        "HumanEval/5",
+        "HumanEval/6",
+        "HumanEval/7",
+        "HumanEval/8",
+        "HumanEval/9",
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/12",
+        "HumanEval/13",
+        "HumanEval/14",
+        "HumanEval/15",
+        "HumanEval/16",
+        "HumanEval/17",
+        "HumanEval/18",
+        "HumanEval/19",
+        "HumanEval/20",
+        "HumanEval/21",
+        "HumanEval/22",
+        "HumanEval/23",
+        "HumanEval/24",
+        "HumanEval/25",
+        "HumanEval/26",
+        "HumanEval/27",
+        "HumanEval/28",
+        "HumanEval/29"
+      ],
+      "requested_tasks_complete": true,
+      "passed": 27,
+      "malformed": [
+        "HumanEval/10",
+        "HumanEval/11"
+      ],
+      "cap_hits": 1,
+      "input_tokens": [
+        154,
+        145,
+        115,
+        149,
+        147,
+        122,
+        142,
+        123,
+        140,
+        130,
+        169,
+        106,
+        132,
+        100,
+        89,
+        98,
+        100,
+        202,
+        118,
+        135,
+        196,
+        153,
+        121,
+        73,
+        82,
+        156,
+        114,
+        78,
+        87,
+        117
+      ],
+      "guard_passed": true
+    },
+    "he-mmq-long-targets": {
+      "record": "he-mmq-long-targets/measurement.json",
+      "task_ids": [
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/17",
+        "HumanEval/25"
+      ],
+      "requested_tasks_complete": true,
+      "passed": 3,
+      "malformed": [
+        "HumanEval/10"
+      ],
+      "cap_hits": 3,
+      "input_tokens": [
+        14190,
+        14127,
+        14223,
+        14177
+      ],
+      "guard_passed": true
+    },
+    "he-gated-best-long-targets": {
+      "record": "he-gated-best-long-targets/measurement.json",
+      "task_ids": [
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/17",
+        "HumanEval/25"
+      ],
+      "requested_tasks_complete": true,
+      "passed": 2,
+      "malformed": [
+        "HumanEval/10"
+      ],
+      "cap_hits": 3,
+      "input_tokens": [
+        14190,
+        14127,
+        14223,
+        14177
+      ],
+      "guard_passed": true
+    },
+    "he-gated-serial-long-targets": {
+      "record": "he-gated-serial-long-targets/measurement.json",
+      "task_ids": [
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/17",
+        "HumanEval/25"
+      ],
+      "requested_tasks_complete": true,
+      "passed": 2,
+      "malformed": [
+        "HumanEval/17"
+      ],
+      "cap_hits": 3,
+      "input_tokens": [
+        14190,
+        14127,
+        14223,
+        14177
+      ],
+      "guard_passed": true
+    },
+    "he-mmq-gated-long-targets": {
+      "record": "he-mmq-gated-long-targets/measurement.json",
+      "task_ids": [
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/17",
+        "HumanEval/25"
+      ],
+      "requested_tasks_complete": true,
+      "passed": 3,
+      "malformed": [
+        "HumanEval/10"
+      ],
+      "cap_hits": 3,
+      "input_tokens": [
+        14190,
+        14127,
+        14223,
+        14177
+      ],
+      "guard_passed": true
+    },
+    "he-mmq-gated-short": {
+      "record": "he-mmq-gated-short/measurement.json",
+      "task_ids": [
+        "HumanEval/0",
+        "HumanEval/1",
+        "HumanEval/2",
+        "HumanEval/3",
+        "HumanEval/4",
+        "HumanEval/5",
+        "HumanEval/6",
+        "HumanEval/7",
+        "HumanEval/8",
+        "HumanEval/9",
+        "HumanEval/10",
+        "HumanEval/11",
+        "HumanEval/12",
+        "HumanEval/13",
+        "HumanEval/14",
+        "HumanEval/15",
+        "HumanEval/16",
+        "HumanEval/17",
+        "HumanEval/18",
+        "HumanEval/19",
+        "HumanEval/20",
+        "HumanEval/21",
+        "HumanEval/22",
+        "HumanEval/23",
+        "HumanEval/24",
+        "HumanEval/25",
+        "HumanEval/26",
+        "HumanEval/27",
+        "HumanEval/28",
+        "HumanEval/29"
+      ],
+      "requested_tasks_complete": true,
+      "passed": 27,
+      "malformed": [
+        "HumanEval/10",
+        "HumanEval/11"
+      ],
+      "cap_hits": 1,
+      "input_tokens": [
+        154,
+        145,
+        115,
+        149,
+        147,
+        122,
+        142,
+        123,
+        140,
+        130,
+        169,
+        106,
+        132,
+        100,
+        89,
+        98,
+        100,
+        202,
+        118,
+        135,
+        196,
+        153,
+        121,
+        73,
+        82,
+        156,
+        114,
+        78,
+        87,
+        117
+      ],
+      "guard_passed": true
+    }
+  },
+  "recall": {
+    "recall-mmq-control-16384-01.quality": {
+      "context": 16384,
+      "input_tokens": 15991,
+      "expected": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "maximum_generated_tokens": 256,
+      "first_turn_tokens": 86,
+      "first_turn_text": "All four records show identical code (atomic HostCore::First, set_host_core, host_core_setting, detect_cpu_topology_impl). No distinguishing variation. So all four are the same value.</think>All four records contain identical code with no distinguishing variation, so they share the same value.\n\n```json\n{\"A17\":\"cedar\",\"B29\":\"indigo\",\"C43\":\"marble\",\"D71\":\"twilight\"}\n```",
+      "decoded": null,
+      "correct_facts": 0,
+      "total_facts": 4,
+      "stopped": true,
+      "valid_run": true,
+      "passed": false
+    },
+    "recall-mmq-gated-12288-01.quality": {
+      "context": 12288,
+      "input_tokens": 9673,
+      "expected": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "maximum_generated_tokens": 256,
+      "first_turn_tokens": 84,
+      "first_turn_text": "All four records are identical in content (same code snippet repeated). The answer is just the recorded values: A17=cedar, B29=indigo, C43=marble, D71=twilight.</think>{\n  \"A17\": \"cedar\",\n  \"B29\": \"indigo\",\n  \"C43\": \"marble\",\n  \"D71\": \"twilight\"\n}",
+      "decoded": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "correct_facts": 4,
+      "total_facts": 4,
+      "stopped": true,
+      "valid_run": true,
+      "passed": true
+    },
+    "recall-mmq-gated-16384-01.quality": {
+      "context": 16384,
+      "input_tokens": 15991,
+      "expected": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "maximum_generated_tokens": 256,
+      "first_turn_tokens": 86,
+      "first_turn_text": "All four records show identical code (atomic HostCore::First, set_host_core, host_core_setting, detect_cpu_topology_impl). No distinguishing variation. So all four are the same value.</think>All four records contain identical code with no distinguishing variation, so they share the same value.\n\n```json\n{\"A17\":\"cedar\",\"B29\":\"indigo\",\"C43\":\"marble\",\"D71\":\"twilight\"}\n```",
+      "decoded": null,
+      "correct_facts": 0,
+      "total_facts": 4,
+      "stopped": true,
+      "valid_run": true,
+      "passed": false
+    },
+    "recall-mmq-gated-24576-01.quality": {
+      "context": 24576,
+      "input_tokens": 19423,
+      "expected": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "maximum_generated_tokens": 256,
+      "first_turn_tokens": 81,
+      "first_turn_text": "All four records share identical content: namespace atomic g_host_core, set_host_core, host_core_setting, detect_cpu_topology_impl declaration. So values are the recorded names: A17 cedar, B29 indigo, C43 marble, D71 twilight.</think>```json\n{\"A17\":\"cedar\",\"B29\":\"indigo\",\"C43\":\"marble\",\"D71\":\"twilight\"}\n```",
+      "decoded": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "correct_facts": 4,
+      "total_facts": 4,
+      "stopped": true,
+      "valid_run": true,
+      "passed": true
+    },
+    "recall-mmq-gated-8192-01.quality": {
+      "context": 8192,
+      "input_tokens": 7879,
+      "expected": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "maximum_generated_tokens": 256,
+      "first_turn_tokens": 44,
+      "first_turn_text": "All four records contain identical code, so the answer is the recorded value of each FACT.</think>{\"A17\":\"cedar\",\"B29\":\"indigo\",\"C43\":\"marble\",\"D71\":\"twilight\"}",
+      "decoded": {
+        "A17": "cedar",
+        "B29": "indigo",
+        "C43": "marble",
+        "D71": "twilight"
+      },
+      "correct_facts": 4,
+      "total_facts": 4,
+      "stopped": true,
+      "valid_run": true,
+      "passed": true
+    }
+  },
+  "performance_token_parity": {
+    "context": 8192,
+    "all_128_generated_tokens_equal": true,
+    "decode_cache_equal": true,
+    "control_tier_swaps": 294,
+    "candidate_tier_swaps": 294,
+    "note": "Matched-control timing under current system conditions still required."
+  },
+  "recall_control_parity": {
+    "context": 16384,
+    "control": "recall-mmq-control-16384-01",
+    "candidate": "recall-mmq-gated-16384-01",
+    "first_turn_tokens": 86,
+    "first_turn_token_parity": true,
+    "all_256_token_parity": true,
+    "strict_format_passed": false,
+    "observed_expected_values": 4,
+    "note": "Both outputs contain the expected JSON object after an unsolicited prose prefix; frozen strict scorer remains failed."
+  },
+  "default_parity": {
+    "reference": "base8k-01 trial 0, old executable",
+    "candidate": "base8k-02 trial 0, new executable, new controls unset",
+    "generated_tokens": 128,
+    "equal": true,
+    "canonical_token_sha256": "99f666660062c41ed3f7e168c8843c29bd2fdbba3af7e73e8f62982aad9aee3c",
+    "limits": "Final-logit dump from base8k-01 is trial 1, so it is not an identical-prefix comparison."
+  },
+  "mmq_short_parity": {
+    "tasks": 30,
+    "passed": 27,
+    "all_token_sequences_equal_control": true
+  },
+  "short_parity": {
+    "he-mmq-short": {
+      "tasks": 30,
+      "passed": 27,
+      "malformed": [
+        "HumanEval_10.py",
+        "HumanEval_11.py"
+      ],
+      "cap_hits": 1
+    },
+    "he-f16-short": {
+      "tasks": 30,
+      "passed": 27,
+      "malformed": [
+        "HumanEval_10.py",
+        "HumanEval_17.py",
+        "HumanEval_25.py"
+      ],
+      "cap_hits": 3
+    },
+    "he-hybrid-short": {
+      "tasks": 30,
+      "passed": 27,
+      "malformed": [
+        "HumanEval_10.py",
+        "HumanEval_11.py"
+      ],
+      "cap_hits": 1
+    },
+    "he-best-short": {
+      "tasks": 30,
+      "passed": 27,
+      "malformed": [
+        "HumanEval_10.py",
+        "HumanEval_20.py",
+        "HumanEval_25.py"
+      ],
+      "cap_hits": 1
+    },
+    "he-gated-best-short": {
+      "tasks": 30,
+      "passed": 27,
+      "malformed": [
+        "HumanEval_10.py",
+        "HumanEval_11.py"
+      ],
+      "cap_hits": 1
+    },
+    "gated_best_short_token_parity": true
+  },
+  "excluded": {
+    "base32k-01": "sustained external hf CPU work",
+    "hybrid-8k-01": "sustained external hf CPU work",
+    "base8k": "invalid token file: trailing newline",
+    "hybrid-b16384-32k-01": "cold cache accounting check failed before launch",
+    "final-mmq-16384-01": "kswapd interference",
+    "final-control-16384-01": "control stopped after the same accounting collapse and low GPU activity",
+    "final-mmq-16384-02": "already disqualified retry stopped after sustained reclaim and accounting collapse",
+    "recall-mmq-gated-32768-01": "service timeout at 15m30s; no completed result; kswapd activity, cause unconfirmed"
+  },
+  "selection": "Optional 8K MMQ preset: repeat +22.9% prefill, decode 33.32 vs 33.38; coding/token parity preserved. FP16 rejected; 16K/32K performance repeatability unresolved under shared-system pressure."
+}

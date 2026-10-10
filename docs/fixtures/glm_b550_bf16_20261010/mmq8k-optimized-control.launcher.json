@@ -1,0 +1,6 @@
+{
+  "exit_code": 1,
+  "stdout": "",
+  "stderr": "Running as unit: strata-lowmem-474892.service; invocation ID: 14c91a11ab1943a5a5f6a9d7c8798b19\nFinished with result: timeout\nMain processes terminated with: code=killed/status=TERM\nService runtime: 5min 30.146s\nCPU time consumed: 8min 50.641s\nMemory peak: 47.1G\nMemory swap peak: 0B\n",
+  "service_properties": "Result=timeout\nExecMainCode=2\nExecMainStatus=15\nMemoryPeak=50604650496\nMemorySwapPeak=0\n"
+}

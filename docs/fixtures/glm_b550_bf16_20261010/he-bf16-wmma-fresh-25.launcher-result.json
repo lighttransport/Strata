@@ -1,0 +1,6 @@
+{
+  "exit_code": 0,
+  "fresh_process": true,
+  "runtime_limit_seconds": 240,
+  "baseline_protocol": "earlier control used a resident process for four tasks; these probes cannot establish matched protocol parity"
+}

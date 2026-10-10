@@ -1,0 +1,7 @@
+Running as unit: strata-lowmem-459960.service; invocation ID: df27eaa71cd145fda02aa826b43dba57
+Finished with result: timeout
+Main processes terminated with: code=killed/status=TERM
+Service runtime: 15min 30.203s
+CPU time consumed: 29min 38.820s
+Memory peak: 256.0K
+Memory swap peak: 0B

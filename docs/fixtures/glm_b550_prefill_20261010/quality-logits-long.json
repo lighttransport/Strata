@@ -1,0 +1,16 @@
+{
+  "16384": {
+    "reference": "base16k-01",
+    "candidate": "best16k-01",
+    "top1_reference": 2741,
+    "top1_candidate": 2741,
+    "kl_reference_candidate": 0.013534368126675612
+  },
+  "32768": {
+    "reference": "base32k-02",
+    "candidate": "best32k-01",
+    "top1_reference": 1460,
+    "top1_candidate": 1460,
+    "kl_reference_candidate": 3.5663656153552996e-06
+  }
+}

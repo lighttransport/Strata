@@ -1,0 +1,4 @@
+Simple: swapcase.</think>```python
+def flip_case(string: str) -> str:
+    return string.swapcase()
+```

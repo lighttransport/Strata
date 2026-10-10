@@ -1,0 +1,15 @@
+</think>Simple trial division.</think>```python
+def factorize(n: int) -> List[int]:
+    factors = []
+    d = 2
+    while d * d <= n:
+        while n % d == 0:
+            factors.append(d)
+            n //= d
+        d += 1
+    if n > 1:
+        factors.append(n)
+    return factors
+```
+
+Trial division: divide out each candidate starting at 2, append any remaining prime > 1.

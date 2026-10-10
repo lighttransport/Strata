@@ -1,0 +1,1 @@
+The legend: 'o' whole = 4 beats, 'o|' half = 2 beats, '.|' quater = 1 beat. So parse each token: 'o|' → 2, '.|' → 1, 'o' → 4.</think>Parse each token: 'o|' → 2, '.|' → 1, 'o' → 4.

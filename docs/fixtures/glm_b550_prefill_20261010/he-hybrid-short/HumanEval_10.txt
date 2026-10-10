@@ -1,0 +1,27 @@
+The task: implement make_palindrome. Find longest palindromic suffix of the string; append reverse of prefix before that suffix.
+
+For 'cat': palindromic suffixes: 't' (longest suffix palindrome is 't'), prefix before suffix = 'ca', reverse = 'ac' → 'cat'+'ac' = 'catac'. ✓
+For 'cata': suffix 'ata' is palindrome, prefix 'c', reverse 'c' → 'catac'. ✓
+
+Implementation: iterate i from 0 to len(s)-1; check s[i:] is palindrome; first i where s[i:] palindrome gives longest suffix. Append reverse of s[:i].
+
+def make_palindrome(string: str) -> str:
+    for i in range(len(string)):
+        if is_palindrome(string[i:]):
+            return string + string[:i][::-1]
+    return string  # empty string case
+
+Check 'cat': i=0 'cat' not pal; i=1 'at' not pal; i=2 't' pal → return 'cat' + 'ca'[::-1] = 'cat'+'ac' = 'catac'. ✓
+'cata': i=0 no; i=1 'ata' pal → 'cata' + 'c' = 'catac'. ✓
+'': loop doesn't run, return ''. ✓
+
+Write final code with imports (none needed).</think>def is_palindrome(string: str) -> bool:
+    return string == string[::-1]
+
+def make_palindrome(string: str) -> str:
+    for i in range(len(string)):
+        if is_palindrome(string[i:]):
+            return string + string[:i][::-1]
+    return string
+
+No imports needed.

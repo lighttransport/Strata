@@ -1,0 +1,90 @@
+```python
+from typing import List
+
+
+def factorize(n: int) -> List[int]:
+    factors: List[int] = []
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+        ...
+```
+
+Looking at the test cases, I need to handle the factorization of an integer. The function should return a list of prime factors in order from smallest to largest, with each factor repeated according to how many times it appears in the factorization.
+
+Let me trace through the logic:
+
+- Start with `d = 2`, and while `d * d <= n`, check if `n % d == 0`. If so, append `d` to the factors list and divide `n` by `d` (repeatedly). Otherwise, increment `d` by 1.
+- After the loop, if `n > 1`, append `n` to the factors list.
+
+Wait, let me trace through the logic more carefully. The standard trial division algorithm:
+
+```python
+def factorize(n):
+    factors = []
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+            factors.append(d)
+            n //= d
+        else:
+            d += 1
+    if n > 1:
+        factors.append(n)
+    return factors
+```
+
+Hmm, but this only appends one factor per iteration. Let me trace through the logic more carefully.
+
+For `factorize(8)`:
+- `d = 2`, `d * d = 4 <= 8`. `8 % 2 == 0`, so append 2, `n = 4`.
+- `d = 2`, `d * d = 4 <= 4`. `4 % 2 == 0`, so append 2, `n = 2`.
+- `d = 2`, `d * d = 4 > 2`. Loop exits.
+- `n = 2 > 1`, so append 2.
+- Return `[2, 2, 2]`. ✓
+
+For `factorize(25)`:
+- `d = 2`, `d * d = 4 <= 25`. `25 % 2 != 0`, so `d = 3`.
+- `d = 3`, `d * d = 9 <= 25`. `25 % 3 != 0`, so `d = 4`.
+- `d = 4`, `d * d = 16 <= 25`. `25 % 4 != 0`, so `d = 5`.
+- `d = 5`, `d * d = 25 <= 25`. `25 % 5 == 0`, so append 5, `n = 5`.
+- `d = 5`, `d * d = 25 > 5`. Loop exits.
+- `n = 5 > 1`, so append 5.
+- Return `[5, 5]`. ✓
+
+For `factorize(70)`:
+- `d = 2`, `d * d = 4 <= 70`. `70 % 2 == 0`, so append 2, `n = 35`.
+- `d = 2`, `d * d = 4 > 35`. Loop exits.
+- `n = 35 > 1`, so append 35.
+- Return `[2, 35]`. ✗
+
+Hmm, that's wrong. The issue is that after dividing by 2, we need to continue dividing by the same `d` if possible, and only then increment `d`. Let me reconsider.
+
+The standard trial division algorithm that handles repeated factors:
+
+```python
+def factorize(n):
+    factors = []
+    d = 2
+    while d * d <= n:
+        if n % d == 0:
+            factors.append(d)
+            n //= d
+        else:
+            d += 1
+    if n > 1:
+        factors.append(n)
+    return factors
+```
+
+Hmm, but this only appends one factor per iteration. Let me trace through the logic more carefully.
+
+For `factorize(8)`:
+- `d = 2`, `d * d = 4 <= 8`. `8 % 2 == 0`, so append 2, `n = 4`.
+- `d = 2`, `d * d = 4 <= 4`. `4 % 2 == 0`, so append 2, `n = 2`.
+- `d = 2`, `d * d = 4 > 2`. Loop exits.
+- `n = 2 > 1`, so append 2.
+- Return `[2, 2, 2]`. ✓
+
+For `factorize(25)`:
+- `d = 2`, `d * d

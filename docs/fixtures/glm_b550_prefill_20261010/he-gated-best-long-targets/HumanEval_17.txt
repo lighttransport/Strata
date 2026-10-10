@@ -1,0 +1,15 @@
+</think>The task is straightforward: parse the string into tokens and map each to its beat count. The legend says 'o' → 4, 'o|' → 2, '.|' → 1. The string is space-separated tokens, so split on whitespace and translate each token. The mapping is: token 'o' → 4, token 'o|' → 2, token '.|' → 1. The docstring example confirms: 'o o| .| o| o| .| .| .| .| o o' → [4,2,1,2,2,1,1,1,1,4,4]. So the function splits the string and returns the mapped list. The mapping is a simple dict lookup. No other edge cases are mentioned, so assume well-formed input. Return the list of ints.
+
+def parse_music(music_string: str) -> List[int]:
+    return [ {'o': 4, 'o|': 2, '.|': 1}[tok] for tok in music_string.split() ]
+
+That's it. The docstring example is consistent. The function is a one-liner. No imports needed beyond typing. The reasoning is brief: split and map.
+
+The final answer is the code block.</think>The task is a simple token-to-value mapping: split the string on whitespace and translate each token ('o' → 4, 'o|' → 2, '.|' → 1). The docstring example confirms this, and no other edge cases are mentioned, so assume well-formed input.
+
+```python
+from typing import List
+
+def parse_music(music_string: str) -> List[int]:
+    return [ {'o': 4, 'o|': 2, '.|': 1}[tok] for tok in music_string.split() ]
+```

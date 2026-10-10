@@ -27,6 +27,8 @@ void iq_mmvq(int ggml_type, const void* w, const void* x_q8_1, float* y, int n_i
 
 /// Dequantize `n` contiguous values (n a multiple of 256) to fp16 / fp32.
 void iq_dequant_f16(int ggml_type, const void* src, int64_t n, uint16_t* dst, void* stream);
+/// Direct FP32 dequantization rounded to BF16, without an intermediate FP16 image.
+void iq_dequant_bf16(int ggml_type, const void* src, int64_t n, uint16_t* dst, void* stream);
 void iq_dequant_f32(int ggml_type, const void* src, int64_t n, float* dst, void* stream);
 /// Rows `tokens[0..n_tok)` (device ids) of a GGUF embedding table (`row_bytes` per row; the table may be mapped
 /// host memory) dequantized to fp32, `n_embd` per row (a multiple of 256).

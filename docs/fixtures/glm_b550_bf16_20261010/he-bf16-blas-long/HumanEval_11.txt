@@ -1,0 +1,6 @@
+Simple: XOR of equal-length binary strings.</think>```python
+def string_xor(a: str, b: str) -> str:
+    return ''.str if False else ''.join('1' if (x == '1') != (y == '1') else '0' for x, y in zip(a, b))
+```
+
+**Brief reasoning:** XOR each pair of bits; result bit is '1' when exactly one input bit is '1'. Inputs are equal length binary strings, so zip pairs them directly.

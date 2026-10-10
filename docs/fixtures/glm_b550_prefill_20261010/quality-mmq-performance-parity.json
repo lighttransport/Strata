@@ -1,0 +1,8 @@
+{
+  "context": 8192,
+  "all_128_generated_tokens_equal": true,
+  "decode_cache_equal": true,
+  "control_tier_swaps": 294,
+  "candidate_tier_swaps": 294,
+  "note": "Matched-control timing under current system conditions still required."
+}

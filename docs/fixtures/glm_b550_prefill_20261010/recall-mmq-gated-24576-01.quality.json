@@ -1,0 +1,24 @@
+{
+  "context": 24576,
+  "input_tokens": 19423,
+  "expected": {
+    "A17": "cedar",
+    "B29": "indigo",
+    "C43": "marble",
+    "D71": "twilight"
+  },
+  "maximum_generated_tokens": 256,
+  "first_turn_tokens": 81,
+  "first_turn_text": "All four records share identical content: namespace atomic g_host_core, set_host_core, host_core_setting, detect_cpu_topology_impl declaration. So values are the recorded names: A17 cedar, B29 indigo, C43 marble, D71 twilight.</think>```json\n{\"A17\":\"cedar\",\"B29\":\"indigo\",\"C43\":\"marble\",\"D71\":\"twilight\"}\n```",
+  "decoded": {
+    "A17": "cedar",
+    "B29": "indigo",
+    "C43": "marble",
+    "D71": "twilight"
+  },
+  "correct_facts": 4,
+  "total_facts": 4,
+  "stopped": true,
+  "valid_run": true,
+  "passed": true
+}

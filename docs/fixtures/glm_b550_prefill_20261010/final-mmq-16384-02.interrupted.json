@@ -1,0 +1,6 @@
+{
+  "reason": "Stopped an already disqualified performance retry after sustained kswapd activity and file-page accounting collapse; no further automatic retries.",
+  "unit": "strata-lowmem-463880.service",
+  "progress_record": "final-mmq-16384-02.progress.json",
+  "selected": false
+}

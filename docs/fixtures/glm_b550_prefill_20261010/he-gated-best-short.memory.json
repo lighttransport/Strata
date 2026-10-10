@@ -1,0 +1,615 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "./tools/humaneval_b550.py",
+    "models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "datasets/HumanEval.jsonl.gz",
+    "--output",
+    "./docs/fixtures/glm_b550_prefill_20261010/he-gated-best-short",
+    "--decoder",
+    "./build-hip/strata-glm-decode",
+    "--limit",
+    "30",
+    "--offset",
+    "0",
+    "--tokens",
+    "1024",
+    "--gpu-budget-mib",
+    "15360",
+    "--decode-cache-mib",
+    "12288",
+    "--expert-pack",
+    "models/glm53f-reap/REAP50-Q22-down-only-experimental.gguf",
+    "--context",
+    "8192",
+    "--prefill-batch",
+    "8192",
+    "--prefill-experts",
+    "f16-batched",
+    "--threads",
+    "12"
+  ],
+  "peak_rss_kib": 50701020,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 50091496,
+  "sample_interval_ms": 100,
+  "rejected": null,
+  "interference": [
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 87.45407068888096,
+      "elapsed_seconds": 138.09268423198955
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 89.4795249612535,
+      "elapsed_seconds": 139.27733267098665
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 93.84829945048293,
+      "elapsed_seconds": 140.36419431999093
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 89.79587767266071,
+      "elapsed_seconds": 141.4556006800267
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 95.65988410531868,
+      "elapsed_seconds": 142.542821259005
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 91.72857119923606,
+      "elapsed_seconds": 143.63300158601487
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 89.8078543639811,
+      "elapsed_seconds": 144.69072244898416
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 86.35212275094526,
+      "elapsed_seconds": 145.86037782102358
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 90.75561827401181,
+      "elapsed_seconds": 146.9955662250286
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 84.89919001027353,
+      "elapsed_seconds": 148.1730109829805
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 93.90043114264726,
+      "elapsed_seconds": 149.39797878300305
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 93.21962616440679,
+      "elapsed_seconds": 150.4921711719944
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 85.8628065873421,
+      "elapsed_seconds": 151.5636449760059
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 94.4284671315697,
+      "elapsed_seconds": 152.65437474899227
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 88.21648592456987,
+      "elapsed_seconds": 153.74263778398745
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 87.02575044737641,
+      "elapsed_seconds": 154.92610526899807
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 89.71131128392244,
+      "elapsed_seconds": 156.17464107600972
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 92.2467976832029,
+      "elapsed_seconds": 157.3020823840052
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 84.4794658581746,
+      "elapsed_seconds": 158.3672377099865
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 92.76269519300591,
+      "elapsed_seconds": 159.4884156039916
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 83.61269232114552,
+      "elapsed_seconds": 160.56480389100034
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 85.20611394454633,
+      "elapsed_seconds": 161.77354292600648
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 88.54572485928458,
+      "elapsed_seconds": 162.94817710499046
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 90.58542212683984,
+      "elapsed_seconds": 164.11826080002356
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 89.06615642132576,
+      "elapsed_seconds": 165.286026597023
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 91.44162734956667,
+      "elapsed_seconds": 166.478023980977
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 92.7636382778611,
+      "elapsed_seconds": 167.67458243999863
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 94.8517038732056,
+      "elapsed_seconds": 168.8250197719899
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 90.73369247570635,
+      "elapsed_seconds": 170.12539758603089
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 95.01596694567421,
+      "elapsed_seconds": 171.2399233750184
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 97.37862751658713,
+      "elapsed_seconds": 172.5028688450111
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 97.81871685976182,
+      "elapsed_seconds": 173.749817961012
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 100.22409514319858,
+      "elapsed_seconds": 173.750302275992
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 100.77522606300444,
+      "elapsed_seconds": 174.96052209398476
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 87.55880297277436,
+      "elapsed_seconds": 174.96117867197609
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 99.9282762196385,
+      "elapsed_seconds": 176.10120404802728
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 91.16263795475794,
+      "elapsed_seconds": 176.10162261099322
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 94.68587696596403,
+      "elapsed_seconds": 177.2735229699756
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 91.27377329151487,
+      "elapsed_seconds": 177.27392909902846
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 92.6229022191722,
+      "elapsed_seconds": 178.50472488300875
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 86.47379436253311,
+      "elapsed_seconds": 179.70738752302714
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 95.87960416974649,
+      "elapsed_seconds": 180.78179039800307
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 88.88043891105617,
+      "elapsed_seconds": 181.86189575097524
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 80.96661707126503,
+      "elapsed_seconds": 183.05982472398318
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 89.92359815432424,
+      "elapsed_seconds": 184.3165445710183
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 92.22909510810074,
+      "elapsed_seconds": 185.37887797900476
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 87.56265267310242,
+      "elapsed_seconds": 186.55527807498584
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 95.95560729669195,
+      "elapsed_seconds": 187.77449456299655
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 94.9641953845681,
+      "elapsed_seconds": 189.0068021210027
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 88.25559752295257,
+      "elapsed_seconds": 190.0831223130226
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 92.39016101059526,
+      "elapsed_seconds": 191.30622184003005
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 87.74448237486247,
+      "elapsed_seconds": 192.49143101798836
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 88.01278501739267,
+      "elapsed_seconds": 193.58227230998455
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 82.26150939652035,
+      "elapsed_seconds": 194.79774004098726
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 94.89687362615341,
+      "elapsed_seconds": 195.90443088498432
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 94.59508058680906,
+      "elapsed_seconds": 197.00374879100127
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 89.70503597745272,
+      "elapsed_seconds": 198.10744008002803
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 96.00932346770986,
+      "elapsed_seconds": 199.21134857897414
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 90.7703925492454,
+      "elapsed_seconds": 200.42325324000558
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 81.37091994895282,
+      "elapsed_seconds": 201.50477642798796
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 85.5544918467283,
+      "elapsed_seconds": 202.63846778101288
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 80.79597004591152,
+      "elapsed_seconds": 203.83905932802008
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 87.27130923347323,
+      "elapsed_seconds": 204.95064521598397
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 95.08748762946723,
+      "elapsed_seconds": 206.0443403130048
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 86.92151191466705,
+      "elapsed_seconds": 207.25217942899326
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 85.76085781548942,
+      "elapsed_seconds": 208.52319928398356
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 97.23456190165146,
+      "elapsed_seconds": 209.66463442798704
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 88.68929612589717,
+      "elapsed_seconds": 210.83748277300037
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 95.74630112129084,
+      "elapsed_seconds": 211.94482237001648
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 94.39136219480572,
+      "elapsed_seconds": 217.81325603899313
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 85.26175129232405,
+      "elapsed_seconds": 218.98608101002173
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 101.74336730245008,
+      "elapsed_seconds": 251.88722611602861
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 94.92216705864689,
+      "elapsed_seconds": 252.9723373799934
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 102.55542362615999,
+      "elapsed_seconds": 254.20097408501897
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 93.59992889711708,
+      "elapsed_seconds": 255.26932229101658
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 99.58177654425833,
+      "elapsed_seconds": 256.34388155897614
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 83.16232243365988,
+      "elapsed_seconds": 257.4980733930133
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 123.7240505815376,
+      "elapsed_seconds": 265.66570172098
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 99.33200073668009,
+      "elapsed_seconds": 266.80309208401013
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 100.4594492783585,
+      "elapsed_seconds": 267.9477424530196
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 245,
+      "name": "kswapd0",
+      "cpu_percent": 99.86120673404267,
+      "elapsed_seconds": 269.0993757600081
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 454721,
+      "name": "hf",
+      "cpu_percent": 212.74778825948223,
+      "elapsed_seconds": 269.0998453380307
+    }
+  ],
+  "exit_code": 0,
+  "wall_seconds": 349.85479752300307
+}

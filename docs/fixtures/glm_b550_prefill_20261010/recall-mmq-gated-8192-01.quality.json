@@ -1,0 +1,24 @@
+{
+  "context": 8192,
+  "input_tokens": 7879,
+  "expected": {
+    "A17": "cedar",
+    "B29": "indigo",
+    "C43": "marble",
+    "D71": "twilight"
+  },
+  "maximum_generated_tokens": 256,
+  "first_turn_tokens": 44,
+  "first_turn_text": "All four records contain identical code, so the answer is the recorded value of each FACT.</think>{\"A17\":\"cedar\",\"B29\":\"indigo\",\"C43\":\"marble\",\"D71\":\"twilight\"}",
+  "decoded": {
+    "A17": "cedar",
+    "B29": "indigo",
+    "C43": "marble",
+    "D71": "twilight"
+  },
+  "correct_facts": 4,
+  "total_facts": 4,
+  "stopped": true,
+  "valid_run": true,
+  "passed": true
+}

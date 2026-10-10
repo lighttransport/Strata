@@ -266,6 +266,10 @@ def worker(args):
         command += ["--dump-logits=" + str(args.output.with_suffix(".logits.bin").resolve())]
     if cfg.get("routing_trace"):
         command.append("--routing-trace=" + str(Path(cfg["routing_trace"]).resolve()))
+    if cfg.get("profile_layers"):
+        command.append("--profile")
+    if cfg.get("record_prefill_logits"):
+        command.append("--dump-prefill-logits=" + str(args.output.with_suffix(".prefill.logits.bin").resolve()))
     if cfg.get("expert_pack"):
         command.append("--expert-pack=" + cfg["expert_pack"])
     if cfg.get("decode_graphs"):

@@ -1,0 +1,54 @@
+Simple: track depth, split at depth 0.</think>```python
+from typing import List
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    result = []
+    depth = 0
+    start = 0
+    clean = ''
+    for i, c in enumerate(paren_string):
+        if c == ' ':
+            continue
+        clean += c
+    # simpler: iterate directly
+    result = []
+    depth = 0
+    start = 0
+    for i, c in enumerate(paren_string):
+        if c == ' ':
+            continue
+        if c == '(':
+            if depth == 0:
+                start = i
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                result.append(paren_string[start:i+1].replace(' ', ''))
+    return result
+```
+
+Wait — that has issues (start tracking with spaces, replace per group). Let me give the clean correct version:
+
+```python
+from typing import List
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    result: List[str] = []
+    depth = 0
+    start = 0
+    for i, c in enumerate(paren_string):
+        if c == ' ':
+            continue
+        if c == '(':
+            if depth == 0:
+                start = i
+            depth += 1
+        else:
+            depth -= 1
+            if depth == 0:
+                result.append(paren_string[start:i+1].replace(' ', ''))
+    return result
+```
+
+Hmm, but `start` records index of first `(` at depth 0 — with spaces skipped via `continue`, that's fine since spaces only appear between groups, not inside a group's captured span... actually spaces can appear inside groups too (e.g. `( ) ( )` → groups `'( )'` and `'( )'`). The captured span from `start` to `i` includes those inner spaces, and `.replace(' ', '')` removes them — correct. But `start` is set at the first `(` encountered at depth 0; if a group is preceded by spaces, `start` points at the `(`, fine. Edge: spaces *after* a group's closing `)` before next group's `(` — skipped, fine. But wait: spaces *inside* a group before its first `(`? A group's first `(` is its opening, so no. One subtle bug: spaces between groups are skipped, but if a space appears *after* the previous group's `)` and *before* the next group's `(`, it's skipped — fine. However, spaces *inside* a group appear between its `(` and `)`, which are within the captured span — fine. But there's a case: spaces *between* groups where the next group's `(` is at depth 0 — `start` set there, fine. But spaces *inside* a group appear *before* the group's closing `)` — within span, fine. One real bug: spaces *between* groups are skipped, but if a space appears *after* the previous group's `)` and *before* the next group's `(`, it's skipped — fine. But spaces *inside* a group appear *before* the group's closing `)` — within span, fine. But spaces *between* groups where the next group's `(` is at depth 0 — `start` set there, fine. But spaces *inside* a group appear *before* the group's closing `)` — within span, fine. But spaces *between* groups are skipped, but if a space appears *after* the previous group's `)` and *before* the next group's `(`, it's skipped — fine. But spaces *inside* a group appear *before* the group's closing `)` — within span, fine. But spaces *between* groups are skipped, but if a space appears *after* the previous group's `)` and *before* the next group's `(`, it's skipped — fine. But spaces *inside* a group appear *before* the group's closing `)` — within span, fine. But spaces *between* groups are skipped, but if a space appears *after* the previous group's `)` and *before* the next group's `(`, it's skipped — fine. But spaces *inside* a group appear *before* the group's closing `)` — within span, fine. But spaces *between* groups are skipped, but if a space appears *after* the previous group's `)` and *before* the next group's `(`, it's skipped — fine. But spaces *inside* a group appear *before* the group's closing `)` — within span, fine. But spaces *between* groups are skipped, but if a space appears *after* the previous

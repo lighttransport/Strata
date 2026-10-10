@@ -1,0 +1,11 @@
+{
+  "context": 16384,
+  "control": "recall-mmq-control-16384-01",
+  "candidate": "recall-mmq-gated-16384-01",
+  "first_turn_tokens": 86,
+  "first_turn_token_parity": true,
+  "all_256_token_parity": true,
+  "strict_format_passed": false,
+  "observed_expected_values": 4,
+  "note": "Both outputs contain the expected JSON object after an unsolicited prose prefix; frozen strict scorer remains failed."
+}

@@ -1,0 +1,14 @@
+Sort, find adjacent pair with min diff.</think>```python
+from typing import List, Tuple
+
+def find_closest_elements(numbers: List[float]) -> Tuple[float, float]:
+    sorted_nums = sorted(numbers)
+    best_pair = (sorted_nums[0], sorted_nums[1])
+    best_diff = best_pair[1] - best_pair[0]
+    for i in range(len(sorted_nums) - 1):
+        diff = sorted_nums[i + 1] - sorted_nums[i]
+        if diff < best_diff:
+            best_diff = diff
+            best_pair = (sorted_nums[i], sorted_nums[i + 1])
+    return best_pair
+```

@@ -2,6 +2,10 @@
 #include <cstddef>
 #include <cstdint>
 namespace strata::kernels {
+void glm_bf16(const float *x, uint16_t *y, int64_t n, void *stream);
+void glm_gather_expert_bf16(const float *x, uint16_t *y, const int *bounds, const int *source,
+                            int first, int groups, int offset, int rows, int width, void *stream,
+                            unsigned expert_mask = 0);
 void glm_layer_norm_batch(const float *x, const float *w, const float *b, float *y, int width, int tokens,
                           float eps, void *stream);
 void glm_f16(const float *x, uint16_t *y, int64_t count, void *stream);
@@ -63,6 +67,7 @@ void glm_kda_gate_batch(const float *x, const float *bias, const float *a, float
 // prepared_qi requires key/decay/beta transformed by glm_kda_prepare. With
 // row_parts=1 the recurrence retains the unprepared accumulation order.
 // Prepared inputs cannot be combined with rollback snapshots.
+// Sequential recurrence for 1..2048 tokens; dim must be 128.
 void glm_kda_chunk(float *state, const float *q, const float *key, const float *value, const float *decay,
                    const float *beta, float *out, int heads, int dim, int tokens, void *stream,
                    int columns = 128, int row_parts = 1, const float *prepared_qi = nullptr,
