@@ -24,6 +24,9 @@ offers the same steps as tools.
 
 ## Contributing a change or report
 
+- Never push without the user's explicit permission. This includes push dry runs.
+  Requests to review, commit locally, prepare for push, or run a pre-push audit do not authorize a push.
+  Complete the local work and report readiness; wait for explicit push authorization.
 - Search the open issues and pull requests first, and add to a thread that already covers your point.
 - Open an issue with the form that fits (bug report, feature request or question).
 - One change per pull request. Say what it changes and what it leaves alone.
