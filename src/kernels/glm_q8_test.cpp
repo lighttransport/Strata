@@ -254,6 +254,20 @@ int main() {
                             same(o1, o2, (size_t)tokens * 4 * n * 4) && same(i1, i2, tokens * k8 * 4) && same(w1, w2, tokens * k8 * 4);
             if (!ok) ++failures;
             std::cout << (ok ? "PASS" : "FAIL") << " token-batched router/mHC bitwise equal to per-token calls\n";
+            // Fused deferral save must preserve the output and every coefficient,
+            // including with streams updated in place and across several tokens.
+            float *saved;
+            ck(cudaMalloc(&saved, tokens * 24 * 4));
+            k::glm_mhc_write_tokens_save(ds, c2, dy, o2, saved, n, tokens, s);
+            ck(cudaStreamSynchronize(s));
+            bool save_ok = same(o1, o2, (size_t)tokens * 4 * n * 4) && same(c2, saved, tokens * 24 * 4);
+            ck(cudaMemcpyAsync(o2, ds, (size_t)tokens * 4 * n * 4, cudaMemcpyDeviceToDevice, s));
+            k::glm_mhc_write_tokens_save(o2, c2, dy, o2, saved, n, tokens, s);
+            ck(cudaStreamSynchronize(s));
+            save_ok &= same(o1, o2, (size_t)tokens * 4 * n * 4) && same(c2, saved, tokens * 24 * 4);
+            if (!save_ok) ++failures;
+            std::cout << (save_ok ? "PASS" : "FAIL") << " fused mHC write/save bitwise output and coefficients\n";
+            cudaFree(saved);
         }
         std::cout << (failures ? "FAIL" : "PASS") << " glm_q8_test\n";
         return failures != 0;

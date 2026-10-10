@@ -15,6 +15,14 @@
 #include <stdexcept>
 #include <vector>
 namespace k = strata::kernels;
+void ordered_rows_test_mode(bool enabled) {
+#ifdef _WIN32
+    _putenv_s("STRATA_GLM_KDA_ORDERED_ROWS", enabled ? "1" : "");
+#else
+    if (enabled) setenv("STRATA_GLM_KDA_ORDERED_ROWS", "1", 1);
+    else unsetenv("STRATA_GLM_KDA_ORDERED_ROWS");
+#endif
+}
 void ck(cudaError_t e) {
     if (e != cudaSuccess)
         throw std::runtime_error(cudaGetErrorString(e));
@@ -442,6 +450,43 @@ int main(int argc, char** argv) {
             near(state.get(), seq.get(), 1e-6);
             near(out.get(), ref.get(), 1e-6);
             const auto expected_state = state.get(), expected_out = out.get();
+            for (bool prepare : {false, true}) for (int chunk : {64, 256, 2048}) {
+                Buffer<float> ordered_state(initial), ordered_out(B * N), pk(key.get()),
+                    pg(decay.get()), pb(beta.get()), qi(B * H);
+                if (prepare) k::glm_kda_prepare(q.p, pk.p, pg.p, pb.p, qi.p, H, B, nullptr);
+                ordered_rows_test_mode(true);
+                for (int t = 0; t < B; t += chunk)
+                    k::glm_kda_chunk(ordered_state.p, q.p + t * N, pk.p + t * N, v.p + t * N,
+                        pg.p + t * N, pb.p + t * H, ordered_out.p + t * N, H, D, std::min(chunk, B - t),
+                        nullptr, 128, 4, prepare ? qi.p + t * H : nullptr);
+                const auto actual_state = ordered_state.get(), actual_out = ordered_out.get();
+                if (std::memcmp(actual_state.data(), expected_state.data(), expected_state.size() * 4) ||
+                    std::memcmp(actual_out.data(), expected_out.data(), expected_out.size() * 4))
+                    throw std::runtime_error("ordered KDA rows changed original FP32 output/state bits");
+                if (B == 64 && chunk == 64 && benchmark) {
+                    cudaEvent_t begin, end;
+                    ck(cudaEventCreate(&begin)); ck(cudaEventCreate(&end));
+                    float total_ms = 0;
+                    for (int repeat = 0; repeat < 50; ++repeat) {
+                        if (prepare) {
+                            ck(cudaMemcpyAsync(pk.p, key.p, (size_t)B * N * 4, cudaMemcpyDeviceToDevice));
+                            ck(cudaMemcpyAsync(pg.p, decay.p, (size_t)B * N * 4, cudaMemcpyDeviceToDevice));
+                            ck(cudaMemcpyAsync(pb.p, beta.p, (size_t)B * H * 4, cudaMemcpyDeviceToDevice));
+                        }
+                        ck(cudaEventRecord(begin));
+                        if (prepare) k::glm_kda_prepare(q.p, pk.p, pg.p, pb.p, qi.p, H, B, nullptr);
+                        k::glm_kda_chunk(ordered_state.p, q.p, pk.p, v.p, pg.p, pb.p, ordered_out.p,
+                            H, D, B, nullptr, 128, 4, prepare ? qi.p : nullptr);
+                        ck(cudaEventRecord(end)); ck(cudaEventSynchronize(end));
+                        float ms; ck(cudaEventElapsedTime(&ms, begin, end)); total_ms += ms;
+                    }
+                    std::cout << "KDA_ORDERED_TIME prepared=" << prepare << " heads=" << H
+                              << " tokens=" << B << " ms=" << total_ms / 50
+                              << " bits=identical includes_prepare=" << prepare << '\n';
+                    ck(cudaEventDestroy(begin)); ck(cudaEventDestroy(end));
+                }
+                ordered_rows_test_mode(false);
+            }
             // Hoist only token-independent normalization and gates. Every
             // recurrence output and final state must retain the original bits.
             for (int columns : {32, 64, 128}) for (int chunk : {64, 256, 2048}) {

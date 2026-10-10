@@ -40,6 +40,10 @@ void glm_mhc_read_tokens(const float *streams, const float *projected, const flo
                          void *stream);
 void glm_mhc_write_tokens(const float *streams, const float *coefficients, const float *y, float *out, int width,
                           int tokens, void *stream);
+// Same arithmetic; additionally save tokens*24 coefficients in a distinct device buffer.
+// Saves a separate device copy for deferred experts. Streams/out may alias; saved must not alias any input.
+void glm_mhc_write_tokens_save(const float *streams, const float *coefficients, const float *y, float *out,
+                               float *saved, int width, int tokens, void *stream);
 // Router for several tokens: logits + t*experts, ids/weights + t*top_k.
 void glm_router_tokens(const float *logits, const float *correction, int *ids, float *weights, int experts,
                        int top_k, float scale, int tokens, void *stream, const float *bonus = nullptr);

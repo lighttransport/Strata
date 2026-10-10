@@ -347,9 +347,15 @@ __global__ void hc_read(const float *r, const float *c, float *x, int n) {
         x[d] = sum;
     }
 }
-__global__ void hc_write(const float *r, const float *c, const float *y, float *out, int n) {
+template<bool save = false>
+__global__ void hc_write(const float *r, const float *c, const float *y, float *out, int n,
+                         float *saved = nullptr) {
     const int d = blockIdx.x * blockDim.x + threadIdx.x;
     r += (size_t)blockIdx.y * 4 * n; c += (size_t)blockIdx.y * 24; y += (size_t)blockIdx.y * n; out += (size_t)blockIdx.y * 4 * n;
+    if constexpr (save) {
+        if (blockIdx.x == 0 && threadIdx.x < 24)
+            saved[(size_t)blockIdx.y * 24 + threadIdx.x] = c[threadIdx.x];
+    }
     if (d >= n)
         return;
     // Keep all input streams in registers so in-place updates are safe.
@@ -650,7 +656,7 @@ void glm_mhc_read(const float *r, const float *p, const float *b, const float *s
 }
 void glm_mhc_write(const float *r, const float *c, const float *y, float *out, int n, void *s) {
     width(n);
-    hc_write<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(r, c, y, out, n);
+    hc_write<><<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(r, c, y, out, n);
     check();
 }
 void glm_mhc_read_tokens(const float *r, const float *p, const float *b, const float *scale, float *c, float *x,
@@ -665,7 +671,15 @@ void glm_mhc_read_tokens(const float *r, const float *p, const float *b, const f
 void glm_mhc_write_tokens(const float *r, const float *c, const float *y, float *out, int n, int tokens, void *s) {
     width(n);
     width(tokens);
-    hc_write<<<dim3((n + 255) / 256, tokens), 256, 0, (cudaStream_t)s>>>(r, c, y, out, n);
+    hc_write<><<<dim3((n + 255) / 256, tokens), 256, 0, (cudaStream_t)s>>>(r, c, y, out, n);
+    check();
+}
+void glm_mhc_write_tokens_save(const float *r, const float *c, const float *y, float *out, float *saved,
+                               int n, int tokens, void *s) {
+    width(n);
+    width(tokens);
+    if (!saved) throw std::invalid_argument("GLM: missing saved mHC coefficients");
+    hc_write<true><<<dim3((n + 255) / 256, tokens), 256, 0, (cudaStream_t)s>>>(r, c, y, out, n, saved);
     check();
 }
 void glm_router_tokens(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale, int tokens,

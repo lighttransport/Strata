@@ -117,7 +117,7 @@ void gemm_case(int T,int N,int K,int B,bool wmma,bool bench) {
     }
 }
 int main(int argc,char**argv){try{
-    bool wmma=false,bench=false;for(int i=1;i<argc;++i){if(std::string(argv[i])=="--wmma")wmma=true;else if(std::string(argv[i])=="--bench")bench=true;else return 2;}
+    bool wmma=false,bench=false,production=false;for(int i=1;i<argc;++i){if(std::string(argv[i])=="--wmma")wmma=true;else if(std::string(argv[i])=="--bench")bench=true;else if(std::string(argv[i])=="--production-shapes")production=true;else return 2;}
     int devices=0;if(cudaGetDeviceCount(&devices)!=cudaSuccess||!devices)return 77;
 #if defined(STRATA_USE_HIP)
     if(wmma){cudaDeviceProp p{};ck(cudaGetDeviceProperties(&p,0));
@@ -127,6 +127,13 @@ int main(int argc,char**argv){try{
     for(int T:{1,17,65,129})gemm_case(T,137,64,3,wmma,false);
     gemm_case(13,139,37,2,wmma,false);
     gemm_case(23,257,6144,2,wmma,false);
+    // Actual 16-expert gate/up and down panels, plus a tail bucket. All
+    // outputs retain guard regions and are sampled against the CPU oracle.
+    if(production){
+        gemm_case(256,4096,4096,16,wmma,false);
+        gemm_case(256,4096,2048,16,wmma,false);
+        gemm_case(513,4096,4096,7,wmma,false);
+    }
     if(bench){gemm_case(128,4096,4096,2,wmma,true);gemm_case(256,4096,2048,2,wmma,true);}
     return 0;
 }catch(const std::exception&e){std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}}

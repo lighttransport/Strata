@@ -531,7 +531,7 @@ kda_rows(float *state, const float *q, const float *k, const float *v, const flo
 }
 // Each output column is independent; retain the original eight/four partial
 // sums and their order while distributing one head across four CTAs.
-template <int parts, bool prepared = false, int cols = 32>
+template <int parts, bool prepared = false, int cols = 32, bool ordered = false>
 __global__ void __launch_bounds__(cols *parts, 1)
     kda_rows_columns(float *state, const float *q, const float *k, const float *v, const float *g,
                      const float *beta, float *out, int heads, int tokens,
@@ -580,15 +580,34 @@ __global__ void __launch_bounds__(cols *parts, 1)
         for (int i = 0; i < rows; ++i) {
             const int row = part * rows + i;
             values[i] *= decay[row];
-            mem += values[i] * kn[row];
+            if constexpr (!ordered) mem += values[i] * kn[row];
         }
-        partial[part * cols + lane] = mem;
+        if constexpr (ordered) {
+            // Carry the original sequential FMA accumulator between row
+            // partitions, rather than adding independently rounded partials.
+            // Each thread keeps 32 state values with four parts.
+            if (!part) partial[lane] = 0.f;
+            __syncthreads();
+#pragma unroll
+            for (int p = 0; p < parts; ++p) {
+                if (part == p) {
+                    float total = partial[lane];
+#pragma unroll
+                    for (int i = 0; i < rows; ++i) total += values[i] * kn[part * rows + i];
+                    partial[lane] = total;
+                }
+                __syncthreads();
+            }
+        } else partial[part * cols + lane] = mem;
         __syncthreads();
         if (!part) {
             float total = 0;
+            if constexpr (ordered) total = partial[lane];
+            else {
 #pragma unroll
             for (int p = 0; p < parts; ++p)
                 total += partial[p * cols + lane];
+            }
             delta[lane] = (v[offset + j] - total) * b;
         }
         __syncthreads();
@@ -597,15 +616,31 @@ __global__ void __launch_bounds__(cols *parts, 1)
         for (int i = 0; i < rows; ++i) {
             const int row = part * rows + i;
             values[i] = values[i] + kn[row] * delta[lane];
-            sum += values[i] * qr[row] * qi;
+            if constexpr (!ordered) sum += values[i] * qr[row] * qi;
         }
-        partial[part * cols + lane] = sum;
+        if constexpr (ordered) {
+            if (!part) partial[lane] = 0.f;
+            __syncthreads();
+#pragma unroll
+            for (int p = 0; p < parts; ++p) {
+                if (part == p) {
+                    float total = partial[lane];
+#pragma unroll
+                    for (int i = 0; i < rows; ++i) total += values[i] * qr[part * rows + i] * qi;
+                    partial[lane] = total;
+                }
+                __syncthreads();
+            }
+        } else partial[part * cols + lane] = sum;
         __syncthreads();
         if (!part) {
             float total = 0;
+            if constexpr (ordered) total = partial[lane];
+            else {
 #pragma unroll
             for (int p = 0; p < parts; ++p)
                 total += partial[p * cols + lane];
+            }
             out[offset + j] = total;
         }
         __syncthreads();
@@ -1077,6 +1112,17 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
     if (row_parts != 1) {
         if (columns != 128 || (row_parts != 4 && row_parts != 8))
             throw std::invalid_argument("GLM: parallel KDA needs 128 columns and 4 or 8 row parts");
+        const char *ordered = std::getenv("STRATA_GLM_KDA_ORDERED_ROWS");
+        if (ordered && std::string(ordered) != "0") {
+            if (std::string(ordered) != "1" || row_parts != 4)
+                throw std::invalid_argument("GLM: ordered KDA rows require value 1 and four row parts");
+            const dim3 grid(heads, 4);
+            if (prepared_qi)
+                kda_rows_columns<4, true, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, prepared_qi);
+            else
+                kda_rows_columns<4, false, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+            check(); return;
+        }
         if (std::getenv("STRATA_GLM_KDA_COLUMN_TILES")) {
             const dim3 grid(heads, 4);
             if (prepared_qi) {

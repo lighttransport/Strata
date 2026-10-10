@@ -1755,6 +1755,12 @@ class Decoder {
         if (std::string(v) == "1") return true;
         throw std::invalid_argument("GLM: norm Q8 fused must be 0 or 1");
     }();
+    const bool mhc_save_fused = [] {
+        const char *v = std::getenv("STRATA_GLM_MHC_SAVE_FUSED");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) == "1") return true;
+        throw std::invalid_argument("GLM: fused mHC save must be 0 or 1");
+    }();
     // Persistent: reset_phase() releases its arena between normalization and the consuming mixer/FFN.
     std::unique_ptr<Device> norm_quant;
     const float *shared_quant_src = nullptr;
@@ -3142,9 +3148,15 @@ class Decoder {
                         masks.clear();
                         for (const auto &[bucket, mask] : buckets) masks.push_back(mask);
                     }
+                    if (!target.dq)
+                        throw std::runtime_error("GLM: missing tensor expert dequantization buffer");
                     auto *dense = (uint16_t *)target.dq->p;
                     for (unsigned mask : masks) {
                         const int batches = mask ? std::popcount(mask) : n;
+                        // Verify the largest gate/up panel before enqueueing a
+                        // dequantizer or batched GEMM, including experimental buckets.
+                        if ((size_t)batches * 2 * F * H * sizeof(uint16_t) > target.dq->bytes)
+                            throw std::runtime_error("GLM: tensor expert panel exceeds dequantization buffer");
                         int most = 0;
                         for (int e = 0; e < n; ++e)
                             if (!mask || (mask & (1u << e))) most = std::max(most, hb[first + e + 1] - hb[first + e]);
@@ -6385,8 +6397,10 @@ class Decoder {
                     norm(p + "ffn_norm.weight", collapsed.f(), x.f(), m.hidden);
                     reset_phase();
                     enqueue_moe_pipelined(p, l, x.f(), y.f(), layer);
-                    k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
-                    if (defer_active)
+                    if (defer_active && mhc_save_fused)
+                        k::glm_mhc_write_tokens_save(r.f(), c.f(), y.f(), r.f(), defer_coefficients->f(), m.hidden, nt, stream);
+                    else k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
+                    if (defer_active && !mhc_save_fused)
                         check(cudaMemcpyAsync(defer_coefficients->p, c.f(), 24 * sizeof(float), cudaMemcpyDeviceToDevice, stream));
                     if (defer_active && defer_experts == 2)
                         k::glm_mailbox_wait_add_deferred(mailbox->device_view, deferred_target((int)l), r.f(), defer_coefficients->f(),
@@ -6464,10 +6478,13 @@ class Decoder {
             }
             if (fast)
                 k::glm_mhc_write_batch(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
+            else if (defer_active && pipelining && layer.ffn == strata::core::FfnKind::Moe && mhc_save_fused)
+                k::glm_mhc_write_tokens_save(r.f(), c.f(), y.f(), r.f(), defer_coefficients->f(), m.hidden, nt, stream);
             else
                 k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             if (defer_active && pipelining && layer.ffn == strata::core::FfnKind::Moe) {
-                check(cudaMemcpyAsync(defer_coefficients->p, c.f(), 24 * sizeof(float), cudaMemcpyDeviceToDevice, stream));
+                if (!mhc_save_fused)
+                    check(cudaMemcpyAsync(defer_coefficients->p, c.f(), 24 * sizeof(float), cudaMemcpyDeviceToDevice, stream));
                 deferred_slot = deferred_target((int)l);
                 if (defer_experts == 2) flush_deferred(nullptr);
             }
