@@ -515,7 +515,9 @@ class IQ4XS(Base):
     def test_amd_is_not_asked(self):
         r9700 = [{"index": 0, "name": "AMD Radeon AI PRO R9700", "vram_gb": 31.9, "arch": "gfx1201",
                   "driver": "amdgpu"}]
-        with mock.patch.object(setup, "get_prebuilt_hip", lambda *a, **k: self.t / "engine"):
+        with (mock.patch.object(setup, "get_prebuilt_hip", return_value=self.t / "engine"),
+              mock.patch.object(setup, "build_engine_hip", return_value=self.t / "engine"),
+              mock.patch.object(setup, "rocm_root", side_effect=AssertionError("real ROCm setup reached"))):
             code, out, cfg = self.main(["--context", "8192", "--backend", "hip"], version="0.1.38", amd=r9700, m=X)
         self.assertNotIn("has not been run on AMD cards yet", out)
         self.assertIn("RAM budget: 40 GiB of UD-IQ4_XS's experts", out)
