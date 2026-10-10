@@ -102,11 +102,15 @@ add_library(strata_spec STATIC ${_spec})
 target_link_libraries(strata_spec PUBLIC strata_includes)
 
 strata_resolve(_cpu src/kernels/cpu/expert.cpp src/kernels/cpu/pool.cpp src/kernels/cpu/expert_layout.cpp
-                    src/kernels/cpu/q2_avx2.cpp)
+                    src/kernels/cpu/q2_avx2.cpp src/kernels/cpu/canon_expert.cpp)
 add_library(strata_kernels_cpu STATIC ${_cpu})
+target_include_directories(strata_kernels_cpu PRIVATE ${STRATA_ROOT}/third_party/ggml)
 set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/expert.cpp PROPERTIES COMPILE_OPTIONS
   "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
 set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/q2_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+# The pool's canonical reduction is linked even with native experts disabled.
+set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/canon_expert.cpp
+                           PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-ffp-contract=off")
 # AVX-VNNI copies of the AVX-2 expert kernels (q2_avx2.cpp, iq_avx2.cpp), taken at run time where the CPU has them
 include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_FLAGS "-mavx2 -mfma -mf16c")
@@ -158,7 +162,8 @@ if(STRATA_NATIVE_EXPERTS)
     add_subdirectory(${strata_llamacpp_SOURCE_DIR}/ggml ${CMAKE_BINARY_DIR}/ggml EXCLUDE_FROM_ALL)
   endif()
   strata_resolve(_cpu_native src/kernels/cpu/native_expert.cpp src/kernels/cpu/iq_avx512.cpp src/kernels/cpu/iq_avx2.cpp
-                             src/kernels/cpu/kq_avx2.cpp src/kernels/cpu/kq_avx1.cpp)   # 0.1.31: the Q4_K/Q5_K/Q5_1/Q8_0 expert rows
+                             src/kernels/cpu/kq_avx2.cpp src/kernels/cpu/kq_avx1.cpp
+                             src/kernels/cpu/q23_avx2.cpp src/kernels/cpu/q23_packed.cpp)
   target_sources(strata_kernels_cpu PRIVATE ${_cpu_native})
   target_include_directories(strata_kernels_cpu PRIVATE ${STRATA_ROOT}/third_party/ggml)
   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS
@@ -166,6 +171,9 @@ if(STRATA_NATIVE_EXPERTS)
   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/kq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
   set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/kq_avx1.cpp PROPERTIES COMPILE_OPTIONS "-mavx")
+  set_source_files_properties(${STRATA_ROOT}/src/kernels/cpu/q23_avx2.cpp
+                             ${STRATA_ROOT}/src/kernels/cpu/q23_packed.cpp
+                             PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
   set_property(SOURCE ${STRATA_ROOT}/src/kernels/cpu/iq_avx2.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${_strata_avxvnni})
   target_link_libraries(strata_kernels_cpu PUBLIC ggml-cpu ggml-base)
   target_compile_definitions(strata_kernels_cpu PUBLIC STRATA_NATIVE_EXPERTS=1)
@@ -292,6 +300,11 @@ if(STRATA_SYCL_PARITY)
   # one native expert three ways on real GGUF rows (ggml reference, CPU path, GPU native_expert_grouped):
   #   native_expert_parity <shard1.gguf> [layer ...]
   if(STRATA_NATIVE_EXPERTS)
+    strata_resolve(_src src/kernels/cpu/canon_expert_test.cpp)
+    add_executable(canon_expert_test ${_src})
+    target_include_directories(canon_expert_test PRIVATE ${STRATA_ROOT}/third_party/ggml)
+    target_link_libraries(canon_expert_test PRIVATE strata_kernels_cpu)
+    add_test(NAME canon_expert_test COMMAND canon_expert_test)
     add_executable(native_expert_parity ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/native_expert_parity.cpp)
     target_include_directories(native_expert_parity PRIVATE ${STRATA_ROOT}/third_party/ggml)
     target_link_libraries(native_expert_parity PRIVATE strata_kernels strata_kernels_cpu)
