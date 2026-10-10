@@ -43,6 +43,9 @@ The output folder contains
 JSON `passed`, `bandwidth`, `peak_read_gbps`, and `stress` fields. A result for
 bandwidth-only mode does not certify stability. Missing or inconclusive stress
 results fail the gate; detected data errors stop the stress process early.
+Stress passes only when its completion summary and wall time both reach the
+requested duration. An early `PASS`, missing completion summary, timeout or
+forced termination fails the gate and prevents app launch.
 
 The benchmark uses three 1 GiB arrays by default, one warmup and seven timed
 runs per kernel. Rates are decimal GB/s of logical bytes, not controller

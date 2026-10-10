@@ -71,6 +71,9 @@ Single-position logit diagnostics are retained, but do not override these gates.
 
 ## Reproduction
 
+Public metadata uses [portable paths](../../PORTABLE_BENCHMARK_PATHS.md).
+Run from the Strata checkout root and supply the model and external inputs there.
+
 `prompt-manifest.json` freezes source and token hashes for 7936, 16128 and
 32512-token code prefixes. `recall-manifest.json` freezes the four facts and
 five chat prompts. `background-manifest.json` records the coding backgrounds.

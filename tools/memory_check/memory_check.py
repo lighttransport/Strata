@@ -50,12 +50,18 @@ def available_mib():
     return available
 
 
-def stress_status(text, returncode):
+def stress_status(text, returncode, *, requested_seconds, elapsed_seconds, termination_reason=None):
     incidents = [int(x) for x in re.findall(r'Found (\d+) hardware incidents', text)]
     bad = bool(re.search(r'Hardware Error:|Report Error:|Status: FAIL|CRC mismatch', text))
-    passed = returncode == 0 and 'Status: PASS' in text and not bad and not any(incidents)
+    durations = re.findall(r'Completed:.*?\bin ([0-9]+(?:\.[0-9]+)?)s\b', text)
+    completed = float(durations[-1]) if durations else None
+    duration_completed = (completed is not None and completed >= requested_seconds
+                          and elapsed_seconds >= requested_seconds)
+    passed = (returncode == 0 and 'Status: PASS' in text and not bad and not any(incidents)
+              and duration_completed and termination_reason is None)
     return {'passed': passed, 'hardware_incidents': max(incidents, default=0),
-            'returncode': returncode, 'data_error_detected': bad}
+            'returncode': returncode, 'data_error_detected': bad, 'completed_seconds': completed,
+            'duration_completed': duration_completed, 'termination_reason': termination_reason}
 
 
 def stop(process):
@@ -74,23 +80,31 @@ def run_stress(executable, mib, seconds, threads, output):
                '-i', str(min(4, threads)), '-W', '--stop_on_errors', '--printsec', '30']
     print(f'Stress: {mib} MiB, {seconds}s; log: {log}', file=sys.stderr, flush=True)
     started = time.monotonic()
+    termination_reason = None
     with log.open('w') as stream:
         process = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT)
         try:
             while process.poll() is None:
                 text = log.read_text(errors='replace')
                 if re.search(r'Hardware Error:|Report Error:|Status: FAIL|CRC mismatch', text):
+                    termination_reason = 'data_error'
                     stop(process)
                     break
                 if time.monotonic() - started > seconds + 120:
+                    termination_reason = 'timeout'
                     stop(process)
                     break
                 time.sleep(0.5)
         finally:
+            if process.poll() is None:
+                termination_reason = termination_reason or 'interrupted'
             stop(process)
-    result = stress_status(log.read_text(errors='replace'), process.returncode)
+    elapsed = time.monotonic() - started
+    result = stress_status(log.read_text(errors='replace'), process.returncode,
+                          requested_seconds=seconds, elapsed_seconds=elapsed,
+                          termination_reason=termination_reason)
     result.update(memory_mib=mib, requested_seconds=seconds,
-                  elapsed_seconds=round(time.monotonic() - started, 2), log=str(log), command=command)
+                  elapsed_seconds=round(elapsed, 2), log=str(log), command=command)
     return result
 
 

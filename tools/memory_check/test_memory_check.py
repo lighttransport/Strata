@@ -36,12 +36,43 @@ class MemoryCheckTests(unittest.TestCase):
                 stress.assert_not_called()
 
     def test_pass_requires_clean_exit_and_explicit_pass(self):
-        self.assertTrue(check.stress_status('Found 0 hardware incidents\nStatus: PASS', 0)['passed'])
+        summary = 'Completed: 1.00M in 300.03s 100MB/s, with 0 hardware incidents, 0 errors\n'
+        def status(text, code, **kwargs):
+            return check.stress_status(text, code, requested_seconds=300, elapsed_seconds=305, **kwargs)
+        self.assertTrue(status(summary + 'Found 0 hardware incidents\nStatus: PASS', 0)['passed'])
         for text, code in [('Status: PASS', 1), ('', 0),
                            ('Found 5 hardware incidents\nStatus: PASS', 0),
                            ('Hardware Error: miscompare\nStatus: PASS', 0),
                            ('CRC mismatch\nStatus: PASS', 0)]:
-            self.assertFalse(check.stress_status(text, code)['passed'])
+            self.assertFalse(status(summary + text, code)['passed'])
+        self.assertFalse(status('Status: PASS', 0)['passed'])
+        self.assertFalse(status('Completed: 1.00M in 0.01s\nStatus: PASS', 0)['passed'])
+        self.assertFalse(status(summary + 'Status: PASS', 0, termination_reason='timeout')['passed'])
+        self.assertFalse(status(summary + 'Status: PASS', 0, termination_reason='interrupted')['passed'])
+        self.assertFalse(check.stress_status(summary + 'Status: PASS', 0,
+                         requested_seconds=300, elapsed_seconds=.5)['passed'])
+
+    def test_early_pass_cannot_launch_application(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake = root / 'stress'
+            fake.write_text('#!/usr/bin/env python3\n'
+                            'print("Completed: 1.00M in 0.01s, with 0 hardware incidents, 0 errors")\n'
+                            'print("Status: PASS")\n')
+            fake.chmod(0o755)
+            benchmark = type('Result', (), {'stdout': '{"kernel":"read_avx2","median_GB_s":40}\n'})()
+            with patch.object(check, 'available_mib', return_value=8192), \
+                 patch.object(check.subprocess, 'run', return_value=benchmark), \
+                 patch.object(check.subprocess, 'call') as launch, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                code = check.main(['--output', tmp, '--stressapptest', str(fake), '--threads', '1',
+                                   '--seconds', '300', '--run', 'application'])
+            self.assertEqual(code, 1)
+            launch.assert_not_called()
+            result = json.loads((root / 'result.json').read_text())
+            self.assertFalse(result['passed'])
+            self.assertFalse(result['stress']['duration_completed'])
+            self.assertEqual(result['stress']['completed_seconds'], .01)
 
     def test_detected_mismatch_stops_process(self):
         with tempfile.TemporaryDirectory() as tmp:

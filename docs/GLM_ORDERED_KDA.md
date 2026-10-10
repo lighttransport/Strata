@@ -5,6 +5,9 @@ separate device copy of mHC coefficients during one-token expert deferral.
 They do not change model files, routing, quantization, precision or defaults.
 They are experiments, not a newly selected inference preset.
 
+The public measurement record uses [portable paths](PORTABLE_BENCHMARK_PATHS.md);
+its numeric results and measured-input hashes are unchanged.
+
 Enable the coefficient save with `STRATA_GLM_MHC_SAVE_FUSED=1`. It applies
 only while expert deferral is active. The existing mHC write kernel also
 stores its 24 coefficients; the following device-to-device copy is skipped.

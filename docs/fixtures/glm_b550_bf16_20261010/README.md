@@ -7,8 +7,8 @@ existing dense projections, serial KDA and CPU decode recipe. No DDR or GPU
 clock changes. Hardware: Ryzen 9 3950X, RX 9070 XT gfx1201, installed HIP 7.14.60850,
 DDR 2133 MT/s; original REAP50 Q23 plus the unchanged Q22 down-only sidecar.
 
-The reference requested as `~/Work/gemm/main` exists at
-`references/gemm`. `reference-manifest.json` records source hashes.
+The GEMM reference checkout is represented by `references/gemm` in the public
+records. `reference-manifest.json` records the original source hashes.
 The 128x128/32-K fragment layout comes from its RDNA4 VLM experiment; vector
 loads, LDS packing and one-panel prefetch follow its tuned LLM/VLM variants.
 The reference tree was read only. Its MIT notice is retained in the port.
@@ -97,6 +97,9 @@ The fresh functions omitted required imports; the evaluator/protocol was not
 changed to forgive those failures.
 
 ## Reproduction
+
+Public metadata uses [portable paths](../../PORTABLE_BENCHMARK_PATHS.md).
+Run from the Strata checkout root and supply the model and external inputs there.
 
 Select `prefill_experts: "bf16-batched"` in an experimental config, or
 `--prefill-experts=bf16-batched` for the decoder CLI. Absent
