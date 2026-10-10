@@ -1,0 +1,42 @@
+Simple running max.</think>```python
+from typing import List
+
+def rolling_max(numbers: List[int]) -> List[int]:
+    result = []
+    current_max = None
+    for num in numbers:
+        if current_max is None or num > current_max:
+        current_max = num if current_max is None or num > current_max else current_max
+        result.append(current_max)
+    return result
+```
+
+Wait, that logic is wrong. Let me fix it properly:
+
+```python
+from typing import List
+
+def rolling_max(numbers: List[int]) -> List[int]:
+    result = []
+    current_max = None
+    for num in numbers:
+        if current_max is None or num > current_max:
+            current_max = num
+        result.append(current_max)
+    return result
+```
+
+Hmm, but the first version had a bug (missing `else` update). The corrected version above is correct. Final answer:
+
+```python
+from typing import List
+
+def rolling_max(numbers: List[int]) -> List[int]:
+    result = []
+    current_max = None
+    for num in numbers:
+        if current_max is None or num > current_max:
+            current_max = num
+        result.append(current_max)
+    return result
+```

@@ -1,0 +1,27 @@
+</think>The function iterates through each character, tracking depth and updating max depth per group.</think>```python
+from typing import List
+
+
+def parse_nested_parens(paren_string: str) -> List[int]:
+    result = []
+    depth = 0
+    max_depth = 0
+    for char in paren_string:
+    if char == '(':
+        depth += 1
+        max_depth = max(depth, max_depth)
+    elif char == ')':
+        depth -= 1
+        max_depth = max(depth, max_depth)
+        if depth < 0:
+            return False
+        elif depth == 0:
+            if max_depth > 0:
+                result.append(max_depth)
+    else:
+        depth += 1
+        max_depth = max(depth, max_depth)
+    return result
+```
+
+The function tracks depth per group, resetting depth when a space is encountered, and appending max depth to the result when a group ends.

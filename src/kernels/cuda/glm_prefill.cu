@@ -804,7 +804,86 @@ __global__ void softmax(float *scores, const int *counts, int heads, int stride,
     for (int i = tid; i < stride; i += 256)
         row[i] /= reduce[0];
 }
+
+// One-query MLA decode products (STRATA_GLM_MLA_KERNELS=1) in place of the two strided-batched SGEMMs, whose
+// 512 x 64 x 2052 shapes leave most of a GPU idle. Same fp32 products, different summation order.
+// scores[h][s] = sum_k keys[s][k] * q[h][k]: a block takes 16 keys into shared memory; a thread is one head and
+// four of those keys.
+__global__ void __launch_bounds__(256) mla_scores_one(const float *keys, const float *q, float *scores,
+                                                      int stride, int latent, int heads) {
+    extern __shared__ float4 shared_keys[];
+    const int first = blockIdx.x * 16, quads = latent / 4;
+    const float4 *k4 = reinterpret_cast<const float4 *>(keys);
+    for (int i = threadIdx.x; i < 16 * quads; i += blockDim.x) {
+        const int key = first + i / quads;
+        shared_keys[i] = key < stride ? k4[(size_t)key * quads + i % quads] : make_float4(0.f, 0.f, 0.f, 0.f);
+    }
+    __syncthreads();
+    const int h = threadIdx.x % 64, group = threadIdx.x / 64;
+    if (h >= heads) return;
+    const float4 *q4 = reinterpret_cast<const float4 *>(q) + (size_t)h * quads;
+    float acc[4] = {};
+    for (int i = 0; i < quads; ++i) {
+        const float4 a = q4[i];
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const float4 b = shared_keys[(group * 4 + j) * quads + i];
+            acc[j] = fmaf(a.x, b.x, fmaf(a.y, b.y, fmaf(a.z, b.z, fmaf(a.w, b.w, acc[j]))));
+        }
+    }
+#pragma unroll
+    for (int j = 0; j < 4; ++j) {
+        const int key = first + group * 4 + j;
+        if (key < stride) scores[(size_t)h * stride + key] = acc[j];
+    }
+}
+// partial[chunk][h][k] = sum over the chunk's 64 keys s of p[h][s] * keys[s][k]; a block is 128 columns of one chunk.
+__global__ void __launch_bounds__(256) mla_values_partial(const float *keys, const float *p, float *partial,
+                                                          int stride, int latent, int heads) {
+    __shared__ float probability[64][65];
+    const int chunk = blockIdx.y, first = chunk * 64, column = blockIdx.x * 128 + threadIdx.x % 128;
+    const int half = threadIdx.x / 128;
+    for (int i = threadIdx.x; i < 64 * 64; i += blockDim.x) {
+        const int h = i / 64, s = i % 64;
+        probability[h][s] = h < heads && first + s < stride ? p[(size_t)h * stride + first + s] : 0.f;
+    }
+    __syncthreads();
+    float acc[32] = {};
+    const int count = min(64, stride - first);
+    for (int s = 0; s < count; ++s) {
+        const float v = keys[(size_t)(first + s) * latent + column];
+#pragma unroll
+        for (int h = 0; h < 32; ++h) acc[h] = fmaf(probability[half * 32 + h][s], v, acc[h]);
+    }
+#pragma unroll
+    for (int h = 0; h < 32; ++h)
+        if (half * 32 + h < heads) partial[((size_t)chunk * heads + half * 32 + h) * latent + column] = acc[h];
+}
+__global__ void mla_values_reduce(const float *partial, float *out, int chunks, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    float sum = 0.f;
+    for (int c = 0; c < chunks; ++c) sum += partial[(size_t)c * n + i];
+    out[i] = sum;
+}
 } // namespace
+size_t glm_mla_one_scratch_bytes(int stride, int latent, int heads) {
+    return (size_t)((stride + 63) / 64) * heads * latent * sizeof(float);
+}
+void glm_mla_scores_one(const float *keys, const float *q, float *scores, int stride, int latent, int heads, void *s) {
+    if (latent % 4 || latent > 1024 || heads < 1 || heads > 64) throw std::invalid_argument("GLM: MLA scores geometry");
+    mla_scores_one<<<(stride + 15) / 16, 256, 16 * latent * sizeof(float), (cudaStream_t)s>>>(keys, q, scores, stride,
+                                                                                           latent, heads);
+    check();
+}
+void glm_mla_values_one(const float *keys, const float *p, float *out, float *scratch, int stride, int latent,
+                        int heads, void *s) {
+    if (latent % 128 || heads < 1 || heads > 64) throw std::invalid_argument("GLM: MLA values geometry");
+    const int chunks = (stride + 63) / 64;
+    mla_values_partial<<<dim3(latent / 128, chunks), 256, 0, (cudaStream_t)s>>>(keys, p, scratch, stride, latent, heads);
+    mla_values_reduce<<<(heads * latent + 255) / 256, 256, 0, (cudaStream_t)s>>>(scratch, out, chunks, heads * latent);
+    check();
+}
 void glm_f16(const float *x, uint16_t *y, int64_t n, void *s) {
     half_cast<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(x, y, n);
     check();

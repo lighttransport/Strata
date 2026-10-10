@@ -1,0 +1,57 @@
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -1186,6 +1186,7 @@
+     std::unique_ptr<Device> lookup, route_ids;
+     std::unique_ptr<Pinned> host_lookup;
+     std::unique_ptr<Pinned> host_reduction;
++    bool lookup_preloaded = false;
+     struct ReaderEvent {
+         cudaEvent_t event = nullptr;
+         ReaderEvent() { check(cudaEventCreateWithFlags(&event, cudaEventDisableTiming)); }
+@@ -1259,8 +1260,9 @@
+         auto enqueue = [&] {
+             const size_t offset = (size_t)layer * 288 * sizeof(unsigned long long);
+             const void *source = (char *)host_lookup->p + offset;
+-            check(cudaMemcpyAsync((char *)lookup->p + offset, source,
+-                                  288 * sizeof(unsigned long long), cudaMemcpyHostToDevice, stream));
++            if (!lookup_preloaded)
++                check(cudaMemcpyAsync((char *)lookup->p + offset, source,
++                                      288 * sizeof(unsigned long long), cudaMemcpyHostToDevice, stream));
+             if (nt == 1)
+                 k::glm_resident_routes(ids, (const unsigned long long *)lookup->p + layer * 288,
+                                        ptr, starts, dest, tokens, count, stream);
+@@ -1868,6 +1870,14 @@
+     int deferred_target(int l) const { return defer_routes ? l + mailbox_group_stride() : l; }
+     bool defer_active = false;
+     const bool fuse_route_publish = [] { const char *v = std::getenv("STRATA_GLM_FUSE_ROUTE"); return v && std::string(v) == "1"; }();
++    // STRATA_GLM_TIER_LOOKUP_ONCE=1: stable one-token pipeline residency is uploaded once before the layers,
++    // replacing each layer's small H2D transfer. Cache modes that change residency inside a step retain theirs.
++    const bool tier_lookup_once = [] {
++        const char *v = std::getenv("STRATA_GLM_TIER_LOOKUP_ONCE");
++        if (!v || std::string(v) == "0") return false;
++        if (std::string(v) == "1") return true;
++        throw std::invalid_argument("GLM: tier lookup once must be 0 or 1");
++    }();
+     const bool mla_one_kernels = [] { const char *v = std::getenv("STRATA_GLM_MLA_KERNELS"); return v && std::string(v) == "1"; }();
+     std::unique_ptr<Device> mla_one_scratch;
+     std::unique_ptr<Device> defer_coefficients;  // the deferred layer's 24 hyper-connection coefficients
+@@ -6141,6 +6151,8 @@
+             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
+                 throw std::out_of_range("GLM: token or context out of range");
+         batch_tokens = nt;
++        if (cached_decode) cached_decode->lookup_preloaded = false;
++        if (cached_decode_b) cached_decode_b->lookup_preloaded = false;
+         pipelining = false;
+         if (pipeline_ready(nt)) prepare_step_mailbox();
+         pipelining = pipeline_ready(nt);
+@@ -6159,6 +6171,10 @@
+                 std::memset(table, 0, cached_decode->lookup->bytes);
+                 for (size_t l = 0; l < decode_resident.size(); ++l)
+                     for (const auto &[expert, slot] : decode_resident[l]) table[l * 288 + expert] = (unsigned long long)slot->p;
++                cached_decode->lookup_preloaded = tier_lookup_once && nt == 1 && !fast && !capturing_history &&
++                    row_sequences.empty() && !secondary && !exact_cache && !ram_tier && !decode_cache_adapt;
++                if (cached_decode->lookup_preloaded)
++                    cached_decode->lookup->put_async(table, cached_decode->lookup->bytes, stream);
+                 if (split_verify && nt >= 2) {
+                     if (!cached_decode_b) cached_decode_b = std::make_unique<ResidentExecutor>();
+                     std::memcpy(cached_decode_b->host_lookup->p, table, cached_decode->lookup->bytes);

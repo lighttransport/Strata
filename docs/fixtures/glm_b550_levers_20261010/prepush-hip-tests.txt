@@ -1,0 +1,17 @@
+Internal ctest changing into directory: /home/syoyo/work/Strata/build-hip
+Test project /home/syoyo/work/Strata/build-hip
+    Start   8: glm_q23_parity
+1/4 Test   #8: glm_q23_parity ...................   Passed    2.53 sec
+    Start   9: glm_mailbox_test
+2/4 Test   #9: glm_mailbox_test .................   Passed    0.27 sec
+    Start  10: glm_q8_test
+3/4 Test  #10: glm_q8_test ......................   Passed    1.52 sec
+    Start 110: canon_expert_test
+4/4 Test #110: canon_expert_test ................   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+glm    =   4.35 sec*proc (4 tests)
+
+Total Test time (real) =   4.36 sec

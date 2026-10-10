@@ -1,0 +1,9 @@
+Simple mapping: 'o' -> 4, 'o|' -> 2, '.|' -> 1. Split by space.</think>```python
+from typing import List
+
+def parse_music(music_string: str) -> List[int]:
+    mapping = {'o': 4, 'o|': 2, '.|': 1}
+    return [mapping[token] for token in music_string.split()]
+```
+
+The legend maps each token directly to its beat count, so splitting the input on spaces and looking up each token gives the result.

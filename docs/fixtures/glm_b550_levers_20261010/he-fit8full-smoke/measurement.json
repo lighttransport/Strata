@@ -1,0 +1,107 @@
+{
+  "complete": false,
+  "tasks": 10,
+  "pass_at_1": 0.3,
+  "results": [
+    {
+      "task_id": "HumanEval/0",
+      "input_tokens": 154,
+      "generated_tokens": 1024,
+      "wall_seconds": 39.057393720024265,
+      "token_sha256": "cc7874fcad8c3a0f32c0766da416a3d72cf1b803acaf20112932296fe9f9ceee",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/1",
+      "input_tokens": 145,
+      "generated_tokens": 1024,
+      "wall_seconds": 36.0604371970112,
+      "token_sha256": "152b7938b212bbfd280670373cc13c570546c32de28cd0357c77d964bbce5c20",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/2",
+      "input_tokens": 115,
+      "generated_tokens": 40,
+      "wall_seconds": 8.06379581199144,
+      "token_sha256": "a89631d43fc05330fb33074085cf2e623349cc8627ff6df5d1a372841ee9f2e2",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/3",
+      "input_tokens": 149,
+      "generated_tokens": 154,
+      "wall_seconds": 11.564774377999129,
+      "token_sha256": "75bc83aa029150c325162941ffa5bac1bc79d40cec5d7b32a685005491bb1d0b",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/4",
+      "input_tokens": 147,
+      "generated_tokens": 146,
+      "wall_seconds": 11.255541390011786,
+      "token_sha256": "1f19598865838a423942ad68cf6f5f7235813e561095fe7e323fdddf19388e6c",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/5",
+      "input_tokens": 122,
+      "generated_tokens": 1024,
+      "wall_seconds": 35.7041195280035,
+      "token_sha256": "f3a9eca1a38e34f857997ec553378e9ce93ed5bad55846ca96465e09955e8b60",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/6",
+      "input_tokens": 142,
+      "generated_tokens": 1024,
+      "wall_seconds": 35.85128169399104,
+      "token_sha256": "2e3894825a0d4fbf30c94b6b0a762b7705b33d7585885c3e325a8efe718b8aa2",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/7",
+      "input_tokens": 123,
+      "generated_tokens": 109,
+      "wall_seconds": 10.075619643001119,
+      "token_sha256": "d30b1748209cd970bae62887848303368708bc6d25cc222b5102eabe8dc9546e",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/8",
+      "input_tokens": 140,
+      "generated_tokens": 1024,
+      "wall_seconds": 35.94639830797678,
+      "token_sha256": "a99043ccc493f00e3ac334bc598e1cc4ad3db506f0e416d8d0f87ace986984c0",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/9",
+      "input_tokens": 130,
+      "generated_tokens": 60,
+      "wall_seconds": 8.67616526997881,
+      "token_sha256": "17c9615ff0d4a573775b070d8808a181f883581a48a17a7741650544d71d903a",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    }
+  ]
+}

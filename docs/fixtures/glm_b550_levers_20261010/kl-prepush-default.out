@@ -1,0 +1,4 @@
+{"sequence":1,"tokens":64,"nll":4.51030570729,"perplexity":90.949618222}
+{"sequence":2,"tokens":128,"nll":3.77342957279,"perplexity":43.5290953353}
+{"sequence":3,"tokens":192,"nll":3.43268556074,"perplexity":30.9596752939}
+{"sequence":4,"tokens":256,"nll":3.57276285477,"perplexity":35.6148560211}

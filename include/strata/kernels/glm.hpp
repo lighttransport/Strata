@@ -11,12 +11,20 @@ void glm_rms_norm(const float *x, const float *weight, float *y, int width, int 
 // so a caller uses one or the other for every width it must keep consistent.
 void glm_rms_norm_rows(const float *x, const float *weight, float *y, int width, int tokens, float eps,
                        void *stream);
+// Aligned rows, width divisible by 32: normalized floats and native Q8_1 activation blocks in one launch.
+void glm_rms_norm_rows_q8(const float *x, const float *weight, float *y, void *q8, int width, int tokens,
+                         float eps, void *stream);
 void glm_layer_norm(const float *x, const float *weight, const float *bias, float *y, int width, float eps,
                     void *stream);
 void glm_swiglu(const float *gate, const float *up, float *y, int count, float limit, void *stream);
 // `bonus` (optional, one value per expert) is added to the selection score only; weights keep the true scores.
 void glm_router(const float *logits, const float *correction, int *ids, float *weights, int experts,
                 int top_k, float scale, void *stream, const float *bonus = nullptr);
+// One token: glm_router followed by glm_mailbox_publish of the result and `x` into `slot`, as one launch.
+struct GlmMailboxView;
+void glm_router_publish(const float *logits, const float *correction, int *ids, float *weights, int experts,
+                        int top_k, float scale, const float *bonus, GlmMailboxView view, int slot, const float *x,
+                        const unsigned *generation, void *stream);
 
 // Four-stream mHC: projected is the 24-wide FP32 projection of normalized streams.
 // coefficients layout: pre[4], post[4], comb[4][4] (input stream, output stream).

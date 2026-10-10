@@ -1,0 +1,161 @@
+Simple balance tracking.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+        return True
+    return False
+```
+
+Wait — the balance starts at zero, and the first operation could make it negative. The loop checks after each addition, so it's correct.</think>```python
+from typing import List
+
+
+def below_zero

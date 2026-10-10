@@ -1,0 +1,8 @@
+Running as unit: strata-st-q22mix2-413027.service; invocation ID: 85ab357eb6cd44cf925cc88ce174f0d3
+expert pack requires two pinned NUMA nodes and no legacy cache/direct upload
+Finished with result: exit-code
+Main processes terminated with: code=exited/status=1
+Service runtime: 581ms
+CPU time consumed: 399ms
+Memory peak: 256.0K
+Memory swap peak: 0B

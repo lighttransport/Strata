@@ -1,0 +1,13 @@
+Simple: balance, return True if balance < 0 at any point.</think>```python
+from typing import List
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+            return True
+    return False
+```
+
+**Reasoning:** Track running balance; return True as soon as it goes negative, otherwise False after processing all operations.

@@ -1,0 +1,10 @@
+</think>```python
+def flip_case(string: str) -> str:
+    """ For a given string, flip lowercase characters to uppercase and uppercase to lowercase.
+    >>> flip_case('Hello')
+    'hELLO'
+    """
+    return string.swapcase()
+```
+
+**Reasoning:** The task is to invert the case of each character. Python's built-in `str.swapcase()` does exactly this, so the implementation is a one-liner delegating to that method.

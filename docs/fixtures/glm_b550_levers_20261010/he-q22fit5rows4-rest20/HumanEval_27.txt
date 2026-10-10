@@ -1,0 +1,6 @@
+Simple swapcase.</think>```python
+def flip_case(string: str) -> str:
+    return string.swapcase()
+```
+
+The built-in `str.swapcase` method flips lowercase to uppercase and vice versa, matching the docstring examples.

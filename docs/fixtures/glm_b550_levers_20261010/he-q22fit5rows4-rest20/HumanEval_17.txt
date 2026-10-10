@@ -1,0 +1,14 @@
+Simple mapping.</think>def parse_music(music_string: str) -> List[int]:
+    mapping = {'o': 4, 'o|': 2, '.|': 1}
+    return [mapping[token] for token in music_string.split()]
+# Note: 'o o| .| o| o| .| .| .| .| o o' -> tokens: o, o|, .|, o|, o|, .|, .|, .|, .|, o, o -> [4,2,1,2,2,1,1,1,1,4,4] ✓
+
+```python
+from typing import List
+
+def parse_music(music_string: str) -> List[int]:
+    mapping = {'o': 4, 'o|': 2, '.|': 1}
+    return [mapping[token] for token in music_string.split()]
+```
+
+**Explanation:** Split the string into tokens and map each token to its beat count: `'o'` → 4, `'o|'` → 2, `'.'` → 1.

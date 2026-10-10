@@ -1,0 +1,4 @@
+Simple: number - int(number).</think>```python
+def truncate_number(number: float) -> float:
+    return number - int(number)
+```

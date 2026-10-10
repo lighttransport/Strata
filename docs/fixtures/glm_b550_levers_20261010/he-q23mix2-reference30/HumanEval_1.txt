@@ -1,0 +1,19 @@
+Simple: track depth, split at depth 0.</think>```python
+from typing import List
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    result = []
+    depth = 0
+    current = []
+    for ch in paren_string:
+        if ch == ' ':
+            continue
+        current.append(ch)
+        depth += 1 if ch == '(' else -1
+        if depth == 0:
+            result.append(''.join(current))
+            current = []
+    return result
+```
+
+This iterates through the string, skipping spaces, accumulating characters, and tracking nesting depth; when depth returns to 0 a group is complete and appended to the result.

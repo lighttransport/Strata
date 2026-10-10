@@ -1,6 +1,8 @@
 // GLM-5.3-Flash equations follow the Transformers glm5_next reference.
 // https://github.com/huggingface/transformers/tree/main/src/transformers/models/glm5_next
 #include "strata/kernels/glm.hpp"
+#include "strata/kernels/glm_mailbox.hpp"
+#include "strata/kernels/q8_1_finite.hpp"
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -75,6 +77,55 @@ __global__ void rms_norm_rows(const float4 *x, const float4 *w, float4 *y, int n
         y[i] = v;
     }
 }
+struct NormQ81Block {
+    half2 ds;
+    int8_t qs[32];
+};
+static_assert(sizeof(NormQ81Block) == 36 && alignof(NormQ81Block) == 4);
+// Keep the float4 norm reduction and products identical to rms_norm_rows above. Quantize from the stored
+// normalized floats with the same 32-lane XOR reductions as native_quantize_q8_1 (including half saturation).
+__global__ void rms_norm_rows_q8(const float4 *x, const float4 *w, float4 *y, NormQ81Block *q8,
+                                int n4, float eps) {
+    __shared__ float warps[32];
+    const int t = threadIdx.x, lane = t & 31;
+    x += (size_t)blockIdx.x * n4;
+    y += (size_t)blockIdx.x * n4;
+    q8 += (size_t)blockIdx.x * n4 / 8;
+    float sum = 0;
+    for (int i = t; i < n4; i += 1024) {
+        const float4 v = x[i];
+        sum += v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+    }
+    for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+    if (!lane) warps[t / 32] = sum;
+    __syncthreads();
+    if (t < 32) {
+        sum = warps[t];
+        for (int delta = 16; delta; delta >>= 1) sum += __shfl_down_sync(0xffffffff, sum, delta);
+        if (!t) warps[0] = rsqrtf(sum / (4.f * n4) + eps);
+    }
+    __syncthreads();
+    const float inv = warps[0];
+    for (int i = t; i < n4; i += 1024) {
+        float4 v = x[i];
+        const float4 g = w ? w[i] : make_float4(1.f, 1.f, 1.f, 1.f);
+        v.x = v.x * inv * g.x; v.y = v.y * inv * g.y; v.z = v.z * inv * g.z; v.w = v.w * inv * g.w;
+        y[i] = v;
+    }
+    __syncthreads();
+    const float *values = reinterpret_cast<const float *>(y);
+    for (int i = t; i < n4 * 4; i += 1024) {
+        const float xi = values[i];
+        float amax = fabsf(xi), total = xi;
+        for (int delta = 16; delta; delta >>= 1) {
+            amax = fmaxf(amax, __shfl_xor_sync(0xffffffff, amax, delta, 32));
+            total += __shfl_xor_sync(0xffffffff, total, delta, 32);
+        }
+        const float d = q8_1_finite(amax / 127.f);
+        q8[i / 32].qs[i % 32] = q8_1_quant(xi, d, amax);
+        if (!lane) q8[i / 32].ds = q8_1_ds(d, total);
+    }
+}
 __global__ void swiglu(const float *g, const float *u, float *y, int n, float limit) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
@@ -116,10 +167,9 @@ __global__ void route(const float *logits, const float *bias, int *ids, float *w
 // One warp caches each expert score once. Ties choose the first expert, as
 // in the serial scan; lane zero retains the original normalization order.
 // blockIdx.x selects the token; each token's selection is the single-token computation.
-__global__ void route_warp(const float *logits, const float *bias, int *ids, float *weights,
-                           int ne, int k, float scale, float min_share, const float *bonus) {
-    const int lane = threadIdx.x;
-    logits += (size_t)blockIdx.x * ne; ids += (size_t)blockIdx.x * k; weights += (size_t)blockIdx.x * k;
+__device__ __forceinline__ void route_warp_body(const float *logits, const float *bias, int *ids, float *weights,
+                                                int ne, int k, float scale, float min_share, const float *bonus,
+                                                int lane) {
     float scores[16];
     for (int i = 0; i < 16; ++i) {
         const int e = lane + 32 * i;
@@ -155,6 +205,35 @@ __global__ void route_warp(const float *logits, const float *bias, int *ids, flo
             weights[j] *= scale / (sum + 1e-20f);
             if (weights[j] < min_share * scale) weights[j] = 0.f;
         }
+}
+__global__ void route_warp(const float *logits, const float *bias, int *ids, float *weights,
+                           int ne, int k, float scale, float min_share, const float *bonus) {
+    route_warp_body(logits + (size_t)blockIdx.x * ne, bias, ids + (size_t)blockIdx.x * k,
+                    weights + (size_t)blockIdx.x * k, ne, k, scale, min_share, bonus, threadIdx.x);
+}
+// One token's router and mailbox publication in one launch (STRATA_GLM_FUSE_ROUTE=1): warp 0 routes, then the
+// block copies ids, weights and the activation into the mailbox slot and sets the published flag, exactly as the
+// separate publish kernel does (flags[slot * 32] is the published generation, see glm_mailbox.hpp).
+__global__ void route_publish(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
+                              float scale, float min_share, const float *bonus, GlmMailboxView v, int slot,
+                              const float *x, const unsigned *generation) {
+    if (threadIdx.x < 32) route_warp_body(logits, bias, ids, weights, ne, k, scale, min_share, bonus, threadIdx.x);
+    __syncthreads();
+    int *out_ids = v.ids + (size_t)slot * v.max_tokens * v.top_k;
+    float *out_weights = v.weights + (size_t)slot * v.max_tokens * v.top_k;
+    for (int i = threadIdx.x; i < k; i += blockDim.x) {
+        out_ids[i] = ids[i];
+        out_weights[i] = weights[i];
+    }
+    const float4 *src = reinterpret_cast<const float4 *>(x);
+    float4 *dst = reinterpret_cast<float4 *>(v.act + (size_t)slot * v.max_tokens * v.hidden);
+    for (int i = threadIdx.x; i < v.hidden / 4; i += blockDim.x) dst[i] = src[i];
+    __threadfence_system();
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        __threadfence_system();
+        *(volatile unsigned *)(v.flags + (size_t)slot * 32) = *generation;
+    }
 }
 // Opt-in lossy pruning (STRATA_GLM_ROUTE_MIN_SHARE): selected experts below this share of the routed weight get
 // weight zero, and the CPU expert service skips zero-weight routes. 0 (default) keeps every route.
@@ -508,6 +587,18 @@ void glm_rms_norm_rows(const float *x, const float *w, float *y, int n, int toke
         norm<<<tokens, 256, 0, (cudaStream_t)s>>>(x, w, nullptr, y, n, eps, false);
     check();
 }
+void glm_rms_norm_rows_q8(const float *x, const float *w, float *y, void *q8, int n, int tokens,
+                         float eps, void *s) {
+    width(n);
+    width(tokens);
+    const auto aligned = [](const void *p) { return (reinterpret_cast<uintptr_t>(p) & 15) == 0; };
+    if (n % 32 || !aligned(x) || !aligned(y) || (w && !aligned(w)) || !q8 ||
+        (reinterpret_cast<uintptr_t>(q8) & 3))
+        throw std::invalid_argument("GLM: fused norm/Q8 needs aligned rows with width divisible by 32");
+    rms_norm_rows_q8<<<tokens, 1024, 0, (cudaStream_t)s>>>((const float4 *)x, (const float4 *)w,
+        (float4 *)y, (NormQ81Block *)q8, n / 4, eps);
+    check();
+}
 void glm_layer_norm(const float *x, const float *w, const float *b, float *y, int n, float eps, void *s) {
     width(n);
     norm<<<1, 256, 0, (cudaStream_t)s>>>(x, w, b, y, n, eps, true);
@@ -531,6 +622,14 @@ void glm_router(const float *l, const float *b, int *ids, float *w, int ne, int 
         route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
     else
         route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
+    check();
+}
+void glm_router_publish(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale,
+                        const float *bonus, GlmMailboxView v, int slot, const float *x, const unsigned *generation,
+                        void *s) {
+    if (ne < 1 || k < 1 || k > ne || ne > 512 || k != v.top_k || slot < 0 || slot >= v.slots || v.hidden % 4)
+        throw std::invalid_argument("GLM: invalid fused routing geometry");
+    route_publish<<<1, 512, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus, v, slot, x, generation);
     check();
 }
 void glm_hc_project(const float *x, const float *w, float *out, float *scratch, int width, void *s) {

@@ -1,6 +1,7 @@
 // Q8_0 decode GEMVs against an FP64 reference at GLM's MLA absorb and mHC projection shapes.
 #include "strata/kernels/glm_q8.hpp"
 #include "strata/kernels/glm.hpp"
+#include "strata/kernels/native_mmvq.hpp"
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -57,12 +58,46 @@ void compare(const char *what, const std::vector<float> &got, const std::vector<
     if (!pass) ++failures;
     std::cout << (pass ? "PASS " : "FAIL ") << what << " worst_relative_to_abs_sum=" << worst << '\n';
 }
+void check_norm_q8(std::mt19937 &rng, cudaStream_t stream) {
+    std::uniform_real_distribution<float> values(-3.f, 3.f), weights(.5f, 1.5f);
+    int cases = 0, failed = 0;
+    for (int n : {32, 256, 4096, 16384}) for (int tokens : {1, 4}) for (int mode = 0; mode < 4; ++mode) {
+        std::vector<float> x((size_t)n * tokens), w(n);
+        for (auto &v : x) v = mode == 3 ? 0.f : values(rng);
+        for (auto &v : w) v = weights(rng) * (mode == 2 ? 1e9f : 1.f);
+        float *dx = upload(x), *dw = upload(w), *y0 = nullptr, *y1 = nullptr;
+        void *q0 = nullptr, *q1 = nullptr;
+        const size_t bytes = k::native_q8_1_bytes(n, tokens);
+        ck(cudaMalloc(&y0, x.size() * sizeof(float))); ck(cudaMalloc(&y1, x.size() * sizeof(float)));
+        ck(cudaMalloc(&q0, bytes)); ck(cudaMalloc(&q1, bytes));
+        const float *gamma = mode == 0 ? nullptr : dw;
+        k::glm_rms_norm_rows(dx, gamma, y0, n, tokens, 1e-6f, stream);
+        k::native_quantize_q8_1(y0, q0, n, tokens, stream);
+        k::glm_rms_norm_rows_q8(dx, gamma, y1, q1, n, tokens, 1e-6f, stream);
+        ck(cudaStreamSynchronize(stream));
+        const auto a = download(y0, x.size()), b = download(y1, x.size());
+        std::vector<uint8_t> qa(bytes), qb(bytes);
+        ck(cudaMemcpy(qa.data(), q0, bytes, cudaMemcpyDeviceToHost));
+        ck(cudaMemcpy(qb.data(), q1, bytes, cudaMemcpyDeviceToHost));
+        const bool same = std::memcmp(a.data(), b.data(), x.size() * sizeof(float)) == 0 && qa == qb;
+        if (!same) {
+            ++failed;
+            std::cout << "FAIL norm/Q8 bits width=" << n << " tokens=" << tokens << " mode=" << mode << '\n';
+        }
+        ++cases;
+        for (void *p : {static_cast<void *>(dx), static_cast<void *>(dw), static_cast<void *>(y0),
+                       static_cast<void *>(y1), q0, q1}) ck(cudaFree(p));
+    }
+    failures += failed;
+    std::cout << (failed ? "FAIL" : "PASS") << " fused norm/Q8 bitwise parity cases=" << cases << '\n';
+}
 int main() {
     try {
         std::mt19937 rng(1234);
         std::uniform_real_distribution<float> act(-3.f, 3.f);
         cudaStream_t s;
         ck(cudaStreamCreate(&s));
+        check_norm_q8(rng, s);
         cudaEvent_t a, b;
         ck(cudaEventCreate(&a));
         ck(cudaEventCreate(&b));

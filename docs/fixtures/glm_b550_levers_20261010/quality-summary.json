@@ -1,0 +1,41 @@
+{
+  "q23mix2_reference": {
+    "tasks": 30,
+    "complete_first30": true,
+    "passed": 29,
+    "syntax_valid": 30,
+    "token_cap_hits": 0,
+    "failed_tasks": [
+      "HumanEval/21"
+    ]
+  },
+  "q22fit5rows4": {
+    "tasks": 30,
+    "complete_first30": true,
+    "passed": 23,
+    "syntax_valid": 24,
+    "token_cap_hits": 2,
+    "failed_tasks": [
+      "HumanEval/5",
+      "HumanEval/6",
+      "HumanEval/10",
+      "HumanEval/12",
+      "HumanEval/20",
+      "HumanEval/25",
+      "HumanEval/26"
+    ]
+  },
+  "q22fit4": {
+    "tasks": 30,
+    "complete_first30": true,
+    "passed": 26,
+    "syntax_valid": 30,
+    "token_cap_hits": 0,
+    "failed_tasks": [
+      "HumanEval/10",
+      "HumanEval/17",
+      "HumanEval/22",
+      "HumanEval/28"
+    ]
+  }
+}

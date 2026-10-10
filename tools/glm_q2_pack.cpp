@@ -59,7 +59,8 @@ int main(int argc,char** argv){try {
         // IQ2_XS gate/up and IQ3_XXS down (UD-Q2_K_XL), or K-quant sources (Q4_K/Q5_K/Q6_K, e.g. a REAP-50 Q4_K_M).
         const bool kquant=t.tensor->type==12||t.tensor->type==13||t.tensor->type==14;
         const bool higher=all_layers&&t.tensor->type==(down?23u:18u);   // IQ4_XS down, IQ3_XXS gate/up
-        if(t.tensor->type!=(down?18u:17u)&&!kquant&&!higher)continue;
+        const bool assembled_down=down&&down_type==10&&t.tensor->type==11&&model.has_expert_pack();
+        if(t.tensor->type!=(down?18u:17u)&&!kquant&&!higher&&!assembled_down)continue;
         if(t.tensor->shape!=std::vector<uint64_t>{down?2048u:4096u,down?4096u:2048u,experts})throw std::runtime_error("unsupported expert geometry: "+name);
         const uint64_t bytes=t.tensor->elements()/256*(type==10?84:110);entries.push_back({name,&t,type,offset,bytes});offset+=bytes;
     }

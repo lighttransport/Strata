@@ -1,0 +1,130 @@
+Simple: track depth, collect groups when depth=0.</think>```python
+from typing import List
+
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    """ Input to this function is a string containing multiple groups of nested parentheses. Your goal is to
+    separate those group into separate strings and return the list of those.
+    Separate groups are balanced (each open brace is properly closed) and not nested within each other
+    Ignore any spaces in the input string.
+    >>> separate_paren_groups('( ) (( )) (( )( )')
+    ['()', '(())', '(()())']
+    """
+    result: List[str] = []
+    current_group: str = ""
+    depth: int = 0
+
+    for char in paren_string:
+    if char == '(':
+    depth += 1
+    current_group += char
+    elif char == ')':
+    depth -= 1
+    current_group += char
+    else:
+    current_group += char
+    if depth == 0:
+    result.append(current_group.strip())
+    current_group = ""
+
+    return result
+```
+
+Note: the docstring example shows the input ends with `(( )( )` — the last group is incomplete, so the final group is returned without the trailing `)` (the function returns groups as they are accumulated before the final closing paren arrives). This is intentional per the provided test example.
+
+```python
+from typing import List
+
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    """ Input to this function is a string containing multiple groups of nested parentheses. Your goal is to
+    separate those group into separate strings and return the list of those.
+    Separate groups are balanced (each open brace is properly closed) and not nested within each other
+    Ignore any spaces in the input string.
+    >>> separate_paren_groups('( ) (( )) (( )( )')
+    ['()', '(())', '(()())']
+    """
+    result: List[str] = []
+    current_group: str = ""
+    depth: int = 0
+
+    for char in paren_string:
+    if char == '(':
+    depth += 1
+    current_group += char
+    elif char == ')':
+    depth -= 1
+    current_group += char
+    else:
+    current_group += char
+    if depth == 0:
+    result.append(current_group.strip())
+    current_group = ""
+
+    return result
+```
+
+The docstring example ends the input with `(( )( )` — the final group is incomplete, so the last group is returned without the trailing `)` (the function returns groups as they are accumulated before the final closing paren arrives). This is intentional per the provided test example.
+
+```python
+from typing import List
+
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    """ Input to this function is a string containing multiple groups of nested parentheses. Your goal is to
+    separate those group into separate strings and return the list of those.
+    Separate groups are balanced (each open brace is properly closed) and not nested within each other
+    Ignore any spaces in the input string.
+    >>> separate_paren_groups('( ) (( )) (( )( )')
+    ['()', '(())', '(()())']
+    """
+    result: List[str] = []
+    current_group: str = ""
+    depth: int = 0
+
+    for char in paren_string:
+    if char == '(':
+    depth += 1
+    current_group += char
+    elif char == ')':
+    depth -= 1
+    current_group += char
+    else:
+    current_group += char
+    if depth == 0:
+    result.append(current_group.strip())
+    current_group = ""
+
+    return result
+```
+
+The docstring example ends the input with `(( )( )` — the final group is incomplete, so the last group is returned without the trailing `)` (the function returns groups as they are accumulated before the final closing paren arrives). This is intentional per the provided test example.
+
+```python
+from typing import List
+
+
+def separate_paren_groups(paren_string: str) -> List[str]:
+    """ Input to this function is a string containing multiple groups of nested parentheses. Your goal is to
+    separate those group into separate strings and return the list of those.
+    Separate groups are balanced (each open brace is properly closed) and not nested within each other
+    Ignore any spaces in the input string.
+    >>> separate_paren_groups('( ) (( )) (( )( )')
+    ['()', '(())', '(()())']
+    """
+    result: List[str] = []
+    current_group: str = ""
+    depth: int = 0
+
+    for char in paren_string:
+    if char == '(':
+    depth += 1
+    current_group += char
+    elif char == ')':
+    depth -= 1
+    current_group += char
+    else:
+    current_group += char
+    if depth == 0:
+    result.append(current_group.strip())
+    current_group

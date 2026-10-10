@@ -1,0 +1,20 @@
+</think>```python
+from typing import List
+
+
+def parse_nested_parens(paren_string: str) -> List[int]:
+    result = []
+    for group in paren_string.split():
+        depth = 0
+        max_depth = 0
+        for ch in group:
+            if ch == '(':
+                depth += 1
+                max_depth = max(max_depth, depth)
+            elif ch == ')':
+                depth -= 1
+        result.append(max_depth)
+    return result
+```
+
+This iterates each space-separated group, tracking current depth and the maximum reached, appending the max per group.

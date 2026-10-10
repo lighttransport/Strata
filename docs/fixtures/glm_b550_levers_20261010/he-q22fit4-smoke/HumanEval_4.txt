@@ -1,0 +1,13 @@
+Simple: compute mean, average absolute deviation.</think>```python
+from typing import List
+
+
+def mean_absolute_deviation(numbers: List[float]) -> float:
+    """ For a given list of input numbers, calculate Mean Absolute Deviation
+    around the mean of this dataset.
+    >>> mean_absolute_deviation([1.0, 2.0, 3.0, 4.0])
+    1.0
+    """
+    x_mean = sum(numbers) / len(numbers)
+    return sum(abs(x - x_mean) for x in numbers) / len(numbers)
+```

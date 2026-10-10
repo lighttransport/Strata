@@ -1,0 +1,4 @@
+Simple: lowercase the string, count distinct chars.</think>```python
+def count_distinct_characters(string: str) -> int:
+    return len(set(string.lower()))
+```

@@ -44,6 +44,14 @@ void glm_mailbox_wait_add_resident(GlmMailboxView v, int slot, float *out, int t
                                    const int *ids, const float *weights, const unsigned long long *lookup,
                                    const float *resident, void *stream);
 
+// Expert deferral (STRATA_GLM_DEFER_EXPERTS): out += weights[j] * resident[j] over resident routes, no wait.
+void glm_mailbox_add_resident(GlmMailboxView v, float *out, int tokens, const int *ids, const float *weights,
+                              const unsigned long long *lookup, const float *resident, void *stream);
+// Expert deferral, one token: waits for the CPU's sum s of `slot`, then adds it to the four hyper-connection streams
+// `r` as that layer's write would have: r[j] += w[j] * s with w[j] = earlier[4 + j] (the layer's write coefficients),
+// or, when a later write with coefficients `later` already ran, w[j] = sum_i later[8 + 4i + j] * earlier[4 + i].
+void glm_mailbox_wait_add_deferred(GlmMailboxView v, int slot, float *r, const float *earlier, const float *later,
+                                   const unsigned *generation, void *stream);
 // Canonical mode (canon_expert.hpp) with GPU-resident experts: copies the rows of resident routes (row j of
 // `resident` for route j) into the mailbox rows and then sets the rows flag, flags[slot * 32 + 8]. The CPU adds
 // every route in the canonical order and returns one sum, so the device reads back as little as without a tier.

@@ -1,0 +1,9 @@
+</think>```python
+def make_palindrome(string: str) -> str:
+    for i in range(len(string)):
+        if string[i:] == string[i:][::-1]:
+            return string + string[:i][::-1]
+    return string
+```
+
+This finds the longest palindromic suffix starting at index `i`, then appends the reversed prefix before it.

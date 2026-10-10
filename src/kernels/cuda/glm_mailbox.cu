@@ -97,6 +97,43 @@ __global__ void wait_add_resident(GlmMailboxView v, int slot, float *out, int to
         out[i] += acc;
     }
 }
+// Expert deferral, immediate half: out += weights[j] * resident[j] over resident routes, without waiting.
+__global__ void add_resident(GlmMailboxView v, float *out, int tokens, const int *ids, const float *weights,
+                             const unsigned long long *lookup, const float *resident) {
+    __shared__ float route_weight[64];
+    const int routes = tokens * v.top_k;
+    for (int j = threadIdx.x; j < routes; j += blockDim.x) route_weight[j] = lookup[ids[j]] ? weights[j] : 0.f;
+    __syncthreads();
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < tokens * v.hidden; i += blockDim.x * gridDim.x) {
+        const int t = i / v.hidden, row = i % v.hidden;
+        float acc = 0.f;
+        for (int k = 0; k < v.top_k; ++k) {
+            const int j = t * v.top_k + k;
+            if (route_weight[j] != 0.f) acc += route_weight[j] * resident[(size_t)j * v.hidden + row];
+        }
+        out[i] += acc;
+    }
+}
+// Expert deferral, late half: the CPU's sum s of an earlier layer whose hyper-connection write had post weights
+// post[j] = earlier[4 + j]. If a later write with coefficients `later` ran since, the term it would have carried is
+// mixed like the streams: w[j] = sum_i later[8 + 4i + j] * post[i]. Then r[j] += w[j] * s (one token).
+__global__ void wait_add_deferred(GlmMailboxView v, int slot, float *r, const float *earlier, const float *later,
+                                  const unsigned *generation) {
+    __shared__ float w[4];
+    if (threadIdx.x < 4) {
+        const int j = threadIdx.x;
+        float x = 0.f;
+        if (later) for (int i = 0; i < 4; ++i) x += later[8 + 4 * i + j] * earlier[4 + i];
+        else x = earlier[4 + j];
+        w[j] = x;
+    }
+    if (!wait_done(v, slot, generation)) return;
+    const volatile float *sum = v.sum + (size_t)slot * v.max_tokens * v.hidden;
+    for (int i = threadIdx.x; i < v.hidden; i += blockDim.x) {
+        const float s = sum[i];
+        for (int j = 0; j < 4; ++j) r[(size_t)j * v.hidden + i] += w[j] * s;
+    }
+}
 // Resident routes' rows go to the mailbox (posted writes), then the rows flag: the CPU sums every route.
 __global__ void post_rows(GlmMailboxView v, int slot, const int *ids, const float *weights,
                           const unsigned long long *lookup, const float *resident, int tokens) {
@@ -169,6 +206,22 @@ void glm_mailbox_wait_add_resident(GlmMailboxView v, int slot, float *out, int t
     wait_add_resident<<<1, 1024, 0, (cudaStream_t)stream>>>(v, slot, out, tokens, generation, ids, weights, lookup,
                                                              resident);
     ok(cudaGetLastError(), "resident wait");
+}
+
+void glm_mailbox_add_resident(GlmMailboxView v, float *out, int tokens, const int *ids, const float *weights,
+                              const unsigned long long *lookup, const float *resident, void *stream) {
+    if (tokens < 1 || tokens > v.max_tokens || tokens * v.top_k > 64)
+        throw std::invalid_argument("GLM mailbox: invalid resident add");
+    add_resident<<<(tokens * v.hidden + 255) / 256, 256, 0, (cudaStream_t)stream>>>(v, out, tokens, ids, weights, lookup,
+                                                                                    resident);
+    ok(cudaGetLastError(), "resident add");
+}
+
+void glm_mailbox_wait_add_deferred(GlmMailboxView v, int slot, float *r, const float *earlier, const float *later,
+                                   const unsigned *generation, void *stream) {
+    if (slot < 0 || slot >= v.slots) throw std::invalid_argument("GLM mailbox: invalid deferred wait");
+    wait_add_deferred<<<1, 1024, 0, (cudaStream_t)stream>>>(v, slot, r, earlier, later, generation);
+    ok(cudaGetLastError(), "deferred wait");
 }
 
 void glm_mailbox_post_rows(GlmMailboxView v, int slot, const int *ids, const float *weights,

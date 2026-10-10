@@ -313,7 +313,7 @@ class ModelArtifact {
         return hash;
     }
     void overlay_experts(const std::filesystem::path& path,const std::set<std::string>& retained={}) {
-        if(native_ || has_expert_pack())throw std::invalid_argument("expert pack requires an original GGUF model");
+        if(native_ || !expert_pack_.empty())throw std::invalid_argument("expert pack requires an original GGUF model");
         auto pack=std::make_unique<GgufFile>(path.string());
         if(pack->tensors().empty())throw std::runtime_error("expert pack: empty sidecar");
         const auto* version=pack->get("strata.expert_pack.version"),*source=pack->get("strata.expert_pack.source");
@@ -328,9 +328,12 @@ class ModelArtifact {
             // IQ2_XS gate/up -> Q2_K and IQ3_XXS down -> Q3_K or Q2_K (the UD-Q2_K_XL GGUF), or a K-quant
             // source (Q4_K/Q5_K/Q6_K, e.g. the REAP-50 Q4_K_M GGUF) -> the same targets.
             const bool kquant=original.tensor->type==12||original.tensor->type==13||original.tensor->type==14;
+            // Explicit Q22 sidecars may replace only a Q23 assembly's Q3_K down projections. Its Q2_K gate/up
+            // payloads stay in the immutable assembly; another sidecar cannot be stacked on this one.
+            const bool assembled_down=assembled_experts_ && original.tensor->type==11 && t.type==10 && match[2]=="down";
             // The higher formats of the exception layers (IQ3_XXS gate/up, IQ4_XS down) convert to the same targets.
             const bool valid=((original.tensor->type==17||original.tensor->type==18||kquant) && t.type==10 && match[2]!="down") ||
-                             ((original.tensor->type==18||original.tensor->type==23||kquant) && (t.type==11||t.type==10) && match[2]=="down");
+                             ((original.tensor->type==18||original.tensor->type==23||kquant) && (t.type==11||t.type==10) && match[2]=="down") || assembled_down;
             if(!valid)throw std::runtime_error("expert pack: invalid type transition "+t.name);
             const uint64_t length=t.elements()/256*(t.type==10?84:110);
             if(t.offset%32||pack->data_start()>pack->file_size()||t.offset>pack->file_size()-pack->data_start()||length>pack->file_size()-pack->data_start()-t.offset||!spans.emplace(t.offset,length).second)

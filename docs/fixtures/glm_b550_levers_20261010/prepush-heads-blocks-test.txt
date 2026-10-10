@@ -1,0 +1,26 @@
+PASS fused norm/Q8 bitwise parity cases=32
+PASS attn_k_b tokens=1 us=12.454050 worst_relative_to_abs_sum=6.53987e-08
+PASS attn_k_b tokens=2 us=76.996353 worst_relative_to_abs_sum=4.16212e-08
+PASS attn_k_b tokens=3 us=98.344398 worst_relative_to_abs_sum=4.73472e-08
+PASS attn_k_b tokens=4 us=115.614456 worst_relative_to_abs_sum=5.36679e-08
+PASS attn_k_b tokens=6 us=155.208557 worst_relative_to_abs_sum=4.46405e-08
+PASS attn_k_b tokens=8 us=194.956696 worst_relative_to_abs_sum=4.66606e-08
+PASS attn_v_b tokens=1 us=10.814050 worst_relative_to_abs_sum=3.80029e-08
+PASS attn_v_b tokens=2 us=65.100250 worst_relative_to_abs_sum=3.56406e-08
+PASS attn_v_b tokens=3 us=82.220299 worst_relative_to_abs_sum=3.04433e-08
+PASS attn_v_b tokens=4 us=101.350357 worst_relative_to_abs_sum=3.85094e-08
+PASS attn_v_b tokens=6 us=141.472504 worst_relative_to_abs_sum=3.71624e-08
+PASS attn_v_b tokens=8 us=180.106659 worst_relative_to_abs_sum=3.48903e-08
+PASS hc_fn tokens=1 us=25.648098 worst_relative_to_abs_sum=2.75064e-09
+PASS hc_fn tokens=2 us=25.828049 worst_relative_to_abs_sum=3.44855e-09
+PASS hc_fn tokens=3 us=28.002102 worst_relative_to_abs_sum=6.21366e-09
+PASS hc_fn tokens=4 us=28.836102 worst_relative_to_abs_sum=4.00099e-09
+PASS hc_fn tokens=8 us=32.800148 worst_relative_to_abs_sum=3.93719e-09
+PASS dequant exact
+PASS router_f32 tokens=1 us=7.420000 worst_relative_to_abs_sum=6.79842e-09
+PASS router_f32 tokens=2 us=10.676050 worst_relative_to_abs_sum=7.296e-09
+PASS router_f32 tokens=3 us=12.236000 worst_relative_to_abs_sum=1.2542e-08
+PASS router_f32 tokens=4 us=13.034050 worst_relative_to_abs_sum=9.28845e-09
+PASS router_f32 tokens=8 us=19.904049 worst_relative_to_abs_sum=1.04269e-08
+PASS token-batched router/mHC bitwise equal to per-token calls
+PASS glm_q8_test

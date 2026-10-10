@@ -1,0 +1,6 @@
+</think>The function returns the decimal part by subtracting the integer part from the original number.
+
+```python
+def truncate_number(number: float) -> float:
+    return number - int(number)
+```

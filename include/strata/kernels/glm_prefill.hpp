@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 namespace strata::kernels {
 void glm_layer_norm_batch(const float *x, const float *w, const float *b, float *y, int width, int tokens,
@@ -83,6 +84,13 @@ void glm_index_reduce(const float *dots, const float *weights, float *scores, in
 void glm_index_select_batch(const float *scores, int *ids, int *counts, int pools, int query_pos, int queries,
                             int pool, int top_k, int stride, void *stream,
                             const int *device_pos = nullptr, int position_offset = 0);
+// One-query MLA products over `stride` gathered keys (keys[s][latent], fp32): scores[h][s] = keys[s] . q[h] and
+// out[h] = sum_s p[h][s] * keys[s] (p and scores row-major with leading dimension stride). values needs
+// glm_mla_one_scratch_bytes of scratch.
+std::size_t glm_mla_one_scratch_bytes(int stride, int latent, int heads);
+void glm_mla_scores_one(const float *keys, const float *q, float *scores, int stride, int latent, int heads, void *stream);
+void glm_mla_values_one(const float *keys, const float *p, float *out, float *scratch, int stride, int latent,
+                        int heads, void *stream);
 void glm_mla_gather(const float *cache, const int *ids, const int *counts, float *gathered, int queries,
                     int stride, int latent, void *stream);
 void glm_mla_gather_f16(const float *cache, const int *ids, const int *counts, uint16_t *gathered, int queries,

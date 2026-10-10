@@ -1,0 +1,62 @@
+Simple: iterate, depth counter, collect chars when depth>0, reset when depth==0.</think>def separate_paren_groups(paren_string: str) -> List[str]:
+    result = []
+    depth = 0
+    current = []
+    for char in paren_string:
+    # iterate through each character
+    # if the current char isn a space, add it to the current string
+    if char == '(':
+    depth += 1
+    current.append(char)
+    elif char == ')':
+    depth -= 1
+    current.append(char)
+    else:
+    current.append(char)
+    if depth == 0:
+    # join the current string into the result list
+    result.append(''.join(current))
+    current.clear()
+    return result
+
+def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate_paren_groups('(( ) (( ))) (( )( ))')</think>def get_paren_groups():
+    return separate

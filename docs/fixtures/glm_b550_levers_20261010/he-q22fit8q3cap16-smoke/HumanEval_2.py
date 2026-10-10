@@ -1,0 +1,3 @@
+def truncate_number(number: float) -> float:
+    import math
+    return number - math.floor(number)

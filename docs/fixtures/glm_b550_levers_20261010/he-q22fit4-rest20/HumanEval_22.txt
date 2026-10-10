@@ -1,0 +1,4 @@
+Simple: keep only ints (not bools? bools are ints... but examples don't include bools; standard: isinstance(x, int) and not isinstance(x, bool)).</think>```python
+def filter_integers(values: List[Any]) -> List[int]:
+    return [x for x in values if isinstance(x, int) and not isinstance(x, bool)]
+```

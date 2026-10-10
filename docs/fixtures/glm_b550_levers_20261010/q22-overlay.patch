@@ -1,0 +1,119 @@
+diff --git a/include/strata/core/model.hpp b/include/strata/core/model.hpp
+index bfb23a52..e60da2fc 100644
+--- a/include/strata/core/model.hpp
++++ b/include/strata/core/model.hpp
+@@ -313,7 +313,7 @@ class ModelArtifact {
+         return hash;
+     }
+     void overlay_experts(const std::filesystem::path& path,const std::set<std::string>& retained={}) {
+-        if(native_ || has_expert_pack())throw std::invalid_argument("expert pack requires an original GGUF model");
++        if(native_ || !expert_pack_.empty())throw std::invalid_argument("expert pack requires an original GGUF model");
+         auto pack=std::make_unique<GgufFile>(path.string());
+         if(pack->tensors().empty())throw std::runtime_error("expert pack: empty sidecar");
+         const auto* version=pack->get("strata.expert_pack.version"),*source=pack->get("strata.expert_pack.source");
+@@ -328,9 +328,12 @@ class ModelArtifact {
+             // IQ2_XS gate/up -> Q2_K and IQ3_XXS down -> Q3_K or Q2_K (the UD-Q2_K_XL GGUF), or a K-quant
+             // source (Q4_K/Q5_K/Q6_K, e.g. the REAP-50 Q4_K_M GGUF) -> the same targets.
+             const bool kquant=original.tensor->type==12||original.tensor->type==13||original.tensor->type==14;
++            // Explicit Q22 sidecars may replace only a Q23 assembly's Q3_K down projections. Its Q2_K gate/up
++            // payloads stay in the immutable assembly; another sidecar cannot be stacked on this one.
++            const bool assembled_down=assembled_experts_ && original.tensor->type==11 && t.type==10 && match[2]=="down";
+             // The higher formats of the exception layers (IQ3_XXS gate/up, IQ4_XS down) convert to the same targets.
+             const bool valid=((original.tensor->type==17||original.tensor->type==18||kquant) && t.type==10 && match[2]!="down") ||
+-                             ((original.tensor->type==18||original.tensor->type==23||kquant) && (t.type==11||t.type==10) && match[2]=="down");
++                             ((original.tensor->type==18||original.tensor->type==23||kquant) && (t.type==11||t.type==10) && match[2]=="down") || assembled_down;
+             if(!valid)throw std::runtime_error("expert pack: invalid type transition "+t.name);
+             const uint64_t length=t.elements()/256*(t.type==10?84:110);
+             if(t.offset%32||pack->data_start()>pack->file_size()||t.offset>pack->file_size()-pack->data_start()||length>pack->file_size()-pack->data_start()-t.offset||!spans.emplace(t.offset,length).second)
+diff --git a/tools/glm_q2_pack.cpp b/tools/glm_q2_pack.cpp
+index 1bcf5011..734feb82 100644
+--- a/tools/glm_q2_pack.cpp
++++ b/tools/glm_q2_pack.cpp
+@@ -59,7 +59,8 @@ int main(int argc,char** argv){try {
+         // IQ2_XS gate/up and IQ3_XXS down (UD-Q2_K_XL), or K-quant sources (Q4_K/Q5_K/Q6_K, e.g. a REAP-50 Q4_K_M).
+         const bool kquant=t.tensor->type==12||t.tensor->type==13||t.tensor->type==14;
+         const bool higher=all_layers&&t.tensor->type==(down?23u:18u);   // IQ4_XS down, IQ3_XXS gate/up
+-        if(t.tensor->type!=(down?18u:17u)&&!kquant&&!higher)continue;
++        const bool assembled_down=down&&down_type==10&&t.tensor->type==11&&model.has_expert_pack();
++        if(t.tensor->type!=(down?18u:17u)&&!kquant&&!higher&&!assembled_down)continue;
+         if(t.tensor->shape!=std::vector<uint64_t>{down?2048u:4096u,down?4096u:2048u,experts})throw std::runtime_error("unsupported expert geometry: "+name);
+         const uint64_t bytes=t.tensor->elements()/256*(type==10?84:110);entries.push_back({name,&t,type,offset,bytes});offset+=bytes;
+     }
+diff --git a/tools/test_glm_assemble.py b/tools/test_glm_assemble.py
+index 7226f52e..5938efea 100644
+--- a/tools/test_glm_assemble.py
++++ b/tools/test_glm_assemble.py
+@@ -67,6 +67,25 @@ class AssemblyTest(unittest.TestCase):
+         cls.fingerprint = directory / 'fingerprint'
+         subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'), str(helper),
+                         '-o', str(cls.fingerprint)], check=True)
++        helper = directory / 'overlay.cpp'
++        helper.write_text('''#include "strata/core/model.hpp"
++#include <iostream>
++int main(int argc,char** argv){try {
++    strata::core::ModelArtifact m(argv[1]);
++    const auto gate=m.at("blk.3.ffn_gate_exps.weight"), up=m.at("blk.3.ffn_up_exps.weight"), fixed=m.at("test.fixed");
++    m.overlay_experts(argv[2]);
++    if(argc==4)m.overlay_experts(argv[3]);
++    if(m.at("blk.3.ffn_gate_exps.weight").data()!=gate.data() ||
++       m.at("blk.3.ffn_up_exps.weight").data()!=up.data() || m.at("test.fixed").data()!=fixed.data())
++        throw std::runtime_error("untouched tensor changed");
++    for(int l=3;l<=44;++l){const auto& d=m.at("blk."+std::to_string(l)+".ffn_down_exps.weight");
++        if(d.tensor->type!=10 || d.bytes!=84 || d.data()[0]!=77)throw std::runtime_error("down overlay differs");}
++    std::cout<<"Q22 down overlay preserves gate/up/fixed tensors";
++}catch(const std::exception& e){std::cerr<<e.what();return 1;}}
++''')
++        cls.overlay = directory / 'overlay'
++        subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'), str(helper),
++                        '-o', str(cls.overlay)], check=True)
+ 
+     @classmethod
+     def tearDownClass(cls):
+@@ -131,6 +150,47 @@ class AssemblyTest(unittest.TestCase):
+         self.assertIn('incomplete assembled Q23 experts', self.run_assembly().stderr)
+         self.assertFalse(self.output.exists())
+ 
++    def make_q22_sidecar(self):
++        result = self.run_assembly()
++        self.assertEqual(result.returncode, 0, result.stderr)
++        path = self.directory / 'q22.gguf'
++        source = int(subprocess.check_output([self.fingerprint, self.output]))
++        tensors = [(f'blk.{l}.ffn_down_exps.weight', 10, [256, 1, 1], bytes([77]) * 84)
++                   for l in range(3, 45)]
++        metadata = {'strata.expert_pack.version': ('u32', 1), 'strata.expert_pack.source': ('u64', source)}
++        metadata.update({'strata.expert_pack.hash.' + t[0]: ('u64', fnv(t[3])) for t in tensors})
++        write_gguf(path, metadata, tensors)
++        return path, metadata, tensors
++
++    def test_assembled_q22_down_overlay(self):
++        path, _, _ = self.make_q22_sidecar()
++        before = self.output.read_bytes()
++        result = subprocess.run([self.overlay, self.output, path], capture_output=True, text=True)
++        self.assertEqual(result.returncode, 0, result.stderr)
++        self.assertEqual(self.output.read_bytes(), before)
++        result = subprocess.run([self.overlay, self.output, path, path], capture_output=True, text=True)
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn('expert pack requires an original GGUF model', result.stderr)
++
++    def test_assembled_q22_wrong_source(self):
++        path, metadata, tensors = self.make_q22_sidecar()
++        metadata['strata.expert_pack.source'] = ('u64', 0)
++        write_gguf(path, metadata, tensors)
++        result = subprocess.run([self.overlay, self.output, path], capture_output=True, text=True)
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn('source fingerprint mismatch', result.stderr)
++
++    def test_assembled_q22_rejects_gate_replacement(self):
++        path, metadata, tensors = self.make_q22_sidecar()
++        for part in ('gate', 'up'):
++            tensor = (f'blk.3.ffn_{part}_exps.weight', 10, [256, 1, 1], bytes([77]) * 84)
++            tensors.append(tensor)
++            metadata['strata.expert_pack.hash.' + tensor[0]] = ('u64', fnv(tensor[3]))
++        write_gguf(path, metadata, tensors)
++        result = subprocess.run([self.overlay, self.output, path], capture_output=True, text=True)
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn('invalid type transition', result.stderr)
++
+ 
+ if __name__ == '__main__':
+     unittest.main()

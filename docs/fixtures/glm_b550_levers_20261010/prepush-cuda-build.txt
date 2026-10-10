@@ -1,0 +1,30 @@
+[1/5] Building CUDA object CMakeFiles/strata_kernels.dir/src/kernels/cuda/glm_prefill.cu.o
+[2/5] Linking CXX static library libstrata_kernels.a
+[3/5] Linking CXX executable glm_q8_test
+[4/5] Building CXX object CMakeFiles/strata-glm-decode.dir/src/program/glm_decode.cpp.o
+In file included from /home/syoyo/work/Strata/src/program/glm_decode.cpp:8:
+/home/syoyo/work/Strata/include/strata/core/exact_expert_cache.hpp: In member function ‘void strata::core::ExactExpertCache::worker()’:
+/home/syoyo/work/Strata/include/strata/core/exact_expert_cache.hpp:143:15: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  143 |               if(stopping_)return; read=reads_[next_++]; }
+      |               ^~
+/home/syoyo/work/Strata/include/strata/core/exact_expert_cache.hpp:143:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  143 |               if(stopping_)return; read=reads_[next_++]; }
+      |                                    ^~~~
+/home/syoyo/work/Strata/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::moe(const std::string&, int, const float*, float*, const strata::core::LayerDescriptor&)’:
+/home/syoyo/work/Strata/src/program/glm_decode.cpp:3690:45: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
+ 3690 |                 const int header[2] = {l, m.experts};
+      |                                           ~~^~~~~~~
+/home/syoyo/work/Strata/src/program/glm_decode.cpp:3696:59: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
+ 3696 |                 const int header[3] = {position + t, l, m.experts};
+      |                                                         ~~^~~~~~~
+/home/syoyo/work/Strata/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::cpu_moe_mailbox(int, int, int, int, int, int, uint64_t, int)’:
+/home/syoyo/work/Strata/src/program/glm_decode.cpp:4217:62: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)G.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+ 4217 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
+      |                                                    ~~~~~~~~~~^~~~
+/home/syoyo/work/Strata/src/program/glm_decode.cpp:4217:78: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)D.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+ 4217 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
+      |                                                                    ~~~~~~~~~~^~~~
+/home/syoyo/work/Strata/src/program/glm_decode.cpp:4217:93: warning: narrowing conversion of ‘(int64_t)layer.strata::core::LayerDescriptor::intermediate’ from ‘int64_t’ {aka ‘long int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+ 4217 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
+      |                                                                                       ~~~~~~^~~~~~~~~~~~
+[5/5] Linking CXX executable strata-glm-decode

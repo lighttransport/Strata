@@ -1,0 +1,5 @@
+Simple: return number - floor(number).</think>```python
+def truncate_number(number: float) -> float:
+    import math
+    return number - math.floor(number)
+```

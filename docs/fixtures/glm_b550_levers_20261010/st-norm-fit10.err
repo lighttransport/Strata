@@ -1,0 +1,279 @@
+Running as unit: strata-st-norm-fit10-405424.service; invocation ID: 2ba25098d518415d8775d709d3e551a8
+STAGING compact=1 slot_MiB=140
+FLOATING_Q8 tensor=blk.0.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.0.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.1.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.1.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.10.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.10.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.11.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.11.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.11.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.11.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.12.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.12.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.13.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.13.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.14.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.14.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.15.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.15.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.15.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.15.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.16.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.16.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.17.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.17.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.18.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.18.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.19.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.19.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.19.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.19.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.2.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.2.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.20.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.20.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.21.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.21.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.22.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.22.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.23.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.23.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.23.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.23.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.24.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.24.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.25.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.25.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.26.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.26.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.27.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.27.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.27.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.27.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.28.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.28.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.29.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.29.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.3.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.3.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.3.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.3.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.30.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.30.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.31.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.31.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.31.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.31.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.32.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.32.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.33.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.33.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.34.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.34.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.35.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.35.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.35.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.35.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.36.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.36.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.37.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.37.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.38.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.38.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.39.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.39.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.39.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.39.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.4.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.4.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.40.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.40.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.41.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.41.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.42.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.42.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.43.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.43.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.43.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.43.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.44.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.44.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.5.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.5.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.6.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.6.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.7.attn_k_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.7.attn_v_b.weight source_type=12 MiB=8.5
+FLOATING_Q8 tensor=blk.7.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.7.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.8.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.8.hc_ffn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.9.hc_attn_fn source_type=0 MiB=0.398438
+FLOATING_Q8 tensor=blk.9.hc_ffn_fn source_type=0 MiB=0.398438
+GPU prefill chunk=2048 staging_workers=4 numa_cpus=0,1,2,3
+GPU allocated_MiB=7154.73 reserved_runtime_MiB=1024 budget_MiB=15360
+GPU_DENSE_HOST_RELEASE phase=main tensors=1256 source_MiB_advised=5040.35 ms=131.399
+TIER_DIRECT registered_MiB=52542 ranges=126 ms=14211.3
+PREFILL_PARTITION primary_groups=9 secondary_groups=0
+PREFILL_CACHE device=0 budget_MiB=0 reserve_MiB=768
+PREFILL_CACHE_PLAN device=0 base_groups=0 unused_MiB=0
+MAPPED_EXPERTS numa_rows=0 lazy=1 bytes=55094280192
+PREFILL trial=0 tokens=2048 batch=2048 ms=19700.9 tok_s=103.954
+FAULTS trial=0 major=672 minor=343023
+HOST_RSS peak_MiB=54259.1
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=0 bytes=0
+GPU peak_allocated_MiB=7154.73 native_expert_bytes=55101150720 expert_groups=378 staging_ms=4311.16
+PREFILL_SCRATCH device=0 peak_MiB=696.564 capacity_MiB=1024
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=294.414 prefill_MiB=1592 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=7154.73 live_MiB=7154.73 native_expert_bytes=55101150720 staging_ms=4311.16 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=8036 free_MiB=8268
+MAPPED_EXPERTS numa_rows=0 lazy=1 bytes=55094280192
+PREFILL_WORK device=0 transferred_bytes=55101150720 staging_ms=4311.16 actual_rows=0 padded_rows=0 dequant_values=0
+DECODE_RUNTIME override_reserve_MiB=512
+DECODE_CACHE prefix_trained=1 slots=906 MiB=7870.88 fingerprint=2780373492086969970
+RESPONSE_PREPARE kind=decode_cache ms=1353.85
+RESPONSE_PREPARE kind=cpu ms=0.001432
+DECODE_TRIAL index=0
+DECODE_STEP index=1 ms=47.2364
+DECODE_STEP index=2 ms=29.3093
+DECODE_STEP index=3 ms=34.1734
+DECODE_STEP index=4 ms=33.49
+DECODE_STEP index=5 ms=37.1295
+DECODE_STEP index=6 ms=32.4401
+DECODE_STEP index=7 ms=34.5313
+DECODE_STEP index=8 ms=31.673
+DECODE_STEP index=9 ms=30.5129
+DECODE_STEP index=10 ms=35.6355
+DECODE_STEP index=11 ms=30.2339
+DECODE_STEP index=12 ms=34.0868
+DECODE_STEP index=13 ms=33.4861
+DECODE_STEP index=14 ms=35.5514
+DECODE_STEP index=15 ms=33.0195
+DECODE_STEP index=16 ms=32.2662
+DECODE_STEP index=17 ms=31.9776
+DECODE_STEP index=18 ms=35.4914
+DECODE_STEP index=19 ms=29.771
+DECODE_STEP index=20 ms=30.452
+DECODE_STEP index=21 ms=31.7046
+DECODE_STEP index=22 ms=33.0195
+DECODE_STEP index=23 ms=33
+DECODE_STEP index=24 ms=33.9136
+DECODE_STEP index=25 ms=35.2588
+DECODE_STEP index=26 ms=28.1789
+DECODE_STEP index=27 ms=29.5826
+DECODE_STEP index=28 ms=30.7664
+DECODE_STEP index=29 ms=30.9969
+DECODE_STEP index=30 ms=31.9257
+DECODE_STEP index=31 ms=36.5706
+DECODE_STEP index=32 ms=28.5697
+DECODE_STEP index=33 ms=29.3722
+DECODE_STEP index=34 ms=30.8204
+DECODE_STEP index=35 ms=29.5872
+DECODE_STEP index=36 ms=30.0594
+DECODE_STEP index=37 ms=31.1542
+DECODE_STEP index=38 ms=34.1716
+DECODE_STEP index=39 ms=31.9013
+DECODE_STEP index=40 ms=28.6037
+DECODE_STEP index=41 ms=28.9182
+DECODE_STEP index=42 ms=29.339
+DECODE_STEP index=43 ms=29.8388
+DECODE_STEP index=44 ms=29.1208
+DECODE_STEP index=45 ms=33.6979
+DECODE_STEP index=46 ms=28.5618
+DECODE_STEP index=47 ms=28.807
+DECODE_STEP index=48 ms=29.6132
+DECODE_STEP index=49 ms=30.6623
+DECODE_STEP index=50 ms=31.2647
+DECODE_STEP index=51 ms=30.9969
+DECODE_STEP index=52 ms=31.4565
+DECODE_STEP index=53 ms=31.791
+DECODE_STEP index=54 ms=35.7485
+DECODE_STEP index=55 ms=28.9572
+DECODE_STEP index=56 ms=28.5196
+DECODE_STEP index=57 ms=29.2093
+DECODE_STEP index=58 ms=30.4547
+DECODE_STEP index=59 ms=31.838
+DECODE_STEP index=60 ms=32.466
+DECODE_STEP index=61 ms=30.534
+DECODE_STEP index=62 ms=30.0649
+DECODE_STEP index=63 ms=30.0385
+DECODE_STEP index=64 ms=29.0902
+DECODE_STEP index=65 ms=32.1293
+DECODE_STEP index=66 ms=34.066
+DECODE_STEP index=67 ms=32.1068
+DECODE_STEP index=68 ms=30.6864
+DECODE_STEP index=69 ms=30.9745
+DECODE_STEP index=70 ms=31.3576
+DECODE_STEP index=71 ms=32.6525
+DECODE_STEP index=72 ms=29.1762
+DECODE_STEP index=73 ms=33.0856
+DECODE_STEP index=74 ms=31.7499
+DECODE_STEP index=75 ms=31.8047
+DECODE_STEP index=76 ms=33.4303
+DECODE_STEP index=77 ms=32.9539
+DECODE_STEP index=78 ms=33.5273
+DECODE_STEP index=79 ms=34.4144
+DECODE_STEP index=80 ms=31.6657
+DECODE_STEP index=81 ms=32.4566
+DECODE_STEP index=82 ms=30.7173
+DECODE_STEP index=83 ms=31.9127
+DECODE_STEP index=84 ms=30.1804
+DECODE_STEP index=85 ms=31.711
+DECODE_STEP index=86 ms=30.5717
+DECODE_STEP index=87 ms=32.6179
+DECODE_STEP index=88 ms=32.6182
+DECODE_STEP index=89 ms=29.6247
+DECODE_STEP index=90 ms=29.49
+DECODE_STEP index=91 ms=30.1587
+DECODE_STEP index=92 ms=30.7579
+DECODE_STEP index=93 ms=34.6201
+DECODE_STEP index=94 ms=28.1729
+DECODE_STEP index=95 ms=28.6943
+DECODE_STEP index=96 ms=29.211
+DECODE_STEP index=97 ms=28.5852
+DECODE_STEP index=98 ms=29.8741
+DECODE_STEP index=99 ms=30.7619
+DECODE_STEP index=100 ms=29.8033
+DECODE_STEP index=101 ms=32.2857
+DECODE_STEP index=102 ms=28.3074
+DECODE_STEP index=103 ms=29.0093
+DECODE_STEP index=104 ms=28.7777
+DECODE_STEP index=105 ms=28.9432
+DECODE_STEP index=106 ms=28.4925
+DECODE_STEP index=107 ms=31.3715
+DECODE_STEP index=108 ms=29.8117
+DECODE_STEP index=109 ms=31.5328
+DECODE_STEP index=110 ms=32.626
+DECODE_STEP index=111 ms=28.7558
+DECODE_STEP index=112 ms=30.7716
+DECODE_STEP index=113 ms=29.0507
+DECODE_STEP index=114 ms=30.4113
+DECODE_STEP index=115 ms=31.5254
+DECODE_STEP index=116 ms=30.2832
+DECODE_STEP index=117 ms=28.7559
+DECODE_STEP index=118 ms=30.3686
+DECODE_STEP index=119 ms=31.1787
+DECODE_STEP index=120 ms=32.7454
+DECODE_STEP index=121 ms=31.265
+DECODE_STEP index=122 ms=31.5594
+DECODE_STEP index=123 ms=32.0872
+DECODE_STEP index=124 ms=34.2455
+DECODE_STEP index=125 ms=29.8595
+DECODE_STEP index=126 ms=29.1204
+DECODE_STEP index=127 ms=30.2671
+DECODE steps=127 ms=4001.88 tok_s=31.7351
+HOST_RSS peak_MiB=54259.1
+CPU_EXPERT gu_ms=0 quant_ms=0 down_ms=0 layer_flow_ms=1232.6 bytes=33860026368
+STEP_TRACE steps=127 moe_layers=5334 pipelined=1 head_ms=275.85 cpu_ms=1302.46 between_ms=2185.59 tail_ms=208.606 tail_sync_ms=134.737 tail_plan_ms=32.506 tail_copy_ms=36.8523 enqueue_ms=469.88 tier_swaps=161 split_windows=0 per_step_ms=31.2795
+GPU peak_allocated_MiB=13249.4 native_expert_bytes=0 expert_groups=0 staging_ms=0
+PREFILL_SCRATCH device=0 peak_MiB=5.07129 capacity_MiB=32
+GPU_LIVE device=0 dense_MiB=5029.21 other_MiB=7946.13 prefill_MiB=32 resident_exec_MiB=2.94288 state_MiB=239.105
+GPU_DEVICE device=0 peak_allocated_MiB=13249.4 live_MiB=13249.4 native_expert_bytes=0 staging_ms=0 cache_hits=0 cache_hit_bytes=0 cuda_used_MiB=15300 free_MiB=1004
+resident expert entries=38955/42672
+Finished with result: success
+Main processes terminated with: code=exited/status=0
+Service runtime: 49.800s
+CPU time consumed: 1min 55.301s
+Memory peak: 256.0K
+Memory swap peak: 0B

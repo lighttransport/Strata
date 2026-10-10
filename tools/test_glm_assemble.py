@@ -67,6 +67,25 @@ class AssemblyTest(unittest.TestCase):
         cls.fingerprint = directory / 'fingerprint'
         subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'), str(helper),
                         '-o', str(cls.fingerprint)], check=True)
+        helper = directory / 'overlay.cpp'
+        helper.write_text('''#include "strata/core/model.hpp"
+#include <iostream>
+int main(int argc,char** argv){try {
+    strata::core::ModelArtifact m(argv[1]);
+    const auto gate=m.at("blk.3.ffn_gate_exps.weight"), up=m.at("blk.3.ffn_up_exps.weight"), fixed=m.at("test.fixed");
+    m.overlay_experts(argv[2]);
+    if(argc==4)m.overlay_experts(argv[3]);
+    if(m.at("blk.3.ffn_gate_exps.weight").data()!=gate.data() ||
+       m.at("blk.3.ffn_up_exps.weight").data()!=up.data() || m.at("test.fixed").data()!=fixed.data())
+        throw std::runtime_error("untouched tensor changed");
+    for(int l=3;l<=44;++l){const auto& d=m.at("blk."+std::to_string(l)+".ffn_down_exps.weight");
+        if(d.tensor->type!=10 || d.bytes!=84 || d.data()[0]!=77)throw std::runtime_error("down overlay differs");}
+    std::cout<<"Q22 down overlay preserves gate/up/fixed tensors";
+}catch(const std::exception& e){std::cerr<<e.what();return 1;}}
+''')
+        cls.overlay = directory / 'overlay'
+        subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'), str(helper),
+                        '-o', str(cls.overlay)], check=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -130,6 +149,47 @@ class AssemblyTest(unittest.TestCase):
         write_gguf(self.pack, self.pack_meta, self.converted[3:])
         self.assertIn('incomplete assembled Q23 experts', self.run_assembly().stderr)
         self.assertFalse(self.output.exists())
+
+    def make_q22_sidecar(self):
+        result = self.run_assembly()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = self.directory / 'q22.gguf'
+        source = int(subprocess.check_output([self.fingerprint, self.output]))
+        tensors = [(f'blk.{l}.ffn_down_exps.weight', 10, [256, 1, 1], bytes([77]) * 84)
+                   for l in range(3, 45)]
+        metadata = {'strata.expert_pack.version': ('u32', 1), 'strata.expert_pack.source': ('u64', source)}
+        metadata.update({'strata.expert_pack.hash.' + t[0]: ('u64', fnv(t[3])) for t in tensors})
+        write_gguf(path, metadata, tensors)
+        return path, metadata, tensors
+
+    def test_assembled_q22_down_overlay(self):
+        path, _, _ = self.make_q22_sidecar()
+        before = self.output.read_bytes()
+        result = subprocess.run([self.overlay, self.output, path], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.output.read_bytes(), before)
+        result = subprocess.run([self.overlay, self.output, path, path], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('expert pack requires an original GGUF model', result.stderr)
+
+    def test_assembled_q22_wrong_source(self):
+        path, metadata, tensors = self.make_q22_sidecar()
+        metadata['strata.expert_pack.source'] = ('u64', 0)
+        write_gguf(path, metadata, tensors)
+        result = subprocess.run([self.overlay, self.output, path], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('source fingerprint mismatch', result.stderr)
+
+    def test_assembled_q22_rejects_gate_replacement(self):
+        path, metadata, tensors = self.make_q22_sidecar()
+        for part in ('gate', 'up'):
+            tensor = (f'blk.3.ffn_{part}_exps.weight', 10, [256, 1, 1], bytes([77]) * 84)
+            tensors.append(tensor)
+            metadata['strata.expert_pack.hash.' + tensor[0]] = ('u64', fnv(tensor[3]))
+        write_gguf(path, metadata, tensors)
+        result = subprocess.run([self.overlay, self.output, path], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('invalid type transition', result.stderr)
 
 
 if __name__ == '__main__':

@@ -1186,6 +1186,7 @@ struct ResidentExecutor {
     std::unique_ptr<Device> lookup, route_ids;
     std::unique_ptr<Pinned> host_lookup;
     std::unique_ptr<Pinned> host_reduction;
+    bool lookup_preloaded = false;
     struct ReaderEvent {
         cudaEvent_t event = nullptr;
         ReaderEvent() { check(cudaEventCreateWithFlags(&event, cudaEventDisableTiming)); }
@@ -1259,8 +1260,9 @@ struct ResidentExecutor {
         auto enqueue = [&] {
             const size_t offset = (size_t)layer * 288 * sizeof(unsigned long long);
             const void *source = (char *)host_lookup->p + offset;
-            check(cudaMemcpyAsync((char *)lookup->p + offset, source,
-                                  288 * sizeof(unsigned long long), cudaMemcpyHostToDevice, stream));
+            if (!lookup_preloaded)
+                check(cudaMemcpyAsync((char *)lookup->p + offset, source,
+                                      288 * sizeof(unsigned long long), cudaMemcpyHostToDevice, stream));
             if (nt == 1)
                 k::glm_resident_routes(ids, (const unsigned long long *)lookup->p + layer * 288,
                                        ptr, starts, dest, tokens, count, stream);
@@ -1706,7 +1708,8 @@ class Decoder {
         if (std::string(value) == "all") return 2;
         if (std::string(value) == "q5") return 3;
         if (std::string(value) == "outputs") return 4;
-        throw std::invalid_argument("GLM: dense Q4 must be 0, mixers, all, q5 or outputs");
+        if (std::string(value) == "q3mixers") return 5;
+        throw std::invalid_argument("GLM: dense Q4 must be 0, mixers, all, q5, outputs or q3mixers");
     }();
     bool early_route_sync = std::getenv("STRATA_GLM_EARLY_ROUTE_SYNC") != nullptr;
     bool async_peer_return = std::getenv("STRATA_GLM_ASYNC_PEER_RETURN") != nullptr;
@@ -1732,6 +1735,14 @@ class Decoder {
     bool kda_split = std::getenv("STRATA_GLM_KDA_SPLIT") != nullptr;
     // Decode: one q8_1 quantization of a mixer input shared by every projection reading it.
     bool quant_once = std::getenv("STRATA_GLM_QUANT_ONCE") != nullptr;
+    const bool norm_q8_fused = [] {
+        const char *v = std::getenv("STRATA_GLM_NORM_Q8_FUSED");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) == "1") return true;
+        throw std::invalid_argument("GLM: norm Q8 fused must be 0 or 1");
+    }();
+    // Persistent: reset_phase() releases its arena between normalization and the consuming mixer/FFN.
+    std::unique_ptr<Device> norm_quant;
     const float *shared_quant_src = nullptr;
     int shared_quant_in = 0,shared_quant_nt=0;
     Device *shared_quant = nullptr;
@@ -1838,11 +1849,53 @@ class Decoder {
     long split_windows = 0;
     int history_token_offset = 0;  // first token of the enqueued group within its verify window
     int mailbox_group_stride() const { return (int)m.layers.size() + 1; }
+    // STRATA_GLM_DEFER_EXPERTS=1 (lossy, one-token pipelined decode): a MoE layer's CPU experts are added to the
+    // hyper-connection streams after the next layer's mixer instead of before it, so that mixer runs on the GPU
+    // while the CPU computes them. The GPU's resident and shared experts are not deferred. The added term is the
+    // one the layer's write would have carried through the next write (glm_mailbox_wait_add_deferred); the only
+    // change is that the next mixer does not see it.
+    // =2 checks the arithmetic: the late add runs right after the layer's own write, which equals no deferral.
+    const int defer_experts = [] { const char *v = std::getenv("STRATA_GLM_DEFER_EXPERTS"); return v ? std::atoi(v) : 0; }();
+    // STRATA_GLM_DEFER_ROUTES=<n> (with DEFER_EXPERTS): partial deferral. Only the n lowest-weight cold routes of a
+    // layer run late; the CPU writes their sum to the layer's group-B mailbox slot (slot + stride) in a second pass
+    // while the GPU runs the next mixer, and the other cold routes are combined in time as without deferral.
+    const int defer_routes = [] {
+        const char *v = std::getenv("STRATA_GLM_DEFER_ROUTES");
+        const int n = v ? std::atoi(v) : 0;
+        if (n < 0 || n > 8) throw std::invalid_argument("GLM: STRATA_GLM_DEFER_ROUTES must be 0..8");
+        return n;
+    }();
+    // STRATA_GLM_DEFER_MAX_SHARE=<x>: a cold route is deferred only when its weight is below x times the layer's
+    // routed weight sum (default 1 = no cap), so layers whose smallest cold route matters stay in time.
+    const float defer_max_share = [] {
+        const char *v = std::getenv("STRATA_GLM_DEFER_MAX_SHARE");
+        const float x = v ? std::strtof(v, nullptr) : 1.f;
+        if (!(x > 0.f && x <= 1.f)) throw std::invalid_argument("GLM: STRATA_GLM_DEFER_MAX_SHARE must be in (0, 1]");
+        return x;
+    }();
+    // STRATA_GLM_DEFER_MIN_LAYER=<l>: layers below l defer nothing (their late pass is empty), since early
+    // layers are the most sensitive to delayed expert output.
+    const int defer_min_layer = [] { const char *v = std::getenv("STRATA_GLM_DEFER_MIN_LAYER"); return v ? std::atoi(v) : 0; }();
+    int deferred_target(int l) const { return defer_routes ? l + mailbox_group_stride() : l; }
+    bool defer_active = false;
+    const bool fuse_route_publish = [] { const char *v = std::getenv("STRATA_GLM_FUSE_ROUTE"); return v && std::string(v) == "1"; }();
+    // STRATA_GLM_TIER_LOOKUP_ONCE=1: stable one-token pipeline residency is uploaded once before the layers,
+    // replacing each layer's small H2D transfer. Cache modes that change residency inside a step retain theirs.
+    const bool tier_lookup_once = [] {
+        const char *v = std::getenv("STRATA_GLM_TIER_LOOKUP_ONCE");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) == "1") return true;
+        throw std::invalid_argument("GLM: tier lookup once must be 0 or 1");
+    }();
+    const bool mla_one_kernels = [] { const char *v = std::getenv("STRATA_GLM_MLA_KERNELS"); return v && std::string(v) == "1"; }();
+    std::unique_ptr<Device> mla_one_scratch;
+    std::unique_ptr<Device> defer_coefficients;  // the deferred layer's 24 hyper-connection coefficients
     // Per-step host timeline (STRATA_GLM_STEP_TRACE=1): routed CPU work versus everything between layers.
     bool step_trace = std::getenv("STRATA_GLM_STEP_TRACE") != nullptr;
     struct StepTrace {
         long steps = 0, layers = 0;
         double head_ms = 0, cpu_ms = 0, gap_ms = 0, tail_ms = 0, enqueue_ms = 0;
+        double sync_ms = 0, plan_ms = 0, copy_ms = 0;  // tail parts: stream sync, tier bookkeeping, logits readback
         std::chrono::steady_clock::time_point start, last_done, seen;
         bool any = false;
         // STRATA_GLM_STEP_TRACE=2: the same split per mailbox slot (layer, and layer + stride for group B).
@@ -1875,7 +1928,7 @@ class Decoder {
                !std::getenv("STRATA_GLM_CHECK_MLA");
     }
     bool verify_graphs=std::getenv("STRATA_GLM_VERIFY_GRAPHS")!=nullptr;
-    int graph_key(int layer)const {return layer+10000*(batch_tokens-1)+(capturing_history?100000:0)+(pipelining?200000:0)+(pipeline_residents?400000:0);}
+    int graph_key(int layer)const {return layer+10000*(batch_tokens-1)+(capturing_history?100000:0)+(pipelining?200000:0)+(pipeline_residents?400000:0)+(defer_active?(defer_routes?1600000:800000):0);}
     std::map<int, std::unique_ptr<DecodeGraph>> mixer_graphs;
     template<class F> void decode_graph(int layer, F &&enqueue, int key = -1) {
         if (!decode_graphs || !gpu || fast || !row_sequences.empty() || ((batch_tokens!=1 || capturing_history) &&
@@ -2619,7 +2672,9 @@ class Decoder {
     }
     int dense_weight_type(const std::string &name) const {
         const auto &t = *artifact.at(name).tensor;
-        if (!dense_q4_repack || t.shape.size() != 2 || (t.type != GGML_TYPE_Q5_K && t.type != GGML_TYPE_Q6_K) ||
+        if (!dense_q4_repack || t.shape.size() != 2 ||
+            (t.type != GGML_TYPE_Q5_K && t.type != GGML_TYPE_Q6_K &&
+             !(dense_q4_repack == 5 && t.type == GGML_TYPE_Q4_K)) ||
             !name.starts_with("blk.") || name.starts_with("blk.45.") || name.ends_with("_exps.weight") ||
             t.shape[0] % 256 || t.shape[0] * t.shape[1] < 4 * 1024 * 1024) return t.type;
         const int layer = std::stoi(name.substr(4, name.find('.', 4) - 4));
@@ -2627,7 +2682,8 @@ class Decoder {
             (dense_q4_repack == 4 && !name.ends_with("attn_output.weight"))) return t.type;
         const bool mixer = name.find(".attn_") != std::string::npos;
         const bool shared = name.ends_with("_shexp.weight");
-        return layer >= 3 && (mixer || (dense_q4_repack == 2 && shared)) ? int(GGML_TYPE_Q4_K) : int(t.type);
+        return layer >= 3 && (mixer || (dense_q4_repack == 2 && shared))
+            ? int(dense_q4_repack == 5 ? GGML_TYPE_Q3_K : GGML_TYPE_Q4_K) : int(t.type);
     }
     size_t dense_weight_bytes(const std::string &name) const {
         const auto &t = artifact.at(name);
@@ -2704,7 +2760,8 @@ class Decoder {
             convert(0, rows / workers);
             for (auto &worker : converters) worker.join();
             if (size_failed) throw std::runtime_error("GLM: dense repack row size mismatch: " + name);
-            std::cerr << (repack_type == GGML_TYPE_Q8_0 ? "FLOATING_Q8" : "DENSE_Q4")
+            std::cerr << (repack_type == GGML_TYPE_Q8_0 ? "FLOATING_Q8" :
+                         repack_type == GGML_TYPE_Q3_K ? "DENSE_Q3" : "DENSE_Q4")
                       << " tensor=" << name << " source_type=" << source.type
                       << " MiB=" << repacked.size() / double(MiB) << '\n';
         }
@@ -2903,6 +2960,14 @@ class Decoder {
     }
     void norm(const std::string &name, const float *x, float *y, int width) {
         auto &W = weight(name);
+        if (norm_q8_fused && q8_decode && quant_once && !fast && batch_tokens == 1 &&
+            width == m.hidden && norm_quant) {
+            k::glm_rms_norm_rows_q8(x, W.f(), y, norm_quant->p, width, 1, m.rms_epsilon, stream);
+            shared_quant = norm_quant.get(); shared_quant_src = y;
+            shared_quant_in = width; shared_quant_nt = 1;
+            return;
+        }
+        if (norm_q8_fused && width == m.hidden) end_share_quant();
         // The 1024-thread rows kernel sums in a different order, so it is part of the opt-in decode kernels and
         // used only outside prefill: every decode and verify width then rounds alike.
         if (q8_decode && !fast) k::glm_rms_norm_rows(x, W.f(), y, width, batch_tokens, m.rms_epsilon, stream);
@@ -2911,7 +2976,26 @@ class Decoder {
     void hc_read(const std::string &p, const std::string &kind, const float *r, float *x, float *c) {
         auto &normalized = buf("hc_normalized", m.hidden * 4 * batch_tokens);
         auto &projected = buf("hc_projected", 24 * batch_tokens);
-        k::glm_rms_norm(r, nullptr, normalized.f(), m.hidden * 4, batch_tokens, m.rms_epsilon, stream);
+        // STRATA_GLM_HC_FUSED=1 (opt-in, decode of one token with the Q8 projection): norm, projection, Sinkhorn
+        // coefficients and the read in two launches instead of five; the norm scale is applied after the projection,
+        // so rounding differs from the unfused path.
+        static const bool hc_fused = [] { const char *v = std::getenv("STRATA_GLM_HC_FUSED"); return v && v[0] == '1'; }();
+        if (hc_fused && !fast && batch_tokens == 1 && floating_q8_weight(p + "hc_" + kind + "_fn.weight")) {
+            auto &fb = weight(p + "hc_" + kind + "_base.weight");
+            auto &fs = weight(p + "hc_" + kind + "_scale.weight");
+            auto &qw = weight(p + "hc_" + kind + "_fn.weight");
+            auto &partial = buf("hc_fused_partial", 25 * 32);
+            k::glm_hc_read_fused(qw.p, r, fb.f(), fs.f(), c, x, partial.f(), m.hidden, m.sinkhorn_iterations,
+                                 m.hc_epsilon, m.rms_epsilon, stream);
+            return;
+        }
+        // STRATA_GLM_HC_NORM_ROWS=1 (opt-in): the mHC norm over 4 x hidden values takes the 1024-thread rows kernel
+        // under the same rule as norm() (decode kernels only, never prefill); one 256-thread block per row is
+        // latency-bound, most of all on HIP (about 18 us per launch on the RX 9070 XT).
+        static const bool hc_rows = [] { const char *v = std::getenv("STRATA_GLM_HC_NORM_ROWS"); return v && v[0] == '1'; }();
+        if (hc_rows && q8_decode && !fast)
+            k::glm_rms_norm_rows(r, nullptr, normalized.f(), m.hidden * 4, batch_tokens, m.rms_epsilon, stream);
+        else k::glm_rms_norm(r, nullptr, normalized.f(), m.hidden * 4, batch_tokens, m.rms_epsilon, stream);
         const auto &hc_name = p + "hc_" + kind + "_fn.weight";
         if (!fast && floating_q8_weight(hc_name)) {
             auto &partial = buf("hc_q8_partial", 24 * cpu::MAXT * 32);
@@ -3809,7 +3893,7 @@ class Decoder {
     void prepare_step_mailbox() {
         if (mailbox) return;
         if (m.experts > 512) throw std::runtime_error("GLM: step pipeline expert count");
-        mailbox = std::make_unique<StepMailbox>(mailbox_group_stride() * (split_verify ? 2 : 1),
+        mailbox = std::make_unique<StepMailbox>(mailbox_group_stride() * (split_verify || defer_routes > 0 ? 2 : 1),
                                                cpu::MAXT, m.top_k, m.hidden, canon_experts, bool(ram_tier) || tier_learn_unbiased);
         if (tier_learn_unbiased)
             std::cerr << "DECODE_CACHE_LEARN source=unbiased_router\n";
@@ -3840,6 +3924,15 @@ class Decoder {
         mat(p + "ffn_gate_inp.weight", x, logits.f());
         auto &bias = weight(p + "exp_probs_b.bias");
         const float *bonus = route_bonus_row(l);
+        const bool wants_unbiased = tier_learn_unbiased || (bonus && ram_tier);
+        if (fuse_route_publish && nt == 1 && m.experts <= 512 && !wants_unbiased) {
+            // Router and publication in one launch; the pending record below is unchanged.
+            k::glm_router_publish(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, bonus,
+                                  mailbox->device_view, slot, x, mailbox->device_generation(), stream);
+            MoePending pending{l, slot, nt, (int *)ids.p, rw.f(), out, executor, canon_layer(l), x};
+            enqueue_moe_residents(pending, p, layer);
+            return pending;
+        }
         if (nt > 1 && m.experts <= 512) k::glm_router_tokens(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, nt, stream, bonus);
         else k::glm_router(logits.f(), bias.f(), (int *)ids.p, rw.f(), m.experts, m.top_k, m.expert_scale, stream, bonus);
         const int *wanted = tier_learn_unbiased ? (int *)ids.p : nullptr;
@@ -3852,13 +3945,17 @@ class Decoder {
         }
         k::glm_mailbox_publish(mailbox->device_view, slot, (int *)ids.p, rw.f(), x, nt, mailbox->device_generation(), stream, wanted);
         MoePending pending{l, slot, nt, (int *)ids.p, rw.f(), out, executor, canon_layer(l), x};
-        // Resident experts run here while the CPU computes the others.
+        enqueue_moe_residents(pending, p, layer);
+        return pending;
+    }
+    // Resident experts run while the CPU computes the others; then the shared expert.
+    void enqueue_moe_residents(const MoePending &pending, const std::string &p, const strata::core::LayerDescriptor &layer) {
         if (pipeline_residents) {
             const auto &G = artifact.at(p + "ffn_gate_exps.weight");
             const auto &D = artifact.at(p + "ffn_down_exps.weight");
             auto layout = k::native_expert_layout(G.tensor->type, D.tensor->type, m.hidden, layer.intermediate);
             layout.swiglu_limit = layer.swiglu_limit;
-            layout.gate_skip = pending.canon ? gate_skip[l] : 0.f;
+            layout.gate_skip = pending.canon ? gate_skip[pending.layer] : 0.f;
             pending.executor->run_device(layout, pending.x, pending.ids, pending.layer, stream, false, false, pending.nt, pending.canon);
             // Canonical, strict: the CPU adds every route, so the resident rows go to the mailbox.
             if (pending.canon && canon_strict())
@@ -3867,9 +3964,16 @@ class Decoder {
                                          pending.executor->output->f(), pending.nt, mailbox->device_generation(), stream);
         }
         ffn(p, pending.x, pending.out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
-        return pending;
     }
     void enqueue_moe_combine(const MoePending &pending) {
+        if (defer_active && !defer_routes) {
+            // The CPU's sum follows after the next mixer; only device-combined resident rows are added here.
+            if (pipeline_residents && !(pending.canon && canon_strict()))
+                k::glm_mailbox_add_resident(mailbox->device_view, pending.out, pending.nt, pending.ids, pending.rw,
+                                            (const unsigned long long *)pending.executor->lookup->p + (size_t)pending.layer * 288,
+                                            pending.executor->output->f(), stream);
+            return;
+        }
         if (pending.canon && (canon_strict() || !pipeline_residents))
             k::glm_mailbox_wait_add(mailbox->device_view, pending.slot, pending.out, pending.nt,
                                     mailbox->device_generation(), stream);
@@ -3886,8 +3990,15 @@ class Decoder {
         enqueue_moe_combine(enqueue_moe_publish(p, l, x, out, layer, l, cached_decode.get()));
     }
     // CPU half: the same jobs and fixed-order reduction as moe()'s CPU path, read from and written to the mailbox.
-    void cpu_moe_mailbox(int l, int slot, int nt, int position, int second_slot = -1, int second_nt = 0) {
+    // route_mask (bit j = this call computes route j) and out_slot (sum target, -1 = slot) serve partial deferral:
+    // the pass with out_slot >= 0 is the late one and performs none of the layer's bookkeeping side effects.
+    void cpu_moe_mailbox(int l, int slot, int nt, int position, int second_slot = -1, int second_nt = 0,
+                         uint64_t route_mask = ~uint64_t{0}, int out_slot = -1) {
         const int H = m.hidden, K = m.top_k;
+        const int sum_slot = out_slot < 0 ? slot : out_slot;
+        const bool primary = out_slot < 0;
+        if (!primary && (exact_cache || remote_tp || second_slot >= 0 || !pipeline_residents))
+            throw std::runtime_error("GLM: partial deferral needs plain pipelined decode with GPU residents");
         const int first_nt = nt;
         const auto &layer = m.layers[l];
         const std::string p = "blk." + std::to_string(l) + ".";
@@ -3910,12 +4021,14 @@ class Decoder {
         }
         for (int j = 0; j < nt * K; ++j)
             if (selected[j] < 0 || selected[j] >= m.experts) throw std::runtime_error("GLM: invalid published expert");
-        if (expert_observer) expert_observer->input(l, position, nt, H, K, selected, activation);
-        if (block_screen) block_screen->input(l, position, nt, H, K, selected, routing, activation);
-        if (!cache_probe_routes.empty())
-            for (int j = 0; j < nt * K; ++j) ++cache_probe_routes.at(l).at(selected[j]);
-        ram_touch(l, selected, mailbox->wanted(slot), nt * K);
-        trace_routes(l, position, nt, K, selected);
+        if (primary) {
+            if (expert_observer) expert_observer->input(l, position, nt, H, K, selected, activation);
+            if (block_screen) block_screen->input(l, position, nt, H, K, selected, routing, activation);
+            if (!cache_probe_routes.empty())
+                for (int j = 0; j < nt * K; ++j) ++cache_probe_routes.at(l).at(selected[j]);
+            ram_touch(l, selected, mailbox->wanted(slot), nt * K);
+            trace_routes(l, position, nt, K, selected);
+        }
         const auto &G = artifact.at(p + "ffn_gate_exps.weight");
         const auto &U = artifact.at(p + "ffn_up_exps.weight");
         const auto &D = artifact.at(p + "ffn_down_exps.weight");
@@ -3934,7 +4047,7 @@ class Decoder {
         f.canon = canon_types(G.tensor->type, D.tensor->type);
         f.gate_skip = f.canon ? gate_skip[l] : 0.f;
         if(block_screen){f.hidden_transform=block_screen.get();f.observer_layer=l;f.fuse_h_quant=false;}
-        if (f.canon) cpu::canon_gate_stats_layer(l);
+        if (f.canon && primary) cpu::canon_gate_stats_layer(l);
         if (f.canon && (prepared != prepared_experts.end() || remote_tp))
             throw std::runtime_error("GLM: canonical experts cannot be combined with prepared experts or remote TP");
         host_quant.resize(nt);
@@ -3959,17 +4072,17 @@ class Decoder {
             for (int j = 0; j < nt * K; ++j) gpu_rows = gpu_rows || (routing[j] != 0.f && resident[selected[j]]);
         for (int j = 0; j < nt * K; ++j) {
             const int e = selected[j], t = j / K;
-            ++cache_entries;
+            if (primary) ++cache_entries;
             cpu_weights[j] = routing[j];
             if (routing[j] == 0.f) {
                 // Pruned by STRATA_GLM_ROUTE_MIN_SHARE; contributes nothing.
-                ++pruned_routes;
+                if (primary) ++pruned_routes;
                 if (!f.canon) std::fill_n(results + (size_t)j * H, H, 0.f);
                 continue;
             }
-            if (resident && resident[e]) {
-                // The GPU adds this route; the CPU's fixed-order sum sees an exact zero.
-                ++cache_hits;
+            if ((resident && resident[e]) || !(route_mask >> j & 1u)) {
+                // The GPU adds this route (resident) or the other pass does (masked out); this sum sees an exact zero.
+                if (primary && resident && resident[e]) ++cache_hits;
                 cpu_weights[j] = 0.f;
                 if (!f.canon) std::fill_n(results + (size_t)j * H, H, 0.f);
                 continue;
@@ -4043,7 +4156,7 @@ class Decoder {
             }
             struct Completion { StepMailbox *mailbox; int slots[2]; } completion{mailbox.get(), {slot, second_slot}};
             cpu::ExpertPool::LayerGroups groups;
-            groups.split = first_nt; groups.sum[0] = mailbox->sum(slot); groups.sum[1] = mailbox->sum(second_slot);
+            groups.split = first_nt; groups.sum[0] = mailbox->sum(sum_slot); groups.sum[1] = mailbox->sum(second_slot);
             groups.context = &completion;
             groups.complete = [](void *context, int group) noexcept {
                 auto &ready = *static_cast<Completion *>(context);
@@ -4063,10 +4176,10 @@ class Decoder {
             mailbox->complete(second_slot);
         } else if (layer_flow)
             pool.run_layer_native(run_f, host_jobs.data(), host_jobs.size(), results, cpu_weights.data(),
-                                  mailbox->sum(slot), nt, K);
+                                  mailbox->sum(sum_slot), nt, K);
         else {
             if (!host_jobs.empty()) pool.run_split_multi_native(run_f, host_jobs.data(), host_jobs.size());
-            pool.reduce_routed(results, cpu_weights.data(), mailbox->sum(slot), nt, K, H, f.canon);
+            pool.reduce_routed(results, cpu_weights.data(), mailbox->sum(sum_slot), nt, K, H, f.canon);
         }
         if (gpu_rows && !early_groups) {
             mailbox->wait_rows(slot, launch_failed);
@@ -4116,13 +4229,13 @@ class Decoder {
                 }
             }
             for (int t = 0; t < nt; ++t)
-                cpu::canon_route_sum(results + (size_t)t * K * H, routing + (size_t)t * K, mailbox->sum(slot) + (size_t)t * H, K, H, 0, H);
+                cpu::canon_route_sum(results + (size_t)t * K * H, routing + (size_t)t * K, mailbox->sum(sum_slot) + (size_t)t * H, K, H, 0, H);
         }
         if (second_slot >= 0 && !early_groups)
-            std::copy_n(mailbox->sum(slot) + (size_t)first_nt * H, (size_t)second_nt * H, mailbox->sum(second_slot));
-        if (remote) remote_tp->finish(mailbox->sum(slot));
-        if (remote && remote_tp->check) remote_tp_check(l, f, G, U, D, nt, K, cpu_weights.data(), mailbox->sum(slot));
-        if (resident) {
+            std::copy_n(mailbox->sum(sum_slot) + (size_t)first_nt * H, (size_t)second_nt * H, mailbox->sum(second_slot));
+        if (remote) remote_tp->finish(mailbox->sum(sum_slot));
+        if (remote && remote_tp->check) remote_tp_check(l, f, G, U, D, nt, K, cpu_weights.data(), mailbox->sum(sum_slot));
+        if (resident && primary) {
             const int *learned = tier_learn_unbiased ? mailbox->wanted(slot) : selected;
             if (tier_learn_unbiased) {
                 if (second_slot >= 0 || !learned)
@@ -4551,8 +4664,47 @@ class Decoder {
     const float kTierMargin = tier_setting("STRATA_GLM_TIER_MARGIN", 1.5f);
     const size_t kTierInflight = (size_t)tier_setting("STRATA_GLM_TIER_INFLIGHT", 16);
     const float kTierSeed = tier_setting("STRATA_GLM_TIER_SEED", 50.f);   // 1 / (1 - decay): a steady rate's score
+    // STRATA_GLM_TIER_DIRECT=1: the expert tensors' file pages are registered with the GPU once, and promotions
+    // upload by DMA straight from the mapping. The staging thread's copy (a read and a write of every promoted
+    // byte) no longer competes with the CPU experts for memory bandwidth.
+    const bool tier_direct = [] { const char *v = std::getenv("STRATA_GLM_TIER_DIRECT"); return v && std::string(v) == "1"; }();
+    struct HostRegistration {
+        std::vector<uintptr_t> ranges;
+        ~HostRegistration() { for (auto p : ranges) cudaHostUnregister((void *)p); }
+    };
+    std::unique_ptr<HostRegistration> tier_registration;
+    void register_tier_sources() {
+        const auto t0 = std::chrono::steady_clock::now();
+        const uintptr_t page = 4096;
+        std::vector<std::pair<uintptr_t, uintptr_t>> spans, merged;
+        for (size_t l = 0; l < m.layers.size(); ++l) {
+            if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+            for (const char *role : {"gate", "up", "down"}) {
+                const auto &t = artifact.at("blk." + std::to_string(l) + ".ffn_" + role + "_exps.weight");
+                const auto a = (uintptr_t)t.data();
+                spans.push_back({a & ~(page - 1), (a + t.bytes + page - 1) & ~(page - 1)});
+            }
+        }
+        std::sort(spans.begin(), spans.end());
+        for (const auto &r : spans) {
+            if (!merged.empty() && r.first <= merged.back().second) merged.back().second = std::max(merged.back().second, r.second);
+            else merged.push_back(r);
+        }
+        auto reg = std::make_unique<HostRegistration>();
+        size_t bytes = 0;
+        for (const auto &r : merged) {
+            const auto e = cudaHostRegister((void *)r.first, r.second - r.first, cudaHostRegisterReadOnly);
+            if (e != cudaSuccess) throw std::runtime_error(std::string("GLM: tier source registration failed: ") + cudaGetErrorString(e));
+            reg->ranges.push_back(r.first);
+            bytes += r.second - r.first;
+        }
+        tier_registration = std::move(reg);
+        std::cerr << "TIER_DIRECT registered_MiB=" << bytes / 1048576 << " ranges=" << merged.size() << " ms="
+                  << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() << '\n';
+    }
     void prepare_tier_staging() {
         if (!tier_adapt || tier_staging) return;
+        if (tier_direct && !tier_registration) register_tier_sources();
         // Pinned staging and CUDA objects are created here, before the step launches: allocating them while
         // the GPU waits on the service thread could synchronize with that wait.
         if (!tier_staging) {
@@ -4646,7 +4798,8 @@ class Decoder {
             tier_free_staging.pop_back();
             copy.selected_step = tier_step;
             decode_resident[v.layer].erase(found);
-            tier_stager->submit(&copy, (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes);
+            if (tier_direct) copy.staged.store(true, std::memory_order_release);
+            else tier_stager->submit(&copy, (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes);
         }
     }
     // After the step's final synchronization: every freed slot is idle, so staged copies may upload.
@@ -4655,8 +4808,16 @@ class Decoder {
             if (copy.uploading || copy.selected_step >= tier_step) continue;
             while (!copy.staged.load(std::memory_order_acquire)) std::this_thread::yield();
             copy.uploaded_step = tier_step;
-            check(cudaMemcpyAsync(copy.entry->p, (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes,
-                                  copy.bytes, cudaMemcpyHostToDevice, tier_stream));
+            if (tier_direct) {
+                size_t offset = 0;
+                for (int part = 0; part < 3; ++part) {
+                    check(cudaMemcpyAsync((uint8_t *)copy.entry->p + offset, copy.source[part], copy.sizes[part],
+                                          cudaMemcpyHostToDevice, tier_stream));
+                    offset += copy.sizes[part];
+                }
+            } else
+                check(cudaMemcpyAsync(copy.entry->p, (uint8_t *)tier_staging->p + (size_t)copy.staging * kTierStagingBytes,
+                                      copy.bytes, cudaMemcpyHostToDevice, tier_stream));
             check(cudaEventRecord(tier_events[copy.staging], tier_stream));
             copy.uploading = true;
             ++tier_swaps;
@@ -4686,7 +4847,7 @@ class Decoder {
             mailbox->wait_published(item.slot, launch_failed);
             if (merge_expert_groups && canon_layer(item.layer) && i + 1 < items.size() && items[i + 1].layer == item.layer) {
                 const auto &other = items[++i];
-                if (!canon_experts || !canon_strict() || ram_tier || remote_tp || !row_sequences.empty() || step_trace ||
+                if (!canon_experts || !canon_strict() || ram_tier || remote_tp || !row_sequences.empty() || step_trace || defer_routes ||
                     other.position != item.position + item.tokens || other.slot != item.slot + mailbox_group_stride())
                     throw std::invalid_argument("GLM: expert group merge requires single-sequence canonical strict split verification without tracing or RAM routing");
                 // Group B's mixer runs while the CPU waits here. Its experts
@@ -4700,8 +4861,36 @@ class Decoder {
                 continue;
             }
             trace_seen();
-            cpu_moe_mailbox(item.layer, item.slot, item.tokens, item.position);
-            mailbox->complete(item.slot);
+            if (!(defer_active && defer_routes)) {
+                cpu_moe_mailbox(item.layer, item.slot, item.tokens, item.position);
+                mailbox->complete(item.slot);
+            } else {
+                // Partial deferral: the n lowest-weight cold routes form the late pass (group-B slot).
+                const int K = m.top_k, late_slot = item.slot + mailbox_group_stride();
+                const int *ids = mailbox->ids(item.slot);
+                const float *w = mailbox->weights(item.slot);
+                const auto *resident = (const unsigned long long *)cached_decode->host_lookup->p + (size_t)item.layer * 288;
+                unsigned cold = 0, late = 0;
+                float total = 0.f;
+                for (int j = 0; j < item.tokens * K; ++j) {
+                    total += w[j];
+                    if (w[j] != 0.f && !resident[ids[j]]) cold |= 1u << j;
+                }
+                for (int n = 0; n < defer_routes && item.layer >= defer_min_layer; ++n) {
+                    int pick = -1;
+                    for (int j = 0; j < item.tokens * K; ++j)
+                        if ((cold >> j & 1u) && !(late >> j & 1u) && (pick < 0 || w[j] < w[pick])) pick = j;
+                    if (pick < 0 || w[pick] >= defer_max_share * total) break;
+                    late |= 1u << pick;
+                }
+                if ((late & ~cold) || __builtin_popcount(late) > std::min(defer_routes, __builtin_popcount(cold)))
+                    throw std::runtime_error("GLM: deferred route selection");
+                cpu_moe_mailbox(item.layer, item.slot, item.tokens, item.position, -1, 0, ~late);
+                mailbox->complete(item.slot);
+                if (late) cpu_moe_mailbox(item.layer, item.slot, item.tokens, item.position, -1, 0, late, late_slot);
+                else std::fill_n(mailbox->sum(late_slot), (size_t)item.tokens * m.hidden, 0.f);  // the late add is unconditional
+                mailbox->complete(late_slot);
+            }
             trace_done(item.slot);
         }
     }
@@ -5373,17 +5562,27 @@ class Decoder {
                     continue;
                 }
                 k::glm_mla_gather(cache_rows, d.ids, d.counts, d.gathered, count, stride, latent, d.stream);
-                check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, stride, heads, latent, &one,
-                                                d.gathered, latent, (long long)stride * latent, aq_t, latent,
-                                                (long long)heads * latent, &zero, d.attn, stride,
-                                                (long long)heads * stride, count));
-                inspect("attention_scores", d.attn, (size_t)count * heads * stride, d.stream);
-                k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
-                inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
-                check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_N, CUBLAS_OP_N, latent, heads, stride, &one,
-                                                d.gathered, latent, (long long)stride * latent, d.attn,
-                                                stride, (long long)heads * stride, &zero, av_t, latent,
-                                                (long long)heads * latent, count));
+                // STRATA_GLM_MLA_KERNELS=1, one query: two decode kernels instead of the strided-batched SGEMMs.
+                if (mla_one_kernels && count == 1 && !graph_mla() && !d.back) {
+                    const size_t scratch = k::glm_mla_one_scratch_bytes(stride, latent, heads);
+                    if (!mla_one_scratch || mla_one_scratch->bytes < scratch) mla_one_scratch = std::make_unique<Device>(scratch);
+                    k::glm_mla_scores_one(d.gathered, aq_t, d.attn, stride, latent, heads, d.stream);
+                    inspect("attention_scores", d.attn, (size_t)heads * stride, d.stream);
+                    k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
+                    k::glm_mla_values_one(d.gathered, d.attn, av_t, mla_one_scratch->f(), stride, latent, heads, d.stream);
+                } else {
+                    check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, stride, heads, latent, &one,
+                                                    d.gathered, latent, (long long)stride * latent, aq_t, latent,
+                                                    (long long)heads * latent, &zero, d.attn, stride,
+                                                    (long long)heads * stride, count));
+                    inspect("attention_scores", d.attn, (size_t)count * heads * stride, d.stream);
+                    k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
+                    inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
+                    check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_N, CUBLAS_OP_N, latent, heads, stride, &one,
+                                                    d.gathered, latent, (long long)stride * latent, d.attn,
+                                                    stride, (long long)heads * stride, &zero, av_t, latent,
+                                                    (long long)heads * latent, count));
+                }
                 inspect("absorbed_value", av_t, (size_t)count * heads * latent, d.stream);
                 if (hoisted) continue;
                 if (d.wv8)
@@ -5723,7 +5922,10 @@ class Decoder {
         if(cpu_backend!="auto"&&cpu_backend!="native"&&cpu_backend!="packed-dot"&&cpu_backend!="packed-lut")throw std::invalid_argument("invalid CPU expert backend");
         if(expert_pack.empty()&&(!pack_profile.empty()||cpu_backend.starts_with("packed-")))throw std::invalid_argument("packed CPU backend/profile requires --expert-pack");
         if(!expert_pack.empty()) {
-            if(!pin_cpu||!pool.numa_rows_available()||expert_bytes||direct_upload_enabled())throw std::invalid_argument("expert pack requires two pinned NUMA nodes and no legacy cache/direct upload");
+            // A validated Q23 assembly already runs through the native single-node path. Its explicit down-only
+            // Q22 overlay needs no dual-node remap; the original-source and packed CPU backends retain theirs.
+            const bool native_assembly=artifact.has_expert_pack()&&(cpu_backend=="auto"||cpu_backend=="native");
+            if((!native_assembly&&(!pin_cpu||!pool.numa_rows_available()))||expert_bytes||direct_upload_enabled())throw std::invalid_argument("expert pack requires two pinned NUMA nodes and no legacy cache/direct upload");
             std::set<std::string> retained;
             if(!pack_profile.empty()) {
                 const auto profile=strata::artifact::read_json(pack_profile);const auto& list=profile.at("retain");
@@ -5973,6 +6175,13 @@ class Decoder {
             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
                 throw std::out_of_range("GLM: token or context out of range");
         batch_tokens = nt;
+        if (norm_q8_fused) {
+            end_share_quant();
+            if (q8_decode && quant_once && !fast && nt == 1 && m.hidden % 32 == 0 && !norm_quant)
+                norm_quant = std::make_unique<Device>(k::native_q8_1_bytes(m.hidden, 1));
+        }
+        if (cached_decode) cached_decode->lookup_preloaded = false;
+        if (cached_decode_b) cached_decode_b->lookup_preloaded = false;
         pipelining = false;
         if (pipeline_ready(nt)) prepare_step_mailbox();
         pipelining = pipeline_ready(nt);
@@ -5991,6 +6200,10 @@ class Decoder {
                 std::memset(table, 0, cached_decode->lookup->bytes);
                 for (size_t l = 0; l < decode_resident.size(); ++l)
                     for (const auto &[expert, slot] : decode_resident[l]) table[l * 288 + expert] = (unsigned long long)slot->p;
+                cached_decode->lookup_preloaded = tier_lookup_once && nt == 1 && !fast && !capturing_history &&
+                    row_sequences.empty() && !secondary && !exact_cache && !ram_tier && !decode_cache_adapt;
+                if (cached_decode->lookup_preloaded)
+                    cached_decode->lookup->put_async(table, cached_decode->lookup->bytes, stream);
                 if (split_verify && nt >= 2) {
                     if (!cached_decode_b) cached_decode_b = std::make_unique<ResidentExecutor>();
                     std::memcpy(cached_decode_b->host_lookup->p, table, cached_decode->lookup->bytes);
@@ -6059,6 +6272,19 @@ class Decoder {
             k::glm_decode_position((int *)mla_positions->p + 1, position + split, stream);
         }
         if (pipelining) mailbox->begin(stream);
+        defer_active = defer_experts && pipelining && nt == 1 && !fast && !capturing_history && row_sequences.empty() &&
+                       !tp_active() && !kda_split_active() &&
+                       (!defer_routes || (pipeline_residents && !canon_strict() && !merge_expert_groups));
+        if (defer_active && defer_routes && mailbox->view.slots < 2 * mailbox_group_stride())
+            throw std::runtime_error("GLM: partial deferral needs the group-B mailbox slots");
+        if (defer_active && !defer_coefficients) defer_coefficients = std::make_unique<Device>(24 * sizeof(float));
+        int deferred_slot = -1;
+        auto flush_deferred = [&](const float *later) {
+            if (deferred_slot < 0) return;
+            k::glm_mailbox_wait_add_deferred(mailbox->device_view, deferred_slot, r.f(), defer_coefficients->f(), later,
+                                             mailbox->device_generation(), stream);
+            deferred_slot = -1;
+        };
         // Pipelined steps enqueue from the launcher thread: the stream's launch queue can fill while the
         // GPU waits for this thread's CPU experts.
         auto enqueue_layers = [&] {
@@ -6086,15 +6312,26 @@ class Decoder {
                 ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=4)) &&
                 (layer.mixer == strata::core::MixerKind::Kda || graph_mla()) && layer.ffn == strata::core::FfnKind::Moe && !tp_active();
             if (combined && pipelining) {
+                // Graph replays skip this lambda: the deferred slot is fixed per layer and tracked outside it.
+                const int previous = defer_active ? deferred_slot : -1;
                 decode_graph(l, [&] {
                     enqueue_mixer();
+                    if (previous >= 0)
+                        k::glm_mailbox_wait_add_deferred(mailbox->device_view, previous, r.f(), defer_coefficients->f(),
+                                                         c.f(), mailbox->device_generation(), stream);
                     reset_phase();
                     hc_read(p, "ffn", r.f(), collapsed.f(), c.f());
                     norm(p + "ffn_norm.weight", collapsed.f(), x.f(), m.hidden);
                     reset_phase();
                     enqueue_moe_pipelined(p, l, x.f(), y.f(), layer);
                     k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
+                    if (defer_active)
+                        check(cudaMemcpyAsync(defer_coefficients->p, c.f(), 24 * sizeof(float), cudaMemcpyDeviceToDevice, stream));
+                    if (defer_active && defer_experts == 2)
+                        k::glm_mailbox_wait_add_deferred(mailbox->device_view, deferred_target((int)l), r.f(), defer_coefficients->f(),
+                                                         nullptr, mailbox->device_generation(), stream);
                 });
+                if (defer_active && defer_experts != 2) deferred_slot = deferred_target((int)l);
                 continue;
             }
             if (combined) {
@@ -6146,6 +6383,7 @@ class Decoder {
             if (profile)
                 check(cudaStreamSynchronize(stream));
             auto mixer_end = std::chrono::steady_clock::now();
+            flush_deferred(c.f());  // after this layer's mixer write, as in the combined path
             reset_phase();
             if (combined) {
                 prepared_moe_layer = l;
@@ -6167,6 +6405,11 @@ class Decoder {
                 k::glm_mhc_write_batch(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             else
                 k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
+            if (defer_active && pipelining && layer.ffn == strata::core::FfnKind::Moe) {
+                check(cudaMemcpyAsync(defer_coefficients->p, c.f(), 24 * sizeof(float), cudaMemcpyDeviceToDevice, stream));
+                deferred_slot = deferred_target((int)l);
+                if (defer_experts == 2) flush_deferred(nullptr);
+            }
             if (profile) {
                 check(cudaStreamSynchronize(stream));
                 auto end = std::chrono::steady_clock::now();
@@ -6176,6 +6419,7 @@ class Decoder {
                           << '\n';
             }
         }
+        flush_deferred(nullptr);
         if (kda_split_active()) kda_split_sync_back();
         else if (!tp_active()) tp_stale = true; // primary-only states advanced without the secondary halves
         reset_phase();
@@ -6366,7 +6610,16 @@ class Decoder {
         for (int first = 0; first < head_tokens; first += cpu::MAXT)
             mat("output.weight", x.f((size_t)(all_logits ? first : nt - 1) * m.hidden),
                 logits.f((size_t)first * m.vocab), false, std::min(cpu::MAXT, head_tokens - first));
+        const bool trace_tail = step_trace && !fast && trace.any;
+        auto tail_mark = std::chrono::steady_clock::now();
+        auto tail_part = [&](double &part) {
+            if (!trace_tail) return;
+            const auto now = std::chrono::steady_clock::now();
+            part += std::chrono::duration<double, std::milli>(now - tail_mark).count();
+            tail_mark = now;
+        };
         check(cudaStreamSynchronize(stream));
+        tail_part(trace.sync_ms);
         if (pipelining) {
             pipelining = false;
             tier_submit();
@@ -6375,12 +6628,14 @@ class Decoder {
                 throw std::runtime_error("GLM: step pipeline GPU wait timed out at layer " + std::to_string(error - 1));
         }
         ram_plan();
+        tail_part(trace.plan_ms);
         position += nt;
         batch_tokens = 1;
         auto result = logits.floats((size_t)m.vocab * head_tokens);
         for (float v : result)
             if (!std::isfinite(v))
                 throw std::runtime_error("GLM: non-finite logits");
+        tail_part(trace.copy_ms);
         if(artifact.is_exl3()) {
             const auto& ids=artifact.exl3().token_ids;
             for(int t=0;t<head_tokens;++t)for(size_t id=0;id<ids.size();++id)
@@ -8135,6 +8390,7 @@ class Decoder {
             std::cerr << "STEP_TRACE steps=" << trace.steps << " moe_layers=" << trace.layers
                       << " pipelined=" << (mailbox ? 1 : 0) << " head_ms=" << trace.head_ms
                       << " cpu_ms=" << trace.cpu_ms << " between_ms=" << trace.gap_ms << " tail_ms=" << trace.tail_ms
+                      << " tail_sync_ms=" << trace.sync_ms << " tail_plan_ms=" << trace.plan_ms << " tail_copy_ms=" << trace.copy_ms
                       << " enqueue_ms=" << trace.enqueue_ms << " tier_swaps=" << tier_swaps << " split_windows=" << split_windows << " per_step_ms="
                       << (trace.head_ms + trace.cpu_ms + trace.gap_ms + trace.tail_ms) / trace.steps << '\n';
         if (step_trace_slots && trace.steps)
@@ -8351,7 +8607,10 @@ static void evaluate_corpus(Decoder& decoder,const std::string& corpus,const std
         // A configured GPU tier takes part in the evaluation (its selection has no prompt routes here, so it
         // starts from the calibration prior): modes whose output depends on residency are measured as they run.
         if(decoder.has_decode_cache())decoder.prepare_decode_cache();
-        const size_t width = prefill_chunk ? prefill_chunk : 4;
+        // STRATA_GLM_EVAL_WIDTH: tokens per decode call (default 4); 1 scores one-token decode paths.
+        static const size_t eval_width = [] { const char *v = std::getenv("STRATA_GLM_EVAL_WIDTH"); return v ? std::stoul(v) : 4ul; }();
+        if (eval_width < 1 || eval_width > (size_t)cpu::MAXT) throw std::invalid_argument("STRATA_GLM_EVAL_WIDTH must be 1..8");
+        const size_t width = prefill_chunk ? prefill_chunk : eval_width;
         for(size_t start=0;start+1<ids.size();start+=width) {
             const size_t end=std::min(start+width,ids.size()-1);auto logits=decoder.batch(std::vector<int>(ids.begin()+start,ids.begin()+end),prefill_chunk != 0,true);
             if(start==0)lock_small_runtime_mappings();
