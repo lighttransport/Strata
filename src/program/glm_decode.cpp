@@ -817,6 +817,10 @@ struct GpuPrefill {
                       << " device_MiB=" << pool.size() * prefetch_bytes / double(MiB)
                       << " extra_host_MiB=0 shared_host_buffers=2 reused_device_slots="
                       << (reuse_prefetch_slots ? 2 : 0) << '\n';
+        if (direct_upload && !pool.empty())
+            std::cerr << "PREFETCH_DIRECT groups=" << pool.size()
+                      << " device_MiB=" << pool.size() * prefetch_bytes / double(MiB)
+                      << " reused_device_slots=" << (reuse_prefetch_slots ? 2 : 0) << '\n';
         std::cerr << "GPU prefill chunk=" << chunk << " staging_workers=" << stager->size() << " numa_cpus=";
         for (size_t i = 0; i < std::min<size_t>(stager->size(), locality.cpus.size()); ++i)
             std::cerr << (i ? "," : "") << locality.cpus[i];
@@ -1748,6 +1752,18 @@ class Decoder {
             throw std::invalid_argument("GLM: prefill dense budget must be 1024..4096 MiB");
         return size_t(mib) * MiB;
     }();
+    // Optional larger fixed subset of the streamed dense cache. Q8 weight copies
+    // remain mandatory residents; the allocator and active-layer guard still
+    // reject a setting that leaves too little room for simultaneous operands.
+    const int prefill_pin_percent = [] {
+        const char *value = std::getenv("STRATA_GLM_PREFILL_PIN_PERCENT");
+        if (!value) return 0;  // retain the original exact two-thirds threshold
+        size_t used = 0;
+        const int percent = std::stoi(value, &used);
+        if (value[used] || percent < 50 || percent > 90)
+            throw std::invalid_argument("GLM: prefill pin percent must be 50..90");
+        return percent;
+    }();
     bool streaming_dense = false;
     std::string active_dense_prefix;
     size_t prefill_pinned_bytes = 0;
@@ -1854,6 +1870,25 @@ class Decoder {
     bool async_decode_fill = std::getenv("STRATA_GLM_ASYNC_DECODE_FILL") != nullptr;
     bool split_mla = std::getenv("STRATA_GLM_MLA_SPLIT") != nullptr;
     bool tensor_mla = std::getenv("STRATA_GLM_MLA_F16") != nullptr;
+    const bool active_mla_stride = [] {
+        const char *v = std::getenv("STRATA_GLM_MLA_ACTIVE_STRIDE");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) == "1") return true;
+        throw std::invalid_argument("GLM: active MLA stride must be 0 or 1");
+    }();
+    const bool compact_mla_f16 = [] {
+        const char *v = std::getenv("STRATA_GLM_MLA_COMPACT_F16");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) == "1") return true;
+        throw std::invalid_argument("GLM: compact FP16 MLA scratch must be 0 or 1");
+    }();
+    const bool dense_mla_prefix = [] {
+        const char *v = std::getenv("STRATA_GLM_MLA_DENSE_PREFIX");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) == "1") return true;
+        throw std::invalid_argument("GLM: dense MLA prefix must be 0 or 1");
+    }();
+    bool dense_mla_prefix_reported = false;
     const bool tensor_mla_decode = [] {
         const char *v = std::getenv("STRATA_GLM_MLA_F16_DECODE");
         if (!v || std::string(v) == "0") return false;
@@ -1919,8 +1954,8 @@ class Decoder {
     int kda_row_parts = [] {
         const char *value = std::getenv("STRATA_GLM_KDA_ROW_PARTS");
         const int parts = value ? std::atoi(value) : 1;
-        if (parts != 1 && parts != 4 && parts != 8)
-            throw std::invalid_argument("GLM: KDA row parts must be 1, 4 or 8");
+        if (parts != 1 && parts != 2 && parts != 4 && parts != 8)
+            throw std::invalid_argument("GLM: KDA row parts must be 1, 2, 4 or 8");
         return parts;
     }();
     // Prefill-only precision/performance experiment. Decode retains its chosen
@@ -1928,9 +1963,9 @@ class Decoder {
     const int prefill_kda_row_parts = [] {
         const char *value = std::getenv("STRATA_GLM_PREFILL_KDA_ROW_PARTS");
         if (!value) return 0; // inherit the existing geometry
-        for (int parts : {1, 4, 8})
+        for (int parts : {1, 2, 4, 8})
             if (std::string(value) == std::to_string(parts)) return parts;
-        throw std::invalid_argument("GLM: prefill KDA row parts must be 1, 4 or 8");
+        throw std::invalid_argument("GLM: prefill KDA row parts must be 1, 2, 4 or 8");
     }();
     const int prefill_kda_min_tokens = [] {
         const char *value = std::getenv("STRATA_GLM_PREFILL_KDA_MIN_TOKENS");
@@ -3003,11 +3038,13 @@ class Decoder {
         lru.push_front(key);
         auto [inserted, ok] = weights.emplace(key, Weight{std::move(data), lru.begin()});
         (void)ok;
-        // A cyclic layer walk defeats LRU. Keep a fixed subset and leave one
-        // third of the prefill budget for the current layer's operands. Q8
+        // A cyclic layer walk defeats LRU. By default, keep a fixed subset and leave
+        // one third of the budget for the current layer's operands. Q8
         // copies stay pinned to avoid repeating startup quantization.
+        const size_t prefill_pin_limit = prefill_pin_percent
+            ? prefill_dense_budget * prefill_pin_percent / 100 : prefill_dense_budget * 2 / 3;
         if (streaming_dense && (floating_q8_weight(name) ||
-            prefill_pinned_bytes + bytes <= prefill_dense_budget * 2 / 3)) {
+            prefill_pinned_bytes + bytes <= prefill_pin_limit)) {
             if (native_pinned_weights.insert(key).second) prefill_pinned_bytes += bytes;
             t.file->discard_tensor_pages(*t.tensor, t.bytes);
         }
@@ -5731,7 +5768,19 @@ class Decoder {
         auto &counts = buf("index_counts", ntile);
         auto &aq = buf("mla_absorbed_q", ntile * heads * latent);
         auto &av = buf("mla_absorbed_v", ntile * heads * latent);
-        auto &gathered = buf("mla_gathered", (size_t)ntile * stride * latent);
+        const bool halves = tensor_mla && fast && gpu && gpu->gemm;
+        // Before top-k truncation every causal key is selected. A shared FP16
+        // key matrix avoids one gathered copy per query. Key order and GEMM
+        // shape change, so this remains an opt-in numerical experiment.
+        const int dense_prefix_rows = dense_mla_prefix && halves && row_sequences.empty() &&
+            !secondary && !capturing_history && position < m.index_top_k
+                ? int(std::min<int64_t>(m.index_top_k, int64_t(position) + B)) : 0;
+        const bool dense_prefix_all = dense_prefix_rows && int64_t(position) + B <= dense_prefix_rows;
+        // buf() counts float-sized units; the FP16 gather writes only two bytes
+        // per element. Keep the default allocation and decode graph buffers unchanged.
+        const size_t gathered_elements = dense_prefix_all ? 1 : (size_t)ntile * stride * latent;
+        auto &gathered = buf("mla_gathered", compact_mla_f16 && halves
+                                             ? (gathered_elements + 1) / 2 : gathered_elements);
         auto &attn = buf("mla_scores", ntile * heads * stride);
         auto &value = buf("mla_value", heads * dim * B);
         const auto &kb = *artifact.at(p + "attn_k_b.weight").tensor;
@@ -5752,6 +5801,8 @@ class Decoder {
             // Q8_0 verify windows: whole-window absorbed queries/values, so each projection reads its weights
             // once for every token (each token's products are those of a one-token call).
             float *aq_all = nullptr, *av_all = nullptr;
+            const uint16_t *dense_keys = nullptr;
+            int dense_rows = 0;
         };
         auto run_tiles = [&, B, heads, latent, dim, ih, idim, pool_size, pools, tile](const Tiles &d, bool stoppable) {
             const float one = 1, zero = 0;
@@ -5770,6 +5821,11 @@ class Decoder {
                 const int count = std::min(tile, d.tokens - t);
                 const int row = d.first + t;
                 const int at = row_sequences.empty() ? position + row : row_position(row);
+                // Keep the selected-key order, but avoid multiplying the unused
+                // tail of the 2052-key buffers for early prompt tiles. Different
+                // GEMM geometry can change rounding, so this remains opt-in.
+                const int stride = active_mla_stride && fast && d.gemm && row_sequences.empty() && !device_pos
+                    ? std::min(2052, ((at + count + 3) / 4) * 4) : 2052;
                 const float *pooled_rows = row_sequences.empty() ? d.pooled : row_state(row, l).pooled->f();
                 const float *cache_rows = row_sequences.empty() ? d.cache : row_state(row, l).cache->f();
                 float *aq_t = hoisted ? d.aq_all + (size_t)t * heads * latent : d.aq;
@@ -5788,22 +5844,36 @@ class Decoder {
                                          (int)kb.shape[1], count, heads * dim, heads * latent, d.stream);
                 else absorb(kb, d.wk, d.q + (size_t)t * heads * dim, d.aq, count, heads * dim, heads * latent);
                 if (d.gemm) {
-                    auto *keys = (uint16_t *)d.gathered;
-                    k::glm_mla_gather_f16(cache_rows, d.ids, d.counts, keys, count, stride, latent, d.stream);
+                    const bool shared_keys = d.dense_keys && at + count <= d.dense_rows;
+                    // The shared prefix contains every causal key. When active
+                    // stride is enabled, its unused future rows can also be
+                    // excluded from both attention products.
+                    const int attention_stride = shared_keys ? std::min(d.dense_rows, stride) : stride;
+                    const auto *keys = shared_keys ? d.dense_keys : (uint16_t *)d.gathered;
+                    if (!shared_keys)
+                        k::glm_mla_gather_f16(cache_rows, d.ids, d.counts, (uint16_t *)d.gathered,
+                                             count, stride, latent, d.stream);
                     k::glm_f16(d.aq, d.aq16, (int64_t)count * heads * latent, d.stream);
-                    d.gemm->f16_batched(d.aq16, keys, d.attn, heads, stride, latent, count);
-                    inspect("attention_scores", d.attn, (size_t)count * heads * stride, d.stream);
-                k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
-                inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
-                    k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * stride, d.stream);
-                    d.gemm->f16_batched_nn(keys, d.attn16, d.av, latent, heads, stride, count);
+                    if (shared_keys)
+                        d.gemm->f16(d.aq16, keys, d.attn, count * heads, attention_stride, latent);
+                    else d.gemm->f16_batched(d.aq16, keys, d.attn, heads, stride, latent, count);
+                    inspect("attention_scores", d.attn, (size_t)count * heads * attention_stride, d.stream);
+                    // With all keys selected, counts[q] is the causal prefix
+                    // length. The existing softmax zeros every future key.
+                    k::glm_mla_softmax(d.attn, d.counts, heads, attention_stride, count,
+                                      1.f / std::sqrt((float)dim), d.stream);
+                    inspect("attention_probabilities", d.attn, (size_t)count * heads * attention_stride, d.stream);
+                    k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * attention_stride, d.stream);
+                    if (shared_keys)
+                        d.gemm->f16_batched_nn(keys, d.attn16, d.av, latent, count * heads, attention_stride, 1);
+                    else d.gemm->f16_batched_nn(keys, d.attn16, d.av, latent, heads, stride, count);
                     inspect("absorbed_value", d.av, (size_t)count * heads * latent, d.stream);
-                if (d.wv8)
-                    k::glm_q8_heads_gemv(d.wv8, d.av, d.value + (size_t)t * heads * dim,
-                                         (int)vb.shape[2], (int)vb.shape[0], (int)vb.shape[1], count,
-                                         heads * latent, heads * dim, d.stream);
-                else absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
-                inspect("head_value", d.value + (size_t)t * heads * dim, (size_t)count * heads * dim, d.stream);
+                    if (d.wv8)
+                        k::glm_q8_heads_gemv(d.wv8, d.av, d.value + (size_t)t * heads * dim,
+                                             (int)vb.shape[2], (int)vb.shape[0], (int)vb.shape[1], count,
+                                             heads * latent, heads * dim, d.stream);
+                    else absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
+                    inspect("head_value", d.value + (size_t)t * heads * dim, (size_t)count * heads * dim, d.stream);
                     if (d.back) {
                         check(cudaEventRecord(d.produced, d.stream));
                         check(cudaStreamWaitEvent(d.back, d.produced, 0));
@@ -5869,13 +5939,23 @@ class Decoder {
                 local.av_all = buf("mla_absorbed_v_window", (size_t)B * heads * latent).f();
             }
         }
-        const bool halves = tensor_mla && fast && gpu && gpu->gemm;
         const bool decode_halves = tensor_mla_decode && !fast && B == 1 && !capturing_history && row_sequences.empty();
         if (halves || decode_halves) {
             local.gemm = halves ? gpu->gemm.get() : mla_decode_gemm.get();
             if (!local.gemm) throw std::runtime_error("GLM: decode MLA GEMM not prepared");
             local.aq16 = (uint16_t *)buf("mla_absorbed_q16", ((size_t)ntile * heads * latent + 1) / 2).p;
             local.attn16 = (uint16_t *)buf("mla_scores16", ((size_t)ntile * heads * stride + 1) / 2).p;
+        }
+        if (dense_prefix_rows) {
+            auto *keys = (uint16_t *)buf("mla_dense_keys16", ((size_t)dense_prefix_rows * latent + 1) / 2).p;
+            k::glm_f16(state.cache->f(), keys, (int64_t)dense_prefix_rows * latent, stream);
+            local.dense_keys = keys;
+            local.dense_rows = dense_prefix_rows;
+            if (!dense_mla_prefix_reported) {
+                std::cerr << "MLA_DENSE_PREFIX rows=" << dense_prefix_rows << " tile=" << tile
+                          << " all_queries=" << dense_prefix_all << '\n';
+                dense_mla_prefix_reported = true;
+            }
         }
         std::future<void> pending;
         if (split_mla && fast && secondary && secondary_enabled && secondary->blas && B >= 2 * tile &&
@@ -8447,6 +8527,10 @@ class Decoder {
                     if (!scratch || scratch->bytes < values * 4) scratch = std::make_unique<Device>(values * 4);
                 }
             }
+        if (prefill_pin_percent && streaming_dense)
+            std::cerr << "PREFILL_DENSE_PIN percent=" << prefill_pin_percent
+                      << " pinned_MiB=" << prefill_pinned_bytes / double(MiB)
+                      << " budget_MiB=" << prefill_dense_budget / double(MiB) << '\n';
         gpu = std::make_unique<GpuPrefill>(width, stream, false, capacity);
         // Allocate persistent residual and output buffers before carving phase scratch.
         for (auto name : {"streams", "collapsed", "x", "y", "hc_coeff", "output"}) {
@@ -8918,6 +9002,7 @@ class Decoder {
         cache_hits = cache_entries = pruned_routes = 0;
         merged_expert_layers = 0;
     }
+    const std::vector<std::vector<uint64_t>> &prefill_route_counts() const { return prefill_routes; }
     void report_cache() const {
         if (decode_cache_adapt)
             std::cerr << "DECODE_ADAPT copies=" << adaptive_copies << " bytes=" << adaptive_bytes
@@ -9676,7 +9761,7 @@ int main(int argc, char **argv) {
                      "[--decode-prefill-cache] [--decode-bench=3] [--decode-mode-sweep[=mtp]] [--check-verify-graphs] [--profile-decode] [--profile-prefill] "
                      "[--expert-pack=sidecar.gguf] [--expert-pack-profile=retain.json] [--cpu-expert-backend=auto|native|packed-dot|packed-lut] "
                      "[--eval-corpus=sequences.ids] [--eval-prefill] [--eval-save-logits=path | --eval-reference=path] "
-                     "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--remote-tp-weights=send|dummy] [--routing-trace=path] [--check-replay] [--dump-logits=path] [--dump-prefill-logits=path] [--stop-ids=IDs]\n";
+                     "[--expert-cache-mib=N] [--remote-tp=HOST:PORT] [--remote-tp-share=0.5] [--remote-tp-reply=f16|f32] [--remote-tp-weights=send|dummy] [--routing-trace=path] [--check-replay] [--check-prefill-repeats] [--dump-logits=path] [--dump-prefill-logits=path] [--stop-ids=IDs]\n";
         return 2;
     }
     try {
@@ -9707,6 +9792,7 @@ int main(int argc, char **argv) {
         bool mtp_cpu_experts = false, decode_prefill_cache = false, decode_cache_auto = false, decode_cache_extend = false;
         int draft_depth = 3, decode_repetitions = 1;
         bool decode_warmup = false;
+        bool check_prefill_repeats = false;
         bool decode_mode_sweep = false, decode_mtp_sweep = false;
         size_t cpu_prepack_mib = 0, prefill_cache_bytes = 0;
         bool prefill_cache_auto = false, check_gpu_split = false, tensor_experts = false, tensor_batches = false;
@@ -9747,6 +9833,8 @@ int main(int argc, char **argv) {
             } else if (flag == "--check-gpu-split") { check_gpu_split = true; force_gpu = true; }
             else if (flag == "--check-replay")
                 replay = true;
+            else if (flag == "--check-prefill-repeats")
+                check_prefill_repeats = true;
             else if (flag == "--check-prefill")
                 check_prefill = true;
             else if (flag.starts_with("--expert-cache-mib="))
@@ -9843,6 +9931,8 @@ int main(int argc, char **argv) {
             (context && tokens.size() + steps > (size_t)context) || expert_mib < 0 || (replay && steps < 2) ||
             (check_prefill && (prefill_batch == 1 || expert_mib != 0)))
             throw std::invalid_argument("invalid arguments");
+        if (check_prefill_repeats && (repetitions < 2 || check_prefill || check_gpu_split || !eval_corpus.empty()))
+            throw std::invalid_argument("GLM: prefill repeat check requires --bench>=2 without another prefill check or evaluation");
         if (check_verify && (context ? (size_t)context : tokens.size() + steps) < tokens.size() + 8)
             throw std::invalid_argument("--check-verify needs eight available context positions");
         if (cpu_prepack_mib > 131072 || (cpu_prepack_mib && (stream_decode || expert_mib))) throw std::invalid_argument("invalid CPU packing budget or backend");
@@ -10007,9 +10097,14 @@ int main(int argc, char **argv) {
                                           : "batched prefill state and logits passed parity\n");
         } else {
             using Clock = std::chrono::steady_clock;
+            std::vector<float> repeat_logits;
+            std::vector<std::vector<uint64_t>> repeat_routes;
             if (repetitions > 1) {
                 decoder.reset();
-                prefill(prefill_batch);
+                if (check_prefill_repeats) {
+                    repeat_logits = prefill(prefill_batch);
+                    repeat_routes = decoder.prefill_route_counts();
+                } else prefill(prefill_batch);
             }
             for (int trial = 0; trial < repetitions; ++trial) {
                 decoder.reset();
@@ -10032,6 +10127,17 @@ int main(int argc, char **argv) {
                           << " minor=" << faults_after.ru_minflt - faults_before.ru_minflt << '\n';
 #endif
                 decoder.report_gpu();
+                if (check_prefill_repeats) {
+                    // Outside timing and fault accounting: decode replay alone
+                    // does not test independent prefill/reset reproducibility.
+                    const bool same_logits = logits.size() == repeat_logits.size() &&
+                        std::memcmp(logits.data(), repeat_logits.data(), logits.size() * sizeof(float)) == 0;
+                    const bool same_routes = decoder.prefill_route_counts() == repeat_routes;
+                    std::cerr << "PREFILL_REPEAT trial=" << trial << " logits_identical=" << same_logits
+                              << " routes_identical=" << same_routes << '\n';
+                    if (!same_logits || !same_routes)
+                        throw std::runtime_error("GLM: repeated prefill differs from the untimed warmup");
+                }
             }
         }
         if(check_native_dense_q8) {

@@ -563,8 +563,7 @@ __global__ void __launch_bounds__(cols *parts, 1)
             }
         }
         __syncthreads();
-        if (threadIdx.x < dim) {
-            const int d = threadIdx.x;
+        for (int d = threadIdx.x; d < dim; d += cols * parts) {
             qr[d] = q[offset + d];
             if constexpr (prepared) {
                 kn[d] = k[offset + d];
@@ -579,8 +578,10 @@ __global__ void __launch_bounds__(cols *parts, 1)
 #pragma unroll
         for (int i = 0; i < rows; ++i) {
             const int row = part * rows + i;
-            values[i] *= decay[row];
-            if constexpr (!ordered) mem += values[i] * kn[row];
+            if constexpr (!ordered) {
+                values[i] *= decay[row];
+                mem += values[i] * kn[row];
+            }
         }
         if constexpr (ordered) {
             // Carry the original sequential FMA accumulator between row
@@ -593,7 +594,10 @@ __global__ void __launch_bounds__(cols *parts, 1)
                 if (part == p) {
                     float total = partial[lane];
 #pragma unroll
-                    for (int i = 0; i < rows; ++i) total += values[i] * kn[part * rows + i];
+                    for (int i = 0; i < rows; ++i) {
+                        const int row = part * rows + i;
+                        total = __fmaf_rn(__fmul_rn(values[i], decay[row]), kn[row], total);
+                    }
                     partial[lane] = total;
                 }
                 __syncthreads();
@@ -615,7 +619,12 @@ __global__ void __launch_bounds__(cols *parts, 1)
 #pragma unroll
         for (int i = 0; i < rows; ++i) {
             const int row = part * rows + i;
-            values[i] = values[i] + kn[row] * delta[lane];
+            // The original column kernel contracts the old-state decay with
+            // the rounded key*delta update. Keep the undecayed state until here;
+            // contracting key*delta with an already rounded decay changes bits.
+            if constexpr (ordered)
+                values[i] = __fmaf_rn(values[i], decay[row], __fmul_rn(kn[row], delta[lane]));
+            else values[i] = values[i] + kn[row] * delta[lane];
             if constexpr (!ordered) sum += values[i] * qr[row] * qi;
         }
         if constexpr (ordered) {
@@ -841,6 +850,9 @@ __global__ void softmax(float *scores, const int *counts, int heads, int stride,
         __syncthreads();
     }
     mx = reduce[0];
+    // Every warp must read the maximum before warp 0 can replace reduce[0]
+    // with its partial sum. Short attention rows expose this shared-memory race.
+    __syncthreads();
     float sum = 0;
     for (int i = tid; i < stride; i += 256) {
         float p = i < n ? expf(row[i] * scale - mx) : 0;
@@ -1110,19 +1122,28 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
     if (snapshots && (row_parts != 1 || prepared_qi))
         throw std::invalid_argument("GLM: KDA snapshots need the column kernel");
     if (row_parts != 1) {
-        if (columns != 128 || (row_parts != 4 && row_parts != 8))
-            throw std::invalid_argument("GLM: parallel KDA needs 128 columns and 4 or 8 row parts");
+        if (columns != 128 || (row_parts != 2 && row_parts != 4 && row_parts != 8))
+            throw std::invalid_argument("GLM: parallel KDA needs 128 columns and 2, 4 or 8 row parts");
         const char *ordered = std::getenv("STRATA_GLM_KDA_ORDERED_ROWS");
         if (ordered && std::string(ordered) != "0") {
-            if (std::string(ordered) != "1" || row_parts != 4)
-                throw std::invalid_argument("GLM: ordered KDA rows require value 1 and four row parts");
+            if (std::string(ordered) != "1" || (row_parts != 2 && row_parts != 4))
+                throw std::invalid_argument("GLM: ordered KDA rows require value 1 and two or four row parts");
             const dim3 grid(heads, 4);
+            if (row_parts == 2) {
+                if (prepared_qi)
+                    kda_rows_columns<2, true, 32, true><<<grid, 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, prepared_qi);
+                else
+                    kda_rows_columns<2, false, 32, true><<<grid, 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+                check(); return;
+            }
             if (prepared_qi)
                 kda_rows_columns<4, true, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, prepared_qi);
             else
                 kda_rows_columns<4, false, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
             check(); return;
         }
+        if (row_parts == 2)
+            throw std::invalid_argument("GLM: two KDA row parts require ordered rows");
         if (std::getenv("STRATA_GLM_KDA_COLUMN_TILES")) {
             const dim3 grid(heads, 4);
             if (prepared_qi) {

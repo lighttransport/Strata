@@ -92,6 +92,7 @@ def parse_log(log):
         mtp_positions=records("MTP_POSITION"), step_trace=records("STEP_TRACE"),
         decode_cache=records("DECODE_CACHE"), decode_page_faults=records("DECODE_FAULTS"), speculation=records("SPECULATIVE"),
         affinity_quality=records("AFFINITY_QUALITY"), lookup_parity=records("LOOKUP_PARITY"),
+        prefill_repeat=records("PREFILL_REPEAT"),
         median_prefill_tok_s=statistics.median(r["tokens_per_second"] for r in prefill) if prefill else None,
         median_decode_tok_s=statistics.median(r["tokens_per_second"] for r in decode) if decode else None,
         peak_allocated_gpu_mib=max(map(float, re.findall(
@@ -100,6 +101,11 @@ def parse_log(log):
                   for d, tags in re.findall(r"GPU_LIVE device=(\d+) (.*)", log)],
         page_faults=[dict(trial=int(i), major=int(a), minor=int(b)) for i, a, b in re.findall(
             r"^FAULTS trial=(\d+) major=(\d+) minor=(\d+)", log, re.MULTILINE)])
+
+
+def prefill_repeats_passed(rows, trials):
+    return (trials > 1 and [row.get("trial") for row in rows] == list(range(trials)) and
+            all(row.get("logits_identical") == 1 and row.get("routes_identical") == 1 for row in rows))
 
 
 def group_stats(group):
@@ -280,6 +286,10 @@ def worker(args):
         command.append("--warm-weights")
     if cfg.get("record_prefill_logits"):
         command.append("--dump-prefill-logits=" + str(args.output.with_suffix(".prefill.logits.bin").resolve()))
+    if cfg.get("check_prefill_repeats") and not args.eval_corpus:
+        if args.trials < 2:
+            raise ValueError("prefill repeat checking requires at least two trials")
+        command.append("--check-prefill-repeats")
     if cfg.get("expert_pack"):
         command.append("--expert-pack=" + cfg["expert_pack"])
     if cfg.get("decode_graphs"):
@@ -451,6 +461,12 @@ def worker(args):
     if cfg.get("require_deterministic") and not record.get("greedy_trials_identical", True):
         record["clean"] = False
         record["determinism_failure"] = True
+    if cfg.get("check_prefill_repeats") and not args.eval_corpus:
+        record["prefill_trials_identical"] = prefill_repeats_passed(record["measurements"]["prefill_repeat"], args.trials)
+        if not record["prefill_trials_identical"]:
+            record["clean"] = False
+            record["determinism_failure"] = True
+            record["prefill_determinism_failure"] = True
     args.output.with_suffix(".result.json").write_text(json.dumps(record, indent=2)+"\n")
     print(json.dumps({k: record[k] for k in ("exit_code", "wall_seconds", "complete", "clean", "rejected")}
         | {"measurements":record["measurements"]}), flush=True)

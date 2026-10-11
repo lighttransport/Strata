@@ -2,10 +2,29 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from glm_low_memory_bench import cache_bytes, eval_counts, eval_complete, gpu_capacity_passed, gpu_used_limit, gpu_snapshot, gpu_usage, group_stats, hip_gpu_snapshot, model_files, parse_log
+from glm_low_memory_bench import (
+    cache_bytes, eval_counts, eval_complete, gpu_capacity_passed, gpu_used_limit,
+    gpu_snapshot, gpu_usage, group_stats, hip_gpu_snapshot, model_files, parse_log,
+    prefill_repeats_passed,
+)
 
 
 class LowMemoryBenchTest(unittest.TestCase):
+    def test_prefill_repeat_check_requires_all_trials_and_both_invariants(self):
+        rows = parse_log("PREFILL_REPEAT trial=0 logits_identical=1 routes_identical=1\n"
+                         "PREFILL_REPEAT trial=1 logits_identical=1 routes_identical=1\n")["prefill_repeat"]
+        self.assertTrue(prefill_repeats_passed(rows, 2))
+        self.assertFalse(prefill_repeats_passed([], 2))
+        self.assertFalse(prefill_repeats_passed(rows[:1], 2))
+        self.assertFalse(prefill_repeats_passed(rows[::-1], 2))
+        self.assertFalse(prefill_repeats_passed([rows[0], rows[0]], 2))
+        self.assertFalse(prefill_repeats_passed(rows[:1], 1))
+        for key in ("logits_identical", "routes_identical"):
+            self.assertFalse(prefill_repeats_passed([rows[0], dict(rows[1], **{key: 0})], 2))
+            missing = dict(rows[1])
+            missing.pop(key)
+            self.assertFalse(prefill_repeats_passed([rows[0], missing], 2))
+
     def test_timing_scopes_and_missing_measurements(self):
         log = """PREFILL trial=0 tokens=128 batch=64 ms=80000.5 tok_s=1.6
 PREFILL trial=1 tokens=128 batch=64 ms=64000 tok_s=2

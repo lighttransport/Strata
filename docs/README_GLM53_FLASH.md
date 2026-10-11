@@ -297,3 +297,67 @@ retaining prefix logits, requires scalar scoring without saved/reference logit
 files, and reports the prefix separately. Compare strict and candidate runs on
 identical prefix and target tokens. The original evaluation mode remains the
 default.
+
+## RTX 3070: DDR4-2666 presets (experimental)
+
+These presets were measured on a Ryzen 9 3950X, ASUS TUF GAMING B550-PLUS,
+user-reported DDR4-2666, 60.69 GiB of Linux-visible RAM and RTX 3070 8 GiB.
+They use the original REAP50 Q23 weights. The selected configurations combine
+registered expert uploads, ordered two-part KDA prefill, coalesced dequantization
+and shared causal attention keys. TF32/FP16 arithmetic, decode route pruning and
+partial expert deferral remain opt-in. Existing presets are unchanged.
+
+| Measured prefix / preset | Context capacity | Decode tok/s | Prefill tok/s | Matched PPL increase |
+| --- | ---: | ---: | ---: | ---: |
+| [2K, tile 32](../configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-tile32-2k-experimental.json) | 4096 | 19.49 | 464.26 | 5.69% |
+| [4K](../configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-4k-experimental.json) | 8192 | 16.92 | 505.75 | 8.92% |
+| [8K](../configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-8k-experimental.json) | 12288 | 17.63 | 487.60 | 7.57% |
+
+These rates were rechecked after code cleanup; prefill and final benchmark logits
+were byte-identical to the accepted build. Rates are medians of three trials
+with 128 generated tokens and 127 timed decode transitions, after an untimed decode warmup. Loading, registration and response
+preparation are excluded. Runs used a 56 GiB cgroup memory limit, no swap and a
+512 MiB physical GPU reserve. Timed decode major faults were zero; startup still
+involves paging and reclaim. Prompt contents affect throughput.
+
+Perplexity scored 1,024 frozen decode targets after each stated prefix against
+its matched strict baseline. Each configuration passed the same 30 frozen short
+HumanEval prompts, satisfying the accepted gate of at most 10% perplexity increase
+and no new coding-test failures. Full HumanEval and long-prefix coding were not
+qualified. The 20 decode / 500 prefill tok/s target was not reached at all three
+contexts.
+
+The 4K and 8K presets use compact FP16 attention scratch and a 3072 MiB prefill
+dense budget; the 2K preset uses a 4096 MiB budget. All use four dedicated
+prefetch buffers. The active attention stride and shared causal key matrix change
+GEMM geometry and rounding, so they remain explicit numerical experiments.
+
+Short attention rows exposed a shared-memory race between reading the softmax
+maximum and replacing it with partial sums. A block barrier fixes the race.
+CUDA regression checks cover a CPU reference, masked values, row guards and
+bitwise repeats across 12 widths; CUDA Racecheck reported zero hazards.
+Ordered KDA checks preserve the original FP32
+state and output bits for two- and four-part execution.
+
+Earlier qualified alternatives remain available: coalesced
+[2K](../configs/glm53f-reap50-q23-64g-rtx3070-coalesced-2k-experimental.json),
+[4K](../configs/glm53f-reap50-q23-64g-rtx3070-coalesced-4k-experimental.json),
+[8K](../configs/glm53f-reap50-q23-64g-rtx3070-coalesced-8k-experimental.json),
+and [shared-prefix 2K with tile 64](../configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-2k-experimental.json).
+Their measurements and rejected experiments are retained in the
+[DDR4-2666 benchmark report](benchmarks/glm_rtx3070_2666_20261011.json).
+
+Use `check_prefill_repeats: true` in a benchmark configuration to compare each
+independent prefill's logits and route counts with the warmup. This requires at
+least two trials and runs outside timing. The existing `require_deterministic`
+check covers decode replay from a saved prefill state.
+
+For a guarded CLI measurement, supply a token-ID prompt and a fresh output stem:
+
+```bash
+.venv-glm/bin/python tools/glm_low_memory_bench.py \
+  configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-tile32-2k-experimental.json \
+  /path/to/prompt.ids --output /tmp/glm-shared-prefill-bench \
+  --tokens 128 --trials 3 --ram-gib 56 --timeout 1200 \
+  --gpu-capacity-mib 8192 --single
+```
