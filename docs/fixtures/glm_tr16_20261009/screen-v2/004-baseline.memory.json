@@ -1,0 +1,57 @@
+{
+  "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-tr16-20261009/baseline/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "@/mnt/nvme02/work/Strata/build-tr16-20261009/prompts2k/train-code.ids",
+    "128",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=2048",
+    "--gpu-budget-mib=14336",
+    "--cpu-affinity=numa",
+    "--decode-experts=cpu",
+    "--bench=2",
+    "--decode-bench=2",
+    "--decode-cache-mib=5632",
+    "--prefill-experts=mmq",
+    "--decode-graphs",
+    "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "--speculative=mtp",
+    "--draft-depth=2",
+    "--mtp-experts=cpu"
+  ],
+  "peak_rss_kib": 61458324,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 122520996,
+  "sample_interval_ms": 100,
+  "rejected": {
+    "reason": "external CPU work",
+    "pid": 2715503,
+    "name": "cc1plus",
+    "cpu_percent": 99.42236193565898,
+    "elapsed_seconds": 19.89663102797931
+  },
+  "interference": [
+    {
+      "reason": "external CPU work",
+      "pid": 2715498,
+      "name": "cc1plus",
+      "cpu_percent": 99.42236193565898,
+      "elapsed_seconds": 19.896607406029943
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 2715503,
+      "name": "cc1plus",
+      "cpu_percent": 99.42236193565898,
+      "elapsed_seconds": 19.89663102797931
+    }
+  ],
+  "minimum_gpu_free_mib": 4020,
+  "required_gpu_free_mib": 512,
+  "exit_code": -15,
+  "wall_seconds": 23.56953005300602
+}

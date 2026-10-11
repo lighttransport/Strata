@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a2-margin6/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 29.0146,
+    "prefill_tok_s": 143.1845
+  }
+]

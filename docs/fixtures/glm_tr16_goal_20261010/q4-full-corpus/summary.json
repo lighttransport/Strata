@@ -1,0 +1,45 @@
+[
+  {
+    "name": "baseline",
+    "exit_code": 0,
+    "complete": true,
+    "metrics": {
+      "sequence": 16,
+      "tokens": 8192,
+      "nll": 1.5740213098,
+      "perplexity": 4.82601613138,
+      "kl": 0.136761865362,
+      "top1_agreement": 0.877075195312,
+      "different_logits": 1268776814
+    },
+    "failures": [],
+    "corpus_gate_passed": null,
+    "quality_qualified": false,
+    "performance_comparable": false,
+    "interference": [],
+    "metrics_match_prior_full": true
+  },
+  {
+    "name": "q4-aff08",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 16,
+      "tokens": 8192,
+      "nll": 1.59422529327,
+      "perplexity": 4.92451254094,
+      "kl": 0.166409648288,
+      "top1_agreement": 0.86572265625,
+      "different_logits": 1268776827
+    },
+    "failures": [
+      "top-1 0.8657 < 0.8671 (baseline 0.8771)"
+    ],
+    "corpus_gate_passed": false,
+    "quality_qualified": false,
+    "performance_comparable": false,
+    "interference": [],
+    "ppl_increase_percent": 2.040946546356337,
+    "top1_drop_percentage_points": 1.1352539061999956
+  }
+]

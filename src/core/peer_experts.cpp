@@ -1,5 +1,6 @@
 // src/core/peer_experts.cpp - see include/strata/core/peer_experts.hpp.
 #include "strata/core/peer_experts.hpp"
+#include "strata/host/glm_env.h"
 
 #include "strata/kernels/cpu/expert_layout.hpp"
 #include "strata/kernels/elementwise.hpp"
@@ -98,7 +99,7 @@ bool PeerExperts::open(int device, const std::vector<std::pair<int32_t, int32_t>
         int a = 0, b = 0;
         cudaDeviceCanAccessPeer(&a, 0, device);
         cudaDeviceCanAccessPeer(&b, device, 0);
-        if (const char* np = std::getenv("STRATA_PEER_NO_P2P"); np != nullptr && std::atoi(np) != 0) a = 0;   // test knob: pretend the pair has no P2P
+        if (strata_env_truthy_number("STRATA_PEER_NO_P2P")) a = 0;   // test knob: pretend the pair has no P2P
         p2p_ = a && b;
         if (p2p_) {
             On on0(0);
@@ -170,6 +171,7 @@ bool PeerExperts::open(int device, const std::vector<std::pair<int32_t, int32_t>
             close();
             return false;
         }
+        src.note_async_read(b, refill_);   // #1237
         res_[(size_t) (pr.first * n_expert + pr.second)] = slot;
     }
     if (!ck(cudaStreamSynchronize(refill_), "fill", err)) { close(); return false; }
@@ -186,7 +188,7 @@ bool PeerExperts::open(int device, const std::vector<std::pair<int32_t, int32_t>
 
 bool PeerExperts::launch(int64_t layer, const float* x, const int32_t* ids, int64_t n_tok, int64_t k,
                          const int32_t* kind, std::string& err, float* out) {
-    static const bool direct_env = [] { const char* v = std::getenv("STRATA_PEER_DIRECT"); return v == nullptr || std::atoi(v) != 0; }();
+    static const bool direct_env = strata_env_truthy_number_default("STRATA_PEER_DIRECT", 1);
     const bool direct = direct_env && out != nullptr;
     launched_direct_ = false;
     launched_rows_ = 0;

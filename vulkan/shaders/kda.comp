@@ -1,0 +1,22 @@
+#version 450
+layout(local_size_x=128) in;
+layout(binding=0,std430) buffer State { float state[]; };
+layout(binding=1,std430) readonly buffer Q { float q[]; };
+layout(binding=2,std430) readonly buffer K { float k[]; };
+layout(binding=3,std430) readonly buffer V { float v[]; };
+layout(binding=4,std430) readonly buffer G { float g[]; };
+layout(binding=5,std430) readonly buffer B { float beta[]; };
+layout(binding=6,std430) writeonly buffer Y { float y[]; };
+layout(push_constant) uniform Params { uint heads; uint dim; uint unused0; uint unused1; } p;
+void main() {
+ uint h=gl_WorkGroupID.x,j=gl_LocalInvocationID.x,d=p.dim;
+ if(h>=p.heads || j>=d) return;
+ precise float qs=1e-6,ks=1e-6,mem=0;
+ for(uint i=0;i<d;i++){qs+=q[h*d+i]*q[h*d+i];ks+=k[h*d+i]*k[h*d+i];}
+ float ki=inversesqrt(ks),qi=inversesqrt(qs)*inversesqrt(float(d));
+ for(uint i=0;i<d;i++){uint a=(h*d+i)*d+j;state[a]*=exp(g[h*d+i]);mem+=state[a]*(k[h*d+i]*ki);}
+ float delta=(v[h*d+j]-mem)/(1+exp(-beta[h]));
+ precise float sum=0;
+ for(uint i=0;i<d;i++){uint a=(h*d+i)*d+j;float s=state[a]+k[h*d+i]*ki*delta;state[a]=s;sum+=s*q[h*d+i]*qi;}
+ y[h*d+j]=sum;
+}

@@ -1,0 +1,1 @@
+{"cases": 5, "decisions": {"c1-aff010": "KEEP", "c2-aff012": "DROP:unclean", "c3-aff016": "DROP:loop-proxy", "c4-aff012-unbiased": "DROP:no-gain", "c5-mix2": "KEEP"}, "quality_qualified": false}

@@ -1,0 +1,196 @@
+--- a/include/strata/kernels/glm.hpp
++++ b/include/strata/kernels/glm.hpp
+@@ -17,6 +17,9 @@
+ // `bonus` (optional, one value per expert) is added to the selection score only; weights keep the true scores.
+ void glm_router(const float *logits, const float *correction, int *ids, float *weights, int experts,
+                 int top_k, float scale, void *stream, const float *bonus = nullptr);
++// Explicit unpruned route for draft proposals; ignores global pruning options.
++void glm_router_unpruned(const float *logits, const float *correction, int *ids, float *weights, int experts,
++                         int top_k, float scale, void *stream, const float *bonus = nullptr);
+ // One token: glm_router followed by glm_mailbox_publish of the result and `x` into `slot`, as one launch.
+ struct GlmMailboxView;
+ void glm_router_publish(const float *logits, const float *correction, int *ids, float *weights, int experts,
+--- a/src/kernels/cuda/glm.cu
++++ b/src/kernels/cuda/glm.cu
+@@ -597,6 +597,16 @@
+         route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus);
+     check();
+ }
++void glm_router_unpruned(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale, void *s,
++                const float *bonus) {
++    if (ne < 1 || k < 1 || k > ne)
++        throw std::invalid_argument("GLM: invalid routing geometry");
++    if (ne <= 512)
++        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, 0.f, false, bonus);
++    else
++        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, 0.f, false, bonus);
++    check();
++}
+ void glm_router_publish(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale,
+                         const float *bonus, GlmMailboxView v, int slot, const float *x, const unsigned *generation,
+                         void *s) {
+--- a/src/kernels/glm_route_prune_test.cpp
++++ b/src/kernels/glm_route_prune_test.cpp
+@@ -34,7 +34,7 @@
+                 x[t*ne+e]=shape==0 ? 0.f : shape==1 ? float(e%8)-5.f+t*.1f : shape==2 ? -1000.f : -float(e%8)*2.f+t*.1f;
+         }
+         Buffer<float> dx(x.size()),db(ne),dbonus(ne);dx.put(x);db.put(bias);dbonus.put(bonus);
+-        auto verify=[&](const std::vector<int>& ids,const std::vector<float>& weights,int rows) {
++        auto verify=[&](const std::vector<int>& ids,const std::vector<float>& weights,int rows,bool prune=true) {
+             for(int t=0;t<rows;++t) {
+                 std::vector<int> ranking(ne);std::iota(ranking.begin(),ranking.end(),0);
+                 auto prob=[&](int e){return 1.f/(1.f+std::exp(-x[t*ne+e]));};
+@@ -43,8 +43,8 @@
+                 double denominator=0;for(int j=0;j<top;++j)denominator+=prob(ranking[j]);
+                 std::vector<double> original(top),expected(top);double total=0,kept=0;
+                 for(int j=0;j<top;++j){original[j]=prob(ranking[j])*scale/(denominator+1e-20);total+=original[j];}
+-                for(int j=0;j<top;++j){expected[j]=original[j]<double(share)*scale ? 0 : original[j];kept+=expected[j];}
+-                if(renorm && kept<total) {
++                for(int j=0;j<top;++j){expected[j]=original[j]<double(prune ? share : 0.f)*scale ? 0 : original[j];kept+=expected[j];}
++                if(prune && renorm && kept<total) {
+                     if(kept>0)for(double& w:expected)w*=total/kept;
+                     else expected[std::max_element(original.begin(),original.end())-original.begin()]=total;
+                 }
+@@ -62,6 +62,8 @@
+         Buffer<int> ids(top);Buffer<float> weights(top);
+         k::glm_router(dx.p,db.p,ids.p,weights.p,ne,top,scale,nullptr,dbonus.p);
+         verify(ids.get(),weights.get(),1);
++        k::glm_router_unpruned(dx.p,db.p,ids.p,weights.p,ne,top,scale,nullptr,dbonus.p);
++        verify(ids.get(),weights.get(),1,false);
+         if(ne>512)continue;
+         Buffer<int> batched_ids(top*nt);Buffer<float> batched_weights(top*nt);
+         k::glm_router_tokens(dx.p,db.p,batched_ids.p,batched_weights.p,ne,top,scale,nt,nullptr,dbonus.p);
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -3467,6 +3467,21 @@
+         }
+         k::glm_route_sum(result.f(), weights.f(), out, H, K, nt, stream);
+     }
++    const float mtp_recursive_blend = [] {
++        const char *v = std::getenv("STRATA_GLM_MTP_RECURSIVE_BLEND");
++        if (!v) return 1.f;
++        size_t used = 0;
++        const float factor = std::stof(v, &used);
++        if (v[used] || !(factor >= 0.f && factor <= 1.f))
++            throw std::invalid_argument("STRATA_GLM_MTP_RECURSIVE_BLEND must be 0..1");
++        return factor;
++    }();
++    const bool mtp_unpruned = [] {
++        const char *v = std::getenv("STRATA_GLM_MTP_UNPRUNED");
++        if (!v || std::string(v) == "0") return false;
++        if (std::string(v) == "1") return true;
++        throw std::invalid_argument("STRATA_GLM_MTP_UNPRUNED must be 0 or 1");
++    }();
+     void moe_mtp(const std::string &p, const float *x, float *out,
+                  const strata::core::LayerDescriptor &layer) {
+         const int H = m.hidden, K = m.top_k;
+@@ -3474,7 +3489,10 @@
+         auto &routing = buf("mtp_routing", K);
+         mat(p + "ffn_gate_inp.weight", x, logits.f());
+         auto &bias = weight(p + "exp_probs_b.bias");
+-        k::glm_router(logits.f(), bias.f(), (int *)ids.p, routing.f(), m.experts, K, m.expert_scale, stream);
++        if (mtp_unpruned)
++            k::glm_router_unpruned(logits.f(), bias.f(), (int *)ids.p, routing.f(), m.experts, K, m.expert_scale, stream);
++        else
++            k::glm_router(logits.f(), bias.f(), (int *)ids.p, routing.f(), m.experts, K, m.expert_scale, stream);
+         if (!mtp_cpu_experts && mtp_lookup) {
+             // GPU draft experts: groups come from the device lookup (one group per route, as the host built
+             // them), so the step needs no host synchronization.
+@@ -7155,7 +7173,15 @@
+         norm(p + "nextn.shared_head_norm.weight", cur.f(), hidden.f(), H);
+         ++mtp_position;
+         if (!head) { check(cudaStreamSynchronize(stream)); return {}; }
+-        mtp_hidden = hidden.floats(H);
++        // Only the host hidden state fed into the next recursive proposal changes.
++        // Logits for this proposal still use the unmodified device hidden state.
++        // Keep `previous` alive until the blend finishes: it may alias mtp_hidden.
++        auto next_hidden = hidden.floats(H);
++        if (mtp_recursive_blend != 1.f)
++            for (int i = 0; i < H; ++i)
++                next_hidden[i] = mtp_recursive_blend * next_hidden[i] +
++                                 (1.f - mtp_recursive_blend) * previous[i];
++        mtp_hidden = std::move(next_hidden);
+         auto &output = buf("mtp_logits", m.vocab);
+         mat("output.weight", hidden.f(), output.f());
+         return output.floats(m.vocab);
+@@ -8403,6 +8429,9 @@
+         std::cerr << "CPU_EXPERT gu_ms=" << pool.ms_multi_gu << " quant_ms=" << pool.ms_multi_q
+                   << " down_ms=" << pool.ms_multi_down << " layer_flow_ms=" << pool.ms_layer_flow
+                   << " bytes=" << pool.multi_bytes << '\n';
++        if (mtp_recursive_blend != 1.f)
++            std::cerr << "MTP_RECURSIVE_BLEND factor=" << mtp_recursive_blend << '\n';
++        if (mtp_unpruned) std::cerr << "MTP_ROUTER unpruned=1\n";
+         if (mtp_sync_state_only)
+             std::cerr << "MTP_SYNC_STATE_ONLY omitted=" << mtp_sync_omitted
+                       << " checked=" << mtp_sync_checked << '\n';
+@@ -8775,6 +8804,16 @@
+         p.max_soft_per_window = integer("STRATA_GLM_MTP_ACCEPT_MAX_SOFT", 1, 1, 7);
+         return p;
+     }();
++    static const int repeat_ngram = [] {
++        const char *v = std::getenv("STRATA_GLM_MTP_REPEAT_GUARD");
++        if (!v) return 0;
++        size_t used = 0; const int n = std::stoi(v, &used);
++        if (v[used] || (n != 0 && (n < 2 || n > 8)))
++            throw std::invalid_argument("GLM: MTP repeat guard must be 0 or 2..8");
++        return n;
++    }();
++    std::vector<int> emitted_history;
++    int repeat_blocked = 0;
+     auto checkpoint = decoder.checkpoint();
+     // The first proposal already advanced the draft block with exactly the anchor's resync inputs (the
+     // target hidden of the last verified position), so the resync can start after the anchor.
+@@ -8868,6 +8907,10 @@
+     const auto start = std::chrono::steady_clock::now();
+     auto output = [&](int token) {
+         emit(token); ++stats.generated;
++        if (repeat_ngram) {
++            emitted_history.push_back(token);
++            if (emitted_history.size() > 128) emitted_history.erase(emitted_history.begin());
++        }
+         if (lookup) lookup->append(token);
+         stats.stopped = std::find(stops.begin(), stops.end(), token) != stops.end();
+     };
+@@ -8949,6 +8992,13 @@
+                     std::span<const float>(all.data() + offset, decoder.vocabulary()),
+                     window[accepted + 1], target, acceptance, soft_in_window, stops);
+                 if (!decision.accepted) break;
++                // Exact target matches bypass this guard. Only reject a soft
++                // proposal that completes a recently emitted repeated phrase.
++                if (repeat_ngram && strata::spec::repeats_ngram(
++                        emitted_history, window[accepted + 1], repeat_ngram)) {
++                    ++repeat_blocked;
++                    break;
++                }
+                 ++soft_in_window; ++soft_accepted;
+                 soft_regret += decision.regret;
+                 max_soft_regret = std::max(max_soft_regret, decision.regret);
+@@ -9016,6 +9066,9 @@
+               << " tok_s=" << std::max(0, stats.generated - 1) * 1000 / stats.milliseconds << '\n';
+     std::cerr << "MTP_TIMING draft_ms=" << draft_ms << " verify_ms=" << verify_ms
+               << " resync_ms=" << resync_ms << '\n';
++    if (repeat_ngram)
++        std::cerr << "MTP_REPEAT_GUARD ngram=" << repeat_ngram
++                  << " history=128 blocked=" << repeat_blocked << '\n';
+     if (acceptance.margin > 0.f)
+         std::cerr << "MTP_APPROX margin=" << acceptance.margin << " top_k=" << acceptance.top_k
+                   << " max_soft_per_window=" << acceptance.max_soft_per_window
+--- a/include/strata/spec/bounded_accept.hpp
++++ b/include/strata/spec/bounded_accept.hpp
+@@ -5,6 +5,16 @@
+ #include <span>
+ 
+ namespace strata::spec {
++// Does appending token repeat a complete n-gram already in the emitted history?
++// The caller bounds history and invokes this only for an otherwise soft accept.
++inline bool repeats_ngram(std::span<const int> history, int token, std::size_t n) {
++    if (n < 2 || history.size() < n) return false;
++    const auto suffix = history.end() - (n - 1);
++    for (std::size_t i = 0; i + n <= history.size(); ++i)
++        if (history[i + n - 1] == token &&
++            std::equal(suffix, history.end(), history.begin() + i)) return true;
++    return false;
++}
+ // Experimental, approximate greedy verification. A zero margin is exact.
+ // Target logits score the actual proposed prefix, including earlier soft accepts.
+ struct BoundedAcceptPolicy {

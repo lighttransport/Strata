@@ -37,6 +37,7 @@
 #pragma once
 
 #include "strata/kernels/sampler.hpp"
+#include "strata/host/glm_env.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -56,8 +57,7 @@ inline constexpr int kCoupledHistCap = 4096;
 
 inline bool& coupled_draft_state() {
     static bool on = [] {
-        const char* e = std::getenv("STRATA_SPEC_COUPLED");
-        return e != nullptr && *e != '\0' && std::strcmp(e, "0") != 0;
+        return strata_env_text_on("STRATA_SPEC_COUPLED");
     }();
     return on;
 }
@@ -66,8 +66,7 @@ inline bool& coupled_draft_state() {
 /// machinery (the chain's sampling over the draft head, the penalty ring), so it switches that setup on too.
 inline bool spec_prob_env() {
     static const bool on = [] {
-        const char* e = std::getenv("STRATA_SPEC_PROB");
-        return e != nullptr && *e != '\0' && std::strcmp(e, "0") != 0;
+        return strata_env_text_on("STRATA_SPEC_PROB");
     }();
     return on;
 }

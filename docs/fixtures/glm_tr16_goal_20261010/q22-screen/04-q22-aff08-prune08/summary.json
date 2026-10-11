@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/04-q22-aff08-prune08/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 24.6502,
+    "prefill_tok_s": 143.364
+  }
+]

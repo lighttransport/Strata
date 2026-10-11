@@ -4,7 +4,7 @@
     "control": {
       "name": "base-mtp512",
       "config": {
-        "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+        "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
         "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
         "model_name": "glm53f-reap50-q23-b550-rx9070xt",
         "context": 4096,
@@ -76,7 +76,7 @@
       {
         "name": "mtp1",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -147,7 +147,7 @@
       {
         "name": "mtp2",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -218,7 +218,7 @@
       {
         "name": "mtp3",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -289,7 +289,7 @@
       {
         "name": "mtp2-unsplit",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -360,7 +360,7 @@
       {
         "name": "mtp2-aff05",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -431,7 +431,7 @@
       {
         "name": "mtp2-aff10",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -502,7 +502,7 @@
       {
         "name": "mtp3-margin2",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -578,7 +578,7 @@
     "control": {
       "name": "base-ordinary256",
       "config": {
-        "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+        "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
         "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
         "model_name": "glm53f-reap50-q23-b550-rx9070xt",
         "context": 4096,
@@ -650,7 +650,7 @@
       {
         "name": "static-tier",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -720,7 +720,7 @@
       {
         "name": "cache3072",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -791,7 +791,7 @@
       {
         "name": "cache14336",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -862,7 +862,7 @@
       {
         "name": "workers8",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -933,7 +933,7 @@
       {
         "name": "workers16",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 4096,
@@ -1008,7 +1008,7 @@
     "control": {
       "name": "base-prefill2g8k",
       "config": {
-        "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+        "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
         "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
         "model_name": "glm53f-reap50-q23-b550-rx9070xt",
         "context": 8192,
@@ -1072,7 +1072,7 @@
       },
       "cohort": "prefill2g8k",
       "kind": "prefill",
-      "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt2048.ids",
+      "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt2048.ids",
       "attempt": 1,
       "lever": "BASE"
     },
@@ -1080,7 +1080,7 @@
       {
         "name": "pp128",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 8192,
@@ -1144,14 +1144,14 @@
         },
         "cohort": "prefill2g8k",
         "kind": "prefill",
-        "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt128.ids",
+        "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt128.ids",
         "attempt": 1,
         "lever": "pp128"
       },
       {
         "name": "pp1024",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 8192,
@@ -1215,14 +1215,14 @@
         },
         "cohort": "prefill2g8k",
         "kind": "prefill",
-        "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt1024.ids",
+        "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt1024.ids",
         "attempt": 1,
         "lever": "pp1024"
       },
       {
         "name": "pp2048",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 8192,
@@ -1286,14 +1286,14 @@
         },
         "cohort": "prefill2g8k",
         "kind": "prefill",
-        "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt2048.ids",
+        "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt2048.ids",
         "attempt": 1,
         "lever": "pp2048"
       },
       {
         "name": "pp4096",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 8192,
@@ -1357,14 +1357,14 @@
         },
         "cohort": "prefill2g8k",
         "kind": "prefill",
-        "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
+        "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
         "attempt": 1,
         "lever": "pp4096"
       },
       {
         "name": "pp4096-prefetch0",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 8192,
@@ -1428,14 +1428,14 @@
         },
         "cohort": "prefill2g8k",
         "kind": "prefill",
-        "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
+        "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
         "attempt": 1,
         "lever": "pp4096-prefetch0"
       },
       {
         "name": "pp4096-prefetch8",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 8192,
@@ -1501,14 +1501,14 @@
         },
         "cohort": "prefill2g8k",
         "kind": "prefill",
-        "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
+        "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
         "attempt": 1,
         "lever": "pp4096-prefetch8"
       },
       {
         "name": "pp4096-prefetch12",
         "config": {
-          "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+          "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
           "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
           "model_name": "glm53f-reap50-q23-b550-rx9070xt",
           "context": 8192,
@@ -1574,7 +1574,7 @@
         },
         "cohort": "prefill2g8k",
         "kind": "prefill",
-        "prompt": "/home/syoyo/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
+        "prompt": "~/work/Strata-b550-calibration-15b787b5/docs/fixtures/glm_b550_levers_20261009/prompt4096.ids",
         "attempt": 1,
         "lever": "pp4096-prefetch12"
       }

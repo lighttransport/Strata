@@ -1,12 +1,12 @@
 {
   "command": [
-    "/home/syoyo/work/Strata/.venv-glm-hip/bin/python",
+    "~/work/Strata/.venv-glm-hip/bin/python",
     "-m",
     "serve.server",
     "--engine",
     "glm",
     "--config",
-    "/home/syoyo/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/131072/config.json",
+    "~/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/131072/config.json",
     "--host",
     "127.0.0.1",
     "--port",

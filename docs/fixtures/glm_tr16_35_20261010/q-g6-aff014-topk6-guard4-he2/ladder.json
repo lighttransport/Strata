@@ -1,0 +1,46 @@
+{
+  "track": "35",
+  "gates": {
+    "ppl_rel_max": 0.06,
+    "kl_abs_max": 0.08,
+    "top1_drop_pp_max": 3.0,
+    "humaneval_min": 152,
+    "heldout_min_2k": 35.0,
+    "heldout_min_8k": 35.0
+  },
+  "steps": [
+    {
+      "step": "full164",
+      "exit_code": 0,
+      "complete": true,
+      "tasks": 164,
+      "passes": 144,
+      "baseline_passes": 154,
+      "net": -10,
+      "lost": [
+        "HumanEval/36",
+        "HumanEval/37",
+        "HumanEval/49",
+        "HumanEval/59",
+        "HumanEval/71",
+        "HumanEval/94",
+        "HumanEval/100",
+        "HumanEval/103",
+        "HumanEval/109",
+        "HumanEval/120",
+        "HumanEval/132",
+        "HumanEval/134"
+      ],
+      "gained": [
+        "HumanEval/110",
+        "HumanEval/129"
+      ],
+      "capped_2048": [
+        "HumanEval/116"
+      ],
+      "guard_rejected": null,
+      "passes_gate": false,
+      "quality_qualified": false
+    }
+  ]
+}

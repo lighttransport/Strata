@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s2g2-2k/g4-aff016-topk6-guard4/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 39.199,
+    "prefill_tok_s": 143.1325
+  }
+]

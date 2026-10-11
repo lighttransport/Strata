@@ -1,0 +1,487 @@
+[
+  {
+    "name": "00-repeat-control",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard-configs/00-repeat-control.json",
+    "clean": true,
+    "decode": 36.7702,
+    "prefill": 131.202,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 40,
+        "sum_logit_regret": 59.9499,
+        "max_logit_regret": 3.38037
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 55,
+        "sum_logit_regret": 80.4345,
+        "max_logit_regret": 3.93583
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 110,
+        "sum_logit_regret": 167.979,
+        "max_logit_regret": 3.67025
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 10,
+        "sum_logit_regret": 17.2836,
+        "max_logit_regret": 3.50096
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 378,
+        "checked": 0
+      },
+      {
+        "omitted": 375,
+        "checked": 0
+      },
+      {
+        "omitted": 371,
+        "checked": 0
+      },
+      {
+        "omitted": 382,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 13897.1,
+        "tokens_per_second": 36.7702
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 13957.7,
+        "tokens_per_second": 36.6106
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 13296.5,
+        "tokens_per_second": 38.4312
+      }
+    ],
+    "repeat_guard": []
+  },
+  {
+    "name": "01-repeat4",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard-configs/01-repeat4.json",
+    "clean": true,
+    "decode": 34.853,
+    "prefill": 131.372,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 124,
+        "sum_logit_regret": 161.084,
+        "max_logit_regret": 3.6677
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 111,
+        "sum_logit_regret": 143.791,
+        "max_logit_regret": 3.9918
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 116,
+        "sum_logit_regret": 168.106,
+        "max_logit_regret": 3.87337
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 18,
+        "sum_logit_regret": 23.7197,
+        "max_logit_regret": 3.9425
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 370,
+        "checked": 0
+      },
+      {
+        "omitted": 373,
+        "checked": 0
+      },
+      {
+        "omitted": 368,
+        "checked": 0
+      },
+      {
+        "omitted": 381,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 14661.6,
+        "tokens_per_second": 34.853
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 14687.1,
+        "tokens_per_second": 34.7923
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 14211.0,
+        "tokens_per_second": 35.958
+      }
+    ],
+    "repeat_guard": [
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 4
+      },
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 4
+      },
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 1
+      },
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 5
+      }
+    ]
+  },
+  {
+    "name": "02-repeat8",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard-configs/02-repeat8.json",
+    "clean": true,
+    "decode": 36.5707,
+    "prefill": 131.348,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 96,
+        "sum_logit_regret": 139.734,
+        "max_logit_regret": 3.89056
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 46,
+        "sum_logit_regret": 73.052,
+        "max_logit_regret": 3.94842
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 14,
+        "sum_logit_regret": 19.0791,
+        "max_logit_regret": 3.99087
+      },
+      {
+        "margin": 4,
+        "top_k": 16,
+        "max_soft_per_window": 3,
+        "soft_accepted": 103,
+        "sum_logit_regret": 145.534,
+        "max_logit_regret": 3.91105
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 373,
+        "checked": 0
+      },
+      {
+        "omitted": 372,
+        "checked": 0
+      },
+      {
+        "omitted": 382,
+        "checked": 0
+      },
+      {
+        "omitted": 368,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 13972.9,
+        "tokens_per_second": 36.5707
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 13099.5,
+        "tokens_per_second": 39.0092
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 14501.3,
+        "tokens_per_second": 35.2382
+      }
+    ],
+    "repeat_guard": [
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 3
+      },
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 0
+      },
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 0
+      },
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 0
+      }
+    ]
+  },
+  {
+    "name": "03-aggressive-control",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard-configs/03-aggressive-control.json",
+    "clean": true,
+    "decode": 55.0813,
+    "prefill": 131.19,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 35,
+        "sum_logit_regret": 102.02,
+        "max_logit_regret": 9.29952
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 15,
+        "sum_logit_regret": 44.8841,
+        "max_logit_regret": 9.33607
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 30,
+        "sum_logit_regret": 72.4509,
+        "max_logit_regret": 7.31471
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 36,
+        "sum_logit_regret": 112.786,
+        "max_logit_regret": 9.23522
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 8836.11,
+        "tokens_per_second": 57.8309
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 9277.2,
+        "tokens_per_second": 55.0813
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 9670.47,
+        "tokens_per_second": 52.8413
+      }
+    ],
+    "repeat_guard": []
+  },
+  {
+    "name": "04-aggressive-repeat8",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard-configs/04-aggressive-repeat8.json",
+    "clean": true,
+    "decode": 50.6875,
+    "prefill": 131.276,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 24,
+        "sum_logit_regret": 56.1372,
+        "max_logit_regret": 8.98631
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 61,
+        "sum_logit_regret": 139.552,
+        "max_logit_regret": 9.77543
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 47,
+        "sum_logit_regret": 160.012,
+        "max_logit_regret": 9.61875
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 15,
+        "sum_logit_regret": 36.3752,
+        "max_logit_regret": 9.77076
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 9704.77,
+        "tokens_per_second": 52.6545
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 10081.4,
+        "tokens_per_second": 50.6875
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 10218.0,
+        "tokens_per_second": 50.0099
+      }
+    ],
+    "repeat_guard": [
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 2
+      },
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 0
+      },
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 8
+      },
+      {
+        "ngram": 8,
+        "history": 128,
+        "blocked": 10
+      }
+    ]
+  }
+]

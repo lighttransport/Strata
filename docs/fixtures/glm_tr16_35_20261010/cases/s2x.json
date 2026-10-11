@@ -1,0 +1,34 @@
+[
+ {
+  "name": "x7-aff016",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16"
+  },
+  "note": "single lever at 512"
+ },
+ {
+  "name": "x8-mix2",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json"
+  }
+ },
+ {
+  "name": "x9-reuse",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1"
+  }
+ },
+ {
+  "name": "x10-aff012",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12"
+  }
+ },
+ {
+  "name": "x11-aff016-topk6",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+  }
+ }
+]

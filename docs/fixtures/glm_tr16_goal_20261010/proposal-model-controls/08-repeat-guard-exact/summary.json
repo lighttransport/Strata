@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/08-repeat-guard-exact/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 15.6798,
+    "prefill_tok_s": 131.27999999999997
+  }
+]

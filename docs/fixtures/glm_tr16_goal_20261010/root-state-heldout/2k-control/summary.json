@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-heldout/2k-control/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 23.4275,
+    "prefill_tok_s": 131.37
+  }
+]

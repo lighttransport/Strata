@@ -1,0 +1,23 @@
+{
+  "quality_qualified": false,
+  "complete_cases": 3,
+  "pairs": [
+    {
+      "left": "aff08-cache7168",
+      "right": "aff08-cache7424",
+      "same_allocated_capacity": true,
+      "all_256_tokens_identical": true,
+      "stdout_sha256": [
+        "d33fd49368f6a111aa8eb70c958ed46c2db7db615e8174ff41c626827ee9dccb",
+        "d33fd49368f6a111aa8eb70c958ed46c2db7db615e8174ff41c626827ee9dccb"
+      ],
+      "decode_tok_s": [
+        25.0662,
+        25.3068
+      ],
+      "nominal_speed_delta_percent": 0.9598582952342172,
+      "interpretation": "If capacity and tokens match, this one-trial timing difference does not establish benefit from the larger requested cache."
+    }
+  ],
+  "capacity_note": "Cache admission enforces both the allocator budget and physical free memory after the runtime reserve. Requested MiB alone do not establish allocated capacity."
+}

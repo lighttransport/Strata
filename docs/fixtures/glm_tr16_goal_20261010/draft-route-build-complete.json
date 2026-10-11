@@ -1,0 +1,17 @@
+{
+  "cuda_parities_passed": true,
+  "hip_build_passed": true,
+  "route_prune_oracle_passed": true,
+  "glm_mmvq_parity_passed": true,
+  "model_controls_passed": true,
+  "policy_unit_tests_passed": true,
+  "time": 1791583947.5489936,
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-hip/strata-glm-decode": "3308254eb5ab44fa7ece20732fcbbb8efc4f8ca41bd36b49647fb887ad2ce1a5",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route.patch": "4b9ef2bf77f55f462d2e55b601dcd1e6c9f7887367ed9eabaae0617f0396e504",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/ggml-reference-manifest.json": "d7c55d4f49c64f1eeb89f5df0f71c703244523529b688d61eb3d7287e146aef4",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/complete.json": "017b9e21dc6e32c49aa9a292bb17ff1d928b04e88b00366f5a53653fdf07dea1",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-policy-unit-tests.json": "c403fee5a8329d6c7a0ec01019eb2960a3e5be0507127690345607e66f004081"
+  }
+}

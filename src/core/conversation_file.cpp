@@ -1,4 +1,5 @@
 #include "strata/core/conversation_file.hpp"
+#include "strata/host/glm_env.h"
 
 #include <algorithm>
 #include <bit>
@@ -337,8 +338,7 @@ bool free_space(const std::string& path, uint64_t& out) {
 #endif
 
 bool buffered_forced() {
-    const char* e = std::getenv("STRATA_SESSION_BUFFERED");
-    return e != nullptr && e[0] == '1';
+    return strata_env_truthy_one("STRATA_SESSION_BUFFERED");
 }
 
 static_assert(sizeof(off_t) >= 8, "session files need 64-bit file offsets (large-file support)");

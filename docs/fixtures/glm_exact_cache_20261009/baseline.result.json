@@ -62,9 +62,9 @@
   "command": [
     "numactl",
     "--interleave=all",
-    "/home/syoyo/work/Strata/build-hip-glm-v11/exact-cache-prototype/strata-glm-decode",
+    "~/work/Strata/build-hip-glm-v11/exact-cache-prototype/strata-glm-decode",
     "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q3_K_M.gguf",
-    "@/home/syoyo/work/Strata/build-hip-glm-v11/q3-cache-study/code.ids",
+    "@~/work/Strata/build-hip-glm-v11/q3-cache-study/code.ids",
     "384",
     "4096",
     "12",
@@ -77,8 +77,8 @@
     "--decode-bench=2",
     "--prefill-experts=f16-batched",
     "--route-affinity=0",
-    "--dump-logits=/home/syoyo/work/Strata/build-hip-glm-v11/exact-cache-prototype/baseline.logits.bin",
-    "--routing-trace=/home/syoyo/work/Strata/build-hip-glm-v11/exact-cache-prototype/baseline.routes.csv",
+    "--dump-logits=~/work/Strata/build-hip-glm-v11/exact-cache-prototype/baseline.logits.bin",
+    "--routing-trace=~/work/Strata/build-hip-glm-v11/exact-cache-prototype/baseline.routes.csv",
     "--decode-graphs",
     "--decode-cache-mib=8192"
   ],

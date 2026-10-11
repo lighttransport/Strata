@@ -1,0 +1,39 @@
+find_package(Vulkan REQUIRED COMPONENTS glslc)
+find_package(SPIRV-Headers CONFIG REQUIRED)
+# The pinned GGML checkout discovers SPIR-V headers but does not propagate their
+# include path to its Vulkan target when the SDK is outside the system prefix.
+target_link_libraries(ggml-vulkan PRIVATE SPIRV-Headers::SPIRV-Headers)
+set(_glm_vk_shaders kda kda_fused mla mhc)
+foreach(_shader IN LISTS _glm_vk_shaders)
+  add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${_shader}.spv ${CMAKE_CURRENT_BINARY_DIR}/${_shader}_spv.hpp
+    COMMAND Vulkan::glslc --target-env=vulkan1.2 -O ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${_shader}.comp -o ${CMAKE_CURRENT_BINARY_DIR}/${_shader}.spv
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${CMAKE_CURRENT_BINARY_DIR}/${_shader}.spv -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${_shader}_spv.hpp -DNAME=${_shader} -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${_shader}.comp ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake VERBATIM)
+endforeach()
+add_custom_target(glm_vulkan_shaders DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/kda_fused.spv ${CMAKE_CURRENT_BINARY_DIR}/kda.spv ${CMAKE_CURRENT_BINARY_DIR}/mla.spv ${CMAKE_CURRENT_BINARY_DIR}/mhc.spv)
+add_library(strata_glm_vulkan runtime.cpp projections.cpp)
+target_include_directories(strata_glm_vulkan PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(strata_glm_vulkan PUBLIC Vulkan::Vulkan ggml ggml-vulkan strata_artifact)
+add_dependencies(strata_glm_vulkan glm_vulkan_shaders)
+add_executable(strata-glm-vulkan decode.cpp)
+target_link_libraries(strata-glm-vulkan PRIVATE strata_glm_vulkan strata_kernels_cpu)
+add_executable(glm_vulkan_parity parity.cpp)
+target_link_libraries(glm_vulkan_parity PRIVATE strata_glm_vulkan)
+if(STRATA_BUILD_TESTS)
+  add_test(NAME glm_vulkan_parity COMMAND glm_vulkan_parity)
+  set_tests_properties(glm_vulkan_parity PROPERTIES LABELS "glm;vulkan" TIMEOUT 120)
+endif()
+
+option(STRATA_VULKAN_NATIVE_HOST "Compile Vulkan host loops for the build CPU" OFF)
+if(STRATA_VULKAN_NATIVE_HOST)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
+    target_compile_options(strata_glm_vulkan PRIVATE -march=native -ffp-contract=off -fno-math-errno)
+    target_compile_options(strata-glm-vulkan PRIVATE -march=native -ffp-contract=off -fno-math-errno)
+  else()
+    message(FATAL_ERROR "STRATA_VULKAN_NATIVE_HOST currently requires GCC or Clang")
+  endif()
+endif()
+
+# This check submits no GPU work and is safe before a device precheck.
+add_executable(glm_vulkan_executor_check executor_check.cpp)
+target_link_libraries(glm_vulkan_executor_check PRIVATE strata_kernels_cpu)

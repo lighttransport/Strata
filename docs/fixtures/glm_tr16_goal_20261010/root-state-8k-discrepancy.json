@@ -1,0 +1,19 @@
+{
+  "control_clean": true,
+  "archived_count": 2048,
+  "fresh_count": 2048,
+  "first_difference_by_trial": [
+    240,
+    63,
+    60,
+    37
+  ],
+  "cache_slots_both": 627,
+  "cache_mib_both": 5447.06,
+  "cache_fingerprint_both": 10182432604744903722,
+  "decode_tok_s": 23.3119,
+  "prefill_tok_s": 435.016,
+  "default_output_parity_proven": false,
+  "state_only_8k_test_run": false,
+  "decision": "Retain failed comparison. Audit original binary, e523 prepatch build and root state-only before qualification."
+}

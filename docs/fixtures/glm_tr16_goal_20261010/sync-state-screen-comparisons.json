@@ -1,0 +1,41 @@
+{
+  "cases": [
+    {
+      "control": "fifth/00-renorm-default",
+      "candidate": "fifth/00a-sync-state-depth1",
+      "tokens_identical": 256,
+      "control_tok_s": 20.3617,
+      "candidate_tok_s": 20.7303,
+      "same_binary": true,
+      "quality_qualified": false,
+      "screen_gain_percent": 1.8102614221798818,
+      "control_timed_costs": "MTP_TIMING draft_ms=349.626 verify_ms=5465.21 resync_ms=293.616",
+      "candidate_timed_costs": "MTP_TIMING draft_ms=483.796 verify_ms=5476.42 resync_ms=21.8575"
+    },
+    {
+      "control": "third/06-depth3-control",
+      "candidate": "fifth/00b-sync-state-depth3",
+      "tokens_identical": 256,
+      "control_tok_s": 15.5625,
+      "candidate_tok_s": 15.9873,
+      "same_binary": false,
+      "quality_qualified": false,
+      "screen_gain_percent": 2.729638554216862,
+      "control_timed_costs": "MTP_TIMING draft_ms=672.615 verify_ms=6941.41 resync_ms=340.089",
+      "candidate_timed_costs": "MTP_TIMING draft_ms=756.464 verify_ms=6905.21 resync_ms=70.0994"
+    },
+    {
+      "control": "fifth/02-old-prune12",
+      "candidate": "fifth/02a-old-prune12-sync-state",
+      "tokens_identical": 256,
+      "control_tok_s": 27.1541,
+      "candidate_tok_s": 27.9471,
+      "same_binary": true,
+      "quality_qualified": false,
+      "screen_gain_percent": 2.920369299663772,
+      "control_timed_costs": "MTP_TIMING draft_ms=264.829 verify_ms=4122.72 resync_ms=188.043",
+      "candidate_timed_costs": "MTP_TIMING draft_ms=305.264 verify_ms=4101.5 resync_ms=25.2811"
+    }
+  ],
+  "caveat": "One timed128-token repetition; not sustained speed qualification. Tokens compare warmup+timed; repeated trials can differ under cache-affinity routing."
+}

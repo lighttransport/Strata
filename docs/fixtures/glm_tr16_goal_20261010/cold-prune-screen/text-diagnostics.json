@@ -1,0 +1,42 @@
+[
+  {
+    "name": "cold0.08-renorm0",
+    "decode_tok_s": 25.7503,
+    "distinct_fourgram_fractions": [
+      0.856,
+      0.872
+    ],
+    "samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm0/text-samples.json",
+    "quality_qualified": false
+  },
+  {
+    "name": "cold0.08-renorm1",
+    "decode_tok_s": 25.8718,
+    "distinct_fourgram_fractions": [
+      1.0,
+      1.0
+    ],
+    "samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm1/text-samples.json",
+    "quality_qualified": false
+  },
+  {
+    "name": "cold0.12-renorm0",
+    "decode_tok_s": 29.3498,
+    "distinct_fourgram_fractions": [
+      0.992,
+      0.752
+    ],
+    "samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm0/text-samples.json",
+    "quality_qualified": false
+  },
+  {
+    "name": "cold0.12-renorm1",
+    "decode_tok_s": 28.1126,
+    "distinct_fourgram_fractions": [
+      0.968,
+      1.0
+    ],
+    "samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm1/text-samples.json",
+    "quality_qualified": false
+  }
+]

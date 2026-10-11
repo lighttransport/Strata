@@ -1,0 +1,10 @@
+{
+  "corpus_gate_passed": true,
+  "humaneval_gate_passed": true,
+  "failures": [],
+  "baseline_passes": 154,
+  "candidate_passes": 153,
+  "tasks": 164,
+  "qualified": true,
+  "corpus_result_sha256": "360bbbc828d865e28f6f6293393782120b3cedfe27c29de337a993b87958a855"
+}

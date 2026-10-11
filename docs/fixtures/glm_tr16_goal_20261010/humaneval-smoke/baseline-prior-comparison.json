@@ -1,0 +1,128 @@
+{
+  "scope": "First20 pinned HumanEval tasks only; does not validate the other144 tasks",
+  "all20_token_hashes_equal": true,
+  "all20_outcomes_equal": true,
+  "quality_qualified": false,
+  "rows": [
+    {
+      "task_id": "HumanEval/0",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/1",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/2",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/3",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/4",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/5",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/6",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/7",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/8",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/9",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/10",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/11",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/12",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/13",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/14",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/15",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/16",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/17",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/18",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    },
+    {
+      "task_id": "HumanEval/19",
+      "token_hash_equal": true,
+      "generated_tokens_equal": true,
+      "passed_equal": true
+    }
+  ]
+}

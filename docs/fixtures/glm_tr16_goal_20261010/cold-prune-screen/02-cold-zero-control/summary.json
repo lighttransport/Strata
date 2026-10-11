@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/02-cold-zero-control/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 25.4205,
+    "prefill_tok_s": 143.28199999999998
+  }
+]

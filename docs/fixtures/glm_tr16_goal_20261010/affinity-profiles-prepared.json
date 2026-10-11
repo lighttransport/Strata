@@ -1,0 +1,36 @@
+{
+  "basis": "B550 levers2 measurements suggest candidates only; TR16 full model differs from B550 REAP50",
+  "profiles": [
+    {
+      "name": "gentle",
+      "path": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-gentle.json",
+      "sha256": "bbb1b5de1ce6d96f6e2d34c4b06f8e2450eaccf678934429ac0094f8e1528ace",
+      "values": [
+        0.06,
+        0.1,
+        0.14
+      ]
+    },
+    {
+      "name": "mix2",
+      "path": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json",
+      "sha256": "2b3019b7e89699affab4691cfa7cc5470d3e0e7537f0229a12eb5d3eb0c262f1",
+      "values": [
+        0.08,
+        0.14,
+        0.18
+      ]
+    },
+    {
+      "name": "late",
+      "path": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-late.json",
+      "sha256": "0e7b56a08b5c1357838cb8b0ab4eb2eaeee3e66373d85e36c076d1640cd3561f",
+      "values": [
+        0.06,
+        0.12,
+        0.2
+      ]
+    }
+  ],
+  "measured_on_tr16": false
+}

@@ -1,0 +1,230 @@
+diff --git a/include/strata/kernels/glm_prefill.hpp b/include/strata/kernels/glm_prefill.hpp
+index 2a3f86b2..5249e707 100644
+--- a/include/strata/kernels/glm_prefill.hpp
++++ b/include/strata/kernels/glm_prefill.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <cstddef>
+ #include <cstdint>
+ namespace strata::kernels {
+ void glm_layer_norm_batch(const float *x, const float *w, const float *b, float *y, int width, int tokens,
+@@ -86,7 +87,7 @@ void glm_index_select_batch(const float *scores, int *ids, int *counts, int pool
+ // One-query MLA products over `stride` gathered keys (keys[s][latent], fp32): scores[h][s] = keys[s] . q[h] and
+ // out[h] = sum_s p[h][s] * keys[s] (p and scores row-major with leading dimension stride). values needs
+ // glm_mla_one_scratch_bytes of scratch.
+-size_t glm_mla_one_scratch_bytes(int stride, int latent, int heads);
++std::size_t glm_mla_one_scratch_bytes(int stride, int latent, int heads);
+ void glm_mla_scores_one(const float *keys, const float *q, float *scores, int stride, int latent, int heads, void *stream);
+ void glm_mla_values_one(const float *keys, const float *p, float *out, float *scratch, int stride, int latent,
+                         int heads, void *stream);
+diff --git a/src/program/glm_decode.cpp b/src/program/glm_decode.cpp
+index a7c948ce..b0b9593f 100644
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -1854,6 +1854,17 @@ class Decoder {
+         if (n < 0 || n > 8) throw std::invalid_argument("GLM: STRATA_GLM_DEFER_ROUTES must be 0..8");
+         return n;
+     }();
++    // STRATA_GLM_DEFER_MAX_SHARE=<x>: a cold route is deferred only when its weight is below x times the layer's
++    // routed weight sum (default 1 = no cap), so layers whose smallest cold route matters stay in time.
++    const float defer_max_share = [] {
++        const char *v = std::getenv("STRATA_GLM_DEFER_MAX_SHARE");
++        const float x = v ? std::strtof(v, nullptr) : 1.f;
++        if (!(x > 0.f && x <= 1.f)) throw std::invalid_argument("GLM: STRATA_GLM_DEFER_MAX_SHARE must be in (0, 1]");
++        return x;
++    }();
++    // STRATA_GLM_DEFER_MIN_LAYER=<l>: layers below l defer nothing (their late pass is empty), since early
++    // layers are the most sensitive to delayed expert output.
++    const int defer_min_layer = [] { const char *v = std::getenv("STRATA_GLM_DEFER_MIN_LAYER"); return v ? std::atoi(v) : 0; }();
+     int deferred_target(int l) const { return defer_routes ? l + mailbox_group_stride() : l; }
+     bool defer_active = false;
+     const bool fuse_route_publish = [] { const char *v = std::getenv("STRATA_GLM_FUSE_ROUTE"); return v && std::string(v) == "1"; }();
+@@ -4829,16 +4840,19 @@ class Decoder {
+                 const float *w = mailbox->weights(item.slot);
+                 const auto *resident = (const unsigned long long *)cached_decode->host_lookup->p + (size_t)item.layer * 288;
+                 unsigned cold = 0, late = 0;
+-                for (int j = 0; j < item.tokens * K; ++j)
++                float total = 0.f;
++                for (int j = 0; j < item.tokens * K; ++j) {
++                    total += w[j];
+                     if (w[j] != 0.f && !resident[ids[j]]) cold |= 1u << j;
+-                for (int n = 0; n < defer_routes; ++n) {
++                }
++                for (int n = 0; n < defer_routes && item.layer >= defer_min_layer; ++n) {
+                     int pick = -1;
+                     for (int j = 0; j < item.tokens * K; ++j)
+                         if ((cold >> j & 1u) && !(late >> j & 1u) && (pick < 0 || w[j] < w[pick])) pick = j;
+-                    if (pick < 0) break;
++                    if (pick < 0 || w[pick] >= defer_max_share * total) break;
+                     late |= 1u << pick;
+                 }
+-                if ((late & ~cold) || __builtin_popcount(late) != std::min(defer_routes, __builtin_popcount(cold)))
++                if ((late & ~cold) || __builtin_popcount(late) > std::min(defer_routes, __builtin_popcount(cold)))
+                     throw std::runtime_error("GLM: deferred route selection");
+                 cpu_moe_mailbox(item.layer, item.slot, item.tokens, item.position, -1, 0, ~late);
+                 mailbox->complete(item.slot);
+@@ -5343,7 +5357,7 @@ class Decoder {
+         check(cublasSgemmStridedBatched(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, tokens, in, &one, W.f(), in,
+                                         (long long)in * out, x, ld_x, in, &zero, y, ld_y, out, heads));
+     }
+-    void mla_gpu(const std::string &p, int l, const float *x, float *out) {
++    void mla_gpu(const std::string &p, int l, const float *x, float *out, bool state_only = false) {
+         auto &state = states[l];
+         const int *device_pos = graph_mla() && l < (int)m.layers.size() ? (const int *)mla_positions->p + buffer_group : nullptr;
+         int B = batch_tokens, heads = m.attention_heads, latent = m.kv_rank, dim = 256, ih = m.index_heads,
+@@ -5372,9 +5386,11 @@ class Decoder {
+         auto &qr = buf("mla_qr", m.q_rank * B);
+         auto &q = buf("mla_q", heads * dim * B);
+         share_quant(x, m.hidden);
+-        mat(p + "attn_q_a.weight", x, low.f());
+-        norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
+-        mat(p + "attn_q_b.weight", qr.f(), q.f());
++        if (!state_only) {
++            mat(p + "attn_q_a.weight", x, low.f());
++            norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
++            mat(p + "attn_q_b.weight", qr.f(), q.f());
++        }
+         auto &raw = buf("mla_raw", latent * B);
+         mat(p + "attn_kv_a_mqa.weight", x, raw.f());
+         if (!row_sequences.empty()) {
+@@ -5394,8 +5410,10 @@ class Decoder {
+         auto &ik = buf("index_k", idim * B);
+         auto &ikn = buf("index_kn", idim * B);
+         auto &gate = buf("index_gate", idim * B);
+-        mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
+-        mat(p + "indexer.proj.weight", x, iw.f());
++        if (!state_only) {
++            mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
++            mat(p + "indexer.proj.weight", x, iw.f());
++        }
+         mat(p + "indexer.attn_k.weight", x, ik.f());
+         mat(p + "indexer_compressor_gate.weight", x, gate.f());
+         end_share_quant();
+@@ -5428,6 +5446,9 @@ class Decoder {
+         } else
+             k::glm_index_prepare(ikn.f(), gate.f(), ape.f(), state.keys->f(), state.gates->f(), state.pooled->f(),
+                                  position, B, pool_size, idim, stream, device_pos);
++        // All persistent MLA state is now updated. Draft resynchronization
++        // does not consume the attention output or the following feed-forward output.
++        if (state_only) return;
+         inspect("index_norm", ikn.f(), (size_t)B * idim, stream);
+         inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
+         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
+@@ -7076,7 +7097,16 @@ class Decoder {
+     }
+     void set_mtp_cpu_experts(bool enabled) { mtp_cpu_experts = enabled; }
+     int token_position() const { return position; }
+-    std::vector<float> mtp_step(int token, const float *previous, bool head = true) {
++    const bool mtp_sync_state_only = [] {
++        const char *v = std::getenv("STRATA_GLM_MTP_SYNC_STATE_ONLY");
++        if (!v || std::string(v) == "0") return false;
++        if (std::string(v) == "1") return true;
++        throw std::invalid_argument("STRATA_GLM_MTP_SYNC_STATE_ONLY must be 0 or 1");
++    }();
++    const bool check_mtp_sync_state = std::getenv("STRATA_GLM_CHECK_MTP_SYNC_STATE") &&
++        std::string(std::getenv("STRATA_GLM_CHECK_MTP_SYNC_STATE")) == "1";
++    long mtp_sync_omitted = 0, mtp_sync_checked = 0;
++    std::vector<float> mtp_step(int token, const float *previous, bool head = true, bool force_full = false) {
+         check_stop();
+         if (!mtp_ready || token < 0 || token >= m.vocab || mtp_position >= (int)capacity)
+             throw std::out_of_range("GLM: invalid MTP token or position");
+@@ -7102,7 +7132,16 @@ class Decoder {
+         norm(p + "nextn.hnorm.weight", prev.f(), joined.f(H), H);
+         mat(p + "nextn.eh_proj.weight", joined.f(), cur.f());
+         norm(p + "attn_norm.weight", cur.f(), x.f(), H);
+-        mla_gpu(p, 45, x.f(), y.f());
++        const bool state_only = !head && mtp_sync_state_only && !force_full;
++        if (state_only && !row_sequences.empty())
++            throw std::invalid_argument("GLM: state-only MTP sync requires one sequence");
++        mla_gpu(p, 45, x.f(), y.f(), state_only);
++        if (state_only) {
++            ++mtp_position;
++            ++mtp_sync_omitted;
++            check(cudaStreamSynchronize(stream));
++            return {};
++        }
+         const float one = 1;
+         check(cublasSaxpy(blas, H, &one, y.f(), 1, cur.f(), 1));
+         norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
+@@ -7125,7 +7164,19 @@ class Decoder {
+         for (size_t i = 0; i < tokens.size(); ++i) {
+             const int prev = start + i - 1;
+             const float *hidden = prev < 0 ? zero.data() : target_hidden.data() + prev * m.hidden;
+-            mtp_step(tokens[i], hidden, false);
++            if (mtp_sync_state_only && check_mtp_sync_state && mtp_sync_checked < 16) {
++                // Diagnostic only: compare every persistent draft buffer,
++                // including append-only latent and pooled-key caches.
++                auto before = mtp_checkpoint(true), after = mtp_checkpoint(true);
++                save(before);
++                mtp_step(tokens[i], hidden, false);
++                save(after);
++                restore_mtp(before);
++                mtp_step(tokens[i], hidden, false, true);
++                check_mtp_state(after);
++                restore_mtp(after);
++                ++mtp_sync_checked;
++            } else mtp_step(tokens[i], hidden, false);
+         }
+     }
+     void rebalance_decode_cache() {
+@@ -7858,7 +7909,7 @@ class Decoder {
+         return cp;
+     }
+     // Draft-block buffers only: save() and restore_mtp() then cover just the MTP state.
+-    Checkpoint mtp_checkpoint() {
++    Checkpoint mtp_checkpoint(bool append_only = false) {
+         Checkpoint cp;
+         size_t bytes = 0;
+         cp.draft_begin = 0;
+@@ -7870,6 +7921,9 @@ class Decoder {
+                     cp.buffers.emplace_back(buffer, bytes);
+                     bytes += buffer->bytes;
+                 }
++            if (append_only)
++                for (Device *buffer : {state.cache.get(), state.pooled.get()})
++                    if (buffer) { cp.buffers.emplace_back(buffer, bytes); bytes += buffer->bytes; }
+         }
+         cp.storage = std::make_unique<Device>(std::max<size_t>(bytes, 256));
+         return cp;
+@@ -7899,6 +7953,23 @@ class Decoder {
+         mtp_position = cp.mtp_position;
+     }
+ 
++    void check_mtp_state(const Checkpoint &expected) {
++        if (expected.buffers.empty())
++            throw std::runtime_error("GLM: check has no MTP state buffers");
++        if (mtp_position != expected.mtp_position)
++            throw std::runtime_error("GLM: MTP position mismatch");
++        check(cudaStreamSynchronize(stream));
++        for (auto [buffer, offset] : expected.buffers) {
++            std::vector<unsigned char> actual(buffer->bytes), saved(buffer->bytes);
++            check(cudaMemcpy(actual.data(), buffer->p, buffer->bytes, cudaMemcpyDeviceToHost));
++            check(cudaMemcpy(saved.data(), (char *)expected.storage->p + offset, buffer->bytes,
++                             cudaMemcpyDeviceToHost));
++            if (actual != saved)
++                throw std::runtime_error("GLM: MTP state mismatch at byte offset " +
++                                         std::to_string(offset));
++        }
++    }
++
+     void check_sequences(const std::vector<int> &prompt) {
+         if (sequences.empty() || prompt.empty() || route_affinity != 0)
+             throw std::invalid_argument("GLM: sequence parity requires slots, tokens and unbiased routing");
+@@ -8275,6 +8346,7 @@ class Decoder {
+         }
+         pool.ms_multi_gu = pool.ms_multi_q = pool.ms_multi_down = pool.ms_layer_flow = 0;
+         trace = StepTrace{};
++        mtp_sync_omitted = mtp_sync_checked = 0;
+         pool.ms_native_local_prepare = 0;
+         pool.native_local_queries = 0;
+         pool.multi_bytes = 0;
+@@ -8327,6 +8399,9 @@ class Decoder {
+         std::cerr << "CPU_EXPERT gu_ms=" << pool.ms_multi_gu << " quant_ms=" << pool.ms_multi_q
+                   << " down_ms=" << pool.ms_multi_down << " layer_flow_ms=" << pool.ms_layer_flow
+                   << " bytes=" << pool.multi_bytes << '\n';
++        if (mtp_sync_state_only)
++            std::cerr << "MTP_SYNC_STATE_ONLY omitted=" << mtp_sync_omitted
++                      << " checked=" << mtp_sync_checked << '\n';
+         if (step_trace && trace.steps)
+             std::cerr << "STEP_TRACE steps=" << trace.steps << " moe_layers=" << trace.layers
+                       << " pipelined=" << (mailbox ? 1 : 0) << " head_ms=" << trace.head_ms

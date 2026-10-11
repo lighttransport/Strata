@@ -1,0 +1,12 @@
+[
+ {
+  "name": "d1-gpu-draft",
+  "set": {
+   "mtp_experts": "gpu"
+  },
+  "env": {
+   "STRATA_GLM_MTP_GPU_CACHE": "1"
+  },
+  "note": "2502 MiB draft reserve shrinks tier"
+ }
+]

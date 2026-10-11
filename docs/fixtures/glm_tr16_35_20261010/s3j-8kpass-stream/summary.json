@@ -1,0 +1,78 @@
+[
+  {
+    "name": "p2-aff014-topk6-guard4-8kpass-stream",
+    "note": "streaming prefetch binary, single 8K pass",
+    "exact_expected": false,
+    "exit_code": 2,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s3j-8kpass-stream/p2-aff014-topk6-guard4-8kpass-stream.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.14"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/stream-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": false,
+    "memory": {
+      "peak_rss_kib": 101443748,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 2238,
+      "rejected": {
+        "reason": "external CPU work",
+        "pid": 3651682,
+        "name": "cc1",
+        "cpu_percent": 99.7902345222768,
+        "elapsed_seconds": 126.3084744940279
+      },
+      "wall_seconds": 131.837399024982
+    },
+    "decode_tok_s": null,
+    "decode_trials": [],
+    "decode_warmup_tok_s": null,
+    "prefill_tok_s": null,
+    "rounds": 0,
+    "generated": 0,
+    "tokens_per_round": null,
+    "accepted_per_round": null,
+    "proposed_per_round": null,
+    "position_accept_rate": {},
+    "soft_accepted": null,
+    "logit_regret_per_token": null,
+    "draft_ms_per_round": null,
+    "verify_ms_per_round": null,
+    "resync_ms_per_round": null,
+    "expert_gb_per_token": null,
+    "flow_ms_per_token": null,
+    "ms_per_token": null,
+    "peak_gpu_mib": null,
+    "gpu_live": null,
+    "repeat_guard": [],
+    "sync_state_only": [],
+    "lookup": [],
+    "mtp_depth": [],
+    "actual_cache_slots": null,
+    "actual_cache_mib": null,
+    "cache_fingerprint": null,
+    "token_count": 0,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      null,
+      null
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      0,
+      0
+    ],
+    "control_rate": 34.0815,
+    "speed_change_percent": null,
+    "decision": "DROP:unclean",
+    "input_identity_matches_base": true
+  }
+]

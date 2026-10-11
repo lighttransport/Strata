@@ -1,4 +1,6 @@
 #include "strata/core/native_dense.hpp"
+#include "strata/host/glm_env.h"
+#include "strata/host/glm_names.hpp"
 #include <cstdlib>
 #include "strata/core/weights.hpp"
 #include "strata/artifact/gguf_reader.hpp"
@@ -33,18 +35,18 @@ uint64_t alloc_bytes(uint64_t bytes) {
 }
 int g_layer_lb = -1, g_layer_le = -1;   // set_layer_range; -1: every layer
 bool in_range(const std::string& name) {
-    if (g_layer_lb < 0 || name.rfind("blk.", 0) != 0) return true;
+    if (g_layer_lb < 0 || !strata::host::is_blk(name)) return true;
     const int l = std::atoi(name.c_str() + 4);
     return l >= g_layer_lb && l < g_layer_le;
 }
 // S23 experiment (STRATA_HC_Q8=1): the hyper-connection projections' Q8_0 bytes for the verify read
 bool hc_q8_requested() {
-    static const bool on = [] { const char* v = std::getenv("STRATA_HC_Q8"); return v != nullptr && v[0] == '1'; }();
+    static const bool on = strata_env_truthy_one("STRATA_HC_Q8");
     return on;
 }
 bool hc_q8_name(const std::string& name) {
     if (name == "output_hc_down.weight" || name == "output_hc_up.weight") return true;   // S25: the final mixer too
-    if (name.rfind("blk.", 0) != 0) return false;
+    if (!strata::host::is_blk(name)) return false;
     static const char* suffixes[] = {".hc_attn_down.weight", ".hc_attn_up.weight", ".hc_attn_inject.weight",
                                      ".hc_ffn_down.weight", ".hc_ffn_up.weight", ".hc_ffn_inject.weight"};
     for (const char* suffix : suffixes) if (name.ends_with(suffix)) return true;
@@ -88,7 +90,7 @@ std::vector<uint8_t> q8_0_of(const float* x, uint64_t n) {
 }
 bool eligible(const strata::TensorInfo& tensor, bool include_ple_key) {
     const auto& name = tensor.name;
-    if (name.rfind("blk.", 0) != 0) return false;
+    if (!strata::host::is_blk(name)) return false;
     // Match the native PLE kernel: Q2_0, IQ3_XXS, IQ4_XS and Q8_0 (UD-Q4_K_XL). Other keys retain the packed BF16
     // fallback.
     if (name == "blk.1.ple_key.weight")
@@ -142,7 +144,7 @@ bool NativeDense::weight_bytes_for(const std::vector<std::string>& shards, Weigh
             strata::GgufFile gguf(path);
             for (const auto& tensor : gguf.tensors()) {
                 if (!eligible(tensor, include_ple_key)) continue;
-                if (tensor.name.rfind("blk.", 0) == 0) {
+                if (strata::host::is_blk(tensor.name)) {
                     const long l = std::strtol(tensor.name.c_str() + 4, nullptr, 10);
                     if (l < lb || l >= le) continue;
                 }
@@ -190,7 +192,7 @@ NativeDense::~NativeDense() {
 bool NativeDense::load(const std::vector<std::string>& shards, WeightTable& table, std::string& err,
                        bool include_ple_key, int64_t layer_lo, int64_t layer_hi) {
     auto outside = [&](const std::string& name) {   // a blk.<l>. tensor of another stage's layers
-        if (layer_hi < 0 || name.rfind("blk.", 0) != 0) return false;
+        if (layer_hi < 0 || !strata::host::is_blk(name)) return false;
         const long l = std::strtol(name.c_str() + 4, nullptr, 10);
         return l < layer_lo || l >= layer_hi;
     };
@@ -324,7 +326,7 @@ bool NativeDense::load(const std::vector<std::string>& shards, WeightTable& tabl
                 for (const auto& tensor : gguf.tensors()) {
                     // S25: the F32 inject rows hold BF16-exact values: the read takes the pack's BF16 rows unless
                     // STRATA_HC_Q8_INJECT=1 asks for a Q8_0 copy
-                    static const bool q8_inject = [] { const char* v = std::getenv("STRATA_HC_Q8_INJECT"); return v && v[0] == '1'; }();
+                    static const bool q8_inject = strata_env_truthy_one("STRATA_HC_Q8_INJECT");
                     const bool f32_inject = q8_inject && tensor.type == 0 && tensor.name.ends_with("_inject.weight");
                     if ((tensor.type != 8 && !f32_inject) || !hc_q8_name(tensor.name) || tensor.shape.size() != 2) continue;
                     auto found = table.table_.find(tensor.name);

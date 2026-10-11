@@ -1,0 +1,59 @@
+#version 450
+layout(local_size_x=128) in;
+layout(binding=0,std430) buffer State { float state[]; };
+layout(binding=1,std430) readonly buffer Raw { float raw[]; };
+layout(binding=2,std430) readonly buffer Decay { float decay[]; };
+layout(binding=3,std430) readonly buffer Beta { float beta[]; };
+layout(binding=4,std430) readonly buffer Gate { float gate[]; };
+layout(binding=5,std430) readonly buffer Weights { float weights[]; };
+layout(binding=6,std430) writeonly buffer Output { float output_data[]; };
+layout(binding=7,std430) buffer History { float history[]; };
+layout(push_constant) uniform Params { uint heads; uint kernel; float lower; float eps; } p;
+shared float qkv[384], fade[128], result[128];
+shared float qi,ki,beta_value,post_norm;
+void main() {
+ uint h=gl_WorkGroupID.x,j=gl_LocalInvocationID.x,n=p.heads*128,i=h*128+j;
+ for(uint part=0;part<3;part++) {
+  uint wi=(part*n+i)*p.kernel,hi=(part*n+i)*(p.kernel-1);
+  precise float sum=raw[part*n+i]*weights[wi+p.kernel-1];
+  for(uint k=0;k+1<p.kernel;k++)sum+=history[hi+k]*weights[wi+k];
+  for(uint k=0;k+2<p.kernel;k++)history[hi+k]=history[hi+k+1];
+  if(p.kernel>1)history[hi+p.kernel-2]=raw[part*n+i];
+  qkv[part*128+j]=sum/(1+exp(-sum));
+ }
+ uint bias=3*n*p.kernel,a=bias+n,norm=a+p.heads;
+ float g=p.lower/(1+exp(weights[a+h]*(decay[i]+weights[bias+i])));
+ fade[j]=exp(g);
+ barrier();
+ if(j==0) {
+  precise float qs=1e-6,ks=1e-6;
+  for(uint k=0;k<128;k++){qs+=qkv[k]*qkv[k];ks+=qkv[128+k]*qkv[128+k];}
+  qi=inversesqrt(qs)*inversesqrt(128.0);ki=inversesqrt(ks);
+  beta_value=1/(1+exp(-beta[h]));
+ }
+ barrier();
+ precise float memory=0;
+ for(uint k=0;k<128;k++) {
+  uint address=(h*128+k)*128+j;
+  state[address]*=fade[k];
+  memory+=state[address]*(qkv[128+k]*ki);
+ }
+ float delta=(qkv[256+j]-memory)*beta_value;
+ precise float sum=0;
+ for(uint k=0;k<128;k++) {
+  uint address=(h*128+k)*128+j;
+  float value=state[address]+qkv[128+k]*ki*delta;
+  state[address]=value;
+  sum+=value*qkv[k]*qi;
+ }
+ result[j]=sum;
+ barrier();
+ if(j==0) {
+  precise float energy=0;
+  for(uint k=0;k<128;k++)energy+=result[k]*result[k];
+  post_norm=inversesqrt(energy/128.0+p.eps);
+ }
+ barrier();
+ precise float value=result[j]*post_norm*weights[norm+j]/(1+exp(-gate[i]));
+ output_data[i]=value;
+}

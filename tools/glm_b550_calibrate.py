@@ -14,7 +14,7 @@ import sys
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--source-root', type=pathlib.Path, default=pathlib.Path('/home/syoyo/work/Strata'))
+    ap.add_argument('--source-root', type=pathlib.Path, default=pathlib.Path('~/work/Strata').expanduser())
     ap.add_argument('--decoder', type=pathlib.Path, default=pathlib.Path('build-hip/strata-glm-decode'))
     ap.add_argument('--output', type=pathlib.Path, required=True)
     ap.add_argument('--cases', nargs='+', default=['baseline', 'cache7', 'cache8', 'mtp1', 'mtp2', 'mtp3'])

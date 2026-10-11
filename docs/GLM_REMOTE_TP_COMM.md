@@ -62,8 +62,8 @@ holds only while the remote half plus the round trip finishes before the local h
 
 ## Measured (InfiniBand)
 
-tr16 ↔ b550 over Mellanox ConnectX-3 (mlx4, one port each, subnet manager on b550; IPoIB addresses 10.10.10.2 and
-10.10.10.1 for the bootstrap), `UCOMM_BACKEND=ib` (verbs, RC queue pairs), 2026-10-06, while b550 also ran other builds.
+tr16 ↔ b550 over Mellanox ConnectX-3 (mlx4, one port each, subnet manager on b550; IPoIB addresses <tr16-ib-ip> and
+<b550-ib-ip> for the bootstrap), `UCOMM_BACKEND=ib` (verbs, RC queue pairs), 2026-10-06, while b550 also ran other builds.
 
 | Measurement (`ucomm_bench -b ib`) | Result |
 |---|---|
@@ -108,10 +108,10 @@ when the worker binary is also copied to its tmpfs (`SHIP_WORKER`, below).
 ```sh
 # tr16 (decoder) + b550 (worker) over InfiniBand; the worker binary is copied to b550's /dev/shm
 SHIP_WORKER=build-glm/strata-glm-tp-worker WORKER_ENV=STRATA_POOL_SPIN_US=20000 \
-tools/glm_remote_tp.sh b550 /dev/shm/strata-glm-tp-worker 10.10.10.2:29611 --weights-dir=/dev/shm -- \
+tools/glm_remote_tp.sh b550 /dev/shm/strata-glm-tp-worker <tr16-ib-ip>:29611 --weights-dir=/dev/shm -- \
   build-glm/strata-glm-decode MODEL @prompt.ids 256 4096 15 --expert-pack=PACK --cpu-affinity=numa \
   --decode-graphs --remote-tp-share=0.75 --remote-tp-reply=f32
-# serving: the config's "env" takes STRATA_GLM_REMOTE_TP=10.10.10.2:PORT, STRATA_GLM_REMOTE_TP_SHARE,
+# serving: the config's "env" takes STRATA_GLM_REMOTE_TP=<tr16-ib-ip>:PORT, STRATA_GLM_REMOTE_TP_SHARE,
 # STRATA_GLM_REMOTE_TP_REPLY; start the worker on the other host separately.
 ```
 
@@ -192,13 +192,13 @@ stays unless the NIC is tuned (interrupt coalescing off, busy polling) or replac
 
 ```sh
 # round trips (both hosts built from tools/ucomm)
-b550$ build/ucomm_bench -r 1 -w 2 -a 192.168.100.22:29700 -p 4800:8192 -n 3000
-tr16$ build/ucomm_bench -r 0 -w 2 -a 192.168.100.22:29700 -p 4800:8192 -n 3000
+b550$ build/ucomm_bench -r 1 -w 2 -a <tr16-lan-ip>:29700 -p 4800:8192 -n 3000
+tr16$ build/ucomm_bench -r 0 -w 2 -a <tr16-lan-ip>:29700 -p 4800:8192 -n 3000
 
 # decoder with communication only
-b550$ ./strata-glm-tp-worker --root 192.168.100.22:29600 --pool-gib=1 --null-compute
+b550$ ./strata-glm-tp-worker --root <tr16-lan-ip>:29600 --pool-gib=1 --null-compute
 tr16$ build-glm/strata-glm-decode MODEL 154822,154824,154828,154841,9703,220,108714,100461 64 4096 15 \
         --prefill-batch=2048 --context=8192 --gpu-budget-mib=12288 --decode-experts=cpu --decode-bench=3 \
-        --cpu-affinity=auto --warm-weights --remote-tp=192.168.100.22:29600 \
+        --cpu-affinity=auto --warm-weights --remote-tp=<tr16-lan-ip>:29600 \
         --remote-tp-weights=dummy   # dummy rows: nothing is streamed; prints REMOTE_TP wait_ms_per_call
 ```

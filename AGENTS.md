@@ -17,6 +17,13 @@ offers the same steps as tools.
 - How the engine works, every measured number, the API and all settings: [docs/DETAILS.md](docs/DETAILS.md) and
   the [paper](docs/paper/Strata-Paper.pdf).
 - AMD (HIP) build and validation: [docs/AMD_HIP.md](docs/AMD_HIP.md); multi-GPU: [docs/MULTI_GPU.md](docs/MULTI_GPU.md).
+- Rules that more than one program must agree on - the tensor names, the assembled expert pack's checks - live
+  in C11 under `src/host/` and `include/strata/host/`, linked as `strata_host`. Change the rule there, not in a
+  caller: the assembler that writes an assembled GGUF and the loader that reads it both call it. Their tests
+  (`ctest -L '^glm$'`, `glm_names_test`, `glm_env_test`, `glm_expert_pack_test`) need no GPU and no model.
+- The engine's environment switches are read through `glm_env.h` (`strata_env_truthy_*` and friends), one
+  helper per truthiness shape the knobs already used. Do not "simplify" a shape: `STRATA_LFUSE=2` is off and
+  `STRATA_FUSE_HEAD_GR=2` is on, and both are what they have always done.
 - Setup's own tests run without a GPU or downloads: `python tools/test_setup_<name>.py` (for example
   `tools/test_setup_amd.py`, `tools/test_setup_choices.py`).
 - Keep the docs' style: plain words, measured numbers with what they were measured on, no claims without a

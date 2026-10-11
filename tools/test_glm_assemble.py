@@ -17,7 +17,7 @@ def fnv(data):
     return value
 
 
-def write_gguf(path, metadata, tensors):
+def write_gguf(path, metadata, tensors, pad_header=True):
     writer = GGUFWriter()
     header = struct.pack('<IIQQ', 0x46554747, 3, len(tensors), len(metadata))
     for key, (kind, value) in metadata.items():
@@ -28,7 +28,7 @@ def write_gguf(path, metadata, tensors):
         header += struct.pack('<Q', len(encoded)) + encoded + struct.pack('<I', len(shape))
         header += struct.pack(f'<{len(shape)}Q', *shape) + struct.pack('<IQ', kind, len(payload))
         payload += data + bytes(-len(data) % 32)
-    path.write_bytes(header + bytes(-len(header) % 32) + payload)
+    path.write_bytes(header + (bytes(-len(header) % 32) if pad_header else b'') + payload)
 
 
 def model_metadata():
@@ -58,15 +58,27 @@ class AssemblyTest(unittest.TestCase):
     def setUpClass(cls):
         cls.work = tempfile.TemporaryDirectory()
         directory = pathlib.Path(cls.work.name)
+        # The loader and the assembler call the host checks written in C11 (src/host), so a build that does not
+        # go through CMake compiles that unit next to them.
+        host = [str(ROOT / 'src/host/glm_expert_pack.c'), str(ROOT / 'src/host/glm_names.c')]
         cls.assembler = directory / 'assemble'
         subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'),
-                        str(ROOT / 'tools/glm_assemble.cpp'), '-o', str(cls.assembler)], check=True)
+                        str(ROOT / 'tools/glm_assemble.cpp')] + host + ['-o', str(cls.assembler)], check=True)
         helper = directory / 'fingerprint.cpp'
         helper.write_text('#include "strata/core/model.hpp"\n#include <iostream>\n'
                           'int main(int argc,char** argv){std::cout<<strata::core::ModelArtifact(argv[1]).source_fingerprint();}')
         cls.fingerprint = directory / 'fingerprint'
         subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'), str(helper),
-                        '-o', str(cls.fingerprint)], check=True)
+                        '-o', str(cls.fingerprint)] + host, check=True)
+        # Loads an assembled file through the loader's validation and prints the retained-projection count it accepted.
+        census = directory / 'census.cpp'
+        census.write_text('#include "strata/core/model.hpp"\n#include <iostream>\n'
+                          'int main(int argc,char** argv){try{strata::core::ModelArtifact m(argv[1]);'
+                          'const auto* r=m.tensors().begin()->second.file->get("strata.expert_pack.retained");'
+                          'std::cout<<(r?r->u:0);return 0;}catch(const std::exception& e){std::cerr<<e.what();return 1;}}')
+        cls.census = directory / 'census'
+        subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'), str(census)] + host +
+                       ['-o', str(cls.census)], check=True)
         helper = directory / 'overlay.cpp'
         helper.write_text('''#include "strata/core/model.hpp"
 #include <iostream>
@@ -85,7 +97,7 @@ int main(int argc,char** argv){try {
 ''')
         cls.overlay = directory / 'overlay'
         subprocess.run(['c++', '-O2', '-std=c++20', '-I' + str(ROOT / 'include'), str(helper),
-                        '-o', str(cls.overlay)], check=True)
+                        '-o', str(cls.overlay)] + host, check=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -110,6 +122,11 @@ int main(int argc,char** argv){try {
         self.pack_meta = {'strata.expert_pack.version': ('u32', 1), 'strata.expert_pack.source': ('u64', source)}
         self.pack_meta.update({'strata.expert_pack.hash.' + t[0]: ('u64', fnv(t[3])) for t in self.converted})
         write_gguf(self.pack, self.pack_meta, self.converted)
+
+    def partial_pack_meta(self, skip):
+        """Pack metadata for a pack that omits the first `skip` converted projections (a real pack hashes only its tensors)."""
+        omitted = {'strata.expert_pack.hash.' + t[0] for t in self.converted[:skip]}
+        return {k: v for k, v in self.pack_meta.items() if k not in omitted}
 
     def run_assembly(self):
         return subprocess.run([self.assembler, self.base, self.pack, self.output], capture_output=True, text=True)
@@ -145,10 +162,73 @@ int main(int argc,char** argv){try {
         self.assertIn('payload checksum mismatch', self.run_assembly().stderr)
         self.assertFalse(self.output.exists())
 
-    def test_incomplete_pack(self):
-        write_gguf(self.pack, self.pack_meta, self.converted[3:])
-        self.assertIn('incomplete assembled Q23 experts', self.run_assembly().stderr)
-        self.assertFalse(self.output.exists())
+    def test_retained_projections(self):
+        # A pack that leaves one layer's projections in their original (K-quant) format: the assembly copies them as
+        # they are and records the count, and the assembled file loads with retained == 3.
+        write_gguf(self.pack, self.partial_pack_meta(3), self.converted[3:])
+        result = self.run_assembly()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('retained_original_projections=3', result.stdout)
+        model = GGUFFile(self.output)
+        self.assertEqual(model.metadata['strata.expert_pack.retained'], 3)
+        kept = {t[0]: t for t in self.original[:3]}
+        with self.output.open('rb') as stream:
+            for tensor in model.tensors:
+                if tensor.name in kept:
+                    self.assertEqual(tensor.type_id, 12)
+                    stream.seek(model.data_start + tensor.offset)
+                    self.assertEqual(stream.read(tensor.expected_bytes()), kept[tensor.name][3])
+        self.assertEqual(int(subprocess.check_output([self.census, self.output])), 3)
+
+    def test_retained_count_is_enforced(self):
+        # Changing the recorded retained count of an assembly with original-format projections is rejected by the loader.
+        write_gguf(self.pack, self.partial_pack_meta(3), self.converted[3:])
+        self.assertEqual(self.run_assembly().returncode, 0)
+        data = bytearray(self.output.read_bytes())
+        key = b'strata.expert_pack.retained'
+        at = data.index(key) + len(key)
+        self.assertEqual(struct.unpack_from('<II', data, at), (4, 3))   # u32 type, value 3
+        struct.pack_into('<I', data, at + 4, 2)
+        patched = self.directory / 'patched.gguf'
+        patched.write_bytes(data)
+        result = subprocess.run([self.census, patched], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('retained-projection count mismatch', result.stderr)
+
+    def test_metadata_only_first_shard(self):
+        # Unsloth's first shard has KV metadata only and no tensors (its file ends before the aligned data offset).
+        shards = [self.directory / f'meta-0000{i}-of-00003.gguf' for i in (1, 2, 3)]
+        half = len(self.original) // 2
+        total = len(self.original) + 1
+        for i, (path, tensors) in enumerate(zip(shards, ([], self.original[:half], self.original[half:] + [self.fixed]))):
+            meta = dict(self.metadata)
+            meta.update({'split.no': ('u16', i), 'split.count': ('u16', 3), 'split.tensors.count': ('i32', total)})
+            write_gguf(path, meta, tensors, pad_header=bool(tensors))   # the metadata shard ends unpadded
+        source = int(subprocess.check_output([self.fingerprint, shards[0]]))
+        self.pack_meta['strata.expert_pack.source'] = ('u64', source)
+        write_gguf(self.pack, self.pack_meta, self.converted)
+        result = subprocess.run([self.assembler, shards[0], self.pack, self.output], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(GGUFFile(self.output).tensors), total)
+
+    def test_split_base(self):
+        # The base may be a split GGUF: the shards are read through the shard-aware artifact and split.* keys are dropped.
+        half = len(self.original) // 2
+        shards = [self.directory / f'split-0000{i}-of-00002.gguf' for i in (1, 2)]
+        total = len(self.original) + 1
+        for i, (path, tensors) in enumerate(zip(shards, (self.original[:half], self.original[half:] + [self.fixed]))):
+            meta = dict(self.metadata)
+            meta.update({'split.no': ('u16', i), 'split.count': ('u16', 2), 'split.tensors.count': ('i32', total)})
+            write_gguf(path, meta, tensors)
+        source = int(subprocess.check_output([self.fingerprint, shards[0]]))
+        self.pack_meta['strata.expert_pack.source'] = ('u64', source)
+        write_gguf(self.pack, self.pack_meta, self.converted)
+        result = subprocess.run([self.assembler, shards[0], self.pack, self.output], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        model = GGUFFile(self.output)
+        self.assertFalse([k for k in model.metadata if k.startswith('split.')])
+        self.assertEqual(len(model.tensors), total)
+        self.assertEqual(int(subprocess.check_output([self.census, self.output])), 0)
 
     def make_q22_sidecar(self):
         result = self.run_assembly()

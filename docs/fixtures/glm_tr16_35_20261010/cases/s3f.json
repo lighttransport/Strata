@@ -1,0 +1,21 @@
+[
+ {
+  "name": "h1-aff014-topk6-unbiased-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.14",
+   "STRATA_GLM_TIER_LEARN_UNBIASED": "1"
+  },
+  "note": "loss-reduction idea"
+ },
+ {
+  "name": "h2-late-topk6-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-late.json"
+  },
+  "note": "late-layer profile 0.06/0.12/0.20"
+ }
+]

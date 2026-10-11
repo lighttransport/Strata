@@ -1,0 +1,15 @@
+{
+  "status": "prepared_not_built",
+  "base": "gpu-cache-v2-source",
+  "files": [
+    "CMakeLists.txt",
+    "src/kernels/cuda/glm.cu",
+    "src/kernels/glm_route_prune_test.cpp"
+  ],
+  "sha256": {
+    "CMakeLists.txt": "92afebebc1908567706ae5ec5bee4ad81c6b9fcb47e1b6532ee5dff4a99b2b74",
+    "src/kernels/cuda/glm.cu": "5c19aba585f40941c99aebf0be4eba9576364549727c928a745fb16a3ea335f5",
+    "src/kernels/glm_route_prune_test.cpp": "2bb750bc442145d1c4e98e8480f2c0c07f1683cc8e06931a285eb64def1a4b4f"
+  },
+  "scope": "Fixed target cache with positive residency affinity only; preserve positive-bonus routes and all null-bonus routing including draft; default off"
+}

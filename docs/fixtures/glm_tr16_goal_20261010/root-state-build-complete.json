@@ -1,0 +1,11 @@
+{
+  "cuda_parities_passed": true,
+  "hip_build_passed": true,
+  "time": 1791585909.1557152,
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-cuda/strata-glm-decode": "9b8b2c6d5c4683adf9238293d06d275126bc103cf44c05cf17e95c4c1c6da2fb",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-hip/strata-glm-decode": "031a674c3c0b7867e7f5e6e296925d54657f51f0623e51bbd16740ba2760fb96",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state.patch": "aa2e2f4017db166be68140b2b13e039108912e12ebce74188818191b2f04e585",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/ggml-reference-manifest.json": "d7c55d4f49c64f1eeb89f5df0f71c703244523529b688d61eb3d7287e146aef4"
+  }
+}

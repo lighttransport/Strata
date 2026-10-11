@@ -1,0 +1,816 @@
+{
+  "date": "2026-10-11",
+  "hardware": {
+    "boot_id": "025ed0f5-fc0e-41d5-9749-0263f428007a",
+    "board": "X570S AERO G",
+    "rocm": "10.1.0",
+    "hipcc": "HIP version: 7.16.26385-0000000\nAMD clang version 24.0.0git (https://github.com/ROCm/llvm-project.git d6f6cb691863e9258034ab48c1dfce21689d5606)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/core-10.1/lib/llvm/bin\nConfiguration file: /opt/rocm/core-10.1/lib/llvm/bin/clang++.cfg\n",
+    "cpu_mode": "ECO (user reported)",
+    "ram_mt_s": 2933,
+    "cpu_policy": {
+      "scaling_driver": "amd-pstate-epp",
+      "scaling_governor": "powersave",
+      "energy_performance_preference": "balance_performance"
+    },
+    "memory": "               total        used        free      shared  buff/cache   available\nMem:            62Gi       6.5Gi        54Gi       2.8Mi       2.1Gi        56Gi\nSwap:          4.0Gi          0B       4.0Gi\n",
+    "exe_sha256": "807d57b877e18a4f72d9fed639b93f50cc7af38615b435a72608b067ba2fde82",
+    "kernel": "7.0.0-38-generic",
+    "amdgpu_version": "7.1.9.31600000",
+    "host_gpu_link": {
+      "speed": "16.0 GT/s PCIe",
+      "width": "16"
+    },
+    "ram_speed_source": "user confirmed; SMBIOS unavailable without sudo password"
+  },
+  "source_commit": "dfc9528239e39b977edaad08b89c0dea2c717937",
+  "build": {
+    "fresh_build_directory": "build-hip-rocm10.1",
+    "headers": "/opt/rocm/core-10.1/include",
+    "compiler": "/opt/rocm/core-10.1/lib/llvm/bin/clang++",
+    "libraries": "/opt/rocm/core-10.1/lib; verified with ldd",
+    "ggml_commit": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+    "targets": "decoder and eight relevant HIP GPU tests; separate draft server rebuilt with ROCm 10.1",
+    "draft_server_sha256": "6e4fb4d74b9272cc65be575aafe33e930261f82552849a4d25daae0c4a2d7133",
+    "draft_server_native_flag": "GGML_NATIVE=OFF, explicit AVX2/FMA; previous server GGML_NATIVE=ON. GPU target and pinned source unchanged."
+  },
+  "system_precheck": {
+    "passed": true,
+    "cpu_read_GB_s": 42.5959,
+    "cpu_compute": [
+      {
+        "kernel": "dependent_fma",
+        "threads": 1,
+        "iterations": 1000000,
+        "median_seconds": 0.0012119,
+        "best_seconds": 0.00121061,
+        "worst_seconds": 0.00121909,
+        "GFLOP_s": 1.6503,
+        "timed_repeats": 7,
+        "warmups": 1,
+        "chain_ns_per_fma": 1.211898,
+        "verified": true
+      },
+      {
+        "kernel": "avx2_fma_throughput",
+        "threads": 1,
+        "iterations": 1000000,
+        "median_seconds": 0.0034345,
+        "best_seconds": 0.00342634,
+        "worst_seconds": 0.00344048,
+        "GFLOP_s": 37.2689,
+        "timed_repeats": 7,
+        "warmups": 1,
+        "verified": true
+      },
+      {
+        "kernel": "dependent_fma",
+        "threads": 4,
+        "iterations": 1000000,
+        "median_seconds": 0.00123271,
+        "best_seconds": 0.00122963,
+        "worst_seconds": 0.00124658,
+        "GFLOP_s": 6.48978,
+        "timed_repeats": 7,
+        "warmups": 1,
+        "chain_ns_per_fma": 1.232708,
+        "verified": true
+      },
+      {
+        "kernel": "avx2_fma_throughput",
+        "threads": 4,
+        "iterations": 1000000,
+        "median_seconds": 0.00345314,
+        "best_seconds": 0.00344839,
+        "worst_seconds": 0.00356505,
+        "GFLOP_s": 148.271,
+        "timed_repeats": 7,
+        "warmups": 1,
+        "verified": true
+      },
+      {
+        "kernel": "dependent_fma",
+        "threads": 16,
+        "iterations": 1000000,
+        "median_seconds": 0.00125164,
+        "best_seconds": 0.00124661,
+        "worst_seconds": 0.00126463,
+        "GFLOP_s": 25.5664,
+        "timed_repeats": 7,
+        "warmups": 1,
+        "chain_ns_per_fma": 1.251644,
+        "verified": true
+      },
+      {
+        "kernel": "avx2_fma_throughput",
+        "threads": 16,
+        "iterations": 1000000,
+        "median_seconds": 0.00543142,
+        "best_seconds": 0.00389003,
+        "worst_seconds": 0.00644215,
+        "GFLOP_s": 377.065,
+        "timed_repeats": 7,
+        "warmups": 1,
+        "verified": true
+      }
+    ],
+    "gpu": {
+      "passed": true,
+      "returncode": 0,
+      "termination_reason": null,
+      "kernel_log_checked": true,
+      "pci_before": {
+        "0000:0e:00.0": "02105075"
+      },
+      "pci_links_after": {
+        "0000:0e:00.0": {
+          "speed": "32.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:0d:00.0": {
+          "speed": "32.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:0c:00.0": {
+          "speed": "16.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:00:03.1": {
+          "speed": "16.0 GT/s PCIe",
+          "width": "16"
+        }
+      },
+      "measurements": [
+        {
+          "backend": "hip",
+          "device": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "buffer_bytes": 268435456,
+          "gemm_n": 2048,
+          "free_vram_bytes": 17024679936
+        },
+        {
+          "kernel": "pcie_pinned_h2d",
+          "unit": "GB/s",
+          "median": 28.3107,
+          "best": 28.3171,
+          "worst": 27.9926,
+          "median_ms": 9.48177,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "pcie_pinned_d2h",
+          "unit": "GB/s",
+          "median": 28.0826,
+          "best": 28.0879,
+          "worst": 27.9318,
+          "median_ms": 9.55877,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "gpu_stream_copy",
+          "unit": "GB/s",
+          "median": 472.625,
+          "best": 474.824,
+          "worst": 471.898,
+          "median_ms": 1.13593,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "transfer_and_copy_verified": true
+        },
+        {
+          "kernel": "gpu_sgemm_fp32",
+          "unit": "GFLOP/s",
+          "median": 7868.99,
+          "best": 7964.8,
+          "worst": 7731.69,
+          "median_ms": 2.18324,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "gemm_verified": true,
+          "passed": true
+        }
+      ],
+      "wall_seconds": 2.063987709999992
+    },
+    "disk": {
+      "passed": true,
+      "mode": "sequential_direct_read",
+      "file_bytes": 63205406688,
+      "bytes_per_repeat": 1073741824,
+      "block_bytes": 8388608,
+      "repeats": 3,
+      "offset": 0,
+      "page_cache_bypassed": true,
+      "device_cache_bypassed": false,
+      "repeated_data_verified": true,
+      "median_read_GB_s": 1.6102954884665976,
+      "median_wall_GB_s": 0.8984650056787907,
+      "samples": [
+        {
+          "repeat": 0,
+          "bytes": 1073741824,
+          "read_seconds": 0.6683496640001749,
+          "wall_seconds": 1.1950847470000099,
+          "read_GB_s": 1.6065569893063025,
+          "wall_GB_s": 0.8984650056787907,
+          "sha256": "396dddf2462f24e44e359db2ba1c31238d6efec52a42527b1caa1eadb75e3ed2"
+        },
+        {
+          "repeat": 1,
+          "bytes": 1073741824,
+          "read_seconds": 0.6663902030011286,
+          "wall_seconds": 1.1806848119999813,
+          "read_GB_s": 1.611280926946913,
+          "wall_GB_s": 0.9094229154867938,
+          "sha256": "396dddf2462f24e44e359db2ba1c31238d6efec52a42527b1caa1eadb75e3ed2"
+        },
+        {
+          "repeat": 2,
+          "bytes": 1073741824,
+          "read_seconds": 0.6667980079994322,
+          "wall_seconds": 1.1954029670000637,
+          "read_GB_s": 1.6102954884665976,
+          "wall_GB_s": 0.8982258314906315,
+          "sha256": "396dddf2462f24e44e359db2ba1c31238d6efec52a42527b1caa1eadb75e3ed2"
+        }
+      ]
+    },
+    "source_sha256": {
+      "system_check.py": "df254a1a9dcc637db869ef1270f2c08b413cb45e11e4fd07cad23a05150298c2",
+      "memory_check.py": "2c6fb12dd6e2c5448896e8818ee192b4aaee4b4f151691d6d06f0d18183868b4",
+      "bandwidth.cpp": "a72e88ed82fd848d9a411b66d2461e41daad12804389ed0b0370ccf9614a79a4",
+      "cpu_compute.cpp": "de1d59e3b131b315fef07e73929e0e0b684c96e04ca30399e05503d1d5d4f857",
+      "gpu_check.cu": "b620fb41c6fe7c1632520fcc052f0f1b91ab251f624cb4862be92ec140d15297",
+      "disk_read.py": "45ec06b118ea9b9f770d35804e340aa5152820fd3190de3781967915ed6bf494"
+    }
+  },
+  "gpu_repeats": [
+    {
+      "passed": true,
+      "returncode": 0,
+      "termination_reason": null,
+      "kernel_log_checked": true,
+      "pci_before": {
+        "0000:0e:00.0": "02105075"
+      },
+      "pci_links_after": {
+        "0000:0e:00.0": {
+          "speed": "32.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:0d:00.0": {
+          "speed": "32.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:0c:00.0": {
+          "speed": "16.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:00:03.1": {
+          "speed": "16.0 GT/s PCIe",
+          "width": "16"
+        }
+      },
+      "measurements": [
+        {
+          "backend": "hip",
+          "device": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "buffer_bytes": 268435456,
+          "gemm_n": 2048,
+          "free_vram_bytes": 17024679936
+        },
+        {
+          "kernel": "pcie_pinned_h2d",
+          "unit": "GB/s",
+          "median": 28.3169,
+          "best": 28.3179,
+          "worst": 28.3148,
+          "median_ms": 9.47967,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "pcie_pinned_d2h",
+          "unit": "GB/s",
+          "median": 28.0858,
+          "best": 28.0933,
+          "worst": 28.0819,
+          "median_ms": 9.55771,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "gpu_stream_copy",
+          "unit": "GB/s",
+          "median": 475.994,
+          "best": 476.332,
+          "worst": 474.954,
+          "median_ms": 1.12789,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "transfer_and_copy_verified": true
+        },
+        {
+          "kernel": "gpu_sgemm_fp32",
+          "unit": "GFLOP/s",
+          "median": 13686.9,
+          "best": 16096.5,
+          "worst": 13186.7,
+          "median_ms": 1.25521,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "gemm_verified": true,
+          "passed": true
+        }
+      ],
+      "wall_seconds": 1.8074482659999376
+    },
+    {
+      "passed": true,
+      "returncode": 0,
+      "termination_reason": null,
+      "kernel_log_checked": true,
+      "pci_before": {
+        "0000:0e:00.0": "02105075"
+      },
+      "pci_links_after": {
+        "0000:0e:00.0": {
+          "speed": "32.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:0d:00.0": {
+          "speed": "32.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:0c:00.0": {
+          "speed": "16.0 GT/s PCIe",
+          "width": "16"
+        },
+        "0000:00:03.1": {
+          "speed": "16.0 GT/s PCIe",
+          "width": "16"
+        }
+      },
+      "measurements": [
+        {
+          "backend": "hip",
+          "device": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "buffer_bytes": 268435456,
+          "gemm_n": 2048,
+          "free_vram_bytes": 17024679936
+        },
+        {
+          "kernel": "pcie_pinned_h2d",
+          "unit": "GB/s",
+          "median": 28.317,
+          "best": 28.3175,
+          "worst": 28.316,
+          "median_ms": 9.47964,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "pcie_pinned_d2h",
+          "unit": "GB/s",
+          "median": 28.0842,
+          "best": 28.0955,
+          "worst": 28.0828,
+          "median_ms": 9.55823,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "gpu_stream_copy",
+          "unit": "GB/s",
+          "median": 475.821,
+          "best": 476.996,
+          "worst": 475.084,
+          "median_ms": 1.1283,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "transfer_and_copy_verified": true
+        },
+        {
+          "kernel": "gpu_sgemm_fp32",
+          "unit": "GFLOP/s",
+          "median": 13717.5,
+          "best": 16349,
+          "worst": 13441.6,
+          "median_ms": 1.25241,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "gemm_verified": true,
+          "passed": true
+        }
+      ],
+      "wall_seconds": 1.8059531310000239
+    }
+  ],
+  "gpu_gemm_interpretation": "Initial 7.86899 TFLOP/s; repeats 13.6869 and 13.7175. Initial low result not reproduced. No measured root cause or persistent regression established.",
+  "gpu_tests": [
+    {
+      "test": "glm_parity",
+      "argv": [
+        "glm_parity"
+      ],
+      "executable_sha256": "880aa4e8a9f081efffdae6a2f6a33e6075586cec1acd16361f65846c4046288f",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 0.5138436099999808,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    },
+    {
+      "test": "glm_q8_test",
+      "argv": [
+        "glm_q8_test"
+      ],
+      "executable_sha256": "89a55604a0a1ffd3c708ee3b91695dae9acf6852f683e9a8e435ee3e370e508d",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 1.5281749839999748,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    },
+    {
+      "test": "glm_q23_parity",
+      "argv": [
+        "glm_q23_parity"
+      ],
+      "executable_sha256": "4d1279c3654a42bb6a5883e39fb6a9de5764825e5539a4920fd1f0c33784d436",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 2.036685999000042,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    },
+    {
+      "test": "mmvq_multi_parity",
+      "argv": [
+        "mmvq_multi_parity"
+      ],
+      "executable_sha256": "460049aa12138a6ea254bb94e28dc3adb478a96060a62018ec8163633580614d",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 1.0207097119999844,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    },
+    {
+      "test": "glm_prefill_parity",
+      "argv": [
+        "glm_prefill_parity"
+      ],
+      "executable_sha256": "08eb9e47ffc6e505c3059308702244d91f6742af32e2ef823b7b0b360b4c0198",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 8.12188897100009,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    },
+    {
+      "test": "glm_kda_column_tiles_parity",
+      "argv": [
+        "glm_kda_column_tiles_parity"
+      ],
+      "executable_sha256": "0a190c48c837f1961f94c1118d9b37b2ba51821543a76297f17e983e1b3a105c",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 1.0206767689999197,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    },
+    {
+      "test": "glm_bf16_prefill_test",
+      "argv": [
+        "glm_bf16_prefill_test",
+        "--wmma",
+        "--production-shapes"
+      ],
+      "executable_sha256": "f55c53406b783515c01a401bbd0db33e66d73969642d990941594bee68b507c1",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 4.0619749019999745,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    },
+    {
+      "test": "hip_prefill_mmq_parity",
+      "argv": [
+        "hip_prefill_mmq_parity"
+      ],
+      "executable_sha256": "426e3b6588a703605327663119405aa598116e52706cd6c6a454cb3195c3f98c",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 1.0214797260000523,
+      "reason": null,
+      "faults": [],
+      "pci_after": "02105075"
+    }
+  ],
+  "model_runs": [
+    {
+      "mode": "rocm10-greedy",
+      "boot_id": "025ed0f5-fc0e-41d5-9749-0263f428007a",
+      "executable_sha256": "807d57b877e18a4f72d9fed639b93f50cc7af38615b435a72608b067ba2fde82",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 76.54764000199998,
+      "reason": null,
+      "faults": [],
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "output_sha256": "91369f8f4cef04ffd87d1c5d6cb602ce25165e2b4541dda8de90c4f74f6c1505",
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 62531.4,
+            "tokens_per_second": 32.7516
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 3762.1,
+            "tokens_per_second": 33.7577
+          }
+        ],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 885.491,
+            "bytes": 33005371392
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": [],
+        "step_trace": [],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 900,
+            "MiB": 7087.5,
+            "fingerprint": 4436433191900936734
+          }
+        ],
+        "speculation": [],
+        "affinity_quality": [],
+        "lookup_parity": [],
+        "median_prefill_tok_s": 32.7516,
+        "median_decode_tok_s": 33.7577,
+        "peak_allocated_gpu_mib": 12466.0,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 7162.76,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 138880,
+            "minor": 869130
+          }
+        ]
+      },
+      "interference": [],
+      "minimum_gpu_free_mib": 2701,
+      "output_matches_greedy_control": false,
+      "pci_after": "02105075",
+      "output_token_count": 128,
+      "peak_cgroup_bytes": 51173511168,
+      "oom_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "old_control_comparison_caveat": "Runner comparison uses previous ROCm 7.14 pipeline control; compare new pair separately."
+    },
+    {
+      "mode": "rocm10-external",
+      "boot_id": "025ed0f5-fc0e-41d5-9749-0263f428007a",
+      "executable_sha256": "807d57b877e18a4f72d9fed639b93f50cc7af38615b435a72608b067ba2fde82",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 79.567434564,
+      "reason": null,
+      "faults": [],
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "output_sha256": "91369f8f4cef04ffd87d1c5d6cb602ce25165e2b4541dda8de90c4f74f6c1505",
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 62708.3,
+            "tokens_per_second": 32.6591
+          }
+        ],
+        "decode": [
+          {
+            "kind": "external",
+            "tokens": 128,
+            "milliseconds": 5106.57,
+            "tokens_per_second": 24.8699
+          }
+        ],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 894.918,
+            "bytes": 33005371392
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [
+          {
+            "index": 0,
+            "proposed": 48,
+            "opportunities": 48,
+            "accepted": 42
+          },
+          {
+            "index": 1,
+            "proposed": 48,
+            "opportunities": 42,
+            "accepted": 37
+          }
+        ],
+        "draft_timing": [
+          {
+            "prepare_ms": 0,
+            "draft_ms": 1324.21,
+            "verify_ms": 3751.23,
+            "restore_ms": 0,
+            "proposal_calls": 48
+          }
+        ],
+        "external_prepare": [
+          {
+            "ms": 2491.98
+          }
+        ],
+        "external_ready": [
+          {
+            "vram_mib": 744.727
+          }
+        ],
+        "external_verification": [
+          "sequential"
+        ],
+        "step_trace": [],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 900,
+            "MiB": 7087.5,
+            "fingerprint": 4436433191900936734
+          }
+        ],
+        "speculation": [
+          {
+            "generated": 128,
+            "rounds": 48,
+            "proposed": 96,
+            "accepted": 79,
+            "replayed": 0,
+            "ms": 5106.57,
+            "tok_s": 24.8699
+          }
+        ],
+        "affinity_quality": [],
+        "lookup_parity": [],
+        "median_prefill_tok_s": 32.6591,
+        "median_decode_tok_s": 24.8699,
+        "peak_allocated_gpu_mib": 12466.0,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 7162.76,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 137960,
+            "minor": 836484
+          }
+        ]
+      },
+      "interference": [],
+      "minimum_gpu_free_mib": 1961,
+      "output_matches_greedy_control": false,
+      "pci_after": "02105075",
+      "output_token_count": 128,
+      "peak_cgroup_bytes": 52040564736,
+      "oom_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "old_control_comparison_caveat": "Runner comparison uses previous ROCm 7.14 pipeline control; compare new pair separately."
+    }
+  ],
+  "model_protocol": "One matched pair, 2048 prompt tokens / 128 output, 900 cache slots, CPU pipeline enabled, sequential external verification, 60 GiB RAM / zero swap.",
+  "new_pair_outputs_equal": true,
+  "cross_version_output_difference": {
+    "first_differing_zero_based_token": 32,
+    "same_position_different_tokens": 96,
+    "tokens_each": 128,
+    "quality_evaluated": false
+  },
+  "qualification": "Power mode, amdgpu driver, compiler, libraries and draft-server build changed. RAM remains user-confirmed 2933 MT/s. Not an isolated ROCm comparison; one model timing per mode and changed generated continuation. All measured checks completed without logged GPU faults; not a long-duration stability certification."
+}

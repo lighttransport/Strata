@@ -1,0 +1,17 @@
+{
+  "cuda_parities_passed": true,
+  "hip_build_passed": true,
+  "q3_il_parity_passed": true,
+  "q3_il_default_inactive": true,
+  "model_controls_passed": false,
+  "quality_qualified": false,
+  "time": 1791590859.3815582,
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode": "47ddc27ef344ab39717f5c0b9fe5ecaf3cba7256d6de44274d39e18de2f0ae2b",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-hip/strata-glm-decode": "874d5d865c407fbb4d8e3b3338e638137ccb7502f8142fb709791aca80e99e32",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2.patch": "d4e11c442413d3f21d12bba74c409cc76764ac870bf968bc69b48efd3932f4d2",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/ggml-reference-manifest.json": "d7c55d4f49c64f1eeb89f5df0f71c703244523529b688d61eb3d7287e146aef4",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-il-prepared.json": "36ba8cf3fa4b67a6acb4d34cba9b0857903b9e0aaaf5702d31c54e9b2e24c679",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-il-parity-bench.log": "27dcc460ad4d30d38c3e70cae8e7eb0a5faf3bd690a8d43ad06edad2bde33d98"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "scope": "128-token diagnostic only; absence of short repetition does not qualify task quality or long continuation",
+  "tokens_sha256": "430366c8fa95726aee8f38ce975a304520e40e7bc1963661aded3ee7e02aed69",
+  "quality_qualified": false,
+  "manual_review_pending": true,
+  "trials": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "text": "We need to review the benchmark. It's a truncated excerpt, but we should identify concrete bugs. Let me analyze the visible code.\n\nKey issues:\n\n1. `gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 truncated signature with `_output=True` and body referencing `args.output` \u2014 clearly a corrupted/truncated function; body belongs to a different function (launcher). Also `_output=True` unused. This is a bug: signature mismatch, body uses undefined `args`, `completed`, `unit`. Patch: restore proper signature and body.\n\n2. `cache_bytes`: mmap with PROT_READ (1",
+      "distinct_fourgram_fraction": 0.992
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "text": "We need to review the benchmark code. It's a partial excerpt with an obvious syntax error: `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 truncated/malformed. Also `main` referenced but not defined. Let's identify concrete bugs:\n\n1. `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon and body; syntax error at parse time. Actually the excerpt shows `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` followed directly by code that belongs to a launcher function (args.output...). So",
+      "distinct_fourgram_fraction": 0.752
+    }
+  ]
+}

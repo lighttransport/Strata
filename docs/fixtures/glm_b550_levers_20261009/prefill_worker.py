@@ -1,7 +1,7 @@
 """Use the existing memory/GPU guard for prefill with one precomputed token, zero decode steps."""
 import argparse, json, sys
 from pathlib import Path
-ROOT=Path('/home/syoyo/work/Strata-b550-calibration-15b787b5')
+ROOT=Path('~/work/Strata-b550-calibration-15b787b5')
 sys.path.insert(0,str(ROOT/'tools'))
 import glm_low_memory_bench as guard
 

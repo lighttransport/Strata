@@ -1,0 +1,29 @@
+{
+  "01-q4-control": {
+    "tokens": 128,
+    "rounds": 71,
+    "proposed": 71,
+    "accepted": 56,
+    "decode_tok_s": 25.6458,
+    "draft_ms": 344.883,
+    "verify_ms": 4457.9,
+    "verify_ms_per_round": 62.78732394366197,
+    "cache_slots": 734,
+    "cache_mib": 6376.62,
+    "configured_cache_mib": 6656
+  },
+  "03-q3-aff08": {
+    "tokens": 128,
+    "rounds": 75,
+    "proposed": 75,
+    "accepted": 51,
+    "decode_tok_s": 24.1844,
+    "draft_ms": 401.732,
+    "verify_ms": 4641.94,
+    "verify_ms_per_round": 61.892533333333326,
+    "cache_slots": 766,
+    "cache_mib": 6654.62,
+    "configured_cache_mib": 6656
+  },
+  "note": "Short screens produce different outputs and admit different cache capacity despite equal configured budget. Q3 uses more rounds and fewer accepted drafts; per-round verify time is not an isolated kernel comparison. No quality qualification."
+}

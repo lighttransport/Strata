@@ -1,0 +1,1 @@
+{"cases": 3, "decisions": {"b1-cache7424-res256": "DROP:loop-proxy", "b2-cache7936-ctx8k": "DROP:reclassified-lossy", "b3-cache7936-budget14848": "DROP:loop-proxy"}, "quality_qualified": false}

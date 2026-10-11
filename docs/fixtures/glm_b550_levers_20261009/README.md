@@ -23,7 +23,7 @@ Prefill inputs are prefixes of the frozen 2048-token BASE input. The 4096-token 
 Reproduce on an otherwise idle B550, in the isolated checkout, using a new fixture directory to avoid reusing results:
 
 ```sh
-PY=/home/syoyo/work/Strata/.venv-glm-hip/bin/python
+PY=~/work/Strata/.venv-glm-hip/bin/python
 $PY docs/fixtures/glm_b550_levers_20261009/run_measurements.py \
   --output docs/fixtures/glm_b550_levers_20261009
 # Only after the gate passes:

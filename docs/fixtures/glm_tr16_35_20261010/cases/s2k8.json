@@ -1,0 +1,40 @@
+[
+ {
+  "name": "k0-control",
+  "env": {},
+  "control": true,
+  "note": "same-day 8K held-out control, 512x1"
+ },
+ {
+  "name": "k1-topk6",
+  "env": {
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+  }
+ },
+ {
+  "name": "k2-mix2",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json"
+  }
+ },
+ {
+  "name": "k3-aff012",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12"
+  }
+ },
+ {
+  "name": "k4-mix2-topk6",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+  }
+ },
+ {
+  "name": "k5-lookup7",
+  "env": {
+   "STRATA_GLM_MTP_LOOKUP_DEPTH": "7"
+  },
+  "note": "code context: suffix lookup may fire more"
+ }
+]

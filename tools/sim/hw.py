@@ -97,6 +97,34 @@ class Node:
 
 
 @dataclasses.dataclass
+class WorkerNode:
+    """A remote expert worker in the multinode model: its own CPU/memory roofline, the link to the decoder node,
+    the worker thread count and the fixed per-request cost (phase barrier, activation unpack, reply packing)."""
+    name: str = "worker"
+    cpu: Cpu = dataclasses.field(default_factory=Cpu)
+    memory: Memory = dataclasses.field(default_factory=Memory)
+    link: Link = dataclasses.field(default_factory=Link)
+    threads: int = 16
+    request_overhead_ms: float = 0.15   # B550 worker: 0.78 ms per 16 MB request at ~26 GB/s leaves ~0.15 ms fixed
+
+
+LINKS = {
+    "ib": lambda: Link(name="ib-connectx3-degraded", rtt_us=20.9, gbps=1.65, exposed_us=25.0),   # measured, PCIe-lane-degraded
+    "ib-qdr": lambda: Link(name="ib-qdr", rtt_us=15.0, gbps=3.2, exposed_us=20.0),                 # healthy ConnectX-3 estimate
+    "gbe": lambda: Link(name="1gbe", rtt_us=401.0, gbps=0.117, exposed_us=80.0),                   # measured (UDP backend)
+    "10gbe": lambda: Link(name="10gbe", rtt_us=90.0, gbps=1.1, exposed_us=50.0),                   # estimate, not measured
+}
+
+
+def parse_link(text):
+    """'ib' | 'gbe' | 'ib-qdr' | '10gbe' | 'rtt_us,gbps,exposed_us'."""
+    if text in LINKS:
+        return LINKS[text]()
+    rtt, gbps, exposed = (float(x) for x in text.split(","))
+    return Link(name="custom", rtt_us=rtt, gbps=gbps, exposed_us=exposed)
+
+
+@dataclasses.dataclass
 class HardwareConfig:
     name: str = "generic"
     cpu: Cpu = dataclasses.field(default_factory=Cpu)
@@ -106,7 +134,10 @@ class HardwareConfig:
     disk: Disk = dataclasses.field(default_factory=Disk)
     link: Link = dataclasses.field(default_factory=Link)
     remote: Node = dataclasses.field(default_factory=Node)
+    workers: list = dataclasses.field(default_factory=list)   # WorkerNode list (multinode model); empty = legacy `remote`
     runtime_vram: dict = dataclasses.field(default_factory=dict)
+    fixed_weight_bytes: dict = dataclasses.field(default_factory=dict) # optional exact deployed GGUF census
+    fixed_weight_pack: str = ""       # restrict an exact census to its deployed pack
     notes: str = ""
 
     def to_dict(self):
@@ -146,6 +177,8 @@ def from_dict(data):
                 continue
             if f.name in _SUB:
                 kwargs[f.name] = build(_SUB[f.name], part[f.name])
+            elif f.name == "workers":
+                kwargs[f.name] = [w if isinstance(w, WorkerNode) else build(WorkerNode, w) for w in part[f.name]]
             else:
                 kwargs[f.name] = part[f.name]
         return cls(**kwargs)
@@ -153,6 +186,12 @@ def from_dict(data):
 
 
 _SUB = dict(cpu=Cpu, memory=Memory, gpu=Gpu, pcie=Pcie, disk=Disk, link=Link, remote=Node)
+
+
+def worker_from_hardware(hw, link, threads=None):
+    """Describe a node (preset or JSON hardware config) as a remote expert worker over `link`."""
+    return WorkerNode(name=hw.name, cpu=hw.cpu, memory=hw.memory, link=link,
+                      threads=threads or hw.cpu.workers())
 
 
 def tr16():

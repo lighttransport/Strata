@@ -1,0 +1,35 @@
+[
+ {
+  "name": "b1-cache7424-res256",
+  "set": {
+   "decode_cache_mib": 7424
+  },
+  "env": {
+   "STRATA_GLM_GPU_RESERVE_MIB": "256"
+  },
+  "exact": true
+ },
+ {
+  "name": "b2-cache7936-ctx8k",
+  "set": {
+   "decode_cache_mib": 7936,
+   "context": 8192
+  },
+  "env": {
+   "STRATA_GLM_GPU_RESERVE_MIB": "256"
+  },
+  "exact": true
+ },
+ {
+  "name": "b3-cache7936-budget14848",
+  "set": {
+   "decode_cache_mib": 7936,
+   "context": 8192,
+   "gpu_budget_mib": 14848
+  },
+  "env": {
+   "STRATA_GLM_GPU_RESERVE_MIB": "256"
+  },
+  "exact": true
+ }
+]

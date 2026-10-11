@@ -1,0 +1,205 @@
+[
+  {
+    "name": "00-q4-aff08-depth1-split",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/split-q4-configs/00-q4-aff08-depth1-split.json",
+    "clean": true,
+    "decode": 25.5109,
+    "prefill": 131.351,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 4978.26,
+        "tokens_per_second": 25.5109
+      }
+    ]
+  },
+  {
+    "name": "01-q4-aff08-depth2-soft1-split",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/split-q4-configs/01-q4-aff08-depth2-soft1-split.json",
+    "clean": true,
+    "decode": 23.4204,
+    "prefill": 131.3535,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 12,
+        "sum_logit_regret": 4.96066,
+        "max_logit_regret": 0.939442
+      },
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 9,
+        "sum_logit_regret": 3.72573,
+        "max_logit_regret": 0.90476
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 72,
+        "checked": 0
+      },
+      {
+        "omitted": 71,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5422.62,
+        "tokens_per_second": 23.4204
+      }
+    ]
+  },
+  {
+    "name": "02-q4-aff08-depth3-soft1-split",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/split-q4-configs/02-q4-aff08-depth3-soft1-split.json",
+    "clean": true,
+    "decode": 23.0166,
+    "prefill": 131.22699999999998,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 9,
+        "sum_logit_regret": 4.02813,
+        "max_logit_regret": 0.80851
+      },
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 5,
+        "sum_logit_regret": 2.39653,
+        "max_logit_regret": 0.899933
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 82,
+        "checked": 0
+      },
+      {
+        "omitted": 82,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5517.75,
+        "tokens_per_second": 23.0166
+      }
+    ]
+  },
+  {
+    "name": "03-q4-aff08-depth3-soft2-split",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/split-q4-configs/03-q4-aff08-depth3-soft2-split.json",
+    "clean": true,
+    "decode": 23.9213,
+    "prefill": 131.34199999999998,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 16,
+        "sum_logit_regret": 13.9506,
+        "max_logit_regret": 1.67717
+      },
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 11,
+        "sum_logit_regret": 10.039,
+        "max_logit_regret": 1.81929
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 87,
+        "checked": 0
+      },
+      {
+        "omitted": 84,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5309.09,
+        "tokens_per_second": 23.9213
+      }
+    ]
+  }
+]

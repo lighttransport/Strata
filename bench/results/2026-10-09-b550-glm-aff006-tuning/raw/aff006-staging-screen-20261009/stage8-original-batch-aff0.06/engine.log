@@ -1,4 +1,4 @@
-[strata] 2026-10-09 09:05:22 engine started: /home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode --serve /mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf 8192 4096 12 0 2048 154820,154827,154829 15792 0 0 none 1 auto 0 0 0 0 0 8192 1 256 0 f16-batched
+[strata] 2026-10-09 09:05:22 engine started: ~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode --serve /mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf 8192 4096 12 0 2048 154820,154827,154829 15792 0 0 none 1 auto 0 0 0 0 0 8192 1 256 0 f16-batched
 STAGING compact=1 slot_MiB=140
 FLOATING_Q8 tensor=blk.0.hc_attn_fn source_type=0 MiB=0.398438
 FLOATING_Q8 tensor=blk.0.hc_ffn_fn source_type=0 MiB=0.398438

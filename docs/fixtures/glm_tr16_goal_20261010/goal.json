@@ -1,0 +1,7 @@
+{
+  "start": 1791563713,
+  "deadline": 1791606913,
+  "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+  "objective": "30+ decode less lossy; 50+ decode some loss allowed",
+  "status": "active"
+}

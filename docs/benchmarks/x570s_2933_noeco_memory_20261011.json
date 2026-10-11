@@ -1,0 +1,29 @@
+{
+  "hardware": {
+    "boot_id": "d9a706d2-b597-44b9-9cb5-b9987344b47f",
+    "board": "X570S AERO G",
+    "ram_mt_s": 2933,
+    "ram_clock_source": "user reported",
+    "eco_mode": "disabled (user reported)",
+    "duration_requested_seconds": 300,
+    "memory_mib": 46945,
+    "threads": 16
+  },
+  "stress": {
+    "passed": true,
+    "hardware_incidents": 0,
+    "returncode": 0,
+    "data_error_detected": false,
+    "completed_seconds": 300.03,
+    "duration_completed": true,
+    "termination_reason": null,
+    "memory_mib": 46945,
+    "requested_seconds": 300,
+    "elapsed_seconds": 308.84,
+    "log": "stress.log (local raw evidence)"
+  },
+  "kernel_memory_error_messages": [],
+  "passed": true,
+  "qualification": "Five-minute RAM stress smoke check, not long-term stability certification; no GPU tests run. Settings user reported.",
+  "log_sha256": "730b79873597a98a80c2d9f9dac9635089ce1ae26264052755cedb59ed81eb57"
+}

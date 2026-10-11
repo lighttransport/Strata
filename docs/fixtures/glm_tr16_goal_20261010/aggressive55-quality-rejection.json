@@ -1,0 +1,14 @@
+{
+  "case": "sixth/00-aggressive-control",
+  "median_tok_s": 55.4266,
+  "timed_trials_tok_s": [
+    58.1545,
+    55.4266,
+    52.8727
+  ],
+  "tokens_per_trial": 512,
+  "quality_qualified": false,
+  "reason": "Every inspected trial collapses into repeated sentences; see aggressive55-text-samples.json. This does not achieve useful50tok/s.",
+  "prompt_role": "training",
+  "held_out_timing_done": false
+}

@@ -1,0 +1,35 @@
+{
+  "task": "HumanEval/31",
+  "paired_fresh_request_complete": true,
+  "guard_off_failed": true,
+  "guard_on_passed": true,
+  "guard_blocked": 2,
+  "quality_qualified": false,
+  "full164_pending": true,
+  "records": [
+    {
+      "name": "q22-repeat0",
+      "task_id": "HumanEval/31",
+      "input_tokens": 129,
+      "generated_tokens": 2048,
+      "wall_seconds": 81.95446792797884,
+      "token_sha256": "81c3468d2a9e47e0fd65340cc924bd6f830cf6e896b227e48a2c74c60524bc26",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1,
+      "code_sha256": "237c4dd37e4e0ecf0d72b8cb0c3fb52897ef2953d92a8520725d45d6ab99019b"
+    },
+    {
+      "name": "q22-repeat4",
+      "task_id": "HumanEval/31",
+      "input_tokens": 129,
+      "generated_tokens": 174,
+      "wall_seconds": 37.64100481598871,
+      "token_sha256": "0e41a3966b8280e18e11abaa8f4fd0ac2558dcf5b451be3ee8293ec0c83708d4",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0,
+      "code_sha256": "37db130e39c645f8fa645e9eb910a4a1975f05e8a8dbcad199e088c0dbd35176"
+    }
+  ]
+}

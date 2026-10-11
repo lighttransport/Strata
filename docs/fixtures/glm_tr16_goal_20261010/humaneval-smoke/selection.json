@@ -1,0 +1,84 @@
+{
+  "selected_q4_screen": {
+    "name": "00-q4-aff08-depth1-split",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/split-q4-configs/00-q4-aff08-depth1-split.json",
+    "clean": true,
+    "decode": 25.5109,
+    "prefill": 131.351,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 4978.26,
+        "tokens_per_second": 25.5109
+      }
+    ]
+  },
+  "q4_control_screen": {
+    "name": "00-q4-aff08-depth1-split",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/split-q4-configs/00-q4-aff08-depth1-split.json",
+    "clean": true,
+    "decode": 25.5109,
+    "prefill": 131.351,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 4978.26,
+        "tokens_per_second": 25.5109
+      }
+    ]
+  },
+  "selection_rule": "Smallest margin <=2 reaching30tok/s, otherwise fastest clean unpruned Q4 screen; compare fastest Q4 control without soft acceptance. Model and generation quality remain unqualified",
+  "excluded_margin4_note": "Repeated-sentence continuations absent from same-prompt exact512-token control; see unpruned35-text-samples.json and exact20-long-text-sample.json",
+  "tasks": 20,
+  "maximum_generated_tokens": 2048,
+  "quality_qualified": false,
+  "note": "First20 pinned tasks; not full HumanEval. Full paired164 plus corpus and held-out timing remain required."
+}

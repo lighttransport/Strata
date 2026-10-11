@@ -1,0 +1,11 @@
+[
+ {
+  "name": "p1-aff014-topk6-guard4-8kpass",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.14"
+  },
+  "note": "single 8K prefill pass; scratch cap set by --prefill-batch 8192"
+ }
+]

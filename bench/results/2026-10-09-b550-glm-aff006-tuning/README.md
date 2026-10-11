@@ -74,7 +74,7 @@ In the idle B550 isolated checkout, build the configured HIP target and run the 
 
 ```sh
 cmake --build build-hip --target strata-glm-decode -j 2
-PY=/home/syoyo/work/Strata/.venv-glm-hip/bin/python
+PY=~/work/Strata/.venv-glm-hip/bin/python
 $PY tools/glm_b550_quality_sweep.py \
   --config configs/experimental/glm53f-reap50-q23-b550-quality-first.json \
   --decoder build-hip/strata-glm-decode \

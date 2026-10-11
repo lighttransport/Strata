@@ -1,0 +1,23 @@
+[
+  {
+    "name": "baseline",
+    "exit_code": 0,
+    "sample_complete": true,
+    "tasks": 20,
+    "passes": 20,
+    "quality_qualified": false,
+    "guard_rejected": null,
+    "decoder_sha256": "2d3de133c4be061bcbf59d67847f06c0b03b843f910b8d6a4cfb07f64ad1bd64"
+  },
+  {
+    "name": "q4-no-soft-acceptance",
+    "exit_code": 0,
+    "sample_complete": true,
+    "tasks": 20,
+    "passes": 20,
+    "quality_qualified": false,
+    "guard_rejected": null,
+    "decoder_sha256": "2d3de133c4be061bcbf59d67847f06c0b03b843f910b8d6a4cfb07f64ad1bd64",
+    "passes_minus_baseline": 0
+  }
+]

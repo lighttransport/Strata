@@ -1,0 +1,25 @@
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (40 s) - please wait ...
+[strata] still starting (60 s) - please wait ...
+[strata] still starting (80 s) - please wait ...
+{"task_id": "HumanEval/0", "input_tokens": 154, "generated_tokens": 166, "wall_seconds": 42.10860562004382, "token_sha256": "7e08f81c5fcbd67826b919c24ee96e1dc3804934efa942478d7971115759830a", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/1", "input_tokens": 145, "generated_tokens": 100, "wall_seconds": 21.166191476979293, "token_sha256": "593ff8b45244055b4eb226bb004a693572d6bba92c14f2c2e81896312b6c05d9", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/2", "input_tokens": 115, "generated_tokens": 122, "wall_seconds": 22.230655591003597, "token_sha256": "132fd35a04a2e69cd18e46830ae874b81dba75c6f025f58cfd1d79d19aab7ba7", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/3", "input_tokens": 149, "generated_tokens": 90, "wall_seconds": 20.823885681980755, "token_sha256": "70984c4b00101e6a8f6e4f75fff6881d5ffb5a552bff935f9a999c2391288c86", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/4", "input_tokens": 147, "generated_tokens": 144, "wall_seconds": 22.60080840199953, "token_sha256": "5d44a8d90dd7da1d6f58ddd0ba4d9542e4346581afa48db325636a574ffb68ba", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/5", "input_tokens": 122, "generated_tokens": 138, "wall_seconds": 22.574836049985606, "token_sha256": "f6b151a504a3924aaeedf3c31076ba2515b2bb82e3c9aae19f70f20b8c3221a8", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/6", "input_tokens": 142, "generated_tokens": 193, "wall_seconds": 24.55806653801119, "token_sha256": "d10d9aab6316adf77a28113ad06fff039f2f08202ceaaad0979b7d8e20480cac", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/7", "input_tokens": 123, "generated_tokens": 106, "wall_seconds": 21.3898007030366, "token_sha256": "c6872f89f566a21ecdceecfbff3860d9b1c1aa9a313d281b9dff5d36466975ca", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/8", "input_tokens": 140, "generated_tokens": 57, "wall_seconds": 19.428622854000423, "token_sha256": "10522bad481d43e6d9e5d1a433762ffba2d76a648e82c1a60cd584dd5f3506f6", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/9", "input_tokens": 130, "generated_tokens": 144, "wall_seconds": 22.62986246001674, "token_sha256": "f9065b5e890dae66f96496ec925d795ae610b8046dc38925a8ee6cfe5955c6f4", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/10", "input_tokens": 169, "generated_tokens": 142, "wall_seconds": 22.7232060880051, "token_sha256": "013ba75ea6204d3426e053935dc2a31f179d8c7a2b32a0587c2123dd362f6390", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/11", "input_tokens": 106, "generated_tokens": 103, "wall_seconds": 21.300660544948187, "token_sha256": "15ffb9c45b09773b0e55eee5de444d429a2ccf2c1e5a0d43dee12a48bf1d94f9", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/12", "input_tokens": 132, "generated_tokens": 149, "wall_seconds": 23.188220062991604, "token_sha256": "99a3fbf2b91cc63e11e57703730e1ecb78af2d062c0d5f28e34468e1f9dce4f6", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/13", "input_tokens": 100, "generated_tokens": 93, "wall_seconds": 20.868465404957533, "token_sha256": "155ad88227f924a426d6e641694ec1e7f15942033ddb9eecb3d3d5f0faef30c9", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/14", "input_tokens": 89, "generated_tokens": 80, "wall_seconds": 20.368920843000524, "token_sha256": "3d365bc0ba0e7da4dc709e5b01fba93ad86ab0d31513e78d86318a81996fd6e1", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/15", "input_tokens": 98, "generated_tokens": 85, "wall_seconds": 20.57078058796469, "token_sha256": "c3bceb7271f18cde18c45e94bd75d7e268458627dbcb9d8bf7f5590b142284ec", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/16", "input_tokens": 100, "generated_tokens": 25, "wall_seconds": 18.24184063100256, "token_sha256": "bc50c3503688a47d8652fea1b8385d93e4955e158ecdc526dfb1acb25334a456", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/17", "input_tokens": 202, "generated_tokens": 61, "wall_seconds": 19.666496528021526, "token_sha256": "8cd3259821a32e02445dbda4023475dec5b1c6afd525e8d47161f5e7a3e9956d", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/18", "input_tokens": 118, "generated_tokens": 67, "wall_seconds": 19.808110461977776, "token_sha256": "2bd2e82c8ff3d36801b82c78f9a6c82c7bdf734395f35e915989dbf248f2150d", "passed": true, "reason": "passed", "exit_code": 0}
+{"task_id": "HumanEval/19", "input_tokens": 135, "generated_tokens": 201, "wall_seconds": 24.60419768403517, "token_sha256": "bbfdb70632cce08d5f52a8168717ac5e5b7db3e341fbc7c3679d6e496002d3e1", "passed": true, "reason": "passed", "exit_code": 0}

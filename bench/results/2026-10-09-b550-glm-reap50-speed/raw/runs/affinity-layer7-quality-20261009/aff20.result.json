@@ -1,7 +1,7 @@
 {
   "started_utc": "2026-10-08T20:31:50.461796+00:00",
   "config": {
-    "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+    "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
     "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
     "model_name": "glm53f-reap50-q23-b550-rx9070xt",
     "context": 4096,
@@ -56,7 +56,7 @@
       "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "256",
       "STRATA_GLM_CHECK_AFFINITY": "64",
       "STRATA_GLM_AFFINITY_QUALITY_GRID": "0,0.12,0.15,0.20",
-      "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/home/syoyo/work/Strata-b550-calibration-15b787b5/configs/glm-b550-affinity-preserve-seven.json"
+      "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "~/work/Strata-b550-calibration-15b787b5/configs/glm-b550-affinity-preserve-seven.json"
     },
     "log": "build-hip-glm-v11/b550-q23-engine.log",
     "backend": "hip",
@@ -68,9 +68,9 @@
   "command": [
     "numactl",
     "--interleave=all",
-    "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+    "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
     "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
-    "@/home/syoyo/work/Strata/build-hip-glm-v11/single-2048.ids",
+    "@~/work/Strata/build-hip-glm-v11/single-2048.ids",
     "32",
     "4096",
     "12",
@@ -83,7 +83,7 @@
     "--decode-bench=1",
     "--prefill-experts=f16-batched",
     "--route-affinity=0.2",
-    "--dump-logits=/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/affinity-layer7-quality-20261009/aff20.logits.bin",
+    "--dump-logits=~/work/Strata-b550-calibration-15b787b5/runs/affinity-layer7-quality-20261009/aff20.logits.bin",
     "--decode-graphs",
     "--decode-cache-mib=8192"
   ],

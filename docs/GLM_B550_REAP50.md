@@ -203,7 +203,7 @@ local file mode 600 and out of source control. The launcher loads it through
 systemd's `EnvironmentFile`, without placing the key in command arguments.
 The guarded launcher refuses a non-loopback host without a key.
 
-Open `http://192.168.100.34:8080` on B550's LAN and enter the key under
+Open `http://<b550-lan-ip>:8080` on B550's LAN and enter the key under
 **About → Settings → API key**. Retrieve it over SSH:
 
 ```sh

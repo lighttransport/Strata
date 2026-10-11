@@ -1,7 +1,10 @@
 // src/core/layout.cpp - the shape checks.  See the header for why this exists.
 #include "strata/core/layout.hpp"
 
+#include "strata/host/glm_names.hpp"
+
 #include <cstdio>
+
 
 namespace strata::core {
 namespace {
@@ -135,7 +138,8 @@ bool check_one(const WeightTable& t, const ModelGeometry& g, int64_t layer, std:
 }  // namespace
 
 std::string LayerView::name(const char* suffix) const {
-    return "blk." + std::to_string(layer_) + "." + suffix;
+    // The spelling lives in strata_host; this is the one place the pack's layer names were built by hand.
+    return strata::host::blk_name(static_cast<int>(layer_), suffix);
 }
 
 bool check_layer(const WeightTable& table, const ModelGeometry& g, int64_t layer, std::string& err) {

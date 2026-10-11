@@ -1,0 +1,22 @@
+[
+  {
+    "name": "depth3-soft2-cache7424",
+    "decode_tok_s": 29.8833,
+    "distinct_fourgram_fractions": [
+      1.0,
+      0.968
+    ],
+    "samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-cache-screen/depth3-soft2-cache7424/text-samples.json",
+    "quality_qualified": false
+  },
+  {
+    "name": "depth3-soft4-cache6656",
+    "decode_tok_s": 30.4391,
+    "distinct_fourgram_fractions": [
+      1.0,
+      1.0
+    ],
+    "samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-cache-screen/depth3-soft4-cache6656/text-samples.json",
+    "quality_qualified": false
+  }
+]

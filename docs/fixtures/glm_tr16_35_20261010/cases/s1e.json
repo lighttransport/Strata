@@ -1,0 +1,25 @@
+[
+ {
+  "name": "e1-fuse-route",
+  "env": {
+   "STRATA_GLM_FUSE_ROUTE": "1"
+  },
+  "exact": true
+ },
+ {
+  "name": "e2-mla-kernels-nograph",
+  "env": {
+   "STRATA_GLM_MLA_GRAPHS": "0"
+  },
+  "exact": true,
+  "note": "MLA_KERNELS=1 already set; graphs off makes it active"
+ },
+ {
+  "name": "e3-fuse-mla",
+  "env": {
+   "STRATA_GLM_FUSE_ROUTE": "1",
+   "STRATA_GLM_MLA_GRAPHS": "0"
+  },
+  "exact": true
+ }
+]

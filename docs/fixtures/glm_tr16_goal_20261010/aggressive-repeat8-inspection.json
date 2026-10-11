@@ -1,0 +1,35 @@
+{
+  "case": "04-aggressive-repeat8",
+  "median_decode_tok_s": 50.6875,
+  "quality_qualified": false,
+  "text_samples_sha256": "1b27a2ef7d61b73c398d75b050c6489e3541040ee6e791fb05da7f1284b973c8",
+  "inspection": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "finding": "Sustained repeated passages; continuation collapses"
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "finding": "Sustained repeated passages; continuation collapses"
+    },
+    {
+      "trial": 2,
+      "warmup": false,
+      "finding": "Sustained repeated passages; continuation collapses"
+    },
+    {
+      "trial": 3,
+      "warmup": false,
+      "finding": "Sustained repeated passages; continuation collapses"
+    }
+  ],
+  "blocked_by_trial": [
+    2,
+    0,
+    8,
+    10
+  ],
+  "decision": "Rejected: all four continuations collapse; speed does not establish useful 50 tokens/s."
+}

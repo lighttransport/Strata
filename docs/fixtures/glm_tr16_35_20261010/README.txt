@@ -1,0 +1,1 @@
+TR16 35/45 tokens/s follow-up (2026-10-10). See goal.json for the window and gates, s*/summary.json for screens, all-screens.json for the table, s0-step-trace/decomposition.json for the host-timeline decomposition. Nothing here qualifies a profile; quality ladder scripts were prepared but not run in this window.

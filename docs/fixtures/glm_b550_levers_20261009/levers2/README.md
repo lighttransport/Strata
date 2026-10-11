@@ -10,7 +10,7 @@ Starting point: route affinity 0.08, 17.2 tok/s. Memory bandwidth is the wall: `
 expert phase moves 0.85 GB/token. GPU streaming of cold experts over PCIe (zero-copy or staged) does not help: CPU
 reads and DMA together top out at 31-37 GB/s.
 
-## Opt-in kernel and transfer switches, aff 0.08
+## Opt-in kernel and transfer switches (commit e5232ca3), aff 0.08
 
 | Switch | tok/s | per token (ms): CPU / GPU wait / head+tail |
 |---|---:|---|
@@ -20,8 +20,7 @@ reads and DMA together top out at 31-37 GB/s.
 | + `STRATA_GLM_MLA_KERNELS=1 STRATA_GLM_HEADS_BLOCKS=1` | 19.5 | 30.8 / 16.3 / 3.8 |
 | + `STRATA_GLM_FUSE_ROUTE=1` | 19.5 | within noise (+0.05-0.1) |
 
-These kernel switches preserve the equations but some change FP32 summation order. They are included in the
-B550 optimization commit; the earlier local commit identifier is not present in this checkout.
+These kernel switches preserve the equations but some change FP32 summation order.
 
 Teacher-forced KL (width 1, 4 x 512 tokens, reference = the same binary at affinity 0): all four switches 0.0247
 vs 0.0190 for the fused-only build; the per-head GEMV alone is 0.0180 (fp-order noise ~0.001), the MLA kernels

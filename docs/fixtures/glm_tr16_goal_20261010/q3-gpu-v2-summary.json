@@ -1,0 +1,389 @@
+[
+  {
+    "name": "q3-depth1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-gpu-v2-configs/q3-depth1-cpu.json",
+    "precision_pilot": "05-q3-mixers-aff08",
+    "quality_qualified": false,
+    "clean": true,
+    "decode": 24.6453,
+    "prefill": 131.124,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 57,
+        "checked": 0
+      },
+      {
+        "omitted": 54,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5153.11,
+        "tokens_per_second": 24.6453
+      }
+    ]
+  },
+  {
+    "name": "q3-depth1-gpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-gpu-v2-configs/q3-depth1-gpu.json",
+    "precision_pilot": "05-q3-mixers-aff08",
+    "quality_qualified": false,
+    "clean": true,
+    "decode": 24.932,
+    "prefill": 131.321,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 57,
+        "checked": 0
+      },
+      {
+        "omitted": 54,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5093.85,
+        "tokens_per_second": 24.932
+      }
+    ],
+    "draft_resident_mib": 2502.0,
+    "cache_capacity_equal": true,
+    "cpu_draft_tokens_equal": true,
+    "token_count_pair": [
+      256,
+      256
+    ]
+  },
+  {
+    "name": "q3-depth3-soft2-native-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-gpu-v2-configs/q3-depth3-soft2-native-cpu.json",
+    "precision_pilot": "05-q3-mixers-aff08",
+    "quality_qualified": false,
+    "clean": true,
+    "decode": 23.4585,
+    "prefill": 131.337,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 14,
+        "sum_logit_regret": 13.6439,
+        "max_logit_regret": 1.99199
+      },
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 17,
+        "sum_logit_regret": 14.0256,
+        "max_logit_regret": 1.89408
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 85,
+        "checked": 0
+      },
+      {
+        "omitted": 84,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5413.81,
+        "tokens_per_second": 23.4585
+      }
+    ]
+  },
+  {
+    "name": "q3-depth3-soft2-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-gpu-v2-configs/q3-depth3-soft2-cpu.json",
+    "precision_pilot": "05-q3-mixers-aff08",
+    "quality_qualified": false,
+    "clean": true,
+    "decode": 23.5738,
+    "prefill": 131.167,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 14,
+        "sum_logit_regret": 13.6439,
+        "max_logit_regret": 1.99199
+      },
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 17,
+        "sum_logit_regret": 14.0256,
+        "max_logit_regret": 1.89408
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 85,
+        "checked": 0
+      },
+      {
+        "omitted": 84,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5387.34,
+        "tokens_per_second": 23.5738
+      }
+    ],
+    "q3_il_native_tokens_equal": true
+  },
+  {
+    "name": "q3-depth3-soft2-gpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-gpu-v2-configs/q3-depth3-soft2-gpu.json",
+    "precision_pilot": "05-q3-mixers-aff08",
+    "quality_qualified": false,
+    "clean": true,
+    "decode": 26.1162,
+    "prefill": 131.213,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 22,
+        "sum_logit_regret": 16.9836,
+        "max_logit_regret": 1.74969
+      },
+      {
+        "margin": 2,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 19,
+        "sum_logit_regret": 17.5682,
+        "max_logit_regret": 1.98619
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 86,
+        "checked": 0
+      },
+      {
+        "omitted": 88,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 4862.88,
+        "tokens_per_second": 26.1162
+      }
+    ],
+    "draft_resident_mib": 2502.0,
+    "cache_capacity_equal": true,
+    "cpu_draft_tokens_equal": false,
+    "token_count_pair": [
+      256,
+      256
+    ]
+  },
+  {
+    "name": "q3-depth3-soft4-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-gpu-v2-configs/q3-depth3-soft4-cpu.json",
+    "precision_pilot": "05-q3-mixers-aff08",
+    "quality_qualified": false,
+    "clean": true,
+    "decode": 23.8394,
+    "prefill": 131.268,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 4,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 21,
+        "sum_logit_regret": 29.6213,
+        "max_logit_regret": 3.72884
+      },
+      {
+        "margin": 4,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 18,
+        "sum_logit_regret": 24.0753,
+        "max_logit_regret": 3.9789
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 93,
+        "checked": 0
+      },
+      {
+        "omitted": 87,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5327.32,
+        "tokens_per_second": 23.8394
+      }
+    ]
+  },
+  {
+    "name": "q3-depth3-soft4-gpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q3-gpu-v2-configs/q3-depth3-soft4-gpu.json",
+    "precision_pilot": "05-q3-mixers-aff08",
+    "quality_qualified": false,
+    "clean": true,
+    "decode": 26.098,
+    "prefill": 131.0965,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 4,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 22,
+        "sum_logit_regret": 25.7083,
+        "max_logit_regret": 2.73631
+      },
+      {
+        "margin": 4,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 21,
+        "sum_logit_regret": 32.0095,
+        "max_logit_regret": 3.29984
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 85,
+        "checked": 0
+      },
+      {
+        "omitted": 89,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 4866.27,
+        "tokens_per_second": 26.098
+      }
+    ],
+    "draft_resident_mib": 2502.0,
+    "cache_capacity_equal": true,
+    "cpu_draft_tokens_equal": false,
+    "token_count_pair": [
+      256,
+      256
+    ]
+  }
+]

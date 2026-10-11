@@ -1,0 +1,14 @@
+{
+  "baseline_passes": 154,
+  "candidate_passes": 153,
+  "net_change": -1,
+  "lost_tasks": [
+    "HumanEval/81",
+    "HumanEval/132",
+    "HumanEval/137"
+  ],
+  "gained_tasks": [
+    "HumanEval/97",
+    "HumanEval/130"
+  ]
+}

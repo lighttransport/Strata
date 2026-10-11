@@ -1,0 +1,311 @@
+{
+  "complete": true,
+  "clean": true,
+  "repeated_tokens_equal": false,
+  "measurements": {
+    "prefill": [
+      {
+        "trial": 0,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 15628.3,
+        "tokens_per_second": 131.045
+      },
+      {
+        "trial": 1,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 15624.2,
+        "tokens_per_second": 131.078
+      }
+    ],
+    "decode": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5601.87,
+        "tokens_per_second": 22.671
+      }
+    ],
+    "cpu_expert": [
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 193.336,
+        "quant_ms": 1.91801,
+        "down_ms": 131.78,
+        "layer_flow_ms": 4259.21,
+        "bytes": 311339188224
+      },
+      {
+        "gu_ms": 181.843,
+        "quant_ms": 1.77174,
+        "down_ms": 106.997,
+        "layer_flow_ms": 3571.65,
+        "bytes": 263113474048
+      }
+    ],
+    "mtp_timing": [
+      {
+        "draft_ms": 399.579,
+        "verify_ms": 5373.79,
+        "resync_ms": 338.048
+      },
+      {
+        "draft_ms": 340.844,
+        "verify_ms": 4864.93,
+        "resync_ms": 220.604
+      }
+    ],
+    "mtp_positions": [
+      {
+        "index": 0,
+        "proposed": 73,
+        "accepted": 53
+      },
+      {
+        "index": 0,
+        "proposed": 73,
+        "accepted": 53
+      }
+    ],
+    "step_trace": [],
+    "decode_cache": [
+      {
+        "prefix_trained": 1,
+        "slots": 627,
+        "MiB": 5447.06,
+        "fingerprint": 18076869553102573003
+      }
+    ],
+    "speculation": [
+      {
+        "generated": 128,
+        "rounds": 73,
+        "proposed": 73,
+        "accepted": 53,
+        "replayed": 0,
+        "ms": 6309.65,
+        "tok_s": 20.1279
+      },
+      {
+        "generated": 128,
+        "rounds": 73,
+        "proposed": 73,
+        "accepted": 53,
+        "replayed": 0,
+        "ms": 5601.87,
+        "tok_s": 22.671
+      }
+    ],
+    "affinity_quality": [],
+    "lookup_parity": [],
+    "median_prefill_tok_s": 131.0615,
+    "median_decode_tok_s": 22.671,
+    "peak_allocated_gpu_mib": 12610.3,
+    "gpu_live": [
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "other": 319.918,
+          "prefill": 3306.02,
+          "state": 426.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "other": 319.918,
+          "prefill": 3306.02,
+          "state": 426.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "dense_mtp": 156.84,
+          "other": 5544.6,
+          "prefill": 32.0,
+          "resident_exec": 5.88576,
+          "state": 426.105,
+          "verify_history": 145.605
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "dense_mtp": 156.84,
+          "other": 5544.6,
+          "prefill": 32.0,
+          "resident_exec": 5.88576,
+          "state": 426.105,
+          "verify_history": 145.605
+        }
+      }
+    ],
+    "page_faults": [
+      {
+        "trial": 0,
+        "major": 0,
+        "minor": 32770
+      },
+      {
+        "trial": 1,
+        "major": 0,
+        "minor": 32966
+      }
+    ],
+    "decode_warmup": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6309.65,
+        "tokens_per_second": 20.1279
+      }
+    ]
+  },
+  "output_sha256": "ef046a1c8310ca671df7bb5532d18ce53df2167d810941eecb1e6f25a5fb7618",
+  "trial_token_sha256": [
+    "20d6070eb3d386d100c04368cdf627cd6d0c2fc14ca7df0b70f2a6a159ff79a4",
+    "d317ae75e8b1ec279667edc4c3e3747f59770a7934c4345121255978e96434b4"
+  ],
+  "memory": {
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/mnt/nvme02/work/Strata/build-tr16-20261009/baseline/strata-glm-decode",
+      "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "@/mnt/nvme02/work/Strata/build-tr16-20261009/prompts2k/train-code.ids",
+      "128",
+      "4096",
+      "15",
+      "--context=12288",
+      "--prefill-batch=2048",
+      "--gpu-budget-mib=14336",
+      "--cpu-affinity=numa",
+      "--decode-experts=cpu",
+      "--bench=2",
+      "--decode-bench=2",
+      "--decode-cache-mib=5632",
+      "--prefill-experts=mmq",
+      "--decode-graphs",
+      "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+      "--speculative=mtp",
+      "--draft-depth=1",
+      "--mtp-experts=cpu"
+    ],
+    "peak_rss_kib": 112948592,
+    "peak_swap_kib": 0,
+    "minimum_available_kib": 123778968,
+    "sample_interval_ms": 100,
+    "rejected": null,
+    "interference": [],
+    "minimum_gpu_free_mib": 818,
+    "required_gpu_free_mib": 512,
+    "exit_code": 0,
+    "wall_seconds": 99.76865081000142
+  },
+  "case": "aff08",
+  "config": {
+    "exe": "build-tr16-20261009/baseline/strata-glm-decode",
+    "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "model_name": "glm53f-q23-tr16-calibration",
+    "context": 12288,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 14336,
+    "gpu_devices": "0",
+    "threads": 15,
+    "cpu_affinity": "numa",
+    "prefill_batch": 2048,
+    "decode_experts": "cpu",
+    "speculative": "mtp",
+    "draft_depth": 1,
+    "decode_graphs": true,
+    "decode_cache_mib": 5632,
+    "env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme02/work/Strata/build-q2-redesign/calibration/coverage.json",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "1",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "512",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+      "STRATA_GLM_MLA_GRAPHS": "1",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_STAGE_PREFETCH": "1",
+      "STRATA_GLM_PREFETCH_GROUPS": "12",
+      "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_NUMA_AFTER_PREFILL": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512"
+    },
+    "prefill_experts": "mmq"
+  },
+  "manifest": {
+    "source_commit": "6ecf3bcb9b7066cc12b41b6782a4eab9e41f4e2c",
+    "decoder_sha256": "78593ffa229088dbc3e375ed4ac785f271f0d06bc7132e76999447d61f080345",
+    "runner_sha256": "8f44d472ac1e8ade6f5c5989c6e4f1f9c9fec6d9e7e5808f69563d7795b0286f",
+    "prompt_sha256": "b36fec1bce5401b8ad6346f66074896bd02494051c6fbf490c853914339539e6",
+    "prompt_tokens": 2048,
+    "cases": [
+      "baseline",
+      "aff05",
+      "baseline",
+      "aff08",
+      "baseline",
+      "aff10",
+      "baseline"
+    ],
+    "decode_tokens": 128,
+    "timed_trials": 1,
+    "warmup_decode_trials": 1,
+    "allow_interference": false,
+    "created": "2026-10-09T21:30:52+0900",
+    "nvidia_smi": "name, driver_version, memory.total [MiB], memory.used [MiB], pcie.link.gen.current, pcie.link.width.current\nNVIDIA GeForce RTX 5060 Ti, 615.71.09, 16311 MiB, 9723 MiB, 3, 8\n"
+  },
+  "quiet": true,
+  "guard_exit_code": 0
+}

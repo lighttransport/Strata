@@ -1,0 +1,9 @@
+{
+  "built": false,
+  "default_table_unchanged": true,
+  "activation": "Explicit STRATA_MMVQ_IL_ROWS type11 override plus existing GLM IL opt-in",
+  "sha256": {
+    "dense-q3-native-mmvq.cu": "d709d4173a38322e9ddb742d5d556cdd83f865d7ec38534c80b60657dd50ab87",
+    "dense-q3-mmvq-il-parity.cpp": "c37e4b26c31a43ae6a59af8ad57e4f9615fa6b9d69061fa4055ef486ffa59216"
+  }
+}

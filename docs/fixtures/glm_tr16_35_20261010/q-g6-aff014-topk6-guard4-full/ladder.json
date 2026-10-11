@@ -1,0 +1,58 @@
+{
+  "track": "35",
+  "gates": {
+    "ppl_rel_max": 0.06,
+    "kl_abs_max": 0.08,
+    "top1_drop_pp_max": 3.0,
+    "humaneval_min": 152,
+    "heldout_min_2k": 35.0,
+    "heldout_min_8k": 35.0
+  },
+  "steps": [
+    {
+      "step": "full8192",
+      "exit_code": 0,
+      "complete": true,
+      "metrics": {
+        "sequence": 16,
+        "tokens": 8192,
+        "nll": 1.65512615363,
+        "perplexity": 5.23374013587,
+        "kl": 0.236610961879,
+        "top1_agreement": 0.840942382812,
+        "different_logits": 1268776844
+      },
+      "baseline": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q4-full-corpus/baseline/result.json",
+      "ppl_increase_percent": 8.448459213363858,
+      "kl_increase": 0.099849096517,
+      "top1_drop_pp": 3.61328125,
+      "gate_scale": 1.0,
+      "passes_gate": false,
+      "note": "baseline is unchanged Q23; the Q22 pack change is intentional",
+      "quality_qualified": false
+    },
+    {
+      "step": "full164",
+      "exit_code": 2,
+      "complete": false,
+      "tasks": 30,
+      "passes": 30,
+      "baseline_passes": 154,
+      "net": -124,
+      "lost": [],
+      "gained": [],
+      "capped_2048": [],
+      "guard_rejected": {
+        "reason": "external GPU work",
+        "clients": [
+          [
+            3601177,
+            "/opt/google/chrome/chrome --type=gpu-process --gpu-recent-crash-count=0 --ozone-platform=x11 --crashpad-handler-pid=3601115 --enable-crash-reporter=? --change-stack-guard-on-fork=enable --gpu-preferences=YAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAASAAAAAAAAAACAAAAAgAAAEAAAAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAEAAAAAAAAACAAAAAAAAAAQAAAAAgAAAAEAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --metrics-shmem-handle=4?i?2120228529331558495?15991078602167544901?262144 --field-trial-handle=3?i?5945316774566460346?15409376356037866016?262144 --enable-features=Vulkan --variations-seed-version=20261008-170056.213000-production --pseudonymization-salt-handle=7?i?13729695777329169869?6071593348387586532?4 --trace-process-track-uuid=3190708988185955192"
+          ]
+        ]
+      },
+      "passes_gate": false,
+      "quality_qualified": false
+    }
+  ]
+}

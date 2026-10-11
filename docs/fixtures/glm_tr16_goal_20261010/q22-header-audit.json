@@ -1,0 +1,247 @@
+{
+  "scope": "Header-only audit: identical names/shapes; only listed down-projection types differ. Tensor payloads were not read or compared.",
+  "tensor_count": 121,
+  "changes": [
+    {
+      "name": "blk.3.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.4.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.5.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.6.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.7.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.8.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.9.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.10.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.13.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.14.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.15.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.16.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.17.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.18.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.19.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.20.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.21.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.22.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.23.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.24.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.25.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.26.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.27.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.28.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.29.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.30.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.31.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.32.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.33.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.34.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.35.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.36.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.37.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.38.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.39.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.40.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.41.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.42.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    },
+    {
+      "name": "blk.43.ffn_down_exps.weight",
+      "old_type": "Q3_K",
+      "new_type": "Q2_K",
+      "bytes_saved": 245366784
+    }
+  ],
+  "q23_tensor_bytes": 105488842752,
+  "q22_tensor_bytes": 95919538176,
+  "byte_reduction_percent": 9.071390230810517,
+  "file_sizes": {
+    "q23": 105488860384,
+    "q22": 95919555808
+  }
+}

@@ -1,9 +1,9 @@
 """Measurement-only B550 runner. Engine, simulator parameters and Git stay untouched."""
 import argparse, copy, datetime, hashlib, json, os, re, statistics, subprocess, sys, time
 from pathlib import Path
-ROOT=Path('/home/syoyo/work/Strata-b550-calibration-15b787b5')
-PYTHON='/home/syoyo/work/Strata/.venv-glm-hip/bin/python'
-PROMPT=Path('/home/syoyo/work/Strata/build-hip-glm-v11/single-2048.ids')
+ROOT=Path('~/work/Strata-b550-calibration-15b787b5')
+PYTHON='~/work/Strata/.venv-glm-hip/bin/python'
+PROMPT=Path('~/work/Strata/build-hip-glm-v11/single-2048.ids')
 EXPECTED='8c2c754264f5c327997826cbe468b953888c3cbb9d8c165833074a1d8e1df98f'
 TAGS=('SPECULATIVE','DECODE','PREFILL','STEP_TRACE','STEP_TRACE_SLOTS','CPU_EXPERT','DECODE_CACHE','GPU_LIVE','MTP_TIMING','MTP_POSITION')
 

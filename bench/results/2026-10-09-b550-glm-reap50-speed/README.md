@@ -4,7 +4,7 @@ Routing bias cleared 20 tok/s in short speed screens. It is a lossy experiment, 
 
 ## Machine and model
 
-Ryzen 9 3950X (16 cores / 32 threads), 62.693 GiB RAM, RX 9070 XT gfx1201 with 16,304 MiB reported VRAM, PCIe 4 x16. GPU clocks automatic; CPU powersave with boost. ROCm 7.14 development build, source baseline `15b787b5` plus the experimental changes recorded in per-run manifests. Experiments use `/home/syoyo/work/Strata-b550-calibration-15b787b5`, not the serving checkout. Linux kernel 7.0.0-38-generic; binary hashes are recorded in manifests; SSD model and GPU power limit were not separately recorded.
+Ryzen 9 3950X (16 cores / 32 threads), 62.693 GiB RAM, RX 9070 XT gfx1201 with 16,304 MiB reported VRAM, PCIe 4 x16. GPU clocks automatic; CPU powersave with boost. ROCm 7.14 development build, source baseline `15b787b5` plus the experimental changes recorded in per-run manifests. Experiments use `~/work/Strata-b550-calibration-15b787b5`, not the serving checkout. Linux kernel 7.0.0-38-generic; binary hashes are recorded in manifests; SSD model and GPU power limit were not separately recorded.
 
 Model: `GLM-5.3-Flash-REAP50-Q23-assembled.gguf`, 58.87 GiB, main gate/up Q2_K and down Q3_K, 144 experts, top 8, 42 MoE layers. SHA256 `c3b0cfb144556bd28e265d8255d48eeafce3d127aba5b9b5dd4e326322a34aa9`. This unchanged REAP50 model is the reference, not the original unpruned model.
 
@@ -64,7 +64,7 @@ Reproduce the fit with `tools/glm_b550_affinity_fit.py`, passing the five scalar
 Build HIP for gfx1201 in the isolated checkout, with the same Q23 canonical-rounding fix described in [the calibration report](../../../docs/GLM_B550_SIM.md). Stop other model jobs first. The driver refuses to clear pages while a decoder is active.
 
 ```sh
-PY=/home/syoyo/work/Strata/.venv-glm-hip/bin/python
+PY=~/work/Strata/.venv-glm-hip/bin/python
 $PY tools/glm_b550_calibrate.py --output runs/repro-speed --tokens 128 --trials 3 \
   --cases cache8 aff10 aff12 aff15 aff20
 $PY tools/glm_b550_calibrate.py --output runs/repro-paired --tokens 32 --trials 1 \

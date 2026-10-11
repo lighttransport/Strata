@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-v2/aff0-depth1-gpu/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 21.1651,
+    "prefill_tok_s": 131.3275
+  }
+]

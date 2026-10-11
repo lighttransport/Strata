@@ -1,0 +1,417 @@
+{
+  "date": "2026-10-11",
+  "hardware": "Ryzen 9 3950X / Gigabyte X570S AERO G / RX 9070 XT / 64 GiB RAM",
+  "settings": "2933 MT/s and ECO disabled (user reported)",
+  "boot_id": "d9a706d2-b597-44b9-9cb5-b9987344b47f",
+  "baseline": "2666 MT/s, 65 W ECO user reported, same board/CPU/GPU; one prior run per mode",
+  "protocol": "Three alternating greedy/external pairs. Unchanged executable, configs and 2048-token prompt; 128 output tokens, 127 timed target steps. Model cache clearing before each run, 60 GiB cgroup RAM, zero swap, 900 decode-cache slots. Stop on first GPU fault.",
+  "records": [
+    {
+      "mode": "x570-greedy-pipeline",
+      "trial": 0,
+      "clean": true,
+      "exit_code": 0,
+      "output_token_count": 128,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "tok_s": 34.3047,
+      "prefill_tok_s": 32.025,
+      "draft_timing": [],
+      "speculation": [],
+      "external_verification": [],
+      "cpu_expert": {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 868.406,
+        "bytes": 32765902848
+      },
+      "faults": [],
+      "reason": null,
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "config_sha256": "4c00abc9e93edc5fca5b9f963c89c16c2870d4235a34d05efd0957e15f21c055",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "peak_cgroup_bytes": 51304763392,
+      "minimum_gpu_free_mib": 2505,
+      "interference": []
+    },
+    {
+      "mode": "x570-external-pipeline",
+      "trial": 0,
+      "clean": true,
+      "exit_code": 0,
+      "output_token_count": 128,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "tok_s": 25.169,
+      "prefill_tok_s": 31.7803,
+      "draft_timing": [
+        {
+          "prepare_ms": 0,
+          "draft_ms": 1307.52,
+          "verify_ms": 3708.41,
+          "restore_ms": 0,
+          "proposal_calls": 49
+        }
+      ],
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 49,
+          "proposed": 97,
+          "accepted": 79,
+          "replayed": 0,
+          "ms": 5045.89,
+          "tok_s": 25.169
+        }
+      ],
+      "external_verification": [
+        "sequential"
+      ],
+      "cpu_expert": {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 870.81,
+        "bytes": 32765902848
+      },
+      "faults": [],
+      "reason": null,
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "config_sha256": "6caf200ec7c0a431d4d4f6e482af7f218584c5a7565d8d6e1fa61a0c9085e7bd",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "peak_cgroup_bytes": 52183011328,
+      "minimum_gpu_free_mib": 1758,
+      "interference": []
+    },
+    {
+      "mode": "x570-greedy-pipeline",
+      "trial": 1,
+      "clean": true,
+      "exit_code": 0,
+      "output_token_count": 128,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "tok_s": 34.2561,
+      "prefill_tok_s": 31.9834,
+      "draft_timing": [],
+      "speculation": [],
+      "external_verification": [],
+      "cpu_expert": {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 871.974,
+        "bytes": 32765902848
+      },
+      "faults": [],
+      "reason": null,
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "config_sha256": "4c00abc9e93edc5fca5b9f963c89c16c2870d4235a34d05efd0957e15f21c055",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "peak_cgroup_bytes": 51233619968,
+      "minimum_gpu_free_mib": 2505,
+      "interference": []
+    },
+    {
+      "mode": "x570-external-pipeline",
+      "trial": 1,
+      "clean": true,
+      "exit_code": 0,
+      "output_token_count": 128,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "tok_s": 25.3258,
+      "prefill_tok_s": 31.8453,
+      "draft_timing": [
+        {
+          "prepare_ms": 0,
+          "draft_ms": 1277.11,
+          "verify_ms": 3700.33,
+          "restore_ms": 0,
+          "proposal_calls": 49
+        }
+      ],
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 49,
+          "proposed": 97,
+          "accepted": 79,
+          "replayed": 0,
+          "ms": 5014.65,
+          "tok_s": 25.3258
+        }
+      ],
+      "external_verification": [
+        "sequential"
+      ],
+      "cpu_expert": {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 869.828,
+        "bytes": 32765902848
+      },
+      "faults": [],
+      "reason": null,
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "config_sha256": "6caf200ec7c0a431d4d4f6e482af7f218584c5a7565d8d6e1fa61a0c9085e7bd",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "peak_cgroup_bytes": 51747782656,
+      "minimum_gpu_free_mib": 1758,
+      "interference": []
+    },
+    {
+      "mode": "x570-greedy-pipeline",
+      "trial": 2,
+      "clean": true,
+      "exit_code": 0,
+      "output_token_count": 128,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "tok_s": 34.2212,
+      "prefill_tok_s": 31.8429,
+      "draft_timing": [],
+      "speculation": [],
+      "external_verification": [],
+      "cpu_expert": {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 869.737,
+        "bytes": 32765902848
+      },
+      "faults": [],
+      "reason": null,
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "config_sha256": "4c00abc9e93edc5fca5b9f963c89c16c2870d4235a34d05efd0957e15f21c055",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "peak_cgroup_bytes": 51231780864,
+      "minimum_gpu_free_mib": 2505,
+      "interference": []
+    },
+    {
+      "mode": "x570-external-pipeline",
+      "trial": 2,
+      "clean": true,
+      "exit_code": 0,
+      "output_token_count": 128,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "tok_s": 25.2329,
+      "prefill_tok_s": 31.8132,
+      "draft_timing": [
+        {
+          "prepare_ms": 0,
+          "draft_ms": 1294.95,
+          "verify_ms": 3703.67,
+          "restore_ms": 0,
+          "proposal_calls": 49
+        }
+      ],
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 49,
+          "proposed": 97,
+          "accepted": 79,
+          "replayed": 0,
+          "ms": 5033.11,
+          "tok_s": 25.2329
+        }
+      ],
+      "external_verification": [
+        "sequential"
+      ],
+      "cpu_expert": {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 870.746,
+        "bytes": 32765902848
+      },
+      "faults": [],
+      "reason": null,
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "config_sha256": "6caf200ec7c0a431d4d4f6e482af7f218584c5a7565d8d6e1fa61a0c9085e7bd",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "peak_cgroup_bytes": 51748139008,
+      "minimum_gpu_free_mib": 1757,
+      "interference": []
+    }
+  ],
+  "comparison": {
+    "x570-greedy-pipeline": {
+      "runs": [
+        34.3047,
+        34.2561,
+        34.2212
+      ],
+      "median_tok_s": 34.2561,
+      "min_tok_s": 34.2212,
+      "max_tok_s": 34.3047,
+      "baseline_single_tok_s": 33.7403,
+      "change_percent": 1.5287356662507579
+    },
+    "x570-external-pipeline": {
+      "runs": [
+        25.169,
+        25.3258,
+        25.2329
+      ],
+      "median_tok_s": 25.2329,
+      "min_tok_s": 25.169,
+      "max_tok_s": 25.3258,
+      "baseline_single_tok_s": 24.622,
+      "change_percent": 2.4811144504914395
+    }
+  },
+  "outputs_identical_to_each_other": true,
+  "outputs_identical_to_old_pipeline_control": true,
+  "all_six_passed": true,
+  "system_prechecks": {
+    "2666_eco": {
+      "passed": true,
+      "cpu_read_GB_s": 38.7895,
+      "cpu_16_thread_FMA_GFLOP_s": 420.149,
+      "gpu": [
+        {
+          "backend": "hip",
+          "device": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "buffer_bytes": 268435456,
+          "gemm_n": 2048,
+          "free_vram_bytes": 17024679936
+        },
+        {
+          "kernel": "pcie_pinned_h2d",
+          "unit": "GB/s",
+          "median": 28.3117,
+          "best": 28.3123,
+          "worst": 28.311,
+          "median_ms": 9.48142,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "pcie_pinned_d2h",
+          "unit": "GB/s",
+          "median": 28.0876,
+          "best": 28.0969,
+          "worst": 28.0828,
+          "median_ms": 9.55707,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "gpu_stream_copy",
+          "unit": "GB/s",
+          "median": 477.559,
+          "best": 478.338,
+          "worst": 476.284,
+          "median_ms": 1.1242,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "transfer_and_copy_verified": true
+        },
+        {
+          "kernel": "gpu_sgemm_fp32",
+          "unit": "GFLOP/s",
+          "median": 13752.4,
+          "best": 16037,
+          "worst": 13567.4,
+          "median_ms": 1.24923,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "gemm_verified": true,
+          "passed": true
+        }
+      ],
+      "kernel_log_checked": true,
+      "source_sha256": {
+        "system_check.py": "afa61a6163a2fa80f4526483919a6e7e2026b8e6d7ac143c369b945df5388c1f",
+        "memory_check.py": "2c6fb12dd6e2c5448896e8818ee192b4aaee4b4f151691d6d06f0d18183868b4",
+        "bandwidth.cpp": "a72e88ed82fd848d9a411b66d2461e41daad12804389ed0b0370ccf9614a79a4",
+        "cpu_compute.cpp": "de1d59e3b131b315fef07e73929e0e0b684c96e04ca30399e05503d1d5d4f857",
+        "gpu_check.cu": "b620fb41c6fe7c1632520fcc052f0f1b91ab251f624cb4862be92ec140d15297"
+      }
+    },
+    "2933_noeco": {
+      "passed": true,
+      "cpu_read_GB_s": 42.4886,
+      "cpu_16_thread_FMA_GFLOP_s": 589.461,
+      "gpu": [
+        {
+          "backend": "hip",
+          "device": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "buffer_bytes": 268435456,
+          "gemm_n": 2048,
+          "free_vram_bytes": 17024679936
+        },
+        {
+          "kernel": "pcie_pinned_h2d",
+          "unit": "GB/s",
+          "median": 28.318,
+          "best": 28.3192,
+          "worst": 28.1515,
+          "median_ms": 9.47931,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "pcie_pinned_d2h",
+          "unit": "GB/s",
+          "median": 28.0855,
+          "best": 28.0975,
+          "worst": 28.083,
+          "median_ms": 9.5578,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "gpu_stream_copy",
+          "unit": "GB/s",
+          "median": 470.614,
+          "best": 471.437,
+          "worst": 469.943,
+          "median_ms": 1.14079,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "transfer_and_copy_verified": true
+        },
+        {
+          "kernel": "gpu_sgemm_fp32",
+          "unit": "GFLOP/s",
+          "median": 13889.3,
+          "best": 15928.8,
+          "worst": 13459.8,
+          "median_ms": 1.23692,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "gemm_verified": true,
+          "passed": true
+        }
+      ],
+      "kernel_log_checked": true,
+      "source_sha256": {
+        "system_check.py": "df254a1a9dcc637db869ef1270f2c08b413cb45e11e4fd07cad23a05150298c2",
+        "memory_check.py": "2c6fb12dd6e2c5448896e8818ee192b4aaee4b4f151691d6d06f0d18183868b4",
+        "bandwidth.cpp": "a72e88ed82fd848d9a411b66d2461e41daad12804389ed0b0370ccf9614a79a4",
+        "cpu_compute.cpp": "de1d59e3b131b315fef07e73929e0e0b684c96e04ca30399e05503d1d5d4f857",
+        "gpu_check.cu": "b620fb41c6fe7c1632520fcc052f0f1b91ab251f624cb4862be92ec140d15297",
+        "disk_read.py": "45ec06b118ea9b9f770d35804e340aa5152820fd3190de3781967915ed6bf494"
+      }
+    }
+  },
+  "qualification": "Baseline one run each, changed both ECO and RAM setting; no individual causal isolation or long-term stability claim. Repeated new decode timings; system microbenchmarks one invocation per setting.",
+  "timing_interpretation": {
+    "median_draft_ms": 1294.95,
+    "median_target_verification_ms": 3703.67,
+    "speculative_vs_greedy_percent": -26.340418202889417,
+    "explanation": "Sequential verification retains one target step per token. ECO disabled and faster RAM improved CPU microbenchmarks much more than measured decode; speculation remains slower because drafting is additional work. Baseline single-run uncertainty remains."
+  }
+}

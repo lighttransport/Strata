@@ -1,0 +1,94 @@
+[
+  {
+    "name": "c2-aff012",
+    "note": "rerun; first attempt rejected by external CPU work",
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1c-rerun/c2-aff012.json",
+    "env_overrides": {
+      "STRATA_GLM_ROUTE_AFFINITY": "0.12"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103396760,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 170.6122423610068
+    },
+    "decode_tok_s": 31.4051,
+    "decode_trials": [
+      31.4051
+    ],
+    "decode_warmup_tok_s": 26.7273,
+    "prefill_tok_s": 143.2165,
+    "rounds": 37,
+    "generated": 128,
+    "tokens_per_round": 3.4594594594594597,
+    "accepted_per_round": 2.4324324324324325,
+    "proposed_per_round": 3.0,
+    "position_accept_rate": {
+      "0": 1.0,
+      "1": 0.8378378378378378,
+      "2": 0.5945945945945946
+    },
+    "soft_accepted": 23,
+    "logit_regret_per_token": 0.18222109375,
+    "draft_ms_per_round": 16.861648648648647,
+    "verify_ms_per_round": 89.20567567567568,
+    "resync_ms_per_round": 1.4395945945945947,
+    "expert_gb_per_token": 1.437411328,
+    "flow_ms_per_token": 20.2,
+    "ms_per_token": 31.593203125,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 90,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      0.976,
+      0.984
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "9a5bcf60cd7ed5bf86c4be78e1517a956e3c53c105b6fb232dd8cdffc3a1a6f9",
+      "5beba90175d7716dac54b73ba35c15d043dd759985d85f5373532e408255cdf3"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      26,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": 4.765383665926093,
+    "decision": "KEEP",
+    "input_identity_matches_base": true
+  }
+]

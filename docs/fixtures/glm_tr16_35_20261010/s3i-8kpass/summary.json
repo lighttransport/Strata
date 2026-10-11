@@ -1,0 +1,102 @@
+[
+  {
+    "name": "p1-aff014-topk6-guard4-8kpass",
+    "note": "single 8K prefill pass; scratch cap set by --prefill-batch 8192",
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s3i-8kpass/p1-aff014-topk6-guard4-8kpass.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.14"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103591212,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1228,
+      "rejected": null,
+      "wall_seconds": 184.38361901202006
+    },
+    "decode_tok_s": 29.277,
+    "decode_trials": [
+      29.277
+    ],
+    "decode_warmup_tok_s": 27.1522,
+    "prefill_tok_s": 425.18600000000004,
+    "rounds": 40,
+    "generated": 128,
+    "tokens_per_round": 3.2,
+    "accepted_per_round": 2.175,
+    "proposed_per_round": 3.0,
+    "position_accept_rate": {
+      "0": 0.95,
+      "1": 0.7,
+      "2": 0.525
+    },
+    "soft_accepted": 27,
+    "logit_regret_per_token": 0.26517578125,
+    "draft_ms_per_round": 11.894675,
+    "verify_ms_per_round": 92.352,
+    "resync_ms_per_round": 1.8604325,
+    "expert_gb_per_token": 1.333827584,
+    "flow_ms_per_token": 19.920234375,
+    "ms_per_token": 33.8896875,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 0
+      }
+    ],
+    "sync_state_only": [
+      {
+        "omitted": 87,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "10503380122677223567",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      1.0,
+      1.0
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "f8c52de6ae61626ddd6e2fd6d21e75ee815cc8e28ac131e50d2f6fe4bedb9112",
+      "778e496b0eff50b8c82e0d7009d4c21baaad35e970e68f713834ad913a15a6f8"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      19,
+      0
+    ],
+    "control_rate": 34.0815,
+    "speed_change_percent": -14.097090797059986,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true
+  }
+]

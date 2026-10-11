@@ -1,0 +1,6 @@
+{
+  "patch_reproduction": true,
+  "standalone_build_tested": false,
+  "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+  "note": "Requires existing portability header fix for build. Extracted functions passed combined-experiment tests; standalone build/runtime remain pending."
+}

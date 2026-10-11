@@ -1,0 +1,34 @@
+[
+  {
+    "name": "cold0.08-renorm0",
+    "text_samples_sha256": "c41931f08dbdb254c1d9d792388ae0fe72a5b93611a9b9975d97886381e5145c",
+    "scope": "Manual inspection of two 128-token excerpts only",
+    "obvious_sustained_loop_observed": false,
+    "note": "Repeated quoted function signatures occur in some excerpts. No generated-code correctness or long-generation judgment.",
+    "quality_qualified": false
+  },
+  {
+    "name": "cold0.08-renorm1",
+    "text_samples_sha256": "376a51656a9c613cc7cb5dd84257ee035d85f57c1b4829804f871e6abb4d8bc9",
+    "scope": "Manual inspection of two 128-token excerpts only",
+    "obvious_sustained_loop_observed": false,
+    "note": "Repeated quoted function signatures occur in some excerpts. No generated-code correctness or long-generation judgment.",
+    "quality_qualified": false
+  },
+  {
+    "name": "cold0.12-renorm0",
+    "text_samples_sha256": "3cca701f6cab467653ed3d1972b0dd8550eec54f8d294d01ac5912e60fda4f6c",
+    "scope": "Manual inspection of two 128-token excerpts only",
+    "obvious_sustained_loop_observed": false,
+    "note": "Repeated quoted function signatures occur in some excerpts. No generated-code correctness or long-generation judgment.",
+    "quality_qualified": false
+  },
+  {
+    "name": "cold0.12-renorm1",
+    "text_samples_sha256": "2e928d4b9909c1ef951f8ee14a0e7f2726202fc9c922874c4c4306859f6e505e",
+    "scope": "Manual inspection of two 128-token excerpts only",
+    "obvious_sustained_loop_observed": false,
+    "note": "Repeated quoted function signatures occur in some excerpts. No generated-code correctness or long-generation judgment.",
+    "quality_qualified": false
+  }
+]

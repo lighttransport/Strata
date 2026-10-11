@@ -1,0 +1,68 @@
+{
+  "params": {
+    "biased_resident_gpu_scale": 1.0,
+    "routing_affinity_tau": 0.22,
+    "tier_hit_scale": 1.0,
+    "gpu_launch_scale": 0.05764800999999997,
+    "cpu_bw_scale": 1.0,
+    "cpu_width_penalty": 0.012879742405151662,
+    "cpu_layer_overhead_ms": 0.12,
+    "cpu_quant_scale": 1.0,
+    "gpu_width_factor": 0.185,
+    "gpu_width_factor_tail": 0.3,
+    "gpu_kernels_per_layer": 44,
+    "gpu_attn_us_per_layer": 40.0,
+    "gpu_attn_ctx_us": 0.12,
+    "head_fixed_ms": 0.8,
+    "tail_fixed_ms": 1.0,
+    "gpu_layer_fixed_us": 60.0,
+    "draft_fixed_ms": 1.3,
+    "tier_upload_ms": 1.0,
+    "prefill_kda_us": 36.0,
+    "prefill_kda_parts_factor": 0.7,
+    "prefill_mla_us": 58.8,
+    "prefill_mla_f16_factor": 0.468,
+    "prefill_gemm_us": 16.51545,
+    "prefill_legacy_gemm": 1.87,
+    "prefill_overlap": 0.58,
+    "prefill_group_fixed_ms": 0.73,
+    "prefill_layer_fixed_ms": 30.8,
+    "prefill_dense_us": 0.62,
+    "prefill_mla_pos_us": 0.5,
+    "prefill_stage_gbps": 7.2128,
+    "prefill_lazy_gain": 1.0,
+    "ram_tier_wait_ms": 1.5,
+    "prefetch_accuracy": 0.9,
+    "tail_topk_acceptance": 0.97,
+    "ecospec_union": 0.85,
+    "ecospec_acceptance": 0.98,
+    "selfspec_expert_mib": 24.0,
+    "tier_expert_us": 5.0,
+    "cold_tier_tokens": 256.0,
+    "cold_tier_speed": 0.75,
+    "truncation_efficiency": 0.5
+  },
+  "status": "provisional; required holdout errors remain visible",
+  "records": "tools/sim/data/measured_tr16_20261009.json",
+  "training": [
+    "screen-v2/000-baseline.result",
+    "screen-v2/001-ordinary.result",
+    "mtp1-affinity-screen/000-baseline.result",
+    "prefill8k-screen/000-mmq.result"
+  ],
+  "training_acceptance": [
+    0.722072072072072,
+    0.5714285714285714
+  ],
+  "fitted_fields": [
+    "gpu_launch_scale",
+    "prefill_gemm_us"
+  ],
+  "mean_abs_log_error": 0.024041099673047392,
+  "measured_anchors": {
+    "q23_width1_GB_s": 72.35,
+    "q23_width2_GB_s": 71.43,
+    "dram_read_GB_s": 78.2878,
+    "h2d_GB_s": 7.2128
+  }
+}

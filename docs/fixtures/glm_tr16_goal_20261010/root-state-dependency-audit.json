@@ -1,0 +1,6 @@
+{
+  "external_tree": "/mnt/nvme02/work/gemm/main/tmp/qwen38/reference-build/source",
+  "files_checked": 1373,
+  "different_or_missing": [],
+  "note": "Current external tree only; does not reconstruct the dependency at historical compile time."
+}

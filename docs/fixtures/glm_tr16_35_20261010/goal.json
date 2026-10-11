@@ -1,0 +1,49 @@
+{
+  "start": 1791605777,
+  "deadline": 1791634577,
+  "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+  "objective": "35+ decode tokens/s lesser loss; 45+ moderate loss with coding nearly lossless (45 defined on 8K code held-out, 2K reported)",
+  "window": "Extended by the user at 16:40 JST on 2026-10-10 to 8 hours total: 13:16-21:16 JST. Quality ladder now in scope.",
+  "gates": {
+    "track35": {
+      "ppl_rel_max": 0.06,
+      "kl_abs_max": 0.08,
+      "top1_drop_pp_max": 3.0,
+      "humaneval_min": 152,
+      "heldout_min_2k": 35.0,
+      "heldout_min_8k": 35.0
+    },
+    "track45": {
+      "ppl_rel_max": 0.1,
+      "kl_abs_max": 0.12,
+      "top1_drop_pp_max": 5.0,
+      "humaneval_min": 152,
+      "heldout_min_8k": 45.0,
+      "report_2k": true
+    }
+  },
+  "reference": {
+    "stdout": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-cache-screen/depth3-soft4-cache6656/000-baseline.stdout",
+    "slots": 845,
+    "mib": 6654.38,
+    "fingerprint": "9246305806530966825",
+    "decode_tok_s": 30.4391,
+    "decode_tok_s_draft_route_control": 30.4642,
+    "tokens": 128,
+    "trials": 1,
+    "prompt": "build-tr16-20261009/prompts2k/train-code.ids"
+  },
+  "status": "active",
+  "outcome": {
+    "target35_qualified": false,
+    "target45_qualified": false,
+    "best_speed_candidate": "x11-aff016-topk6: affinity 0.16 + accept top-k 6, held-out 36.72 (2K) / 36.35 (8K) tok/s, quality unmeasured, guard-free binary",
+    "stage3_prepared_not_run": [
+      "build-merged.py",
+      "quality-ladder.py",
+      "finalize.py"
+    ],
+    "recorded": "2026-10-10T16:29:33+0900",
+    "extended": "2026-10-10T17:02:25+0900"
+  }
+}

@@ -8,6 +8,7 @@ runs under the other group's CPU pass: per layer, max(cpuA, gpuB) + max(cpuB, gp
 """
 import dataclasses
 import math
+import types
 
 import kernels
 import model
@@ -24,7 +25,7 @@ class StepBreakdown:
     ms: float
     head_ms: float
     cpu_ms: float
-    gpu_ms: float            # all GPU work in MoE layers (serial chain + shared + resident experts)
+    gpu_ms: float            # all main-layer GPU work, including the three dense layers
     gpu_exposed_ms: float    # GPU time the CPU waited for
     cpu_exposed_ms: float    # CPU time the GPU waited for (= cpu_ms unless the GPU is the long pole)
     handoff_ms: float
@@ -73,7 +74,7 @@ class DecodeResult:
 
 def spec_depth(cfg):
     """Draft tokens per round: 0 for ordinary decode."""
-    if cfg.speculation == "mtp":
+    if cfg.speculation in ("mtp", "lookup", "external"):
         return min(cfg.mtp_depth, cfg.max_verify_width - 1)
     if cfg.speculation == "dflash":
         return max(1, min(cfg.draft_block, cfg.max_verify_width) - 1)
@@ -85,13 +86,18 @@ def spec_depth(cfg):
 def make_plan(hw, cfg, pack):
     depth = spec_depth(cfg)
     mtp = depth if cfg.speculation == "mtp" else 0
-    drafter = cfg.draft_model_mib if (cfg.speculation == "dflash" and depth > 0) else 0.0
+    drafter = cfg.draft_model_mib if (cfg.speculation in ("dflash", "external") and depth > 0) else 0.0
+    if cfg.speculation == 'external' and depth > 0:
+        if not 0 <= cfg.external_draft_mib <= 768:
+            raise ValueError('external drafter requires 0..768 MiB including KV and workspace')
+        drafter = cfg.external_draft_mib
     if cfg.speculation == "selfspec" and depth > 0:
         drafter = GEOMETRY.moe_layers * 24.0
+    history = 0 if cfg.speculation == 'external' and cfg.external_sequential else depth
     return vram.plan(hw, pack, cfg.context, mtp, cfg.gpu_draft_experts, cfg.dense_format,
                      cfg.gpu_budget_mib or None, cfg.reserve_mib,
                      None if cfg.decode_cache_mib < 0 else cfg.decode_cache_mib,
-                     cfg.prefill_scratch_mib, cfg.prefetch_groups, cfg.gpus, drafter, depth, cfg.tier_compress,
+                     cfg.prefill_scratch_mib, cfg.prefetch_groups, cfg.gpus, drafter, history, cfg.tier_compress,
                      tier_owned_reserve=cfg.tier_owned_reserve)
 
 
@@ -107,13 +113,27 @@ def tier_hit_share(hw, cfg, pack, plan, params, curve=None, trace=None, prior=No
     if not curve.affinity_tau > 0:
         raise ValueError("affinity response constant must be positive")
     fraction = plan.slots / pack.slots()
+    def profile_hit(base=None):
+        if not cfg.routing_affinity_layers:
+            return (base + (1-base)*(1-math.exp(-cfg.affinity/curve.affinity_tau)) if base is not None
+                    else curve.hit(fraction,policy=cfg.tier_policy,affinity=cfg.affinity,skew=pack.skew))
+        if not isinstance(cfg.routing_affinity_layers,dict):raise ValueError('routing affinity layers must be an object')
+        numerator=denominator=0.0
+        for layer in GEOMETRY.moe_layer_ids():
+            margin=cfg.routing_affinity_layers.get(str(layer),cfg.affinity)
+            if not 0 <= margin <= 2:raise ValueError('invalid per-layer affinity')
+            value=(base + (1-base)*(1-math.exp(-margin/curve.affinity_tau)) if base is not None
+                   else curve.hit(fraction,policy=cfg.tier_policy,affinity=margin,skew=pack.skew))
+            weight=pack.expert_bytes(layer)
+            numerator+=weight*value;denominator+=weight
+        return numerator/denominator
     if trace is not None and prior is not None:
         h = routing.trace_tier_hit(trace, prior, plan.slots, cfg.tier_policy == "adaptive",
                                    experts=pack.experts, layer_bytes={l: pack.expert_bytes(l) for l in pack.formats})
-        if cfg.affinity > 0:
-            h = h + (1 - h) * (1 - math.exp(-cfg.affinity / curve.affinity_tau))
+        if cfg.affinity > 0 or cfg.routing_affinity_layers:
+            h = profile_hit(h)
         return h
-    h = curve.hit(fraction, policy=cfg.tier_policy, affinity=cfg.affinity, skew=pack.skew)
+    h = profile_hit()
     if cfg.affinity > 0 and cfg.affinity_rank_lo > 1:
         # only the weakest routes (ranks lo..top_k) may switch to a resident expert
         base = curve.hit(fraction, policy=cfg.tier_policy, skew=pack.skew)
@@ -202,7 +222,10 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
         cold_factor *= 1 - min(1.0, cfg.cold_layers / g.moe_layers) * (1 - cfg.cold_scale)
     keep = 1.0 - cfg.expert_skip
     for layer in range(g.layers):
-        fixed = model.layer_fixed_bytes(layer) * dense_scale
+        if hw.fixed_weight_pack and cfg.pack != hw.fixed_weight_pack:
+            raise ValueError("fixed-weight census does not match selected pack")
+        fixed = hw.fixed_weight_bytes.get(str(layer), model.layer_fixed_bytes(layer)) * dense_scale
+        shared_bytes = hw.fixed_weight_bytes.get("shared:" + str(layer), FIXED_BYTES["shared_expert"]) * dense_scale
         if layer < g.dense_layers:
             t = sum(kernels.gpu_gemv_ms(hw, fixed, rows * w, params) + kernels.gpu_launch_ms(hw, params)
                     for w in widths)
@@ -217,8 +240,8 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             attn = params.gpu_attn_us_per_layer * 1e-3 * cols
             if layer in g.mla_layers:
                 attn += params.gpu_attn_ctx_us * 1e-3 * (cfg.context / 1024) * cols
-            gpu = (kernels.gpu_gemv_ms(hw, fixed - FIXED_BYTES["shared_expert"], cols, params)
-                   + kernels.gpu_gemv_ms(hw, FIXED_BYTES["shared_expert"], cols, params)
+            gpu = (kernels.gpu_gemv_ms(hw, fixed - shared_bytes, cols, params)
+                   + kernels.gpu_gemv_ms(hw, shared_bytes, cols, params)
                    + kernels.gpu_launch_ms(hw, params) + params.gpu_layer_fixed_us * 1e-3 + attn)
             union_bytes = one * u * keep * cold_factor
             resident = union_bytes * hit / cfg.tier_compress
@@ -278,11 +301,9 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                 # become a fictitious second memory channel. This is a lower bound.
                 shared_ms = (local_bytes + host_streamed) / (hw.memory.dram_gbps * 1e6)
                 t_cpu = max(t_cpu, shared_ms)
-            if cfg.remote_share > 0 and hw.remote.expert_gbps > 0:
-                remote_bytes = nonres * cfg.remote_share
-                t_remote = remote_bytes / (hw.remote.expert_gbps * 1e9) * 1e3 + hw.link.rtt_us * 1e-3
-                remote += max(0.0, t_remote - t_cpu) + hw.link.exposed_us * 1e-3
-                t_cpu = max(t_cpu, t_remote) + hw.link.exposed_us * 1e-3
+            if cfg.remote_share > 0 and (hw.workers or hw.remote.expert_gbps > 0):
+                t_cpu, exposed_remote = remote_layer_ms(hw, cfg, params, nonres, macs, w, eff, t_cpu)
+                remote += exposed_remote
             cpu_bytes += local_bytes
             cpu_ms += t_cpu
             if cfg.placement == "ram_tier" and ram_hit < 1.0:
@@ -312,7 +333,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
             # still overlap the CPU pass as without deferral
             f = min(1.0, max(0.0, cfg.deferral_share))
             overlap = kernels.gpu_tier_ms(hw, one * unions[0] * hit) \
-                + kernels.gpu_gemv_ms(hw, FIXED_BYTES["shared_expert"], rows * widths[0], params)
+                + kernels.gpu_gemv_ms(hw, shared_bytes, rows * widths[0], params)
             serial = gpu_g[0] - overlap
             t = max((1 - f) * cpu_g[0], overlap) + max(serial, f * cpu_g[0]) + handoff
             gpu_exposed += max(0.0, overlap - (1 - f) * cpu_g[0]) + max(0.0, serial - f * cpu_g[0])
@@ -325,7 +346,7 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
         else:
             # the shared expert and the resident experts overlap the CPU; the mixer/router chain does not
             overlap = kernels.gpu_tier_ms(hw, one * unions[0] * hit) \
-                + kernels.gpu_gemv_ms(hw, FIXED_BYTES["shared_expert"], rows * widths[0], params)
+                + kernels.gpu_gemv_ms(hw, shared_bytes, rows * widths[0], params)
             serial = gpu_g[0] - overlap
             t = max(cpu_g[0], overlap) + serial + handoff
             gpu_exposed += serial + max(0.0, overlap - cpu_g[0])
@@ -334,13 +355,13 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
         layer_total += t
 
     cols = rows * width
-    tail_ms = (kernels.gpu_gemv_ms(hw, FIXED_BYTES["lm_head"], cols, params) + kernels.gpu_launch_ms(hw, params)
+    tail_ms = (kernels.gpu_gemv_ms(hw, hw.fixed_weight_bytes.get("lm_head", FIXED_BYTES["lm_head"]), cols, params) + kernels.gpu_launch_ms(hw, params)
                + kernels.pcie_ms(hw, cols * g.vocab * 4, "d2h") + params.tail_fixed_ms)
     head_fixed = params.head_fixed_ms
     tier_up = params.tier_upload_ms if (cfg.tier_policy == "adaptive" and plan.slots > 0
                                         and cfg.placement != "gpu_stream") else 0.0
     total = layer_total + head_fixed + tail_ms + tier_up
-    dense_ms = sum(kernels.gpu_gemv_ms(hw, model.layer_fixed_bytes(l) * dense_scale, rows * w, params)
+    dense_ms = sum(kernels.gpu_gemv_ms(hw, hw.fixed_weight_bytes.get(str(l), model.layer_fixed_bytes(l)) * dense_scale, rows * w, params)
                    + kernels.gpu_launch_ms(hw, params) for l in range(g.dense_layers) for w in widths)
     shares = dict(cpu=cpu_ms, gpu=gpu_ms, pcie=pcie, disk=disk, remote=remote)
     bottleneck = max(shares, key=shares.get)
@@ -356,6 +377,50 @@ def step(hw, cfg, params, width, pack=None, plan=None, hit=None, rows=1, consecu
                          cpu_bytes=cpu_bytes, gpu_bytes=gpu_bytes, pcie_bytes=pcie_bytes, disk_bytes=disk_bytes,
                          hit_bytes_share=hit, union_ratio=sum(unions), cpu_bound=bound, bottleneck=bottleneck,
                          groups=len(widths))
+
+
+def remote_shares(hw, cfg):
+    """Per-worker share of every layer's non-resident expert work (multinode model); [] without hw.workers."""
+    if not hw.workers:
+        return []
+    if cfg.remote_shares:
+        shares = [float(x) for x in cfg.remote_shares.split(",")]
+        if len(shares) != len(hw.workers):
+            raise ValueError("remote_shares must list one share per worker")
+        return shares
+    return [cfg.remote_share / len(hw.workers)] * len(hw.workers)
+
+
+def remote_layer_ms(hw, cfg, params, nonres, macs, width, eff, t_cpu):
+    """One MoE layer with remote expert workers: (layer time, exposed remote wait).
+
+    Legacy single worker (no hw.workers): the calibrated pure-bandwidth model. Multinode: every worker runs its share
+    through its own CPU roofline, plus the fixed request cost, the link round trip and the wire time of the request
+    (4.8 KB) and the reply (8 KB f16 or 16 KB f32 per token); the layer waits for the slowest node, and the exposed
+    wait after overlap is added. An expert-index split streams whole experts per node, so routing makes the per-node
+    load uneven; the expected excess over the mean is modelled as expert_split_imbalance / sqrt(top_k * share).
+    """
+    if not hw.workers:
+        remote_bytes = nonres * cfg.remote_share
+        t_remote = remote_bytes / (hw.remote.expert_gbps * 1e9) * 1e3 + hw.link.rtt_us * 1e-3
+        exposed = max(0.0, t_remote - t_cpu) + hw.link.exposed_us * 1e-3
+        return max(t_cpu, t_remote) + hw.link.exposed_us * 1e-3, exposed
+    slowest, exposed_us = t_cpu, 0.0
+    reply = 8196 if cfg.remote_reply == "f16" else 16384
+    for node, share in zip(hw.workers, remote_shares(hw, cfg)):
+        if share <= 0:
+            continue
+        bytes_i, macs_i = nonres * share, macs * share
+        if cfg.split_mode == "expert":
+            skew = 1 + params.expert_split_imbalance / math.sqrt(max(1e-9, GEOMETRY.top_k * share))
+            bytes_i, macs_i = bytes_i * skew, macs_i * skew
+        node_hw = types.SimpleNamespace(cpu=node.cpu, memory=node.memory)
+        t_i, _ = kernels.cpu_roofline(node_hw, params, bytes_i, macs_i, width, node.cpu.workers(node.threads), eff)
+        wire_ms = (4800 + width * reply) / (max(node.link.gbps, 1e-6) * 1e9) * 1e3
+        t_i += node.request_overhead_ms + node.link.rtt_us * 1e-3 + wire_ms
+        slowest = max(slowest, t_i)
+        exposed_us = max(exposed_us, node.link.exposed_us)
+    return slowest + exposed_us * 1e-3, max(0.0, slowest - t_cpu) + exposed_us * 1e-3
 
 
 def draft_step_ms(hw, cfg, params, pack, head=True, plan=None, rows=1):
@@ -404,8 +469,12 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
     local_gib = pack.routed_total_bytes() / 2 ** 30 * (1 - cfg.remote_share) * (1 - cfg.cold_share * (1 - cfg.cold_scale)) * (1 - min(1.0, cfg.cold_layers / GEOMETRY.moe_layers) * (1 - cfg.cold_scale))
     if cfg.placement == "cpu" and local_gib + 7 > hw.memory.gib + hw.memory.page_cache_gib:
         notes.append(f"local expert rows ({local_gib:.1f} GiB) do not fit host RAM; use placement=ram_tier")
-    if cfg.remote_share > 0 and hw.remote.ram_gib and pack.routed_total_bytes() / 2 ** 30 * cfg.remote_share + 2 > hw.remote.ram_gib:
+    if cfg.remote_share > 0 and not hw.workers and hw.remote.ram_gib and pack.routed_total_bytes() / 2 ** 30 * cfg.remote_share + 2 > hw.remote.ram_gib:
         notes.append(f"remote rows ({pack.routed_total_bytes() / 2 ** 30 * cfg.remote_share:.1f} GiB) exceed the worker's RAM")
+    for node, share in zip(hw.workers, remote_shares(hw, cfg)):
+        gib = pack.routed_total_bytes() / 2 ** 30 * share
+        if share > 0 and gib + 2 > node.memory.gib + node.memory.page_cache_gib:
+            notes.append(f"{node.name}: rows ({gib:.1f} GiB) exceed its RAM ({node.memory.gib:.0f} GiB)")
     if cfg.placement == "ram_tier":
         h, gib = ram_hit_share(hw, cfg, pack)
         notes.append(f"RAM expert set {gib:.1f} GiB serves {h * 100:.1f} % of routed bytes ({cfg.ram_mode})")
@@ -436,6 +505,32 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         tokens = float(rows)
         draft = resync = 0.0
         round_ms = verify = s.ms
+    elif cfg.speculation in ("lookup", "external"):
+        if len(cfg.acceptance_probabilities) < depth:
+            raise ValueError("lookup/external forecasts require measured conditional acceptance probabilities")
+        if cfg.speculation == "external" and cfg.external_draft_ms < 0:
+            raise ValueError("external draft latency is unmeasured")
+        if not 0 <= cfg.proposal_probability <= 1:
+            raise ValueError("proposal probability must lie in [0,1]")
+        per_row = routing.tokens_per_round(depth, cfg.acceptance_probabilities)
+        s = step(hw, cfg, params, depth + 1, pack, plan, hit, rows=rows, union=union)
+        draft = cfg.external_draft_ms if cfg.speculation == "external" else cfg.lookup_draft_ms
+        resync = 0.0
+        verify = s.ms
+        probability = cfg.proposal_probability
+        greedy_step = step(hw, cfg, params, 1, pack, plan, hit, rows=rows)
+        round_ms = draft + probability * verify + (1-probability) * greedy_step.ms
+        tokens = (probability * per_row + (1-probability)) * rows
+        if cfg.speculation == 'external' and cfg.external_sequential:
+            if rows != 1:
+                raise ValueError('external sequential verification supports one sequence')
+            s = dataclasses.replace(greedy_step, **{
+                field.name: getattr(greedy_step, field.name) * tokens
+                for field in dataclasses.fields(greedy_step)
+                if field.name == 'ms' or field.name.endswith(('_ms', '_bytes'))})
+            verify = s.ms
+            round_ms = draft + verify
+            notes.append('sequential target verification preserves frozen routing; no batched compute gain')
     elif cfg.speculation == "selfspec":
         # DraftExpert: each draft runs the target's dense path once on the GPU with one resident draft expert per layer
         per_row = routing.tokens_per_round(depth, "selfspec")
@@ -472,7 +567,10 @@ def simulate(hw, cfg, params=None, trace=None, prior=None):
         tokens = rows + (tokens - rows) * params.ecospec_acceptance
     tok_s = tokens / round_ms * 1e3
     cpu_gbps = s.cpu_bytes / max(1e-9, s.cpu_ms) / 1e6 if s.cpu_ms else 0.0
-    gpu_round = s.gpu_ms + s.head_ms + s.tail_ms + draft + resync
+    # gpu_ms already includes the dense layers also reported in head_ms.
+    # Adding head_ms double-counted them and could put the reported ceiling
+    # below the prediction. Only the fixed head cost is additional work.
+    gpu_round = s.gpu_ms + params.head_fixed_ms + s.tail_ms + draft + resync
     cpu_ceiling = tokens / max(1e-9, s.cpu_ms + s.disk_ms) * 1e3 if s.cpu_ms else float("inf")
     gpu_ceiling = tokens / max(1e-9, gpu_round) * 1e3
     return DecodeResult(tok_s=tok_s, tokens_per_round=tokens, round_ms=round_ms, draft_ms=draft, verify_ms=verify,

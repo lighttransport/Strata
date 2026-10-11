@@ -1,0 +1,1050 @@
+{
+  "date": "2026-10-11",
+  "source_commit": "999616cef543eb32445d8b16618bdb0c87fdada1",
+  "build_scope": "uncommitted development builds; per-run executable hashes identify screened binaries",
+  "hardware": "B550 / Ryzen 9 3950X / RX 9070 XT gfx1201 / 64 GiB RAM",
+  "ram_mt_s_user_reported": 2666,
+  "ram_read": {
+    "threads": 12,
+    "mib": 1024,
+    "repeats": 5,
+    "median_gb_s": 36.7349,
+    "best_gb_s": 37.0456,
+    "minimum_gb_s": 36.6893,
+    "validated": true
+  },
+  "boot": {
+    "kernel": "7.0.0-38-generic",
+    "amdgpu_dkms": "6.19.14.31400100",
+    "runpm": 0,
+    "aspm": 0,
+    "ppfeaturemask": "default 0xfff7bfff",
+    "ppt0_w": 212,
+    "power_cap_changed_by_agent": false
+  },
+  "limits": {
+    "ram_gib": 60,
+    "swap_bytes": 0,
+    "gpu_allocation_budget_mib": 15360,
+    "physical_free_reserve_mib": 512
+  },
+  "completed_runs": [
+    {
+      "record": "mmq-2048-8k.result.json",
+      "source_sha256": "cde9a44bb8ac9a84e35da46f64877082381639f167ac7a3364e7eb9d7d061209",
+      "started_utc": "2026-10-10T21:31:45.771042+00:00",
+      "context": 4096,
+      "prefill_batch": 2048,
+      "prefill_backend": "mmq",
+      "input_tokens": 2048,
+      "output_tokens": 128,
+      "prefill_tok_s": 89.1281,
+      "decode_tok_s": 35.4356,
+      "output_sha256": "3ac7aeca523515d4efccf8a520dac2a614f0b5e32acacbb5da9c422f1ee4beac",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "executable_sha256": "dadd65154da30cd4c34dd7f49818028970d8e73d04cc230a554faa0ee05933fe",
+      "configuration_sha256": "c5e59e1d2e282a94801cb44cc546b892c48aa02e6402e7e23bbc8c6c1db0f984",
+      "wall_seconds": 90.21159670299994,
+      "minimum_gpu_free_mib": 1103,
+      "peak_cgroup_bytes": 51810611200,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1074,
+          "MiB": 8457.75,
+          "fingerprint": 14353214317779942841
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 924.103,
+          "bytes": 31725453312
+        }
+      ],
+      "peak_allocated_gpu_mib": 13836.3
+    },
+    {
+      "record": "wmma-2048-8k.result.json",
+      "source_sha256": "5a753840731aaa948d773239ccb917ad9ff15dd16f8ac9b45d474a7603de5a6f",
+      "started_utc": "2026-10-10T21:33:20.291021+00:00",
+      "context": 4096,
+      "prefill_batch": 2048,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 2048,
+      "output_tokens": 128,
+      "prefill_tok_s": 88.9345,
+      "decode_tok_s": 35.4471,
+      "output_sha256": "3ac7aeca523515d4efccf8a520dac2a614f0b5e32acacbb5da9c422f1ee4beac",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "executable_sha256": "dadd65154da30cd4c34dd7f49818028970d8e73d04cc230a554faa0ee05933fe",
+      "configuration_sha256": "b460bf3191aa9831654ad8285c8831e38217a837bf756c8cb07756607497cca5",
+      "wall_seconds": 85.96082957099998,
+      "minimum_gpu_free_mib": 1113,
+      "peak_cgroup_bytes": 51809542144,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1074,
+          "MiB": 8457.75,
+          "fingerprint": 14353214317779942841
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 924.292,
+          "bytes": 31725453312
+        }
+      ],
+      "peak_allocated_gpu_mib": 13836.3
+    },
+    {
+      "record": "mmq-8192-8k.result.json",
+      "source_sha256": "0de3bb522ce751f7010beec6bbbd9c9368edfff224a8d66f432136ed70f36903",
+      "started_utc": "2026-10-10T21:34:50.447313+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "mmq",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 121.526,
+      "decode_tok_s": 35.2158,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "dadd65154da30cd4c34dd7f49818028970d8e73d04cc230a554faa0ee05933fe",
+      "configuration_sha256": "eb8046a537f15145e6b78013e9f4fc90a9883429ce16f8b36545df26db8d46a5",
+      "wall_seconds": 134.1427258550002,
+      "minimum_gpu_free_mib": 1227,
+      "peak_cgroup_bytes": 51853762560,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16272416360696841699
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 959.093,
+          "bytes": 32997113856
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "wmma-8192-8k.result.json",
+      "source_sha256": "c73d9a1ebf3602e930fbebce28fb59be39942b88d7e1023c60aaa5651887b374",
+      "started_utc": "2026-10-10T21:37:09.129201+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 464.126,
+      "decode_tok_s": 35.3911,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "dadd65154da30cd4c34dd7f49818028970d8e73d04cc230a554faa0ee05933fe",
+      "configuration_sha256": "ca9737c4d6c5981e492d4cd9ac9eee6a8d9f8ea83891c7aa3fa4aeebb7dfce62",
+      "wall_seconds": 75.91262325499974,
+      "minimum_gpu_free_mib": 1340,
+      "peak_cgroup_bytes": 51852226560,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 952.978,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "control-8192-8k.result.json",
+      "source_sha256": "2adbd68533df69758cfe979eeb796bbf35fd3e081c2197f1df9dbe37d8b36f4a",
+      "started_utc": "2026-10-10T21:53:14.206821+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 468.095,
+      "decode_tok_s": 35.5043,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "e1d6ea1c6f9c2a87f4fd47611f3b170351f3db9b1daaee9eb3306a3202575f59",
+      "configuration_sha256": "ca9737c4d6c5981e492d4cd9ac9eee6a8d9f8ea83891c7aa3fa4aeebb7dfce62",
+      "wall_seconds": 79.9877104520001,
+      "minimum_gpu_free_mib": 1328,
+      "peak_cgroup_bytes": 51853803520,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 953.69,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "mla-8192-8k.result.json",
+      "source_sha256": "39aa294ec91b6f92ec13e1477254afeb8b5dbc57de98c40129fa58eb4bc7c16f",
+      "started_utc": "2026-10-10T21:54:38.604647+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 465.993,
+      "decode_tok_s": 34.9365,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "e1d6ea1c6f9c2a87f4fd47611f3b170351f3db9b1daaee9eb3306a3202575f59",
+      "configuration_sha256": "7db1cfb384ce4c1e0711bb3382ec72a8a3ce53fb54bc2b86c9be2c6d967ad6ff",
+      "wall_seconds": 84.27909812899998,
+      "minimum_gpu_free_mib": 1342,
+      "peak_cgroup_bytes": 51852570624,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 944.853,
+          "bytes": 32559464448
+        }
+      ],
+      "peak_allocated_gpu_mib": 13831.1
+    },
+    {
+      "record": "pinned-8192-8k.result.json",
+      "source_sha256": "cdb20db93c5965c2317eceba24c4f533ebe6049705f1a0024d2b46c789fa6cf2",
+      "started_utc": "2026-10-10T21:56:08.957663+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 467.518,
+      "decode_tok_s": 35.4865,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "e1d6ea1c6f9c2a87f4fd47611f3b170351f3db9b1daaee9eb3306a3202575f59",
+      "configuration_sha256": "d26ced65dd0bb46847d0d9039d8ae556710d7d49c7292077dfe68c9364d6c96f",
+      "wall_seconds": 80.2767054850001,
+      "minimum_gpu_free_mib": 1328,
+      "peak_cgroup_bytes": 51853062144,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 953.637,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "both-8192-8k.result.json",
+      "source_sha256": "faaad96e171bdef5768e2cd0dc893949c89f75b66e28c22dc653ecbc516d1928",
+      "started_utc": "2026-10-10T21:57:35.379092+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 467.116,
+      "decode_tok_s": 34.8909,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "e1d6ea1c6f9c2a87f4fd47611f3b170351f3db9b1daaee9eb3306a3202575f59",
+      "configuration_sha256": "c0a784cc2ca5ee50bf89ac81e187a6910d14204bf0c00af41f73434439f1b18b",
+      "wall_seconds": 80.12632773699988,
+      "minimum_gpu_free_mib": 1342,
+      "peak_cgroup_bytes": 51853336576,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 942.242,
+          "bytes": 32559464448
+        }
+      ],
+      "peak_allocated_gpu_mib": 13831.1
+    },
+    {
+      "record": "repeat-8192-8k.result.json",
+      "source_sha256": "2eb93a11f28294160ea31072eea73814a65230244a808ad0f0cfd997252a23c3",
+      "started_utc": "2026-10-10T21:58:59.452872+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 459.179,
+      "decode_tok_s": 35.3883,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "e1d6ea1c6f9c2a87f4fd47611f3b170351f3db9b1daaee9eb3306a3202575f59",
+      "configuration_sha256": "ca9737c4d6c5981e492d4cd9ac9eee6a8d9f8ea83891c7aa3fa4aeebb7dfce62",
+      "wall_seconds": 83.73722034399998,
+      "minimum_gpu_free_mib": 1330,
+      "peak_cgroup_bytes": 51853209600,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 953.666,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "control-8192-rows.result.json",
+      "source_sha256": "73361a520a5bfea2bce58b7cd1c143fdaf4a1a8412b6fa13b0e7adafcb3366fd",
+      "started_utc": "2026-10-10T22:02:37.200139+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 466.201,
+      "decode_tok_s": 35.4059,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a9e218ac78321cd4631f9df380865a2403b6cac46ebc8e861bc83aa92227a54d",
+      "configuration_sha256": "ca9737c4d6c5981e492d4cd9ac9eee6a8d9f8ea83891c7aa3fa4aeebb7dfce62",
+      "wall_seconds": 85.42707705400016,
+      "minimum_gpu_free_mib": 1336,
+      "peak_cgroup_bytes": 51852980224,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 956.238,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "row2-8192-rows.result.json",
+      "source_sha256": "008477869d7a237c55228036dde0a25e9a3fbf95a3bfcd94be33a95e122d5d1c",
+      "started_utc": "2026-10-10T22:04:07.566779+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 466.514,
+      "decode_tok_s": 34.0539,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a9e218ac78321cd4631f9df380865a2403b6cac46ebc8e861bc83aa92227a54d",
+      "configuration_sha256": "85c27941b69cb5e663d95b3e37614434195d534bba978619465df40ebbf199b0",
+      "wall_seconds": 76.0076720269999,
+      "minimum_gpu_free_mib": 1327,
+      "peak_cgroup_bytes": 51852800000,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 953.012,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "row4-8192-rows.result.json",
+      "source_sha256": "0e830009711c6bdc9b397af9379ccbd7f088d87da235029d02157018f9c7e811",
+      "started_utc": "2026-10-10T22:05:27.861714+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 464.561,
+      "decode_tok_s": 33.1985,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a9e218ac78321cd4631f9df380865a2403b6cac46ebc8e861bc83aa92227a54d",
+      "configuration_sha256": "db9a16b309eadaa7bda0651f6be4efbdefdfbfde83ed8c2b15319bf0e2ffeedc",
+      "wall_seconds": 84.85069183299993,
+      "minimum_gpu_free_mib": 1336,
+      "peak_cgroup_bytes": 51853295616,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 954.883,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "row4tsum-8192-rows.result.json",
+      "source_sha256": "82aceb034b2ac0413181141361c1283aa95dd19eb0b94c0b1debfbe23edec42f",
+      "started_utc": "2026-10-10T22:06:58.164167+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 464.244,
+      "decode_tok_s": 33.1652,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a9e218ac78321cd4631f9df380865a2403b6cac46ebc8e861bc83aa92227a54d",
+      "configuration_sha256": "b380e56cccdbf7ed71bffe5d17403c749a51a3a148faf5d2f16456186cf2ef32",
+      "wall_seconds": 84.32947713099975,
+      "minimum_gpu_free_mib": 1327,
+      "peak_cgroup_bytes": 51853832192,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 955.369,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "repeat-8192-rows.result.json",
+      "source_sha256": "7823caa1a655aebd75d545d1af539398f8d8caeb2ed3e1a2029459c3005ad57b",
+      "started_utc": "2026-10-10T22:08:28.622840+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 464.2,
+      "decode_tok_s": 35.388,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a9e218ac78321cd4631f9df380865a2403b6cac46ebc8e861bc83aa92227a54d",
+      "configuration_sha256": "ca9737c4d6c5981e492d4cd9ac9eee6a8d9f8ea83891c7aa3fa4aeebb7dfce62",
+      "wall_seconds": 85.84860294500004,
+      "minimum_gpu_free_mib": 1335,
+      "peak_cgroup_bytes": 51853615104,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 951.981,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "control-8192-0-prefill.result.json",
+      "source_sha256": "9b2d2e296fa078b437e303be0475fd62ff28aa44b2610cbb43debca62c0bc5ab",
+      "started_utc": "2026-10-10T22:13:16.453432+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 465.537,
+      "decode_tok_s": 35.3816,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a1d6b2959c9135b7aaa9baecda47fa15b0a286b0886fdd4519f1d19662d035d1",
+      "configuration_sha256": "ca9737c4d6c5981e492d4cd9ac9eee6a8d9f8ea83891c7aa3fa4aeebb7dfce62",
+      "wall_seconds": 75.97598957299942,
+      "minimum_gpu_free_mib": 1330,
+      "peak_cgroup_bytes": 51853410304,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 957.154,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "tileall-8192-1-prefill.result.json",
+      "source_sha256": "7227433adf3bae28c96e468fc0d70dd7bd6edf5ab900e690b9d4b6824db331b3",
+      "started_utc": "2026-10-10T22:14:36.693118+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 451.958,
+      "decode_tok_s": 35.403,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a1d6b2959c9135b7aaa9baecda47fa15b0a286b0886fdd4519f1d19662d035d1",
+      "configuration_sha256": "74ff5fd37f63bcb898cca0d52a59cd054c6ba9175926d42916f1910966995f78",
+      "wall_seconds": 80.72650988899932,
+      "minimum_gpu_free_mib": 1336,
+      "peak_cgroup_bytes": 51852128256,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 954.249,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "tile8stage-8192-2-prefill.result.json",
+      "source_sha256": "b51b67e816e7d4a7f1647818e1b8093a0a5c5c04979322b2ad5ea17dfbecc8ea",
+      "started_utc": "2026-10-10T22:16:03.086696+00:00",
+      "context": 8192,
+      "prefill_batch": 8192,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 7936,
+      "output_tokens": 128,
+      "prefill_tok_s": 449.658,
+      "decode_tok_s": 35.4145,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602",
+      "executable_sha256": "a1d6b2959c9135b7aaa9baecda47fa15b0a286b0886fdd4519f1d19662d035d1",
+      "configuration_sha256": "f1177f8e01be9e0a98ee654f62b86b6025730938de59290626b32e8b08884092",
+      "wall_seconds": 84.50979677899977,
+      "minimum_gpu_free_mib": 1326,
+      "peak_cgroup_bytes": 51853000704,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1062,
+          "MiB": 8363.25,
+          "fingerprint": 16555315904729066549
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 952.426,
+          "bytes": 32807190528
+        }
+      ],
+      "peak_allocated_gpu_mib": 13835.3
+    },
+    {
+      "record": "mmq-2048-3-prefill.result.json",
+      "source_sha256": "07ffcbff06c7bcb6e8b7d1c42c4a4bcc08aea7589ae731f2af272f8a09c13e2b",
+      "started_utc": "2026-10-10T22:17:33.435357+00:00",
+      "context": 4096,
+      "prefill_batch": 2048,
+      "prefill_backend": "mmq",
+      "input_tokens": 2048,
+      "output_tokens": 128,
+      "prefill_tok_s": 91.3377,
+      "decode_tok_s": 35.4544,
+      "output_sha256": "3ac7aeca523515d4efccf8a520dac2a614f0b5e32acacbb5da9c422f1ee4beac",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "executable_sha256": "a1d6b2959c9135b7aaa9baecda47fa15b0a286b0886fdd4519f1d19662d035d1",
+      "configuration_sha256": "c5e59e1d2e282a94801cb44cc546b892c48aa02e6402e7e23bbc8c6c1db0f984",
+      "wall_seconds": 89.4828968769998,
+      "minimum_gpu_free_mib": 1106,
+      "peak_cgroup_bytes": 51810144256,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1074,
+          "MiB": 8457.75,
+          "fingerprint": 14353214317779942841
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 923.667,
+          "bytes": 31725453312
+        }
+      ],
+      "peak_allocated_gpu_mib": 13836.3
+    },
+    {
+      "record": "earlybase-2048-4-prefill.result.json",
+      "source_sha256": "e406ad36637285069ab78ba8380a4b5c5b17ef11e52185062073ee7ddd177c9c",
+      "started_utc": "2026-10-10T22:19:07.835729+00:00",
+      "context": 4096,
+      "prefill_batch": 2048,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 2048,
+      "output_tokens": 128,
+      "prefill_tok_s": 215.05,
+      "decode_tok_s": 35.2892,
+      "output_sha256": "d88b243cea30f4b8cbd0b4ea3275b6a2e3485420cda8ea2cd4e57154e856e8ce",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "executable_sha256": "a1d6b2959c9135b7aaa9baecda47fa15b0a286b0886fdd4519f1d19662d035d1",
+      "configuration_sha256": "00b97318003579a7c31088bb28ca1cfbb03a54bdfb850213e60e45fe9bbce9ab",
+      "wall_seconds": 77.44194282599983,
+      "minimum_gpu_free_mib": 1325,
+      "peak_cgroup_bytes": 51809865728,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1074,
+          "MiB": 8457.75,
+          "fingerprint": 17535709353621313779
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 983.222,
+          "bytes": 33641201664
+        }
+      ],
+      "peak_allocated_gpu_mib": 13836.3
+    },
+    {
+      "record": "early-2048-5-prefill.result.json",
+      "source_sha256": "3f456c1207be8265f8e36f7d7d540d629cb02a2790e4787a4aadc549bd26b2bb",
+      "started_utc": "2026-10-10T22:20:30.172912+00:00",
+      "context": 4096,
+      "prefill_batch": 2048,
+      "prefill_backend": "bf16-batched",
+      "input_tokens": 2048,
+      "output_tokens": 128,
+      "prefill_tok_s": 214.066,
+      "decode_tok_s": 35.3663,
+      "output_sha256": "d88b243cea30f4b8cbd0b4ea3275b6a2e3485420cda8ea2cd4e57154e856e8ce",
+      "prompt_sha256": "7a76caeb314f35480790c800d11f5edf655f342274b6596b1d4def4ee1e77e70",
+      "executable_sha256": "a1d6b2959c9135b7aaa9baecda47fa15b0a286b0886fdd4519f1d19662d035d1",
+      "configuration_sha256": "0d10d13c2f0b6af138fee497575cb3f0b26b1871dce076e0abd9253edff195c6",
+      "wall_seconds": 72.91269997700056,
+      "minimum_gpu_free_mib": 1332,
+      "peak_cgroup_bytes": 51808882688,
+      "swap_bytes": 0,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 1074,
+          "MiB": 8457.75,
+          "fingerprint": 17535709353621313779
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 976.592,
+          "bytes": 33641201664
+        }
+      ],
+      "peak_allocated_gpu_mib": 13836.3
+    }
+  ],
+  "rejected_changes": [
+    "MLA graph replay (slower)",
+    "pinned logits (no gain)",
+    "single-token MMVQ row grouping (slower; implementation removed)",
+    "64-row WMMA tiling (slower; implementation removed)",
+    "eight prefill staging workers (slower)"
+  ],
+  "candidate": {
+    "change": "opt-in WMMA and ordered KDA activation at 2048 input tokens",
+    "screen_mmq_prefill_tok_s": 91.3377,
+    "screen_wmma_prefill_tok_s": 215.05,
+    "status": "not promoted: output changed; coding quality gates, repeated fixture matrix and soak blocked by GPU loss"
+  },
+  "draft": {
+    "model": "Qwen/Qwen2.5-Coder-0.5B",
+    "revision": "8123ea2e9354afb7ffcc6c8641d1b2f5ecf18301",
+    "quantization": "Q4_K_M",
+    "context": 4096,
+    "llama_server_revision": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+    "quantizer_revision": "03a667aa304f2a8e02a9a02b2e3fb45d64bcae7f",
+    "quantized_file_sha256": "873a4d5b18ff4ec02d76288d5026503bba70b223c80286c460a5379c912de34d",
+    "startup": {
+      "ready": {
+        "protocol": 1,
+        "ready": true,
+        "vram_mib": 751.29296875
+      },
+      "requests": [
+        {
+          "protocol": 1,
+          "request_id": 1,
+          "tokens": [],
+          "primed": true,
+          "wall_ms": 274.94352200028516
+        },
+        {
+          "protocol": 1,
+          "request_id": 2,
+          "tokens": [
+            198
+          ],
+          "primed": false,
+          "wall_ms": 26.913838999462314
+        },
+        {
+          "protocol": 1,
+          "request_id": 3,
+          "tokens": [
+            198
+          ],
+          "primed": false,
+          "wall_ms": 22.146969999994326
+        },
+        {
+          "protocol": 1,
+          "request_id": 4,
+          "tokens": [
+            198
+          ],
+          "primed": false,
+          "wall_ms": 21.76440199946228
+        }
+      ]
+    },
+    "scope": "startup/VRAM/protocol diagnostics during CPU compilation, not a qualified latency or target-inference measurement",
+    "target_verification": "sequential for frozen residency-biased/deferred profile; batched only for supported exact target configuration",
+    "target_inference_tested": false
+  },
+  "fault": {
+    "record": "mmq-2048-6-prefill",
+    "first_kernel_timestamp": 4914.550427,
+    "first_messages": [
+      "[ 4914.550427] amdgpu 0000:0a:00.0: device lost from bus!",
+      "[ 4914.550433] amdgpu 0000:0a:00.0: SMU: bus error for message: TransferTableSmu2Dram(18) response:0xFFFFFFFF ",
+      "[ 4914.550438] in params:00000005",
+      "[ 4914.550441] amdgpu 0000:0a:00.0: Failed to export SMU metrics table!",
+      "[ 4914.568394] snd_hda_intel 0000:0a:00.1: Unable to change power state from D3hot to D0, device inaccessible",
+      "[ 4914.587671] amdgpu 0000:0a:00.0: device lost from bus!"
+    ],
+    "kernel_delta_sha256": "37bf11eec21652b97ed5a828844cd794ec9b350c37456cc92c966bdfda160b55",
+    "last_resource_sample": {
+      "seconds": 72.77464597800008,
+      "memory_current": 51803987968,
+      "rss_bytes": 51697995776,
+      "anon_bytes": 676728832,
+      "file_bytes": 50901278720,
+      "swap_bytes": 0,
+      "io": {},
+      "process_io": {
+        "rchar": 14902024,
+        "wchar": 64717151,
+        "syscr": 1315,
+        "syscw": 1033,
+        "read_bytes": 55297126400,
+        "write_bytes": 64757760,
+        "cancelled_write_bytes": 64704512
+      }
+    },
+    "interference": [],
+    "direct_registration": {
+      "mib": 47628,
+      "ranges": 85,
+      "milliseconds": 53802.4
+    },
+    "completed": false,
+    "qualified": false,
+    "response": "all GPU jobs stopped; no reset, power change or further GPU launch",
+    "interpretation": "loss recurred with runpm/aspm disabled and existing power cap; root cause remains unresolved"
+  },
+  "limitations": [
+    "single 128-token screening runs, not 512-token coding fixture medians",
+    "4K/16K independent holdouts unavailable",
+    "speculative target quality/performance not measured",
+    "ten-minute selected-profile coding soak not performed",
+    "library BF16 full-model path excluded",
+    "no candidate promoted; release defaults unchanged"
+  ]
+}

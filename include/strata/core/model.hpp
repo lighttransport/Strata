@@ -2,6 +2,8 @@
 
 #include "strata/artifact/gguf_reader.hpp"
 #include "strata/artifact/glm_native.hpp"
+#include "strata/host/glm_expert_pack.h"
+#include "strata/host/glm_names.h"
 
 #include <cmath>
 #include <filesystem>
@@ -194,6 +196,39 @@ struct ModelCensus {
     uint64_t selected_expert_bytes = 0;
 };
 
+// The loader's side of the shared expert-pack scan (src/host/glm_expert_pack.c).  A C callback cannot carry a
+// lambda, so the artifact's tensor table is passed as the context.
+inline strata_ep_key pack_key(const MetaValue *value) {
+    strata_ep_key key;
+    key.present = value != nullptr;
+    key.type = value ? static_cast<int>(value->type) : 0;
+    key.u = value ? value->u : 0;
+    return key;
+}
+
+struct ExpertScanContext {
+    const std::map<std::string, ArtifactTensor>* tensors;
+};
+
+// Answers for one projection `blk.<l>.ffn_<part>_exps.weight`, which the scan has already named in
+// `out->name`.  -1 means the artifact has no such tensor, which is what the file is missing.
+inline int expert_scan_lookup(void *context, int layer, const char *part, strata_ep_projection *out) {
+    (void)part;   // the projection's own name carries the part
+    const auto *scan = static_cast<const ExpertScanContext *>(context);
+    if (scan == nullptr || scan->tensors == nullptr || out == nullptr) return -1;
+    int named = -1;
+    const char *suffix = nullptr;
+    if (strata_parse_blk(out->name, &named, &suffix) != 1 || named != layer) return -1;   // the name lies
+    const auto it = scan->tensors->find(out->name);
+    if (it == scan->tensors->end()) return -1;
+    const auto &tensor = *it->second.tensor;
+    const auto *hash = it->second.file->get("strata.expert_pack.hash." + std::string(out->name));
+    out->type = static_cast<int>(tensor.type);
+    out->hashed = hash != nullptr;
+    out->hash_type = hash ? static_cast<int>(hash->type) : 0;
+    return 0;
+}
+
 // Owns the mappings; tensor references remain valid for this object's lifetime.
 class ModelArtifact {
   public:
@@ -274,21 +309,36 @@ class ModelArtifact {
         // A compact assembly contains the exact overlay bytes plus the base's
         // other tensors. Keep the same expert execution path without requiring
         // the large original GGUF on the deployment machine.
+        //
+        // What makes an assembly valid is GLM's rule, not the loader's: which layers carry routed
+        // projections, which formats the overlay may leave in place, that gate and up stay paired, and that
+        // the recorded count of the original-format ones is what the file holds.  All of it lives in
+        // strata_host (src/host/glm_expert_pack.c) because the assembler writes that agreement and this
+        // constructor reads it: two spellings of one rule were free to drift apart.
         if (const auto* assembled = files_.front()->get("strata.expert_pack.assembled")) {
-            const auto* version = files_.front()->get("strata.expert_pack.version");
-            const auto* source = files_.front()->get("strata.expert_pack.source");
-            if (assembled->type != MetaType::BOOL || assembled->u != 1 ||
-                !version || version->type != MetaType::U32 || version->u != 1 ||
-                !source || source->type != MetaType::U64)
-                throw std::runtime_error("model: invalid assembled expert provenance");
-            for (int l=3;l<=44;++l) for (const auto* part : {"gate", "up", "down"}) {
-                const auto& t = at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight");
-                const auto* hash = t.file->get("strata.expert_pack.hash."+t.tensor->name);
-                const bool down = std::string(part) == "down";
-                if (!hash || hash->type != MetaType::U64 ||
-                    (t.tensor->type != 10 && !(down && t.tensor->type == 11)))
-                    throw std::runtime_error("model: incomplete assembled Q23 experts");
-            }
+            char error[256];
+            const strata_ep_key provenance[3] = {
+                pack_key(assembled), pack_key(files_.front()->get("strata.expert_pack.version")),
+                pack_key(files_.front()->get("strata.expert_pack.source"))};
+            if (strata_ep_check_provenance(provenance[0], provenance[1], provenance[2], error, sizeof error) !=
+                STRATA_EP_OK)
+                throw std::runtime_error(std::string("model: ") + error);
+            // `strata.expert_pack.retained` (absent in older assemblies: 0) counts routed projections the
+            // pack left in their original format.
+            uint32_t declared_retained = 0;
+            if (strata_ep_check_retained_key(pack_key(files_.front()->get("strata.expert_pack.retained")),
+                                             &declared_retained, error, sizeof error) != STRATA_EP_OK)
+                throw std::runtime_error(std::string("model: ") + error);
+            ExpertScanContext scan{&tensors_};
+            strata_ep_projection projections[STRATA_EP_PROJECTIONS];
+            size_t count = 0;
+            if (strata_ep_scan(&scan, expert_scan_lookup, projections, STRATA_EP_PROJECTIONS, &count, error,
+                               sizeof error) != STRATA_EP_OK)
+                throw std::runtime_error(std::string("model: ") + error);
+            uint32_t retained = 0;
+            if (strata_ep_check_projections(projections, count, declared_retained, &retained, error,
+                                            sizeof error) != STRATA_EP_OK)
+                throw std::runtime_error(std::string("model: ") + error);
             assembled_experts_ = true;
         }
     }
@@ -343,8 +393,9 @@ class ModelArtifact {
         }
         uint64_t end=0;for(auto [offset,length]:spans){if(offset<end)throw std::runtime_error("expert pack: overlapping tensors");end=offset+length;}
         for(const auto& name:retained)if(!names.contains(name))throw std::runtime_error("expert pack: unknown retained projection "+name);
-        // Gate/up share a NativeFmt. Their representation must stay paired.
-        for(int l=3;l<=44;++l){auto p="blk."+std::to_string(l)+".ffn_";if(names.contains(p+"gate_exps.weight")!=names.contains(p+"up_exps.weight")||retained.contains(p+"gate_exps.weight")!=retained.contains(p+"up_exps.weight"))throw std::runtime_error("expert pack: gate/up must be paired");}
+        // Gate/up share a NativeFmt. Their representation must stay paired.  The layer range and the part names
+        // come from the same module the assembled-file check uses.
+        for(int l=STRATA_EP_FIRST_LAYER;l<=STRATA_EP_LAST_LAYER;++l){auto p=strata::host::blk_name(l,"ffn_");if(names.contains(p+"gate_exps.weight")!=names.contains(p+"up_exps.weight")||retained.contains(p+"gate_exps.weight")!=retained.contains(p+"up_exps.weight"))throw std::runtime_error("expert pack: gate/up must be paired");}
         for(const auto& t:pack->tensors())if(!retained.contains(t.name)) {
             auto& entry=tensors_.at(t.name);original_experts_.emplace(t.name,entry);
             entry={pack.get(),&t,t.elements()/256*(t.type==10?84:110)};
@@ -377,7 +428,7 @@ class ModelArtifact {
             c.total += t.bytes;
             bool draft = false;
             for (size_t l = 0; l < descriptor_.draft_layers.size(); ++l)
-                draft |= name.starts_with("blk." + std::to_string(descriptor_.layers.size() + l) + ".");
+                draft |= name.rfind(strata::host::blk_prefix(static_cast<int>(descriptor_.layers.size() + l)), 0) == 0;
             if (draft)
                 c.draft += t.bytes;
             else if (name.ends_with("_exps.weight")) {

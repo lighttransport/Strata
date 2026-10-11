@@ -1,0 +1,11 @@
+{
+  "time": "2026-10-09T20:50:17.769901+00:00",
+  "original_pipeline_exit": 1,
+  "original_session": 95364,
+  "failed_case": "component-quality-pilot/aff20-only",
+  "reason": "Guard rejected external CPU work: updatedb.plocat PID2999820 at89.46percent,97.73seconds",
+  "complete": false,
+  "retry": "aff20-only-retry1",
+  "completed_speed_screens_reused": true,
+  "no_quality_claim_from_partial_run": true
+}

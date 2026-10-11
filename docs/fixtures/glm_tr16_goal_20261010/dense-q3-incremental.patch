@@ -1,0 +1,123 @@
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -84,6 +84,13 @@
+ #else
+ constexpr auto glm_blas_math_mode = CUBLAS_PEDANTIC_MATH;
+ #endif
++bool cached_gpu_mtp_enabled() {
++    const char *value = std::getenv("STRATA_GLM_MTP_GPU_CACHE");
++    if (!value || std::string(value) == "0") return false;
++    if (std::string(value) != "1")
++        throw std::invalid_argument("GLM: GPU MTP target cache must be 0 or 1");
++    return true;
++}
+ bool cached_lookup_enabled() {
+     const char *value = std::getenv("STRATA_GLM_CACHE_LOOKUP");
+     if (!value || std::string(value) == "0") return false;
+@@ -1708,6 +1715,16 @@
+         if (std::string(value) == "q5") return 3;
+         if (std::string(value) == "outputs") return 4;
+         throw std::invalid_argument("GLM: dense Q4 must be 0, mixers, all, q5 or outputs");
++    }();
++    // Separate opt-in precision experiment; Q4 and Q3 modes cannot be combined.
++    const int dense_q3_repack = [] {
++        const char *value = std::getenv("STRATA_GLM_DENSE_Q3");
++        if (!value || std::string(value) == "0") return 0;
++        if (std::string(value) == "mixers") return 1;
++        if (std::string(value) == "all") return 2;
++        if (std::string(value) == "q5") return 3;
++        if (std::string(value) == "outputs") return 4;
++        throw std::invalid_argument("GLM: dense Q3 must be 0, mixers, all, q5 or outputs");
+     }();
+     bool early_route_sync = std::getenv("STRATA_GLM_EARLY_ROUTE_SYNC") != nullptr;
+     bool async_peer_return = std::getenv("STRATA_GLM_ASYNC_PEER_RETURN") != nullptr;
+@@ -2649,15 +2666,19 @@
+     }
+     int dense_weight_type(const std::string &name) const {
+         const auto &t = *artifact.at(name).tensor;
+-        if (!dense_q4_repack || t.shape.size() != 2 || (t.type != GGML_TYPE_Q5_K && t.type != GGML_TYPE_Q6_K) ||
++        if (dense_q3_repack && dense_q4_repack)
++            throw std::invalid_argument("GLM: dense Q3 and Q4 repacks are mutually exclusive");
++        const int mode = dense_q3_repack ? dense_q3_repack : dense_q4_repack;
++        if (!mode || t.shape.size() != 2 || (t.type != GGML_TYPE_Q5_K && t.type != GGML_TYPE_Q6_K) ||
+             !name.starts_with("blk.") || name.starts_with("blk.45.") || name.ends_with("_exps.weight") ||
+             t.shape[0] % 256 || t.shape[0] * t.shape[1] < 4 * 1024 * 1024) return t.type;
+         const int layer = std::stoi(name.substr(4, name.find('.', 4) - 4));
+-        if ((dense_q4_repack == 3 && t.type != GGML_TYPE_Q5_K) ||
+-            (dense_q4_repack == 4 && !name.ends_with("attn_output.weight"))) return t.type;
++        if ((mode == 3 && t.type != GGML_TYPE_Q5_K) ||
++            (mode == 4 && !name.ends_with("attn_output.weight"))) return t.type;
+         const bool mixer = name.find(".attn_") != std::string::npos;
+         const bool shared = name.ends_with("_shexp.weight");
+-        return layer >= 3 && (mixer || (dense_q4_repack == 2 && shared)) ? int(GGML_TYPE_Q4_K) : int(t.type);
++        const int target_type = dense_q3_repack ? GGML_TYPE_Q3_K : GGML_TYPE_Q4_K;
++        return layer >= 3 && (mixer || (mode == 2 && shared)) ? target_type : int(t.type);
+     }
+     size_t dense_weight_bytes(const std::string &name) const {
+         const auto &t = artifact.at(name);
+@@ -2715,7 +2736,7 @@
+ #else
+                     explicit Affinity(bool) {}
+ #endif
+-                } affinity(repack_type == GGML_TYPE_Q4_K);
++                } affinity(repack_type == GGML_TYPE_Q4_K || repack_type == GGML_TYPE_Q3_K);
+                 std::vector<float> row(width);
+                 for (size_t r = first; r < last; ++r) {
+                     const auto *src = t.data() + r * (t.bytes / rows);
+@@ -2727,14 +2748,15 @@
+             };
+             // Large K-quant matrices are converted only at startup. Disjoint
+             // row ranges keep quantization deterministic and bound host scratch.
+-            const size_t workers = repack_type == GGML_TYPE_Q4_K ? std::min<size_t>(8, std::max(1u, std::thread::hardware_concurrency())) : 1;
++            const size_t workers = (repack_type == GGML_TYPE_Q4_K || repack_type == GGML_TYPE_Q3_K) ? std::min<size_t>(8, std::max(1u, std::thread::hardware_concurrency())) : 1;
+             std::vector<std::thread> converters;
+             for (size_t i = 1; i < workers; ++i)
+                 converters.emplace_back([&, i] { convert(rows * i / workers, rows * (i + 1) / workers); });
+             convert(0, rows / workers);
+             for (auto &worker : converters) worker.join();
+             if (size_failed) throw std::runtime_error("GLM: dense repack row size mismatch: " + name);
+-            std::cerr << (repack_type == GGML_TYPE_Q8_0 ? "FLOATING_Q8" : "DENSE_Q4")
++            std::cerr << (repack_type == GGML_TYPE_Q8_0 ? "FLOATING_Q8" :
++                          repack_type == GGML_TYPE_Q3_K ? "DENSE_Q3" : "DENSE_Q4")
+                       << " tensor=" << name << " source_type=" << source.type
+                       << " MiB=" << repacked.size() / double(MiB) << '\n';
+         }
+@@ -7830,10 +7852,19 @@
+         fast = false;
+     }
+     bool prepare_mtp_for_cache(const std::vector<int> &prompt, int depth) {
+-        if (!tier_owned_reserve || !capture_hidden || !mtp_cpu_experts ||
++        if (!tier_owned_reserve || !capture_hidden ||
++            (!mtp_cpu_experts && !cached_gpu_mtp_enabled()) ||
+             (!decode_cache_budget && !decode_cache_auto)) return false;
++        if (!mtp_cpu_experts && (secondary || remote_tp || decode_cache_auto))
++            throw std::invalid_argument("GLM: cached GPU MTP requires one GPU and a fixed target cache");
+         prepare_mtp(prompt);
+         prepare_mtp_history(depth);
++        if (!mtp_cpu_experts) {
++            if (!mtp_experts || !mtp_ready || !verify_history)
++                throw std::runtime_error("GLM: GPU MTP memory was not owned before target cache admission");
++            std::cerr << "GPU_MTP_CACHE reserved_before_target=1 resident_MiB="
++                      << mtp_experts->bytes / double(MiB) << '\n';
++        }
+         return true;
+     }
+     void prepare_mtp(const std::vector<int> &prompt) {
+@@ -9569,10 +9600,16 @@
+             preflight_gpu_budget(gpu_budget);
+         if ((prefill_batch == 0 || prefill_batch > cpu::MAXT || force_gpu) && expert_mib)
+             throw std::invalid_argument("GPU prefill/decode requires expert-cache-mib=0");
++        if (cached_gpu_mtp_enabled()) {
++            const char *owned = std::getenv("STRATA_GLM_TIER_OWNED_RESERVE");
++            if (!use_mtp || mtp_cpu_experts || !decode_cache_mib || decode_cache_auto ||
++                !owned || std::string(owned) != "1")
++                throw std::invalid_argument("GLM: GPU MTP target cache requires GPU draft, fixed cache and owned reserve");
++        }
+         if (decode_cache_auto && use_mtp)
+             throw std::invalid_argument("GLM: automatic decode cache currently requires single-token decoding");
+         if (decode_cache_mib < 0 || decode_cache_mib > 12288 ||
+-            ((decode_cache_mib || decode_cache_auto) && ((use_mtp && !mtp_cpu_experts) || (lookup_depth && (!cached_lookup_enabled() || decode_cache_auto)) || stream_decode || expert_mib || cpu_prepack_mib)))
++            ((decode_cache_mib || decode_cache_auto) && ((use_mtp && !mtp_cpu_experts && !cached_gpu_mtp_enabled()) || (lookup_depth && (!cached_lookup_enabled() || decode_cache_auto)) || stream_decode || expert_mib || cpu_prepack_mib)))
+             throw std::invalid_argument("decode-cache-mib requires CPU target experts, single or CPU-draft MTP, no prepacking, and 0..12288 MiB");
+         if (lookup_depth && decode_cache_mib) {
+             const char *canonical = std::getenv("STRATA_GLM_CANON"), *pipeline = std::getenv("STRATA_GLM_STEP_PIPELINE");

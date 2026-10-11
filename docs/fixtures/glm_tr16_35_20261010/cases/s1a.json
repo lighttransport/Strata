@@ -1,0 +1,75 @@
+[
+ {
+  "name": "a1-margin5",
+  "env": {
+   "STRATA_GLM_MTP_ACCEPT_MARGIN": "5"
+  }
+ },
+ {
+  "name": "a2-margin6",
+  "env": {
+   "STRATA_GLM_MTP_ACCEPT_MARGIN": "6"
+  }
+ },
+ {
+  "name": "a3-maxsoft4",
+  "env": {
+   "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "4"
+  }
+ },
+ {
+  "name": "a4-maxsoft5",
+  "env": {
+   "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "5"
+  }
+ },
+ {
+  "name": "a5-topk6",
+  "env": {
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+  }
+ },
+ {
+  "name": "a6-depth4",
+  "set": {
+   "draft_depth": 4
+  }
+ },
+ {
+  "name": "a7-depth5",
+  "set": {
+   "draft_depth": 5
+  }
+ },
+ {
+  "name": "a8-depth4-maxsoft4",
+  "set": {
+   "draft_depth": 4
+  },
+  "env": {
+   "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "4"
+  }
+ },
+ {
+  "name": "a10-lookup7",
+  "env": {
+   "STRATA_GLM_MTP_LOOKUP_DEPTH": "7"
+  },
+  "exact": true,
+  "note": "exact suffix lookup inside MTP"
+ },
+ {
+  "name": "a11-lookup7-mm3",
+  "env": {
+   "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+   "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "3"
+  },
+  "exact": true
+ },
+ {
+  "name": "a12-reuse-draft",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1"
+  }
+ }
+]

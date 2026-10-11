@@ -26,7 +26,7 @@ CMake works too (`add_subdirectory(tools/ucomm)`, target `ucomm`).
 
 ucomm_config cfg;
 ucomm_config_default(&cfg);          /* reads UCOMM_RANK / UCOMM_WORLD / UCOMM_ROOT / ... */
-cfg.rank = rank; cfg.world = 2; cfg.root_addr = "192.168.100.22:29500";
+cfg.rank = rank; cfg.world = 2; cfg.root_addr = "192.0.2.1:29500";
 ucomm_t *c;
 ucomm_init(&cfg, &c);                /* rank 0 listens on root_addr for a short TCP bootstrap */
 

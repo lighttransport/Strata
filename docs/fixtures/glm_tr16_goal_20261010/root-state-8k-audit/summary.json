@@ -1,0 +1,86 @@
+[
+  {
+    "name": "8k-old-binary",
+    "decode_tok_s": 23.5278,
+    "prefill_tok_s": 435.279,
+    "tokens_identical": 455,
+    "all_tokens_identical": false,
+    "first_difference_by_trial": [
+      240,
+      63,
+      60,
+      37
+    ],
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-heldout/8k-control",
+    "sync_state": [],
+    "quality_qualified": false,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-8k-audit/8k-old-binary.json",
+    "archived_tokens_identical": true
+  },
+  {
+    "name": "8k-prepatch-binary",
+    "decode_tok_s": 23.5073,
+    "prefill_tok_s": 434.514,
+    "tokens_identical": 455,
+    "all_tokens_identical": false,
+    "first_difference_by_trial": [
+      240,
+      63,
+      60,
+      37
+    ],
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-heldout/8k-control",
+    "sync_state": [],
+    "quality_qualified": false,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-8k-audit/8k-prepatch-binary.json",
+    "archived_tokens_identical": true
+  },
+  {
+    "name": "8k-state-only",
+    "decode_tok_s": 24.0787,
+    "prefill_tok_s": 435.796,
+    "tokens_identical": 455,
+    "all_tokens_identical": false,
+    "first_difference_by_trial": [
+      240,
+      63,
+      60,
+      37
+    ],
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-heldout/8k-control",
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 223,
+        "checked": 0
+      },
+      {
+        "omitted": 224,
+        "checked": 0
+      },
+      {
+        "omitted": 222,
+        "checked": 0
+      },
+      {
+        "omitted": 217,
+        "checked": 0
+      }
+    ],
+    "quality_qualified": false,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-8k-audit/8k-state-only.json",
+    "archived_tokens_identical": true,
+    "speedup_percent": 3.2893071778791194
+  }
+]

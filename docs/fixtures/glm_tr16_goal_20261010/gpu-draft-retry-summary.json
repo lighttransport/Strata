@@ -1,0 +1,63 @@
+[
+  {
+    "name": "aff0-depth1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-retry-configs/aff0-depth1-cpu.json",
+    "clean": true,
+    "decode": 20.8872,
+    "prefill": 131.0405,
+    "repeat_equal": true,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6080.28,
+        "tokens_per_second": 20.8872
+      }
+    ]
+  },
+  {
+    "name": "aff0-depth1-gpu",
+    "exit_code": 1,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-retry-configs/aff0-depth1-gpu.json",
+    "clean": false,
+    "decode": null,
+    "prefill": 131.081,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      }
+    ],
+    "decode_trials": []
+  }
+]

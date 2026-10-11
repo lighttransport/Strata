@@ -1,0 +1,147 @@
+{
+  "scope": "Timed training-prompt128-token screens; CPU counters include reported expert work, not unique physical DRAM transactions. Routing, weights and generated outputs may differ. No speed extrapolation or quality qualification.",
+  "rows": [
+    {
+      "name": "00-q23-q4-control",
+      "decode_tok_s": 25.6326,
+      "prefill_tok_s": 131.284,
+      "target_cache_slots": 734,
+      "target_cache_mib": 6376.62,
+      "cache_fingerprint": "12504415647370074505",
+      "rounds": 71,
+      "accepted": 56,
+      "draft_ms": 341.91,
+      "verify_ms": 4474.5,
+      "reported_cpu_expert_bytes": 219786379264,
+      "reported_layer_flow_ms": 3046.64,
+      "reported_bytes_per_generated_token": 1730601411.527559,
+      "reported_flow_gb_s": 72.14058085760051,
+      "quality_qualified": false
+    },
+    {
+      "name": "01-q22-aff0",
+      "decode_tok_s": 22.0011,
+      "prefill_tok_s": 143.437,
+      "target_cache_slots": 845,
+      "target_cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "rounds": 76,
+      "accepted": 50,
+      "draft_ms": 608.014,
+      "verify_ms": 4954.48,
+      "reported_cpu_expert_bytes": 283138064384,
+      "reported_layer_flow_ms": 3828.45,
+      "reported_bytes_per_generated_token": 2229433577.8267717,
+      "reported_flow_gb_s": 73.95631767007535,
+      "quality_qualified": false
+    },
+    {
+      "name": "02-q22-aff08",
+      "decode_tok_s": 25.4214,
+      "prefill_tok_s": 143.31,
+      "target_cache_slots": 845,
+      "target_cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "rounds": 72,
+      "accepted": 55,
+      "draft_ms": 438.765,
+      "verify_ms": 4393.76,
+      "reported_cpu_expert_bytes": 204758581248,
+      "reported_layer_flow_ms": 2850.36,
+      "reported_bytes_per_generated_token": 1612272293.2913387,
+      "reported_flow_gb_s": 71.83604220098513,
+      "quality_qualified": false
+    },
+    {
+      "name": "03-q22-aff08-prune04",
+      "decode_tok_s": 24.4473,
+      "prefill_tok_s": 143.371,
+      "target_cache_slots": 845,
+      "target_cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "rounds": 74,
+      "accepted": 52,
+      "draft_ms": 478.949,
+      "verify_ms": 4513.06,
+      "reported_cpu_expert_bytes": 203237097472,
+      "reported_layer_flow_ms": 2841.17,
+      "reported_bytes_per_generated_token": 1600292106.0787401,
+      "reported_flow_gb_s": 71.53288872964306,
+      "quality_qualified": false
+    },
+    {
+      "name": "04-q22-aff08-prune08",
+      "decode_tok_s": 24.6502,
+      "prefill_tok_s": 143.364,
+      "target_cache_slots": 845,
+      "target_cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "rounds": 78,
+      "accepted": 48,
+      "draft_ms": 452.347,
+      "verify_ms": 4478.62,
+      "reported_cpu_expert_bytes": 193353744384,
+      "reported_layer_flow_ms": 2662.41,
+      "reported_bytes_per_generated_token": 1522470428.2204723,
+      "reported_flow_gb_s": 72.62357953282928,
+      "quality_qualified": false
+    },
+    {
+      "name": "05-q22-aff08-depth3-soft2",
+      "decode_tok_s": 28.0924,
+      "prefill_tok_s": 143.2665,
+      "target_cache_slots": 845,
+      "target_cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "rounds": 40,
+      "accepted": 87,
+      "draft_ms": 663.533,
+      "verify_ms": 3720.23,
+      "reported_cpu_expert_bytes": 230337937408,
+      "reported_layer_flow_ms": 3147.22,
+      "reported_bytes_per_generated_token": 1813684546.519685,
+      "reported_flow_gb_s": 73.18774582266255,
+      "quality_qualified": false
+    },
+    {
+      "name": "06-q22-layer-profile",
+      "decode_tok_s": 24.9695,
+      "prefill_tok_s": 143.3905,
+      "target_cache_slots": 845,
+      "target_cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "rounds": 76,
+      "accepted": 51,
+      "draft_ms": 326.93,
+      "verify_ms": 4615.57,
+      "reported_cpu_expert_bytes": 166501679104,
+      "reported_layer_flow_ms": 2387.85,
+      "reported_bytes_per_generated_token": 1311036843.3385828,
+      "reported_flow_gb_s": 69.72870117637206,
+      "quality_qualified": false
+    }
+  ],
+  "comparisons": [
+    {
+      "baseline": "00-q23-q4-control",
+      "candidate": "02-q22-aff08",
+      "scope": "Same scalar affinity and requested cache; changed expert precision, actual cache contents, routing and generated workload. Not a pure kernel comparison.",
+      "decode_change_percent": -0.8239507502165289,
+      "prefill_change_percent": 9.160293714390178,
+      "all_256_tokens_identical": false,
+      "first_difference_by_trial": [
+        0,
+        0
+      ],
+      "draft_ms_per_round": {
+        "00-q23-q4-control": 4.815633802816902,
+        "02-q22-aff08": 6.093958333333333
+      },
+      "verify_ms_per_round": {
+        "00-q23-q4-control": 63.021126760563384,
+        "02-q22-aff08": 61.02444444444445
+      },
+      "quality_qualified": false
+    }
+  ]
+}

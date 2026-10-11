@@ -1,0 +1,10 @@
+{
+  "reviewed_contexts": [
+    "2k",
+    "8k"
+  ],
+  "reviewed_trials": 8,
+  "no_obvious_repetition_loop": true,
+  "task_correctness_evaluated": false,
+  "quality_qualified": false
+}

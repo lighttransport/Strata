@@ -1,0 +1,10 @@
+{
+  "base_source_sha256": "17fe7cd47c09d4b94b8b0748705e993203e7469b1075f6fbae3a64309a2fa9af",
+  "decoder_sha256": "872ceef8c01c88a6b4473ec366577bb649416adffedc7e3d49ad0ae85c2bcba2",
+  "patch_sha256": "80c499841a006abc63e4a64ab25c7fdf67d4714e3eac7c3fbea095e5ad43b951",
+  "built": false,
+  "default": "off",
+  "quality_qualified": false,
+  "gpu_mtp_cache_optin": true,
+  "purpose": "Measure Q3 dense traffic/cache capacity and opt-in GPU draft reservation before target-cache admission; quality and speed unproven"
+}

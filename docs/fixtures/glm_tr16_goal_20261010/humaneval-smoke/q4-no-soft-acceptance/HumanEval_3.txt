@@ -1,0 +1,14 @@
+</think>```python
+from typing import List
+
+
+def below_zero(operations: List[int]) -> bool:
+    balance = 0
+    for op in operations:
+        balance += op
+        if balance < 0:
+            return True
+    return False
+```
+
+**Explanation:** Iterate through operations, accumulating the balance. If it ever drops below zero, return `True` immediately; otherwise return `False` after processing all operations.

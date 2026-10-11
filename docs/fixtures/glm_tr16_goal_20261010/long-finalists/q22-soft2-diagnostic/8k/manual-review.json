@@ -1,0 +1,8 @@
+{
+  "reviewed_trials": 4,
+  "generated_tokens_per_trial": 512,
+  "samples_sha256": "f3d51f9706f6288cddacecb24b45b0d1b709f3ae21be836dfb18ce1e8d334ddf",
+  "no_obvious_repetition_loop": true,
+  "task_correctness_evaluated": false,
+  "quality_qualified": false
+}

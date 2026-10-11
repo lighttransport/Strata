@@ -4,7 +4,7 @@
   "max_output_tokens": 2208,
   "prompt_sha256": "9e3e572a65f67cabd54125556ae6bfc952fe0346670134defb7966df3fd8b3a5",
   "kind": "multi-turn follow-up",
-  "source_case": "/home/syoyo/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/32768",
+  "source_case": "~/work/Strata/build-hip-glm-v11/chat-context-ladder-20261008-v3/32768",
   "expected": {
     "date": "2031-10-21",
     "budget": 480000,

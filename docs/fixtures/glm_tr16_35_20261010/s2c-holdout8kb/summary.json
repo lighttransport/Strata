@@ -1,0 +1,223 @@
+[
+  {
+    "name": "k1-topk6",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s2c-holdout8kb/k1-topk6.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103774760,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1354,
+      "rejected": null,
+      "wall_seconds": 407.5093125120038
+    },
+    "decode_tok_s": 34.7933,
+    "decode_trials": [
+      35.1579,
+      34.7933,
+      33.9749
+    ],
+    "decode_warmup_tok_s": 31.6221,
+    "prefill_tok_s": 143.282,
+    "rounds": 432,
+    "generated": 1536,
+    "tokens_per_round": 3.5555555555555554,
+    "accepted_per_round": 2.5462962962962963,
+    "proposed_per_round": 2.997685185185185,
+    "position_accept_rate": {
+      "0": 0.9675925925925926,
+      "1": 0.875,
+      "2": 0.7053364269141531
+    },
+    "soft_accepted": 324,
+    "logit_regret_per_token": 0.2842311197916667,
+    "draft_ms_per_round": 9.994004629629629,
+    "verify_ms_per_round": 89.51574074074075,
+    "resync_ms_per_round": 1.0249375,
+    "expert_gb_per_token": 1.4422673066666667,
+    "flow_ms_per_token": 20.258203124999998,
+    "ms_per_token": 28.816145833333334,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 369,
+        "checked": 0
+      },
+      {
+        "omitted": 368,
+        "checked": 0
+      },
+      {
+        "omitted": 364,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "10127120974546800570",
+    "token_count": 2048,
+    "token_count_expected": 2048,
+    "distinct_4gram_fraction": [
+      0.9705304518664047,
+      0.9430255402750491,
+      0.962671905697446,
+      0.9646365422396856
+    ],
+    "repeated_32gram": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "562d4d983e75dce17e7227e0dbb6d38274c578ff3dcfe6d8760458bb73f5cf5b",
+      "b583d20f02d375d2814e5a0dc4ad54fdbecffa36e113bc504c9eba79239b9271",
+      "8d0ac79173d25a66c37584e613633c70c6fa9be7b2a8bed48a4ebaecff1ed418",
+      "bd0f4a988f5ee33ba6df7bd16036792a62c729e89528d7e57708bdee45e3f5d0"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      126,
+      25,
+      25,
+      25
+    ],
+    "control_rate": 34.3397,
+    "speed_change_percent": 1.3209201012239546,
+    "decision": "NOTE",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "k4-mix2-topk6",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s2c-holdout8kb/k4-mix2-topk6.json",
+    "env_overrides": {
+      "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103797784,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1346,
+      "rejected": null,
+      "wall_seconds": 408.55940702499356
+    },
+    "decode_tok_s": 34.5641,
+    "decode_trials": [
+      35.3355,
+      34.4481,
+      34.5641
+    ],
+    "decode_warmup_tok_s": 33.3878,
+    "prefill_tok_s": 142.695,
+    "rounds": 439,
+    "generated": 1536,
+    "tokens_per_round": 3.498861047835991,
+    "accepted_per_round": 2.492027334851936,
+    "proposed_per_round": 2.9863325740318905,
+    "position_accept_rate": {
+      "0": 0.979498861047836,
+      "1": 0.8440366972477065,
+      "2": 0.6788990825688074
+    },
+    "soft_accepted": 293,
+    "logit_regret_per_token": 0.27293489583333336,
+    "draft_ms_per_round": 9.940933940774487,
+    "verify_ms_per_round": 87.74009111617312,
+    "resync_ms_per_round": 1.034134396355353,
+    "expert_gb_per_token": 1.27470336,
+    "flow_ms_per_token": 17.9730078125,
+    "ms_per_token": 28.697526041666666,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 368,
+        "checked": 0
+      },
+      {
+        "omitted": 363,
+        "checked": 0
+      },
+      {
+        "omitted": 363,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "10127120974546800570",
+    "token_count": 2048,
+    "token_count_expected": 2048,
+    "distinct_4gram_fraction": [
+      0.9724950884086444,
+      0.9587426326129665,
+      0.9685658153241651,
+      0.9803536345776032
+    ],
+    "repeated_32gram": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "03225a4ea4549c946b7abfd5a25683d1b56c68f94ff6173ca092f21ab4873888",
+      "1c4d72c7bc26cdb0a51ab09b1102822a63982283d8af5d9d330220aed4d58a33",
+      "7c55ed51679779a184d0c5da7f5d964b937802c68f86b69299efe71c1d1e37e9",
+      "81fb957852e013327b3c48afec86032d1aa687706412886dbb2eb7805fbf0012"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      19,
+      28,
+      19,
+      33
+    ],
+    "control_rate": 34.3397,
+    "speed_change_percent": 0.6534710553674161,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true
+  }
+]

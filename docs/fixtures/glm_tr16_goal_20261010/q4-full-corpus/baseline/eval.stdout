@@ -1,0 +1,16 @@
+{"sequence":1,"tokens":512,"nll":2.07579394526,"perplexity":7.9708723838,"kl":0.163463269755,"top1_agreement":0.830078125,"different_logits":79298552}
+{"sequence":2,"tokens":1024,"nll":1.44583371199,"perplexity":4.24539010043,"kl":0.108615563229,"top1_agreement":0.88671875,"different_logits":158597106}
+{"sequence":3,"tokens":1536,"nll":1.31238602857,"perplexity":3.71502730685,"kl":0.103792489904,"top1_agreement":0.89453125,"different_logits":237895654}
+{"sequence":4,"tokens":2048,"nll":1.327846347,"perplexity":3.77290909449,"kl":0.102885190412,"top1_agreement":0.892578125,"different_logits":317194212}
+{"sequence":5,"tokens":2560,"nll":1.30843263881,"perplexity":3.70036934931,"kl":0.100455723789,"top1_agreement":0.892578125,"different_logits":396492767}
+{"sequence":6,"tokens":3072,"nll":1.2632342189,"perplexity":3.53684193032,"kl":0.101714046003,"top1_agreement":0.896809895833,"different_logits":475791319}
+{"sequence":7,"tokens":3584,"nll":1.28784171747,"perplexity":3.62495443099,"kl":0.100939022415,"top1_agreement":0.896763392857,"different_logits":555089870}
+{"sequence":8,"tokens":4096,"nll":1.4014986869,"perplexity":4.06128199831,"kl":0.105824796821,"top1_agreement":0.89111328125,"different_logits":634388421}
+{"sequence":9,"tokens":4608,"nll":1.48041065897,"perplexity":4.39475005394,"kl":0.118399609331,"top1_agreement":0.88671875,"different_logits":713686966}
+{"sequence":10,"tokens":5120,"nll":1.48526747531,"perplexity":4.41614646497,"kl":0.118462673221,"top1_agreement":0.88828125,"different_logits":792985515}
+{"sequence":11,"tokens":5632,"nll":1.51862214446,"perplexity":4.56592966749,"kl":0.123090419927,"top1_agreement":0.884765625,"different_logits":872284068}
+{"sequence":12,"tokens":6144,"nll":1.54522816877,"perplexity":4.68904139777,"kl":0.127286781399,"top1_agreement":0.880859375,"different_logits":951582615}
+{"sequence":13,"tokens":6656,"nll":1.57165650988,"perplexity":4.81461705242,"kl":0.131173086168,"top1_agreement":0.878605769231,"different_logits":1030881164}
+{"sequence":14,"tokens":7168,"nll":1.62972726223,"perplexity":5.10248288894,"kl":0.139416382526,"top1_agreement":0.873186383929,"different_logits":1110179715}
+{"sequence":15,"tokens":7680,"nll":1.59215938944,"perplexity":4.91434947319,"kl":0.13577191998,"top1_agreement":0.876953125,"different_logits":1189478264}
+{"sequence":16,"tokens":8192,"nll":1.5740213098,"perplexity":4.82601613138,"kl":0.136761865362,"top1_agreement":0.877075195312,"different_logits":1268776814}

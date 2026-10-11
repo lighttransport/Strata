@@ -1,0 +1,122 @@
+[
+  {
+    "name": "00-standalone-default",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/fifth/00-renorm-default",
+    "decode_tok_s": 20.3862,
+    "quality_qualified": false,
+    "binary_sha256": "ef68c1d3e3966affa9a01559e7a7f9f8f9c258ea02af57177147e299dd84136b",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=74 accepted=53",
+      "MTP_POSITION index=0 proposed=74 accepted=53"
+    ]
+  },
+  {
+    "name": "01-standalone-state-only",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/00-standalone-default",
+    "decode_tok_s": 20.7181,
+    "quality_qualified": false,
+    "binary_sha256": "ef68c1d3e3966affa9a01559e7a7f9f8f9c258ea02af57177147e299dd84136b",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=74 accepted=53",
+      "MTP_POSITION index=0 proposed=74 accepted=53"
+    ]
+  },
+  {
+    "name": "03-proposal-default",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/third/06-depth3-control",
+    "decode_tok_s": 15.6364,
+    "quality_qualified": false,
+    "binary_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14",
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14"
+    ]
+  },
+  {
+    "name": "04-unpruned-no-prune",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/03-proposal-default",
+    "decode_tok_s": 15.7198,
+    "quality_qualified": false,
+    "binary_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14",
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14"
+    ]
+  },
+  {
+    "name": "05-blend0",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/03-proposal-default",
+    "decode_tok_s": 13.9268,
+    "quality_qualified": false,
+    "binary_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=61 accepted=39",
+      "MTP_POSITION index=1 proposed=61 accepted=18",
+      "MTP_POSITION index=2 proposed=61 accepted=8",
+      "MTP_POSITION index=0 proposed=61 accepted=39",
+      "MTP_POSITION index=1 proposed=61 accepted=18",
+      "MTP_POSITION index=2 proposed=61 accepted=8"
+    ]
+  },
+  {
+    "name": "06-blend05",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/03-proposal-default",
+    "decode_tok_s": 15.9907,
+    "quality_qualified": false,
+    "binary_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=53 accepted=35",
+      "MTP_POSITION index=1 proposed=53 accepted=22",
+      "MTP_POSITION index=2 proposed=53 accepted=16",
+      "MTP_POSITION index=0 proposed=53 accepted=35",
+      "MTP_POSITION index=1 proposed=53 accepted=22",
+      "MTP_POSITION index=2 proposed=53 accepted=16"
+    ]
+  },
+  {
+    "name": "07-blend075",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/03-proposal-default",
+    "decode_tok_s": 15.5455,
+    "quality_qualified": false,
+    "binary_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14",
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14"
+    ]
+  },
+  {
+    "name": "08-repeat-guard-exact",
+    "tokens_identical": 256,
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/03-proposal-default",
+    "decode_tok_s": 15.6798,
+    "quality_qualified": false,
+    "binary_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "position_counters": [
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14",
+      "MTP_POSITION index=0 proposed=54 accepted=37",
+      "MTP_POSITION index=1 proposed=54 accepted=21",
+      "MTP_POSITION index=2 proposed=54 accepted=14"
+    ]
+  }
+]

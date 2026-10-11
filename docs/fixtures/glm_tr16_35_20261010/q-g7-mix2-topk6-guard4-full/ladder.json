@@ -1,0 +1,35 @@
+{
+  "track": "35",
+  "gates": {
+    "ppl_rel_max": 0.06,
+    "kl_abs_max": 0.08,
+    "top1_drop_pp_max": 3.0,
+    "humaneval_min": 152,
+    "heldout_min_2k": 35.0,
+    "heldout_min_8k": 35.0
+  },
+  "steps": [
+    {
+      "step": "full8192",
+      "exit_code": 0,
+      "complete": true,
+      "metrics": {
+        "sequence": 16,
+        "tokens": 8192,
+        "nll": 1.64107884309,
+        "perplexity": 5.16073413238,
+        "kl": 0.221266929097,
+        "top1_agreement": 0.84619140625,
+        "different_logits": 1268776872
+      },
+      "baseline": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q4-full-corpus/baseline/result.json",
+      "ppl_increase_percent": 6.935700003644363,
+      "kl_increase": 0.084505063735,
+      "top1_drop_pp": 3.0883789061999956,
+      "gate_scale": 1.0,
+      "passes_gate": false,
+      "note": "baseline is unchanged Q23; the Q22 pack change is intentional",
+      "quality_qualified": false
+    }
+  ]
+}

@@ -52,7 +52,7 @@
     "STRATA_GLM_FLOATING_Q8": "all",
     "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576"
   },
-  "log": "/home/syoyo/work/Strata/build-hip-glm-v11/chat-followup-20261008/32768/engine.log",
+  "log": "~/work/Strata/build-hip-glm-v11/chat-followup-20261008/32768/engine.log",
   "backend": "hip",
   "weight_pages": "4k",
   "prefill_experts": "f16-batched",

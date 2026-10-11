@@ -1,0 +1,71 @@
+[
+  {
+    "name": "02-q3-aff0",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.37299283117,
+      "perplexity": 3.94714617783,
+      "kl": 0.153105011869,
+      "top1_agreement": 0.8818359375,
+      "different_logits": 317194210
+    },
+    "failures": [
+      "KL 0.15311 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8818 < 0.8826 (baseline 0.8926)",
+      "perplexity 3.9471 > 3.8861 (baseline 3.7729)"
+    ],
+    "quality_qualified": false,
+    "performance_comparable": false,
+    "ppl_increase_percent": 4.618109765603884,
+    "top1_drop_percentage_points": 1.07421875
+  },
+  {
+    "name": "04-q3-aff08-cache7424",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.38953657121,
+      "perplexity": 4.01298988694,
+      "kl": 0.179045852241,
+      "top1_agreement": 0.86572265625,
+      "different_logits": 317194208
+    },
+    "failures": [
+      "KL 0.17905 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8657 < 0.8826 (baseline 0.8926)",
+      "perplexity 4.0130 > 3.8861 (baseline 3.7729)"
+    ],
+    "quality_qualified": false,
+    "performance_comparable": false,
+    "ppl_increase_percent": 6.36328059959399,
+    "top1_drop_percentage_points": 2.685546875
+  },
+  {
+    "name": "05-q3-mixers-aff08",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.389368593,
+      "perplexity": 4.0123158487,
+      "kl": 0.172163465147,
+      "top1_agreement": 0.87109375,
+      "different_logits": 317194225
+    },
+    "failures": [
+      "KL 0.17216 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8711 < 0.8826 (baseline 0.8926)",
+      "perplexity 4.0123 > 3.8861 (baseline 3.7729)"
+    ],
+    "quality_qualified": false,
+    "performance_comparable": false,
+    "ppl_increase_percent": 6.34541538675375,
+    "top1_drop_percentage_points": 2.1484375
+  }
+]

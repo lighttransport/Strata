@@ -1,0 +1,78 @@
+[
+  {
+    "name": "00-renorm-default",
+    "exit_code": 0,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.327846347,
+      "perplexity": 3.77290909449,
+      "kl": 0.102885190412,
+      "top1_agreement": 0.892578125,
+      "different_logits": 317194212
+    },
+    "failures": [],
+    "promotion_qualified": false
+  },
+  {
+    "name": "02-old-prune12",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.6180275166,
+      "perplexity": 5.04313300334,
+      "kl": 0.471369394653,
+      "top1_agreement": 0.79248046875,
+      "different_logits": 317194227
+    },
+    "failures": [
+      "KL 0.47137 > 0.13289 (baseline 0.10289)",
+      "top-1 0.7925 < 0.8826 (baseline 0.8926)",
+      "perplexity 5.0431 > 3.8861 (baseline 3.7729)"
+    ],
+    "promotion_qualified": false
+  },
+  {
+    "name": "03-renorm0.12",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.72022986203,
+      "perplexity": 5.58581228286,
+      "kl": 0.562422122211,
+      "top1_agreement": 0.74462890625,
+      "different_logits": 317194221
+    },
+    "failures": [
+      "KL 0.56242 > 0.13289 (baseline 0.10289)",
+      "top-1 0.7446 < 0.8826 (baseline 0.8926)",
+      "perplexity 5.5858 > 3.8861 (baseline 3.7729)"
+    ],
+    "promotion_qualified": false
+  },
+  {
+    "name": "03-renorm0.16",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 2.90814814865,
+      "perplexity": 18.3228359613,
+      "kl": 1.82312612912,
+      "top1_agreement": 0.54150390625,
+      "different_logits": 317194225
+    },
+    "failures": [
+      "KL 1.82313 > 0.13289 (baseline 0.10289)",
+      "top-1 0.5415 < 0.8826 (baseline 0.8926)",
+      "perplexity 18.3228 > 3.8861 (baseline 3.7729)"
+    ],
+    "promotion_qualified": false
+  }
+]

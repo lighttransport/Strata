@@ -1,0 +1,58 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/mtp1-affinity-screen/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 19.517,
+    "prefill_tok_s": 130.897
+  },
+  {
+    "case": "aff05",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/mtp1-affinity-screen/001-aff05.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 21.6413,
+    "prefill_tok_s": 131.0475
+  },
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/mtp1-affinity-screen/002-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 19.6495,
+    "prefill_tok_s": 131.0405
+  },
+  {
+    "case": "aff08",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/mtp1-affinity-screen/003-aff08.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 22.671,
+    "prefill_tok_s": 131.0615
+  },
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/mtp1-affinity-screen/004-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.024,
+    "prefill_tok_s": 131.33550000000002
+  },
+  {
+    "case": "aff10",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/mtp1-affinity-screen/005-aff10.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 21.9707,
+    "prefill_tok_s": 131.215
+  },
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/mtp1-affinity-screen/006-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.1949,
+    "prefill_tok_s": 131.34699999999998
+  }
+]

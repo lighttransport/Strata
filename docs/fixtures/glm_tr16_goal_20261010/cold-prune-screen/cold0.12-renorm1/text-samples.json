@@ -1,0 +1,20 @@
+{
+  "scope": "128-token diagnostic only; absence of short repetition does not qualify task quality or long continuation",
+  "tokens_sha256": "8a47cf36f8a6b51a371aa1fcf5056a1bbce492e79d0922a3a843afe33d93d2e6",
+  "quality_qualified": false,
+  "manual_review_pending": true,
+  "trials": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "text": "We need to review this benchmark. It's a memory cgroup GLM benchmark harness. The excerpt is truncated; we should note that. Provide concrete bugs:\n\n1. `gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 function signature truncated/missing body; also `_output` keyword-only arg with default True but body references `args.output` \u2014 undefined `args`, `completed`, `unit` \u2014 clearly a merge of two functions (gpu_capacity_passed body missing; run/launcher code spliced in). Bug: signature has `_output=True` keyword but body uses `args`, `completed`, `",
+      "distinct_fourgram_fraction": 0.968
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "text": "We need to review the benchmark. It's a truncated excerpt, but we should identify concrete bugs in the code shown: cache_bytes, model_files, clear_model_cache, parse_log, group_stats, process_memory_maps, gpu_usage, gpu_capacity_passed (truncated, syntax error), launcher function, main.\n\nLet me write a thorough review with concrete bugs and patches.\n\nKey bugs:\n\n1. `gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon (syntax error), truncated function; also `_output` parameter unused/misnamed. Also the function body shown actually belongs to a different function (",
+      "distinct_fourgram_fraction": 1.0
+    }
+  ]
+}

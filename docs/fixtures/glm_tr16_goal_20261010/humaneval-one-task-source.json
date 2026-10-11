@@ -1,0 +1,16 @@
+{
+  "original_source": "tools/glm_q2_humaneval.py",
+  "original_sha256": "96901a54da4e709574e2b0482793c346350f16cb7868c03dcacf79479757b3f5",
+  "research_source_sha256": "0d27f2df23edfbb8c90d3eedb32447a7814947cdc53e3b4212b2fc8d37bac47d",
+  "changes": [
+    "Import path for isolated research copy",
+    "Required --task-id selection after full pinned dataset checksum/task-set verification",
+    "Manifest explicitly records single-task diagnostic scope"
+  ],
+  "unchanged": [
+    "Prompt construction",
+    "Generation token cap",
+    "Code extraction",
+    "Isolated test execution"
+  ]
+}

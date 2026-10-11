@@ -1,0 +1,42 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/screen-v2/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 17.4227,
+    "prefill_tok_s": 131.04500000000002
+  },
+  {
+    "case": "ordinary",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/screen-v2/001-ordinary.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 16.8816,
+    "prefill_tok_s": 130.7995
+  },
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/screen-v2/002-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 17.4966,
+    "prefill_tok_s": 130.9085
+  },
+  {
+    "case": "mtp1",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/screen-v2/003-mtp1.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 19.7849,
+    "prefill_tok_s": 130.813
+  },
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/screen-v2/004-baseline.result.json",
+    "clean": false,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": null,
+    "prefill_tok_s": null
+  }
+]

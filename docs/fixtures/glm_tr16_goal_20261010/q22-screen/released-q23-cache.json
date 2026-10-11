@@ -1,0 +1,7 @@
+[
+  {
+    "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "bytes": 105488860384,
+    "cached_bytes_after": 0
+  }
+]

@@ -1,9 +1,9 @@
 """Affinity 0.06 / 0.08 vs base with mmq prefill: 512 tokens, 3 trials, interleaved base."""
 import array, json, pathlib, re, subprocess, time
-CAL = pathlib.Path("/home/syoyo/work/Strata-b550-calibration-15b787b5")
+CAL = pathlib.Path("~/work/Strata-b550-calibration-15b787b5")
 BASE = CAL / "docs/fixtures/glm_b550_levers_20261009/step1/step1-b15360-01-base15.config.json"
-IDS = "/home/syoyo/work/Strata/build-hip-glm-v11/single-2048.ids"
-OUT = pathlib.Path("/home/syoyo/work/bisect-20261009/aff_mmq"); OUT.mkdir(exist_ok=True)
+IDS = "~/work/Strata/build-hip-glm-v11/single-2048.ids"
+OUT = pathlib.Path("~/work/bisect-20261009/aff_mmq"); OUT.mkdir(exist_ok=True)
 PLAN = [("01_base", 0.0), ("02_aff06", 0.06), ("03_base", 0.0), ("04_aff08", 0.08), ("05_base", 0.0)]
 def quiet():
     ok = 0
@@ -18,7 +18,7 @@ for tag, aff in PLAN:
     cpath = OUT / f"{tag}.config.json"; cpath.write_text(json.dumps(cfg, indent=1))
     cmd = ["systemd-run", "--user", "--wait", "--pipe", f"--unit=strata-affmmq-{tag.replace('_','-')}",
            "--property=MemoryMax=60G", "--property=MemorySwapMax=0", "--property=OOMPolicy=kill", "--property=RuntimeMaxSec=1800",
-           f"--property=WorkingDirectory={CAL}", "/home/syoyo/work/Strata/.venv-glm-hip/bin/python", str(CAL / "tools/glm_low_memory_bench.py"),
+           f"--property=WorkingDirectory={CAL}", "~/work/Strata/.venv-glm-hip/bin/python", str(CAL / "tools/glm_low_memory_bench.py"),
            str(cpath), IDS, "--output", str(OUT / tag), "--ram-gib", "60", "--tokens", "512", "--trials", "3", "--timeout", "1700",
            "--worker", "--gpu-capacity-mib", "16304", "--gpu-used-limit-mib", "15792"]
     quiet()

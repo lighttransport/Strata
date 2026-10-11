@@ -1,5 +1,5 @@
 {
-  "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+  "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
   "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
   "model_name": "glm53f-reap50-q23-b550-rx9070xt",
   "context": 8192,
@@ -54,7 +54,7 @@
     "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "256",
     "STRATA_GLM_CACHE_PROBE": "32"
   },
-  "log": "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-final-validation-20261009/prefill8k-probe32-aff0.06/engine.log",
+  "log": "~/work/Strata-b550-calibration-15b787b5/runs/aff006-final-validation-20261009/prefill8k-probe32-aff0.06/engine.log",
   "backend": "hip",
   "weight_pages": "4k",
   "prefill_experts": "f16-batched",

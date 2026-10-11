@@ -1,0 +1,7 @@
+{
+  "audit_complete": true,
+  "tokens_per_case": 2048,
+  "standalone_default_matches_archive": true,
+  "standalone_on_matches_off": true,
+  "quality_qualified": false
+}

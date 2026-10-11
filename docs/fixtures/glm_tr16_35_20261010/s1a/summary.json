@@ -1,0 +1,1029 @@
+[
+  {
+    "name": "a1-margin5",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a1-margin5.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "5"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103492908,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 168.02155277703423
+    },
+    "decode_tok_s": 29.0596,
+    "decode_trials": [
+      29.0596
+    ],
+    "decode_warmup_tok_s": 26.1445,
+    "prefill_tok_s": 143.24099999999999,
+    "rounds": 38,
+    "generated": 128,
+    "tokens_per_round": 3.3684210526315788,
+    "accepted_per_round": 2.3421052631578947,
+    "proposed_per_round": 2.9473684210526314,
+    "position_accept_rate": {
+      "0": 0.9210526315789473,
+      "1": 0.8108108108108109,
+      "2": 0.6486486486486487
+    },
+    "soft_accepted": 19,
+    "logit_regret_per_token": 0.22502421875,
+    "draft_ms_per_round": 16.691236842105265,
+    "verify_ms_per_round": 95.20815789473684,
+    "resync_ms_per_round": 0.9760368421052631,
+    "expert_gb_per_token": 1.755194368,
+    "flow_ms_per_token": 23.94921875,
+    "ms_per_token": 34.143203125,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 89,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      1.0,
+      0.872
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "75964a4c2e884df3e74431abb47a8c045b9b4534509cfd1dd9fe0b263d57f6b1",
+      "a6bb8bb9a27ddf551d2ae05c392a63c0d10d30b76ecaf78d6ea1101dd992497e"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      36,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": -3.0590527277943536,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true,
+    "decision_v1": "DROP:loop-proxy"
+  },
+  {
+    "name": "a2-margin6",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a2-margin6.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "6"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103465480,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 170.23007596103707
+    },
+    "decode_tok_s": 29.0146,
+    "decode_trials": [
+      29.0146
+    ],
+    "decode_warmup_tok_s": 25.9385,
+    "prefill_tok_s": 143.1845,
+    "rounds": 38,
+    "generated": 128,
+    "tokens_per_round": 3.3684210526315788,
+    "accepted_per_round": 2.3421052631578947,
+    "proposed_per_round": 2.9473684210526314,
+    "position_accept_rate": {
+      "0": 0.9210526315789473,
+      "1": 0.8108108108108109,
+      "2": 0.6486486486486487
+    },
+    "soft_accepted": 19,
+    "logit_regret_per_token": 0.22502421875,
+    "draft_ms_per_round": 16.69771052631579,
+    "verify_ms_per_round": 95.3736842105263,
+    "resync_ms_per_round": 1.132721052631579,
+    "expert_gb_per_token": 1.755194368,
+    "flow_ms_per_token": 23.850625,
+    "ms_per_token": 34.196171875,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 89,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      1.0,
+      0.872
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "75964a4c2e884df3e74431abb47a8c045b9b4534509cfd1dd9fe0b263d57f6b1",
+      "a6bb8bb9a27ddf551d2ae05c392a63c0d10d30b76ecaf78d6ea1101dd992497e"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      36,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": -3.209169819125579,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true,
+    "decision_v1": "DROP:loop-proxy"
+  },
+  {
+    "name": "a3-maxsoft4",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a3-maxsoft4.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "4"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103499860,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1354,
+      "rejected": null,
+      "wall_seconds": 168.70441627001856
+    },
+    "decode_tok_s": 30.2742,
+    "decode_trials": [
+      30.2742
+    ],
+    "decode_warmup_tok_s": 24.5068,
+    "prefill_tok_s": 143.187,
+    "rounds": 37,
+    "generated": 128,
+    "tokens_per_round": 3.4594594594594597,
+    "accepted_per_round": 2.4324324324324325,
+    "proposed_per_round": 2.945945945945946,
+    "position_accept_rate": {
+      "0": 0.9459459459459459,
+      "1": 0.8888888888888888,
+      "2": 0.6388888888888888
+    },
+    "soft_accepted": 16,
+    "logit_regret_per_token": 0.1187015625,
+    "draft_ms_per_round": 16.458405405405404,
+    "verify_ms_per_round": 93.35135135135135,
+    "resync_ms_per_round": 1.3239972972972973,
+    "expert_gb_per_token": 1.653742592,
+    "flow_ms_per_token": 22.5215625,
+    "ms_per_token": 32.773359375,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 90,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      1.0,
+      1.0
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "421a9ae630322cbc6bdd80bc6c90f041c56cd1f9f70402dfcb39d3cef21395c3",
+      "ba26c66fc48a84b7ee1d95063acd88175b684dfa27e72551c83ef1b75cb518f1"
+    ],
+    "tokens_identical_to_control": true,
+    "first_difference_index_by_trial": [
+      null,
+      null
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": 0.9927743640039122,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "a4-maxsoft5",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a4-maxsoft5.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "5"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103479792,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1354,
+      "rejected": null,
+      "wall_seconds": 169.05172466498334
+    },
+    "decode_tok_s": 30.4526,
+    "decode_trials": [
+      30.4526
+    ],
+    "decode_warmup_tok_s": 24.4563,
+    "prefill_tok_s": 143.0685,
+    "rounds": 37,
+    "generated": 128,
+    "tokens_per_round": 3.4594594594594597,
+    "accepted_per_round": 2.4324324324324325,
+    "proposed_per_round": 2.945945945945946,
+    "position_accept_rate": {
+      "0": 0.9459459459459459,
+      "1": 0.8888888888888888,
+      "2": 0.6388888888888888
+    },
+    "soft_accepted": 16,
+    "logit_regret_per_token": 0.1187015625,
+    "draft_ms_per_round": 16.592837837837838,
+    "verify_ms_per_round": 93.03108108108108,
+    "resync_ms_per_round": 1.1563648648648648,
+    "expert_gb_per_token": 1.653742592,
+    "flow_ms_per_token": 22.49484375,
+    "ms_per_token": 32.58140625,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 90,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      1.0,
+      1.0
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "421a9ae630322cbc6bdd80bc6c90f041c56cd1f9f70402dfcb39d3cef21395c3",
+      "ba26c66fc48a84b7ee1d95063acd88175b684dfa27e72551c83ef1b75cb518f1"
+    ],
+    "tokens_identical_to_control": true,
+    "first_difference_index_by_trial": [
+      null,
+      null
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": 1.5879052327482102,
+    "decision": "NOTE",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "a5-topk6",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a5-topk6.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103447944,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 168.23211360001005
+    },
+    "decode_tok_s": 30.7572,
+    "decode_trials": [
+      30.7572
+    ],
+    "decode_warmup_tok_s": 27.9406,
+    "prefill_tok_s": 142.98649999999998,
+    "rounds": 36,
+    "generated": 128,
+    "tokens_per_round": 3.5555555555555554,
+    "accepted_per_round": 2.5277777777777777,
+    "proposed_per_round": 2.9444444444444446,
+    "position_accept_rate": {
+      "0": 0.9722222222222222,
+      "1": 0.8857142857142857,
+      "2": 0.7142857142857143
+    },
+    "soft_accepted": 20,
+    "logit_regret_per_token": 0.21616640625,
+    "draft_ms_per_round": 16.572027777777777,
+    "verify_ms_per_round": 95.06666666666666,
+    "resync_ms_per_round": 1.1076722222222222,
+    "expert_gb_per_token": 1.64174848,
+    "flow_ms_per_token": 22.897421875,
+    "ms_per_token": 32.25875,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 91,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "7293079514452034174",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      0.992,
+      1.0
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "250ea412fbc7b67abc910e7a66faac7c681a199a393f962103a8b4a4f7c62da7",
+      "508b75d935b06f5ea929e11bc282275cbc3c3e809bb613c8a7d13427f23b0aaf"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      15,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": 2.6040311442925512,
+    "decision": "NOTE",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "a6-depth4",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a6-depth4.json",
+    "env_overrides": {},
+    "set_overrides": {
+      "draft_depth": 4
+    },
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103553384,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1350,
+      "rejected": null,
+      "wall_seconds": 170.76288912299788
+    },
+    "decode_tok_s": 26.75,
+    "decode_trials": [
+      26.75
+    ],
+    "decode_warmup_tok_s": 21.6676,
+    "prefill_tok_s": 142.9875,
+    "rounds": 33,
+    "generated": 128,
+    "tokens_per_round": 3.878787878787879,
+    "accepted_per_round": 2.8484848484848486,
+    "proposed_per_round": 4.0,
+    "position_accept_rate": {
+      "0": 1.0,
+      "1": 0.8484848484848485,
+      "2": 0.6363636363636364,
+      "3": 0.36363636363636365
+    },
+    "soft_accepted": 25,
+    "logit_regret_per_token": 0.30281484375,
+    "draft_ms_per_round": 19.789727272727273,
+    "verify_ms_per_round": 119.90363636363637,
+    "resync_ms_per_round": 1.882169696969697,
+    "expert_gb_per_token": 1.974157312,
+    "flow_ms_per_token": 27.55828125,
+    "ms_per_token": 37.09109375,
+    "peak_gpu_mib": 12827.9,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 191.58
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 94,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=4 effective=4"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      0.992,
+      0.888
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "c08deaf33a85d502fa91ba0d2ec8df6de2cdcd252132690f5916c7ecd0825562",
+      "d10939b7789252512f59e2892ed7a8baa281551c859ba767d18969156d9f541b"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      7,
+      10
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": -10.763729041986082,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true,
+    "decision_v1": "DROP:loop-proxy"
+  },
+  {
+    "name": "a7-depth5",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a7-depth5.json",
+    "env_overrides": {},
+    "set_overrides": {
+      "draft_depth": 5
+    },
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103525156,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1334,
+      "rejected": null,
+      "wall_seconds": 169.7995483650011
+    },
+    "decode_tok_s": 26.5198,
+    "decode_trials": [
+      26.5198
+    ],
+    "decode_warmup_tok_s": 24.062,
+    "prefill_tok_s": 143.09,
+    "rounds": 29,
+    "generated": 128,
+    "tokens_per_round": 4.413793103448276,
+    "accepted_per_round": 3.3793103448275863,
+    "proposed_per_round": 4.896551724137931,
+    "position_accept_rate": {
+      "0": 0.9655172413793104,
+      "1": 0.7931034482758621,
+      "2": 0.7142857142857143,
+      "3": 0.6428571428571429,
+      "4": 0.32142857142857145
+    },
+    "soft_accepted": 29,
+    "logit_regret_per_token": 0.30726328125,
+    "draft_ms_per_round": 21.766965517241378,
+    "verify_ms_per_round": 138.62724137931033,
+    "resync_ms_per_round": 2.246241379310345,
+    "expert_gb_per_token": 2.011636736,
+    "flow_ms_per_token": 28.4265625,
+    "ms_per_token": 37.413125,
+    "peak_gpu_mib": 12841.8,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 205.475
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 98,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=5 effective=5"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      0.984,
+      0.896
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "a81c208ac4030320df42c569825142aecb197033b03a829e21d0a7174d5f0e45",
+      "3d156ce09222eab136f06deb6edece063b02fa7f6651a456bdba0ec8a4b92631"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      7,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": -11.531661362529444,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true,
+    "decision_v1": "DROP:loop-proxy"
+  },
+  {
+    "name": "a8-depth4-maxsoft4",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a8-depth4-maxsoft4.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "4"
+    },
+    "set_overrides": {
+      "draft_depth": 4
+    },
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103536468,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1350,
+      "rejected": null,
+      "wall_seconds": 170.16746132203843
+    },
+    "decode_tok_s": 25.8872,
+    "decode_trials": [
+      25.8872
+    ],
+    "decode_warmup_tok_s": 21.7771,
+    "prefill_tok_s": 143.089,
+    "rounds": 35,
+    "generated": 128,
+    "tokens_per_round": 3.657142857142857,
+    "accepted_per_round": 2.6285714285714286,
+    "proposed_per_round": 3.857142857142857,
+    "position_accept_rate": {
+      "0": 0.9428571428571428,
+      "1": 0.7941176470588235,
+      "2": 0.5757575757575758,
+      "3": 0.3939393939393939
+    },
+    "soft_accepted": 28,
+    "logit_regret_per_token": 0.28728203125,
+    "draft_ms_per_round": 19.46754285714286,
+    "verify_ms_per_round": 116.48714285714286,
+    "resync_ms_per_round": 1.7788914285714286,
+    "expert_gb_per_token": 2.013149184,
+    "flow_ms_per_token": 28.19875,
+    "ms_per_token": 38.327265625,
+    "peak_gpu_mib": 12827.9,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 191.58
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 92,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=4 effective=4"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      0.992,
+      1.0
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "c08deaf33a85d502fa91ba0d2ec8df6de2cdcd252132690f5916c7ecd0825562",
+      "4837e71e0c88f1279328607a77bfab53e252587a982df4c4b957e1d18ae0c5be"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      7,
+      10
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": -13.641974073110363,
+    "decision": "DROP:no-gain",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "a10-lookup7",
+    "note": "exact suffix lookup inside MTP",
+    "exact_expected": true,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a10-lookup7.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103383568,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1280,
+      "rejected": null,
+      "wall_seconds": 168.57063607795862
+    },
+    "decode_tok_s": 30.6697,
+    "decode_trials": [
+      30.6697
+    ],
+    "decode_warmup_tok_s": 26.5621,
+    "prefill_tok_s": 143.1205,
+    "rounds": 35,
+    "generated": 128,
+    "tokens_per_round": 3.657142857142857,
+    "accepted_per_round": 2.6285714285714286,
+    "proposed_per_round": 3.057142857142857,
+    "position_accept_rate": {
+      "0": 0.9705882352941176,
+      "1": 0.9090909090909091,
+      "2": 0.696969696969697
+    },
+    "soft_accepted": 25,
+    "logit_regret_per_token": 0.25118046875,
+    "draft_ms_per_round": 15.42157142857143,
+    "verify_ms_per_round": 98.87971428571429,
+    "resync_ms_per_round": 1.72194,
+    "expert_gb_per_token": 1.690648576,
+    "flow_ms_per_token": 23.431875,
+    "ms_per_token": 32.350703125,
+    "peak_gpu_mib": 12869.6,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 233.265
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 93,
+        "checked": 0
+      }
+    ],
+    "lookup": [
+      "MTP_LOOKUP rounds=1 proposed=7 accepted=6 max_depth=7"
+    ],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      0.984,
+      0.984
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "afa8fe559adb736b544ab724b9dfeab93df1fd0dd88f61648b755d2ce1847f0e",
+      "5809900da83cba9e613b01a0595deffad18225b31a4694d2ff0fe9affd79c82f"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      50,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": 2.3121368000373455,
+    "decision": "NOTE:reclassified-lossy",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "a11-lookup7-mm3",
+    "note": null,
+    "exact_expected": true,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a11-lookup7-mm3.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+      "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "3"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103356196,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1280,
+      "rejected": null,
+      "wall_seconds": 170.5952479050029
+    },
+    "decode_tok_s": 34.2645,
+    "decode_trials": [
+      34.2645
+    ],
+    "decode_warmup_tok_s": 25.0823,
+    "prefill_tok_s": 143.0925,
+    "rounds": 26,
+    "generated": 128,
+    "tokens_per_round": 4.923076923076923,
+    "accepted_per_round": 3.8846153846153846,
+    "proposed_per_round": 4.5,
+    "position_accept_rate": {
+      "0": 0.9333333333333333,
+      "1": 0.9333333333333333,
+      "2": 0.7333333333333333
+    },
+    "soft_accepted": 18,
+    "logit_regret_per_token": 0.23765625,
+    "draft_ms_per_round": 9.007115384615386,
+    "verify_ms_per_round": 129.89576923076922,
+    "resync_ms_per_round": 1.5278538461538462,
+    "expert_gb_per_token": 1.584156672,
+    "flow_ms_per_token": 22.880703125,
+    "ms_per_token": 28.956796875,
+    "peak_gpu_mib": 12869.6,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 233.265
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 112,
+        "checked": 0
+      }
+    ],
+    "lookup": [
+      "MTP_LOOKUP rounds=11 proposed=72 accepted=62 max_depth=7"
+    ],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      1.0,
+      0.528
+    ],
+    "repeated_32gram": [
+      false,
+      true
+    ],
+    "trial_token_sha256": [
+      "d5b64a8d68c48e82c9220e46eaca1a1deb9eab9856901faa2ecf139f0760251e",
+      "66c6bfd87b3fa1086f67f8829b99fbb20e31296643bf827b6db90d9c62b335e6"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      50,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": 14.304157242649262,
+    "decision": "DROP:loop-proxy",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "a12-reuse-draft",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a12-reuse-draft.json",
+    "env_overrides": {
+      "STRATA_GLM_MTP_REUSE_DRAFT": "1"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103508724,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 170.67630136205116
+    },
+    "decode_tok_s": 31.6365,
+    "decode_trials": [
+      31.6365
+    ],
+    "decode_warmup_tok_s": 23.1151,
+    "prefill_tok_s": 143.107,
+    "rounds": 35,
+    "generated": 128,
+    "tokens_per_round": 3.657142857142857,
+    "accepted_per_round": 2.6285714285714286,
+    "proposed_per_round": 2.9714285714285715,
+    "position_accept_rate": {
+      "0": 1.0,
+      "1": 0.8857142857142857,
+      "2": 0.7647058823529411
+    },
+    "soft_accepted": 23,
+    "logit_regret_per_token": 0.24972109375,
+    "draft_ms_per_round": 17.0222,
+    "verify_ms_per_round": 95.57828571428571,
+    "resync_ms_per_round": 0.24520057142857143,
+    "expert_gb_per_token": 1.605384192,
+    "flow_ms_per_token": 22.20140625,
+    "ms_per_token": 31.362109375,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [],
+    "sync_state_only": [
+      {
+        "omitted": 27,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "16506204999420033949",
+    "token_count": 256,
+    "token_count_expected": 256,
+    "distinct_4gram_fraction": [
+      0.984,
+      0.976
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "d9317e2bbd11c580d787c66f605f23103e16185aa196ecebf949d1bee18cc9e2",
+      "5d4b9bb845b8c24d43269004498b73e04755594c78a3130264cab0a3c976296a"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      36,
+      3
+    ],
+    "control_rate": 29.9766,
+    "speed_change_percent": 5.537319108904937,
+    "decision": "KEEP",
+    "input_identity_matches_base": true
+  }
+]

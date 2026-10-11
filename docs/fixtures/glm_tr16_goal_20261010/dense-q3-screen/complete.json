@@ -1,0 +1,16 @@
+{
+  "controls_passed": true,
+  "screen_cases": 6,
+  "quality_pilots": 3,
+  "q3_il_screen": {
+    "tested": true,
+    "reference": "05-q3-mixers-aff08",
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/dense-q3-screen/06-q3-il-selected.json",
+    "all_tokens_identical": true,
+    "decode_tok_s": 25.0188,
+    "reference_decode_tok_s": 24.9286,
+    "quality_qualified": false,
+    "nominal_rate_change_percent": 0.3618333961794784
+  },
+  "quality_qualified": false
+}

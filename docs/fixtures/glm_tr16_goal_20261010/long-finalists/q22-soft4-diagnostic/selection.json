@@ -1,0 +1,9 @@
+{
+  "screen_result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-cache-screen/depth3-soft4-cache6656/000-baseline.result.json",
+  "screen_result_sha256": "1d15be948212e47a049e0f416db2e1ca4dc25dc8cf1702ea93254b89f54423d3",
+  "short_decode_tok_s": 30.4391,
+  "track": "low",
+  "target_tok_s": 30,
+  "quality_qualified": false,
+  "scope": "Held-out speed and continuation diagnostics only; not a quality gate"
+}

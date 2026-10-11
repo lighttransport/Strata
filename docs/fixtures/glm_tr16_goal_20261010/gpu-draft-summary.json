@@ -1,0 +1,175 @@
+[
+  {
+    "name": "aff0-depth1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-configs/aff0-depth1-cpu.json",
+    "clean": true,
+    "decode": 20.968,
+    "prefill": 131.143,
+    "repeat_equal": true,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6056.85,
+        "tokens_per_second": 20.968
+      }
+    ]
+  },
+  {
+    "name": "aff0-depth1-gpu",
+    "exit_code": 1,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-configs/aff0-depth1-gpu.json",
+    "clean": false,
+    "decode": null,
+    "prefill": null,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [],
+    "decode_trials": []
+  },
+  {
+    "name": "aff08-depth1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-configs/aff08-depth1-cpu.json",
+    "clean": true,
+    "decode": 24.4148,
+    "prefill": 131.14499999999998,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      },
+      {
+        "omitted": 55,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5201.77,
+        "tokens_per_second": 24.4148
+      }
+    ]
+  },
+  {
+    "name": "aff08-depth1-gpu",
+    "exit_code": 1,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-configs/aff08-depth1-gpu.json",
+    "clean": false,
+    "decode": null,
+    "prefill": null,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [],
+    "decode_trials": []
+  },
+  {
+    "name": "aff08-depth3-soft1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-configs/aff08-depth3-soft1-cpu.json",
+    "clean": true,
+    "decode": 21.0157,
+    "prefill": 131.3435,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 10,
+        "sum_logit_regret": 6.83721,
+        "max_logit_regret": 0.904263
+      },
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 12,
+        "sum_logit_regret": 5.6047,
+        "max_logit_regret": 0.968582
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 78,
+        "checked": 0
+      },
+      {
+        "omitted": 82,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6043.1,
+        "tokens_per_second": 21.0157
+      }
+    ]
+  },
+  {
+    "name": "aff08-depth3-soft1-gpu",
+    "exit_code": 1,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-configs/aff08-depth3-soft1-gpu.json",
+    "clean": false,
+    "decode": null,
+    "prefill": null,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [],
+    "decode_trials": []
+  }
+]

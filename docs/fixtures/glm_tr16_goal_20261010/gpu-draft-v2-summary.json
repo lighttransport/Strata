@@ -1,0 +1,286 @@
+[
+  {
+    "name": "aff0-depth1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-v2-configs/aff0-depth1-cpu.json",
+    "clean": true,
+    "decode": 20.986,
+    "prefill": 131.39600000000002,
+    "repeat_equal": true,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6051.65,
+        "tokens_per_second": 20.986
+      }
+    ],
+    "previous_binary_tokens_equal": true
+  },
+  {
+    "name": "aff0-depth1-gpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-v2-configs/aff0-depth1-gpu.json",
+    "clean": true,
+    "decode": 21.1651,
+    "prefill": 131.3275,
+    "repeat_equal": true,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      },
+      {
+        "omitted": 53,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6000.45,
+        "tokens_per_second": 21.1651
+      }
+    ],
+    "draft_resident_mib": 2502.0,
+    "cache_capacity_equal": true,
+    "cpu_draft_tokens_equal": true,
+    "token_count_pair": [
+      256,
+      256
+    ]
+  },
+  {
+    "name": "aff08-depth1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-v2-configs/aff08-depth1-cpu.json",
+    "clean": true,
+    "decode": 24.3322,
+    "prefill": 131.24,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      },
+      {
+        "omitted": 55,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5219.43,
+        "tokens_per_second": 24.3322
+      }
+    ]
+  },
+  {
+    "name": "aff08-depth1-gpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-v2-configs/aff08-depth1-gpu.json",
+    "clean": true,
+    "decode": 24.7472,
+    "prefill": 131.2905,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 56,
+        "checked": 0
+      },
+      {
+        "omitted": 55,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 5131.9,
+        "tokens_per_second": 24.7472
+      }
+    ],
+    "draft_resident_mib": 2502.0,
+    "cache_capacity_equal": true,
+    "cpu_draft_tokens_equal": true,
+    "token_count_pair": [
+      256,
+      256
+    ]
+  },
+  {
+    "name": "aff08-depth3-soft1-cpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-v2-configs/aff08-depth3-soft1-cpu.json",
+    "clean": true,
+    "decode": 20.7765,
+    "prefill": 131.212,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 10,
+        "sum_logit_regret": 6.83721,
+        "max_logit_regret": 0.904263
+      },
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 12,
+        "sum_logit_regret": 5.6047,
+        "max_logit_regret": 0.968582
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 78,
+        "checked": 0
+      },
+      {
+        "omitted": 82,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6112.67,
+        "tokens_per_second": 20.7765
+      }
+    ]
+  },
+  {
+    "name": "aff08-depth3-soft1-gpu",
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-draft-v2-configs/aff08-depth3-soft1-gpu.json",
+    "clean": true,
+    "decode": 20.9985,
+    "prefill": 131.255,
+    "repeat_equal": false,
+    "rejected": null,
+    "approx": [
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 13,
+        "sum_logit_regret": 6.48065,
+        "max_logit_regret": 0.820408
+      },
+      {
+        "margin": 1,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 9,
+        "sum_logit_regret": 4.42539,
+        "max_logit_regret": 0.992765
+      }
+    ],
+    "first_margin": [],
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 82,
+        "checked": 0
+      },
+      {
+        "omitted": 81,
+        "checked": 0
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "mtp",
+        "tokens": 128,
+        "milliseconds": 6048.05,
+        "tokens_per_second": 20.9985
+      }
+    ],
+    "draft_resident_mib": 2502.0,
+    "cache_capacity_equal": true,
+    "cpu_draft_tokens_equal": false,
+    "token_count_pair": [
+      256,
+      256
+    ]
+  }
+]

@@ -1,4 +1,5 @@
 #pragma once
+#include "strata/host/glm_names.hpp"
 #include "strata/kernels/cpu/expert_observer.hpp"
 #include <filesystem>
 #include <fstream>
@@ -65,7 +66,7 @@ public:
             const int n=m.columns;std::vector<float> mean(size_t(n)*experts_);std::vector<double> aggregate(n);uint64_t total=0;
             for(int e=0;e<experts_;++e){total+=m.count[e];for(int k=0;k<n;++k)aggregate[k]+=m.sum[size_t(e)*n+k];}
             for(int e=0;e<experts_;++e)for(int k=0;k<n;++k)mean[size_t(e)*n+k]=std::max(1e-12,double(m.count[e]?m.sum[size_t(e)*n+k]/m.count[e]:aggregate[k]/std::max<uint64_t>(1,total)));
-            const auto name="blk."+std::to_string(key.first)+(key.second?".down":".gu");const auto path=directory_/(name+".f32"),temp=directory_/(name+".f32.partial");
+            const auto name=strata::host::blk_name(key.first,key.second?"down":"gu");const auto path=directory_/(name+".f32"),temp=directory_/(name+".f32.partial");
             std::ofstream output(temp,std::ios::binary|std::ios::trunc);output.write(reinterpret_cast<const char*>(mean.data()),mean.size()*4);output.close();if(!output)throw std::runtime_error("calibration write failed");std::filesystem::rename(temp,path);
             if(comma)report<<',';
             comma=true;report<<"{\"name\":\""<<name<<"\",\"counts\":[";for(int e=0;e<experts_;++e){if(e)report<<',';report<<m.count[e];}report<<"]}";

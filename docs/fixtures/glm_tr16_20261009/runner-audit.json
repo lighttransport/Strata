@@ -1,0 +1,24 @@
+{
+  "verified_snapshots": [
+    "exact-levers/manifest.json",
+    "final-aff08-2k/manifest.json",
+    "final-aff08-8k/manifest.json",
+    "final-stream-aff08-2k/manifest.json",
+    "final-stream-aff08-8k/manifest.json",
+    "final-stream2k-exact/manifest.json",
+    "final2k-exact/manifest.json",
+    "final8k-exact/manifest.json",
+    "mtp1-affinity-screen/manifest.json",
+    "prefetch8k/manifest.json",
+    "prefill8k-screen/manifest.json",
+    "quality-aff08/manifest.json",
+    "quality-baseline/manifest.json",
+    "stream-next8k/manifest.json",
+    "stream2k/manifest.json",
+    "stream8k-holdout/manifest.json",
+    "stream8k/manifest.json"
+  ],
+  "early_manifests_without_snapshot": [
+    "screen-v2/manifest.json"
+  ]
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "name": "00-control",
+    "env": {},
+    "set": {},
+    "exact": true,
+    "note": "reproduce soft4 reference on gpu-cache-v2",
+    "control": true
+  }
+]

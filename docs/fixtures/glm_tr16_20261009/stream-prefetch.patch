@@ -1,0 +1,138 @@
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -594,15 +594,28 @@
+     std::vector<std::unique_ptr<Device>> pool;
+     std::vector<cudaEvent_t> pool_ready, pool_done;
+     std::map<std::pair<int, int>, int> fetched;
++    // The foreground owns the map. A streaming producer publishes each event
++    // only after cudaEventRecord has been issued; waiting on an unrecorded event
++    // would otherwise let the consumer read unfinished weights.
++    bool streaming_prefetch = false;
++    std::array<std::atomic<bool>, 18> queued{};
++    std::atomic<bool> prefetch_failed{false};
+     int take(int layer, int group) {
+         auto it = fetched.find({layer, group});
+         if (it == fetched.end()) return -1;
+         const int index = it->second;
++        if (streaming_prefetch) {
++            while (!queued[index].load(std::memory_order_acquire)) {
++                if (prefetch_failed.load(std::memory_order_acquire))
++                    throw std::runtime_error("GLM: streaming prefetch producer failed");
++                std::this_thread::yield();
++            }
++        }
+         fetched.erase(it);
+         return index;
+     }
+     void prefetch(const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
+-                  const strata::core::ArtifactTensor &D, int layer, int group, int index, size_t stride) {
++                  const strata::core::ArtifactTensor &D, int layer, int group, int index, size_t stride, bool publish = true) {
+         const size_t gh = G.bytes / G.tensor->shape[2], db = D.bytes / D.tensor->shape[2], bytes = 16 * stride;
+         if (bytes + 16384 > pool[index]->bytes) throw std::runtime_error("GLM: native expert group exceeds prefetch slot");
+         auto *p = (char *)pool[index]->p;
+@@ -632,7 +645,7 @@
+             check(cudaEventRecord(pool_ready[index], copy));
+             check(cudaEventRecord(ready[host_slot], copy));
+             transferred += bytes;
+-            fetched[{layer, group}] = index;
++            if (publish) fetched[{layer, group}] = index;
+             return;
+         }
+         for (int j = 0; j < 16; ++j) {
+@@ -646,7 +659,7 @@
+         check(cudaMemsetAsync(p + bytes, 0, 16384, copy));
+         check(cudaEventRecord(pool_ready[index], copy));
+         transferred += bytes;
+-        fetched[{layer, group}] = index;
++        if (publish) fetched[{layer, group}] = index;
+     }
+     static size_t arena_bytes(int width, size_t context) {
+         const size_t tile = std::min(width, 64), pools = std::max<size_t>(1, context / 4);
+@@ -1659,6 +1672,10 @@
+     std::unique_ptr<GpuPrefill> gpu;
+     std::unique_ptr<GpuWorker> prefetch_launcher;
+     std::future<void> prefetch_pending;
++    const bool stream_prefetch = [] {
++        const char *v = std::getenv("STRATA_GLM_PREFETCH_STREAM");
++        return v && std::string(v) == "1";
++    }();
+     int primary_device = 0;
+     bool secondary_enabled = true;
+     bool decode_prefill_cache = false;
+@@ -2990,6 +3007,9 @@
+             if (begin == end) continue;
+             const int slot = target.groups % 2;
+             const int fetched = n == 16 ? target.take(layer_id, first / 16) : -1;
++            // The ring shares the producer's two pinned buffers. It may only
++            // stage a non-prefetched group after the producer has relinquished them.
++            if (fetched < 0 && target.streaming_prefetch) finish_prefetch();
+             void *weights = fetched >= 0 ? cache.adopt(layer_id, first, target, fetched, stride, work_stream)
+                                          : cache.weights(layer_id, first, n, target, slot, G, U, D, work_stream,
+                                                          lazy_experts ? hb : nullptr);
+@@ -3097,6 +3117,7 @@
+     // Queue this layer's leading non-resident groups on the copy streams before its mixer.
+     void finish_prefetch() {
+         if (prefetch_pending.valid()) prefetch_pending.get();
++        if (gpu) gpu->streaming_prefetch = false;
+     }
+     void prefetch_groups_sync(int layer_id) {
+         if (!fast || !gpu || gpu->pool.empty() || m.experts != 288) return;
+@@ -3125,6 +3146,39 @@
+         if (!fast || !gpu || gpu->pool.empty() || m.experts != 288) return;
+         if (!gpu->staged_prefetch) { prefetch_groups_sync(layer_id); return; }
+         if (!prefetch_launcher) prefetch_launcher = std::make_unique<GpuWorker>(primary_device);
++        if (stream_prefetch && !(secondary && secondary_enabled)) {
++            // Build the entire immutable producer plan before launching it. Only
++            // the foreground reads/erases fetched; the worker never touches it.
++            const auto p = "blk." + std::to_string(layer_id) + ".";
++            const auto *g = &artifact.at(p + "ffn_gate_exps.weight");
++            const auto *u = &artifact.at(p + "ffn_up_exps.weight");
++            const auto *d = &artifact.at(p + "ffn_down_exps.weight");
++            const size_t stride = prefill_expert_stride(*g, *u, *d);
++            std::vector<std::pair<int, int>> plan;
++            gpu->fetched.clear();
++            gpu->prefetch_failed.store(false, std::memory_order_relaxed);
++            const auto found = prefill_cache.layers.find(layer_id);
++            for (int group = 0; group < prefill_expert_groups && plan.size() < gpu->pool.size(); ++group) {
++                if (found != prefill_cache.layers.end() && found->second.entries.count(group)) continue;
++                const int index = (int)plan.size();
++                gpu->queued[index].store(false, std::memory_order_relaxed);
++                gpu->fetched[{layer_id, group}] = index;
++                plan.emplace_back(group, index);
++            }
++            gpu->streaming_prefetch = true;
++            prefetch_pending = prefetch_launcher->submit([this, layer_id, g, u, d, stride, plan] {
++                try {
++                    for (const auto &[group, index] : plan) {
++                        gpu->prefetch(*g, *u, *d, layer_id, group, index, stride, false);
++                        gpu->queued[index].store(true, std::memory_order_release);
++                    }
++                } catch (...) {
++                    gpu->prefetch_failed.store(true, std::memory_order_release);
++                    throw;
++                }
++            });
++            return;
++        }
+         // Enqueue the mixer on the main thread while the staging worker fills
+         // the extra pool and queues its H2D copies. Join before consuming the map.
+         prefetch_pending = prefetch_launcher->submit([this, layer_id] { prefetch_groups_sync(layer_id); });
+@@ -3184,7 +3238,7 @@
+             ffn(p, x, out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
+             check(cudaStreamSynchronize(stream));
+         }
+-        finish_prefetch();
++        if (!gpu->streaming_prefetch) finish_prefetch();
+         const int *hb = (int *)gpu->counts->p;
+         if ((decode_cache_budget || decode_cache_auto) && std::stoi(p.substr(4)) < (int)prefill_routes.size()) {
+             const int layer_id = std::stoi(p.substr(4));
+@@ -3344,6 +3398,9 @@
+             }
+         }
+         k::glm_route_sum(result.f(), rw.f(), out, H, K, nt, stream);
++        // Also joins unused prefetched groups (e.g. a sparse short prompt), and
++        // makes producer statistics safe to read before the next layer/reset.
++        if (gpu->streaming_prefetch) finish_prefetch();
+     }
+     void moe_streamed(const std::string &p, const float *x, float *out,
+                       const strata::core::LayerDescriptor &layer) {

@@ -1,0 +1,34 @@
+name                                              kind     measured  predicted  error  tol  ok  quiet  fit  bottleneck
+------------------------------------------------  -------  --------  ---------  -----  ---  --  -----  ---  ----------
+screen-v2/000-baseline.result-decode              decode   17.42     17.23      -1.1%  10%  ok  q           cpu       
+screen-v2/000-baseline.result-prefill             prefill  131.05    126.05     -3.8%  15%  ok  q           pcie      
+screen-v2/001-ordinary.result-decode              decode   16.88     16.51      -2.2%  10%  ok  q           cpu+gpu   
+screen-v2/001-ordinary.result-prefill             prefill  130.80    126.05     -3.6%  15%  ok  q           pcie      
+screen-v2/002-baseline.result-decode              decode   17.50     17.23      -1.5%  10%  ok  q           cpu       
+screen-v2/002-baseline.result-prefill             prefill  130.91    126.05     -3.7%  15%  ok  q           pcie      
+screen-v2/003-mtp1.result-decode                  decode   19.78     19.20      -3.0%  10%  ok  q           cpu       
+screen-v2/003-mtp1.result-prefill                 prefill  130.81    126.05     -3.6%  15%  ok  q           pcie      
+mtp1-affinity-screen/000-baseline.result-decode   decode   19.52     19.20      -1.6%  10%  ok  q           cpu       
+mtp1-affinity-screen/000-baseline.result-prefill  prefill  130.90    126.05     -3.7%  15%  ok  q           pcie      
+mtp1-affinity-screen/001-aff05.result-decode      decode   21.64     22.78      +5.2%  10%  ok  q           cpu       
+mtp1-affinity-screen/001-aff05.result-prefill     prefill  131.05    126.05     -3.8%  15%  ok  q           pcie      
+mtp1-affinity-screen/002-baseline.result-decode   decode   19.65     19.20      -2.3%  10%  ok  q           cpu       
+mtp1-affinity-screen/002-baseline.result-prefill  prefill  131.04    126.05     -3.8%  15%  ok  q           pcie      
+mtp1-affinity-screen/003-aff08.result-decode      decode   22.67     24.72      +9.1%  10%  ok  q           gpu       
+mtp1-affinity-screen/003-aff08.result-prefill     prefill  131.06    126.05     -3.8%  15%  ok  q           pcie      
+mtp1-affinity-screen/004-baseline.result-decode   decode   20.02     19.20      -4.1%  10%  ok  q           cpu       
+mtp1-affinity-screen/004-baseline.result-prefill  prefill  131.34    126.05     -4.0%  15%  ok  q           pcie      
+mtp1-affinity-screen/005-aff10.result-decode      decode   21.97     24.05      +9.4%  10%  ok  q           gpu       
+mtp1-affinity-screen/005-aff10.result-prefill     prefill  131.22    126.05     -3.9%  15%  ok  q           pcie      
+mtp1-affinity-screen/006-baseline.result-decode   decode   20.19     19.20      -4.9%  10%  ok  q           cpu       
+mtp1-affinity-screen/006-baseline.result-prefill  prefill  131.35    126.05     -4.0%  15%  ok  q           pcie      
+prefill8k-screen/000-mmq.result-decode            decode   20.11     19.55      -2.8%  10%  ok  q           cpu       
+prefill8k-screen/000-mmq.result-prefill           prefill  435.77    434.18     -0.4%  15%  ok  q           pcie      
+final2k-exact/000-mtp2.result-decode              decode   18.63     18.76      +0.7%  10%  ok  q           cpu       
+final2k-exact/000-mtp2.result-prefill             prefill  131.35    126.05     -4.0%  15%  ok  q           pcie      
+final2k-exact/001-mtp1.result-decode              decode   20.28     19.97      -1.5%  10%  ok  q           cpu       
+final2k-exact/001-mtp1.result-prefill             prefill  131.32    126.05     -4.0%  15%  ok  q           pcie      
+exact-levers/000-unsplit.result-decode            decode   17.86     17.46      -2.2%  10%  ok  q           cpu       
+exact-levers/000-unsplit.result-prefill           prefill  131.41    126.05     -4.1%  15%  ok  q           pcie      
+
+30 records, 0 outside tolerance; mean |error| on fit rows 0.0%

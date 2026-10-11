@@ -1,0 +1,69 @@
+{
+  "date": "2026-10-11",
+  "commit": "999616cef543eb32445d8b16618bdb0c87fdada1",
+  "hardware": "B550 / Ryzen 9 3950X / RX 9070 XT gfx1201 / 64 GiB RAM",
+  "ram_mt_s_user_reported": 2666,
+  "os": "Ubuntu 24.04.5",
+  "kernel": "7.0.0-38-generic",
+  "amdgpu_dkms_version": "6.19.14.31400100",
+  "driver_source": "restored from cached vendor package; custom clock-cap patch removed",
+  "hip_version": "7.14.60850",
+  "boot_options": [
+    "amdgpu.runpm=0",
+    "amdgpu.aspm=0"
+  ],
+  "ppfeaturemask": "default 0xfff7bfff; no boot override",
+  "ppt0_w": 212,
+  "default_ppt0_w": 304,
+  "allowed_ppt0_w": [
+    212,
+    340
+  ],
+  "input_tokens": 7936,
+  "output_tokens_per_run": 128,
+  "context": 8192,
+  "threads": 12,
+  "prefill_batch": 8192,
+  "model": "GLM-5.3-Flash REAP50 Q23 assembly + Q22 down-only sidecar, fit4 routing",
+  "runs": [
+    {
+      "mode": "mmq",
+      "prefill_tok_s": 119.601,
+      "decode_tok_s": 35.2547,
+      "clean": true,
+      "gpu_fault_count": 0,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "executable_sha256": "dadd65154da30cd4c34dd7f49818028970d8e73d04cc230a554faa0ee05933fe",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602"
+    },
+    {
+      "mode": "wmma",
+      "prefill_tok_s": 465.274,
+      "decode_tok_s": 35.3772,
+      "clean": true,
+      "gpu_fault_count": 0,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "executable_sha256": "dadd65154da30cd4c34dd7f49818028970d8e73d04cc230a554faa0ee05933fe",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602"
+    },
+    {
+      "mode": "wmma-repeat",
+      "prefill_tok_s": 465.073,
+      "decode_tok_s": 35.3614,
+      "clean": true,
+      "gpu_fault_count": 0,
+      "output_sha256": "f7433762b2ee6e29e01052bda6e4c569c508cff0da3fb0a600685457ac01f2d3",
+      "executable_sha256": "dadd65154da30cd4c34dd7f49818028970d8e73d04cc230a554faa0ee05933fe",
+      "prompt_sha256": "f01df12aa9619bad64e88f25ea9c3a539ddfc07624c064c62e1c406d32010602"
+    }
+  ],
+  "workqueue_warnings": "svm_range_deferred_list_work [amdgpu] and delayed_fput reported >10000us CPU work; user observation after runs",
+  "conclusion": "No GPU loss in these three runs; runtime PM/ASPM workaround suspected, individual cause not isolated.",
+  "untested": [
+    "16K context",
+    "long-duration soak",
+    "library BF16 with these boot settings",
+    "separate runpm/aspm A/B"
+  ],
+  "raw_evidence": "Retained locally in tmp/glm-power212-stability; not included in this compact public summary."
+}

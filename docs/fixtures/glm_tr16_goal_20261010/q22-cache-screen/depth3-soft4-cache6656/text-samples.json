@@ -1,0 +1,20 @@
+{
+  "scope": "128-token diagnostic only; absence of short repetition does not qualify task quality or long continuation",
+  "tokens_sha256": "0c09a401062eb4f5effbc3f47a53f33a9fb0a1004b89026f5f83aa457febef30",
+  "quality_qualified": false,
+  "manual_review_pending": true,
+  "trials": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "text": "We need to write a thorough review of this Python benchmark. The excerpt is truncated/omitted, so we must note that. Identify concrete bugs:\n\n1. `gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon, syntax error; also missing `args` reference; function body seems to be a different function (launcher). Also `args.output` used but `args` not defined in that scope. Also `_output=True` keyword typo.\n\n2. `cache_bytes` \u2014 mmap with `1` (prot read) and `2` (MAP_PRIVATE) flags; mmap argtypes:",
+      "distinct_fourgram_fraction": 1.0
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "text": "We need to review the benchmark. It's a partial excerpt; we must identify bugs in the visible code: cache_bytes, model_files, clear_model_cache, parse_log, group_stats, process_memory_maps, gpu_usage, gpu_capacity_passed (broken signature), launcher function, main.\n\nKey bugs:\n\n1. `gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon (SyntaxError), truncated function; also `_output=True` odd naming. Also the function body shown belongs to a different function (launcher). Need to propose corrected signature.\n\n2. cache_bytes: mmap with `mmap` prot",
+      "distinct_fourgram_fraction": 1.0
+    }
+  ]
+}

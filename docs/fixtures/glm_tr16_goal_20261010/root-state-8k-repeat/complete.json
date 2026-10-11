@@ -1,0 +1,7 @@
+{
+  "audit_complete": true,
+  "tokens_per_case": 2048,
+  "repeat_matches_archive": false,
+  "repeat_matches_first_root_control": false,
+  "quality_qualified": false
+}

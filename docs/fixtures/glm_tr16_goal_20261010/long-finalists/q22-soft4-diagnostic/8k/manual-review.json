@@ -1,0 +1,9 @@
+{
+  "reviewed_trials": 4,
+  "generated_tokens_per_trial": 512,
+  "samples_sha256": "845d99b74ecf1e1feeab0183949868a493eac5f7d7780c499ede364b4e0872d5",
+  "no_obvious_repetition_loop": true,
+  "task_correctness_evaluated": false,
+  "quality_qualified": false,
+  "note": "All four continuations manually inspected for sustained repetition only."
+}

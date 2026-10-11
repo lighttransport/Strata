@@ -1,12 +1,12 @@
 {
   "command": [
-    "/home/syoyo/work/Strata/.venv-glm-hip/bin/python",
+    "~/work/Strata/.venv-glm-hip/bin/python",
     "-m",
     "serve.server",
     "--engine",
     "glm",
     "--config",
-    "/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/aff006-hardware-screen-20261009/threads8-aff0.06/config.json",
+    "~/work/Strata-b550-calibration-15b787b5/runs/aff006-hardware-screen-20261009/threads8-aff0.06/config.json",
     "--host",
     "127.0.0.1",
     "--port",

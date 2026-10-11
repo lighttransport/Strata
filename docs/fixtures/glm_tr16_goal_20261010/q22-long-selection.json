@@ -1,0 +1,8 @@
+{
+  "candidate": "depth3-soft4-cache6656",
+  "short_decode_tok_s": 30.4391,
+  "purpose": "Held-out sustained speed and repetition diagnostics, after profiling",
+  "provisional_low_loss_pilot_passed": false,
+  "quality_qualified": false,
+  "scope": "The helper low track selects only the30tok/s speed threshold. Q22 PPL+4.87%, KL+.06296 and top1-2.44pp already fail provisional low-loss gates. Relaxed generation requires additional task evaluation. No gate relaxed."
+}

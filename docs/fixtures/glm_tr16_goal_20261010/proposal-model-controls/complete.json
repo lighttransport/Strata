@@ -1,0 +1,7 @@
+{
+  "model_controls_passed": true,
+  "target_token_pairs": 8,
+  "tokens_compared_each": 256,
+  "state_diagnostic_8k": true,
+  "quality_qualified": false
+}

@@ -1,0 +1,23 @@
+{
+  "cuda_build_passed": true,
+  "hip_build_passed": true,
+  "cuda_parities_passed": 5,
+  "routing_cases_passed": 10,
+  "glm_mmvq_parity_passed": true,
+  "model_controls_complete": false,
+  "time": 1791583065.8576524,
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-hip/strata-glm-decode": "3308254eb5ab44fa7ece20732fcbbb8efc4f8ca41bd36b49647fb887ad2ce1a5",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route.patch": "4b9ef2bf77f55f462d2e55b601dcd1e6c9f7887367ed9eabaae0617f0396e504",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda-build.log": "cecb2bb7b4a7947bc6ccdbae58695ffa113241436c149a7603b423d03d976bad",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-hip-build.log": "07b800b32b7182c9b3c334d72cb47ad1a69acac5d072286c0fd3dbe30369ed1d",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-glm_parity.log": "9086e9c3a338f64834a9fc822deaffae3790b4d6aa44e145d450f1dc73c911b1",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-glm_q23_parity.log": "d2c1a42fbf91f8d373b75799e88aa584d9e28a2e386e12c1064246bba2d39d92",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-glm_q8_test.log": "4293fd4b311f23b21a8d3055149be9f89a2e6e5c1e0b41712f9ed5780e3e0113",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-glm_mailbox_test.log": "8a1d2fee4dd2ffaee4aefd0db387f397a47b12297dac5eea33288c31bdbcd8b7",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-glm_prefill_parity.log": "3485d5c8d4b423dccbb6d91850d6225cdd2403f49400d34562ed6728ada27d31",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-tests.log": "4b90c8a4c99c69b22084c3b7bd40cecc123b886cc7197ad99ac9a1838d24eab5",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-glm-mmvq-parity-bench.log": "4fa64f5741103343f361bfc9b985d317a632a0fc7f61266153ed79148b61dc8b"
+  }
+}

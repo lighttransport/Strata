@@ -160,6 +160,8 @@ PACKS = {
                     44: ("Q2_K", "Q2_K", "IQ4_XS")})),
     "reap50_q23": Pack("reap50_q23", description="REAP-50 (144 experts) in Q2_K/Q3_K, all 42 layers (55.1 GB)",
                        **_uniform(("Q2_K", "Q2_K", "Q3_K"), experts=144), skew=0.8),
+    "reap50_q22": Pack("reap50_q22", description="REAP-50 Q23 assembly with Q2_K down sidecar",
+                       **_uniform(("Q2_K", "Q2_K", "Q2_K"), experts=144), skew=0.8),
     "reap50_q4km": Pack("reap50_q4km", description="REAP-50 Q4_K_M as downloaded (~15.1 MB per expert)",
                         **_uniform(("Q4_K", "Q4_K", "Q6_K"), experts=144), skew=0.8),
     "q8": Pack("q8", description="hypothetical Q8_0 experts (26.7 MB each, 323 GB)",
@@ -214,17 +216,160 @@ def from_gguf(paths, name="gguf"):
     return Pack(name, experts=experts, formats=table, description=f"from {', '.join(map(str, paths))}")
 
 
-def dense_gpu_bytes_per_token(geometry=GEOMETRY):
+def dense_gpu_bytes_per_token(geometry=None):
     """Fixed-weight bytes the GPU streams for one token: dense layers, MoE layer mixers, head."""
+    geometry = geometry or GEOMETRY
     f = FIXED_BYTES
     kda_moe = geometry.moe_layers - len(geometry.mla_layers)
     return (geometry.dense_layers * f["dense_layer"] + kda_moe * f["kda_moe_layer"]
             + len(geometry.mla_layers) * f["mla_layer"] + f["blk11_extra"] + f["lm_head"])
 
 
-def layer_fixed_bytes(layer, geometry=GEOMETRY):
+def layer_fixed_bytes(layer, geometry=None):
+    geometry = geometry or GEOMETRY
     f = FIXED_BYTES
     if layer < geometry.dense_layers:
         return f["dense_layer"]
     base = f["mla_layer"] if layer in geometry.mla_layers else f["kda_moe_layer"]
     return base + (f["blk11_extra"] if layer == 11 else 0)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# GLM-5.3 (non-Flash, 743B): `glm_moe_dsa` = DeepSeek-V3.2-style MLA with a lightning-indexer sparse attention (DSA)
+# on 21 of 78 layers (the others reuse the previous top-k), plain residual (no mHC), no KDA. From
+# huggingface.co/zai-org/GLM-5.3 config.json: 78 layers + 1 MTP layer, first 3 dense (ff 12288), hidden 6144,
+# 256 routed experts of 2048 rows, top-8, 1 shared expert, vocab 154880, q_lora 2048, kv_lora 512, 64 heads with
+# qk 256 (192 nope + 64 rope) and v 256. Routed experts total 724.8B parameters (37.75M each).
+# Fixed-weight bytes are estimates (no GGUF header was parsed): attention 165.0M params per layer, shared expert
+# 37.75M, router 256 x 6144 f32, indexer 9.4M on the 21 full layers, at an assumed 5.5 bits per weight for the
+# Unsloth UD mixes ("orig"), 8.5 for Q8_0 and 4.5 for Q4_K GPU copies.
+GLM53_GEOMETRY = Geometry(layers=78, dense_layers=3, hidden=6144, dense_ff=12288, expert_ff=2048, experts=256,
+                          top_k=8, shared_experts=1, vocab=154880, mla_layers=tuple(range(3, 78)), mtp_layers=1)
+_B = 5.5 / 8
+GLM53_FIXED_BYTES = dict(
+    total=int((3 * (165.0e6 + 226.5e6) + 75 * (165.0e6 + 37.75e6) + 21 * 9.38e6) * _B + 75 * 6.29e6 + 2 * 951.6e6 * 6.5625 / 8),
+    token_embd=int(951.6e6 * 6.5625 / 8),
+    dense_layer=int((165.0e6 + 226.5e6) * _B),
+    kda_moe_layer=int((165.0e6 + 37.75e6 + 21 / 75 * 9.38e6) * _B + 6.29e6),   # no KDA layers; kept for the table shape
+    mla_layer=int((165.0e6 + 37.75e6 + 21 / 75 * 9.38e6) * _B + 6.29e6),
+    blk11_extra=0,
+    shared_expert=int(37.75e6 * _B),
+    router=6_291_456,
+    mtp_dense=int((165.0e6 + 75.5e6 + 37.75e6) * _B),
+    lm_head=int(951.6e6 * 6.5625 / 8),
+)
+_dense_mib = (3 * GLM53_FIXED_BYTES["dense_layer"] + 75 * GLM53_FIXED_BYTES["mla_layer"] + GLM53_FIXED_BYTES["lm_head"]) / 2 ** 20
+GLM53_DENSE_FORMATS = dict(
+    q8=dict(vram_mib=_dense_mib * 8.5 / 5.5, bytes_scale=8.5 / 5.5, lossless=True),
+    orig=dict(vram_mib=_dense_mib, bytes_scale=1.0, lossless=True),
+    q4=dict(vram_mib=_dense_mib * 4.5 / 5.5, bytes_scale=4.5 / 5.5, lossless=False),
+)
+GLM53_VRAM = dict(
+    dense_q8=GLM53_DENSE_FORMATS["q8"]["vram_mib"], dense=_dense_mib,
+    mtp_dense_q8=GLM53_FIXED_BYTES["mtp_dense"] * 8.5 / 5.5 / 2 ** 20, mtp_dense=GLM53_FIXED_BYTES["mtp_dense"] / 2 ** 20,
+    draft_bank=3600, state_fixed=64.0,
+    state_per_token=(576 * 2 * 78 + 21 * 128 * 2) / 2 ** 20,      # MLA latent cache + indexer keys, bf16
+    verify_slot=16.0, staging_slot=219, staging_slots=2, prefetch_group=150, misc=635, exl3_dense=_dense_mib,
+)
+
+
+def _glm53(name, fmt3, experts, description, skew=1.0):
+    formats = {l: fmt3 for l in GLM53_GEOMETRY.moe_layer_ids()}
+    return Pack(name, experts=experts, formats=formats, description=description, dense_vram_mib=_dense_mib, skew=skew,
+                geometry=dataclasses.replace(GLM53_GEOMETRY, experts=experts))
+
+
+GLM53_PACKS = {}
+for _keep, _tag in ((256, ""), (192, "_reap25"), (160, "_reap37"), (128, "_reap50")):
+    _skew = 1.0 if _keep == 256 else 0.8
+    for _suffix, _fmt, _what in (("q23", ("Q2_K", "Q2_K", "Q3_K"), "Q2_K gate/up + Q3_K down"),
+                                  ("q22", ("Q2_K", "Q2_K", "Q2_K"), "Q2_K gate/up/down"),
+                                  ("iq2", ("IQ2_XS", "IQ2_XS", "IQ3_XXS"), "IQ2_XS gate/up + IQ3_XXS down (UD-Q2_K_XL-like)"),
+                                  ("q4", ("Q4_K", "Q4_K", "Q4_K"), "Q4_K")):
+        _name = f"glm53{_tag}_{_suffix}"
+        GLM53_PACKS[_name] = _glm53(_name, _fmt, _keep, f"GLM-5.3 {_keep} experts/layer, {_what}", _skew)
+
+MODELS = dict(
+    flash=dict(geometry=GEOMETRY, fixed=dict(FIXED_BYTES), vram=dict(VRAM), dense=dict(DENSE_FORMATS)),
+    glm53=dict(geometry=GLM53_GEOMETRY, fixed=GLM53_FIXED_BYTES, vram=GLM53_VRAM, dense=GLM53_DENSE_FORMATS, packs=GLM53_PACKS),
+)
+# ---------------------------------------------------------------------------------------------------------------
+# MiMo-V2.6 (`mimo_v2`, MIT): grouped-query attention with 128-token sliding windows on most layers (attention-sink
+# bias), sigmoid routing (noaux_tc), no shared expert, 1 dense layer; native MXFP4 experts in the release.
+# From huggingface.co/XiaomiMiMo/MiMo-V2.6-{Pro,Flash}-RL config.json (vision/audio encoders not counted):
+#   Pro:   70 layers (69 MoE), hidden 6144, 384 experts x 2048 rows, top-8, 128 q / 8 kv heads, qk 192, v 128,
+#          10 full-attention layers; 1,000B routed (37.75M per expert), 1.02T total, 42B active; no MTP in the config.
+#   Flash: 48 layers (47 MoE), hidden 4096, 256 experts x 2048, top-8, 64 q / 4 kv heads (8 on SWA layers), 9 full
+#          layers, 3 MTP layers; 302.8B routed (25.17M per expert), 309B total, 15B active.
+# Fixed weights are estimated at 5.5 bits per weight ("orig", a Q8_0/Q6_K-mix GGUF trunk would be higher).
+
+def _attention_params(hidden, q_heads, kv_heads, qk, v):
+    return hidden * q_heads * qk + hidden * kv_heads * (qk + v) + q_heads * v * hidden
+
+
+def _register(key, geometry, attn, dense_ffn, mtp_params, kv_bytes_per_token, prefix, keeps, description):
+    lm = geometry.vocab * geometry.hidden
+    router = geometry.experts * geometry.hidden * 4
+    moe_layer = int(attn * _B + router)
+    fixed = dict(total=int((geometry.dense_layers * (attn + dense_ffn) + geometry.moe_layers * attn) * _B + 2 * lm * 6.5625 / 8),
+                 token_embd=int(lm * 6.5625 / 8), dense_layer=int((attn + dense_ffn) * _B), kda_moe_layer=moe_layer,
+                 mla_layer=moe_layer, blk11_extra=0, shared_expert=0, router=router, mtp_dense=int(mtp_params * _B),
+                 lm_head=int(lm * 6.5625 / 8))
+    dense_mib = (geometry.dense_layers * fixed["dense_layer"] + geometry.moe_layers * moe_layer + fixed["lm_head"]) / 2 ** 20
+    dense = dict(q8=dict(vram_mib=dense_mib * 8.5 / 5.5, bytes_scale=8.5 / 5.5, lossless=True),
+                 orig=dict(vram_mib=dense_mib, bytes_scale=1.0, lossless=True),
+                 q4=dict(vram_mib=dense_mib * 4.5 / 5.5, bytes_scale=4.5 / 5.5, lossless=False))
+    vram = dict(dense_q8=dense["q8"]["vram_mib"], dense=dense_mib, mtp_dense_q8=fixed["mtp_dense"] * 8.5 / 5.5 / 2 ** 20,
+                mtp_dense=fixed["mtp_dense"] / 2 ** 20, draft_bank=2502, state_fixed=64.0, state_per_token=kv_bytes_per_token / 2 ** 20,
+                verify_slot=16.0, staging_slot=219, staging_slots=2, prefetch_group=150, misc=635, exl3_dense=dense_mib)
+    packs = {}
+    for keep, tag in keeps:
+        for suffix, fmt, what in (("q23", ("Q2_K", "Q2_K", "Q3_K"), "Q2_K gate/up + Q3_K down"),
+                                  ("q22", ("Q2_K", "Q2_K", "Q2_K"), "Q2_K gate/up/down"),
+                                  ("iq2", ("IQ2_XS", "IQ2_XS", "IQ3_XXS"), "IQ2_XS gate/up + IQ3_XXS down"),
+                                  ("q4", ("Q4_K", "Q4_K", "Q4_K"), "Q4_K (about the native MXFP4 size)")):
+            name = f"{prefix}{tag}_{suffix}"
+            g = dataclasses.replace(geometry, experts=keep)
+            packs[name] = Pack(name, experts=keep, formats={l: fmt for l in g.moe_layer_ids()},
+                               description=f"{description} {keep} experts/layer, {what}", dense_vram_mib=dense_mib,
+                               skew=1.0 if keep == geometry.experts else 0.8, geometry=g)
+    MODELS[key] = dict(geometry=geometry, fixed=fixed, vram=vram, dense=dense, packs=packs)
+    return packs
+
+
+MIMO_PRO_GEOMETRY = Geometry(layers=70, dense_layers=1, hidden=6144, dense_ff=16384, expert_ff=2048, experts=384, top_k=8,
+                             shared_experts=0, vocab=152576, mla_layers=tuple(range(1, 70)), mtp_layers=0)
+MIMO_FLASH_GEOMETRY = Geometry(layers=48, dense_layers=1, hidden=4096, dense_ff=16384, expert_ff=2048, experts=256, top_k=8,
+                               shared_experts=0, vocab=152576, mla_layers=tuple(range(1, 48)), mtp_layers=3)
+MIMO_PACKS = {}
+MIMO_PACKS.update(_register("mimo_pro", MIMO_PRO_GEOMETRY, _attention_params(6144, 128, 8, 192, 128), 3 * 6144 * 16384,
+                            _attention_params(6144, 128, 8, 192, 128) + 2 * 6144 * 6144,
+                            # KV per token: 10 full layers x 8 kv heads x (192 + 128) x bf16; SWA layers hold 128 tokens
+                            10 * 8 * 320 * 2, "mimop", ((384, ""), (288, "_reap25"), (192, "_reap50"), (144, "_reap62")),
+                            "MiMo-V2.6-Pro"))
+MIMO_PACKS.update(_register("mimo_flash", MIMO_FLASH_GEOMETRY, _attention_params(4096, 64, 4, 192, 128), 3 * 4096 * 16384,
+                            3 * (_attention_params(4096, 64, 4, 192, 128) + 2 * 4096 * 4096),
+                            9 * 4 * 320 * 2, "mimof", ((256, ""), (192, "_reap25"), (128, "_reap50")), "MiMo-V2.6-Flash"))
+
+
+ACTIVE_MODEL = "flash"
+
+
+def use_model(name):
+    """Switch every simulator module to `name`'s geometry and fixed-weight tables (packs carry their own geometry)."""
+    global GEOMETRY, ACTIVE_MODEL
+    spec = MODELS[name]
+    old = GEOMETRY
+    for module in list(sys.modules.values()):
+        if getattr(module, "GEOMETRY", None) is old:
+            module.GEOMETRY = spec["geometry"]
+    for table, new in ((FIXED_BYTES, spec["fixed"]), (VRAM, spec["vram"]), (DENSE_FORMATS, spec["dense"])):
+        table.clear(); table.update(new)
+    PACKS.update(spec.get("packs", {}))
+    ACTIVE_MODEL = name
+    return spec["geometry"]
+
+
+def packs_for(name):
+    return [k for k, v in PACKS.items() if (v.geometry.hidden == 6144) == (name == "glm53")] if name == "glm53" else \
+        [k for k in PACKS if not k.startswith("glm53")]

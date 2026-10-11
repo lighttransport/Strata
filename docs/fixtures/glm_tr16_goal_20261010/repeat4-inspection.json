@@ -1,0 +1,35 @@
+{
+  "case": "01-repeat4",
+  "median_decode_tok_s": 34.853,
+  "quality_qualified": false,
+  "text_samples_sha256": "8b9df1c838dfc37c713a961d4e01d80b60d4d123bac990d394c9555b5e38a48f",
+  "inspection": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "sustained_repetition_observed": false
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "sustained_repetition_observed": false
+    },
+    {
+      "trial": 2,
+      "warmup": false,
+      "sustained_repetition_observed": false
+    },
+    {
+      "trial": 3,
+      "warmup": false,
+      "sustained_repetition_observed": true
+    }
+  ],
+  "findings": [
+    "One of three timed512-token continuations repeats the gpu_capacity_passed function signature through most of its output.",
+    "Warmup and other two timed samples have no comparable sustained loop; this does not establish factual or task correctness.",
+    "Output differs from control, so the5.21percent rate decrease is not a measurement of guard-check overhead alone.",
+    "The underlying affinity0.20 component already failed the lower-loss corpus gates; guard changes do not remove that evidence."
+  ],
+  "decision": "Not qualified; continue paired8-gram/aggressive diagnostics before considering any new policy."
+}

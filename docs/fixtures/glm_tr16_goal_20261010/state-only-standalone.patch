@@ -1,0 +1,167 @@
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -5343,7 +5343,7 @@
+         check(cublasSgemmStridedBatched(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, tokens, in, &one, W.f(), in,
+                                         (long long)in * out, x, ld_x, in, &zero, y, ld_y, out, heads));
+     }
+-    void mla_gpu(const std::string &p, int l, const float *x, float *out) {
++    void mla_gpu(const std::string &p, int l, const float *x, float *out, bool state_only = false) {
+         auto &state = states[l];
+         const int *device_pos = graph_mla() && l < (int)m.layers.size() ? (const int *)mla_positions->p + buffer_group : nullptr;
+         int B = batch_tokens, heads = m.attention_heads, latent = m.kv_rank, dim = 256, ih = m.index_heads,
+@@ -5372,9 +5372,11 @@
+         auto &qr = buf("mla_qr", m.q_rank * B);
+         auto &q = buf("mla_q", heads * dim * B);
+         share_quant(x, m.hidden);
+-        mat(p + "attn_q_a.weight", x, low.f());
+-        norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
+-        mat(p + "attn_q_b.weight", qr.f(), q.f());
++        if (!state_only) {
++            mat(p + "attn_q_a.weight", x, low.f());
++            norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
++            mat(p + "attn_q_b.weight", qr.f(), q.f());
++        }
+         auto &raw = buf("mla_raw", latent * B);
+         mat(p + "attn_kv_a_mqa.weight", x, raw.f());
+         if (!row_sequences.empty()) {
+@@ -5394,8 +5396,10 @@
+         auto &ik = buf("index_k", idim * B);
+         auto &ikn = buf("index_kn", idim * B);
+         auto &gate = buf("index_gate", idim * B);
+-        mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
+-        mat(p + "indexer.proj.weight", x, iw.f());
++        if (!state_only) {
++            mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
++            mat(p + "indexer.proj.weight", x, iw.f());
++        }
+         mat(p + "indexer.attn_k.weight", x, ik.f());
+         mat(p + "indexer_compressor_gate.weight", x, gate.f());
+         end_share_quant();
+@@ -5428,6 +5432,9 @@
+         } else
+             k::glm_index_prepare(ikn.f(), gate.f(), ape.f(), state.keys->f(), state.gates->f(), state.pooled->f(),
+                                  position, B, pool_size, idim, stream, device_pos);
++        // All persistent MLA state is now updated. Draft resynchronization
++        // does not consume the attention output or the following feed-forward output.
++        if (state_only) return;
+         inspect("index_norm", ikn.f(), (size_t)B * idim, stream);
+         inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
+         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
+@@ -7076,7 +7083,16 @@
+     }
+     void set_mtp_cpu_experts(bool enabled) { mtp_cpu_experts = enabled; }
+     int token_position() const { return position; }
+-    std::vector<float> mtp_step(int token, const float *previous, bool head = true) {
++    const bool mtp_sync_state_only = [] {
++        const char *v = std::getenv("STRATA_GLM_MTP_SYNC_STATE_ONLY");
++        if (!v || std::string(v) == "0") return false;
++        if (std::string(v) == "1") return true;
++        throw std::invalid_argument("STRATA_GLM_MTP_SYNC_STATE_ONLY must be 0 or 1");
++    }();
++    const bool check_mtp_sync_state = std::getenv("STRATA_GLM_CHECK_MTP_SYNC_STATE") &&
++        std::string(std::getenv("STRATA_GLM_CHECK_MTP_SYNC_STATE")) == "1";
++    long mtp_sync_omitted = 0, mtp_sync_checked = 0;
++    std::vector<float> mtp_step(int token, const float *previous, bool head = true, bool force_full = false) {
+         check_stop();
+         if (!mtp_ready || token < 0 || token >= m.vocab || mtp_position >= (int)capacity)
+             throw std::out_of_range("GLM: invalid MTP token or position");
+@@ -7102,7 +7118,16 @@
+         norm(p + "nextn.hnorm.weight", prev.f(), joined.f(H), H);
+         mat(p + "nextn.eh_proj.weight", joined.f(), cur.f());
+         norm(p + "attn_norm.weight", cur.f(), x.f(), H);
+-        mla_gpu(p, 45, x.f(), y.f());
++        const bool state_only = !head && mtp_sync_state_only && !force_full;
++        if (state_only && !row_sequences.empty())
++            throw std::invalid_argument("GLM: state-only MTP sync requires one sequence");
++        mla_gpu(p, 45, x.f(), y.f(), state_only);
++        if (state_only) {
++            ++mtp_position;
++            ++mtp_sync_omitted;
++            check(cudaStreamSynchronize(stream));
++            return {};
++        }
+         const float one = 1;
+         check(cublasSaxpy(blas, H, &one, y.f(), 1, cur.f(), 1));
+         norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
+@@ -7125,7 +7150,19 @@
+         for (size_t i = 0; i < tokens.size(); ++i) {
+             const int prev = start + i - 1;
+             const float *hidden = prev < 0 ? zero.data() : target_hidden.data() + prev * m.hidden;
+-            mtp_step(tokens[i], hidden, false);
++            if (mtp_sync_state_only && check_mtp_sync_state && mtp_sync_checked < 16) {
++                // Diagnostic only: compare every persistent draft buffer,
++                // including append-only latent and pooled-key caches.
++                auto before = mtp_checkpoint(true), after = mtp_checkpoint(true);
++                save(before);
++                mtp_step(tokens[i], hidden, false);
++                save(after);
++                restore_mtp(before);
++                mtp_step(tokens[i], hidden, false, true);
++                check_mtp_state(after);
++                restore_mtp(after);
++                ++mtp_sync_checked;
++            } else mtp_step(tokens[i], hidden, false);
+         }
+     }
+     void rebalance_decode_cache() {
+@@ -7858,7 +7895,7 @@
+         return cp;
+     }
+     // Draft-block buffers only: save() and restore_mtp() then cover just the MTP state.
+-    Checkpoint mtp_checkpoint() {
++    Checkpoint mtp_checkpoint(bool append_only = false) {
+         Checkpoint cp;
+         size_t bytes = 0;
+         cp.draft_begin = 0;
+@@ -7870,6 +7907,9 @@
+                     cp.buffers.emplace_back(buffer, bytes);
+                     bytes += buffer->bytes;
+                 }
++            if (append_only)
++                for (Device *buffer : {state.cache.get(), state.pooled.get()})
++                    if (buffer) { cp.buffers.emplace_back(buffer, bytes); bytes += buffer->bytes; }
+         }
+         cp.storage = std::make_unique<Device>(std::max<size_t>(bytes, 256));
+         return cp;
+@@ -7897,6 +7937,23 @@
+                                   cudaMemcpyDeviceToDevice, stream));
+         }
+         mtp_position = cp.mtp_position;
++    }
++
++    void check_mtp_state(const Checkpoint &expected) {
++        if (expected.buffers.empty())
++            throw std::runtime_error("GLM: check has no MTP state buffers");
++        if (mtp_position != expected.mtp_position)
++            throw std::runtime_error("GLM: MTP position mismatch");
++        check(cudaStreamSynchronize(stream));
++        for (auto [buffer, offset] : expected.buffers) {
++            std::vector<unsigned char> actual(buffer->bytes), saved(buffer->bytes);
++            check(cudaMemcpy(actual.data(), buffer->p, buffer->bytes, cudaMemcpyDeviceToHost));
++            check(cudaMemcpy(saved.data(), (char *)expected.storage->p + offset, buffer->bytes,
++                             cudaMemcpyDeviceToHost));
++            if (actual != saved)
++                throw std::runtime_error("GLM: MTP state mismatch at byte offset " +
++                                         std::to_string(offset));
++        }
+     }
+ 
+     void check_sequences(const std::vector<int> &prompt) {
+@@ -8275,6 +8332,7 @@
+         }
+         pool.ms_multi_gu = pool.ms_multi_q = pool.ms_multi_down = pool.ms_layer_flow = 0;
+         trace = StepTrace{};
++        mtp_sync_omitted = mtp_sync_checked = 0;
+         pool.ms_native_local_prepare = 0;
+         pool.native_local_queries = 0;
+         pool.multi_bytes = 0;
+@@ -8327,6 +8385,9 @@
+         std::cerr << "CPU_EXPERT gu_ms=" << pool.ms_multi_gu << " quant_ms=" << pool.ms_multi_q
+                   << " down_ms=" << pool.ms_multi_down << " layer_flow_ms=" << pool.ms_layer_flow
+                   << " bytes=" << pool.multi_bytes << '\n';
++        if (mtp_sync_state_only)
++            std::cerr << "MTP_SYNC_STATE_ONLY omitted=" << mtp_sync_omitted
++                      << " checked=" << mtp_sync_checked << '\n';
+         if (step_trace && trace.steps)
+             std::cerr << "STEP_TRACE steps=" << trace.steps << " moe_layers=" << trace.layers
+                       << " pipelined=" << (mailbox ? 1 : 0) << " head_ms=" << trace.head_ms

@@ -1,0 +1,70 @@
+[
+  {
+    "name": "8k-standalone-off",
+    "decode_tok_s": 23.5539,
+    "prefill_tok_s": 435.842,
+    "tokens_identical": 455,
+    "all_tokens_identical": false,
+    "first_difference_by_trial": [
+      240,
+      63,
+      60,
+      37
+    ],
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-heldout/8k-control",
+    "sync_state": [],
+    "quality_qualified": false,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/standalone-state-8k-audit/8k-standalone-off.json",
+    "archived_tokens_identical": true
+  },
+  {
+    "name": "8k-state-only",
+    "decode_tok_s": 24.0469,
+    "prefill_tok_s": 435.626,
+    "tokens_identical": 455,
+    "all_tokens_identical": false,
+    "first_difference_by_trial": [
+      240,
+      63,
+      60,
+      37
+    ],
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-heldout/8k-control",
+    "sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 223,
+        "checked": 0
+      },
+      {
+        "omitted": 224,
+        "checked": 0
+      },
+      {
+        "omitted": 222,
+        "checked": 0
+      },
+      {
+        "omitted": 217,
+        "checked": 0
+      }
+    ],
+    "quality_qualified": false,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/standalone-state-8k-audit/8k-state-only.json",
+    "archived_tokens_identical": true,
+    "standalone_off_tokens_identical": true,
+    "versus_root_control_percent": 3.152896160330121,
+    "versus_standalone_off_percent": 2.093071635695165
+  }
+]

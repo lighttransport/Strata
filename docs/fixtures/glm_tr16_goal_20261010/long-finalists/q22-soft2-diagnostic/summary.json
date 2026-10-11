@@ -1,0 +1,22 @@
+[
+  {
+    "prompt": "2k",
+    "decode_tok_s": 28.8653,
+    "prefill_tok_s": 143.38,
+    "timed_trials": 3,
+    "generated_per_trial": 512,
+    "speed_target_met": false,
+    "quality_qualified": false,
+    "manual_review_pending": true
+  },
+  {
+    "prompt": "8k",
+    "decode_tok_s": 30.1204,
+    "prefill_tok_s": 143.271,
+    "timed_trials": 3,
+    "generated_per_trial": 512,
+    "speed_target_met": true,
+    "quality_qualified": false,
+    "manual_review_pending": true
+  }
+]

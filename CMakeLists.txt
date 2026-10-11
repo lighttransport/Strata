@@ -7,13 +7,13 @@
 # CUDA kernels retain capability checks for newer instructions. The experimental
 # GLM backend also supports SM70 through native integer experts and FP16 projections.
 cmake_minimum_required(VERSION 3.24)
-project(strata VERSION 0.1.41 LANGUAGES CXX)
+project(strata VERSION 0.1.42 LANGUAGES CXX)
 # EXPERIMENTAL: the Intel Arc engine, the SYCL port in sycl/ (PR #423; icpx + oneMKL, docs/INTEL_ARC.md). It is its
 # own project that takes the unported sources from src/; with this on, nothing below is configured.
 option(STRATA_ENABLE_SYCL "EXPERIMENTAL: build the Intel Arc (SYCL) engine from sycl/ - docs/INTEL_ARC.md" OFF)
 if(STRATA_ENABLE_SYCL)
-  if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
-    message(FATAL_ERROR "STRATA_ENABLE_SYCL is a separate backend; leave STRATA_ENABLE_CUDA and STRATA_ENABLE_HIP off")
+  if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP OR STRATA_ENABLE_VULKAN)
+    message(FATAL_ERROR "STRATA_ENABLE_SYCL is a separate backend; leave CUDA, HIP and Vulkan off")
   endif()
   message(WARNING "STRATA_ENABLE_SYCL: the Intel Arc engine is experimental (community port, docs/INTEL_ARC.md)")
   add_subdirectory(sycl)
@@ -68,6 +68,10 @@ if(STRATA_HIP_GFX906)
   set(STRATA_ENABLE_CUDA ON CACHE BOOL "" FORCE)
 endif()
 option(STRATA_ENABLE_HIP "Build the HIP targets for wave32 AMD GPUs (gfx1100, gfx1201; gfx1012/gfx1030 unvalidated)" OFF)
+option(STRATA_ENABLE_VULKAN "Build the experimental GLM Vulkan runner (no CUDA/HIP required)" OFF)
+if(STRATA_ENABLE_VULKAN AND (STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP OR STRATA_HIP_GFX906))
+  message(FATAL_ERROR "Build Vulkan separately from CUDA/HIP to keep the runtime dependencies independent")
+endif()
 option(STRATA_PREFILL_MMQ "Build the optional GGML MMQ prefill path for HIP" OFF)
 # CUDA: MMQ prompt kernels for Q4_K / Q5_K / Q5_1 (Unsloth's UD-Q4_K_XL experts).  Off by default: the engine loads
 # every kernel when it starts (CUDA_MODULE_LOADING=EAGER), so these took ~5 MB of VRAM - 1-3 expert slots - from every
@@ -112,7 +116,11 @@ if(STRATA_BUILD_CONVERSATION_TESTS)
   add_test(NAME conversation_memory_test COMMAND conversation_memory_test)
   add_executable(conversation_file_test src/core/conversation_file_test.cpp src/core/conversation_file.cpp)
   target_include_directories(conversation_file_test PRIVATE include)
+  target_link_libraries(conversation_file_test PRIVATE strata_host)   # conversation_file.cpp reads its switch via strata_env_*
   add_test(NAME conversation_file_test COMMAND conversation_file_test)
+  add_executable(session_save_reclaim_test src/core/session_save_reclaim_test.cpp src/core/conversation_file.cpp)
+  target_include_directories(session_save_reclaim_test PRIVATE include)
+  add_test(NAME session_save_reclaim_test COMMAND session_save_reclaim_test)
 endif()
 
 if(STRATA_HIP_GFX906)
@@ -209,6 +217,9 @@ add_library(strata_warnings INTERFACE)
 target_compile_options(strata_warnings INTERFACE
   $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/W4>
   $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/utf-8>
+  $<$<AND:$<COMPILE_LANGUAGE:C>,$<C_COMPILER_ID:MSVC>>:/W4>
+  $<$<AND:$<COMPILE_LANGUAGE:C>,$<NOT:$<C_COMPILER_ID:MSVC>>>:-Wall>
+  $<$<AND:$<COMPILE_LANGUAGE:C>,$<NOT:$<C_COMPILER_ID:MSVC>>>:-Wextra>
   $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wall>
   $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Wextra>
   $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CXX_COMPILER_ID:MSVC>>:-Xcompiler=/W4>
@@ -218,6 +229,8 @@ if(STRATA_WERROR)
   target_compile_options(strata_warnings INTERFACE
     $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:MSVC>>:/WX>
     $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<NOT:$<CXX_COMPILER_ID:MSVC>>>:-Werror>
+    $<$<AND:$<COMPILE_LANGUAGE:C>,$<C_COMPILER_ID:MSVC>>:/WX>
+    $<$<AND:$<COMPILE_LANGUAGE:C>,$<NOT:$<C_COMPILER_ID:MSVC>>>:-Werror>
     $<$<COMPILE_LANGUAGE:HIP>:-Werror>)
 endif()
 
@@ -227,35 +240,58 @@ endif()
 # duplicate-symbol or missing-declaration bug into code that is already validated against the real artifact.
 add_library(strata_artifact INTERFACE)
 target_include_directories(strata_artifact INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(strata_artifact INTERFACE strata_warnings)
+# strata_host: model.hpp and other artifact headers call the C11 host rules (names, switches, assembled pack) inline
+target_link_libraries(strata_artifact INTERFACE strata_warnings strata_host)
 
 add_executable(strata-gguf src/artifact/gguf_reader.cpp)
-target_link_libraries(strata-gguf PRIVATE strata_artifact)
+target_link_libraries(strata-gguf PRIVATE strata_artifact strata_host)
 add_executable(strata-model-inspect src/artifact/model_inspect.cpp)
-target_link_libraries(strata-model-inspect PRIVATE strata_artifact)
+target_link_libraries(strata-model-inspect PRIVATE strata_artifact strata_host)
 
 add_executable(strata-dequant src/artifact/dequant.cpp)
 target_link_libraries(strata-dequant PRIVATE strata_artifact)
 # this file is now nothing but the CLI entry point, and its inherited guard spells that as a "selftest"
 target_compile_definitions(strata-dequant PRIVATE STRATA_DEQUANT_SELFTEST)
 if(STRATA_BUILD_TESTS)
+  add_executable(logit_bias_test src/core/logit_bias_test.cpp)
+  target_include_directories(logit_bias_test PRIVATE include)
+  add_test(NAME logit_bias_test COMMAND logit_bias_test)
   # the reader refuses a duplicate tensor name at open, naming it (a synthetic GGUF: no model, no GPU)
   add_executable(gguf_reader_test src/artifact/gguf_reader_test.cpp)
   target_link_libraries(gguf_reader_test PRIVATE strata_artifact)
   add_test(NAME gguf_reader_test COMMAND gguf_reader_test)
   add_executable(model_test src/artifact/model_test.cpp)
-  target_link_libraries(model_test PRIVATE strata_artifact)
+  target_link_libraries(model_test PRIVATE strata_artifact strata_host)
   add_test(NAME model_test COMMAND model_test)
   # a split model's shards and their joint view: missing shard, split keys, duplicates, truncation (synthetic)
   add_executable(gguf_split_test tests/core/gguf_split_test.cpp)
   target_link_libraries(gguf_split_test PRIVATE strata_artifact)
   add_test(NAME gguf_split_test COMMAND gguf_split_test)
+  # how --batch cuts a prompt read into pieces (a layer split with no slot decoding must still reach a BYIELD)
+  add_executable(batch_read_test tests/program/batch_read_test.cpp)
+  target_include_directories(batch_read_test PRIVATE include)
+  add_test(NAME batch_read_test COMMAND batch_read_test)
 
   # the hipBLASLt tuning header's architecture gate: RDNA4 siblings share solution IDs, RDNA3 siblings share
   # theirs, cross-family pairs and version mismatches stay rejected (synthetic tables: no model, no GPU)
   add_executable(tuning_header_arch_family_test tests/prefill/tuning_header_arch_family_test.cpp)
   target_include_directories(tuning_header_arch_family_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/prefill")
   add_test(NAME tuning_header_arch_family_test COMMAND tuning_header_arch_family_test)
+
+  # the auto layer split's minimum stage size (#1616): header-only rule, no GPU
+  add_executable(split_rules_test tests/program/split_rules_test.cpp)
+  target_include_directories(split_rules_test PRIVATE include)
+  add_test(NAME split_rules_test COMMAND split_rules_test)
+
+  # the default CPU prefill share is not armed when every expert is resident (#1595): header-only rule, no GPU
+  add_executable(share_rules_test tests/prefill/share_rules_test.cpp)
+  target_include_directories(share_rules_test PRIVATE include)
+  add_test(NAME share_rules_test COMMAND share_rules_test)
+
+  # the Windows HIP auto prefill chunk cap (#1630) and the commit-limit verdict (#1607): header-only, no GPU
+  add_executable(host_limits_test tests/platform/host_limits_test.cpp)
+  target_include_directories(host_limits_test PRIVATE include)
+  add_test(NAME host_limits_test COMMAND host_limits_test)
 endif()
 
 # ---- strata_plan ----------------------------------------------------------
@@ -267,6 +303,31 @@ target_link_libraries(strata_plan INTERFACE strata_warnings)
 
 add_executable(strata-plan src/plan/plan_main.cpp)
 target_link_libraries(strata-plan PRIVATE strata_plan)
+
+# ---- strata_host (C11 host rules) -----------------------------------------
+# Plain C11, no backend, no toolkit: the tensor names, the tuning-knob table and the assembled expert pack's
+# rules.  They are moved out of C++ so both the loader and the assembler can call the SAME code - the two
+# have been separate spellings of one agreement - and so each is testable as a unit without a model.
+#
+# The portable subset is deliberate and checked by review, because the only C11 target here before it
+# (strata_ucomm below) is Linux-only: no _Generic, no VLAs, no <threads.h>, nothing MSVC lacks.  A knob is
+# read once through strata_env_init from main(), since C has no thread-safe function-local static for the
+# lambdas this replaces to lean on.
+enable_language(C)
+add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c)
+set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+target_include_directories(strata_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(strata_host PUBLIC strata_warnings)
+if(STRATA_BUILD_TESTS)
+  # The spellings and the rules, on synthetic data: no model, no GPU, and no C++ in the way.
+  foreach(_host_test glm_names glm_env glm_expert_pack)
+    add_executable(${_host_test}_test tests/host/${_host_test}_test.c)
+    target_include_directories(${_host_test}_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(${_host_test}_test PRIVATE strata_host)
+    add_test(NAME ${_host_test}_test COMMAND ${_host_test}_test)
+    set_tests_properties(${_host_test}_test PROPERTIES LABELS glm TIMEOUT 60)
+  endforeach()
+endif()
 
 # ---- strata_core (GPU runtime) ---------------------------------------------
 # Only built when a GPU backend is on, so the Phase 1 targets keep working without a toolkit.
@@ -281,7 +342,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   # The selected runtime is PUBLIC because graph.cpp is a HOST translation unit that calls cudaGraphLaunch and
   # cudaEventQuery: the .cu sources get cudart through the CUDA language rules, a .cpp does not, and the
   # linker error ("unresolved external symbol cudaGraphInstantiate") names the function rather than the cause.
-  target_link_libraries(strata_core PUBLIC strata_plan strata_warnings ${_strata_gpu_runtime_target})
+  target_link_libraries(strata_core PUBLIC strata_plan strata_warnings strata_host ${_strata_gpu_runtime_target})
 
   add_executable(strata-device src/core/device_main.cpp)
   target_link_libraries(strata-device PRIVATE strata_core)
@@ -336,6 +397,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/native_gdn.cu
                           src/kernels/cuda/native_gr_postops.cu
                           src/kernels/cuda/native_router.cu
+                          src/kernels/cuda/route_prior.cu
                           src/kernels/cuda/native_gdn_preprocess.cu
                           src/kernels/cuda/native_qsa.cu
                           src/kernels/cuda/native_rope.cu
@@ -481,13 +543,23 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     src/core/conversation_snapshot.cpp src/core/conversation_state.cpp src/core/conversation_memory.cpp src/core/peer_experts.cpp
     src/core/arch_defaults.cpp src/core/vmm.cpp src/core/conversation_file.cpp)
   target_include_directories(strata_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-  target_link_libraries(strata_engine PUBLIC strata_core strata_kernels strata_kernels_cpu ${_strata_gpu_runtime_target})
+  target_link_libraries(strata_engine PUBLIC strata_core strata_kernels strata_kernels_cpu strata_host
+                                     ${_strata_gpu_runtime_target})
   if(STRATA_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/core/exchange_storage_test.cpp")
     add_executable(exchange_storage_test tests/core/exchange_storage_test.cpp)
     target_include_directories(exchange_storage_test PRIVATE include)
     target_link_libraries(exchange_storage_test PRIVATE Threads::Threads)
     add_test(NAME exchange_storage_test COMMAND exchange_storage_test)
     set_tests_properties(exchange_storage_test PROPERTIES TIMEOUT 60)
+  endif()
+
+  # available_host_bytes(): MemAvailable, cgroup limits and the operator's --memory-limit-mib cap on fixture directories
+  # - no GPU, no CUDA
+  if(STRATA_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/core/memory_guard_test.cpp")
+    add_executable(memory_guard_test tests/core/memory_guard_test.cpp src/core/conversation_memory.cpp)
+    target_include_directories(memory_guard_test PRIVATE include)
+    add_test(NAME memory_guard_test COMMAND memory_guard_test)
+    set_tests_properties(memory_guard_test PROPERTIES TIMEOUT 60)
   endif()
 
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/core/file_expert_source_test.cpp")
@@ -500,6 +572,21 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     target_link_libraries(vmm_test PRIVATE strata_engine)
     add_test(NAME vmm_test COMMAND vmm_test)
     set_tests_properties(vmm_test PROPERTIES TIMEOUT 60)
+    # The resident RAM mode with a layer split: the copy keeps each stage's lend region, and the experts the
+    # prompt path borrows are served from RAM (the file source reads none of them).  The device calls are
+    # wrapped - conversation_transfer_test's pattern - and `pin = false` keeps the copy pageable, so this
+    # runs on a CPU-only PC.
+    if(NOT STRATA_ENABLE_HIP AND UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      add_executable(split_lend_complement_test tests/core/split_lend_complement_test.cpp)
+      target_link_libraries(split_lend_complement_test PRIVATE strata_engine)
+      target_link_options(split_lend_complement_test PRIVATE
+        -Wl,--wrap=cudaMalloc -Wl,--wrap=cudaFree -Wl,--wrap=cudaMemset -Wl,--wrap=cudaMemcpy
+        -Wl,--wrap=cudaMemcpyAsync -Wl,--wrap=cudaStreamSynchronize -Wl,--wrap=cudaDeviceSynchronize
+        -Wl,--wrap=cudaGetLastError -Wl,--wrap=cudaGetDevice -Wl,--wrap=cudaSetDevice
+        -Wl,--wrap=cudaMemGetInfo -Wl,--wrap=cudaHostAlloc -Wl,--wrap=cudaFreeHost)
+      add_test(NAME split_lend_complement_test COMMAND split_lend_complement_test)
+      set_tests_properties(split_lend_complement_test PROPERTIES ENVIRONMENT "CUDA_VISIBLE_DEVICES=-1" TIMEOUT 120)
+    endif()
   endif()
   # #477: the learned expert profile (--expert-profile-save): its order and make_profile.py's file format (CPU only)
   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/core/expert_profile_save_test.cpp")
@@ -552,7 +639,9 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
       add_executable(conversation_transfer_test src/core/conversation_validation_test.cpp)
       target_compile_definitions(conversation_transfer_test PRIVATE CONVERSATION_TEST_TRANSFERS)
       target_link_options(conversation_transfer_test PRIVATE
-        -Wl,--wrap=cudaMemcpy -Wl,--wrap=cudaDeviceSynchronize -Wl,--wrap=cudaGetLastError)
+        -Wl,--wrap=cudaMemcpy -Wl,--wrap=cudaMemcpyAsync -Wl,--wrap=cudaStreamSynchronize
+        -Wl,--wrap=cudaGetDevice -Wl,--wrap=cudaStreamCreateWithFlags
+        -Wl,--wrap=cudaDeviceSynchronize -Wl,--wrap=cudaGetLastError)
       target_link_libraries(conversation_transfer_test PRIVATE strata_engine)
       add_test(NAME conversation_transfer_test COMMAND conversation_transfer_test)
       set_tests_properties(conversation_transfer_test PROPERTIES ENVIRONMENT "CUDA_VISIBLE_DEVICES=-1" TIMEOUT 120)
@@ -755,7 +844,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                    "were probed) - the iq_parity fixtures and its test are not registered; the fixtures "
                    "need python3 with numpy and the repository's vendored gguf-py")
   endif()
-  if(STRATA_ENABLE_CUDA)
+  if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     # native_mmvq's multi_exact contract, bitwise: a T-column call against T single-column calls on the same Q8_1
     # bytes, with the flag off as the negative control (synthetic, GPU, no model; the control assumes 32-lane warps)
     add_executable(mmvq_multi_parity src/kernels/mmvq_multi_parity.cpp)
@@ -1091,6 +1180,7 @@ target_include_directories(strata_spec PUBLIC include)
 if(STRATA_BUILD_TESTS)
   add_executable(arch_defaults_test src/core/arch_defaults_test.cpp src/core/arch_defaults.cpp)
   target_include_directories(arch_defaults_test PRIVATE include)
+  target_link_libraries(arch_defaults_test PRIVATE strata_host)
   add_test(NAME arch_defaults_test COMMAND arch_defaults_test)
   add_executable(suffix_drafter_test src/spec/suffix_drafter_test.cpp)
   target_link_libraries(suffix_drafter_test PRIVATE strata_spec)
@@ -1106,10 +1196,18 @@ if(STRATA_BUILD_TESTS OR STRATA_BUILD_CONVERSATION_TESTS)
   add_executable(message_boundary_test src/program/message_boundary_test.cpp)
   target_include_directories(message_boundary_test PRIVATE include)
   add_test(NAME message_boundary_test COMMAND message_boundary_test)
+  # a layer split's ring override and the lend slots sized with it: the RAM copy must keep every borrowed slot (CPU)
+  add_executable(split_ring_test src/program/split_ring_test.cpp)
+  target_include_directories(split_ring_test PRIVATE include)
+  add_test(NAME split_ring_test COMMAND split_ring_test)
   # the serve loop's conversation-cache retention policy (header-only, no library to link)
   add_executable(conv_cache_test src/program/conv_cache_test.cpp)
   target_include_directories(conv_cache_test PRIVATE include)
   add_test(NAME conv_cache_test COMMAND conv_cache_test)
+  # which path computes the draft layer's prompt K/V, and STRATA_SPLIT_MTP_BATCH's parsing (header-only, CPU)
+  add_executable(draft_kv_plan_test src/program/draft_kv_plan_test.cpp)
+  target_include_directories(draft_kv_plan_test PRIVATE include)
+  add_test(NAME draft_kv_plan_test COMMAND draft_kv_plan_test)
   # coupled draft sampling's counter and penalty-ring arithmetic (header-only, CPU)
   add_executable(coupled_draft_test src/core/coupled_draft_test.cpp)
   target_include_directories(coupled_draft_test PRIVATE include)
@@ -1122,6 +1220,14 @@ if(STRATA_BUILD_TESTS OR STRATA_BUILD_CONVERSATION_TESTS)
   add_executable(bf16_bits_test src/kernels/bf16_bits_test.cpp)
   target_include_directories(bf16_bits_test PRIVATE include)
   add_test(NAME bf16_bits_test COMMAND bf16_bits_test)
+  # the batch window's row layout (a slot's group of proposed rows, the layer split's hand-off capacity; header-only, CPU)
+  add_executable(batch_rows_test tests/core/batch_rows_test.cpp)
+  target_include_directories(batch_rows_test PRIVATE include)
+  add_test(NAME batch_rows_test COMMAND batch_rows_test)
+  # how many pipelined slot groups --batch runs with: the 0.1.41 default, and --batch-mtp keeping it serial (header-only, CPU)
+  add_executable(batch_groups_test src/program/batch_groups_test.cpp)
+  target_include_directories(batch_groups_test PRIVATE include)
+  add_test(NAME batch_groups_test COMMAND batch_groups_test)
 endif()
 
 add_library(strata_kernels_cpu STATIC src/kernels/cpu/expert.cpp src/kernels/cpu/pool.cpp
@@ -1180,6 +1286,12 @@ target_link_libraries(strata_kernels_cpu PUBLIC Threads::Threads)
 # weight means exactly what it means in llama.cpp.  ggml is built static from a llama.cpp checkout: a local one
 # with -DSTRATA_GGML_DIR=..., otherwise the pinned upstream commit (third_party/ggml/VERSION.txt).
 option(STRATA_NATIVE_EXPERTS "Native (IQ) expert support through ggml-cpu" ON)
+if(STRATA_ENABLE_VULKAN AND NOT STRATA_NATIVE_EXPERTS)
+  message(FATAL_ERROR "STRATA_ENABLE_VULKAN requires STRATA_NATIVE_EXPERTS")
+endif()
+set(GGML_VULKAN ${STRATA_ENABLE_VULKAN} CACHE BOOL "Vulkan projections for the GLM runner" FORCE)
+option(STRATA_VULKAN_NATIVE_DOTS "Use native activation sums in Vulkan integer vector dots" OFF)
+include(${CMAKE_CURRENT_SOURCE_DIR}/vulkan/native_dots.cmake)
 set(STRATA_GGML_DIR "" CACHE PATH "llama.cpp checkout to take ggml from (empty: fetch the pinned commit)")
 if(STRATA_PREFILL_MMQ AND NOT STRATA_NATIVE_EXPERTS)
   message(FATAL_ERROR "STRATA_PREFILL_MMQ requires STRATA_NATIVE_EXPERTS=ON for GGML sources")
@@ -1188,7 +1300,6 @@ if(STRATA_ORCA_Q4KS_MMQ AND NOT STRATA_NATIVE_EXPERTS)
   message(FATAL_ERROR "STRATA_ORCA_Q4KS_MMQ requires STRATA_NATIVE_EXPERTS=ON for GGML sources")
 endif()
 if(STRATA_NATIVE_EXPERTS)
-  enable_language(C)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
   set(GGML_STATIC ON CACHE BOOL "" FORCE)
   set(GGML_CUDA OFF CACHE BOOL "" FORCE)
@@ -1221,7 +1332,8 @@ if(STRATA_NATIVE_EXPERTS)
     set(GGML_NATIVE ON CACHE BOOL "" FORCE)
   endif()
   if(STRATA_GGML_DIR)
-    add_subdirectory(${STRATA_GGML_DIR}/ggml ${CMAKE_BINARY_DIR}/ggml EXCLUDE_FROM_ALL)
+    strata_vulkan_ggml_source("${STRATA_GGML_DIR}/ggml" _strata_ggml_source)
+    add_subdirectory(${_strata_ggml_source} ${CMAKE_BINARY_DIR}/ggml EXCLUDE_FROM_ALL)
   else()
     include(FetchContent)
     FetchContent_Declare(strata_llamacpp
@@ -1232,13 +1344,14 @@ if(STRATA_NATIVE_EXPERTS)
     if(NOT strata_llamacpp_POPULATED)
       FetchContent_Populate(strata_llamacpp)
     endif()
-    add_subdirectory(${strata_llamacpp_SOURCE_DIR}/ggml ${CMAKE_BINARY_DIR}/ggml EXCLUDE_FROM_ALL)
+    strata_vulkan_ggml_source("${strata_llamacpp_SOURCE_DIR}/ggml" _strata_ggml_source)
+    add_subdirectory(${_strata_ggml_source} ${CMAKE_BINARY_DIR}/ggml EXCLUDE_FROM_ALL)
   endif()
   # part of strata_kernels_cpu (the pool calls these and they call its CPU probe: one library, so GNU ld's
   # one-pass static linking has no cycle to resolve)
   target_sources(strata_kernels_cpu PRIVATE src/kernels/cpu/native_expert.cpp src/kernels/cpu/iq_avx512.cpp
                                            src/kernels/cpu/iq_avx2.cpp src/kernels/cpu/kq_avx2.cpp src/kernels/cpu/q23_avx2.cpp src/kernels/cpu/q23_packed.cpp
-                                           src/kernels/cpu/kq_avx1.cpp)
+                                           src/kernels/cpu/kq_avx1.cpp src/kernels/cpu/q2_avx1.cpp src/kernels/cpu/iq_avx1.cpp)
   target_include_directories(strata_kernels_cpu PRIVATE third_party/ggml)
   if(MSVC)
     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
@@ -1248,6 +1361,11 @@ if(STRATA_NATIVE_EXPERTS)
     set_source_files_properties(src/kernels/cpu/kq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
     set_source_files_properties(src/kernels/cpu/q23_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
     set_source_files_properties(src/kernels/cpu/q23_packed.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    # the older CPUs' Q2_0 rows and activation quantizer (q2_avx1.cpp, issue #1699): 128-bit integer lanes,
+    # no FMA/F16C, its own #error guard; called only behind cpu_avx1_ok() && !cpu_avx2_ok()
+    set_source_files_properties(src/kernels/cpu/q2_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
+    # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
+    set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
   else()
     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp PROPERTIES COMPILE_OPTIONS
                                 "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
@@ -1256,6 +1374,15 @@ if(STRATA_NATIVE_EXPERTS)
     set_source_files_properties(src/kernels/cpu/kq_avx1.cpp PROPERTIES COMPILE_OPTIONS "-mavx")
     set_source_files_properties(src/kernels/cpu/q23_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
     set_source_files_properties(src/kernels/cpu/q23_packed.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
+    # the older CPUs' Q2_0 rows and activation quantizer (q2_avx1.cpp, issue #1699): SSE4.2 + AVX with
+    # AVX2/FMA/F16C explicitly off, so a -march=native build host cannot leak AVX2 code into the file that
+    # runs on a Sandy Bridge Xeon
+    set_source_files_properties(src/kernels/cpu/q2_avx1.cpp PROPERTIES COMPILE_OPTIONS
+                                "-msse4.2;-mavx;-mno-avx2;-mno-fma;-mno-f16c")
+    # the older CPUs' i-quant expert rows (iq_avx1.hpp): SSE4.2 + AVX with AVX2/FMA/F16C explicitly off, so a
+    # -march=native build host cannot leak AVX2 code into the file that runs on a Sandy Bridge Xeon
+    set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS
+                                "-msse4.2;-mavx;-mno-avx2;-mno-fma;-mno-f16c")
   endif()
   set_property(SOURCE src/kernels/cpu/iq_avx2.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${_strata_avxvnni})
   if(STRATA_ISA_FLOOR STREQUAL "avx")
@@ -1299,6 +1426,14 @@ if(STRATA_NATIVE_EXPERTS)
   if(STRATA_BUILD_TESTS)
     add_test(NAME iq_avx2_parity COMMAND iq_avx2_parity)
     add_test(NAME iq_avx2_parity_iq3s_mt1 COMMAND ${CMAKE_COMMAND} -E env STRATA_IQ3S_MT1=1 $<TARGET_FILE:iq_avx2_parity>)
+  endif()
+  # the older CPUs' AVX1 expert rows (iq_avx1.cpp) against ggml-cpu's dots and against their own one-token
+  # rows at every width; --bench: ms per expert, the weights streamed from DRAM.  Runs on any AVX CPU:
+  # on an AVX2 machine it checks the older-CPU path as an AVX-only machine would run it.
+  add_executable(iq_avx1_parity src/kernels/cpu/iq_avx1_parity.cpp)
+  target_link_libraries(iq_avx1_parity PRIVATE strata_kernels_cpu)
+  if(STRATA_BUILD_TESTS)
+    add_test(NAME iq_avx1_parity COMMAND iq_avx1_parity)
   endif()
   # the AVX-2 Q8_K activation quantizer against ggml's, byte for byte (--bench: its time)
   add_executable(q8k_quant_parity src/kernels/cpu/q8k_quant_parity.cpp)
@@ -1346,7 +1481,12 @@ if(STRATA_NATIVE_EXPERTS)
     if(MSVC)
       target_compile_options(strata_mmq PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>)
     endif()
-    target_link_libraries(strata_mmq PUBLIC ggml-base ${_strata_gpu_runtime_target})
+    # strata_host: ggml_cuda_host.cu includes strata/core/emulate.hpp, which reads its switches through strata_env_*.
+    # GGML's CUDA error reporting calls cuGetErrorString from the driver API.
+    target_link_libraries(strata_mmq PUBLIC ggml-base strata_host ${_strata_gpu_runtime_target})
+    if(TARGET CUDA::cuda_driver)   # not in the HIP (gfx906) build, whose CUDA::cudart is a stand-in
+      target_link_libraries(strata_mmq PUBLIC CUDA::cuda_driver)
+    endif()
     if(STRATA_MMQ_KQUANTS)
       target_compile_definitions(strata_mmq PRIVATE STRATA_MMQ_KQUANTS=1)
     endif()
@@ -1358,17 +1498,17 @@ if(STRATA_NATIVE_EXPERTS)
     if(STRATA_BUILD_TESTS)
       add_executable(prefill_mmq_q23_test tests/cuda/prefill_mmq_kquant_test.cpp)
       target_compile_definitions(prefill_mmq_q23_test PRIVATE STRATA_TEST_Q23=1)
-      target_link_libraries(prefill_mmq_q23_test PRIVATE strata_mmq ggml-base ${_strata_gpu_runtime_target})
+      target_link_libraries(prefill_mmq_q23_test PRIVATE strata_mmq ggml-base strata_host ${_strata_gpu_runtime_target})
       add_test(NAME prefill_mmq_q23_test COMMAND prefill_mmq_q23_test)
       set_tests_properties(prefill_mmq_q23_test PROPERTIES TIMEOUT 120)
       # #136: the fused int8 experts against a double-precision reference and the MMQ path (exit 77 below sm_80)
       add_executable(prefill_fused_moe_test tests/cuda/prefill_fused_moe_test.cpp)
-      target_link_libraries(prefill_fused_moe_test PRIVATE strata_mmq ggml-base ${_strata_gpu_runtime_target})
+      target_link_libraries(prefill_fused_moe_test PRIVATE strata_mmq ggml-base strata_host ${_strata_gpu_runtime_target})
       add_test(NAME prefill_fused_moe_test COMMAND prefill_fused_moe_test)
       set_tests_properties(prefill_fused_moe_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 300)
       # #136: the same for the native packs' formats (IQ2_XXS IQ2_XS IQ2_S IQ3_XXS IQ3_S IQ4_XS, down Q2_0 IQ4_NL)
       add_executable(prefill_fused_iq_test tests/cuda/prefill_fused_iq_test.cpp)
-      target_link_libraries(prefill_fused_iq_test PRIVATE strata_mmq ggml-base ${_strata_gpu_runtime_target})
+      target_link_libraries(prefill_fused_iq_test PRIVATE strata_mmq ggml-base strata_host ${_strata_gpu_runtime_target})
       add_test(NAME prefill_fused_iq_test COMMAND prefill_fused_iq_test)
       set_tests_properties(prefill_fused_iq_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
     endif()
@@ -1391,7 +1531,7 @@ if(STRATA_NATIVE_EXPERTS)
     if(NOT EXISTS "${_strata_mmq}/common.cuh" OR NOT EXISTS "${_strata_mmq}/quantize.cu")
       message(FATAL_ERROR "The selected GGML source is missing the ggml-cuda MMQ sources: ${_strata_mmq}")
     endif()
-    # Aurora: moe_fused.cu's and moe_fused_iq.cu's gfx11 WMMA kernels for the prompt experts (opt-in STRATA_PF_FUSED=1)
+    # Aurora: moe_fused.cu's gfx11 and moe_fused_iq.cu's gfx11 / gfx12 WMMA kernels for the prompt experts (opt-in STRATA_PF_FUSED=1)
     set(_strata_mmq_sources
       src/prefill/moe_mmq.cu
       src/prefill/moe_fused.cu
@@ -1423,7 +1563,8 @@ if(STRATA_NATIVE_EXPERTS)
     if(STRATA_ORCA_Q4KS_MMQ)
       target_compile_definitions(strata_mmq PRIVATE STRATA_ORCA_Q4KS_MMQ=1)
     endif()
-    target_link_libraries(strata_mmq PUBLIC ggml-base hip::host roc::hipblas)
+    # strata_host: ggml_cuda_host.cu includes strata/core/emulate.hpp, which reads its switches through strata_env_*
+    target_link_libraries(strata_mmq PUBLIC ggml-base strata_host hip::host roc::hipblas)
     target_link_libraries(strata_prefill PUBLIC strata_mmq)
     target_compile_definitions(strata_prefill PUBLIC STRATA_PREFILL_MMQ=1 STRATA_PREFILL_FUSED=1)
     # Aurora: the gfx11 fused experts against the FP64 reference and MMQ (tests/cuda's test; exit 77 off gfx11)
@@ -1459,14 +1600,14 @@ if(STRATA_NATIVE_EXPERTS)
     target_link_libraries(native_expert_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact ${_strata_gpu_runtime_target})
     if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
       add_executable(glm_native_expert_parity src/kernels/glm_native_expert_parity.cpp)
-      target_link_libraries(glm_native_expert_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact ${_strata_gpu_runtime_target})
+      target_link_libraries(glm_native_expert_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact strata_host ${_strata_gpu_runtime_target})
       add_executable(strata-glm-decode src/program/glm_decode.cpp)
       target_link_libraries(strata-glm-decode PRIVATE strata_engine strata_spec strata_prefill strata_kernels strata_kernels_cpu strata_artifact strata_ucomm ${_strata_gpu_runtime_target} ${_strata_gpu_blas_target})
       if(STRATA_BUILD_TESTS)
         add_executable(glm_quant_parity src/kernels/glm_quant_parity.cpp)
-        target_link_libraries(glm_quant_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact ${_strata_gpu_runtime_target})
+        target_link_libraries(glm_quant_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact strata_host ${_strata_gpu_runtime_target})
         add_executable(glm_cache_parity src/kernels/glm_cache_parity.cpp)
-        target_link_libraries(glm_cache_parity PRIVATE strata_prefill strata_kernels strata_artifact ${_strata_gpu_runtime_target})
+        target_link_libraries(glm_cache_parity PRIVATE strata_prefill strata_kernels strata_artifact strata_host ${_strata_gpu_runtime_target})
       endif()
     endif()
     add_executable(native_expert_bench src/kernels/native_expert_bench.cpp)
@@ -1610,6 +1751,11 @@ if(STRATA_BUILD_TESTS)
     target_link_libraries(direct_file_async_test PRIVATE Threads::Threads)
     add_test(NAME direct_file_async_test COMMAND direct_file_async_test)
   endif()
+  # --aux-cpus: the CPU-set derivation (pure) and the placement of live threads; header-only, no GPU
+  add_executable(aux_cpus_test tests/platform/aux_cpus_test.cpp)
+  target_include_directories(aux_cpus_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(aux_cpus_test PRIVATE Threads::Threads)
+  add_test(NAME aux_cpus_test COMMAND aux_cpus_test)
 endif()
 
 if(STRATA_BUILD_TESTS)
@@ -1621,12 +1767,15 @@ if(STRATA_BUILD_TESTS)
 endif()
 
 add_executable(strata-glm-exl3-kernel-bench tools/glm_exl3_kernel_bench.cpp)
+if(STRATA_ENABLE_VULKAN)
+  add_subdirectory(vulkan)
+endif()
 target_link_libraries(strata-glm-exl3-kernel-bench PRIVATE strata_artifact Threads::Threads)
 add_executable(strata-glm-exl3-check tools/glm_exl3_check.cpp)
 target_include_directories(strata-glm-exl3-check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(STRATA_BUILD_TESTS)
   add_executable(exl3_cpu_test tests/artifact/exl3_test.cpp)
-  target_link_libraries(exl3_cpu_test PRIVATE strata_artifact Threads::Threads)
+  target_link_libraries(exl3_cpu_test PRIVATE strata_artifact strata_host Threads::Threads)
   add_test(NAME exl3_cpu_test COMMAND exl3_cpu_test)
   if(STRATA_ENABLE_CUDA)
     add_executable(exl3_cuda_test tests/artifact/exl3_cuda.cpp)
@@ -1643,13 +1792,13 @@ endif()
 
 if(STRATA_NATIVE_EXPERTS)
 add_executable(strata-glm-q2-kernel-bench tools/glm_q2_kernel_bench.cpp)
-target_link_libraries(strata-glm-q2-kernel-bench PRIVATE strata_kernels_cpu strata_artifact)
+target_link_libraries(strata-glm-q2-kernel-bench PRIVATE strata_kernels_cpu strata_artifact strata_host)
 add_executable(strata-glm-assemble tools/glm_assemble.cpp)
-target_link_libraries(strata-glm-assemble PRIVATE strata_artifact)
+target_link_libraries(strata-glm-assemble PRIVATE strata_artifact strata_host)
 add_executable(strata-glm-q2-pack tools/glm_q2_pack.cpp)
-target_link_libraries(strata-glm-q2-pack PRIVATE strata_kernels_cpu strata_artifact)
+target_link_libraries(strata-glm-q2-pack PRIVATE strata_kernels_cpu strata_artifact strata_host)
 add_executable(strata-glm-block-norms tools/glm_block_norms.cpp)
-target_link_libraries(strata-glm-block-norms PRIVATE strata_kernels_cpu strata_artifact)
+target_link_libraries(strata-glm-block-norms PRIVATE strata_kernels_cpu strata_artifact strata_host)
 if(STRATA_BUILD_TESTS)
   add_executable(q23_test src/kernels/cpu/q23_test.cpp)
   if(UNIX)
@@ -1738,4 +1887,9 @@ if(STRATA_BUILD_TESTS)
     set_tests_properties(glm_quality_gate PROPERTIES LABELS glm_quality TIMEOUT 1800 SKIP_RETURN_CODE 77
                          RESOURCE_LOCK glm_weights)
   endif()
+endif()
+
+if(STRATA_HIP_GFX906)
+  add_executable(gfx906_qsa_query_swizzle_probe bench/gfx906_qsa_query_swizzle_probe.cpp)
+  target_link_libraries(gfx906_qsa_query_swizzle_probe PRIVATE strata_kernels ${_strata_gpu_runtime_target})
 endif()

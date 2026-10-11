@@ -1,0 +1,130 @@
+{
+  "tasks": 20,
+  "baseline_passes": 20,
+  "q4_passes": 20,
+  "equal_token_hashes": 7,
+  "full_164_complete": false,
+  "quality_qualified": false,
+  "results": [
+    {
+      "task_id": "HumanEval/0",
+      "token_hash_equal": true,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/1",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/2",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/3",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/4",
+      "token_hash_equal": true,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/5",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/6",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/7",
+      "token_hash_equal": true,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/8",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/9",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/10",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/11",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/12",
+      "token_hash_equal": true,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/13",
+      "token_hash_equal": true,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/14",
+      "token_hash_equal": true,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/15",
+      "token_hash_equal": true,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/16",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/17",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/18",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    },
+    {
+      "task_id": "HumanEval/19",
+      "token_hash_equal": false,
+      "baseline_passed": true,
+      "q4_passed": true
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "scope": "Independent measured-bandwidth component estimate, not a theoretical device limit or end-to-end forecast. Uses reported native upload traffic including layout overhead. Omits dense/attention compute and synchronization. The 8K estimate assumes a single all-expert pass and sufficient memory; 8K Q22 performance has not been measured here.",
+  "hardware_provenance": {
+    "/mnt/nvme02/work/Strata/build-tr16-20261009/hardware.json": "7f40cbe427addf5ed2f932e9d606f56df034fd7d984762e22eb9e5cd9331a3d1"
+  },
+  "rows": [
+    {
+      "name": "00-q23-q4-control",
+      "reported_upload_bytes_per_pass": 111204688896,
+      "pinned_h2d_GB_s": 7.2128,
+      "bandwidth_only_seconds": 15.41768645962733,
+      "bandwidth_only_2k_tok_s": 132.83445641230816,
+      "observed_prefill_tok_s": 131.284,
+      "observed_fraction_of_bandwidth_estimate": 0.9883279048660714,
+      "bandwidth_only_8k_tok_s_if_single_pass": 531.3378256492326,
+      "provenance": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/00-q23-q4-control/000-baseline.log": "06ef36d701ce4009213e4d32832b981414519f716da6c1dbca006c27611accaf",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/00-q23-q4-control/000-baseline.result.json": "47e682903bab8f22748f2a440c8360117cc1272e723afdab8d9fc32f118e583f"
+      }
+    },
+    {
+      "name": "02-q22-aff08",
+      "reported_upload_bytes_per_pass": 101622624768,
+      "pinned_h2d_GB_s": 7.2128,
+      "bandwidth_only_seconds": 14.089205962732919,
+      "bandwidth_only_2k_tok_s": 145.3595046745093,
+      "observed_prefill_tok_s": 143.31,
+      "observed_fraction_of_bandwidth_estimate": 0.9859004426363547,
+      "bandwidth_only_8k_tok_s_if_single_pass": 581.4380186980372,
+      "provenance": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/02-q22-aff08/000-baseline.log": "5ffd303c4040c6e86e9423f7b4c1afe77f28087fc94973c001375d44d9664d11",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/02-q22-aff08/000-baseline.result.json": "ab85244cd495f60a415e4592efdc7892aa41dc17ae06912605c0a86fa09fe5be"
+      }
+    }
+  ]
+}

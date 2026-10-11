@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/final-stream2k-exact/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.3272,
+    "prefill_tok_s": 131.527
+  }
+]

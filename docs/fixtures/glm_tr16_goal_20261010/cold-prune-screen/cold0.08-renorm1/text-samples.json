@@ -1,0 +1,20 @@
+{
+  "scope": "128-token diagnostic only; absence of short repetition does not qualify task quality or long continuation",
+  "tokens_sha256": "611f50a6c6a044ea6e88c32fba44abde85753647fa15835599ca036db2d16882",
+  "quality_qualified": false,
+  "manual_review_pending": true,
+  "trials": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "text": "We need to review the benchmark. It's a memory cgroup GLM benchmark with SSD misses. Need to identify concrete bugs: mincore mmap with PROT_READ (1) and MAP_SHARED? flags 2 = MAP_SHARED? mmap args: addr, length, prot=1 (PROT_READ), flags=2 (MAP_SHARED), fd, offset. mmap with MAP_SHARED on file \u2014 fine. But mmap with length 0? If size==0, range(0,0,1<<30) empty, fine. mmap may fail if length > file size? offset+length beyond EOF: mmap beyond EOF is allowed?",
+      "distinct_fourgram_fraction": 1.0
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "text": "We need to review the benchmark. It's a truncated excerpt, but we should identify concrete bugs visible:\n\n1. `gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 syntax error: missing colon, and body references `args.output` and `completed` which don't exist in that scope. Also `_output=True` keyword with underscore. This is a garbled function \u2014 likely a merge of two functions. Point out SyntaxError and NameError.\n\n2. `cache_bytes`: mmap with PROT_READ (1) and MAP_SHARED flags? args: mmap(None, length, 1, 2,",
+      "distinct_fourgram_fraction": 1.0
+    }
+  ]
+}

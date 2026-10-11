@@ -1,0 +1,38 @@
+{
+  "cuda": {
+    "CMakeFiles/strata_kernels.dir/src/kernels/cuda/glm.cu.o": {
+      "DEFINES": "-DSTRATA_VERSION=\\\"0.1.41\\\"",
+      "FLAGS": "-O3 -DNDEBUG -std=c++20 \"--generate-code=arch=compute_120,code=[compute_120,sm_120]\""
+    },
+    "CMakeFiles/strata_kernels_cpu.dir/src/kernels/cpu/kq_avx2.cpp.o": {
+      "DEFINES": "-DSTRATA_NATIVE_EXPERTS=1 -DSTRATA_VERSION=\\\"0.1.41\\\"",
+      "FLAGS": "-O3 -DNDEBUG -std=c++20 -mavx2 -mfma -mf16c"
+    },
+    "CMakeFiles/strata-glm-decode.dir/src/program/glm_decode.cpp.o": {
+      "DEFINES": "-DSTRATA_NATIVE_EXPERTS=1 -DSTRATA_PREFILL_FUSED=1 -DSTRATA_PREFILL_MMQ=1 -DSTRATA_VERSION=\\\"0.1.41\\\"",
+      "FLAGS": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra"
+    },
+    "ggml/src/CMakeFiles/ggml-base.dir/ggml-quants.c.o": {
+      "DEFINES": "-DGGML_SCHED_MAX_COPIES=4 -DSTRATA_VERSION=\\\"0.1.41\\\" -D_GNU_SOURCE -D_XOPEN_SOURCE=600",
+      "FLAGS": "-O3 -DNDEBUG -std=gnu11 -Wshadow -Wstrict-prototypes -Wpointer-arith -Wmissing-prototypes -Werror=implicit-int -Werror=implicit-function-declaration -Wall -Wextra -Wpedantic -Wcast-qual -Wno-unused-function -Wdouble-promotion"
+    }
+  },
+  "root-state-cuda": {
+    "CMakeFiles/strata_kernels.dir/src/kernels/cuda/glm.cu.o": {
+      "DEFINES": "-DSTRATA_VERSION=\\\"0.1.41\\\"",
+      "FLAGS": "-O3 -DNDEBUG -std=c++20 \"--generate-code=arch=compute_120,code=[compute_120,sm_120]\""
+    },
+    "CMakeFiles/strata_kernels_cpu.dir/src/kernels/cpu/kq_avx2.cpp.o": {
+      "DEFINES": "-DSTRATA_NATIVE_EXPERTS=1 -DSTRATA_VERSION=\\\"0.1.41\\\"",
+      "FLAGS": "-O3 -DNDEBUG -std=c++20 -mavx2 -mfma -mf16c"
+    },
+    "CMakeFiles/strata-glm-decode.dir/src/program/glm_decode.cpp.o": {
+      "DEFINES": "-DSTRATA_NATIVE_EXPERTS=1 -DSTRATA_PREFILL_FUSED=1 -DSTRATA_PREFILL_MMQ=1 -DSTRATA_VERSION=\\\"0.1.41\\\"",
+      "FLAGS": "-O3 -DNDEBUG -std=c++20 -Wall -Wextra"
+    },
+    "ggml/src/CMakeFiles/ggml-base.dir/ggml-quants.c.o": {
+      "DEFINES": "-DGGML_SCHED_MAX_COPIES=4 -DSTRATA_VERSION=\\\"0.1.41\\\" -D_GNU_SOURCE -D_XOPEN_SOURCE=600",
+      "FLAGS": "-O3 -DNDEBUG -std=gnu11 -Wshadow -Wstrict-prototypes -Wpointer-arith -Wmissing-prototypes -Werror=implicit-int -Werror=implicit-function-declaration -Wall -Wextra -Wpedantic -Wcast-qual -Wno-unused-function -Wdouble-promotion"
+    }
+  }
+}

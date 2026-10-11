@@ -1,0 +1,206 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -365,9 +365,11 @@
+     target_link_libraries(glm_route_prune_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+     foreach(_route_share 0 0.08 0.125 0.2 0.99)
+       foreach(_route_renorm 0 1)
+-        add_test(NAME glm_route_prune_${_route_share}_${_route_renorm} COMMAND glm_route_prune_test)
+-        set_tests_properties(glm_route_prune_${_route_share}_${_route_renorm} PROPERTIES
+-          ENVIRONMENT "STRATA_GLM_ROUTE_MIN_SHARE=${_route_share};STRATA_GLM_ROUTE_RENORMALIZE=${_route_renorm}" LABELS glm)
++        foreach(_route_cold 0 1)
++          add_test(NAME glm_route_prune_${_route_share}_${_route_renorm}_${_route_cold} COMMAND glm_route_prune_test)
++          set_tests_properties(glm_route_prune_${_route_share}_${_route_renorm}_${_route_cold} PROPERTIES
++            ENVIRONMENT "STRATA_GLM_ROUTE_MIN_SHARE=${_route_share};STRATA_GLM_ROUTE_RENORMALIZE=${_route_renorm};STRATA_GLM_ROUTE_PRUNE_COLD_ONLY=${_route_cold}" LABELS glm)
++        endforeach()
+       endforeach()
+     endforeach()
+     add_executable(glm_parity src/kernels/glm_parity.cpp)
+--- a/src/kernels/cuda/glm.cu
++++ b/src/kernels/cuda/glm.cu
+@@ -87,7 +87,7 @@
+ // Opt-in pruning keeps the selected experts' original total mass. If the
+ // threshold removes every expert, retain the largest original weight (first tie).
+ // With no removed weight, do not touch the normalized values.
+-__device__ void renormalize_routes(float *weights, int k, float cutoff) {
++__device__ void renormalize_routes(float *weights, int k, float cutoff, const int *ids, const float *bonus, bool cold_only) {
+     float total = 0.f, retained = 0.f, largest = -1.f;
+     int best = 0;
+     bool removed = false;
+@@ -95,7 +95,7 @@
+         const float w = weights[j];
+         total += w;
+         if (w > largest) { largest = w; best = j; }
+-        if (w < cutoff) { weights[j] = 0.f; removed |= w != 0.f; }
++        if (w < cutoff && (!cold_only || (bonus && bonus[ids[j]] <= 0.f))) { weights[j] = 0.f; removed |= w != 0.f; }
+         else retained += w;
+     }
+     if (!removed) return;
+@@ -109,7 +109,7 @@
+ // `bonus` (optional, one value per expert) is added to the selection score only, so the caller can prefer experts
+ // that are cheap to run. Weights still come from the true probabilities of the selected experts.
+ __global__ void route(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
+-                      float scale, float min_share, bool renormalize, const float *bonus) {
++                      float scale, float min_share, bool renormalize, bool cold_only, const float *bonus) {
+     if (threadIdx.x || blockIdx.x)
+         return;
+     float sum = 0;
+@@ -133,15 +133,15 @@
+     }
+     for (int j = 0; j < k; ++j) {
+         weights[j] *= scale / (sum + 1e-20f);
+-        if (!renormalize && weights[j] < min_share * scale) weights[j] = 0.f;
+-    }
+-    if (renormalize) renormalize_routes(weights, k, min_share * scale);
++        if (!renormalize && weights[j] < min_share * scale && (!cold_only || (bonus && bonus[ids[j]] <= 0.f))) weights[j] = 0.f;
++    }
++    if (renormalize) renormalize_routes(weights, k, min_share * scale, ids, bonus, cold_only);
+ }
+ // One warp caches each expert score once. Ties choose the first expert, as
+ // in the serial scan; lane zero retains the original normalization order.
+ // blockIdx.x selects the token; each token's selection is the single-token computation.
+ __device__ __forceinline__ void route_warp_body(const float *logits, const float *bias, int *ids, float *weights,
+-                                                int ne, int k, float scale, float min_share, bool renormalize, const float *bonus,
++                                                int ne, int k, float scale, float min_share, bool renormalize, bool cold_only, const float *bonus,
+                                                 int lane) {
+     float scores[16];
+     for (int i = 0; i < 16; ++i) {
+@@ -176,23 +176,23 @@
+     if (lane == 0) {
+         for (int j = 0; j < k; ++j) {
+             weights[j] *= scale / (sum + 1e-20f);
+-            if (!renormalize && weights[j] < min_share * scale) weights[j] = 0.f;
+-        }
+-        if (renormalize) renormalize_routes(weights, k, min_share * scale);
++            if (!renormalize && weights[j] < min_share * scale && (!cold_only || (bonus && bonus[ids[j]] <= 0.f))) weights[j] = 0.f;
++        }
++        if (renormalize) renormalize_routes(weights, k, min_share * scale, ids, bonus, cold_only);
+     }
+ }
+ __global__ void route_warp(const float *logits, const float *bias, int *ids, float *weights,
+-                           int ne, int k, float scale, float min_share, bool renormalize, const float *bonus) {
++                           int ne, int k, float scale, float min_share, bool renormalize, bool cold_only, const float *bonus) {
+     route_warp_body(logits + (size_t)blockIdx.x * ne, bias, ids + (size_t)blockIdx.x * k,
+-                    weights + (size_t)blockIdx.x * k, ne, k, scale, min_share, renormalize, bonus, threadIdx.x);
++                    weights + (size_t)blockIdx.x * k, ne, k, scale, min_share, renormalize, cold_only, bonus, threadIdx.x);
+ }
+ // One token's router and mailbox publication in one launch (STRATA_GLM_FUSE_ROUTE=1): warp 0 routes, then the
+ // block copies ids, weights and the activation into the mailbox slot and sets the published flag, exactly as the
+ // separate publish kernel does (flags[slot * 32] is the published generation, see glm_mailbox.hpp).
+ __global__ void route_publish(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
+-                              float scale, float min_share, bool renormalize, const float *bonus, GlmMailboxView v, int slot,
++                              float scale, float min_share, bool renormalize, bool cold_only, const float *bonus, GlmMailboxView v, int slot,
+                               const float *x, const unsigned *generation) {
+-    if (threadIdx.x < 32) route_warp_body(logits, bias, ids, weights, ne, k, scale, min_share, renormalize, bonus, threadIdx.x);
++    if (threadIdx.x < 32) route_warp_body(logits, bias, ids, weights, ne, k, scale, min_share, renormalize, cold_only, bonus, threadIdx.x);
+     __syncthreads();
+     int *out_ids = v.ids + (size_t)slot * v.max_tokens * v.top_k;
+     float *out_weights = v.weights + (size_t)slot * v.max_tokens * v.top_k;
+@@ -220,6 +220,20 @@
+         return x;
+     }();
+     return v;
++}
++
++// Research option: prune only nonpositive-bonus routes. Positive affinity marks
++// resident routes in the fixed-cache experiment. A null bonus disables pruning,
++// preserving the draft router and untrained prefill. This is not a general
++// residency query for configurations with other kinds of routing bonuses.
++bool route_prune_cold_only() {
++    static const bool enabled = [] {
++        const char *value = std::getenv("STRATA_GLM_ROUTE_PRUNE_COLD_ONLY");
++        if (!value || (value[0] == '0' && value[1] == '\0')) return false;
++        if (value[0] == '1' && value[1] == '\0') return true;
++        throw std::invalid_argument("STRATA_GLM_ROUTE_PRUNE_COLD_ONLY must be 0 or 1");
++    }();
++    return enabled;
+ }
+ 
+ bool route_renormalize() {
+@@ -592,9 +606,9 @@
+     if (ne < 1 || k < 1 || k > ne)
+         throw std::invalid_argument("GLM: invalid routing geometry");
+     if (ne <= 512)
+-        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus);
++        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), route_prune_cold_only(), bonus);
+     else
+-        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus);
++        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), route_prune_cold_only(), bonus);
+     check();
+ }
+ void glm_router_publish(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale,
+@@ -602,7 +616,7 @@
+                         void *s) {
+     if (ne < 1 || k < 1 || k > ne || ne > 512 || k != v.top_k || slot < 0 || slot >= v.slots || v.hidden % 4)
+         throw std::invalid_argument("GLM: invalid fused routing geometry");
+-    route_publish<<<1, 512, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus, v, slot, x, generation);
++    route_publish<<<1, 512, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), route_prune_cold_only(), bonus, v, slot, x, generation);
+     check();
+ }
+ void glm_hc_project(const float *x, const float *w, float *out, float *scratch, int width, void *s) {
+@@ -645,7 +659,7 @@
+                        void *s, const float *bonus) {
+     if (ne < 1 || k < 1 || k > ne || ne > 512 || tokens < 1)
+         throw std::invalid_argument("GLM: invalid batched routing geometry");
+-    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus);
++    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), route_prune_cold_only(), bonus);
+     check();
+ }
+ void glm_hyper_head(const float *r, float *out, int n, void *s) {
+--- a/src/kernels/glm_route_prune_test.cpp
++++ b/src/kernels/glm_route_prune_test.cpp
+@@ -23,13 +23,14 @@
+ int main() { try {
+     const float share=std::getenv("STRATA_GLM_ROUTE_MIN_SHARE") ? std::stof(std::getenv("STRATA_GLM_ROUTE_MIN_SHARE")) : 0.f;
+     const bool renorm=std::getenv("STRATA_GLM_ROUTE_RENORMALIZE") && std::string(std::getenv("STRATA_GLM_ROUTE_RENORMALIZE"))=="1";
++    const bool cold=std::getenv("STRATA_GLM_ROUTE_PRUNE_COLD_ONLY") && std::string(std::getenv("STRATA_GLM_ROUTE_PRUNE_COLD_ONLY"))=="1";
+     constexpr int top=8, nt=3, hidden=64;
+     constexpr float scale=2.5f;
+     int checks=0;
+-    for(int ne : {16,288,513}) for(int shape=0;shape<4;++shape) {
++    for(int ne : {16,288,513}) for(int shape=0;shape<4;++shape) for(int protection=0;protection<4;++protection) {
+         std::vector<float> x(ne*nt),bias(ne),bonus(ne);
+         for(int e=0;e<ne;++e) {
+-            bias[e]=-float(e)*0.25f; bonus[e]=(e%3)*0.01f;
++            bias[e]=-float(e)*0.25f; bonus[e]=(protection==0 || protection==3) ? 0.f : protection==1 ? (e%3)*0.01f : 0.02f;
+             for(int t=0;t<nt;++t)
+                 x[t*ne+e]=shape==0 ? 0.f : shape==1 ? float(e%8)-5.f+t*.1f : shape==2 ? -1000.f : -float(e%8)*2.f+t*.1f;
+         }
+@@ -43,7 +44,7 @@
+                 double denominator=0;for(int j=0;j<top;++j)denominator+=prob(ranking[j]);
+                 std::vector<double> original(top),expected(top);double total=0,kept=0;
+                 for(int j=0;j<top;++j){original[j]=prob(ranking[j])*scale/(denominator+1e-20);total+=original[j];}
+-                for(int j=0;j<top;++j){expected[j]=original[j]<double(share)*scale ? 0 : original[j];kept+=expected[j];}
++                for(int j=0;j<top;++j){expected[j]=original[j]<double(share)*scale && (!cold || (protection && bonus[ranking[j]]<=0.f)) ? 0 : original[j];kept+=expected[j];}
+                 if(renorm && kept<total) {
+                     if(kept>0)for(double& w:expected)w*=total/kept;
+                     else expected[std::max_element(original.begin(),original.end())-original.begin()]=total;
+@@ -60,11 +61,11 @@
+             }
+         };
+         Buffer<int> ids(top);Buffer<float> weights(top);
+-        k::glm_router(dx.p,db.p,ids.p,weights.p,ne,top,scale,nullptr,dbonus.p);
++        k::glm_router(dx.p,db.p,ids.p,weights.p,ne,top,scale,nullptr,protection ? dbonus.p : nullptr);
+         verify(ids.get(),weights.get(),1);
+         if(ne>512)continue;
+         Buffer<int> batched_ids(top*nt);Buffer<float> batched_weights(top*nt);
+-        k::glm_router_tokens(dx.p,db.p,batched_ids.p,batched_weights.p,ne,top,scale,nt,nullptr,dbonus.p);
++        k::glm_router_tokens(dx.p,db.p,batched_ids.p,batched_weights.p,ne,top,scale,nt,nullptr,protection ? dbonus.p : nullptr);
+         verify(batched_ids.get(),batched_weights.get(),nt);
+         const size_t bytes=k::glm_mailbox_bytes(1,1,top,hidden);
+         void *host=nullptr,*mapped=nullptr;ck(cudaHostAlloc(&host,bytes,cudaHostAllocMapped));std::memset(host,0,bytes);
+@@ -72,13 +73,13 @@
+         auto hv=k::glm_mailbox_view(host,1,1,top,hidden),dv=k::glm_mailbox_view(mapped,1,1,top,hidden);
+         Buffer<float> activation(hidden);activation.put(std::vector<float>(hidden,1.f));
+         Buffer<unsigned> generation(1);generation.put({17});
+-        k::glm_router_publish(dx.p,db.p,ids.p,weights.p,ne,top,scale,dbonus.p,dv,0,activation.p,generation.p,nullptr);
++        k::glm_router_publish(dx.p,db.p,ids.p,weights.p,ne,top,scale,protection ? dbonus.p : nullptr,dv,0,activation.p,generation.p,nullptr);
+         ck(cudaDeviceSynchronize());
+         verify(std::vector<int>(hv.ids,hv.ids+top),std::vector<float>(hv.weights,hv.weights+top),1);
+         if(hv.flags[0]!=17)throw std::runtime_error("mailbox generation mismatch");
+         for(int j=0;j<hidden;++j)if(hv.act[j]!=1.f)throw std::runtime_error("mailbox activation mismatch");
+         ck(cudaFreeHost(host));
+     }
+-    std::cout<<"PASS glm_route_prune_test share="<<share<<" renormalize="<<renorm<<" rows="<<checks<<'\n';
++    std::cout<<"PASS glm_route_prune_test share="<<share<<" renormalize="<<renorm<<" cold_only="<<cold<<" rows="<<checks<<'\n';
+     return 0;
+ } catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;} }

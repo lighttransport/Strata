@@ -60,8 +60,8 @@ def plan(hw, pack, context, mtp_depth=0, gpu_draft_experts=False, dense_format="
             items["runtime_headroom"] = 512
             if mtp_dense_mib is not None:
                 items["mtp_dense"] = mtp_dense_mib
-            if str(history) in compact_history:
-                items["verify_history"] = compact_history[str(history)]
+        if history > 0 and str(history) in compact_history:
+            items["verify_history"] = compact_history[str(history)]
         # Engine allocation ceiling and global free-memory guard are separate.
         budget = min(budget + reserve_mib, hw.gpu.vram_mib - hw.gpu.desktop_mib)
     used = sum(items.values())

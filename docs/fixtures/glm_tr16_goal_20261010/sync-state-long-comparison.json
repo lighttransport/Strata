@@ -1,0 +1,18 @@
+{
+  "control": "build-tr16-goal-20261010/focused/00-unpruned-control",
+  "candidate": "build-tr16-goal-20261010/focused/01-unpruned-sync-state",
+  "timed_tokens_each": 512,
+  "timed_trials_each": 3,
+  "all2048_tokens_identical": true,
+  "same_binary": true,
+  "control_median_tok_s": 35.141,
+  "candidate_median_tok_s": 36.4788,
+  "trial_gain_percent": [
+    3.8069491477191963,
+    3.457825741146592,
+    4.091893925455636
+  ],
+  "quality_qualified": false,
+  "note": "Training-prompt runs are grouped rather than interleaved. This approximate-acceptance configuration shows repetition; this comparison only isolates state-only synchronization, not useful30tok/s qualification.",
+  "median_gain_percent": 3.8069491477191963
+}

@@ -1,0 +1,528 @@
+{
+  "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+    "tools/glm_q2_humaneval.py",
+    "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "/mnt/nvme02/work/Strata/build-q2-redesign/HumanEval.jsonl.gz",
+    "--output",
+    "/mnt/nvme02/work/Strata/build-tr16-35-20261010/q-g6-aff014-topk6-guard4-he2/full164",
+    "--decoder",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "--expert-pack",
+    "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+    "--tokens",
+    "2048",
+    "--limit",
+    "164",
+    "--context",
+    "12288",
+    "--prefill-batch",
+    "2048",
+    "--gpu-budget-mib",
+    "14336",
+    "--decode-cache-mib",
+    "6656",
+    "--speculative",
+    "mtp",
+    "--draft-depth",
+    "3",
+    "--route-affinity",
+    "0.14"
+  ],
+  "peak_rss_kib": 103791008,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 123547124,
+  "sample_interval_ms": 100,
+  "rejected": null,
+  "interference": [
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 86.10164996434605,
+      "elapsed_seconds": 972.3294948940165
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 84.06835077283687,
+      "elapsed_seconds": 973.6141749050003
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 84.56309473558605,
+      "elapsed_seconds": 974.7376121410052
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 94.02526764120567,
+      "elapsed_seconds": 980.800692779012
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 96.74820915205294,
+      "elapsed_seconds": 982.1032862649881
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 95.16944722548847,
+      "elapsed_seconds": 983.395176807011
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 96.42458282113857,
+      "elapsed_seconds": 984.7024464220158
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 98.00543876414683,
+      "elapsed_seconds": 985.8859393610037
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 96.34483117952757,
+      "elapsed_seconds": 987.1933312520268
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 93.9809096700328,
+      "elapsed_seconds": 988.3742522259708
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 90.30971549773699,
+      "elapsed_seconds": 989.6282292489777
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.13884583037276,
+      "elapsed_seconds": 990.8997401890229
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 89.35519124949194,
+      "elapsed_seconds": 992.1974822279881
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.24655293588964,
+      "elapsed_seconds": 993.5799660690245
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.21277642251695,
+      "elapsed_seconds": 994.8871190969949
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 85.85015390329947,
+      "elapsed_seconds": 996.1218918620143
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 86.94794741124468,
+      "elapsed_seconds": 997.3294112959993
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 86.18757850566135,
+      "elapsed_seconds": 998.5362294830265
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.37345833094092,
+      "elapsed_seconds": 999.7378493809956
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 90.95188888408275,
+      "elapsed_seconds": 1000.9473401699797
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.86091361885802,
+      "elapsed_seconds": 1002.2562095209723
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 80.51760460817499,
+      "elapsed_seconds": 1003.3863149210229
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 90.70955642197012,
+      "elapsed_seconds": 1004.5992651259876
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 96.45539082832212,
+      "elapsed_seconds": 1006.0302916070214
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 93.94610725620865,
+      "elapsed_seconds": 1007.3181281950092
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 93.91736272250685,
+      "elapsed_seconds": 1008.5960460950155
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.81975591453973,
+      "elapsed_seconds": 1009.8902006269782
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 86.39046280728283,
+      "elapsed_seconds": 1011.0477472079801
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 83.42503955993783,
+      "elapsed_seconds": 1012.2463865689933
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 83.73233604176856,
+      "elapsed_seconds": 1013.464551972982
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 85.39272987376594,
+      "elapsed_seconds": 1014.5771116410033
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.01791007879469,
+      "elapsed_seconds": 1015.7813600000227
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.17772494392504,
+      "elapsed_seconds": 1016.9858978349948
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.77550345476823,
+      "elapsed_seconds": 1018.1911586209899
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.13203916703982,
+      "elapsed_seconds": 1019.3938053270103
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 89.32990762725801,
+      "elapsed_seconds": 1020.60288747499
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.27945395802918,
+      "elapsed_seconds": 1021.8035872579785
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.43809236054682,
+      "elapsed_seconds": 1022.9702756530023
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 81.26808257531751,
+      "elapsed_seconds": 1024.151342018973
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 82.39691351365572,
+      "elapsed_seconds": 1025.3164384139818
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 91.12016753617159,
+      "elapsed_seconds": 1026.5238775199978
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 90.98860914898658,
+      "elapsed_seconds": 1027.6666790799936
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 85.7536644994494,
+      "elapsed_seconds": 1028.8912289639702
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 84.152452262197,
+      "elapsed_seconds": 1030.1270420529763
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.5738850490052,
+      "elapsed_seconds": 1031.3577378169866
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 89.08924135544687,
+      "elapsed_seconds": 1032.5698043709854
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.27104506925937,
+      "elapsed_seconds": 1033.773067505972
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.09076757943502,
+      "elapsed_seconds": 1034.9879565180163
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.39204418468954,
+      "elapsed_seconds": 1036.2999727990245
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.8063136138417,
+      "elapsed_seconds": 1037.6210839020205
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.67622207753548,
+      "elapsed_seconds": 1038.7502139839926
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.5467698899841,
+      "elapsed_seconds": 1039.9496103510028
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 84.30629018584426,
+      "elapsed_seconds": 1041.1594837079756
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 95.16835731912806,
+      "elapsed_seconds": 1044.8075985580217
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 95.99742135101489,
+      "elapsed_seconds": 1046.0780211139936
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 91.9082359570084,
+      "elapsed_seconds": 1047.285623667005
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 90.76199129324351,
+      "elapsed_seconds": 1048.5085908629699
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 90.20155764176006,
+      "elapsed_seconds": 1049.72809857002
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.42934638536866,
+      "elapsed_seconds": 1050.8375683900085
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 86.28592620448731,
+      "elapsed_seconds": 1051.974844730983
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 88.83911753552516,
+      "elapsed_seconds": 1053.200136672007
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 85.65091223507405,
+      "elapsed_seconds": 1054.4028079509735
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 86.75835846463421,
+      "elapsed_seconds": 1055.6129915280035
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.10182559146924,
+      "elapsed_seconds": 1056.7382202629815
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.35240433965565,
+      "elapsed_seconds": 1057.8943470009835
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 87.11688076978747,
+      "elapsed_seconds": 1059.1341197320144
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3620941,
+      "name": "sha256sum",
+      "cpu_percent": 86.32367150017602,
+      "elapsed_seconds": 1060.3388658040203
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3634450,
+      "name": "2.1.294",
+      "cpu_percent": 151.2857275041676,
+      "elapsed_seconds": 3169.5203867949895
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3634450,
+      "name": "2.1.294",
+      "cpu_percent": 127.12210750104819,
+      "elapsed_seconds": 3183.27582289197
+    }
+  ],
+  "minimum_gpu_free_mib": 1198,
+  "required_gpu_free_mib": 512,
+  "exit_code": 0,
+  "wall_seconds": 3501.4076665689936
+}

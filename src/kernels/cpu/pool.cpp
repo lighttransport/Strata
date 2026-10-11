@@ -3,6 +3,7 @@
 #include "strata/kernels/canon_expert.hpp"
 #include <stdexcept>
 #include "strata/core/progress.hpp"
+#include "strata/platform/aux_cpus.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
 
 #include <algorithm>
@@ -505,6 +506,7 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
     for (int i = 0; i < n_; ++i) {
         const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
         threads_.emplace_back([this, i, core] {
+            strata::aux_cpus::note_owned_thread();   // --aux-cpus never moves a worker
             pin_this_thread(core, i);
             worker(i);
         });

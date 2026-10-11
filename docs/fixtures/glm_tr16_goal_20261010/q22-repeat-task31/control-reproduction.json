@@ -1,0 +1,12 @@
+{
+  "task_id": "HumanEval/31",
+  "exact_token_hash_reproduced": true,
+  "generated_tokens": 2048,
+  "token_sha256": "81c3468d2a9e47e0fd65340cc924bd6f830cf6e896b227e48a2c74c60524bc26",
+  "both_failed": true,
+  "scope": "Fresh first-request guard-off run on older validated build reproduces the full-evaluation margin4 loop exactly. Guard-on result is still pending.",
+  "measurement_sha256": {
+    "build-tr16-goal-20261010/q22-humaneval-full/q22-soft4/measurement.json": "d734670cbc0e8ab27cae993f2b163d0f1594f2c3b2313edd1f309003f7490937",
+    "build-tr16-goal-20261010/q22-repeat-task31/q22-repeat0/measurement.json": "9961439482a213ee2e72f144312483b1d6917a6ed460e38e746c87d4fcabe507"
+  }
+}

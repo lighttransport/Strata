@@ -1,0 +1,283 @@
+{
+  "stop_ids": [
+    154820,
+    154827,
+    154829
+  ],
+  "records": [
+    {
+      "run": "exact-levers/000-unsplit.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "exact-levers/001-margin2.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "exact-levers/002-batched-resident.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final-aff08-2k/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final-aff08-8k/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final-stream-aff08-2k/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final-stream-aff08-8k/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final-stream2k-exact/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final2k-exact/000-mtp2.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final2k-exact/001-mtp1.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final8k-exact/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "final8k-exact/001-f16-buckets.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "mtp1-affinity-screen/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "mtp1-affinity-screen/001-aff05.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "mtp1-affinity-screen/002-baseline.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "mtp1-affinity-screen/003-aff08.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "mtp1-affinity-screen/004-baseline.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "mtp1-affinity-screen/005-aff10.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "mtp1-affinity-screen/006-baseline.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "prefetch8k/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "prefetch8k/001-next-layer-prefetch.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "prefill8k-screen/000-mmq.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "prefill8k-screen/001-f16-batched.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "screen-v2/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "screen-v2/001-ordinary.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "screen-v2/002-baseline.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "screen-v2/003-mtp1.result",
+      "first_stop_indices": [
+        null,
+        null
+      ]
+    },
+    {
+      "run": "stream-next8k/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "stream-next8k/001-next-layer-prefetch.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "stream2k/000-stream-prefetch18.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "stream8k/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "stream8k/001-stream-prefetch18.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "stream8k-holdout/000-baseline.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "run": "stream8k-holdout/001-stream-prefetch18.result",
+      "first_stop_indices": [
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ]
+}

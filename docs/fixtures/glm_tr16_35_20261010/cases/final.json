@@ -1,0 +1,10 @@
+[
+ {
+  "name": "x11-aff016-topk6",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+  },
+  "control": false
+ }
+]

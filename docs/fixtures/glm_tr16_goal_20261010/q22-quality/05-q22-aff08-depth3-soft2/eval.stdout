@@ -1,0 +1,4 @@
+{"sequence":1,"tokens":512,"nll":2.14362765389,"perplexity":8.53032664027,"kl":0.258148159929,"top1_agreement":0.806640625,"different_logits":79298552}
+{"sequence":2,"tokens":1024,"nll":1.48420193439,"perplexity":4.4114433863,"kl":0.182912246289,"top1_agreement":0.8583984375,"different_logits":158597103}
+{"sequence":3,"tokens":1536,"nll":1.34660805362,"perplexity":3.84436351547,"kl":0.17025264648,"top1_agreement":0.869791666667,"different_logits":237895658}
+{"sequence":4,"tokens":2048,"nll":1.37537480602,"perplexity":3.95655938731,"kl":0.165846559207,"top1_agreement":0.8681640625,"different_logits":317194216}

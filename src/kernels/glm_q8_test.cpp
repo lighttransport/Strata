@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <iostream>
@@ -49,6 +50,32 @@ std::vector<float> download(const float *p, size_t n) {
     return x;
 }
 int failures = 0;
+void check_heads_batch_bits(std::mt19937 &rng, cudaStream_t stream) {
+    const char *blocks = std::getenv("STRATA_GLM_HEADS_BLOCKS");
+    const char *batch = std::getenv("STRATA_GLM_HEADS_BLOCKS_BATCH");
+    if (!blocks || !batch || std::string(blocks) != "1" || std::string(batch) != "1") return;
+    std::uniform_real_distribution<float> values(-3.f, 3.f);
+    for (auto shape : {std::vector<int>{64,128,512},std::vector<int>{64,512,128}})
+        for (int tokens : {2,3,4,5,8}) {
+            const int heads=shape[0], in=shape[1], out=shape[2];
+            const int ix=heads*in+7, iy=heads*out+5;
+            auto weight=make((size_t)heads*in*out,rng);
+            std::vector<float> x((size_t)tokens*ix), initial((size_t)tokens*iy,1234.5f);
+            for(auto &v:x)v=values(rng);
+            auto *w=upload(weight.bytes);auto *dx=upload(x);auto *a=upload(initial);auto *b=upload(initial);
+            for(int t=0;t<tokens;++t)
+                k::glm_q8_heads_gemv(w,dx+(size_t)t*ix,a+(size_t)t*iy,heads,in,out,1,ix,iy,stream);
+            k::glm_q8_heads_gemv(w,dx,b,heads,in,out,tokens,ix,iy,stream);
+            ck(cudaStreamSynchronize(stream));
+            const auto expected=download(a,initial.size()), actual=download(b,initial.size());
+            bool same=std::memcmp(expected.data(),actual.data(),actual.size()*sizeof(float))==0;
+            for(int t=0;t<tokens;++t)for(int i=heads*out;i<iy;++i)
+                same &= actual[(size_t)t*iy+i]==1234.5f;
+            if(!same)++failures;
+            std::cout<<(same?"PASS":"FAIL")<<" heads batch bitwise/guards tokens="<<tokens<<" in="<<in<<'\n';
+            cudaFree(w);cudaFree(dx);cudaFree(a);cudaFree(b);
+        }
+}
 void compare(const char *what, const std::vector<float> &got, const std::vector<double> &want,
              const std::vector<double> &magnitude) {
     double worst = 0;
@@ -269,6 +296,7 @@ int main() {
             std::cout << (save_ok ? "PASS" : "FAIL") << " fused mHC write/save bitwise output and coefficients\n";
             cudaFree(saved);
         }
+        check_heads_batch_bits(rng,s);
         std::cout << (failures ? "FAIL" : "PASS") << " glm_q8_test\n";
         return failures != 0;
     } catch (const std::exception &e) {

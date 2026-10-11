@@ -1,0 +1,18 @@
+[
+  {
+    "case": "mtp2",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/final2k-exact/000-mtp2.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 18.6273,
+    "prefill_tok_s": 131.35
+  },
+  {
+    "case": "mtp1",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/final2k-exact/001-mtp1.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.2822,
+    "prefill_tok_s": 131.325
+  }
+]

@@ -1,0 +1,110 @@
+{
+  "quality_qualified": false,
+  "scope": "Completed512-token measured traces. Flow can include synchronization and overlap other work. Reported bytes are logical expert traffic, not measured DRAM transactions. These figures are not additive timing fractions, hardware ceilings, or performance predictions.",
+  "rows": [
+    {
+      "context": "2k",
+      "trial": 0,
+      "warmup": true,
+      "decode_tok_s": 29.0499,
+      "decode_ms_per_step": 34.423483365949124,
+      "expert_flow_ms_per_step": 24.831898238747556,
+      "reported_expert_GB_per_step": 1.7944657118434442,
+      "reported_bytes_over_flow_GB_s": 72.26454033398743,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 41.9002,
+      "source_log_sha256": "087e3ff57ee6cefcc56b8fbdee811168c44fee2f8f121332fc5fdbc318754ea9"
+    },
+    {
+      "context": "2k",
+      "trial": 1,
+      "warmup": false,
+      "decode_tok_s": 31.2495,
+      "decode_ms_per_step": 32.00039138943249,
+      "expert_flow_ms_per_step": 23.4,
+      "reported_expert_GB_per_step": 1.696993031514677,
+      "reported_bytes_over_flow_GB_s": 72.52106972284946,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 37.501,
+      "source_log_sha256": "087e3ff57ee6cefcc56b8fbdee811168c44fee2f8f121332fc5fdbc318754ea9"
+    },
+    {
+      "context": "2k",
+      "trial": 2,
+      "warmup": false,
+      "decode_tok_s": 31.3212,
+      "decode_ms_per_step": 31.927201565557727,
+      "expert_flow_ms_per_step": 23.2825831702544,
+      "reported_expert_GB_per_step": 1.6793657712720156,
+      "reported_bytes_over_flow_GB_s": 72.12970137340932,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 37.357600000000005,
+      "source_log_sha256": "087e3ff57ee6cefcc56b8fbdee811168c44fee2f8f121332fc5fdbc318754ea9"
+    },
+    {
+      "context": "2k",
+      "trial": 3,
+      "warmup": false,
+      "decode_tok_s": 30.2826,
+      "decode_ms_per_step": 33.022309197651666,
+      "expert_flow_ms_per_step": 23.9853228962818,
+      "reported_expert_GB_per_step": 1.7315306317651662,
+      "reported_bytes_over_flow_GB_s": 72.191257931057,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 39.4348,
+      "source_log_sha256": "087e3ff57ee6cefcc56b8fbdee811168c44fee2f8f121332fc5fdbc318754ea9"
+    },
+    {
+      "context": "8k",
+      "trial": 0,
+      "warmup": true,
+      "decode_tok_s": 30.5785,
+      "decode_ms_per_step": 32.702739726027396,
+      "expert_flow_ms_per_step": 23.429745596868884,
+      "reported_expert_GB_per_step": 1.6876033001956947,
+      "reported_bytes_over_flow_GB_s": 72.0282383442193,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 38.843,
+      "source_log_sha256": "592bd0093ba3df96c7bf74ce0d834b7482d9aa5432bff829b7b6023d2dfd3729"
+    },
+    {
+      "context": "8k",
+      "trial": 1,
+      "warmup": false,
+      "decode_tok_s": 34.3397,
+      "decode_ms_per_step": 29.120743639921724,
+      "expert_flow_ms_per_step": 21.24716242661448,
+      "reported_expert_GB_per_step": 1.532615148962818,
+      "reported_bytes_over_flow_GB_s": 72.13269791937223,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 31.3206,
+      "source_log_sha256": "592bd0093ba3df96c7bf74ce0d834b7482d9aa5432bff829b7b6023d2dfd3729"
+    },
+    {
+      "context": "8k",
+      "trial": 2,
+      "warmup": false,
+      "decode_tok_s": 34.7337,
+      "decode_ms_per_step": 28.79060665362035,
+      "expert_flow_ms_per_step": 20.56301369863014,
+      "reported_expert_GB_per_step": 1.4901319179021526,
+      "reported_bytes_over_flow_GB_s": 72.46661115639007,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 30.5326,
+      "source_log_sha256": "592bd0093ba3df96c7bf74ce0d834b7482d9aa5432bff829b7b6023d2dfd3729"
+    },
+    {
+      "context": "8k",
+      "trial": 3,
+      "warmup": false,
+      "decode_tok_s": 33.5239,
+      "decode_ms_per_step": 29.829549902152642,
+      "expert_flow_ms_per_step": 20.975929549902155,
+      "reported_expert_GB_per_step": 1.5051551802113503,
+      "reported_bytes_over_flow_GB_s": 71.75630413091139,
+      "target50_ms_per_step": 20,
+      "required_total_time_reduction_percent": 32.95220000000001,
+      "source_log_sha256": "592bd0093ba3df96c7bf74ce0d834b7482d9aa5432bff829b7b6023d2dfd3729"
+    }
+  ]
+}

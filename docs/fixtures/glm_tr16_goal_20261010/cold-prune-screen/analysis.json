@@ -1,0 +1,200 @@
+{
+  "scope": "Completed 128-token training-prompt screens only. CPU bytes are work counters; route counts cover warm-up plus timed trials. Changed routing changes the generated workload. Short controls do not qualify long generation.",
+  "model_controls_passed": true,
+  "quality_qualified": false,
+  "controls": [
+    {
+      "name": "00-default-control",
+      "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/02-q22-aff08",
+      "all_256_tokens_identical": true,
+      "cache_identity_equal": true,
+      "first_difference_by_trial": [
+        null,
+        null
+      ]
+    },
+    {
+      "name": "01-prune08-control",
+      "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/04-q22-aff08-prune08",
+      "all_256_tokens_identical": true,
+      "cache_identity_equal": true,
+      "first_difference_by_trial": [
+        null,
+        null
+      ]
+    },
+    {
+      "name": "02-cold-zero-control",
+      "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-screen/02-q22-aff08",
+      "all_256_tokens_identical": true,
+      "cache_identity_equal": true,
+      "first_difference_by_trial": [
+        null,
+        null
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "name": "00-default-control",
+      "decode_tok_s": 25.4149,
+      "prefill_tok_s": 143.2285,
+      "cache_slots": 845,
+      "cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "timed_rounds": 72,
+      "timed_accepted": 55,
+      "draft_ms_per_round": 6.258041666666667,
+      "verify_ms_per_round": 60.91597222222222,
+      "timed_cpu_expert_bytes": 204758581248,
+      "timed_layer_flow_ms": 2840.47,
+      "all_trials_resident_routes": 43039,
+      "all_trials_routes": 97440,
+      "all_trials_pruned_routes": 0,
+      "quality_qualified": false,
+      "sha256": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/00-default-control/000-baseline.result.json": "f1c19502db8885a511864c76f4b0cb0a3c51688975b6e724af4635c52ffd891b",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/00-default-control/000-baseline.log": "e02dc82fc6d254afd9a2747e1d43f37857161717974cee6553d125eb934a4170",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/00-default-control/000-baseline.stdout": "7dd104e07e0b3c6d8391f38413f87eac20f1ad9596a94ad84020cfd397a8370b"
+      }
+    },
+    {
+      "name": "01-prune08-control",
+      "decode_tok_s": 24.5569,
+      "prefill_tok_s": 143.264,
+      "cache_slots": 845,
+      "cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "timed_rounds": 78,
+      "timed_accepted": 48,
+      "draft_ms_per_round": 5.958717948717949,
+      "verify_ms_per_round": 57.73641025641025,
+      "timed_cpu_expert_bytes": 193353744384,
+      "timed_layer_flow_ms": 2705.19,
+      "all_trials_resident_routes": 26254,
+      "all_trials_routes": 102144,
+      "all_trials_pruned_routes": 27832,
+      "quality_qualified": false,
+      "sha256": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/01-prune08-control/000-baseline.result.json": "db39efc04a42a5b4655bc607a6e8177e7d0e1c4f233b0414136d6b5bdb81eb22",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/01-prune08-control/000-baseline.log": "063d6fdb1d3f74c5bef48b44db8fd2c08babe0a7c11be75e3fded78e7399dff7",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/01-prune08-control/000-baseline.stdout": "15bf932887bfac3be69987c708efa94c7b467ed22832602896836185e2c73c31"
+      }
+    },
+    {
+      "name": "02-cold-zero-control",
+      "decode_tok_s": 25.4205,
+      "prefill_tok_s": 143.28199999999998,
+      "cache_slots": 845,
+      "cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "timed_rounds": 72,
+      "timed_accepted": 55,
+      "draft_ms_per_round": 5.996208333333333,
+      "verify_ms_per_round": 61.27722222222222,
+      "timed_cpu_expert_bytes": 204758581248,
+      "timed_layer_flow_ms": 2856.1,
+      "all_trials_resident_routes": 43039,
+      "all_trials_routes": 97440,
+      "all_trials_pruned_routes": 0,
+      "quality_qualified": false,
+      "sha256": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/02-cold-zero-control/000-baseline.result.json": "a8572b14bda84384f59b9fd53ab963d2310e8de51feec852596a9beb0b4a8b6d",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/02-cold-zero-control/000-baseline.log": "465ddfbbe6ac01018ea41df5b2699a4e556551ac186984900af8f5bcf6b57cf5",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/02-cold-zero-control/000-baseline.stdout": "7dd104e07e0b3c6d8391f38413f87eac20f1ad9596a94ad84020cfd397a8370b"
+      }
+    },
+    {
+      "name": "cold0.08-renorm0",
+      "decode_tok_s": 25.7503,
+      "prefill_tok_s": 143.265,
+      "cache_slots": 845,
+      "cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "timed_rounds": 74,
+      "timed_accepted": 52,
+      "draft_ms_per_round": 6.095013513513513,
+      "verify_ms_per_round": 57.90283783783784,
+      "timed_cpu_expert_bytes": 178944999424,
+      "timed_layer_flow_ms": 2508.73,
+      "all_trials_resident_routes": 44401,
+      "all_trials_routes": 97440,
+      "all_trials_pruned_routes": 7534,
+      "quality_qualified": false,
+      "sha256": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm0/000-baseline.result.json": "24b329af102061ccaee11e13ed96dbe6b7e29e8fe3aaeff484c11f8d249c1625",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm0/000-baseline.log": "7a74f5b1e6a066fc08b76cff3fee2840e2b167d807e569581971f09711965ec0",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm0/000-baseline.stdout": "b411089f778c9477ca8e320364504537218a7407b82373f304255bb7a721746f"
+      }
+    },
+    {
+      "name": "cold0.08-renorm1",
+      "decode_tok_s": 25.8718,
+      "prefill_tok_s": 143.251,
+      "cache_slots": 845,
+      "cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "timed_rounds": 74,
+      "timed_accepted": 53,
+      "draft_ms_per_round": 6.238810810810811,
+      "verify_ms_per_round": 57.852162162162166,
+      "timed_cpu_expert_bytes": 193509588992,
+      "timed_layer_flow_ms": 2684.86,
+      "all_trials_resident_routes": 46654,
+      "all_trials_routes": 98784,
+      "all_trials_pruned_routes": 7713,
+      "quality_qualified": false,
+      "sha256": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm1/000-baseline.result.json": "414c9c4479314fafbde1aeebdc564c69a69561ef3be14248659762433ac0ad38",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm1/000-baseline.log": "42cddb39fc396d4cdd40850c0c7408ef212184679dbf8063370a130d9e4d2305",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.08-renorm1/000-baseline.stdout": "611f50a6c6a044ea6e88c32fba44abde85753647fa15835599ca036db2d16882"
+      }
+    },
+    {
+      "name": "cold0.12-renorm0",
+      "decode_tok_s": 29.3498,
+      "prefill_tok_s": 143.252,
+      "cache_slots": 845,
+      "cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "timed_rounds": 69,
+      "timed_accepted": 58,
+      "draft_ms_per_round": 5.856275362318841,
+      "verify_ms_per_round": 54.95884057971014,
+      "timed_cpu_expert_bytes": 97446658048,
+      "timed_layer_flow_ms": 1476.92,
+      "all_trials_resident_routes": 43814,
+      "all_trials_routes": 96096,
+      "all_trials_pruned_routes": 26031,
+      "quality_qualified": false,
+      "sha256": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm0/000-baseline.result.json": "a7782482fe259b92bc3e0288171b4259b1d0ef8a8a88a81dce41a45db94a4f5b",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm0/000-baseline.log": "0c0e586cc8098aae8a54c0f15579348c686b162cf7b235b6e9f1dc9e68ad892e",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm0/000-baseline.stdout": "430366c8fa95726aee8f38ce975a304520e40e7bc1963661aded3ee7e02aed69"
+      }
+    },
+    {
+      "name": "cold0.12-renorm1",
+      "decode_tok_s": 28.1126,
+      "prefill_tok_s": 143.28300000000002,
+      "cache_slots": 845,
+      "cache_mib": 6654.38,
+      "cache_fingerprint": "9246305806530966825",
+      "timed_rounds": 71,
+      "timed_accepted": 56,
+      "draft_ms_per_round": 6.6259436619718315,
+      "verify_ms_per_round": 54.99492957746479,
+      "timed_cpu_expert_bytes": 106441998336,
+      "timed_layer_flow_ms": 1611.45,
+      "all_trials_resident_routes": 44083,
+      "all_trials_routes": 98784,
+      "all_trials_pruned_routes": 27372,
+      "quality_qualified": false,
+      "sha256": {
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm1/000-baseline.result.json": "1219975f10ec8d076d78c74ddcbad8f326a05e8f819ee62ce4a4e5946b4d08a0",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm1/000-baseline.log": "f55e547e19216da2dad172cfed6246e9f521d7ac03b8f83617c9196f64711051",
+        "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-screen/cold0.12-renorm1/000-baseline.stdout": "8a47cf36f8a6b51a371aa1fcf5056a1bbce492e79d0922a3a843afe33d93d2e6"
+      }
+    }
+  ]
+}

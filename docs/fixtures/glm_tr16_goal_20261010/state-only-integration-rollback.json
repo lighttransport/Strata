@@ -1,0 +1,8 @@
+{
+  "time": 1791588475.3362246,
+  "removed_only_state_only_integration": true,
+  "concurrent_deferral_edits_preserved": true,
+  "restored_sha256": "6ab18623b8d77015d1b37a283c2a9295cb9cb46bdf500d7d51ff8add48963beb",
+  "research_patch_retained": true,
+  "reason": "Two assembled 8K off runs differ despite identical binary/config/input identity. Repeat also changes prefill cache fingerprint. Cause unresolved; integration not qualified."
+}

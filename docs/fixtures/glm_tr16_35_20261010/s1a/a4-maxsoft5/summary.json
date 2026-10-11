@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1a/a4-maxsoft5/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 30.4526,
+    "prefill_tok_s": 143.0685
+  }
+]

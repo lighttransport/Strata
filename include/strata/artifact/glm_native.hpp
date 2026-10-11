@@ -1,6 +1,7 @@
 #pragma once
 #include "strata/artifact/glm_exl3.hpp"
 #include "strata/artifact/gguf_reader.hpp"
+#include "strata/host/glm_names.hpp"
 #include <functional>
 #include <cstring>
 namespace strata::artifact {
@@ -54,7 +55,7 @@ public:
             {"self_attn.indexer.k_norm.bias","indexer.k_norm.bias"},{"self_attn.indexer.index_kpool_compress_gate","indexer_compressor_gate.weight"},
             {"self_attn.indexer.index_kpool_compress_ape","indexer_compressor_ape.weight"}};
         for(unsigned l=0;l<45;++l) {
-            auto src="model.language_model.layers."+std::to_string(l)+".",dst="blk."+std::to_string(l)+".";
+            auto src="model.language_model.layers."+std::to_string(l)+".",dst=strata::host::blk_prefix(int(l));
             for(const auto& [from,to]:names)if(model.tensors.tensors().contains(src+from)) {
                 bool scalar=to.find("norm.")!=std::string::npos||to.find("_base.")!=std::string::npos||to.find("_scale.")!=std::string::npos||to=="ssm_a"||to=="ssm_dt.bias"||to=="exp_probs_b.bias"||to=="indexer_compressor_ape.weight";
                 add(dst+to,src+from,scalar);
@@ -78,7 +79,7 @@ public:
         auto shape=[&](const std::string& name,std::initializer_list<uint64_t> dims){const auto& t=bindings.at(name).info;if(t.shape!=std::vector<uint64_t>(dims))throw std::runtime_error("GLM native: incompatible shape "+name);};
         shape("token_embd.weight",{4096,154880});shape("output.weight",{4096,154880});shape("output_norm.weight",{4096});
         for(unsigned l=0;l<45;++l) {
-            auto p="blk."+std::to_string(l)+".";
+            auto p=strata::host::blk_prefix(int(l));
             for(const auto* part:{"attn","ffn"}) {
                 shape(p+part+"_norm.weight",{4096});shape(p+"hc_"+part+"_fn.weight",{16384,24});
                 shape(p+"hc_"+part+"_base.weight",{24});shape(p+"hc_"+part+"_scale.weight",{3});

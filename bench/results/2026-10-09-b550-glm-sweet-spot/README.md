@@ -2,7 +2,7 @@
 
 **Recommendation: scalar affinity .06, an experimental quality-first profile.** It sustains **16.46 tok/s decode / 229.12 tok/s warm prefill** on 2K + 512, and completes the document and C++ tasks with a tested parser. Faster .08/.10 settings failed the C++ answer requirement at the same cap. The [opt-in configuration](../../../configs/experimental/glm53f-reap50-q23-b550-quality-first.json) uses an 8K context, 60 GiB RAM guard when launched through the guarded runner, and a 512 MiB VRAM reserve. It requires the tested HIP build and B550 model paths. Serving defaults are unchanged; the demo stays stopped.
 
-Hardware: Ryzen 9 3950X, 62.693 GiB physical RAM, RX 9070 XT gfx1201, 16,304 MiB VRAM, PCIe 4 x16, automatic GPU clocks, CPU powersave with boost. Linux 7.0.0-38-generic, ROCm 7.14 development build. Engine source baseline `15b787b5` plus the prior canonical-rounding fix and experimental tooling; binary SHA256 `e067fcd6977afa7722f06058838e3ae06d38a8f937a0ccb4bd1e2f6d4a8c6544`. The isolated B550 checkout is `/home/syoyo/work/Strata-b550-calibration-15b787b5`. No local GPU performance tests were run.
+Hardware: Ryzen 9 3950X, 62.693 GiB physical RAM, RX 9070 XT gfx1201, 16,304 MiB VRAM, PCIe 4 x16, automatic GPU clocks, CPU powersave with boost. Linux 7.0.0-38-generic, ROCm 7.14 development build. Engine source baseline `15b787b5` plus the prior canonical-rounding fix and experimental tooling; binary SHA256 `e067fcd6977afa7722f06058838e3ae06d38a8f937a0ccb4bd1e2f6d4a8c6544`. The isolated B550 checkout is `~/work/Strata-b550-calibration-15b787b5`. No local GPU performance tests were run.
 
 Model: `GLM-5.3-Flash-REAP50-Q23-assembled.gguf`, 58.87 GiB, 144 experts, top 8, 42 MoE layers, gate/up Q2_K and down Q3_K. Model SHA256 `c3b0cfb144556bd28e265d8255d48eeafce3d127aba5b9b5dd4e326322a34aa9`. This is a comparison against unchanged REAP50 Q23, not the original unpruned model.
 
@@ -19,7 +19,7 @@ Quality uses a common-state 64-row teacher-forced logit grid, plus real chat req
 Run only while B550 is idle, in the isolated checkout:
 
 ```sh
-PY=/home/syoyo/work/Strata/.venv-glm-hip/bin/python
+PY=~/work/Strata/.venv-glm-hip/bin/python
 $PY tools/glm_b550_calibrate.py --output runs/repro-sweet-speed \
   --tokens 256 --trials 3 --cases aff00 aff04 aff06 aff08 aff10 aff12
 $PY tools/glm_b550_calibrate.py --output runs/repro-sweet-paired --tokens 32 --trials 1 \

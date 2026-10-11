@@ -1,0 +1,11 @@
+[
+ {
+  "name": "g7-mix2-topk6-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json"
+  },
+  "control": false
+ }
+]

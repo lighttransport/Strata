@@ -9,6 +9,10 @@ install steps for users are in [INSTALL.md](INSTALL.md#amd-cards). gfx906 (Insti
 opt-in build, see [gfx906](#gfx906-instinct-mi50--mi60-radeon-vii-wave64-built-from-source). The Ryzen AI Max "Strix Halo" APU (gfx1151, RDNA3.5, unified memory) is built from source on Linux: see [STRIX_HALO.md](STRIX_HALO.md). Other AMD architectures and mixed
 AMD/NVIDIA execution in one run are not supported.
 
+GLM-5.3f REAP50 also has a separate opt-in [Vulkan runner](GLM_VULKAN.md) with no ROCm runtime dependency.
+It was tested on an RX 9070 XT; other AMD cards remain unvalidated. Its build and short comparisons are
+experimental, and setup continues to select the HIP backend.
+
 The backend maps the CUDA-shaped runtime and BLAS calls to HIP/hipBLAS, uses
 RDNA2/RDNA3/RDNA4's signed integer dot instruction for quantized kernels, and supplies
 wave32 shuffle/packed-byte operations. CUDA-only QSA matrix instructions have
@@ -55,6 +59,91 @@ the kernel's amdgpu driver (no ROCm install needed):
   shows the card's load, VRAM, temperature and power from Linux sysfs (0.1.32).
 
 The rest of setup is the same as on NVIDIA: the model download, the start script, the server.
+
+## Linux GPU bus loss: runtime PM and ASPM troubleshooting
+
+On one B550 / Ryzen 9 3950X / RX 9070 XT (gfx1201) machine, repeated GLM-5.3-Flash
+prefill runs lost the GPU from the PCIe bus. The GPU's audio function also became
+inaccessible, followed by SMU metrics errors, MES queue shutdown timeouts and a
+failed reset with `-19`. No preceding VM fault or illegal-instruction report was
+captured. Removing an InfiniBand card, disabling Resizable BAR in BIOS, and
+rebuilding the vendor DKMS driver without a local clock-cap patch did not
+eliminate the failures in those earlier tests.
+
+The configuration tested on 2026-10-11 used Ubuntu 24.04.5, kernel
+`7.0.0-38-generic`, vendor AMD DKMS `6.19.14.31400100`, HIP `7.14.60850`,
+64 GiB RAM at a user-reported 2666 MT/s, and these Linux boot options:
+
+```text
+amdgpu.runpm=0 amdgpu.aspm=0
+```
+
+`runpm=0` disables idle GPU power-down and resume; normal clock scaling remains
+available. `aspm=0` disables the driver's PCIe link power saving. Idle power may
+increase. The custom `amdgpu.ppfeaturemask=0xfff7ffff` override was removed;
+the driver reported its default mask as `0xfff7bfff`. See the
+[kernel parameter documentation](https://docs.kernel.org/gpu/amdgpu/module-parameters.html).
+These settings are an opt-in troubleshooting workaround, not a setup default.
+Runtime PM and ASPM were changed together. The early successful checks did not
+isolate their effects, and GPU loss recurred later with both options still set.
+
+For a temporary test, edit the Linux command line in GRUB for one boot. To keep
+the workaround, append the two options to the existing `GRUB_CMDLINE_LINUX_DEFAULT`
+in `/etc/default/grub`, remove the custom `amdgpu.ppfeaturemask` option if present,
+then run `sudo update-grub` and reboot. Verify the actual boot with:
+
+```sh
+cat /proc/cmdline
+cat /sys/module/amdgpu/parameters/runpm
+cat /sys/module/amdgpu/parameters/aspm
+cat /sys/module/amdgpu/parameters/ppfeaturemask
+```
+
+### Power cap and measured runs on this machine
+
+With that configuration, `sudo amd-smi set -g 0 --power-cap 212 ppt0` succeeded
+without a custom feature-mask override. Driver hwmon readback showed 212 W,
+default 304 W, and allowed range 212–340 W. These limits belong to this card;
+check the selected GPU's limits before choosing a cap on another machine.
+Read back `power1_cap`, `power1_cap_default`, `power1_cap_min` and `power1_cap_max`
+under the GPU's `device/hwmon/hwmon*/` directory in `/sys/class/drm/`.
+Values are in microwatts: `212000000` means a configured 212 W limit, not an
+instantaneous power measurement. Avoid changing caps during a measured run.
+
+Three sequential fresh-process checks used the same frozen 7936-token prompt,
+8192-token context/batch, 128 output tokens, 12 CPU threads, REAP50 Q23 assembly
+with a Q22 down-only sidecar, and fit4 routing. The harness enforced a 60 GiB
+RAM limit with zero swap and a 15360 MiB GPU allocation budget.
+
+| Prefill mode | Prefill tok/s | Decode tok/s |
+| --- | ---: | ---: |
+| Optimized MMQ | 119.601 | 35.2547 |
+| Custom BF16 WMMA | 465.274 | 35.3772 |
+| Custom BF16 WMMA repeat | 465.073 | 35.3614 |
+
+All three runs completed cleanly with identical 128-token output and no detected
+GPU loss; the endpoint link remained ×16 and the final cap readback remained
+212 W. Compact evidence, executable/prompt hashes and limitations are in
+[the measured record](benchmarks/glm_b550_power212_20261011.json).
+This is one MMQ trial and two WMMA trials, not a long-duration stability claim.
+During subsequent optimization screening on the same boot, 20 further
+uninstrumented runs completed, then a 2048-token MMQ control lost the GPU at
+kernel timestamp `4914.550427`. The first messages were `device lost from bus`,
+SMU metrics export returning `0xFFFFFFFF`, and the audio function becoming
+inaccessible. `runpm=0` and `aspm=0` were verified again; no power-cap command
+was issued during the screening. All GPU testing stopped. These options and
+the 212 W cap have therefore **not established stability**. See the
+[follow-up experiment record](benchmarks/glm_reap50_212w_optimization_20261011.json).
+16K and library BF16 were not tested with this boot configuration. Earlier
+library BF16 failures remain unresolved; no BF16 preset or quality gate changed.
+
+After the runs, the user reported workqueue warnings that
+`svm_range_deferred_list_work [amdgpu]` and `delayed_fput` each used more than
+10000 microseconds of CPU time. These were not accompanied by GPU loss in these
+checks. Record them when investigating stalls or cleanup overhead; the
+`consider switching to WQ_UNBOUND` text concerns kernel workqueue implementation,
+not a Strata launch option. Do not count these messages as proof of GPU recovery
+or dismiss them if they accompany a new failure.
 
 ## Windows
 
@@ -346,6 +435,19 @@ an RX 9070 XT 16 GB and a Radeon AI PRO R9700 32 GB (both gfx1201), a Ryzen 9 39
     1-3% slower with it). `STRATA_SELECT_WMMA=1` (opt-in, gfx12) adds #337's
     matrix-core block scorer; it selects slightly differently (254 of 256 queries the same) and gained +1.5% on 16K
     prompts at a 262K context on the R9700.
+  - `STRATA_PF_FUSED=1` (opt-in, gfx1200 / gfx1201, the native IQ packs, #1277): the prompt's experts run on int8
+    matrix-core kernels (`v_wmma_i32_16x16x16_iu8`: the gfx11 kernels with gfx12's lane layout) instead of MMQ. Earlier
+    engines ignored the flag on RDNA4 (MMQ stayed, no banner); now the engine prints `strata: prompt experts on the fused
+    int8 kernels (STRATA_PF_FUSED=1, #136)` once, at the first prompt. It is not an arch default: it rounds differently
+    from MMQ, and those defaults hold only bit-identical switches. `STRATA_PF_FUSED_NATIVE=0` keeps MMQ with the flag set
+    (for an A/B). R9700 (gfx1201, ROCm 7.14, Coder IQ1_M pack), prompt time as the server reports it, alternating
+    starts per arm: 4K 1,612 -> 1,353 ms (+19.1%), 16K 5,579 -> 5,147 ms (+8.4%), 32K 11,890 -> 10,962 ms (+8.5%); a
+    second run of 3 starts per arm gave +12% to +16% at 4K (it depends on the start) and +8.3% at 16K; the
+    kernels alone are 1.48x / 1.20x / 1.14x MMQ's at 4K / 16K / 32K. Quality: first-token KL against the FP16 prompt path
+    at 4K (48 prompts) is 1.10x MMQ's, which that sample cannot tell apart from MMQ's; top-1 agreed on 48 of 48 (every
+    prompt's top token was the same one, so that check says little); 4 of 4 long-context retrieval checks passed.
+    0.1.42 re-check on an R9700 (Linux, ROCm 7.14), 12 prompts of 1.5K-24K tokens, first-token KL against the FP16 prompt path (MMQ / fused): IQ3_S 0.00332 / 0.00284, top-1 12 of 12 for both; IQ3_XXS 0.00335 / 0.00452 on one sample and 0.00344 / 0.00323 on a second (24 prompts pooled: 0.00340 / 0.00388, top-1 24 of 24 for both); the Q2_0 pack does not take these kernels on gfx12 (output bit-identical to MMQ). Because the IQ3_XXS pool is not at or below MMQ's, the flag stays opt-in. Measured on Linux only.
+    gfx1200 builds the same kernels and was not run; Windows and K-quant packs (`STRATA_PF_FUSED_KQ=1`) were not measured.
 - **Known:** rarely (about 1 start in 10) a HIP run's greedy output differs from another start's at some token, on
   one card or two and on engine 0.1.29 as well; not yet explained.
 - **Not validated:** images, long contexts beyond 16K, answer-quality benchmarks.
@@ -441,6 +543,10 @@ run it; the report below is from a community machine: an RX 6900 XT 16 GB (gfx10
   [bench/results/2026-10-07-community-gfx1150](../bench/results/2026-10-07-community-gfx1150/README.md).
   Setup does not install for it yet (an integrated Radeon other than Strix Halo is named and not supported): build by hand with `-DCMAKE_HIP_ARCHITECTURES=gfx1150`
   and point `STRATA_HIPBLASLT_TUNING` at the table yourself.
+- **gfx1152** (Radeon 860M / 840M, Ryzen AI 300 "Krackan", #1625): in CMake's unvalidated list like gfx1150, so
+  `-DCMAKE_HIP_ARCHITECTURES=gfx1152` builds with a warning. It runs the portable kernels (the matrix-core guards name
+  gfx1150 and gfx1151 only), no card has reported on it, and setup does not install for it (an integrated Radeon other
+  than Strix Halo is named and not supported). A report from a real 860M is welcome.
 - **Not validated:** gfx1032 (the same `dp4a` path, no hardware report), setup's own build path and the
   `gfx103X-all` wheels on gfx1030, images, answer-quality benchmarks. RDNA1 (gfx1012, RX 5500 XT) builds by hand:
   [OLDER_GPUS.md](OLDER_GPUS.md#amd-building-gfx906-and-gfx1012).
@@ -451,6 +557,8 @@ gfx906 is wave64 and has no WMMA and no packed byte arithmetic, so the wave32 ba
 (`include/strata/platform/hip_compat/`), with a CUDA warp mapped to a logical half of the 64-lane wavefront
 (32-wide shuffles, a ballot of its own half). The hot kernels have wave64 layouts of their own (below). Setup does
 not build it yet: build by hand, and run `serve/server.py` with a config as on any other card.
+
+**Community-tested, opt-in (0.1.42).** The gfx906 build is maintained with its users: we have no gfx906 card, so what is here was measured by community members on their MI50s (the attention switches `STRATA_GFX906_ATTN_QUERY_SWIZZLE=1` and `STRATA_GFX906_ATTN_REDUCE12=1`, PRs #1661 and #1718 by 0FL01, are off by default and compiled only into this build) and the engine here is checked to compile for gfx906, nothing more. Nothing in it changes the builds for other cards. A wave32 card seen by this build is refused at start with a message (#1728). Please report how it runs on your card.
 
 **ROCm.** AMD's current ROCm releases no longer ship gfx906 libraries. The build and the measurements below used
 HIP 7.14 from the community image [`mixa3607/rocm-gfx906:7.14-complete`](https://hub.docker.com/r/mixa3607/rocm-gfx906)

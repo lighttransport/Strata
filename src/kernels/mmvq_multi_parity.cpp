@@ -56,6 +56,8 @@ struct Case {
 
 // the types a head or a projection can have in this model
 const Case CASES[] = {
+    {"Q2_0", 42, 8192, 513, 64, 18, {0, -1}},
+    {"Q3_K", 11, 4096, 515, 256, 110, {108, -1}},
     {"Q4_0", 2, 2048, 512, 32, 18, {0, -1}},          // Q40Block: half d
     {"Q8_0", 8, 2048, 512, 32, 34, {0, -1}},          // Q80Block: half d
     {"Q4_K", 12, 2048, 512, 256, 144, {0, 2}},        // Q4KBlock: half2 dm
@@ -86,7 +88,7 @@ bool ck(cudaError_t e, const char* what) {
 
 // Returns the number of outputs that differ bit for bit; counts the non-finite outputs and the differences on
 // outputs that are finite in both paths.
-long long compare(const Case& c, int T, cudaStream_t s, long long& nonfinite, long long& diff_finite, bool& ran) {
+long long compare(const Case& c, int T, cudaStream_t s, long long& nonfinite, long long& diff_finite, bool& ran, bool exact=true) {
     ran = false;
     if (!strata::kernels::native_mmvq_supported(c.type)) return -1;
 
@@ -140,10 +142,12 @@ long long compare(const Case& c, int T, cudaStream_t s, long long& nonfinite, lo
         strata::kernels::native_mmvq(c.type, dw, xq, dmulti, c.n_in, c.n_out, T, s);
         // Always compare against the original single-row launch, including T=1.
         strata::kernels::native_mmvq_set_multi_rows(1);
+        strata::kernels::native_mmvq_set_multi_exact(false);
         for (int j = 0; j < T; ++j)
             strata::kernels::native_mmvq(c.type, dw, (const uint8_t*) xq + (std::size_t) j * qcol,
                                          dsingle + (std::size_t) j * c.n_out, c.n_in, c.n_out, 1, s);
         strata::kernels::native_mmvq_set_multi_rows(selected_rows);
+        strata::kernels::native_mmvq_set_multi_exact(exact);
     } catch (const std::exception& e) {
         std::printf("%-12s T=%d: %s\n", c.name, T, e.what());
         return -1;
@@ -209,7 +213,7 @@ int sweep(bool exact, cudaStream_t s, Totals& t) {
         for (int T : WIDTHS) {
             long long nf = 0, dfin = 0;
             bool ran = false;
-            const long long diff = compare(c, T, s, nf, dfin, ran);
+            const long long diff = compare(c, T, s, nf, dfin, ran, exact);
             if (!ran) { ++bad; continue; }
             const long long n = (long long) T * c.n_out;
             t.checked += n;

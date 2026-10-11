@@ -1,0 +1,10 @@
+{
+  "capture_complete": false,
+  "reports": [
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/nsys-q22-q4/trace.1.nsys-rep"
+  ],
+  "exit_code": 0,
+  "speed_comparable": false,
+  "quality_qualified": false,
+  "timeline_review_pending": true
+}

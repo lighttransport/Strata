@@ -1,0 +1,805 @@
+{
+  "date": "2026-10-11",
+  "commit": "dfc9528239e39b977edaad08b89c0dea2c717937",
+  "hardware": "B550 / Ryzen 9 3950X / RX 9070 XT gfx1201 / 64 GiB RAM",
+  "boot_options": [
+    "amdgpu.runpm=0",
+    "amdgpu.aspm=0"
+  ],
+  "mining_observation": "User reports more than five hours of integer GEMM mining without failure; independent logs and configuration not collected",
+  "validation": {
+    "clean_rebuild": "HIP relevant targets rebuilt from source",
+    "kernel_tests": [
+      {
+        "test": "glm_parity",
+        "argv": [
+          "glm_parity"
+        ],
+        "exit_code": 0,
+        "seconds": 0.5132997829969099,
+        "executable_sha256": "0a2f89896c20d58a74b39e565fab9e89b3502c271541ea952b3c81495ae1233c",
+        "faults": []
+      },
+      {
+        "test": "glm_q8_test",
+        "argv": [
+          "glm_q8_test"
+        ],
+        "exit_code": 0,
+        "seconds": 1.5258948209993832,
+        "executable_sha256": "ee460af63d3d115c7fddfa8605f65737292f1159eee169ecfe03da090b022506",
+        "faults": []
+      },
+      {
+        "test": "glm_q23_parity",
+        "argv": [
+          "glm_q23_parity"
+        ],
+        "exit_code": 0,
+        "seconds": 2.033332810002321,
+        "executable_sha256": "019c6985196ae59cc51e0c6e08f666a1bb85d1cf636c856a4e868252af3ede03",
+        "faults": []
+      },
+      {
+        "test": "mmvq_multi_parity",
+        "argv": [
+          "mmvq_multi_parity"
+        ],
+        "exit_code": 0,
+        "seconds": 1.0197375919997285,
+        "executable_sha256": "110db2e05bd38d0565c2e54b33f33039ebf34858caef352069bafe7691342355",
+        "faults": []
+      },
+      {
+        "test": "glm_prefill_parity",
+        "argv": [
+          "glm_prefill_parity"
+        ],
+        "exit_code": 0,
+        "seconds": 8.615265895001357,
+        "executable_sha256": "0a4dab9e152736823537dce02ff4f61654e0f2031a4bd03456ac189b0fdb9004",
+        "faults": []
+      },
+      {
+        "test": "glm_kda_column_tiles_parity",
+        "argv": [
+          "glm_kda_column_tiles_parity"
+        ],
+        "exit_code": 0,
+        "seconds": 1.0194456169992918,
+        "executable_sha256": "f19b1871408b005ae91ce6d9998123486b4bb0b3fdf874f646770c811ca2ad1d",
+        "faults": []
+      },
+      {
+        "test": "glm_bf16_prefill_test",
+        "argv": [
+          "glm_bf16_prefill_test",
+          "--wmma",
+          "--production-shapes"
+        ],
+        "exit_code": 0,
+        "seconds": 4.057707563002623,
+        "executable_sha256": "f13d26f706099321101915f4fda03787209b455613c18def034fb3331ab45b72",
+        "faults": []
+      },
+      {
+        "test": "hip_prefill_mmq_parity",
+        "argv": [
+          "hip_prefill_mmq_parity"
+        ],
+        "exit_code": 0,
+        "seconds": 1.0194429090006452,
+        "executable_sha256": "1267cbe7a5ce93d0914de8254aa33847e2232048177405ee469f3c19f2615832",
+        "faults": []
+      }
+    ],
+    "unsupported_tests": {
+      "hip_prefill_wmma_gemm_parity": "gfx11-only functions declined all shapes on gfx1201",
+      "expert_multi_test": "AVX-512 CPU requirements unavailable on Ryzen 3950X"
+    }
+  },
+  "full_model": {
+    "prompt_tokens": 2048,
+    "output_cap": 128,
+    "context": 4096,
+    "prefill_backend": "mmq",
+    "cache_slots": 900,
+    "gpu_allocation_budget_mib": 15360,
+    "ram_limit_gib": 60,
+    "swap_limit_bytes": 0,
+    "decode_graphs": false,
+    "cpu_step_pipeline": false,
+    "mailbox_preallocation": false,
+    "direct_registration": false,
+    "synchronous": {
+      "exit_code": 0,
+      "complete": true,
+      "output_sha256": "0e6bbf3d2ae09966ff43321ecef00894e26baae815bed02740a6e4d67b025edf",
+      "faults": [],
+      "diagnostic_wall_seconds": 169.17051909499787,
+      "hip_launch_blocking": true,
+      "layer_profiling": true
+    },
+    "asynchronous": {
+      "exit_code": -9,
+      "termination_reason": "kernel fault",
+      "elapsed_seconds": 29.210609255002055,
+      "first_fault": [
+        "[26204.479876] snd_hda_intel 0000:0a:00.1: Unable to change power state from D3hot to D0, device inaccessible"
+      ],
+      "hip_launch_blocking": false,
+      "layer_profiling": false,
+      "completed": false,
+      "prefill_started": true,
+      "output_tokens": 0
+    },
+    "unrun": [
+      "external speculative target verification",
+      "direct-transfer variant"
+    ],
+    "qualification": "Diagnostic only; not throughput or stability qualification. Blocking and layer profiling changed together."
+  },
+  "pci_after": {
+    "host_root_port": "Readable vendor/device ID; 00:03.1",
+    "unreadable_functions": [
+      "08:00.0 AMD/ATI upstream PCIe switch 1002:1478",
+      "09:00.0 AMD/ATI downstream PCIe switch 1002:1479",
+      "0a:00.0 GPU 1002:7550",
+      "0a:00.1 GPU audio 1002:ab40"
+    ],
+    "config_reads": "ffffffff for all four GPU-branch functions"
+  },
+  "interpretation": [
+    "snd_hda_intel is the shared HDA driver and this PCI function belongs to AMD GPU audio, not proof of an Intel audio hardware fault",
+    "GPU-branch loss is broader than the audio function; audio error is the first captured symptom, not a proven initiating cause",
+    "Synchronous completion and asynchronous failure prioritize launch/copy ordering, workload transitions and driver/firmware paths; do not prove a kernel race",
+    "No preceding VM fault or illegal instruction message was captured",
+    "New external drafting and BF16 WMMA prefill were not active during the failing run",
+    "Root cause unresolved; motherboard/PCIe electrical behavior, power transitions and GPU/driver/application-triggered failure remain possible"
+  ],
+  "sanitizer": {
+    "gfx1201_gpu_asan": false,
+    "compiler_warning": "clang++: warning: ignoring '-fsanitize=address' option for offload arch 'gfx1201' as it is not currently supported there. Use it with an offload arch containing 'xnack+' instead [-Woption-ignored]",
+    "guard_tests": "Detect selected write overruns and numerical errors; cannot rule out all invalid reads or races"
+  },
+  "trace": {
+    "synchronous": {
+      "kernel_dispatches": 267979,
+      "unique_kernels": 71,
+      "queues": [
+        "1",
+        "2"
+      ],
+      "max_overlapping_kernels": 1,
+      "max_overlapping_copies": 1,
+      "memory_copies": 9110,
+      "copy_directions": {
+        "MEMORY_COPY_HOST_TO_DEVICE": 4036,
+        "MEMORY_COPY_DEVICE_TO_HOST": 5074
+      },
+      "hip_api_calls": 1007289,
+      "max_dispatch_lds_bytes": 25600,
+      "max_dispatch_scratch_bytes": 2232,
+      "max_kernel_ms": 53.780833,
+      "top_kernel_time": [
+        {
+          "kernel": "void mul_mat_q<(ggml_type)10, 80, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)",
+          "dispatches": 648,
+          "sum_ms": 15469.856088
+        },
+        {
+          "kernel": "void mul_mat_q<(ggml_type)10, 64, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)",
+          "dispatches": 108,
+          "sum_ms": 1444.862883
+        },
+        {
+          "kernel": "void strata::kernels::(anonymous namespace)::kda_chunk<128, true>(float*, float const*, float const*, float const*, float const*, float const*, float*, int, int, float*, long long, int, float const*)",
+          "dispatches": 1088,
+          "sum_ms": 1136.10453
+        },
+        {
+          "kernel": "void strata::kernels::(anonymous namespace)::native_q4_k_mmvq_kernel<false>(strata::kernels::(anonymous namespace)::Q4KBlock const*, strata::kernels::(anonymous namespace)::Q81Block const*, float*, int, int)",
+          "dispatches": 49530,
+          "sum_ms": 881.097451
+        },
+        {
+          "kernel": "Cijk_Alik_Bljk_S_B_Bias_HA_S_SAV_UserArgs_MT64x64x16_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_CD1_1_CLR0_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS0_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA1_GRVWB1_GSUAMB_GLS0_HPLR0_ISA1201_ICIW0_IU1_K1_LDSTI0_LBSPPA0_LBSPPB0_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA1_LPB1_LPMXSA0_LPMXSB0_LPM0_LRVW1_LWPMn1_MIAV0_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR0_PLR1_PKA0_SGROB0_SIA1_SS0_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TT8_8_TLDS0_TLDSM1_ULSGRO0_USL1_USLMX0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA0_WSGRB0_WS32_WG8_8_1",
+          "dispatches": 2948,
+          "sum_ms": 502.392059
+        },
+        {
+          "kernel": "strata::kernels::(anonymous namespace)::gather(float const*, int const*, int const*, float*, int, int, int)",
+          "dispatches": 1749,
+          "sum_ms": 354.739778
+        },
+        {
+          "kernel": "void strata::kernels::(anonymous namespace)::native_q6_k_mmvq_kernel<false>(strata::kernels::(anonymous namespace)::Q6KBlock const*, strata::kernels::(anonymous namespace)::Q81Block const*, float*, int, int)",
+          "dispatches": 4954,
+          "sum_ms": 277.849366
+        },
+        {
+          "kernel": "Cijk_Ailk_Bljk_S_B_Bias_HA_S_SAV_UserArgs_MT64x64x16_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_CD1_1_CLR0_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS1_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA1_GRVWB1_GSUAMB_GLS0_HPLR0_ISA1201_ICIW0_IU1_K1_LDSTI0_LBSPPA0_LBSPPB0_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA0_LPB1_LPMXSA0_LPMXSB0_LPM0_LRVW1_LWPMn1_MIAV0_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR1_PLR1_PKA0_SGROB0_SIA1_SS0_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TT8_8_TLDS0_TLDSM1_ULSGRO0_USL1_USLMX0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA0_WSGRB0_WS32_WG8_8_1",
+          "dispatches": 352,
+          "sum_ms": 261.136014
+        }
+      ],
+      "gpu_allocation_peak_mib_from_trace": 12522.986694335938,
+      "gpu_allocations_live_at_end": 0,
+      "unmatched_gpu_frees": 0,
+      "limitations": [
+        "API trace omits return codes and arguments; not a bounds or race sanitizer",
+        "copy trace omits addresses and byte counts; no transfer bandwidth inferred",
+        "profiled diagnostic, not a qualified throughput measurement"
+      ]
+    },
+    "asynchronous": "Process stopped on bus loss before profiler trace output flushed; last kernel dispatch unavailable"
+  },
+  "source_sha256": {
+    "src/program/glm_decode.cpp": "60cbfbc351f7a0563be0afccc87ae638621a3da0e42abe2bad2da33dd6bea281",
+    "src/prefill/wmma_gfx12.cu": "741244ce378625dde8e6387d5e5f6c8dc6788c4a7972e9db2bba77756070e266",
+    "src/kernels/cuda/glm_prefill.cu": "16a11133bc7e744af6e5e297bffde436dde469b664d074357a1e7adbffbe2960",
+    "src/kernels/cuda/glm_q23.cu": "03fed6121edae36d78f75787d7024480ac9cfa64032e9e9503842a9eafe4b0b8"
+  },
+  "raw_evidence": "Retained locally in tmp/glm-gpu-review; no raw trace files committed",
+  "stopping_policy": "All GPU diagnostics stopped at first fault. No reset or further workload launched in failed boot.",
+  "reboot_reruns": [
+    {
+      "date": "2026-10-11",
+      "mode": "same asynchronous 2048-token MMQ control",
+      "exit_code": 0,
+      "complete": true,
+      "clean": true,
+      "output_sha256": "0e6bbf3d2ae09966ff43321ecef00894e26baae815bed02740a6e4d67b025edf",
+      "output_identical_to_synchronized_control": true,
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "same_executable": true,
+      "wall_seconds_diagnostic": 114.76645933700001,
+      "faults": [],
+      "pci_after": "02105075",
+      "interpretation": "Same asynchronous workload passed as the first full-model diagnostic after reboot. Previous asynchronous failure remains recorded; neither deterministic failure nor stability established.",
+      "trace": {
+        "kernel_dispatches": 267979,
+        "unique_kernels": 71,
+        "queues": [
+          "1",
+          "2"
+        ],
+        "max_overlapping_kernels": 1,
+        "max_overlapping_copies": 1,
+        "memory_copies": 9110,
+        "copy_directions": {
+          "MEMORY_COPY_HOST_TO_DEVICE": 4036,
+          "MEMORY_COPY_DEVICE_TO_HOST": 5074
+        },
+        "hip_api_calls": 995769,
+        "max_dispatch_lds_bytes": 25600,
+        "max_dispatch_scratch_bytes": 2232,
+        "max_kernel_ms": 58.166833,
+        "top_kernel_time": [
+          {
+            "kernel": "void mul_mat_q<(ggml_type)10, 80, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)",
+            "dispatches": 648,
+            "sum_ms": 16684.879015
+          },
+          {
+            "kernel": "void mul_mat_q<(ggml_type)10, 64, false>(char const*, int const*, int const*, int const*, float*, float*, float const*, HIP_vector_type<unsigned int, 3u>, int, int, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>, HIP_vector_type<unsigned int, 3u>, int, int, int, HIP_vector_type<unsigned int, 3u>)",
+            "dispatches": 108,
+            "sum_ms": 1443.762393
+          },
+          {
+            "kernel": "void strata::kernels::(anonymous namespace)::kda_chunk<128, true>(float*, float const*, float const*, float const*, float const*, float const*, float*, int, int, float*, long long, int, float const*)",
+            "dispatches": 1088,
+            "sum_ms": 968.522509
+          },
+          {
+            "kernel": "void strata::kernels::(anonymous namespace)::native_q4_k_mmvq_kernel<false>(strata::kernels::(anonymous namespace)::Q4KBlock const*, strata::kernels::(anonymous namespace)::Q81Block const*, float*, int, int)",
+            "dispatches": 49530,
+            "sum_ms": 884.004038
+          },
+          {
+            "kernel": "Cijk_Alik_Bljk_S_B_Bias_HA_S_SAV_UserArgs_MT64x64x16_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_CD1_1_CLR0_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS1_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA1_GRVWB1_GSUAMB_GLS0_HPLR0_ISA1201_ICIW0_IU1_K1_LDSTI0_LBSPPA0_LBSPPB0_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA1_LPB1_LPMXSA0_LPMXSB0_LPM0_LRVW1_LWPMn1_MIAV0_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR1_PLR1_PKA0_SGROB0_SIA1_SS0_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TT8_8_TLDS0_TLDSM1_ULSGRO0_USL1_USLMX0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA0_WSGRB0_WS32_WG8_8_1",
+            "dispatches": 2948,
+            "sum_ms": 487.589221
+          },
+          {
+            "kernel": "strata::kernels::(anonymous namespace)::gather(float const*, int const*, int const*, float*, int, int, int)",
+            "dispatches": 1749,
+            "sum_ms": 311.989205
+          },
+          {
+            "kernel": "void strata::kernels::(anonymous namespace)::native_q6_k_mmvq_kernel<false>(strata::kernels::(anonymous namespace)::Q6KBlock const*, strata::kernels::(anonymous namespace)::Q81Block const*, float*, int, int)",
+            "dispatches": 4954,
+            "sum_ms": 270.353914
+          },
+          {
+            "kernel": "Cijk_Ailk_Bljk_S_B_Bias_HA_S_SAV_UserArgs_MT64x64x16_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_CD1_1_CLR0_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS0_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA1_GRVWB1_GSUAMB_GLS0_HPLR0_ISA1201_ICIW0_IU1_K1_LDSTI0_LBSPPA0_LBSPPB0_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA0_LPB1_LPMXSA0_LPMXSB0_LPM0_LRVW1_LWPMn1_MIAV0_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR0_PLR1_PKA0_SGROB0_SIA1_SS0_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TT8_8_TLDS0_TLDSM1_ULSGRO0_USL1_USLMX0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA0_WSGRB0_WS32_WG8_8_1",
+            "dispatches": 352,
+            "sum_ms": 225.652695
+          }
+        ],
+        "gpu_allocation_peak_mib_from_trace": 12522.986694335938,
+        "gpu_allocations_live_at_end": 0,
+        "unmatched_gpu_frees": 0,
+        "limitations": [
+          "API trace omits return codes and arguments; not a bounds or race sanitizer",
+          "copy trace omits addresses and byte counts; no transfer bandwidth inferred",
+          "profiled diagnostic, not a qualified throughput measurement"
+        ]
+      }
+    }
+  ],
+  "reboot_followups": {
+    "greedy_fallback": {
+      "requested_mode": "external",
+      "actual_mode": "greedy fallback",
+      "startup_error": "draft llama-server could not locate libhipblas.so.3; LD_LIBRARY_PATH missing",
+      "exit_code": 0,
+      "clean": true,
+      "output_identical_to_greedy_control": true,
+      "speculative_validated": false
+    },
+    "direct_transfer": {
+      "exit_code": -9,
+      "termination_reason": "PCI identity lost",
+      "elapsed_seconds": 65.50579740499995,
+      "pci_before": "02105075",
+      "pci_after": "ffffffff",
+      "registration": {
+        "mib": 47628,
+        "ranges": 85,
+        "milliseconds": 52385.2
+      },
+      "output_tokens": 0,
+      "watchdog_kernel_delta_at_stop": [],
+      "later_kernel_messages": [
+        "[  683.467240] snd_hda_intel 0000:0a:00.1: Unable to change power state from D3hot to D0, device inaccessible",
+        "[  683.631100] snd_hda_intel 0000:0a:00.1: CORB reset timeout#2, CORBRP = 65535",
+        "[  686.060274] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=REMOVE_QUEUE",
+        "[  688.673546] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=SUSPEND",
+        "[  691.293456] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=RESET",
+        "[  693.913233] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=RESUME",
+        "[  693.913247] amdgpu 0000:0a:00.0: MES might be in unrecoverable state, issue a GPU reset",
+        "[  693.913271] amdgpu 0000:0a:00.0: GPU reset begin!. Source:  3",
+        "[  693.913278] amdgpu 0000:0a:00.0: device lost from bus!",
+        "[  693.913282] amdgpu 0000:0a:00.0: GPU reset end with ret = -19",
+        "[  696.536123] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=REMOVE_QUEUE",
+        "[  699.160125] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=SUSPEND",
+        "[  701.784453] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=RESET",
+        "[  704.408403] amdgpu 0000:0a:00.0: MES(0) failed to respond to msg=RESUME",
+        "[  704.408419] amdgpu 0000:0a:00.0: MES might be in unrecoverable state, issue a GPU reset",
+        "[  704.408443] amdgpu 0000:0a:00.0: GPU reset begin!. Source:  3",
+        "[  704.408450] amdgpu 0000:0a:00.0: device lost from bus!",
+        "[  704.408454] amdgpu 0000:0a:00.0: GPU reset end with ret = -19"
+      ],
+      "interpretation": "Watchdog detected PCI configuration loss; audio/MES/reset errors appeared in subsequently captured logs. No-direct controls completed earlier on this boot, but a previous boot also failed with direct registration disabled; not proof of a direct-registration cause."
+    },
+    "external_retry": {
+      "status": "not run: GPU testing stopped after direct-transfer failure",
+      "loader_fix": "explicit /opt/rocm/lib LD_LIBRARY_PATH prepared"
+    },
+    "stopping_policy": "No test-created services or GPU workloads remain; no further GPU launches or reset attempted on this failed boot."
+  },
+  "host_registration_isolation": {
+    "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+    "iommu": "disabled (amd_iommu=off)",
+    "records": [
+      {
+        "name": "register-1-flags0",
+        "gib": 1,
+        "mode": "register",
+        "flags": 0,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 1.0203918509999994,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "register-1-flags8",
+        "gib": 1,
+        "mode": "register",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 1.0205585530000008,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "register-8-flags8",
+        "gib": 8,
+        "mode": "register",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 4.565714120999928,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "register-16-flags8",
+        "gib": 16,
+        "mode": "register",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 8.616322988999968,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "register-32-flags8",
+        "gib": 32,
+        "mode": "register",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 16.212422360000005,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "register-48-flags8",
+        "gib": 48,
+        "mode": "register",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 24.31376972599992,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "copy-48-flags8",
+        "gib": 48,
+        "mode": "copy",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 32.41550378299996,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "overlap-48-flags8",
+        "gib": 48,
+        "mode": "overlap",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 31.919413601999963,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "register-48-flags0",
+        "gib": 48,
+        "mode": "register",
+        "flags": 0,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 24.823708936000003,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "copy-48-flags0",
+        "gib": 48,
+        "mode": "copy",
+        "flags": 0,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "06621446aa87aedef65784ffe48a7627f318a323e8533bf8ec8061c6f0786e06",
+        "executable_sha256": "34119cc967c974f0b6c9e955030d988f1a05a69dbf371a14c2052bb856466307",
+        "application_kernels": 0,
+        "exit_code": 0,
+        "seconds": 32.925547325000025,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "registration-20261011-155730"
+      },
+      {
+        "name": "register-1-flags0",
+        "gib": 1,
+        "mode": "register",
+        "flags": 0,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "81f038d4b877012a8a5ab6c8a3262db3380e92872b77e529280f2ef324766ac9",
+        "executable_sha256": "4d225383c36f2dc5fa7b591bd99d98c058d782d33c48832b9651f0745180888a",
+        "application_kernels": 0,
+        "resident_mib": 0,
+        "exit_code": 0,
+        "seconds": 1.0206324180001047,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "pressure-20261011-160210"
+      },
+      {
+        "name": "register-1-flags8",
+        "gib": 1,
+        "mode": "register",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "81f038d4b877012a8a5ab6c8a3262db3380e92872b77e529280f2ef324766ac9",
+        "executable_sha256": "4d225383c36f2dc5fa7b591bd99d98c058d782d33c48832b9651f0745180888a",
+        "application_kernels": 0,
+        "resident_mib": 0,
+        "exit_code": 0,
+        "seconds": 1.0196400660001927,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "pressure-20261011-160210"
+      },
+      {
+        "name": "register-48-flags8",
+        "gib": 48,
+        "mode": "register",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "81f038d4b877012a8a5ab6c8a3262db3380e92872b77e529280f2ef324766ac9",
+        "executable_sha256": "4d225383c36f2dc5fa7b591bd99d98c058d782d33c48832b9651f0745180888a",
+        "application_kernels": 0,
+        "resident_mib": 7168,
+        "exit_code": 0,
+        "seconds": 25.839176712999915,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "pressure-20261011-160210"
+      },
+      {
+        "name": "overlap-48-flags8",
+        "gib": 48,
+        "mode": "overlap",
+        "flags": 8,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "81f038d4b877012a8a5ab6c8a3262db3380e92872b77e529280f2ef324766ac9",
+        "executable_sha256": "4d225383c36f2dc5fa7b591bd99d98c058d782d33c48832b9651f0745180888a",
+        "application_kernels": 0,
+        "resident_mib": 7168,
+        "exit_code": 0,
+        "seconds": 30.90250727900002,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "pressure-20261011-160210"
+      },
+      {
+        "name": "overlap-48-flags0",
+        "gib": 48,
+        "mode": "overlap",
+        "flags": 0,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "81f038d4b877012a8a5ab6c8a3262db3380e92872b77e529280f2ef324766ac9",
+        "executable_sha256": "4d225383c36f2dc5fa7b591bd99d98c058d782d33c48832b9651f0745180888a",
+        "application_kernels": 0,
+        "resident_mib": 7168,
+        "exit_code": 0,
+        "seconds": 31.41509672999996,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "pressure-20261011-160210"
+      },
+      {
+        "name": "register-48-flags8",
+        "approximate_gib": 46.5,
+        "mode": "register",
+        "flags": 8,
+        "file_backed": true,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "6d8e48150ea86431f9087d2a3662545af09cbdbb8d19a21c38ac5127ae0b7f0c",
+        "executable_sha256": "5dc7dcd145afd1501946cb1b57575a76f4c003ad6b97076863b39b8b0e473b35",
+        "application_kernels": 0,
+        "resident_mib": 7168,
+        "exit_code": 0,
+        "seconds": 47.61402398699988,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "file-registration-20261011-160811"
+      },
+      {
+        "name": "overlap-48-flags8",
+        "approximate_gib": 46.5,
+        "mode": "overlap",
+        "flags": 8,
+        "file_backed": true,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "6d8e48150ea86431f9087d2a3662545af09cbdbb8d19a21c38ac5127ae0b7f0c",
+        "executable_sha256": "5dc7dcd145afd1501946cb1b57575a76f4c003ad6b97076863b39b8b0e473b35",
+        "application_kernels": 0,
+        "resident_mib": 7168,
+        "exit_code": 0,
+        "seconds": 53.19010859800005,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "file-registration-20261011-160811"
+      },
+      {
+        "name": "overlap-48-flags0",
+        "approximate_gib": 46.5,
+        "mode": "overlap",
+        "flags": 0,
+        "file_backed": true,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "6d8e48150ea86431f9087d2a3662545af09cbdbb8d19a21c38ac5127ae0b7f0c",
+        "executable_sha256": "5dc7dcd145afd1501946cb1b57575a76f4c003ad6b97076863b39b8b0e473b35",
+        "application_kernels": 0,
+        "resident_mib": 7168,
+        "exit_code": 0,
+        "seconds": 58.75834728399991,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 application_kernels=0",
+        "passed": true,
+        "suite": "file-registration-20261011-160811"
+      },
+      {
+        "name": "mixed-48-flags8",
+        "approximate_gib": 46.5,
+        "mode": "mixed",
+        "flags": 8,
+        "file_backed": true,
+        "boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+        "pci_before": "02105075",
+        "source_sha256": "0e983d3a36aec64b788c3c4c65c0cd1150dc27edbf6145e48a558ab911a151b0",
+        "executable_sha256": "83d9769827e387b95efc39ba191ca8b66af472ca7f2cea869d1cf08e17ae2c81",
+        "custom_kernels": 0,
+        "library_compute": true,
+        "resident_mib": 7168,
+        "exit_code": 0,
+        "seconds": 58.756056959000034,
+        "reason": null,
+        "faults": [],
+        "pci_after": "02105075",
+        "last_phase": "RESULT passed=1 custom_kernels=0",
+        "passed": true,
+        "suite": "mixed-20261011-161944"
+      }
+    ],
+    "exact_model_geometry": {
+      "bytes": 49941925888,
+      "ranges": 85,
+      "largest_registration_bytes": 16647196672
+    },
+    "checks": "Transfers compared every byte; mixed library BF16 GEMM validated all outputs and surrounding guards. 7 GiB GPU residency in pressure/file/mixed tests.",
+    "mixed_result": {
+      "baseline_gemms": 3,
+      "concurrent_gemms": 3463,
+      "expected_output": 1.0,
+      "guards": "unchanged",
+      "copy_bytes_each_direction": 49941925888
+    },
+    "flag_caveat": "Local HIP reports hostRegisterReadOnlySupported=0; flag 8 aliases the coarse-grained flag in headers. Both flags 0 and 8 were accepted and coherency queries returned fine-grained. No demonstrated flag-related fault.",
+    "initial_probe": "First probe stopped before registration on unsupported read-only property; no GPU fault.",
+    "interpretation": "All 19 isolation cases passed without PCI loss or logged faults. No generic 16 GiB registration limit reproduced; full-model failure remains unresolved. These checks do not establish safety of engine kernels."
+  },
+  "full_model_live_logging_reboot": {
+    "status": "interrupted by reboot; no completed result",
+    "previous_boot_id": "521cdd59-b96e-49aa-81ca-5445d2cdb2b2",
+    "current_boot_id": "9c4f34ec-9480-408b-9153-a750014ab379",
+    "registration": "85 ranges / 47628 MiB / 55166.8 ms; completed",
+    "phase": "asynchronous prefill; no output tokens recorded",
+    "last_api": "hipEventSynchronize(ready event); no return recorded",
+    "last_copy_bytes": 132136960,
+    "last_kernel": "inferred from executable symbols: mul_mat_q<GGML_TYPE_Q2_K,80,false>; grid 32x3x16; block 32x8x1; dynamic shared bytes 63808",
+    "symbol_resolution": "ASLR base inferred by matching MMQ quantizer, SwiGLU and GEMM symbol offsets; no saved process maps",
+    "last_operations_do_not_prove_faulting_kernel": true,
+    "kernel_journal": "No terminal GPU fault or panic persisted; current boot reports unclean journal shutdown",
+    "live_log_sha256": "891cddba4b7120026079e9f9191e46ff251432de05b63c811a64081f48751598",
+    "pci_current": {
+      "00:03.1": "inaccessible",
+      "08:00.0": "22108a14",
+      "09:00.0": "22108514",
+      "0a:00.0": "inaccessible",
+      "0a:00.1": "inaccessible"
+    },
+    "result_summary_original": "original summary.json is empty; preserved unchanged",
+    "event_review": "Uploaded pinned buffers wait for previous copy before CPU reuse; copy stream waits for previous compute before device reuse; compute stream waits for ready. No missing wait established by inspected source/log.",
+    "current_boot_enumeration": "RX 9070 XT, GPU audio, on-card bridges and host 00:03.1 bridge absent from lspci; no amdgpu initialization in current boot kernel journal",
+    "pci_current_caveat": "Old BDF addresses are not stable across boots: 08:00.0 and 09:00.0 now refer to other AMD functions. Their bytes are not GPU branch identities.",
+    "gpu_testing": "blocked: GPU absent after reboot"
+  }
+}

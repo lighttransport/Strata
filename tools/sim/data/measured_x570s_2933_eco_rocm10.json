@@ -1,0 +1,475 @@
+{
+  "status": "Unfitted ROCm 10.1 / X570S / ECO / DDR4-2933 observations; inherited simulator kernel terms need fresh calibration.",
+  "provenance": "docs/benchmarks/glm_rocm10_eco_gpu_20261011.json",
+  "provenance_sha256": "4efad4546d4741f21ba286eee3123a70dc8624ad5266a1f36e8485009b0577bf",
+  "software": {
+    "rocm": "10.1.0",
+    "hip": "7.16.26385",
+    "amdgpu": "7.1.9.31600000"
+  },
+  "gpu_microbenchmarks": {
+    "quantity_warning": "Effective read+write copy bandwidth is not a dense GEMV or routed-expert rate. FP32 SGEMM is not FP16/INT8 tensor throughput.",
+    "initial": [
+      {
+        "backend": "hip",
+        "device": 0,
+        "name": "AMD Radeon RX 9070 XT",
+        "buffer_bytes": 268435456,
+        "gemm_n": 2048,
+        "free_vram_bytes": 17024679936
+      },
+      {
+        "kernel": "pcie_pinned_h2d",
+        "unit": "GB/s",
+        "median": 28.3107,
+        "best": 28.3171,
+        "worst": 27.9926,
+        "median_ms": 9.48177,
+        "repeats": 7,
+        "operations_per_repeat": 4
+      },
+      {
+        "kernel": "pcie_pinned_d2h",
+        "unit": "GB/s",
+        "median": 28.0826,
+        "best": 28.0879,
+        "worst": 27.9318,
+        "median_ms": 9.55877,
+        "repeats": 7,
+        "operations_per_repeat": 4
+      },
+      {
+        "kernel": "gpu_stream_copy",
+        "unit": "GB/s",
+        "median": 472.625,
+        "best": 474.824,
+        "worst": 471.898,
+        "median_ms": 1.13593,
+        "repeats": 7,
+        "operations_per_repeat": 4
+      },
+      {
+        "transfer_and_copy_verified": true
+      },
+      {
+        "kernel": "gpu_sgemm_fp32",
+        "unit": "GFLOP/s",
+        "median": 7868.99,
+        "best": 7964.8,
+        "worst": 7731.69,
+        "median_ms": 2.18324,
+        "repeats": 7,
+        "operations_per_repeat": 4
+      },
+      {
+        "gemm_verified": true,
+        "passed": true
+      }
+    ],
+    "repeats": [
+      [
+        {
+          "backend": "hip",
+          "device": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "buffer_bytes": 268435456,
+          "gemm_n": 2048,
+          "free_vram_bytes": 17024679936
+        },
+        {
+          "kernel": "pcie_pinned_h2d",
+          "unit": "GB/s",
+          "median": 28.3169,
+          "best": 28.3179,
+          "worst": 28.3148,
+          "median_ms": 9.47967,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "pcie_pinned_d2h",
+          "unit": "GB/s",
+          "median": 28.0858,
+          "best": 28.0933,
+          "worst": 28.0819,
+          "median_ms": 9.55771,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "gpu_stream_copy",
+          "unit": "GB/s",
+          "median": 475.994,
+          "best": 476.332,
+          "worst": 474.954,
+          "median_ms": 1.12789,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "transfer_and_copy_verified": true
+        },
+        {
+          "kernel": "gpu_sgemm_fp32",
+          "unit": "GFLOP/s",
+          "median": 13686.9,
+          "best": 16096.5,
+          "worst": 13186.7,
+          "median_ms": 1.25521,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "gemm_verified": true,
+          "passed": true
+        }
+      ],
+      [
+        {
+          "backend": "hip",
+          "device": 0,
+          "name": "AMD Radeon RX 9070 XT",
+          "buffer_bytes": 268435456,
+          "gemm_n": 2048,
+          "free_vram_bytes": 17024679936
+        },
+        {
+          "kernel": "pcie_pinned_h2d",
+          "unit": "GB/s",
+          "median": 28.317,
+          "best": 28.3175,
+          "worst": 28.316,
+          "median_ms": 9.47964,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "pcie_pinned_d2h",
+          "unit": "GB/s",
+          "median": 28.0842,
+          "best": 28.0955,
+          "worst": 28.0828,
+          "median_ms": 9.55823,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "kernel": "gpu_stream_copy",
+          "unit": "GB/s",
+          "median": 475.821,
+          "best": 476.996,
+          "worst": 475.084,
+          "median_ms": 1.1283,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "transfer_and_copy_verified": true
+        },
+        {
+          "kernel": "gpu_sgemm_fp32",
+          "unit": "GFLOP/s",
+          "median": 13717.5,
+          "best": 16349,
+          "worst": 13441.6,
+          "median_ms": 1.25241,
+          "repeats": 7,
+          "operations_per_repeat": 4
+        },
+        {
+          "gemm_verified": true,
+          "passed": true
+        }
+      ]
+    ],
+    "initial_low_gemm_reproduced": false
+  },
+  "findings": {
+    "gpu_tests_passed": 8,
+    "gpu_faults": [],
+    "sequential_verification": true,
+    "draft_ms": 1324.21,
+    "verification_ms": 3751.23,
+    "proposal_calls": 48,
+    "proposed": 96,
+    "accepted": 79,
+    "acceptance_positions": [
+      {
+        "proposed": 48,
+        "opportunities": 48,
+        "accepted": 42
+      },
+      {
+        "proposed": 48,
+        "opportunities": 42,
+        "accepted": 37
+      }
+    ],
+    "cross_version_first_different_token": 32,
+    "stability_certified": false
+  },
+  "inherited_unmeasured_fields": [
+    "cpu.ghz",
+    "gpu.bandwidth_gbps",
+    "gpu.tflops",
+    "gpu.gemv_efficiency",
+    "gpu.tier_gbps",
+    "gpu.launch_us",
+    "pcie.latency_us",
+    "disk.fetch_gbps",
+    "runtime_vram"
+  ],
+  "records": [
+    {
+      "name": "rocm10-greedy-decode",
+      "hw": "tools/sim/data/hw_x570s_2933_eco_rocm10.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "mtp_depth": 2,
+        "decode_cache_mib": 7087.5,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 4096,
+        "prefill_backend": "mmq",
+        "prefill_experts": "gpu",
+        "pipeline": true,
+        "decode_graphs": false,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "speculation": "none"
+      },
+      "kind": "decode",
+      "measured": {
+        "tok_s": 33.7577,
+        "trials": 1
+      },
+      "fit": false,
+      "quiet": true,
+      "tolerance": 0.15,
+      "provenance": "docs/benchmarks/glm_rocm10_eco_gpu_20261011.json",
+      "scope": "single prompt, same-environment exact-output pair; uncalibrated cross-environment prediction",
+      "diagnostic": {
+        "executable_sha256": "807d57b877e18a4f72d9fed639b93f50cc7af38615b435a72608b067ba2fde82",
+        "output_sha256": "91369f8f4cef04ffd87d1c5d6cb602ce25165e2b4541dda8de90c4f74f6c1505",
+        "same_environment_outputs_equal": true,
+        "old_rocm_control_outputs_equal": false,
+        "quality_evaluated": false,
+        "cache_slots": 900
+      }
+    },
+    {
+      "name": "rocm10-greedy-prefill",
+      "hw": "tools/sim/data/hw_x570s_2933_eco_rocm10.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "mtp_depth": 2,
+        "decode_cache_mib": 7087.5,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 4096,
+        "prefill_backend": "mmq",
+        "prefill_experts": "gpu",
+        "pipeline": true,
+        "decode_graphs": false,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "speculation": "none"
+      },
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 32.7516,
+        "trials": 1
+      },
+      "fit": false,
+      "quiet": true,
+      "tolerance": 0.15,
+      "provenance": "docs/benchmarks/glm_rocm10_eco_gpu_20261011.json",
+      "scope": "single prompt, same-environment exact-output pair; uncalibrated cross-environment prediction",
+      "diagnostic": {
+        "executable_sha256": "807d57b877e18a4f72d9fed639b93f50cc7af38615b435a72608b067ba2fde82",
+        "output_sha256": "91369f8f4cef04ffd87d1c5d6cb602ce25165e2b4541dda8de90c4f74f6c1505",
+        "same_environment_outputs_equal": true,
+        "old_rocm_control_outputs_equal": false,
+        "quality_evaluated": false,
+        "cache_slots": 900
+      }
+    },
+    {
+      "name": "rocm10-external-decode",
+      "hw": "tools/sim/data/hw_x570s_2933_eco_rocm10.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "mtp_depth": 2,
+        "decode_cache_mib": 7087.5,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 4096,
+        "prefill_backend": "mmq",
+        "prefill_experts": "gpu",
+        "pipeline": true,
+        "decode_graphs": false,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "speculation": "external",
+        "external_sequential": true,
+        "external_draft_ms": 27.587708333333335,
+        "external_draft_mib": 744.727,
+        "acceptance_probabilities": [
+          0.875,
+          0.8809523809523809
+        ],
+        "proposal_probability": 1.0
+      },
+      "kind": "decode",
+      "measured": {
+        "tok_s": 24.8699,
+        "trials": 1
+      },
+      "fit": false,
+      "quiet": true,
+      "tolerance": 0.15,
+      "provenance": "docs/benchmarks/glm_rocm10_eco_gpu_20261011.json",
+      "scope": "single prompt, same-environment exact-output pair; uncalibrated cross-environment prediction",
+      "diagnostic": {
+        "executable_sha256": "807d57b877e18a4f72d9fed639b93f50cc7af38615b435a72608b067ba2fde82",
+        "output_sha256": "91369f8f4cef04ffd87d1c5d6cb602ce25165e2b4541dda8de90c4f74f6c1505",
+        "same_environment_outputs_equal": true,
+        "old_rocm_control_outputs_equal": false,
+        "quality_evaluated": false,
+        "cache_slots": 900
+      }
+    },
+    {
+      "name": "rocm10-external-prefill",
+      "hw": "tools/sim/data/hw_x570s_2933_eco_rocm10.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "mtp_depth": 2,
+        "decode_cache_mib": 7087.5,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "prefetch_groups": 0,
+        "tier_owned_reserve": true,
+        "prefill_scratch_mib": 4096,
+        "prefill_backend": "mmq",
+        "prefill_experts": "gpu",
+        "pipeline": true,
+        "decode_graphs": false,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "speculation": "external",
+        "external_sequential": true,
+        "external_draft_ms": 27.587708333333335,
+        "external_draft_mib": 744.727,
+        "acceptance_probabilities": [
+          0.875,
+          0.8809523809523809
+        ],
+        "proposal_probability": 1.0
+      },
+      "kind": "prefill",
+      "measured": {
+        "tok_s": 32.6591,
+        "trials": 1
+      },
+      "fit": false,
+      "quiet": true,
+      "tolerance": 0.15,
+      "provenance": "docs/benchmarks/glm_rocm10_eco_gpu_20261011.json",
+      "scope": "single prompt, same-environment exact-output pair; uncalibrated cross-environment prediction",
+      "diagnostic": {
+        "executable_sha256": "807d57b877e18a4f72d9fed639b93f50cc7af38615b435a72608b067ba2fde82",
+        "output_sha256": "91369f8f4cef04ffd87d1c5d6cb602ce25165e2b4541dda8de90c4f74f6c1505",
+        "same_environment_outputs_equal": true,
+        "old_rocm_control_outputs_equal": false,
+        "quality_evaluated": false,
+        "cache_slots": 900
+      }
+    }
+  ],
+  "inherited_params_validation": {
+    "params": "tools/sim/data/params_b550.json",
+    "records": [
+      {
+        "name": "rocm10-greedy-decode",
+        "kind": "decode",
+        "predicted": 23.673133530610766,
+        "measured": 33.7577,
+        "error": -0.29873381389695486,
+        "within": false
+      },
+      {
+        "name": "rocm10-greedy-prefill",
+        "kind": "prefill",
+        "predicted": 244.99936481787284,
+        "measured": 32.7516,
+        "error": 6.48053117459522,
+        "within": false
+      },
+      {
+        "name": "rocm10-external-decode",
+        "kind": "decode",
+        "predicted": 18.986562243781655,
+        "measured": 24.8699,
+        "error": -0.23656459238751848,
+        "within": false
+      },
+      {
+        "name": "rocm10-external-prefill",
+        "kind": "prefill",
+        "predicted": 244.99936481787284,
+        "measured": 32.6591,
+        "error": 6.501718198538013,
+        "within": false
+      }
+    ],
+    "qualified": false,
+    "note": "These misses are retained; no refit or tolerance widening from the single-prompt pair."
+  }
+}

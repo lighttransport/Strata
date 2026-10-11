@@ -1,0 +1,15 @@
+{
+  "cuda_parities_passed": true,
+  "hip_build_passed": true,
+  "route_oracles_passed": true,
+  "default_off": true,
+  "model_controls_passed": false,
+  "quality_qualified": false,
+  "time": 1791596461.6555474,
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-cuda/strata-glm-decode": "a6e3a356c8b046cda1c9b95d9cbd705689305ec6dec53bff6925af02b89aa90e",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-hip/strata-glm-decode": "6bc710edbff7dc4c2c60470d465d8a3e61d6fb6346849ff27dda81b5a3e23cdc",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune.patch": "675f95aaa3b1e50e9788271ff28b07b79af47e7d37af6ac651d2c0ab280ee099",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/cold-prune-routing-oracles.log": "83e273b328d7ac27237e035ae8148e6a4ea45e93f2eac16c9da895506d304ecc"
+  }
+}

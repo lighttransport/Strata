@@ -1,0 +1,342 @@
+{
+  "date_local": "2026-10-12",
+  "timezone": "Asia/Tokyo",
+  "base_commit": "88906f0b",
+  "hardware": {
+    "board": "X570S AERO G",
+    "cpu": "Ryzen 9 3950X",
+    "cpu_eco_enabled": true,
+    "ram_gib": 64,
+    "ram_mt_s": 2666,
+    "settings_source": "user confirmed",
+    "gpu": "RX 9070 XT 16 GB",
+    "host_pcie_gen": 4,
+    "host_pcie_lanes": 16,
+    "boot_id": "6f77091d-c941-403d-8914-f74fcf310e3b"
+  },
+  "software": {
+    "kernel": "7.0.0-38-generic",
+    "rocm": "10.1.0",
+    "hip": "7.16.26385",
+    "vulkan_driver": "Mesa RADV 25.2.8",
+    "vulkan_physical_api": "1.4.318",
+    "glslc": "2023.8",
+    "spirv_headers": "1.4.309",
+    "ggml_commit": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+    "vulkan_runtime_dependencies_include_rocm": false,
+    "ggml_integer_dot_shader_enabled": false,
+    "vulkan_fp16_operand_conversion": false,
+    "vulkan_cooperative_matrix_enabled": false
+  },
+  "protocol": {
+    "model": "GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "prompt_tokens": 32,
+    "generate_tokens_per_trial": 64,
+    "timed_decode_steps_per_trial": 63,
+    "trials": 3,
+    "untimed_prefill_warmup": true,
+    "engine_trace": false,
+    "prefill_batch": 1,
+    "cpu_workers": 12,
+    "gpu_expert_cache_slots": 0,
+    "canonical_cpu_experts": true,
+    "ram_limit_gib": 60,
+    "swap_limit_bytes": 0,
+    "gpu_budget_mib": 15360,
+    "physical_gpu_used_limit_mib": 15792,
+    "first_response_includes_cold_expert_page_misses": true,
+    "note": "One prompt screen; medians include the cold first decode trial. Timed trials two and three are also retained."
+  },
+  "matched_hip": {
+    "name": "hip-warm32",
+    "clean": true,
+    "prefill_tok_s": 8.64136,
+    "decode_tok_s": 8.53443,
+    "prefill_trials": [
+      {
+        "trial": 0,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 3703.12,
+        "tokens_per_second": 8.64136
+      },
+      {
+        "trial": 1,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 3701.69,
+        "tokens_per_second": 8.6447
+      },
+      {
+        "trial": 2,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 3704.6,
+        "tokens_per_second": 8.6379
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 20865.9,
+        "tokens_per_second": 3.01929
+      },
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 7379.01,
+        "tokens_per_second": 8.53773
+      },
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 7381.86,
+        "tokens_per_second": 8.53443
+      }
+    ],
+    "output_sha256": "081707e7b6d6c8262f02fc506295a46f6379d5b557c5e629c7b139f3b865c167",
+    "peak_sampled_global_vram_mib": 6723,
+    "peak_sampled_ram_bytes": 44847271936,
+    "executable_sha256": "72e0c84e0edc1be7cd31d8fef21c6f6bbbd890504e141273390629ba2a4e1009",
+    "config_sha256": "28ae5bfbeae12b983342da200e3f410673c9dd28df0a4ceb1e997448affd9427",
+    "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+    "source_sha256": {
+      "src/program/glm_decode.cpp": "890a4307d1232fde6cb519220c24a92bc58f6c81f3a93efdf95c22e90ba24bea",
+      "tools/glm_guarded_run.py": "6e7e168d1b3c11600ce68002578ed0503128e19d4d9b80551d1da2d0532e71da",
+      "tools/glm_low_memory_bench.py": "5e16174966c528be53ab69480b6dc506446ca5ecda318ab1619172315faea304"
+    },
+    "hardware_faults": []
+  },
+  "corrected_vulkan": {
+    "name": "vulkan-warm32-affine-staging",
+    "clean": true,
+    "prefill_tok_s": 3.78383,
+    "decode_tok_s": 3.7393,
+    "prefill_trials": [
+      {
+        "trial": 0,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 8354.57,
+        "tokens_per_second": 3.83024
+      },
+      {
+        "trial": 1,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 8457.04,
+        "tokens_per_second": 3.78383
+      },
+      {
+        "trial": 2,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 8519.65,
+        "tokens_per_second": 3.75602
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 30338.4,
+        "tokens_per_second": 2.07658
+      },
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 16848.1,
+        "tokens_per_second": 3.7393
+      },
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 16760.1,
+        "tokens_per_second": 3.75893
+      }
+    ],
+    "output_sha256": "081707e7b6d6c8262f02fc506295a46f6379d5b557c5e629c7b139f3b865c167",
+    "peak_sampled_global_vram_mib": 5487,
+    "peak_sampled_ram_bytes": 44335943680,
+    "executable_sha256": "7aa8430c84e6047ee8e6dea2b45e00468bfe0df35fc3e9d80f1a4ae128422145",
+    "config_sha256": "b81d487cdd84832f7a092086dca127080fd45f3f232e39f052ec84d68499efba",
+    "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+    "source_sha256": {
+      "src/program/glm_decode.cpp": "890a4307d1232fde6cb519220c24a92bc58f6c81f3a93efdf95c22e90ba24bea",
+      "tools/glm_guarded_run.py": "6e7e168d1b3c11600ce68002578ed0503128e19d4d9b80551d1da2d0532e71da",
+      "tools/glm_low_memory_bench.py": "5e16174966c528be53ab69480b6dc506446ca5ecda318ab1619172315faea304",
+      "CMakeLists.txt": "6d1d1d33af4cccc05f1dcde809aaecebd2cbd5af00b1e10afaba7edd39708b5a",
+      "vulkan/CMakeLists.txt": "23c99f4fc366ac7510246c4efbdf48558925ccae1b52716a8b992152865ccae2",
+      "vulkan/decode.cpp": "61e05a6aa085f919f7eea928862e0ef8013d4ad38b13438e8ce2f7a148a5a938",
+      "vulkan/embed_spirv.cmake": "c23d7580f0394bf68c5fc088e8ef3acf966308f6f3bb67ef75763d36b124edf4",
+      "vulkan/parity.cpp": "5127accf457620daeab6da89cb50f8c0af395e26c3a55fada9ce297872979786",
+      "vulkan/projections.cpp": "0b8ffac1dc26499207d032ad5e0e722eb5902142ccc71e6dd3c6f3257cc17391",
+      "vulkan/projections.hpp": "e25b527ef881b0ac7a76bd0dd4ff4b7f39115682296594dfc69f9404944e7e4f",
+      "vulkan/runtime.cpp": "802ef5c8991593d3a9da6710fb0db121de3d57fcd1f73122e860ca2989d3593e",
+      "vulkan/runtime.hpp": "e415747326b2c6c3ad91bb01b667dc727a345b5d13175a266fc3c2485e93a3c3",
+      "vulkan/shaders/kda.comp": "c84be56fcfee8904ea97b223ed574a494861807915207ae1e6d374085dfb82a3",
+      "vulkan/shaders/mhc.comp": "b0a9acca97c1182c121eddf77c74e0e174735c4e5e585c58a11d010e907eb057",
+      "vulkan/shaders/mla.comp": "1eebe247237dd8e57dd72c9cfff53494d7e9364bb997b3a8051c7586fde5806f"
+    },
+    "hardware_faults": []
+  },
+  "initial_vulkan": {
+    "name": "vulkan-warm32",
+    "clean": true,
+    "prefill_tok_s": 1.5317,
+    "decode_tok_s": 1.52673,
+    "prefill_trials": [
+      {
+        "trial": 0,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 20928.2,
+        "tokens_per_second": 1.52904
+      },
+      {
+        "trial": 1,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 20889.4,
+        "tokens_per_second": 1.53188
+      },
+      {
+        "trial": 2,
+        "tokens": 32,
+        "batch": 1,
+        "milliseconds": 20891.9,
+        "tokens_per_second": 1.5317
+      }
+    ],
+    "decode_trials": [
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 54437.6,
+        "tokens_per_second": 1.15729
+      },
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 41204.8,
+        "tokens_per_second": 1.52895
+      },
+      {
+        "kind": "single",
+        "tokens": 63,
+        "milliseconds": 41264.7,
+        "tokens_per_second": 1.52673
+      }
+    ],
+    "output_sha256": "081707e7b6d6c8262f02fc506295a46f6379d5b557c5e629c7b139f3b865c167",
+    "peak_sampled_global_vram_mib": 5488,
+    "peak_sampled_ram_bytes": 44030488576,
+    "executable_sha256": "a9d24254b4c47e77a7bd4529689a5ce4f6c0d25514b70b26945a7389f621cd9e",
+    "config_sha256": "b81d487cdd84832f7a092086dca127080fd45f3f232e39f052ec84d68499efba",
+    "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+    "source_sha256": {
+      "src/program/glm_decode.cpp": "890a4307d1232fde6cb519220c24a92bc58f6c81f3a93efdf95c22e90ba24bea",
+      "tools/glm_guarded_run.py": "6e7e168d1b3c11600ce68002578ed0503128e19d4d9b80551d1da2d0532e71da",
+      "tools/glm_low_memory_bench.py": "5e16174966c528be53ab69480b6dc506446ca5ecda318ab1619172315faea304",
+      "CMakeLists.txt": "6d1d1d33af4cccc05f1dcde809aaecebd2cbd5af00b1e10afaba7edd39708b5a",
+      "vulkan/CMakeLists.txt": "23c99f4fc366ac7510246c4efbdf48558925ccae1b52716a8b992152865ccae2",
+      "vulkan/decode.cpp": "e4194a9a45b977423b65d505953bd6f1ca1560293a5d849ee1636ba2e60e8a2a",
+      "vulkan/embed_spirv.cmake": "c23d7580f0394bf68c5fc088e8ef3acf966308f6f3bb67ef75763d36b124edf4",
+      "vulkan/parity.cpp": "1e37276930dddfe34c8cbdb79eaf886b60787eb8a6460f4ee05d292f5b5fa5d4",
+      "vulkan/projections.cpp": "7399f05ea8541ecc7f208c58b228d6e6bdd4f2ee15b0f93265619207ca70cc55",
+      "vulkan/projections.hpp": "9ce2f74c91a33bc5659dc2987e21fed165af1bd00d6b7a2c7c0eaa9522c6ffb4",
+      "vulkan/runtime.cpp": "163f46c57e90764935bb05120efc93eafefff17c4d9720aa34099f00cb7b5c86",
+      "vulkan/runtime.hpp": "38a6ee128f70f59b96e4baba7ce98d1b1fd06931391fd81f39b143dc85060bca",
+      "vulkan/shaders/kda.comp": "c84be56fcfee8904ea97b223ed574a494861807915207ae1e6d374085dfb82a3",
+      "vulkan/shaders/mhc.comp": "b0a9acca97c1182c121eddf77c74e0e174735c4e5e585c58a11d010e907eb057",
+      "vulkan/shaders/mla.comp": "1eebe247237dd8e57dd72c9cfff53494d7e9364bb997b3a8051c7586fde5806f"
+    },
+    "hardware_faults": []
+  },
+  "comparison": {
+    "prefill_relative_l2": 0.1858385089568334,
+    "prefill_kl_hip_to_vulkan": 0.062438374807329555,
+    "generated_ids_equal": true,
+    "decode_efficiency_ratio": 0.43814291054001264
+  },
+  "vulkan_staging_and_affine_gain": 2.4492215388444585,
+  "sampled_vram_saving_mib": 1236,
+  "short_coding_oracle": {
+    "fixture": "prime",
+    "prompt_tokens": 53,
+    "arms": [
+      {
+        "backend": "hip",
+        "passed": true,
+        "oracle_cases": 400538,
+        "generated_tokens": 129
+      },
+      {
+        "backend": "vulkan",
+        "passed": true,
+        "oracle_cases": 400538,
+        "generated_tokens": 138
+      }
+    ],
+    "timing_qualified": false,
+    "note": "Traced cold correctness runs; compiled independent overflow/boundary oracle. This does not qualify held-out coding quality."
+  },
+  "numerical_checks": {
+    "initial_smoke": {
+      "prefill_relative_l2": 0.14952832547446707,
+      "prefill_max_abs": 1.622215449810028,
+      "prefill_kl_hip_to_vulkan": 0.05651727670253812,
+      "generated_ids_equal": true,
+      "prompt_tokens": 8,
+      "generated_tokens": 8,
+      "diagnostic_timing_only": true
+    },
+    "q8_activation_smoke": {
+      "prefill_relative_l2": 0.12206504065090065,
+      "prefill_max_abs": 1.4040899276733398,
+      "prefill_kl_hip_to_vulkan": 0.04887274052672641,
+      "generated_ids_equal": true
+    },
+    "corrected_smoke": {
+      "prefill_relative_l2": 0.11382182969894619,
+      "prefill_max_abs": 1.4058940410614014,
+      "prefill_kl_hip_to_vulkan": 0.04104432384600272,
+      "generated_ids_equal": true
+    },
+    "full_distribution_gate_passed": false,
+    "kl_limit": 0.01,
+    "cause_of_remaining_full_model_difference": "unresolved",
+    "full_heldout_coding_and_perplexity_tested": false
+  },
+  "final_validation": {
+    "vulkan_build": true,
+    "hip_build": true,
+    "cuda_compile_only": true,
+    "cuda_execution": false,
+    "sycl_build": false,
+    "sycl_skip_reason": "icpx unavailable; mixed-backend configuration rejection checked",
+    "python_tests_passed": 32,
+    "final_full_model_trace_passed": true,
+    "kernel_parity_relative_l2_limit": 2e-05,
+    "bounds_checks_and_cached_projection_repeatability_passed": true,
+    "fallback_to_coherent_system_memory_on_visible_vram_exhaustion_exercised": false,
+    "exact_final_binary_parity_passed": true,
+    "final_executable_sha256": "2efb586671273a1a8118a4c2c0f165a9081db593a6f89e70c2108a3b29488e21"
+  },
+  "campaign": {
+    "guarded_model_runs": 14,
+    "guarded_passed": 12,
+    "parity_runs": 11,
+    "parity_passed": 6,
+    "recorded_faults": 0,
+    "raw_directory": "tmp/glm-vulkan-20261012"
+  },
+  "limits": [
+    "Standalone experimental CLI; not selected by setup or API server.",
+    "Sequential prefill and CPU experts; no resident expert tier, speculation or multi-GPU.",
+    "Only RX 9070 XT tested; no older/non-ROCm AMD hardware available.",
+    "Short greedy outputs match the control, but full distributions do not meet the numerical gate.",
+    "The shader compiler and strict precision path limit performance; this is not Vulkan maximum throughput."
+  ]
+}

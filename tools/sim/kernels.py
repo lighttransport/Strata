@@ -13,6 +13,7 @@ class Params:
     cpu_width_penalty: float = 0.04    # bandwidth lost per extra token of width (multi-token kernel overhead)
     cpu_layer_overhead_ms: float = 0.12  # pool phase barriers, quantization, job build per MoE layer
     cpu_quant_scale: float = 1.0       # scales the per-core quantized-dot throughput
+    expert_split_imbalance: float = 0.35  # multinode expert-index split: expected max/mean load excess ~ c/sqrt(top_k*share)
     gpu_width_factor: float = 0.185    # dense GEMV cost grows by this per extra column up to 4
     gpu_width_factor_tail: float = 0.30
     gpu_kernels_per_layer: int = 44    # about 1987 launches per token over 45 layers
@@ -29,6 +30,7 @@ class Params:
     prefill_mla_us: float = 58.8      # MLA mixer per token per layer with FP32 products
     prefill_mla_f16_factor: float = 0.468     # with FP16 products (P10)
     prefill_gemm_us: float = 21.4      # routed-expert GEMMs (MMQ) per token per layer
+    prefill_wmma_gemm_us: float = 21.4 # separate measured WMMA term; never infer from FP16 peak
     prefill_legacy_gemm: float = 1.87  # dequantize-per-use before P04
     prefill_overlap: float = 0.58      # share of the GEMM time hidden under the ring's remaining uploads
     prefill_group_fixed_ms: float = 0.73     # per group: staging handoff, gather/scatter launches

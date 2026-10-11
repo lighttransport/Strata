@@ -1,0 +1,245 @@
+{
+  "scope": "Rounded standalone kernel timings; not model throughput or quality evidence",
+  "rows": [
+    {
+      "shape": "256x7",
+      "tokens": 2,
+      "native_us": 2.3,
+      "best_il_us": 2.4,
+      "best_rows": 4,
+      "latency_reduction_percent": -4.347826086956519
+    },
+    {
+      "shape": "256x7",
+      "tokens": 3,
+      "native_us": 2.3,
+      "best_il_us": 2.4,
+      "best_rows": 2,
+      "latency_reduction_percent": -4.347826086956519
+    },
+    {
+      "shape": "256x7",
+      "tokens": 4,
+      "native_us": 2.4,
+      "best_il_us": 2.4,
+      "best_rows": 1,
+      "latency_reduction_percent": 0.0
+    },
+    {
+      "shape": "2048x4096",
+      "tokens": 2,
+      "native_us": 18.0,
+      "best_il_us": 12.4,
+      "best_rows": 2,
+      "latency_reduction_percent": 31.11111111111111
+    },
+    {
+      "shape": "2048x4096",
+      "tokens": 3,
+      "native_us": 20.7,
+      "best_il_us": 13.3,
+      "best_rows": 2,
+      "latency_reduction_percent": 35.748792270531396
+    },
+    {
+      "shape": "2048x4096",
+      "tokens": 4,
+      "native_us": 25.9,
+      "best_il_us": 14.7,
+      "best_rows": 2,
+      "latency_reduction_percent": 43.24324324324324
+    },
+    {
+      "shape": "4096x1536",
+      "tokens": 2,
+      "native_us": 12.9,
+      "best_il_us": 10.1,
+      "best_rows": 2,
+      "latency_reduction_percent": 21.705426356589154
+    },
+    {
+      "shape": "4096x1536",
+      "tokens": 3,
+      "native_us": 14.6,
+      "best_il_us": 12.5,
+      "best_rows": 4,
+      "latency_reduction_percent": 14.383561643835618
+    },
+    {
+      "shape": "4096x1536",
+      "tokens": 4,
+      "native_us": 17.7,
+      "best_il_us": 12.2,
+      "best_rows": 4,
+      "latency_reduction_percent": 31.07344632768362
+    },
+    {
+      "shape": "4096x2048",
+      "tokens": 2,
+      "native_us": 16.5,
+      "best_il_us": 13.1,
+      "best_rows": 1,
+      "latency_reduction_percent": 20.606060606060606
+    },
+    {
+      "shape": "4096x2048",
+      "tokens": 3,
+      "native_us": 18.9,
+      "best_il_us": 14.4,
+      "best_rows": 4,
+      "latency_reduction_percent": 23.809523809523803
+    },
+    {
+      "shape": "4096x2048",
+      "tokens": 4,
+      "native_us": 22.9,
+      "best_il_us": 15.4,
+      "best_rows": 2,
+      "latency_reduction_percent": 32.751091703056765
+    },
+    {
+      "shape": "4096x8192",
+      "tokens": 2,
+      "native_us": 61.4,
+      "best_il_us": 41.2,
+      "best_rows": 2,
+      "latency_reduction_percent": 32.89902280130293
+    },
+    {
+      "shape": "4096x8192",
+      "tokens": 3,
+      "native_us": 71.2,
+      "best_il_us": 46.2,
+      "best_rows": 2,
+      "latency_reduction_percent": 35.1123595505618
+    },
+    {
+      "shape": "4096x8192",
+      "tokens": 4,
+      "native_us": 90.2,
+      "best_il_us": 53.4,
+      "best_rows": 2,
+      "latency_reduction_percent": 40.79822616407983
+    },
+    {
+      "shape": "4096x12288",
+      "tokens": 2,
+      "native_us": 98.0,
+      "best_il_us": 63.7,
+      "best_rows": 1,
+      "latency_reduction_percent": 35.0
+    },
+    {
+      "shape": "4096x12288",
+      "tokens": 3,
+      "native_us": 121.2,
+      "best_il_us": 73.7,
+      "best_rows": 2,
+      "latency_reduction_percent": 39.19141914191419
+    },
+    {
+      "shape": "4096x12288",
+      "tokens": 4,
+      "native_us": 140.8,
+      "best_il_us": 81.7,
+      "best_rows": 2,
+      "latency_reduction_percent": 41.97443181818182
+    },
+    {
+      "shape": "4096x2051",
+      "tokens": 2,
+      "native_us": 16.6,
+      "best_il_us": 13.9,
+      "best_rows": 2,
+      "latency_reduction_percent": 16.26506024096386
+    },
+    {
+      "shape": "4096x2051",
+      "tokens": 3,
+      "native_us": 19.0,
+      "best_il_us": 14.4,
+      "best_rows": 4,
+      "latency_reduction_percent": 24.210526315789473
+    },
+    {
+      "shape": "4096x2051",
+      "tokens": 4,
+      "native_us": 23.1,
+      "best_il_us": 15.4,
+      "best_rows": 2,
+      "latency_reduction_percent": 33.333333333333336
+    },
+    {
+      "shape": "8192x4096",
+      "tokens": 2,
+      "native_us": 55.1,
+      "best_il_us": 43.8,
+      "best_rows": 2,
+      "latency_reduction_percent": 20.508166969147013
+    },
+    {
+      "shape": "8192x4096",
+      "tokens": 3,
+      "native_us": 64.1,
+      "best_il_us": 52.5,
+      "best_rows": 4,
+      "latency_reduction_percent": 18.096723868954754
+    },
+    {
+      "shape": "8192x4096",
+      "tokens": 4,
+      "native_us": 79.4,
+      "best_il_us": 54.5,
+      "best_rows": 2,
+      "latency_reduction_percent": 31.360201511335017
+    },
+    {
+      "shape": "12288x4096",
+      "tokens": 2,
+      "native_us": 78.8,
+      "best_il_us": 65.4,
+      "best_rows": 2,
+      "latency_reduction_percent": 17.00507614213197
+    },
+    {
+      "shape": "12288x4096",
+      "tokens": 3,
+      "native_us": 99.1,
+      "best_il_us": 72.3,
+      "best_rows": 2,
+      "latency_reduction_percent": 27.04339051463168
+    },
+    {
+      "shape": "12288x4096",
+      "tokens": 4,
+      "native_us": 121.7,
+      "best_il_us": 83.4,
+      "best_rows": 2,
+      "latency_reduction_percent": 31.470829909613805
+    },
+    {
+      "shape": "16384x4096",
+      "tokens": 2,
+      "native_us": 101.4,
+      "best_il_us": 90.3,
+      "best_rows": 1,
+      "latency_reduction_percent": 10.94674556213019
+    },
+    {
+      "shape": "16384x4096",
+      "tokens": 3,
+      "native_us": 139.1,
+      "best_il_us": 98.8,
+      "best_rows": 2,
+      "latency_reduction_percent": 28.971962616822434
+    },
+    {
+      "shape": "16384x4096",
+      "tokens": 4,
+      "native_us": 156.2,
+      "best_il_us": 111.6,
+      "best_rows": 2,
+      "latency_reduction_percent": 28.553137003841222
+    }
+  ]
+}

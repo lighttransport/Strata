@@ -1,0 +1,8 @@
+{
+  "changed_files": [
+    "src/program/glm_decode.cpp"
+  ],
+  "before_sha256": "872ceef8c01c88a6b4473ec366577bb649416adffedc7e3d49ad0ae85c2bcba2",
+  "after_sha256": "271c6415d413775dbaac5904452a2b61ce19f6867b54128f186d06f2e161d23d",
+  "scope": "Only the post-prefill GPU draft cache guard changes; model validation pending"
+}

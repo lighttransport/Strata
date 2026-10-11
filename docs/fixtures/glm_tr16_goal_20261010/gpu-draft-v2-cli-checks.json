@@ -1,0 +1,26 @@
+[
+  {
+    "case": "default-gpu-cache",
+    "exit_code": 1,
+    "stderr": "decode-cache-mib requires CPU target experts, single or CPU-draft MTP, no prepacking, and 0..12288 MiB\n",
+    "rejected_before_loading": true
+  },
+  {
+    "case": "cpu-with-gpu-flag",
+    "exit_code": 1,
+    "stderr": "GLM: GPU MTP target cache requires GPU draft, fixed cache and owned reserve\n",
+    "rejected_before_loading": true
+  },
+  {
+    "case": "missing-owned-reserve",
+    "exit_code": 1,
+    "stderr": "GLM: GPU MTP target cache requires GPU draft, fixed cache and owned reserve\n",
+    "rejected_before_loading": true
+  },
+  {
+    "case": "invalid-flag",
+    "exit_code": 1,
+    "stderr": "GLM: GPU MTP target cache must be 0 or 1\n",
+    "rejected_before_loading": true
+  }
+]

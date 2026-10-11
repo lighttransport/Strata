@@ -1,0 +1,6 @@
+{
+  "quality_qualified": false,
+  "baseline": "/mnt/nvme02/work/Strata/build-tr16-20261009/humaneval-baseline",
+  "baseline_measurement_sha256": "8be257bbad5cbdd5247aaba2de4d862cbbc936ece2a2601774857aa7b7ba4cee",
+  "scope": "Guard-off/on paired fresh first-request HumanEval31 diagnostics, same prompting/cap/test protocol. Request history differs from full task31. Passing alone does not prove the full-evaluation failure fixed; full164 remains required."
+}

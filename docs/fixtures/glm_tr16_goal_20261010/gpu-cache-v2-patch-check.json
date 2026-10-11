@@ -1,0 +1,15 @@
+{
+  "applies_to": "e5232ca3",
+  "reproduces_all_changed_files": true,
+  "patch_sha256": "d4e11c442413d3f21d12bba74c409cc76764ac870bf968bc69b48efd3932f4d2",
+  "files": [
+    "CMakeLists.txt",
+    "src/kernels/cuda/glm.cu",
+    "src/kernels/glm_route_prune_test.cpp",
+    "src/kernels/mmvq_il_parity.cpp",
+    "src/program/glm_decode.cpp",
+    "include/strata/spec/bounded_accept.hpp",
+    "include/strata/kernels/glm_prefill.hpp",
+    "src/kernels/cuda/native_mmvq.cu"
+  ]
+}

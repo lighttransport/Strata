@@ -8,15 +8,15 @@
 #pragma once
 
 #include <cstdlib>
+#include "strata/host/glm_env.h"
 
 namespace strata {
 
 /// the emulated compute capability as 10 * major + minor, or 0 (off)
 inline int emulated_cc() {
     static const int cc = [] {
-        const char* e = std::getenv("STRATA_EMULATE_CC");
-        const int v = e ? std::atoi(e) : 0;
-        return v >= 75 && v < 120 ? v : 0;
+        const long v = strata_env_value_ll("STRATA_EMULATE_CC", 0);
+        return v >= 75 && v < 120 ? (int) v : 0;
     }();
     return cc;
 }

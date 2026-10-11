@@ -1,0 +1,11 @@
+{
+  "cuda_parities_passed": true,
+  "hip_build_passed": false,
+  "model_controls_passed": false,
+  "quality_qualified": false,
+  "time": 1791628798.2987013,
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-35-20261010/stream-cuda/strata-glm-decode": "959be74e0a06c233376d0c97cba1f047ea8bf64bea38637a673f96b762666c16",
+    "/mnt/nvme02/work/Strata/build-tr16-35-20261010/stream-incremental.patch": "e160cc11781297ac11b48e2b4d70395b8d87db8f516f7920d948243c0d8e6816"
+  }
+}

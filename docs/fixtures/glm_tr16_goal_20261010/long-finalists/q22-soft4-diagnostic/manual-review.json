@@ -1,0 +1,15 @@
+{
+  "reviewed_contexts": [
+    "2k",
+    "8k"
+  ],
+  "reviewed_trials": 8,
+  "generated_tokens_per_trial": 512,
+  "no_obvious_repetition_loop": true,
+  "task_correctness_evaluated": false,
+  "quality_qualified": false,
+  "review_sha256": {
+    "2k": "7fddc689429b2b56312b2437e17fe8739731fec989032f12b2652a234d44abd5",
+    "8k": "f5b7182c7708337498427f39f5b9afb5377fbd0da6607559941dadb1c6234a7d"
+  }
+}

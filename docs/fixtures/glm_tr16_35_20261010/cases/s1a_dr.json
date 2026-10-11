@@ -1,0 +1,10 @@
+[
+ {
+  "name": "a9-blend05",
+  "env": {
+   "STRATA_GLM_MTP_RECURSIVE_BLEND": "0.5",
+   "STRATA_GLM_MTP_REPEAT_GUARD": "0"
+  },
+  "note": "draft-route binary; control q22-repeat-screen/00-control 30.4642"
+ }
+]

@@ -1,0 +1,122 @@
+{
+  "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+    "tools/glm_q2_humaneval.py",
+    "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "/mnt/nvme02/work/Strata/build-q2-redesign/HumanEval.jsonl.gz",
+    "--output",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/humaneval-smoke/baseline",
+    "--decoder",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-cuda/strata-glm-decode",
+    "--expert-pack",
+    "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "--tokens",
+    "2048",
+    "--limit",
+    "20",
+    "--context",
+    "12288",
+    "--prefill-batch",
+    "2048",
+    "--gpu-budget-mib",
+    "14336",
+    "--decode-cache-mib",
+    "5632",
+    "--speculative",
+    "mtp",
+    "--draft-depth",
+    "1",
+    "--route-affinity",
+    "0"
+  ],
+  "peak_rss_kib": 112992600,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 124365684,
+  "sample_interval_ms": 100,
+  "rejected": null,
+  "interference": [
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 99.71718556031514,
+      "elapsed_seconds": 14.244105276011396
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 100.30504979553005,
+      "elapsed_seconds": 19.037066628981847
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 99.9312179163287,
+      "elapsed_seconds": 20.257750754011795
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 99.28451883690803,
+      "elapsed_seconds": 21.47653257503407
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 98.22697576375072,
+      "elapsed_seconds": 22.687973555992357
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 99.86488739262813,
+      "elapsed_seconds": 27.559343125030864
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 100.39903596595336,
+      "elapsed_seconds": 28.794382983993273
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 97.92822382294801,
+      "elapsed_seconds": 29.917629678035155
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 99.6023861454829,
+      "elapsed_seconds": 31.072218030982185
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 99.70339713464924,
+      "elapsed_seconds": 32.22562168102013
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3024196,
+      "name": "store",
+      "cpu_percent": 99.32008166477914,
+      "elapsed_seconds": 33.38346872798866
+    }
+  ],
+  "minimum_gpu_free_mib": 818,
+  "required_gpu_free_mib": 512,
+  "exit_code": 0,
+  "wall_seconds": 500.0341449070256
+}

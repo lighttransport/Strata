@@ -1,0 +1,20 @@
+{
+  "scope": "128-token diagnostic only; absence of short repetition does not qualify task quality or long continuation",
+  "tokens_sha256": "14345932f66a06a9a0ae7117c52ab245c27366e05abdb243dbdbcb060b322044",
+  "quality_qualified": false,
+  "manual_review_pending": true,
+  "trials": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "text": "We need to review the benchmark. It's a truncated excerpt; we should note visible bugs. Let's analyze.\n\nKey visible bugs:\n\n1. `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 syntax error: missing colon, and the parameter list is truncated (the excerpt cuts off). Also the function signature is inconsistent with the call site. Also `_output=True` underscore-prefixed param is odd. Actually the excerpt shows the function header then immediately the body of `run_launcher` (args.output...). So the excerpt is truncated; but we can note the missing colon and that the function",
+      "distinct_fourgram_fraction": 1.0
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "text": "We need to review the benchmark. It's a partial excerpt. Need to identify bugs: e.g., `gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon, weird signature; `args.output.with_suffix(\".systemd.log\")` \u2014 with_suffix replaces last suffix, so \".systemd.log\" is not a valid suffix (contains dot) \u2014 actually with_suffix(\".systemd.log\") raises ValueError? with_suffix requires suffix starting with dot and containing no dots? Actually with_suffix allows multi-dot? Python: with_suffix(\".tar.gz\") raises ValueError? Let me recall: with_suffix requires the",
+      "distinct_fourgram_fraction": 0.968
+    }
+  ]
+}

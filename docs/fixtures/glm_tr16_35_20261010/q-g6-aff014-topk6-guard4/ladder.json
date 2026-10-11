@@ -1,0 +1,35 @@
+{
+  "track": "35",
+  "gates": {
+    "ppl_rel_max": 0.06,
+    "kl_abs_max": 0.08,
+    "top1_drop_pp_max": 3.0,
+    "humaneval_min": 152,
+    "heldout_min_2k": 35.0,
+    "heldout_min_8k": 35.0
+  },
+  "steps": [
+    {
+      "step": "pilot2048",
+      "exit_code": 0,
+      "complete": true,
+      "metrics": {
+        "sequence": 4,
+        "tokens": 2048,
+        "nll": 1.41835403989,
+        "perplexity": 4.13031650606,
+        "kl": 0.21585659114,
+        "top1_agreement": 0.86474609375,
+        "different_logits": 317194217
+      },
+      "baseline": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-quality-pilot/00-renorm-default/result.json",
+      "ppl_increase_percent": 9.472992924530343,
+      "kl_increase": 0.112971400728,
+      "top1_drop_pp": 2.783203125,
+      "gate_scale": 1.5,
+      "passes_gate": false,
+      "note": "baseline is unchanged Q23; the Q22 pack change is intentional",
+      "quality_qualified": false
+    }
+  ]
+}

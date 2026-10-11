@@ -1,0 +1,1088 @@
+{
+  "date": "2026-10-11",
+  "hardware": {
+    "board": "X570S AERO G",
+    "cpu": "AMD Ryzen 9 3950X 16-Core Processor",
+    "ram_gib_installed": 64,
+    "ram_mt_s": 2666,
+    "ram_setting_source": "user confirmed BIOS setting",
+    "cpu_eco_enabled": true,
+    "gpu": "RX 9070 XT 16 GB",
+    "host_pcie_gen": 4,
+    "host_pcie_lanes": 16,
+    "boot_id": "6f77091d-c941-403d-8914-f74fcf310e3b"
+  },
+  "software": {
+    "rocm": "10.1.0",
+    "hip": "7.16.26385",
+    "kernel": "7.0.0-38-generic"
+  },
+  "ram_stress": {
+    "passed": true,
+    "memory_mib": 47104,
+    "completed_seconds": 600.08,
+    "hardware_incidents": 0,
+    "data_error_detected": false
+  },
+  "cpu_read_gbps": {
+    "1_thread": 24.4909,
+    "16_threads": 38.7299
+  },
+  "cpu_fma_gflops_16_threads": 402.873,
+  "gpu_microbenchmarks": [
+    {
+      "backend": "hip",
+      "device": 0,
+      "name": "AMD Radeon RX 9070 XT",
+      "buffer_bytes": 268435456,
+      "gemm_n": 2048,
+      "free_vram_bytes": 17024679936
+    },
+    {
+      "kernel": "pcie_pinned_h2d",
+      "unit": "GB/s",
+      "median": 28.3201,
+      "best": 28.3211,
+      "worst": 28.1544,
+      "median_ms": 9.47863,
+      "repeats": 7,
+      "operations_per_repeat": 4
+    },
+    {
+      "kernel": "pcie_pinned_d2h",
+      "unit": "GB/s",
+      "median": 28.084,
+      "best": 28.0968,
+      "worst": 28.0832,
+      "median_ms": 9.5583,
+      "repeats": 7,
+      "operations_per_repeat": 4
+    },
+    {
+      "kernel": "gpu_stream_copy",
+      "unit": "GB/s",
+      "median": 471.412,
+      "best": 472.258,
+      "worst": 470.214,
+      "median_ms": 1.13886,
+      "repeats": 7,
+      "operations_per_repeat": 4
+    },
+    {
+      "transfer_and_copy_verified": true
+    },
+    {
+      "kernel": "gpu_sgemm_fp32",
+      "unit": "GFLOP/s",
+      "median": 13775.9,
+      "best": 16031.6,
+      "worst": 13557.5,
+      "median_ms": 1.2471,
+      "repeats": 7,
+      "operations_per_repeat": 4
+    },
+    {
+      "gemm_verified": true,
+      "passed": true
+    }
+  ],
+  "kernel_tests": [
+    {
+      "task": "glm_parity",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 0.517553334999775
+    },
+    {
+      "task": "glm_q8_test",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 1.5367103040002803
+    },
+    {
+      "task": "glm_q23_parity",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 2.045804890999989
+    },
+    {
+      "task": "mmvq_multi_parity",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 1.0272898149996763
+    },
+    {
+      "task": "glm_prefill_parity",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 8.155464278999716
+    },
+    {
+      "task": "glm_kda_column_tiles_parity",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 1.0279056990002573
+    },
+    {
+      "task": "glm_bf16_prefill_test",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 4.083989865000149
+    },
+    {
+      "task": "hip_prefill_mmq_parity",
+      "passed": true,
+      "returncode": 0,
+      "reason": null,
+      "wall_seconds": 1.0278134190002675
+    }
+  ],
+  "diagnostic_results": [
+    {
+      "task": "q23-prefill-2k",
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "executable_sha256": "c03da338372c7f632e3cb6810751e9bfe8d43cfb5866f14a56ee154ccb100178",
+      "config_sha256": "64d47c3fb3e77f8197fe264091d8d8353e431a4dbbb35c7edb774eb51298dce1",
+      "timing_qualified": false
+    },
+    {
+      "task": "q22-eval-stream-2k",
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "executable_sha256": "945469f8238a5de9b2af507be1c7df21ec0ccf150a6a2ebb71f198ab1856e161",
+      "config_sha256": "73fc6ca0a8e9917941ff2b3caddf47a7046803b22a3d391f9d04a2f7fbc139fc",
+      "timing_qualified": false
+    },
+    {
+      "task": "q22-graph-check-2k",
+      "passed": false,
+      "exit_code": 1,
+      "faults": [],
+      "executable_sha256": "945469f8238a5de9b2af507be1c7df21ec0ccf150a6a2ebb71f198ab1856e161",
+      "config_sha256": "e9af8040d9c466dca02b14f722a94fa7e093925f6ff681ae6373547937338e53",
+      "timing_qualified": false
+    },
+    {
+      "task": "q22-graph-check-fixed-2k",
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "executable_sha256": "08c172ff8402b207b2b24f376ea85eacdb512758762573c7b6133d71b7631f8a",
+      "config_sha256": "7b947f5b3124ceffb5275d3350b0abf4648902d505ca35af5ad8607a75c7ca43",
+      "timing_qualified": false
+    },
+    {
+      "task": "q22-prefill-8k",
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "executable_sha256": "08c172ff8402b207b2b24f376ea85eacdb512758762573c7b6133d71b7631f8a",
+      "config_sha256": "2a29773c61e9b9200801f1ced935d1fee0c7a33ebc7610a8ca0fccf81afcfbb3",
+      "timing_qualified": false
+    }
+  ],
+  "performance_results": [
+    {
+      "name": "q22-mmq-warm8k",
+      "clean": true,
+      "prefill_tok_s": 517.885,
+      "decode_tok_s": 34.6886,
+      "output_sha256": "2ae06e99eae129e858f3b077be6efe8d24cc870275630b785eed9db7b788c3bb",
+      "quality_qualified": false
+    },
+    {
+      "name": "q22-graphs-warm8k",
+      "clean": true,
+      "prefill_tok_s": 515.718,
+      "decode_tok_s": 35.3139,
+      "output_sha256": "2ae06e99eae129e858f3b077be6efe8d24cc870275630b785eed9db7b788c3bb",
+      "quality_qualified": false
+    },
+    {
+      "name": "q22-static-graphs-warm8k",
+      "clean": true,
+      "prefill_tok_s": 515.279,
+      "decode_tok_s": 31.4831,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 17305.8,
+          "tokens_per_second": 29.5277
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 16218.2,
+          "tokens_per_second": 31.5079
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 16230.9,
+          "tokens_per_second": 31.4831
+        }
+      ],
+      "output_sha256": "82e734cb67382b97f899cb3fd4217c5aefb44a2f28689b50fc2d6bd150f6036d",
+      "repeat_outputs_identical": true,
+      "quality_qualified": false,
+      "peak_ram_gib": 47.112464904785156,
+      "minimum_gpu_free_mib": 2574
+    },
+    {
+      "name": "q22-static-cache1000-t16-warm8k",
+      "clean": true,
+      "prefill_tok_s": 513.059,
+      "decode_tok_s": 31.1159,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 17633.6,
+          "tokens_per_second": 28.9787
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 16413.5,
+          "tokens_per_second": 31.1329
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 16422.5,
+          "tokens_per_second": 31.1159
+        }
+      ],
+      "output_sha256": "c81f4a22aa3426075ce3d92126dba8058206fc5339283f7de3b449ae690a9b3e",
+      "repeat_outputs_identical": true,
+      "quality_qualified": false,
+      "peak_ram_gib": 47.14270782470703,
+      "minimum_gpu_free_mib": 1774
+    },
+    {
+      "name": "q22-static-cache1100-br512-t12-warm8k",
+      "clean": true,
+      "prefill_tok_s": 521.009,
+      "decode_tok_s": 33.7181,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 16012.7,
+          "tokens_per_second": 31.9122
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 15141.6,
+          "tokens_per_second": 33.748
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 15155.1,
+          "tokens_per_second": 33.7181
+        }
+      ],
+      "output_sha256": "de796a5a29b3eb13434a0b16f1d71c1ed27209a751a4e49b93220710e8a2f247",
+      "repeat_outputs_identical": true,
+      "quality_qualified": false,
+      "peak_ram_gib": 46.961647033691406,
+      "minimum_gpu_free_mib": 974
+    },
+    {
+      "name": "q22-static-cache1100-br512-t16-warm8k",
+      "clean": true,
+      "prefill_tok_s": 515.917,
+      "decode_tok_s": 33.4644,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 16391.6,
+          "tokens_per_second": 31.1745
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 15263.1,
+          "tokens_per_second": 33.4793
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 15270.0,
+          "tokens_per_second": 33.4644
+        }
+      ],
+      "output_sha256": "de796a5a29b3eb13434a0b16f1d71c1ed27209a751a4e49b93220710e8a2f247",
+      "repeat_outputs_identical": true,
+      "quality_qualified": false,
+      "peak_ram_gib": 46.96193313598633,
+      "minimum_gpu_free_mib": 974
+    },
+    {
+      "name": "q22-static-cache1100-wmma-warm8k",
+      "clean": true,
+      "prefill_tok_s": 549.449,
+      "decode_tok_s": 34.4499,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 15541.5,
+          "tokens_per_second": 32.8798
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 14824.5,
+          "tokens_per_second": 34.4701
+        },
+        {
+          "kind": "single",
+          "tokens": 511,
+          "milliseconds": 14833.1,
+          "tokens_per_second": 34.4499
+        }
+      ],
+      "output_sha256": "f432c1a99d607a0da44e0fa8d57d2d8bde758d7ee77d15e1217d9d83d8c654b3",
+      "repeat_outputs_identical": true,
+      "minimum_gpu_free_mib": 974,
+      "quality_qualified": false
+    },
+    {
+      "name": "q22-wmma-prefetch-warm8k",
+      "clean": true,
+      "prefill_tok_s": 570.454,
+      "decode_tok_s": 34.5106,
+      "output_sha256": "f432c1a99d607a0da44e0fa8d57d2d8bde758d7ee77d15e1217d9d83d8c654b3",
+      "repeat_outputs_identical": true,
+      "minimum_gpu_free_mib": 973,
+      "quality_qualified": false
+    },
+    {
+      "name": "q22-wmma-prefetch-mla16-warm8k",
+      "clean": true,
+      "prefill_tok_s": 674.724,
+      "decode_tok_s": 34.2958,
+      "output_sha256": "f9bbd211c560b4311effa7a687861e2b04bd7ad80f20cbe0d8e85a83b73ae1d4",
+      "repeat_outputs_identical": true,
+      "minimum_gpu_free_mib": 952,
+      "quality_qualified": false
+    },
+    {
+      "name": "q22-mla16-tasks1-warm8k",
+      "clean": true,
+      "prefill_tok_s": 675.478,
+      "decode_tok_s": 34.3345,
+      "output_sha256": "f9bbd211c560b4311effa7a687861e2b04bd7ad80f20cbe0d8e85a83b73ae1d4",
+      "outputs_match_control": true,
+      "quality_qualified": false
+    },
+    {
+      "name": "q22-mla16-tasks3-warm8k",
+      "clean": true,
+      "prefill_tok_s": 675.198,
+      "decode_tok_s": 34.3583,
+      "output_sha256": "f9bbd211c560b4311effa7a687861e2b04bd7ad80f20cbe0d8e85a83b73ae1d4",
+      "outputs_match_control": true,
+      "quality_qualified": false
+    }
+  ],
+  "quality_qualified": false,
+  "raw_evidence_directory": "tmp/glm-optimization-2666-20261011",
+  "raw_evidence_policy": "Local frozen outputs retained; compact report uses relative paths.",
+  "graph_check_correction": "Freeze adaptive GPU tier placement as well as decode cache adaptation; corrected fixed-placement graph/rollback comparison passed. Earlier software mismatch is retained.",
+  "timing_protocol": "Each screen is one fresh bounded service: one untimed prefill warmup, three timed 8192-token prefills, three 512-token decodes with model state restored. Adaptive-tier arms retain tier history across decode repetitions; static-tier outputs repeat exactly. Single prompt only, not coding qualification.",
+  "graph_pair_outputs_identical": true,
+  "cache1100_initial_failure": "Software headroom guard rejected requested slots under default 1024 MiB budget reserve; no hardware fault.",
+  "provenance_note": "GPU executable/config/prompt hashes are recorded per launch. During early campaigns the guard source file was edited while the campaign process retained its already imported module; source_sha256 records on-disk files at launch, not necessarily the loaded guard. The first-launch guard source hash identifies the module loaded by each persistent campaign process. Future launches include an import-time loaded_guard_source_sha256.",
+  "reap_prefetch": {
+    "opt_in": "STRATA_GLM_REAP_PREFETCH=1",
+    "experts": 144,
+    "max_groups": 9,
+    "parity_2k": {
+      ".stdout": {
+        "identical": true,
+        "sha256": "5f7b7de96ad0410da6b93935feacc53afbdb69e06b6c6b61451321c761313e68"
+      },
+      ".logits.bin": {
+        "identical": true,
+        "sha256": "3a995976c0f150c2d5c59c5fbdbc510e66955fb66c1b715a3149069198c667fc"
+      }
+    },
+    "pool_mib": 1134.14,
+    "new_host_buffers": 0,
+    "hip_build_passed": true,
+    "cuda_build_passed": true,
+    "cuda_execution_tested": false,
+    "parity_8k": {
+      "final_logits_bitwise_equal": true,
+      "sha256": "3a6b7c420b66d4491c80aefcf1366c3659406d0fb70a9ac33c57d142314d1f20"
+    }
+  },
+  "prefill_component_profiles": [
+    {
+      "task": "q22-profile-mmq-8k",
+      "warm_profile_groups": 2,
+      "mixer_total_ms": 7571.4251,
+      "ffn_total_ms": 7786.2411,
+      "timing_qualified": false,
+      "scope": "Host elapsed phase durations with stream synchronization; diagnostic only."
+    },
+    {
+      "task": "q22-profile-wmma-8k",
+      "warm_profile_groups": 2,
+      "mixer_total_ms": 7600.8639,
+      "ffn_total_ms": 6714.5539,
+      "timing_qualified": false,
+      "scope": "Host elapsed phase durations with stream synchronization; diagnostic only."
+    }
+  ],
+  "coding_prime_quality": [
+    {
+      "config": "q23-reference",
+      "fixture": "prime",
+      "length": 8192,
+      "actual_tokens": 8192,
+      "phase": "quality",
+      "prefill_scope": "cold",
+      "inner_trials": 1,
+      "comparison_control": "q23-reference",
+      "speculative": "none",
+      "decode_cache_slots": 900,
+      "trial": 0,
+      "clean": true,
+      "prefill_tok_s": 112.109,
+      "decode_tok_s": 11.0651,
+      "response_seconds": 95.87936767500014,
+      "quality": {
+        "status": "passed",
+        "cases": 400538
+      },
+      "output_sha256": "7398176ef01c3bf32cf55ad7551a5b336ea07a7bfccd57683f6e19784b518730",
+      "output_tokens": 140,
+      "result": "q23-reference-prime-8192-quality-0.result.json",
+      "greedy_ids_identical": true,
+      "cache_matched": null
+    },
+    {
+      "config": "q22-wmma-prefetch-mla16-warm8k",
+      "fixture": "prime",
+      "length": 8192,
+      "actual_tokens": 8192,
+      "phase": "quality",
+      "prefill_scope": "cold",
+      "inner_trials": 1,
+      "comparison_control": "q23-reference",
+      "speculative": "none",
+      "decode_cache_slots": 1100,
+      "trial": 0,
+      "clean": true,
+      "prefill_tok_s": 134.033,
+      "decode_tok_s": 33.3012,
+      "response_seconds": 74.2495349439996,
+      "quality": {
+        "status": "failed",
+        "reason": "Independent prime boundary oracle exited with status 2; raw error retained in local aggregate."
+      },
+      "output_sha256": "21c7509089071d8d5e769892eff24ab0ccf452073d0a0f731912fff23d228ceb",
+      "output_tokens": 121,
+      "result": "q22-wmma-prefetch-mla16-warm8k-prime-8192-quality-0.result.json",
+      "greedy_ids_identical": false,
+      "cache_matched": false
+    }
+  ],
+  "quality_conclusion": "Q23 reference passed 400538 prime cases. Faster Q22 + affinity/deferral + BF16/FP16 recipe failed overflow boundary oracle and is rejected for coding. This does not isolate the numerical change responsible.",
+  "quality_stop_policy_correction": {
+    "old_stops": [
+      154820
+    ],
+    "serving_stops": [
+      154820,
+      154827,
+      154829
+    ],
+    "old_cap_results_preserved": true,
+    "source": "serve/server.py existing GLM stop policy",
+    "new_quality_inputs": "tmp/glm-optimization-2666-20261011/quality-inputs-v3-turn-stops"
+  },
+  "verification_diagnostics": [
+    {
+      "task": "q23-verify-width1-2k",
+      "passed": true,
+      "exit_code": 0,
+      "faults": []
+    },
+    {
+      "task": "q23-verify-width3-2k",
+      "passed": false,
+      "exit_code": 1,
+      "faults": []
+    },
+    {
+      "task": "q23-verify-unfused-width3-2k",
+      "passed": true,
+      "exit_code": 0,
+      "faults": []
+    }
+  ],
+  "head_dispatch_tests": {
+    "passed": true,
+    "exit_code": 0,
+    "reason": null,
+    "wall_seconds": 2.0479329339996184,
+    "cases": "Query/value production shapes; 2,3,4,5,8 rows, padded strides and bitwise comparison to individual blocked-head calls."
+  },
+  "speculative_screens": [
+    {
+      "name": "q23-spec-control-2k",
+      "clean": true,
+      "prefill_tok_s": 275.436,
+      "decode_tok_s": 13.3975,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "cache_slots": 800,
+      "speculation": [],
+      "draft_timing": [],
+      "quality_qualified": false,
+      "outputs_match_control": true,
+      "gain_fraction": 0.0
+    },
+    {
+      "name": "q23-lookup1-2k",
+      "clean": true,
+      "prefill_tok_s": 275.067,
+      "decode_tok_s": 13.3648,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "cache_slots": 800,
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 8,
+          "proposed": 8,
+          "accepted": 4,
+          "replayed": 0,
+          "ms": 9653.43,
+          "tok_s": 13.1559
+        },
+        {
+          "generated": 128,
+          "rounds": 8,
+          "proposed": 8,
+          "accepted": 4,
+          "replayed": 0,
+          "ms": 9502.61,
+          "tok_s": 13.3648
+        },
+        {
+          "generated": 128,
+          "rounds": 8,
+          "proposed": 8,
+          "accepted": 4,
+          "replayed": 0,
+          "ms": 9498.04,
+          "tok_s": 13.3712
+        }
+      ],
+      "draft_timing": [
+        {
+          "prepare_ms": 0.234536,
+          "draft_ms": 0.03123,
+          "verify_ms": 1000.54,
+          "restore_ms": 1.41728,
+          "proposal_calls": 122
+        },
+        {
+          "prepare_ms": 0.116431,
+          "draft_ms": 0.025274,
+          "verify_ms": 978.428,
+          "restore_ms": 1.41343,
+          "proposal_calls": 122
+        },
+        {
+          "prepare_ms": 0.137451,
+          "draft_ms": 0.025458,
+          "verify_ms": 977.359,
+          "restore_ms": 1.43227,
+          "proposal_calls": 122
+        }
+      ],
+      "quality_qualified": false,
+      "outputs_match_control": true,
+      "gain_fraction": -0.0024407538719910526
+    },
+    {
+      "name": "q23-lookup2-2k",
+      "clean": true,
+      "prefill_tok_s": 274.415,
+      "decode_tok_s": 13.2824,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "cache_slots": 800,
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 6,
+          "proposed": 12,
+          "accepted": 6,
+          "replayed": 0,
+          "ms": 9703.56,
+          "tok_s": 13.088
+        },
+        {
+          "generated": 128,
+          "rounds": 6,
+          "proposed": 12,
+          "accepted": 6,
+          "replayed": 0,
+          "ms": 9558.88,
+          "tok_s": 13.2861
+        },
+        {
+          "generated": 128,
+          "rounds": 6,
+          "proposed": 12,
+          "accepted": 6,
+          "replayed": 0,
+          "ms": 9561.49,
+          "tok_s": 13.2824
+        }
+      ],
+      "draft_timing": [
+        {
+          "prepare_ms": 0.235738,
+          "draft_ms": 0.025179,
+          "verify_ms": 1054.1,
+          "restore_ms": 1.61772,
+          "proposal_calls": 120
+        },
+        {
+          "prepare_ms": 0.119136,
+          "draft_ms": 0.02664,
+          "verify_ms": 1016.49,
+          "restore_ms": 1.60898,
+          "proposal_calls": 120
+        },
+        {
+          "prepare_ms": 0.120639,
+          "draft_ms": 0.026802,
+          "verify_ms": 1018.03,
+          "restore_ms": 1.62243,
+          "proposal_calls": 120
+        }
+      ],
+      "quality_qualified": false,
+      "outputs_match_control": true,
+      "gain_fraction": -0.00859115506624375
+    },
+    {
+      "name": "q23-lookup3-2k",
+      "clean": true,
+      "prefill_tok_s": 275.432,
+      "decode_tok_s": 12.9281,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "cache_slots": 800,
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 6,
+          "proposed": 18,
+          "accepted": 6,
+          "replayed": 0,
+          "ms": 9966.2,
+          "tok_s": 12.7431
+        },
+        {
+          "generated": 128,
+          "rounds": 6,
+          "proposed": 18,
+          "accepted": 6,
+          "replayed": 0,
+          "ms": 9819.52,
+          "tok_s": 12.9334
+        },
+        {
+          "generated": 128,
+          "rounds": 6,
+          "proposed": 18,
+          "accepted": 6,
+          "replayed": 0,
+          "ms": 9823.56,
+          "tok_s": 12.9281
+        }
+      ],
+      "draft_timing": [
+        {
+          "prepare_ms": 2.10366,
+          "draft_ms": 0.024466,
+          "verify_ms": 1329.34,
+          "restore_ms": 2.31575,
+          "proposal_calls": 120
+        },
+        {
+          "prepare_ms": 0.121891,
+          "draft_ms": 0.021856,
+          "verify_ms": 1293.12,
+          "restore_ms": 2.31667,
+          "proposal_calls": 120
+        },
+        {
+          "prepare_ms": 0.116361,
+          "draft_ms": 0.021601,
+          "verify_ms": 1290.64,
+          "restore_ms": 2.32837,
+          "proposal_calls": 120
+        }
+      ],
+      "quality_qualified": false,
+      "outputs_match_control": true,
+      "gain_fraction": -0.03503638738570636
+    },
+    {
+      "name": "q23-mtp1-2k",
+      "clean": true,
+      "prefill_tok_s": 243.122,
+      "decode_tok_s": 15.0548,
+      "output_sha256": "554fb61100728a13e2dc1f35269b3f2fed76f498b6b7a7317b0fe92cc6eb5a12",
+      "cache_slots": 800,
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 66,
+          "proposed": 66,
+          "accepted": 60,
+          "replayed": 0,
+          "ms": 8602.18,
+          "tok_s": 14.7637
+        },
+        {
+          "generated": 128,
+          "rounds": 66,
+          "proposed": 66,
+          "accepted": 60,
+          "replayed": 0,
+          "ms": 8435.86,
+          "tok_s": 15.0548
+        },
+        {
+          "generated": 128,
+          "rounds": 66,
+          "proposed": 66,
+          "accepted": 60,
+          "replayed": 0,
+          "ms": 8404.13,
+          "tok_s": 15.1116
+        }
+      ],
+      "draft_timing": [],
+      "quality_qualified": false,
+      "outputs_match_control": false,
+      "gain_fraction": 0.12370218324314242
+    }
+  ],
+  "mtp_matched_pair": [
+    {
+      "name": "q23-mtp-prepared-greedy-2k",
+      "clean": true,
+      "decode_tok_s": 13.4159,
+      "prefill_tok_s": 275.23,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "prefill_logits_sha256": "4cb191531a5b23e9bbc8f0004e282bd7940feff976d8aeffbecbcd4698af81d8",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 5059930911456274753
+        }
+      ],
+      "speculation": []
+    },
+    {
+      "name": "q23-mtp1-matched-2k",
+      "clean": true,
+      "decode_tok_s": 15.2279,
+      "prefill_tok_s": 276.372,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "prefill_logits_sha256": "4cb191531a5b23e9bbc8f0004e282bd7940feff976d8aeffbecbcd4698af81d8",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 5059930911456274753
+        }
+      ],
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 65,
+          "proposed": 65,
+          "accepted": 61,
+          "replayed": 0,
+          "ms": 9583.63,
+          "tok_s": 13.2518
+        },
+        {
+          "generated": 128,
+          "rounds": 65,
+          "proposed": 65,
+          "accepted": 61,
+          "replayed": 0,
+          "ms": 8336.44,
+          "tok_s": 15.2343
+        },
+        {
+          "generated": 128,
+          "rounds": 65,
+          "proposed": 65,
+          "accepted": 61,
+          "replayed": 0,
+          "ms": 8339.97,
+          "tok_s": 15.2279
+        }
+      ]
+    }
+  ],
+  "mtp_initial_output_mismatch_unresolved": true,
+  "batch_fusion_validation": {
+    "eight_sequential_logits_identical": true,
+    "retained_prefix_and_next_token_identical": true,
+    "lookup_64_tokens_identical": true,
+    "new_flags": [
+      "STRATA_GLM_HC_FUSED_BATCH",
+      "STRATA_GLM_HEADS_BLOCKS_BATCH"
+    ],
+    "cuda_execution_tested": false
+  },
+  "campaign_dates": [
+    "2026-10-11",
+    "2026-10-12"
+  ],
+  "mtp_depth_repeats": [
+    {
+      "name": "q23-mtp1-no-dump-repeat-2k",
+      "clean": true,
+      "decode_tok_s": 15.2414,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 5059930911456274753
+        }
+      ],
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 65,
+          "proposed": 65,
+          "accepted": 61,
+          "replayed": 0,
+          "ms": 8464.9,
+          "tok_s": 15.0031
+        },
+        {
+          "generated": 128,
+          "rounds": 65,
+          "proposed": 65,
+          "accepted": 61,
+          "replayed": 0,
+          "ms": 8324.06,
+          "tok_s": 15.257
+        },
+        {
+          "generated": 128,
+          "rounds": 65,
+          "proposed": 65,
+          "accepted": 61,
+          "replayed": 0,
+          "ms": 8332.56,
+          "tok_s": 15.2414
+        }
+      ],
+      "outputs_match_control": true,
+      "gain_fraction": 0.1360698872233692
+    },
+    {
+      "name": "q23-mtp2-2k",
+      "clean": true,
+      "decode_tok_s": 14.4682,
+      "output_sha256": "73baeb877783380a05e9b0a88a3c1330800581e02393ddebb59a4920471516be",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 5059930911456274753
+        }
+      ],
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 49,
+          "proposed": 97,
+          "accepted": 78,
+          "replayed": 0,
+          "ms": 8881.65,
+          "tok_s": 14.2991
+        },
+        {
+          "generated": 128,
+          "rounds": 49,
+          "proposed": 97,
+          "accepted": 78,
+          "replayed": 0,
+          "ms": 8766.74,
+          "tok_s": 14.4866
+        },
+        {
+          "generated": 128,
+          "rounds": 49,
+          "proposed": 97,
+          "accepted": 78,
+          "replayed": 0,
+          "ms": 8777.85,
+          "tok_s": 14.4682
+        }
+      ],
+      "outputs_match_control": true,
+      "gain_fraction": 0.07843678023837386
+    },
+    {
+      "name": "q23-mtp3-2k",
+      "clean": true,
+      "decode_tok_s": 13.3053,
+      "output_sha256": "554fb61100728a13e2dc1f35269b3f2fed76f498b6b7a7317b0fe92cc6eb5a12",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 7961654196047305626
+        }
+      ],
+      "speculation": [
+        {
+          "generated": 128,
+          "rounds": 42,
+          "proposed": 125,
+          "accepted": 85,
+          "replayed": 0,
+          "ms": 9754.62,
+          "tok_s": 13.0195
+        },
+        {
+          "generated": 128,
+          "rounds": 42,
+          "proposed": 125,
+          "accepted": 85,
+          "replayed": 0,
+          "ms": 9545.07,
+          "tok_s": 13.3053
+        },
+        {
+          "generated": 128,
+          "rounds": 42,
+          "proposed": 125,
+          "accepted": 85,
+          "replayed": 0,
+          "ms": 9542.67,
+          "tok_s": 13.3086
+        }
+      ],
+      "outputs_match_control": false,
+      "gain_fraction": -0.008243949343689216
+    }
+  ],
+  "prefill_distribution_repeats": [
+    {
+      "name": "q23-mtp-prepared-prefill-repeat-1-d3",
+      "prefill_sha256": "eccdb54b9b0ddf1c277ab87850434bf55fed601df8d39c5b07fcff6fbcc13c20",
+      "output_sha256": "b874d776c9219d444b5e125a7c5bc796280c44de7ea6cbc5dcef150214038b15",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 7961654196047305626
+        }
+      ]
+    },
+    {
+      "name": "q23-mtp-prepared-prefill-repeat-2-d1",
+      "prefill_sha256": "eccdb54b9b0ddf1c277ab87850434bf55fed601df8d39c5b07fcff6fbcc13c20",
+      "output_sha256": "b874d776c9219d444b5e125a7c5bc796280c44de7ea6cbc5dcef150214038b15",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 7961654196047305626
+        }
+      ]
+    },
+    {
+      "name": "q23-mtp-prepared-prefill-repeat-3-d1",
+      "prefill_sha256": "eccdb54b9b0ddf1c277ab87850434bf55fed601df8d39c5b07fcff6fbcc13c20",
+      "output_sha256": "b874d776c9219d444b5e125a7c5bc796280c44de7ea6cbc5dcef150214038b15",
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 800,
+          "MiB": 6950,
+          "fingerprint": 7961654196047305626
+        }
+      ]
+    }
+  ],
+  "prefill_repeatability_investigation": {
+    "resolved": false,
+    "relative_l2_between_distributions": 0.09621420387906329,
+    "max_abs_logit_difference": 1.0638680458068848,
+    "first_greedy_token_equal": true,
+    "mismatch_reproduced_without_speculative_generation": true,
+    "mtp_gain_qualified": false,
+    "reason": "Fresh single-prefill prepared greedy runs differ from earlier warm-run controls; cache fingerprints and output also differ."
+  },
+  "guarded_campaign_status": {
+    "counts": {
+      "passed": 41,
+      "failed": 6
+    },
+    "runs_with_recorded_faults": 0,
+    "raw_status": "tmp/glm-optimization-2666-20261011/current-status.json"
+  },
+  "prefill_repeat_check": {
+    "passed": true,
+    "timed_trials": 2,
+    "warmup_compared": true,
+    "all_final_logits_bitwise_equal": true,
+    "engine_tracing": true,
+    "gpu_extra_phase_sync": false,
+    "cache_fingerprint": 5059930911456274753,
+    "raw_prefix": "tmp/glm-optimization-2666-20261011/q23-prefill-repeat-check-2k",
+    "conclusion": "Within-process repetition passed in this run; earlier cross-process prefill/cache differences remain unresolved. Cold versus warm execution alone is not established as the cause."
+  },
+  "latest_validation": {
+    "hip_build_passed": true,
+    "cuda_compile_passed": true,
+    "cuda_gpu_execution": false,
+    "sycl": "not applicable to GLM CUDA/HIP executable",
+    "python_tests_passed": 56,
+    "external_transport_sandbox_eprem_then_passed_outside_sandbox": true,
+    "diff_check_passed": true
+  }
+}

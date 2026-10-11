@@ -1,7 +1,7 @@
 {
   "started_utc": "2026-10-08T20:48:26.289215+00:00",
   "config": {
-    "exe": "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+    "exe": "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
     "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
     "model_name": "glm53f-reap50-q23-b550-rx9070xt",
     "context": 4096,
@@ -65,9 +65,9 @@
   "command": [
     "numactl",
     "--interleave=all",
-    "/home/syoyo/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
+    "~/work/Strata-b550-calibration-15b787b5/build-hip/strata-glm-decode",
     "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
-    "@/home/syoyo/work/Strata/build-hip-glm-v11/single-2048.ids",
+    "@~/work/Strata/build-hip-glm-v11/single-2048.ids",
     "512",
     "4096",
     "12",
@@ -80,7 +80,7 @@
     "--decode-bench=3",
     "--prefill-experts=f16-batched",
     "--route-affinity=0.12",
-    "--dump-logits=/home/syoyo/work/Strata-b550-calibration-15b787b5/runs/affinity-long-speed-20261009/aff12.logits.bin",
+    "--dump-logits=~/work/Strata-b550-calibration-15b787b5/runs/affinity-long-speed-20261009/aff12.logits.bin",
     "--decode-graphs",
     "--decode-cache-mib=8192"
   ],

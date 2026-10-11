@@ -1,0 +1,26 @@
+[
+  {
+    "case": "unsplit",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/exact-levers/000-unsplit.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 17.8551,
+    "prefill_tok_s": 131.406
+  },
+  {
+    "case": "margin2",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/exact-levers/001-margin2.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.2636,
+    "prefill_tok_s": 131.59199999999998
+  },
+  {
+    "case": "batched-resident",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/exact-levers/002-batched-resident.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.0829,
+    "prefill_tok_s": 131.529
+  }
+]

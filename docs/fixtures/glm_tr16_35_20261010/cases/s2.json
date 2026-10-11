@@ -1,0 +1,59 @@
+[
+ {
+  "name": "x0-control",
+  "env": {},
+  "control": true,
+  "note": "512-token control for Stage 2 deltas"
+ },
+ {
+  "name": "x1-aff010-reuse",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.10"
+  },
+  "note": "35 track"
+ },
+ {
+  "name": "x2-aff012-reuse",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12"
+  },
+  "note": "35 track"
+ },
+ {
+  "name": "x3-mix2-reuse",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1",
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json"
+  },
+  "note": "35/45 track"
+ },
+ {
+  "name": "x4-aff016-reuse",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16"
+  },
+  "note": "45 track"
+ },
+ {
+  "name": "x5-aff016-reuse-topk6-lookup7",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_MTP_LOOKUP_DEPTH": "7"
+  },
+  "note": "45 track aggressive"
+ },
+ {
+  "name": "x6-mix2-reuse-topk6",
+  "env": {
+   "STRATA_GLM_MTP_REUSE_DRAFT": "1",
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6"
+  },
+  "note": "35/45 track"
+ }
+]

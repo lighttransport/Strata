@@ -1,0 +1,10 @@
+{
+  "time": "2026-10-09T21:18:59.670663+00:00",
+  "all16_rows_identical": true,
+  "final_metrics_identical": true,
+  "corpus_identical": true,
+  "inputs_identical": true,
+  "current_result_sha256": "6a140cd2cc9e9f14a8d983b078190e1dbf7af287d6a8cf08d2a2f78999085795",
+  "prior_result_sha256": "d52d623d6eea83ab93e2a037b36c11cc3f19ea584e21206f9a0436e43980996b",
+  "scope": "Full teacher-forcing corpus only; not full generated-code or decode output parity."
+}

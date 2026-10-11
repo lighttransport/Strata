@@ -1,0 +1,6 @@
+{
+  "quality_qualified": false,
+  "baseline": "/mnt/nvme02/work/Strata/build-tr16-20261009/humaneval-baseline",
+  "baseline_measurement_sha256": "8be257bbad5cbdd5247aaba2de4d862cbbc936ece2a2601774857aa7b7ba4cee",
+  "scope": "Same pinned164 tasks and generation protocol. Intentional precision, cache, routing and drafting changes. This is task-quality research only. Guarded held-out speed and corpus validation remain separate; the earlier corpus uses a different executable. No target qualification follows automatically."
+}

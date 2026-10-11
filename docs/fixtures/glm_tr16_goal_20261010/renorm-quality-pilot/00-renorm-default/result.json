@@ -1,0 +1,220 @@
+{
+  "config": {
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-cuda/strata-glm-decode",
+    "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "model_name": "00-renorm-default",
+    "context": 12288,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 14336,
+    "gpu_devices": "0",
+    "threads": 15,
+    "cpu_affinity": "numa",
+    "prefill_batch": 2048,
+    "decode_experts": "cpu",
+    "speculative": "mtp",
+    "draft_depth": 1,
+    "decode_graphs": true,
+    "decode_cache_mib": 5632,
+    "env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme02/work/Strata/build-q2-redesign/calibration/coverage.json",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "1",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "512",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0",
+      "STRATA_GLM_MLA_GRAPHS": "1",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_STAGE_PREFETCH": "1",
+      "STRATA_GLM_PREFETCH_GROUPS": "12",
+      "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_NUMA_AFTER_PREFILL": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512",
+      "STRATA_GLM_EVAL_WIDTH": "1"
+    },
+    "prefill_experts": "mmq",
+    "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_patch": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/route-renorm.patch",
+    "stop_token_ids": [
+      154820,
+      154827,
+      154829
+    ],
+    "experimental_role": "Partial corpus screen; not qualification"
+  },
+  "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-cuda/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "0",
+    "1",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=256",
+    "--gpu-budget-mib=14336",
+    "--cpu-affinity=numa",
+    "--decode-graphs",
+    "--decode-cache-mib=5632",
+    "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "--eval-corpus=/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-quality-pilot/00-renorm-default/corpus.ids",
+    "--eval-reference=/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits"
+  ],
+  "decoder_sha256": "2d3de133c4be061bcbf59d67847f06c0b03b843f910b8d6a4cfb07f64ad1bd64",
+  "runner_sha256": "5c16af6c782d225597a8755763f8bf24aaf450a650625d7e9853427c097ceca4",
+  "inputs": {
+    "weight_files": [
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+        "size": 9429859,
+        "mtime_ns": 1788737141224191838
+      },
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+        "size": 49294975936,
+        "mtime_ns": 1788742057416159536
+      },
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+        "size": 49949266048,
+        "mtime_ns": 1788747361801103295
+      },
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+        "size": 9466399584,
+        "mtime_ns": 1788748330324522715
+      },
+      {
+        "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+        "size": 105488860384,
+        "mtime_ns": 1791196869907720248
+      }
+    ],
+    "expert_prior_sha256": "feb62d061e447a664ca005f11684a89cde3ce6eabf83c5b8672ab7c3558cd9e2",
+    "note": "Weight identity uses size and mtime, not a full content hash."
+  },
+  "corpus_sha256": "52aad8d339825e96779fa1bb4c7a66a49985a4e3b82048b91818bb0798e984fc",
+  "reference": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits",
+  "reference_size": 20300562952,
+  "reference_mtime_ns": 1791235210719422252,
+  "sequences": 4,
+  "expected_tokens": 2048,
+  "evaluation_width": 1,
+  "quality_tolerance": {
+    "ppl_rel": 0.03,
+    "kl_rel": 0,
+    "kl_abs": 0.03,
+    "top1_abs": 0.01
+  },
+  "complete": true,
+  "qualified": false,
+  "rows": [
+    {
+      "sequence": 1,
+      "tokens": 512,
+      "nll": 2.07579394526,
+      "perplexity": 7.9708723838,
+      "kl": 0.163463269755,
+      "top1_agreement": 0.830078125,
+      "different_logits": 79298552
+    },
+    {
+      "sequence": 2,
+      "tokens": 1024,
+      "nll": 1.44583371199,
+      "perplexity": 4.24539010043,
+      "kl": 0.108615563229,
+      "top1_agreement": 0.88671875,
+      "different_logits": 158597106
+    },
+    {
+      "sequence": 3,
+      "tokens": 1536,
+      "nll": 1.31238602857,
+      "perplexity": 3.71502730685,
+      "kl": 0.103792489904,
+      "top1_agreement": 0.89453125,
+      "different_logits": 237895654
+    },
+    {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.327846347,
+      "perplexity": 3.77290909449,
+      "kl": 0.102885190412,
+      "top1_agreement": 0.892578125,
+      "different_logits": 317194212
+    }
+  ],
+  "memory": {
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-cuda/strata-glm-decode",
+      "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "0",
+      "1",
+      "4096",
+      "15",
+      "--context=12288",
+      "--prefill-batch=256",
+      "--gpu-budget-mib=14336",
+      "--cpu-affinity=numa",
+      "--decode-graphs",
+      "--decode-cache-mib=5632",
+      "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+      "--eval-corpus=/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-quality-pilot/00-renorm-default/corpus.ids",
+      "--eval-reference=/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits"
+    ],
+    "peak_rss_kib": 109971972,
+    "peak_swap_kib": 0,
+    "minimum_available_kib": 124249132,
+    "sample_interval_ms": 100,
+    "rejected": null,
+    "interference": [],
+    "minimum_gpu_free_mib": 1234,
+    "required_gpu_free_mib": 512,
+    "exit_code": 1,
+    "wall_seconds": 172.8210248319665
+  },
+  "guard_exit_code": 1,
+  "metrics": {
+    "sequence": 4,
+    "tokens": 2048,
+    "nll": 1.327846347,
+    "perplexity": 3.77290909449,
+    "kl": 0.102885190412,
+    "top1_agreement": 0.892578125,
+    "different_logits": 317194212
+  },
+  "promotion_note": "Full paired HumanEval and held-out timing still required."
+}

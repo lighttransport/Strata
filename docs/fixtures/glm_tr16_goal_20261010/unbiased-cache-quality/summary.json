@@ -1,0 +1,50 @@
+[
+  {
+    "name": "aff20-unbiased",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.40921024287,
+      "perplexity": 4.0927218711,
+      "kl": 0.196092965983,
+      "top1_agreement": 0.8671875,
+      "different_logits": 317194217
+    },
+    "failures": [
+      "KL 0.19609 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8672 < 0.8826 (baseline 0.8926)",
+      "perplexity 4.0927 > 3.8861 (baseline 3.7729)"
+    ],
+    "quality_qualified": false,
+    "performance_comparable": false,
+    "prior_result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/component-quality-pilot/aff20-only-retry1/result.json",
+    "ppl_change_vs_prior_percent": -1.7516398441490222,
+    "ppl_increase_vs_baseline_percent": 8.476556646357004,
+    "top1_drop_vs_baseline_percentage_points": 2.5390625
+  },
+  {
+    "name": "q4-aff08-unbiased",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.34442281563,
+      "perplexity": 3.83597183852,
+      "kl": 0.138000452963,
+      "top1_agreement": 0.8837890625,
+      "different_logits": 317194209
+    },
+    "failures": [
+      "KL 0.13800 > 0.13289 (baseline 0.10289)"
+    ],
+    "quality_qualified": false,
+    "performance_comparable": false,
+    "prior_result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/component-quality-pilot/q4-aff08/result.json",
+    "ppl_change_vs_prior_percent": -0.493102019282432,
+    "ppl_increase_vs_baseline_percent": 1.6714620588685003,
+    "top1_drop_vs_baseline_percentage_points": 0.87890625
+  }
+]

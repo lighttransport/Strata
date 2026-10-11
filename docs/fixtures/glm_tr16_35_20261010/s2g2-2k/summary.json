@@ -1,0 +1,102 @@
+[
+  {
+    "name": "g4-aff016-topk6-guard4",
+    "note": "best candidate with the repeat guard, draft-route binary",
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s2g2-2k/g4-aff016-topk6-guard4.json",
+    "env_overrides": {
+      "STRATA_GLM_ROUTE_AFFINITY": "0.16",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103628412,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 186.28511933702976
+    },
+    "decode_tok_s": 39.199,
+    "decode_trials": [
+      39.199
+    ],
+    "decode_warmup_tok_s": 35.5529,
+    "prefill_tok_s": 143.1325,
+    "rounds": 133,
+    "generated": 512,
+    "tokens_per_round": 3.8496240601503757,
+    "accepted_per_round": 2.8421052631578947,
+    "proposed_per_round": 2.9849624060150375,
+    "position_accept_rate": {
+      "0": 1.0,
+      "1": 0.9696969696969697,
+      "2": 0.8863636363636364
+    },
+    "soft_accepted": 26,
+    "logit_regret_per_token": 0.084096484375,
+    "draft_ms_per_round": 9.915037593984962,
+    "verify_ms_per_round": 85.7187969924812,
+    "resync_ms_per_round": 0.8248045112781954,
+    "expert_gb_per_token": 1.037367808,
+    "flow_ms_per_token": 14.45470703125,
+    "ms_per_token": 25.4611328125,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 0
+      }
+    ],
+    "sync_state_only": [
+      {
+        "omitted": 378,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 1024,
+    "token_count_expected": 1024,
+    "distinct_4gram_fraction": [
+      0.8978388998035364,
+      0.9174852652259332
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "8a7bf55b292b80d8177e6ce31bc87b97acec816a51d71883669e8b8cfc42e2ea",
+      "4a8a145d4a4b0950ef7d3551ead61281c275ae378266b3ed01c744a85587bc9e"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      15,
+      3
+    ],
+    "control_rate": 32.9658,
+    "speed_change_percent": 18.908080495543842,
+    "decision": "KEEP",
+    "input_identity_matches_base": true
+  }
+]

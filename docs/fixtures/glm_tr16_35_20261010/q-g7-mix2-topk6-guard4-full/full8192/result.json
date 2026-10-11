@@ -1,0 +1,732 @@
+{
+  "config": {
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+    "model_name": "tr35-g7-mix2-topk6-guard4",
+    "context": 12288,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 14336,
+    "gpu_devices": "0",
+    "threads": 15,
+    "cpu_affinity": "numa",
+    "prefill_batch": 2048,
+    "decode_experts": "cpu",
+    "speculative": "mtp",
+    "draft_depth": 3,
+    "decode_graphs": true,
+    "decode_cache_mib": 6656,
+    "env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme02/work/Strata/build-q2-redesign/calibration/coverage.json",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "1",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "512",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+      "STRATA_GLM_MLA_GRAPHS": "1",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_STAGE_PREFETCH": "1",
+      "STRATA_GLM_PREFETCH_GROUPS": "12",
+      "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_NUMA_AFTER_PREFILL": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512",
+      "STRATA_GLM_HC_FUSED": "1",
+      "STRATA_GLM_MLA_KERNELS": "1",
+      "STRATA_GLM_HEADS_BLOCKS": "1",
+      "STRATA_MMVQ_IL_ROWS": "23:2:0,0,0,0,0;23:3:0,0,0,0,0;23:4:0,0,0,0,0;12:2:1,0,0,0,0;12:3:2,4,4,2,4;12:4:1,1,2,2,2;13:2:0,0,0,0,1;13:3:0,1,4,1,1;13:4:1,1,2,2,1;14:2:1,4,0,1,1;14:3:4,1,4,4,4;14:4:4,2,2,2,2",
+      "STRATA_GLM_MTP_SYNC_STATE_ONLY": "1",
+      "STRATA_GLM_ROUTE_RENORMALIZE": "0",
+      "STRATA_GLM_MMVQ_IL": "1",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_ROUTE_MIN_SHARE": "0",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "0",
+      "STRATA_GLM_DENSE_Q4": "all",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+      "STRATA_GLM_MTP_GPU_CACHE": "0",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json",
+      "STRATA_GLM_EVAL_WIDTH": "1"
+    },
+    "prefill_experts": "mmq",
+    "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_patch": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route.patch",
+    "stop_token_ids": [
+      154820,
+      154827,
+      154829
+    ],
+    "experimental_role": "35/45 follow-up screen; routing and outputs can change; no quality qualification",
+    "mtp_experts": "cpu"
+  },
+  "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "0",
+    "1",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=256",
+    "--gpu-budget-mib=14336",
+    "--cpu-affinity=numa",
+    "--decode-graphs",
+    "--decode-cache-mib=6656",
+    "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+    "--eval-corpus=/mnt/nvme02/work/Strata/build-tr16-35-20261010/q-g7-mix2-topk6-guard4-full/full8192/corpus.ids",
+    "--eval-reference=/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits"
+  ],
+  "decoder_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+  "runner_sha256": "0e37d1fe69dd2f60f46bb4a9a198f6e96b0522d62e5a6af61426eb4619a9c357",
+  "inputs": {
+    "weight_files": [
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+        "size": 9429859,
+        "mtime_ns": 1788737141224191838
+      },
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+        "size": 49294975936,
+        "mtime_ns": 1788742057416159536
+      },
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+        "size": 49949266048,
+        "mtime_ns": 1788747361801103295
+      },
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+        "size": 9466399584,
+        "mtime_ns": 1788748330324522715
+      },
+      {
+        "path": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+        "size": 95919555808,
+        "mtime_ns": 1791320297705013336
+      }
+    ],
+    "expert_prior_sha256": "feb62d061e447a664ca005f11684a89cde3ce6eabf83c5b8672ab7c3558cd9e2",
+    "note": "Weight identity uses size and mtime, not a full content hash."
+  },
+  "corpus_sha256": "c08b80a8dc5f15dd7fad58046fda20aa1a4464e2335d3dbdfebe1c922b1bea72",
+  "reference": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits",
+  "reference_size": 20300562952,
+  "reference_mtime_ns": 1791235210719422252,
+  "sequences": 16,
+  "expected_tokens": 8192,
+  "evaluation_width": 1,
+  "quality_tolerance": {
+    "ppl_rel": 0.03,
+    "kl_rel": 0,
+    "kl_abs": 0.03,
+    "top1_abs": 0.01
+  },
+  "complete": true,
+  "qualified": false,
+  "cpu_interference_policy": "record",
+  "performance_comparable": false,
+  "rows": [
+    {
+      "sequence": 1,
+      "tokens": 512,
+      "nll": 2.16589832106,
+      "perplexity": 8.72243394458,
+      "kl": 0.267975485513,
+      "top1_agreement": 0.798828125,
+      "different_logits": 79298559
+    },
+    {
+      "sequence": 2,
+      "tokens": 1024,
+      "nll": 1.50852887643,
+      "perplexity": 4.52007630992,
+      "kl": 0.199324017175,
+      "top1_agreement": 0.8486328125,
+      "different_logits": 158597114
+    },
+    {
+      "sequence": 3,
+      "tokens": 1536,
+      "nll": 1.36493897147,
+      "perplexity": 3.91548408845,
+      "kl": 0.186337646804,
+      "top1_agreement": 0.863932291667,
+      "different_logits": 237895670
+    },
+    {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.39475474437,
+      "perplexity": 4.03398509373,
+      "kl": 0.190935530481,
+      "top1_agreement": 0.8603515625,
+      "different_logits": 317194222
+    },
+    {
+      "sequence": 5,
+      "tokens": 2560,
+      "nll": 1.37305090487,
+      "perplexity": 3.94737540988,
+      "kl": 0.182904738498,
+      "top1_agreement": 0.86640625,
+      "different_logits": 396492781
+    },
+    {
+      "sequence": 6,
+      "tokens": 3072,
+      "nll": 1.32726112472,
+      "perplexity": 3.77070175001,
+      "kl": 0.181245519056,
+      "top1_agreement": 0.87109375,
+      "different_logits": 475791332
+    },
+    {
+      "sequence": 7,
+      "tokens": 3584,
+      "nll": 1.35458777656,
+      "perplexity": 3.87516319425,
+      "kl": 0.177546036118,
+      "top1_agreement": 0.873604910714,
+      "different_logits": 555089882
+    },
+    {
+      "sequence": 8,
+      "tokens": 4096,
+      "nll": 1.46879576993,
+      "perplexity": 4.34400081361,
+      "kl": 0.185595943921,
+      "top1_agreement": 0.863037109375,
+      "different_logits": 634388435
+    },
+    {
+      "sequence": 9,
+      "tokens": 4608,
+      "nll": 1.54437377904,
+      "perplexity": 4.68503683994,
+      "kl": 0.198375644529,
+      "top1_agreement": 0.858506944444,
+      "different_logits": 713686989
+    },
+    {
+      "sequence": 10,
+      "tokens": 5120,
+      "nll": 1.5457769841,
+      "perplexity": 4.69161552186,
+      "kl": 0.196647418239,
+      "top1_agreement": 0.861328125,
+      "different_logits": 792985541
+    },
+    {
+      "sequence": 11,
+      "tokens": 5632,
+      "nll": 1.57634098295,
+      "perplexity": 4.83722390559,
+      "kl": 0.20342112718,
+      "top1_agreement": 0.857066761364,
+      "different_logits": 872284099
+    },
+    {
+      "sequence": 12,
+      "tokens": 6144,
+      "nll": 1.60404190296,
+      "perplexity": 4.97309261415,
+      "kl": 0.207418032741,
+      "top1_agreement": 0.85302734375,
+      "different_logits": 951582658
+    },
+    {
+      "sequence": 13,
+      "tokens": 6656,
+      "nll": 1.63237725078,
+      "perplexity": 5.11602234196,
+      "kl": 0.210348749891,
+      "top1_agreement": 0.849459134615,
+      "different_logits": 1030881211
+    },
+    {
+      "sequence": 14,
+      "tokens": 7168,
+      "nll": 1.69200072032,
+      "perplexity": 5.43033442433,
+      "kl": 0.223178861144,
+      "top1_agreement": 0.842215401786,
+      "different_logits": 1110179762
+    },
+    {
+      "sequence": 15,
+      "tokens": 7680,
+      "nll": 1.65436624643,
+      "perplexity": 5.22976448977,
+      "kl": 0.218087173054,
+      "top1_agreement": 0.846614583333,
+      "different_logits": 1189478315
+    },
+    {
+      "sequence": 16,
+      "tokens": 8192,
+      "nll": 1.64107884309,
+      "perplexity": 5.16073413238,
+      "kl": 0.221266929097,
+      "top1_agreement": 0.84619140625,
+      "different_logits": 1268776872
+    }
+  ],
+  "memory": {
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+      "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "0",
+      "1",
+      "4096",
+      "15",
+      "--context=12288",
+      "--prefill-batch=256",
+      "--gpu-budget-mib=14336",
+      "--cpu-affinity=numa",
+      "--decode-graphs",
+      "--decode-cache-mib=6656",
+      "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+      "--eval-corpus=/mnt/nvme02/work/Strata/build-tr16-35-20261010/q-g7-mix2-topk6-guard4-full/full8192/corpus.ids",
+      "--eval-reference=/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits"
+    ],
+    "peak_rss_kib": 100752296,
+    "peak_swap_kib": 0,
+    "minimum_available_kib": 123683156,
+    "sample_interval_ms": 100,
+    "rejected": null,
+    "interference": [
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 99.56015895820155,
+        "elapsed_seconds": 230.15611385798547
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 99.54855504459098,
+        "elapsed_seconds": 231.3315647309646
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 97.9994708248908,
+        "elapsed_seconds": 232.5151284780004
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 100.7647415584819,
+        "elapsed_seconds": 233.6960669599939
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 97.1429014346961,
+        "elapsed_seconds": 234.79731472796993
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 99.96689791088419,
+        "elapsed_seconds": 235.97769933199743
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 99.87062598073153,
+        "elapsed_seconds": 237.1594612399931
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 99.43670257005336,
+        "elapsed_seconds": 238.32607824797742
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 99.3974005388991,
+        "elapsed_seconds": 239.50317933497718
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641711,
+        "name": "cc1plus",
+        "cpu_percent": 98.67489766764244,
+        "elapsed_seconds": 240.68885310000041
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 99.72075661661654,
+        "elapsed_seconds": 244.23523924098117
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 99.59212828486683,
+        "elapsed_seconds": 245.4200888389605
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 99.09682870652749,
+        "elapsed_seconds": 246.60064426797908
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 99.87542665193592,
+        "elapsed_seconds": 247.78215677797562
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 95.85760414936595,
+        "elapsed_seconds": 248.9612120189704
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 99.79827152614543,
+        "elapsed_seconds": 250.13329416298075
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 99.76694569712197,
+        "elapsed_seconds": 251.30624094599625
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 98.82050384968218,
+        "elapsed_seconds": 252.4799784339848
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3641864,
+        "name": "cc1plus",
+        "cpu_percent": 99.9356435619077,
+        "elapsed_seconds": 253.66066485695774
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 99.51894095485297,
+        "elapsed_seconds": 257.215309253952
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 99.51976948142148,
+        "elapsed_seconds": 258.3909615239827
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 99.30437858327868,
+        "elapsed_seconds": 259.4680623699678
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 100.24740020894278,
+        "elapsed_seconds": 260.6252405909472
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 84.5752934697045,
+        "elapsed_seconds": 261.8078939879779
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 100.24563008044913,
+        "elapsed_seconds": 262.9851059979992
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 99.2165137057151,
+        "elapsed_seconds": 264.1541405139724
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 99.84884443109453,
+        "elapsed_seconds": 265.3158838629606
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642026,
+        "name": "cc1plus",
+        "cpu_percent": 99.56242071365504,
+        "elapsed_seconds": 266.50128471897915
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 98.93049656490201,
+        "elapsed_seconds": 290.096596800955
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 99.87676662483818,
+        "elapsed_seconds": 291.278079479991
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 99.78364850319716,
+        "elapsed_seconds": 292.4607077660039
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 99.59000895731369,
+        "elapsed_seconds": 293.63547079695854
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 99.8521128768616,
+        "elapsed_seconds": 294.8075225499924
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 98.69895144094212,
+        "elapsed_seconds": 295.98264255200047
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 100.14387822577915,
+        "elapsed_seconds": 297.1710013729753
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 100.0146400439498,
+        "elapsed_seconds": 298.36062191496603
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 98.6886849884199,
+        "elapsed_seconds": 299.5360849889694
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642347,
+        "name": "cc1plus",
+        "cpu_percent": 99.68126720361128,
+        "elapsed_seconds": 300.71976295800414
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 99.5740102321188,
+        "elapsed_seconds": 304.2767721010023
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 99.14256224909495,
+        "elapsed_seconds": 305.45673993998207
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 100.3127691785014,
+        "elapsed_seconds": 306.63309752196074
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 99.58576966838665,
+        "elapsed_seconds": 307.8078741229838
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 99.10075603695317,
+        "elapsed_seconds": 308.8872810329776
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 99.78178535357185,
+        "elapsed_seconds": 310.06987483694684
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 95.3247619559366,
+        "elapsed_seconds": 311.2557272769627
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642452,
+        "name": "cc1plus",
+        "cpu_percent": 98.72234316306862,
+        "elapsed_seconds": 312.42046562297037
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 99.83577969614859,
+        "elapsed_seconds": 315.9277994649601
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 98.86275409182153,
+        "elapsed_seconds": 317.1217821179889
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 99.63721197185826,
+        "elapsed_seconds": 318.29560807795497
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 99.67482771674555,
+        "elapsed_seconds": 319.45944409497315
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 99.06058295616023,
+        "elapsed_seconds": 320.63038834097097
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 100.6268624338616,
+        "elapsed_seconds": 321.7931564329774
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 95.40490285972041,
+        "elapsed_seconds": 322.98802087496733
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 99.07828648927978,
+        "elapsed_seconds": 324.1589089100016
+      },
+      {
+        "reason": "external CPU work",
+        "pid": 3642525,
+        "name": "cc1plus",
+        "cpu_percent": 99.07133993511744,
+        "elapsed_seconds": 325.3297781639849
+      }
+    ],
+    "minimum_gpu_free_mib": 1954,
+    "required_gpu_free_mib": 512,
+    "exit_code": 1,
+    "wall_seconds": 507.8309339819825
+  },
+  "guard_exit_code": 1,
+  "metrics": {
+    "sequence": 16,
+    "tokens": 8192,
+    "nll": 1.64107884309,
+    "perplexity": 5.16073413238,
+    "kl": 0.221266929097,
+    "top1_agreement": 0.84619140625,
+    "different_logits": 1268776872
+  },
+  "promotion_note": "Full paired HumanEval and held-out timing still required."
+}

@@ -1,0 +1,17 @@
+{
+  "same_binary_prompt_input_and_settings": true,
+  "only_config_label_differs": true,
+  "first_difference_vs_initial_root_control_by_trial": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "initial_cache_fingerprint": 10182432604744903722,
+  "repeat_cache_fingerprint": 12166308767097964286,
+  "repeat_decode_tok_s": 23.2198,
+  "repeat_prefill_tok_s": 435.053,
+  "matches_archive": false,
+  "cause": "unresolved",
+  "integration_removed": true
+}

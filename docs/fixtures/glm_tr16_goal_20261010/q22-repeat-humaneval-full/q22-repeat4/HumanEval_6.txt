@@ -1,0 +1,19 @@
+Simple: max depth per group.</think>```python
+from typing import List
+
+
+def parse_nested_parens(paren_string: str) -> List[int]:
+    def max_depth(s: str) -> int:
+        depth = max_depth_val = 0
+        for ch in s:
+            if ch == '(':
+                depth += 1
+                max_depth_val = max(max_depth_val, depth)
+            elif ch == ')':
+                depth -= 1
+        return max_depth_val
+
+    return [max_depth(group) for group in paren_string.split()]
+```
+
+For each group, track running depth; the maximum depth reached is the nesting level.

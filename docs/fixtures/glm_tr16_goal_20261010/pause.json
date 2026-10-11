@@ -1,0 +1,18 @@
+{
+  "status": "paused_by_user",
+  "recorded_utc": "2026-10-10T03:38:49.233840+00:00",
+  "owned_benchmark_processes_stopped": [
+    3332639,
+    3332698,
+    3332701,
+    3332711
+  ],
+  "guarded_humaneval": {
+    "tasks_completed": 9,
+    "passes": 9,
+    "complete": false
+  },
+  "low_loss_30_achieved": false,
+  "useful_50_achieved": false,
+  "resume_document": "resume-tr16.md"
+}

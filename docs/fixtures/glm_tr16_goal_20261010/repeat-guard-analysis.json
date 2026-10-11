@@ -1,0 +1,125 @@
+{
+  "scope": "Training prompt,512-token warmup andthree512-token timed continuations. Distinct n-grams describe repetition; they do not measure correctness or establish output quality. Inspect every saved continuation and run task/corpus tests before qualification.",
+  "rows": [
+    {
+      "name": "00-repeat-control",
+      "median_decode_tok_s": 36.7702,
+      "control": "00-repeat-control",
+      "speed_change_percent": 0.0,
+      "timed_distinct_fourgram_fractions": [
+        0.44204322200392926,
+        0.9174852652259332,
+        0.10216110019646366
+      ],
+      "median_distinct_fourgram_fraction": 0.44204322200392926,
+      "repeat_guard_blocked": [],
+      "soft_accepted": [
+        40,
+        55,
+        110,
+        10
+      ],
+      "quality_qualified": false,
+      "text_samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard/00-repeat-control/text-samples.json"
+    },
+    {
+      "name": "01-repeat4",
+      "median_decode_tok_s": 34.853,
+      "control": "00-repeat-control",
+      "speed_change_percent": -5.2140048191198325,
+      "timed_distinct_fourgram_fractions": [
+        0.8762278978388998,
+        0.9548133595284872,
+        0.22986247544204322
+      ],
+      "median_distinct_fourgram_fraction": 0.8762278978388998,
+      "repeat_guard_blocked": [
+        4,
+        4,
+        1,
+        5
+      ],
+      "soft_accepted": [
+        124,
+        111,
+        116,
+        18
+      ],
+      "quality_qualified": false,
+      "text_samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard/01-repeat4/text-samples.json"
+    },
+    {
+      "name": "02-repeat8",
+      "median_decode_tok_s": 36.5707,
+      "control": "00-repeat-control",
+      "speed_change_percent": -0.5425589199949954,
+      "timed_distinct_fourgram_fractions": [
+        0.43418467583497056,
+        0.09430255402750491,
+        0.9449901768172888
+      ],
+      "median_distinct_fourgram_fraction": 0.43418467583497056,
+      "repeat_guard_blocked": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "soft_accepted": [
+        96,
+        46,
+        14,
+        103
+      ],
+      "quality_qualified": false,
+      "text_samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard/02-repeat8/text-samples.json"
+    },
+    {
+      "name": "03-aggressive-control",
+      "median_decode_tok_s": 55.0813,
+      "control": "03-aggressive-control",
+      "speed_change_percent": 0.0,
+      "timed_distinct_fourgram_fractions": [
+        0.05697445972495088,
+        0.14341846758349705,
+        0.2200392927308448
+      ],
+      "median_distinct_fourgram_fraction": 0.14341846758349705,
+      "repeat_guard_blocked": [],
+      "soft_accepted": [
+        35,
+        15,
+        30,
+        36
+      ],
+      "quality_qualified": false,
+      "text_samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard/03-aggressive-control/text-samples.json"
+    },
+    {
+      "name": "04-aggressive-repeat8",
+      "median_decode_tok_s": 50.6875,
+      "control": "03-aggressive-control",
+      "speed_change_percent": -7.976935911098682,
+      "timed_distinct_fourgram_fractions": [
+        0.2318271119842829,
+        0.18664047151277013,
+        0.08055009823182711
+      ],
+      "median_distinct_fourgram_fraction": 0.18664047151277013,
+      "repeat_guard_blocked": [
+        2,
+        0,
+        8,
+        10
+      ],
+      "soft_accepted": [
+        24,
+        61,
+        47,
+        15
+      ],
+      "quality_qualified": false,
+      "text_samples": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/repeat-guard/04-aggressive-repeat8/text-samples.json"
+    }
+  ]
+}

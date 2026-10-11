@@ -2,6 +2,7 @@
 // include/strata/artifact/gguf_reader.hpp; this file is just the entry point, so it cannot drift
 // from the library it exercises.
 #include "strata/artifact/gguf_reader.hpp"
+#include "strata/host/glm_names.hpp"
 
 #ifndef STRATA_GGUF_MAIN_DISABLED
 int main(int argc, char** argv) {
@@ -21,7 +22,7 @@ int main(int argc, char** argv) {
             // Independent expectations, all established by earlier phases.
             size_t n_blk = 0;
             for (const auto& t : g.tensors())
-                if (t.name.rfind("blk.", 0) == 0) ++n_blk;
+                if (strata::host::is_blk(t.name)) ++n_blk;
             std::printf("  blk.* tensors %zu   globals %zu\n", n_blk, g.tensors().size() - n_blk);
             std::printf("  Q2_0 %llu   BF16 %llu   F32 %llu\n", (unsigned long long)g.count_type("Q2_0"),
                         (unsigned long long)g.count_type("BF16"), (unsigned long long)g.count_type("F32"));

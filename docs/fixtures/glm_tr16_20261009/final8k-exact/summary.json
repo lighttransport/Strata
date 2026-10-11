@@ -1,0 +1,18 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/final8k-exact/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.0982,
+    "prefill_tok_s": 443.041
+  },
+  {
+    "case": "f16-buckets",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/final8k-exact/001-f16-buckets.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.0308,
+    "prefill_tok_s": 359.689
+  }
+]

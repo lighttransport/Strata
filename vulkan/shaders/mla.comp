@@ -1,0 +1,17 @@
+#version 450
+layout(local_size_x=128) in;
+layout(binding=0,std430) readonly buffer Cache { float cache[]; };
+layout(binding=1,std430) readonly buffer Q { float q[]; };
+layout(binding=2,std430) readonly buffer Ids { int ids[]; };
+layout(binding=6,std430) writeonly buffer Y { float y[]; };
+layout(push_constant) uniform Params { uint heads; uint latent; uint count; float scale; } p;
+shared float probability[2112];
+void main(){
+ uint h=gl_WorkGroupID.x,t=gl_LocalInvocationID.x;
+ if(h>=p.heads) return;
+ for(uint s=t;s<p.count;s+=128){precise float dot=0;for(uint i=0;i<p.latent;i++)dot+=q[h*p.latent+i]*cache[uint(ids[s])*p.latent+i];probability[s]=dot*p.scale;}
+ barrier();
+ if(t==0){float mx=-3.402823e38,total=0;for(uint s=0;s<p.count;s++)mx=max(mx,probability[s]);for(uint s=0;s<p.count;s++){probability[s]=exp(probability[s]-mx);total+=probability[s];}for(uint s=0;s<p.count;s++)probability[s]/=total;}
+ barrier();
+ for(uint i=t;i<p.latent;i+=128){precise float sum=0;for(uint s=0;s<p.count;s++)sum+=probability[s]*cache[uint(ids[s])*p.latent+i];y[h*p.latent+i]=sum;}
+}

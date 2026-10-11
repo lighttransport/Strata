@@ -1,0 +1,56 @@
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -1659,6 +1659,11 @@
+     std::unique_ptr<GpuPrefill> gpu;
+     std::unique_ptr<GpuWorker> prefetch_launcher;
+     std::future<void> prefetch_pending;
++    int prefetched_layer = -1;
++    const bool prefetch_next_layer = [] {
++        const char *v = std::getenv("STRATA_GLM_PREFETCH_NEXT_LAYER");
++        return v && std::string(v) == "1";
++    }();
+     int primary_device = 0;
+     bool secondary_enabled = true;
+     bool decode_prefill_cache = false;
+@@ -3097,6 +3102,7 @@
+     // Queue this layer's leading non-resident groups on the copy streams before its mixer.
+     void finish_prefetch() {
+         if (prefetch_pending.valid()) prefetch_pending.get();
++        prefetched_layer = -1;
+     }
+     void prefetch_groups_sync(int layer_id) {
+         if (!fast || !gpu || gpu->pool.empty() || m.experts != 288) return;
+@@ -3121,6 +3127,9 @@
+         }
+     }
+     void prefetch_groups(int layer_id) {
++        // A previous layer may already have started this upload. Consume the
++        // same future at moe_gpu's normal join point, after the mixer is queued.
++        if (prefetch_next_layer && prefetched_layer == layer_id) return;
+         finish_prefetch();
+         if (!fast || !gpu || gpu->pool.empty() || m.experts != 288) return;
+         if (!gpu->staged_prefetch) { prefetch_groups_sync(layer_id); return; }
+@@ -3128,6 +3137,7 @@
+         // Enqueue the mixer on the main thread while the staging worker fills
+         // the extra pool and queues its H2D copies. Join before consuming the map.
+         prefetch_pending = prefetch_launcher->submit([this, layer_id] { prefetch_groups_sync(layer_id); });
++        prefetched_layer = layer_id;
+     }
+     void moe_gpu(const std::string &p, const float *x, float *out,
+                  const strata::core::LayerDescriptor &layer) {
+@@ -3344,6 +3354,15 @@
+             }
+         }
+         k::glm_route_sum(result.f(), rw.f(), out, H, K, nt, stream);
++        // All current-layer consumers have recorded pool_done before these
++        // immutable weights are reused. The copy stream waits on those events;
++        // staging overlaps the tail of this layer as well as the next mixer.
++        // The two pinned buffers remain exclusively owned by the prefetch worker
++        // until the next layer joins it. Keep multi-GPU scheduling unchanged.
++        const int next = std::stoi(p.substr(4)) + 1;
++        if (prefetch_next_layer && !split && fast && gpu->staged_prefetch &&
++            next < (int)m.layers.size() && m.layers[next].ffn == strata::core::FfnKind::Moe)
++            prefetch_groups(next);
+     }
+     void moe_streamed(const std::string &p, const float *x, float *out,
+                       const strata::core::LayerDescriptor &layer) {

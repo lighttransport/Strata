@@ -1,0 +1,19 @@
+{
+  "scope": "128-token repetition diagnostic only; absence of short repetition cannot qualify long generation or task quality",
+  "tokens_sha256": "f284410e3274d4c211a6854b5d18998b3a6754616fbc505772a701be533f67f3",
+  "quality_qualified": false,
+  "trials": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "text": "We need to review the benchmark. It's a partial excerpt with an obvious syntax error: `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon, and the body references `args.output` etc. \u2014 clearly a corrupted merge of `gpu_capacity_passed` and `run_systemd` functions. Also `process_memory_maps` docstring. Also `parse_log` speculative regex: `SPECULATIVE source=(\\w+) generated=(\\d+)` \u2014 but the code uses `dict(kind=kind, tokens=int(n), ...)` \u2014 wait, actually the regex `SPECULATIVE",
+      "distinct_fourgram_fraction": 0.992
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "text": "We need to review the benchmark. It's a partial excerpt; we must identify bugs in the shown code: cache_bytes, model_files, clear_model_cache, parse_log, group_stats, process_memory_maps, gpu_usage, gpu_capacity_passed (broken signature), launcher function, main.\n\nKey bugs:\n\n1. cache_bytes: mmap with PROT_READ (1) and MAP_SHARED (2)? mmap flags: args are prot, flags, fd, offset. prot=1 (PROT_READ), flags=2 (MAP_SHARED). But MAP_SHARED=1, MAP_PRIVATE=2. Actually MAP_SHARED=0x01, MAP_PRIVATE=",
+      "distinct_fourgram_fraction": 0.992
+    }
+  ]
+}

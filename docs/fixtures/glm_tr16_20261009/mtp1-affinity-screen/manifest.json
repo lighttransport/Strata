@@ -1,0 +1,22 @@
+{
+  "source_commit": "6ecf3bcb9b7066cc12b41b6782a4eab9e41f4e2c",
+  "decoder_sha256": "78593ffa229088dbc3e375ed4ac785f271f0d06bc7132e76999447d61f080345",
+  "runner_sha256": "8f44d472ac1e8ade6f5c5989c6e4f1f9c9fec6d9e7e5808f69563d7795b0286f",
+  "prompt_sha256": "b36fec1bce5401b8ad6346f66074896bd02494051c6fbf490c853914339539e6",
+  "prompt_tokens": 2048,
+  "cases": [
+    "baseline",
+    "aff05",
+    "baseline",
+    "aff08",
+    "baseline",
+    "aff10",
+    "baseline"
+  ],
+  "decode_tokens": 128,
+  "timed_trials": 1,
+  "warmup_decode_trials": 1,
+  "allow_interference": false,
+  "created": "2026-10-09T21:30:52+0900",
+  "nvidia_smi": "name, driver_version, memory.total [MiB], memory.used [MiB], pcie.link.gen.current, pcie.link.width.current\nNVIDIA GeForce RTX 5060 Ti, 615.71.09, 16311 MiB, 9723 MiB, 3, 8\n"
+}

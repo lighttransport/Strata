@@ -1,0 +1,73 @@
+{
+  "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+    "tools/glm_q2_humaneval.py",
+    "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "/mnt/nvme02/work/Strata/build-q2-redesign/HumanEval.jsonl.gz",
+    "--output",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/humaneval-smoke/q4-no-soft-acceptance",
+    "--decoder",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-cuda/strata-glm-decode",
+    "--expert-pack",
+    "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "--tokens",
+    "2048",
+    "--limit",
+    "20",
+    "--context",
+    "12288",
+    "--prefill-batch",
+    "2048",
+    "--gpu-budget-mib",
+    "14336",
+    "--decode-cache-mib",
+    "6656",
+    "--speculative",
+    "mtp",
+    "--draft-depth",
+    "1",
+    "--route-affinity",
+    "0.08"
+  ],
+  "peak_rss_kib": 112968048,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 124080340,
+  "sample_interval_ms": 100,
+  "rejected": null,
+  "interference": [
+    {
+      "reason": "external CPU work",
+      "pid": 3033704,
+      "name": "unattended-upgr",
+      "cpu_percent": 99.99250666271028,
+      "elapsed_seconds": 453.06300394097343
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3033704,
+      "name": "unattended-upgr",
+      "cpu_percent": 98.7649086037157,
+      "elapsed_seconds": 454.27742401498836
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3033704,
+      "name": "unattended-upgr",
+      "cpu_percent": 100.5048185447222,
+      "elapsed_seconds": 455.5011397309718
+    },
+    {
+      "reason": "external CPU work",
+      "pid": 3033704,
+      "name": "unattended-upgr",
+      "cpu_percent": 99.52533783398331,
+      "elapsed_seconds": 456.7169196449686
+    }
+  ],
+  "minimum_gpu_free_mib": 824,
+  "required_gpu_free_mib": 512,
+  "exit_code": 0,
+  "wall_seconds": 552.6810683549847
+}

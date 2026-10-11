@@ -1,0 +1,44 @@
+[
+ {
+  "name": "g5-aff012-topk6-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12"
+  },
+  "note": "35-track candidate: lower affinity"
+ },
+ {
+  "name": "g6-aff014-topk6-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.14"
+  }
+ },
+ {
+  "name": "g7-mix2-topk6-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json"
+  }
+ },
+ {
+  "name": "g8-aff016-topk8-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16"
+  }
+ },
+ {
+  "name": "g9-aff016-topk6-blend05-guard4",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16",
+   "STRATA_GLM_MTP_RECURSIVE_BLEND": "0.5"
+  }
+ }
+]

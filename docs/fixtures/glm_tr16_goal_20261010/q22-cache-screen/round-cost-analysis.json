@@ -1,0 +1,16 @@
+{
+  "source_log": "build-tr16-goal-20261010/q22-cache-screen/depth3-soft2-cache7424/000-baseline.log",
+  "decode_tok_s": 29.8833,
+  "generated_tokens": 128,
+  "timed_steps": 127,
+  "rounds": 37,
+  "accepted": 89,
+  "draft_ms": 612.944,
+  "verify_ms": 3467.62,
+  "resync_ms": 44.7058,
+  "total_ms": 4249.87,
+  "draft_fraction_percent": 14.422652928207215,
+  "verify_fraction_percent": 81.59355462637681,
+  "fixed_work_zero_draft_counterfactual_tok_s": 34.919599683908885,
+  "scope": "Arithmetic on one completed128-token timed screen, holding target work and acceptance fixed. Not a hardware roofline, speed prediction, or quality qualification. Removing only draft time cannot reach50tok/s on this trace."
+}

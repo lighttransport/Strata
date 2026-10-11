@@ -1,0 +1,7 @@
+{
+  "files_compared": 370,
+  "different_files": [
+    "src/program/glm_decode.cpp"
+  ],
+  "note": "Compares currently preserved source trees, not binary disassembly."
+}

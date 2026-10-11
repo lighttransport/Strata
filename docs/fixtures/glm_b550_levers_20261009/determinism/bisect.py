@@ -1,9 +1,9 @@
 """Cross-process determinism bisection for the B550 BASE15 config (64 tokens, 2 processes per variant)."""
 import copy, json, pathlib, subprocess, sys, time
-CAL = pathlib.Path("/home/syoyo/work/Strata-b550-calibration-15b787b5")
+CAL = pathlib.Path("~/work/Strata-b550-calibration-15b787b5")
 BASE = CAL / "docs/fixtures/glm_b550_levers_20261009/step1/step1-b15360-01-base15.config.json"
-IDS = "/home/syoyo/work/Strata/build-hip-glm-v11/single-2048.ids"
-OUT = pathlib.Path("/home/syoyo/work/bisect-20261009/runs"); OUT.mkdir(parents=True, exist_ok=True)
+IDS = "~/work/Strata/build-hip-glm-v11/single-2048.ids"
+OUT = pathlib.Path("~/work/bisect-20261009/runs"); OUT.mkdir(parents=True, exist_ok=True)
 VARIANTS = {
     "A_base": {},
     "B_no_floating_q8": {"unset": ["STRATA_GLM_FLOATING_Q8"]},
@@ -38,7 +38,7 @@ def run(name, rep):
     cpath = OUT / f"{tag}.config.json"; cpath.write_text(json.dumps(cfg, indent=1))
     cmd = ["systemd-run", "--user", "--wait", "--pipe", f"--unit=strata-bisect-{tag.lower().replace('_','-')}",
            "--property=MemoryMax=60G", "--property=MemorySwapMax=0", "--property=OOMPolicy=kill", "--property=RuntimeMaxSec=1200",
-           f"--property=WorkingDirectory={CAL}", "/home/syoyo/work/Strata/.venv-glm-hip/bin/python", str(CAL / "tools/glm_low_memory_bench.py"),
+           f"--property=WorkingDirectory={CAL}", "~/work/Strata/.venv-glm-hip/bin/python", str(CAL / "tools/glm_low_memory_bench.py"),
            str(cpath), IDS, "--output", str(OUT / tag), "--ram-gib", "60", "--tokens", "64", "--trials", "1", "--timeout", "1100",
            "--worker", "--gpu-capacity-mib", "16304", "--gpu-used-limit-mib", "15792"]
     quiet()

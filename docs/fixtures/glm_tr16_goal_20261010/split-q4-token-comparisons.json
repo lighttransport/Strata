@@ -1,0 +1,30 @@
+[
+  {
+    "unsplit": "00-q4-aff08-depth1",
+    "split": "00-q4-aff08-depth1-split",
+    "all_equal": false,
+    "warmup_equal": false,
+    "timed_equal": false
+  },
+  {
+    "unsplit": "02-q4-aff08-depth2-soft1",
+    "split": "01-q4-aff08-depth2-soft1-split",
+    "all_equal": false,
+    "warmup_equal": false,
+    "timed_equal": false
+  },
+  {
+    "unsplit": "03-q4-aff08-depth3-soft1",
+    "split": "02-q4-aff08-depth3-soft1-split",
+    "all_equal": false,
+    "warmup_equal": true,
+    "timed_equal": false
+  },
+  {
+    "unsplit": "04-q4-aff08-depth3-soft2",
+    "split": "03-q4-aff08-depth3-soft2-split",
+    "all_equal": false,
+    "warmup_equal": false,
+    "timed_equal": false
+  }
+]

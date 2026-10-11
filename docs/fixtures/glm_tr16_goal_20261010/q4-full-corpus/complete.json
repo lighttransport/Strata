@@ -1,0 +1,7 @@
+{
+  "paired_full_corpus_complete": true,
+  "tokens_each": 8192,
+  "corpus_gate_passed": false,
+  "quality_qualified": false,
+  "note": "Full paired HumanEval and held-out repeated timing still required."
+}

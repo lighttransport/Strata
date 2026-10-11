@@ -1,0 +1,13 @@
+{
+  "cuda_parities_passed": true,
+  "hip_build_passed": true,
+  "route_prune_oracle_passed": true,
+  "glm_mmvq_parity_passed": true,
+  "time": 1791573008.5256596,
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-cuda/strata-glm-decode": "2d3de133c4be061bcbf59d67847f06c0b03b843f910b8d6a4cfb07f64ad1bd64",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-hip/strata-glm-decode": "68cd1abbaf96d0d67659ec5a0eb988107156c8c2e1476e7350e3016fb1c35f2a",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/route-renorm.patch": "a7ca11892280986450ac93c821a409e379bb3ffc44e1bac93c1aff2e0bf508e7",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/ggml-reference-manifest.json": "d7c55d4f49c64f1eeb89f5df0f71c703244523529b688d61eb3d7287e146aef4"
+  }
+}

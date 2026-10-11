@@ -49,7 +49,7 @@ typedef enum { UCOMM_F32 = 0, UCOMM_F16, UCOMM_BF16, UCOMM_I32 } ucomm_dtype;
 typedef struct {
   int rank;              /* 0..world-1 */
   int world;             /* 1..UCOMM_MAX_WORLD */
-  const char *root_addr; /* "host:port" of rank 0, e.g. "192.168.100.22:29500" */
+  const char *root_addr; /* "host:port" of rank 0, e.g. "192.0.2.1:29500" */
   ucomm_backend backend; /* AUTO picks ib when every rank has an active HCA port, else udp */
   const char *ib_dev;    /* NULL: first device with an active port */
   int ib_port;           /* 0: default 1 */

@@ -9,6 +9,11 @@ and on the other recorded runs within 10-25 % (see "Validation").
 
 B550 has a separate [measurement report and reproducible calibration](GLM_B550_SIM.md). Its 512-token lever checkpoint averages 2.01% error on same-fixture timing checks, with one continuation-margin forecast outside tolerance. Its fit is provisional and must be selected with `--params tools/sim/data/params_b550.json`; no 20 tok/s configuration is qualified.
 
+The [2026-10-09 TR16 experiment](GLM_TR16_OPTIMIZATION.md) adds guarded CUDA runs,
+frozen 2K/8K prompts and explicit training/holdout imports. It uses the measured
+PCIe 3.0 x8 link and current desktop memory footprint. Its experimental records
+and fits do not replace the historical defaults below.
+
 Run it with the system `python3` (numpy is needed only for routing-trace replay):
 
 ```sh
@@ -39,6 +44,44 @@ bandwidth, RAM). Presets:
 | `tr16+b550-ib`, `tr16+b550-1gbe` | tr16 decoder with b550 as remote worker | GLM_REMOTE_TP_COMM.md (20.9 us / 401 us round trips) |
 
 The original validation below covers `tr16`. B550 has a separate provisional calibration; other presets remain exploratory.
+
+The opt-in [X570S / DDR4-2933 / ECO / ROCm 10.1 profile](../tools/sim/data/hw_x570s_2933_eco_rocm10.json)
+uses the 2026-10-11 measurements: 377.065 GFLOP/s CPU FMA, 42.5959 GB/s
+streaming reads, 28.3107/28.0826 GB/s pinned PCIe transfers, and 1.6103 GB/s
+sequential direct disk reads. CPU and RAM microbenchmarks are proxies for the
+expert kernels. The GPU's measured copy bandwidth (~476 GB/s) and FP32 SGEMM
+(~13.7 TFLOP/s on repeats, with an initial 7.87 result) are observations in
+[its measurement file](../tools/sim/data/measured_x570s_2933_eco_rocm10.json).
+They do not replace the inherited GEMV/tier rates or FP16/INT8 throughput.
+Unmeasured fields and runtime reserves are explicitly listed as inherited.
+The original hardware profiles and calibration remain unchanged.
+
+After a silent power-off and the user's return to DDR4-2666, the separate
+[X570S / DDR4-2666 / ECO profile](../tools/sim/data/hw_x570s_2666_eco_rocm10.json)
+records 38.7299 GB/s at 16 threads and 24.4909 GB/s at one, with pinned PCIe
+transfers of 28.3201/28.084 GB/s. A 46 GiB, ten-minute verified RAM stress test,
+the GPU pre-check and eight kernel tests passed. Synchronized 2K and 8K model
+diagnostics also passed; the earlier power-off cause remains undetermined.
+See the [recovery record](benchmarks/glm_x570s_2666_eco_recovery_20261011.json).
+Kernel terms remain inherited and uncalibrated. The importer excludes
+[fault-traced runs](GLM_GPU_DIAGNOSTICS.md) from performance training.
+
+The same file records greedy 33.7577 tok/s and external sequential 24.8699
+tok/s, with 27.5877 ms of drafting per call, depth-two acceptance 42/48 and
+37/42, and equal outputs within the new environment. It sets
+`external_sequential` so accepted drafts still incur target work. The old
+ROCm control differs starting at token 32; cross-version output quality was
+not evaluated. These are single-prompt, single-run observations, all
+`fit: false`. Inherited B550 parameters miss decode by 24–30% and overpredict
+prefill by about 650%; the new profile is not a qualified timing calibration.
+The validation command deliberately reports these misses:
+
+```sh
+python3 tools/sim/glm_sim.py hw --hw tools/sim/data/hw_x570s_2933_eco_rocm10.json
+python3 tools/sim/glm_sim.py validate --params tools/sim/data/params_b550.json \
+  --records tools/sim/data/measured_x570s_2933_eco_rocm10.json
+```
+
 
 ## What is modeled
 
@@ -278,3 +321,39 @@ With q22 in a frozen RAM set, DFlash8 gives 12.0 vs MTP2's 13.4 tok/s (14.4 vs 1
 - Context-length effects on attention are small in the model (MLA uses a top-2048 indexer); very long contexts
   are not validated.
 - Nothing here measures the machine: all inputs come from `docs/` and `build-q2-*` traces.
+
+## Multinode split search (2026-10-10)
+
+`python3 tools/sim/glm_sim.py multinode --node tr16 --node b550 --link ib --pack q23 --speculation mtp --mtp 1 --affinity 0.08 --decode-cache-mib 5632`
+ranks the share of the routed expert work given to each worker node (up to three
+workers; the first `--node` is the decoder). Workers are described by their own
+CPU and memory (`hw.WorkerNode`, built from a preset or a hardware JSON with
+`hw.worker_from_hardware`) and a link (`hw.LINKS`: `ib` degraded ConnectX-3 as
+measured, `ib-qdr` healthy estimate, `gbe` measured, `10gbe` estimate, or
+`rtt_us,gbps,exposed_us`). In `decode.remote_layer_ms` each worker runs its share
+through `kernels.cpu_roofline`, plus `request_overhead_ms` (0.15 ms, from the
+B550 worker's 0.78 ms per 16 MB request), the link round trip, the wire time of
+the 4.8 KB request and 8/16 KB reply per token, and the measured exposed wait;
+the layer waits for the slowest node. `--split expert` scores whole-expert
+partitions with an imbalance factor `1 + expert_split_imbalance / sqrt(top_k × share)`
+(`Params.expert_split_imbalance`, 0.35, unvalidated). RAM fit (rows + 2 GiB per
+worker, local rows + 7 GiB on the decoder) prunes assignments; `shipping_s` is
+the start-up transfer at the slower of link and decoder disk. The legacy
+single-worker presets (`tr16+b550-ib`, `tr16+b550-1gbe`) keep their calibrated
+pure-bandwidth model (`tools/test_sim_multinode.py` pins 14.14 / 16.05 / 12.18
+tok/s for shares 0 / 0.25 / 0.5 with reap50_q23). Validation status: one
+InfiniBand worker ±30%; more workers and the expert split are unvalidated.
+
+## GLM-5.3 (743B) mode
+
+`glm_sim.py --model glm53 <command> …` switches to the GLM-5.3 geometry (78 layers,
+75 MoE, hidden 6144, 256 experts, all-MLA) with estimated fixed-weight tables and
+the `glm53*` packs (`model.use_model`). Fixed weights are estimated from the
+config, kernel parameters are the Flash TR16 calibration; see
+`docs/GLM53_FULL_TR16_B550.md` for the study and its ±40% caveat.
+
+## MiMo-V2.6 modes
+
+`--model mimo_flash` and `--model mimo_pro` add MiMo-V2.6 Flash (309B, 47 MoE layers,
+256 experts, hidden 4096) and Pro (1T, 69 MoE layers, 384 experts, hidden 6144) with
+`mimof*` / `mimop*` packs; see `docs/MIMO_V26_TR16_B550.md`. Same caveats as GLM-5.3.

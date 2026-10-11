@@ -24,6 +24,31 @@ import vram  # noqa: E402
 from config import RunConfig  # noqa: E402
 
 
+class CurrentExternalTest(unittest.TestCase):
+    def test_sequential_drafts_preserve_greedy_work_and_include_overhead(self):
+        hardware=hw.load(str(ROOT/'tools/sim/data/hw_b550_2666_212w.json'))
+        params=calibration.load_params(ROOT/'tools/sim/data/params_b550_2666_212w.json')
+        cfg=RunConfig(pack='reap50_q22',context=4096,speculation='external',mtp_depth=2,
+            external_sequential=True,external_draft_ms=5,acceptance_probabilities=[1.,1.])
+        plan=decode.make_plan(hardware,cfg,model.pack(cfg.pack))
+        self.assertNotIn('verify_history',plan.items)
+        result=decode.simulate(hardware,cfg,params)
+        self.assertEqual(result.tokens_per_round,3)
+        self.assertAlmostEqual(result.round_ms,result.verify_ms+5)
+        self.assertAlmostEqual(result.verify_ms,result.step.ms)
+        self.assertLess(result.tok_s,1000/(result.verify_ms/3))
+        cfg=cfg.copy(proposal_probability=0)
+        result=decode.simulate(hardware,cfg,params)
+        self.assertEqual(result.tokens_per_round,1)
+        self.assertAlmostEqual(result.round_ms,result.verify_ms+5)
+
+    def test_unmeasured_draft_cost_and_excess_vram_are_rejected(self):
+        cfg=RunConfig(pack='reap50_q22',speculation='external',mtp_depth=1,acceptance_probabilities=[.5])
+        hardware=hw.load(str(ROOT/'tools/sim/data/hw_b550_2666_212w.json'))
+        with self.assertRaises(ValueError):decode.simulate(hardware,cfg)
+        with self.assertRaises(ValueError):decode.simulate(hardware,cfg.copy(external_draft_mib=769,external_draft_ms=2))
+
+
 class ModelTest(unittest.TestCase):
     def test_pack_census_matches_gguf_headers(self):
         self.assertEqual(model.pack("q2_orig").routed_total_bytes(), 99_033_808_896)
@@ -244,6 +269,19 @@ class ArchitectureKnobTest(unittest.TestCase):
         self.assertLessEqual(d.tok_s, d.cpu_ceiling_tok_s + 1e-6)
         self.assertLessEqual(d.tok_s, d.gpu_ceiling_tok_s + 1e-6)
 
+    def test_gpu_bound_affinity_and_mtp_ceilings(self):
+        h = hw.tr16()
+        h.gpu.vram_mib, h.gpu.desktop_mib = 16311, 982
+        for depth in (0, 1, 2, 3):
+            for affinity in (0, .05, .10, .15):
+                with self.subTest(depth=depth, affinity=affinity):
+                    c = RunConfig(pack='q23', mtp_depth=depth, affinity=affinity,
+                                  acceptance='prime512', gpu_budget_mib=14336,
+                                  decode_cache_mib=5632, tier_owned_reserve=True, context=12288)
+                    d = decode.simulate(h, c, self.params)
+                    self.assertLessEqual(d.tok_s, d.cpu_ceiling_tok_s + 1e-6)
+                    self.assertLessEqual(d.tok_s, d.gpu_ceiling_tok_s + 1e-6)
+
     def test_param_override_cli(self):
         out = io.StringIO()
         with redirect_stdout(out):
@@ -356,6 +394,15 @@ class PrefillKnobTest(unittest.TestCase):
         self.params = kernels.Params()
         self.H = hw.tr16()
         self.cfg = RunConfig(pack="q23", prompt=8192, prefill_chunk=8192, prefetch_groups=12, context=12288, prefill_scratch_mib=2048)
+
+    def test_prefill_uploads_include_preserved_iq_layers(self):
+        for name in ('q2_orig', 'q23', 'reap50_q23'):
+            with self.subTest(pack=name):
+                p = model.pack(name)
+                r = prefill.simulate(self.H, self.cfg.copy(pack=name), self.params)
+                # Includes the small staging metadata for each 16-expert group.
+                expected = p.routed_total_bytes() + p.experts / 16 * 42 * 16384
+                self.assertAlmostEqual(r.pcie_gb_per_chunk * 1e9, expected, delta=expected * 1e-5)
 
     def test_p_series_ladder_is_monotonic(self):
         steps = [dict(prefetch_groups=0, prefill_mla_f16=False, prefill_kda_parts=False, prefill_legacy=True),

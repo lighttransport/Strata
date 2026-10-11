@@ -15,7 +15,7 @@ The target was `/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assemble
 
 The secondary Q3_K_M file has 72,137,834,496 main routed bytes (67.18 GiB), Q3_K gate/up and Q4_K down. Its header census is included, but no new throughput claim is made for it. Its larger expert working set makes resident-memory assumptions particularly unsafe on this host.
 
-The source baseline was `15b787b5`. Work was built in the isolated B550 directory `/home/syoyo/work/Strata-b550-calibration-15b787b5`; the existing dirty serving checkout was preserved. Local TR16 performance jobs were not run.
+The source baseline was `15b787b5`. Work was built in the isolated B550 directory `~/work/Strata-b550-calibration-15b787b5`; the existing dirty serving checkout was preserved. Local TR16 performance jobs were not run.
 
 ## Measurements
 
@@ -78,7 +78,7 @@ The small protected-policy hit gain costs far more uploads. These policies do no
 Reproduce the component checks while the B550 is idle:
 
 ```sh
-PY=/home/syoyo/work/Strata/.venv-glm-hip/bin/python
+PY=~/work/Strata/.venv-glm-hip/bin/python
 $PY tools/glm_b550_calibrate.py --output runs/repro-trace --tokens 64 --trials 1 \
   --cases cache8 --trace --capture --env STRATA_GLM_TIER_RUNTIME_RESERVE_MIB=256
 $PY tools/glm_b550_kernel_matrix.py /mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf \
@@ -151,7 +151,7 @@ This is a correctness fix, not evidence that the 20 tok/s or long-context gates 
 Use a quiet B550 and stop its demo first:
 
 ```sh
-cd /home/syoyo/work/Strata
+cd ~/work/Strata
 bash tools/glm_b550_60g.sh stop
 ```
 
@@ -171,7 +171,7 @@ cmake --build build-hip --target strata-glm-decode glm_q23_parity \
 The calibration driver uses the original checkout's experimental config and frozen `build-hip-glm-v11/single-2048.ids` by default. Pass `--source-root` and `--prompt` to use another location. Each run writes the config, manifest, raw output/log, resource samples, parsed results and repetition checks. Existing result directories are refused. Use the installed Strata Python environment:
 
 ```sh
-PY=/home/syoyo/work/Strata/.venv-glm-hip/bin/python
+PY=~/work/Strata/.venv-glm-hip/bin/python
 $PY tools/glm_b550_calibrate.py --output runs/repro-screen \
   --tokens 128 --trials 3 --cases baseline cache7 cache8 mtp1 mtp2 mtp3
 $PY tools/glm_b550_calibrate.py --output runs/repro-512 \
@@ -225,7 +225,7 @@ The long-context runner can now use an isolated decoder and leave the demo stopp
 
 ```sh
 $PY tools/glm_long_chat_check.py --contexts 8192 32768 131072 \
-  --config /home/syoyo/work/Strata/configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json \
+  --config ~/work/Strata/configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json \
   --decoder build-hip/strata-glm-decode --port 8081 \
   --leave-demo-stopped --output runs/long-chat-corrected
 ```

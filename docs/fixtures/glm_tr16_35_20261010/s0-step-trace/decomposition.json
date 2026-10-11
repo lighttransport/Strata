@@ -1,0 +1,46 @@
+{
+  "scope": "STEP_TRACE=2 diagnostic of the soft4 control (128 tokens, timed trial). Instrumentation perturbs timing; never a throughput record. Components are host-timeline buckets per verification round, not additive kernel costs.",
+  "timed_trial": {
+    "steps": 37.0,
+    "moe_layers": 3108.0,
+    "pipelined": 1.0,
+    "head_ms": 123.711,
+    "cpu_ms": 3001.39,
+    "between_ms": 275.842,
+    "tail_ms": 96.8674,
+    "tail_sync_ms": 32.1783,
+    "tail_plan_ms": 17.5907,
+    "tail_copy_ms": 41.8375,
+    "enqueue_ms": 186.459,
+    "tier_swaps": 416.0,
+    "split_windows": 77.0,
+    "per_step_ms": 94.5354
+  },
+  "per_round_ms": {
+    "total": 94.5354,
+    "head": 3.3435405405405403,
+    "cpu_wait": 81.11864864864864,
+    "between_layers_gpu": 7.455189189189189,
+    "tail": 2.618037837837838,
+    "tail_sync": 0.8696837837837837,
+    "tail_plan": 0.4754243243243243,
+    "tail_copy": 1.1307432432432432,
+    "enqueue": 5.039432432432433
+  },
+  "per_token_ms": {
+    "total": 27.3266390625,
+    "cpu_wait": 23.448359375,
+    "between_layers_gpu": 2.155015625,
+    "head_plus_tail": 1.72326875
+  },
+  "shares": {
+    "cpu_wait": 0.8580769600451116,
+    "between": 0.0788613491791349,
+    "head_tail": 0.06306186231166715
+  },
+  "speculative_lines": [
+    "SPECULATIVE source=mtp generated=128 rounds=40 proposed=117 accepted=87 replayed=0 ms=5192.4 tok_s=24.4588",
+    "SPECULATIVE source=mtp generated=128 rounds=37 proposed=109 accepted=90 replayed=0 ms=4246.11 tok_s=29.9097"
+  ],
+  "implication": "Non-overlapped GPU/sync time is about 2.6 ms per token (between-layer dense 1.0 ms/round-token... see per_token_ms). Exact kernel levers (FUSE_ROUTE, MLA kernels) can address only the between-layer and head/tail buckets; bytes per token and tokens per round dominate."
+}

@@ -1,0 +1,1 @@
+{"cases": 5, "decisions": {"x7-aff016": "DROP:no-gain", "x8-mix2": "DROP:no-gain", "x9-reuse": "DROP:no-gain", "x10-aff012": "DROP:loop-proxy", "x11-aff016-topk6": "KEEP"}, "quality_qualified": false}

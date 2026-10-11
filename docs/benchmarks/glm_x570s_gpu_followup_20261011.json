@@ -1,0 +1,572 @@
+{
+  "date": "2026-10-11",
+  "hardware": {
+    "motherboard_vendor": "Gigabyte Technology Co., Ltd.",
+    "motherboard": "X570S AERO G",
+    "cpu": "AMD Ryzen 9 3950X 16-Core Processor",
+    "memory_speed": "2666 MT/s (user reported; not independently verified)",
+    "boot_id": "bd30b8c1-b676-4e1b-b646-3359931eab34",
+    "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9"
+  },
+  "boot_options": [
+    "amd_iommu=off",
+    "amdgpu.runpm=0",
+    "amdgpu.aspm=0"
+  ],
+  "purpose": "GPU fault follow-up after motherboard replacement and user-reported DDR4-2666 setting",
+  "prefill_live": {
+    "decoder_exit_code": 0,
+    "wrapper_exit_code": 2,
+    "wrapper_complete": false,
+    "wrapper_limitation": "One-token run produces no decode timing row; wrapper marks incomplete despite successful decoder exit and one output token.",
+    "output_tokens": 1,
+    "output_sha256": "57372732b6bd20e35bec1a8c57f98a4c9702a00079540d1cdcd1f386626e8470",
+    "peak_cgroup_bytes": 52060811264,
+    "oom_events": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0,
+      "sock_throttled": 0
+    },
+    "faults": [],
+    "logging": "AMD_LOG_LEVEL=4 AMD_LOG_MASK=7; timing affected by logging",
+    "prefill_measurement": [
+      {
+        "trial": 0,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 23583.2,
+        "tokens_per_second": 86.8416
+      }
+    ]
+  },
+  "interpretation": "One-token prefill plus four 128-token target runs completed without observed PCI loss or kernel faults (one used greedy fallback). Actual external sequential verification accepted 79/97 proposals and exactly matched the pipeline-enabled control. Motherboard and memory setting both changed; root cause and long-duration stability remain unestablished.",
+  "decode_runs": [
+    {
+      "mode": "direct-async",
+      "boot_id": "bd30b8c1-b676-4e1b-b646-3359931eab34",
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 97.67143097899998,
+      "reason": null,
+      "faults": [],
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "output_sha256": "0e6bbf3d2ae09966ff43321ecef00894e26baae815bed02740a6e4d67b025edf",
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 22404.8,
+            "tokens_per_second": 91.4091
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 9581.72,
+            "tokens_per_second": 13.2544
+          }
+        ],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 4110.68,
+            "quant_ms": 51.9793,
+            "down_ms": 2030.3,
+            "layer_flow_ms": 0,
+            "bytes": 227932766208
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": [],
+        "step_trace": [],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 900,
+            "MiB": 7087.5,
+            "fingerprint": 453542988304892036
+          }
+        ],
+        "speculation": [],
+        "affinity_quality": [],
+        "lookup_parity": [],
+        "median_prefill_tok_s": 91.4091,
+        "median_decode_tok_s": 13.2544,
+        "peak_allocated_gpu_mib": 12466.0,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 7162.73,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 314,
+            "minor": 342830
+          }
+        ]
+      },
+      "interference": [],
+      "minimum_gpu_free_mib": 2431,
+      "output_matches_greedy_control": true,
+      "pci_after": "02105075",
+      "output_token_count": 128,
+      "peak_cgroup_bytes": 51688366080,
+      "actual_mode": "greedy with direct registration"
+    },
+    {
+      "mode": "external",
+      "boot_id": "bd30b8c1-b676-4e1b-b646-3359931eab34",
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 84.59596159399996,
+      "reason": null,
+      "faults": [],
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "output_sha256": "0e6bbf3d2ae09966ff43321ecef00894e26baae815bed02740a6e4d67b025edf",
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 64217.2,
+            "tokens_per_second": 31.8918
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 9575.15,
+            "tokens_per_second": 13.2635
+          }
+        ],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 4117.28,
+            "quant_ms": 51.8631,
+            "down_ms": 2035.86,
+            "layer_flow_ms": 0,
+            "bytes": 227932766208
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": [],
+        "step_trace": [],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 900,
+            "MiB": 7087.5,
+            "fingerprint": 453542988304892036
+          }
+        ],
+        "speculation": [],
+        "affinity_quality": [],
+        "lookup_parity": [],
+        "median_prefill_tok_s": 31.8918,
+        "median_decode_tok_s": 13.2635,
+        "peak_allocated_gpu_mib": 12466.0,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 7162.73,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 138783,
+            "minor": 987544
+          }
+        ]
+      },
+      "interference": [],
+      "minimum_gpu_free_mib": 2504,
+      "output_matches_greedy_control": true,
+      "pci_after": "02105075",
+      "output_token_count": 128,
+      "peak_cgroup_bytes": 51231703040,
+      "actual_mode": "greedy fallback: worker preflight used old GPU PCI address"
+    }
+  ],
+  "external_startup_attempts": [
+    {
+      "status": "greedy fallback",
+      "reason": "worker used old PCI address",
+      "gpu_fault": false
+    },
+    {
+      "status": "engine rejected settings after worker startup",
+      "reason": "cached lookup requires canonical pipelined CPU target experts",
+      "worker_vram_mib": 746.551,
+      "gpu_fault": false
+    }
+  ],
+  "pipeline_pair": [
+    {
+      "mode": "x570-greedy-pipeline",
+      "boot_id": "bd30b8c1-b676-4e1b-b646-3359931eab34",
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 78.53885790000004,
+      "reason": null,
+      "faults": [],
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 64524.2,
+            "tokens_per_second": 31.74
+          }
+        ],
+        "decode": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 3764.05,
+            "tokens_per_second": 33.7403
+          }
+        ],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 962.714,
+            "bytes": 32765902848
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": [],
+        "step_trace": [],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 900,
+            "MiB": 7087.5,
+            "fingerprint": 453542988304892036
+          }
+        ],
+        "speculation": [],
+        "affinity_quality": [],
+        "lookup_parity": [],
+        "median_prefill_tok_s": 31.74,
+        "median_decode_tok_s": 33.7403,
+        "peak_allocated_gpu_mib": 12466.0,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 7162.76,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 139652,
+            "minor": 989179
+          }
+        ]
+      },
+      "interference": [],
+      "minimum_gpu_free_mib": 2505,
+      "output_matches_greedy_control": false,
+      "pci_after": "02105075",
+      "output_token_count": 128,
+      "peak_cgroup_bytes": 51230408704,
+      "oom_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "output_matches_greedy_control_caveat": "Runner field compares old pipeline-disabled control; use matched_pipeline_outputs_equal instead."
+    },
+    {
+      "mode": "x570-external-pipeline",
+      "boot_id": "bd30b8c1-b676-4e1b-b646-3359931eab34",
+      "executable_sha256": "f9b0b652bee5e27dffce266667d7988901225bf7220bf871331814ed4c91aeb9",
+      "pci_before": "02105075",
+      "exit_code": 0,
+      "seconds": 81.56277390100001,
+      "reason": null,
+      "faults": [],
+      "clean": true,
+      "complete": true,
+      "rejected": null,
+      "output_sha256": "561bd841239a0763be845e24a75a02e24f91fde19cc4cd663c9fd8f9eb8b32b0",
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 63940.8,
+            "tokens_per_second": 32.0296
+          }
+        ],
+        "decode": [
+          {
+            "kind": "external",
+            "tokens": 128,
+            "milliseconds": 5157.99,
+            "tokens_per_second": 24.622
+          }
+        ],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 967.695,
+            "bytes": 32765902848
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [
+          {
+            "index": 0,
+            "proposed": 49,
+            "opportunities": 49,
+            "accepted": 43
+          },
+          {
+            "index": 1,
+            "proposed": 48,
+            "opportunities": 42,
+            "accepted": 36
+          }
+        ],
+        "draft_timing": [
+          {
+            "prepare_ms": 0,
+            "draft_ms": 1363.31,
+            "verify_ms": 3754.3,
+            "restore_ms": 0,
+            "proposal_calls": 49
+          }
+        ],
+        "external_prepare": [
+          {
+            "ms": 2238.18
+          }
+        ],
+        "external_ready": [
+          {
+            "vram_mib": 746.539
+          }
+        ],
+        "external_verification": [
+          "sequential"
+        ],
+        "step_trace": [],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 900,
+            "MiB": 7087.5,
+            "fingerprint": 453542988304892036
+          }
+        ],
+        "speculation": [
+          {
+            "generated": 128,
+            "rounds": 49,
+            "proposed": 97,
+            "accepted": 79,
+            "replayed": 0,
+            "ms": 5157.99,
+            "tok_s": 24.622
+          }
+        ],
+        "affinity_quality": [],
+        "lookup_parity": [],
+        "median_prefill_tok_s": 32.0296,
+        "median_decode_tok_s": 24.622,
+        "peak_allocated_gpu_mib": 12466.0,
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 7162.76,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "page_faults": [
+          {
+            "trial": 0,
+            "major": 138663,
+            "minor": 987568
+          }
+        ]
+      },
+      "interference": [],
+      "minimum_gpu_free_mib": 1758,
+      "output_matches_greedy_control": false,
+      "pci_after": "02105075",
+      "output_token_count": 128,
+      "peak_cgroup_bytes": 51756331008,
+      "oom_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "output_matches_greedy_control_caveat": "Runner field compares old pipeline-disabled control; use matched_pipeline_outputs_equal instead."
+    }
+  ],
+  "matched_pipeline_outputs_equal": true,
+  "performance_qualification": "One timing each, 2048-token prompt / 128 output, DDR4-2666 user reported, RX 9070 XT / Ryzen 3950X / Gigabyte X570S AERO G. External 24.622 tok/s versus matched greedy 33.7403 tok/s; no speedup.",
+  "eco_and_memory_analysis": {
+    "cpu_mode": "65 W ECO (user reported; power limit not independently measured)",
+    "ram_mt_s": 2666,
+    "comparison": "Same boot and power/RAM settings, one timing each; no non-ECO or higher-RAM-clock A/B measurement",
+    "greedy_target_ms": 3764.05,
+    "sequential_verification_ms": 3754.3,
+    "draft_ms": 1363.31,
+    "other_speculative_ms": 40.379999999999654,
+    "proposal_calls": 49,
+    "draft_ms_per_call": 27.82265306122449,
+    "draft_fraction_of_speculative_time": 0.26431032243179997,
+    "draft_fraction_of_extra_time": 0.9780263139016029,
+    "target_steps_each": 127,
+    "cpu_expert_bytes_each": 32765902848,
+    "mechanism": "Route affinity/deferred experts force sequential verification; accepted tokens still require target steps. This path adds drafting cost without reducing target step count.",
+    "interpretation": "Drafting accounts for approximately 98% of added elapsed time in this pair. ECO/RAM can affect absolute throughput but their causal effect is not isolated. Higher clocks would not remove the sequential-verification requirement.",
+    "current_idle_cpufreq_metadata": {
+      "driver": "amd-pstate-epp",
+      "governor": "powersave",
+      "epp": "balance_performance",
+      "scope": "Current idle metadata, not during benchmark; governor label alone does not establish throttling."
+    }
+  }
+}

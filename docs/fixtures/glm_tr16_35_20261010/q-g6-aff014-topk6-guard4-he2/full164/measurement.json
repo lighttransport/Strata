@@ -1,0 +1,1647 @@
+{
+  "complete": true,
+  "tasks": 164,
+  "pass_at_1": 0.8780487804878049,
+  "results": [
+    {
+      "task_id": "HumanEval/0",
+      "input_tokens": 154,
+      "generated_tokens": 166,
+      "wall_seconds": 37.05061057495186,
+      "token_sha256": "7e08f81c5fcbd67826b919c24ee96e1dc3804934efa942478d7971115759830a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/1",
+      "input_tokens": 145,
+      "generated_tokens": 198,
+      "wall_seconds": 22.08420392300468,
+      "token_sha256": "78155db06ebc2fd2cb2f251589d03d2fba984b01cb0909fb9500335d6c07870f",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/2",
+      "input_tokens": 115,
+      "generated_tokens": 96,
+      "wall_seconds": 18.954567253997084,
+      "token_sha256": "2f60c8741e7127cd4f3dc0d3008d46a378687b9337d8e8236ebd578fd5b4a792",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/3",
+      "input_tokens": 149,
+      "generated_tokens": 55,
+      "wall_seconds": 17.702236429031473,
+      "token_sha256": "5ba17058a56250d10d106d0c2e26cf5d0567514d26b19c6203c354155361b840",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/4",
+      "input_tokens": 147,
+      "generated_tokens": 51,
+      "wall_seconds": 17.636840282997582,
+      "token_sha256": "9240868eacb35c11d173fa1f00ff6026ab8e5ef6c1e57555f1374271d5fcb02d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/5",
+      "input_tokens": 122,
+      "generated_tokens": 127,
+      "wall_seconds": 19.887628060998395,
+      "token_sha256": "2a5e6485d552e56a8684fc1b02ebc299c92dacfbff0b8e0c8dfda301d9f908db",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/6",
+      "input_tokens": 142,
+      "generated_tokens": 109,
+      "wall_seconds": 19.180703435034957,
+      "token_sha256": "e87c5eeb7a75b9663e3d8dd808d4eb57706db784757b0511fe08d47538feeea2",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/7",
+      "input_tokens": 123,
+      "generated_tokens": 106,
+      "wall_seconds": 19.178096827992704,
+      "token_sha256": "c6872f89f566a21ecdceecfbff3860d9b1c1aa9a313d281b9dff5d36466975ca",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/8",
+      "input_tokens": 140,
+      "generated_tokens": 200,
+      "wall_seconds": 22.006330611009616,
+      "token_sha256": "24d6c4c7c75ce39c842cf8f514891605f6daa6e380c0d3b276c06ad6ea41569d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/9",
+      "input_tokens": 130,
+      "generated_tokens": 66,
+      "wall_seconds": 18.17395895998925,
+      "token_sha256": "3cf9b3615c9cc421777800ee99e0832731dfa5d55f6a20ae2fe785ddca98a2de",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/10",
+      "input_tokens": 169,
+      "generated_tokens": 153,
+      "wall_seconds": 20.606275772035588,
+      "token_sha256": "f08ee22337756dc76b284312cc191a12cb10c758f8d0667575da0a0f7e1ef18b",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/11",
+      "input_tokens": 106,
+      "generated_tokens": 106,
+      "wall_seconds": 19.355807987973094,
+      "token_sha256": "38e804322bcf1ddfdf04a3397bafbc881de0a2f8afe6235e022b5f976c8eaace",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/12",
+      "input_tokens": 132,
+      "generated_tokens": 147,
+      "wall_seconds": 20.452124158036895,
+      "token_sha256": "d27fcd4f3dd7f7035e7e075e05647158e54a0c82f6f97e201920186f0fb7d8c6",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/13",
+      "input_tokens": 100,
+      "generated_tokens": 90,
+      "wall_seconds": 18.802814620023128,
+      "token_sha256": "b81210c57257773c51ae3361a34a7da8d674e16143d60809feeff10ca7e6bb82",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/14",
+      "input_tokens": 89,
+      "generated_tokens": 83,
+      "wall_seconds": 18.496891998976935,
+      "token_sha256": "c563350367af4800d87a577170334733e3361040e13f77e29a681a5c55b20249",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/15",
+      "input_tokens": 98,
+      "generated_tokens": 85,
+      "wall_seconds": 18.904537543014158,
+      "token_sha256": "c3bceb7271f18cde18c45e94bd75d7e268458627dbcb9d8bf7f5590b142284ec",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/16",
+      "input_tokens": 100,
+      "generated_tokens": 25,
+      "wall_seconds": 17.429351930040866,
+      "token_sha256": "bc50c3503688a47d8652fea1b8385d93e4955e158ecdc526dfb1acb25334a456",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/17",
+      "input_tokens": 202,
+      "generated_tokens": 64,
+      "wall_seconds": 18.433787629008293,
+      "token_sha256": "aaf0a6d1a4b3251cb2c5300b5f6f0e703e512d2023c66958842cd1ddc677e83c",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/18",
+      "input_tokens": 118,
+      "generated_tokens": 161,
+      "wall_seconds": 21.153920992976055,
+      "token_sha256": "b85580c3a4dac0969b08e769bb3c15bc6f3bcb68a82915799c39825dfa022729",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/19",
+      "input_tokens": 135,
+      "generated_tokens": 90,
+      "wall_seconds": 19.724691200011875,
+      "token_sha256": "93f44b2029810963e7952dd75f5bdb0bbdf59ca795f2180d199f4913396cba0f",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/20",
+      "input_tokens": 196,
+      "generated_tokens": 429,
+      "wall_seconds": 28.83609360002447,
+      "token_sha256": "9649cf30aff9b98f942a2f136651ccd7d40830ecd1700c685747a66a2c0b55d7",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/21",
+      "input_tokens": 153,
+      "generated_tokens": 54,
+      "wall_seconds": 17.938466758991126,
+      "token_sha256": "0d63b638ae3536f261d6e495d8ed86dc1dda528d5721fe50d9f959ca01a870fa",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/22",
+      "input_tokens": 121,
+      "generated_tokens": 112,
+      "wall_seconds": 19.73306933697313,
+      "token_sha256": "cdb10945ca4ba94bd0b07d1677693eda55b83fc2a390a147b2ae83046b14e95d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/23",
+      "input_tokens": 73,
+      "generated_tokens": 48,
+      "wall_seconds": 17.715661068970803,
+      "token_sha256": "12de4a2a1cd2106d147a8e01af1b8713daf1980db8d4afd3c1c7956398711945",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/24",
+      "input_tokens": 82,
+      "generated_tokens": 81,
+      "wall_seconds": 18.758641735999845,
+      "token_sha256": "48c880077b1259eedcf954874abb28373cb0c10c4ac1d8d296cc530a21f56774",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/25",
+      "input_tokens": 156,
+      "generated_tokens": 81,
+      "wall_seconds": 19.124377255968284,
+      "token_sha256": "7346fbdbfb0ea8d691861a620b79d331e447bf349d652bc0626956f6b2c0800d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/26",
+      "input_tokens": 114,
+      "generated_tokens": 112,
+      "wall_seconds": 19.83797047304688,
+      "token_sha256": "a3db2a55b0d4f60c8bc304991d893237272a6c3ad35c9821e028061dbf9eb8f4",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/27",
+      "input_tokens": 78,
+      "generated_tokens": 54,
+      "wall_seconds": 17.930777102999855,
+      "token_sha256": "c23202a9d8da4e6875c2757cba91e510625b2ecbedec639afba3b2b7742b970f",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/28",
+      "input_tokens": 87,
+      "generated_tokens": 63,
+      "wall_seconds": 18.442020568007138,
+      "token_sha256": "c68829713cce394259af586f95c494d517649e1fd5c2721e07d23387431a95e7",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/29",
+      "input_tokens": 117,
+      "generated_tokens": 100,
+      "wall_seconds": 19.41250553599093,
+      "token_sha256": "dd2e5e9c993262ad435586ad20867ce1be02d09876b79bdc8710810c4e9c5f4a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/30",
+      "input_tokens": 143,
+      "generated_tokens": 127,
+      "wall_seconds": 20.67027441301616,
+      "token_sha256": "35d33ee1737dbbe4bdc1f1cea0f6e757e8bd7e0f1b78b8e7741b49b3896ccab5",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/31",
+      "input_tokens": 129,
+      "generated_tokens": 195,
+      "wall_seconds": 22.09360933798598,
+      "token_sha256": "0aa9c52102042d68dac2092e8b19c5e4690e2c028295c375853aefb57a4fad4d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/32",
+      "input_tokens": 289,
+      "generated_tokens": 158,
+      "wall_seconds": 21.201809649995994,
+      "token_sha256": "f0f128812e9a42ea94753c3b3cb4645e6bb7d67ef88cb651e00cba375334c5c1",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/33",
+      "input_tokens": 180,
+      "generated_tokens": 40,
+      "wall_seconds": 17.43638574896613,
+      "token_sha256": "66b79ff9dd143eb1294d25d4113bd0d93f0a5e2065efa764e1b9101a89e86bfd",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/34",
+      "input_tokens": 103,
+      "generated_tokens": 79,
+      "wall_seconds": 18.577283057034947,
+      "token_sha256": "7782d888d610667c540a3dea0b1085b5b52a21f05d3b521b5a47bb7293bb449a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/35",
+      "input_tokens": 112,
+      "generated_tokens": 87,
+      "wall_seconds": 18.92348762700567,
+      "token_sha256": "772237cad1ba9021709aca5bea4c6769c815c40e072dd61f122296b05c5af5a2",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/36",
+      "input_tokens": 109,
+      "generated_tokens": 274,
+      "wall_seconds": 24.737470592022873,
+      "token_sha256": "b299e139c9a2995b2cb12bc7816bd5b9059e7f031d3e6850435d346f08883e41",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/37",
+      "input_tokens": 153,
+      "generated_tokens": 44,
+      "wall_seconds": 17.639416116988286,
+      "token_sha256": "b9d689d3f33403bec9a24364ed341909002384b735526019e72dbfd1ab045860",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/38",
+      "input_tokens": 188,
+      "generated_tokens": 87,
+      "wall_seconds": 18.967076022992842,
+      "token_sha256": "d867d6de42d1955d9f5f5c794b3f3cd148fcaf3d9cd8b42138003ad72bb8c5ff",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/39",
+      "input_tokens": 127,
+      "generated_tokens": 121,
+      "wall_seconds": 19.73369859997183,
+      "token_sha256": "e63db3b220a6450e8834cde450fded105cac1de038b2601839a73693521526a6",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/40",
+      "input_tokens": 189,
+      "generated_tokens": 221,
+      "wall_seconds": 22.7048943839618,
+      "token_sha256": "20213195e272b6cf6adeea2906ce847371e0d58d05d96193208b7ee73481f291",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/41",
+      "input_tokens": 181,
+      "generated_tokens": 157,
+      "wall_seconds": 20.91729996696813,
+      "token_sha256": "11aded807a2d14c852be7546af9cd0510600d53eb0067f123e02ef8c50daeadc",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/42",
+      "input_tokens": 138,
+      "generated_tokens": 120,
+      "wall_seconds": 20.194643369992264,
+      "token_sha256": "1a4dc4d921a49aa4a1b695422fe4e56212317363651915996ec09ca16645bf53",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/43",
+      "input_tokens": 187,
+      "generated_tokens": 299,
+      "wall_seconds": 24.861752457974944,
+      "token_sha256": "98237e050a6f36153f65c742743aee466a81e874d9de07c95dffc62f5742217a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/44",
+      "input_tokens": 121,
+      "generated_tokens": 160,
+      "wall_seconds": 21.114232774008997,
+      "token_sha256": "8f49c2ebea78db7cfdb57d0749a348af81a104661650700226cc2037fdb90f69",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/45",
+      "input_tokens": 76,
+      "generated_tokens": 57,
+      "wall_seconds": 17.891654880018905,
+      "token_sha256": "bd26ec61ce30eac518e9965900e43cd5da4a3dba47d431ecc545d186337d4196",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/46",
+      "input_tokens": 201,
+      "generated_tokens": 105,
+      "wall_seconds": 19.189607466978487,
+      "token_sha256": "f27b1afac540bb2cb89fc359a2864a224d05d3aecca0dac0468493e3dced965f",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/47",
+      "input_tokens": 105,
+      "generated_tokens": 138,
+      "wall_seconds": 20.28876400901936,
+      "token_sha256": "26fbbc2917911490082bc27d5e35db7f78f6d043109b5c7a5e5897e6df130a5a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/48",
+      "input_tokens": 101,
+      "generated_tokens": 22,
+      "wall_seconds": 16.71476141101448,
+      "token_sha256": "9b53b143bc5c4da876e7e3272a473b54683efd98aa3f0615e6ec438182a2459c",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/49",
+      "input_tokens": 135,
+      "generated_tokens": 205,
+      "wall_seconds": 21.88015047099907,
+      "token_sha256": "1dec5a2fd856bd885b7ee42d4e5f61bd8983158f01442069624e8fa45a9d3136",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/50",
+      "input_tokens": 120,
+      "generated_tokens": 64,
+      "wall_seconds": 17.944689258991275,
+      "token_sha256": "89255bb9cf2e5282ebf54c88c05b01b766adc1bb4f94f37ef1efabeb5c327062",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/51",
+      "input_tokens": 152,
+      "generated_tokens": 33,
+      "wall_seconds": 17.038394346949644,
+      "token_sha256": "2aafd7c26627b7664b670acee205a67387c320cae5d97624ace2660417c31cc3",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/52",
+      "input_tokens": 109,
+      "generated_tokens": 90,
+      "wall_seconds": 18.636742116999812,
+      "token_sha256": "387153cafeb2d7e5fb743a43e63f519966567f8707ca926a0e12d01b61a79f83",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/53",
+      "input_tokens": 83,
+      "generated_tokens": 59,
+      "wall_seconds": 17.726487530046143,
+      "token_sha256": "c6a4dcb36fcfe68e1dc433311ef956df19a1e02890ca86fdddbb61437f176041",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/54",
+      "input_tokens": 170,
+      "generated_tokens": 30,
+      "wall_seconds": 16.99403127701953,
+      "token_sha256": "4f075514bb8626b580590da6359798be05de973b67f3b9e2c656588250fba0c1",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/55",
+      "input_tokens": 82,
+      "generated_tokens": 48,
+      "wall_seconds": 17.36687540402636,
+      "token_sha256": "05a2c9d6a2202c9a22adc7331540e2c7ab75f8f5098064f3c719ec1998105487",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/56",
+      "input_tokens": 122,
+      "generated_tokens": 146,
+      "wall_seconds": 20.115238272002898,
+      "token_sha256": "e5830cb70492784ec16bdb7932853e932b9718b4932ac79a52e872650289e65a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/57",
+      "input_tokens": 117,
+      "generated_tokens": 124,
+      "wall_seconds": 19.62893724598689,
+      "token_sha256": "f64d5675c0ecab6a09803b4246bbed88a6a75f065f0c12aeb62f4b8bb95015d1",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/58",
+      "input_tokens": 147,
+      "generated_tokens": 129,
+      "wall_seconds": 19.740133578015957,
+      "token_sha256": "3feda00c36a48e4b46795fe884d4590a14e7a7a3ca8e998cff546c277c310b80",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/59",
+      "input_tokens": 93,
+      "generated_tokens": 110,
+      "wall_seconds": 19.286601534986403,
+      "token_sha256": "8485118ee5dae8972ee585f1ddcb9bbfd5074d0bd02007b8f3f5b3fb5d30c395",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/60",
+      "input_tokens": 126,
+      "generated_tokens": 108,
+      "wall_seconds": 19.18160006601829,
+      "token_sha256": "f04ae099e768795e485458cec72db84a5a4702f32269c501ec7943ae2b2b313a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/61",
+      "input_tokens": 119,
+      "generated_tokens": 143,
+      "wall_seconds": 20.029050858982373,
+      "token_sha256": "6b06df6cca87bfb4377e6f49f61b86fef97ab4b7cd24ff1eaf6ecde9ac5bc8b1",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/62",
+      "input_tokens": 138,
+      "generated_tokens": 77,
+      "wall_seconds": 18.275777740986086,
+      "token_sha256": "44c76bba7b936fafb23845d049914e8d03a95b4605d65d8bd36a87b334474ff1",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/63",
+      "input_tokens": 179,
+      "generated_tokens": 257,
+      "wall_seconds": 22.941813251993153,
+      "token_sha256": "b004f47da137a41a9cb29fc87b9c9227b0783ffd5fc393220523fbcb6b419fe2",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/64",
+      "input_tokens": 156,
+      "generated_tokens": 169,
+      "wall_seconds": 20.842378385015763,
+      "token_sha256": "eac907d8d1a19955ae622836b2c364111e4981105977f6816b1a5b688c210931",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/65",
+      "input_tokens": 112,
+      "generated_tokens": 229,
+      "wall_seconds": 22.689811072021257,
+      "token_sha256": "a2579c7054032de73e2d47633cc5ecdcd7ee1bead532bbcd85175dd6afcbb9ad",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/66",
+      "input_tokens": 142,
+      "generated_tokens": 26,
+      "wall_seconds": 16.851898494001944,
+      "token_sha256": "4e826e0e1088ef0608522cb3d740207937f2d9174d16be487f56bb91b120ceb8",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/67",
+      "input_tokens": 240,
+      "generated_tokens": 39,
+      "wall_seconds": 17.09227587998612,
+      "token_sha256": "d6e83a53286798323c96100d4b9f96a2cae6a3c744fc232a39495d707eef7a9e",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/68",
+      "input_tokens": 342,
+      "generated_tokens": 73,
+      "wall_seconds": 18.077040625037625,
+      "token_sha256": "fa62cf4d456a5543df7c2cbf0fa6f6547c432b72b0ab891c8b57775b9832270a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/69",
+      "input_tokens": 195,
+      "generated_tokens": 55,
+      "wall_seconds": 17.745550192019437,
+      "token_sha256": "8dfe10bcfc44f6875daae7bf2359505e6312a071d620630751625a9562fb871a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/70",
+      "input_tokens": 154,
+      "generated_tokens": 53,
+      "wall_seconds": 17.57109539397061,
+      "token_sha256": "0e3180fb7039c72309bb8f2d4ae0d8b3e1a52076db3fcc090b102500b3656920",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/71",
+      "input_tokens": 151,
+      "generated_tokens": 94,
+      "wall_seconds": 18.821392382029444,
+      "token_sha256": "49ec01bcf8268d91c63ac5c87ff7f4dc17fbdc1e6c139e839bb90b370a9c6659",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/72",
+      "input_tokens": 260,
+      "generated_tokens": 30,
+      "wall_seconds": 16.882952895015478,
+      "token_sha256": "4476470485ba6067b0d6c3fe7c199e2ac0747a68d4e2a09efb956d45f2ab675f",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/73",
+      "input_tokens": 187,
+      "generated_tokens": 190,
+      "wall_seconds": 21.19746287900489,
+      "token_sha256": "000be863cd3ed2444dbf4e3009b07532fba92e262d03dd97f491b2d8b657707e",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/74",
+      "input_tokens": 223,
+      "generated_tokens": 45,
+      "wall_seconds": 17.30834088899428,
+      "token_sha256": "a35e144d3c296fb8733d8a4cf28d812dc8f70b1c7088a4a7d8c008765ba792de",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/75",
+      "input_tokens": 109,
+      "generated_tokens": 240,
+      "wall_seconds": 22.74503457901301,
+      "token_sha256": "e13b2bbdd6c029617b8ffebe4d9814aa32f570b8d361e5f3cbb80eaff4ad288d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/76",
+      "input_tokens": 172,
+      "generated_tokens": 53,
+      "wall_seconds": 17.49905112903798,
+      "token_sha256": "32030857d8e10f6244dbe90c156a209785f2776ad6c6913fdacd6a54ca661e37",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/77",
+      "input_tokens": 140,
+      "generated_tokens": 137,
+      "wall_seconds": 19.982964623020962,
+      "token_sha256": "4015d5aa4f5f19fac9fedb8f93710748109c300bd3d206cbc7df69c6140e4259",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/78",
+      "input_tokens": 331,
+      "generated_tokens": 28,
+      "wall_seconds": 16.923124091990758,
+      "token_sha256": "d2865b629921d6633511be06575f2897afe1715504c32851e09049742a20f39b",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/79",
+      "input_tokens": 169,
+      "generated_tokens": 27,
+      "wall_seconds": 16.887043881986756,
+      "token_sha256": "fe2dd99fa2a8f10ce95029b49f9f956d36cf4d7c32975ab775b7b4085356b485",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/80",
+      "input_tokens": 151,
+      "generated_tokens": 93,
+      "wall_seconds": 18.515883881016634,
+      "token_sha256": "97499e2e810a7a7917da2acc4001c6c6808f1735ad25f371eaa817ad4862ac25",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/81",
+      "input_tokens": 300,
+      "generated_tokens": 354,
+      "wall_seconds": 25.167693942959886,
+      "token_sha256": "c125d3218b7ac641e13441f1c9476a914ab29d8f3ccf388bb302a719d21d4d48",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/82",
+      "input_tokens": 111,
+      "generated_tokens": 128,
+      "wall_seconds": 19.575797411962412,
+      "token_sha256": "84e845634636c852c2be95633aabd57e83083a448985d3a30c41e39f067028c8",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/83",
+      "input_tokens": 74,
+      "generated_tokens": 223,
+      "wall_seconds": 22.270228254026733,
+      "token_sha256": "cdc439ee0119f3a77cfe401bc685243635404e7562f212e0c11d300620a84b51",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/84",
+      "input_tokens": 163,
+      "generated_tokens": 26,
+      "wall_seconds": 17.005670144979376,
+      "token_sha256": "a22eb85ed284a1991c45ef71fc2801a042b1c8dabcb877e387fa126693b904c9",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/85",
+      "input_tokens": 85,
+      "generated_tokens": 40,
+      "wall_seconds": 17.098105028970167,
+      "token_sha256": "1ebef22379d898bf9ac194663dfe55c9c9360d470da03f152371b7320f1a7a2e",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/86",
+      "input_tokens": 160,
+      "generated_tokens": 1496,
+      "wall_seconds": 55.64750782697229,
+      "token_sha256": "7aef15ef2ed7a4437e752c4088544a0f691ef33b733dcaaa55d879b7398ea119",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/87",
+      "input_tokens": 289,
+      "generated_tokens": 70,
+      "wall_seconds": 17.93407630699221,
+      "token_sha256": "3267461375bf9bc8f1b5cf869dbefd5256eae4590bf179af74d254302b82605c",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/88",
+      "input_tokens": 233,
+      "generated_tokens": 58,
+      "wall_seconds": 17.685707913013175,
+      "token_sha256": "b1d861e55f0f71d4bc8cbfb05332afba3d6fdd2b3ac52f0b6c45c1aa4b92ecc1",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/89",
+      "input_tokens": 140,
+      "generated_tokens": 149,
+      "wall_seconds": 20.17821099999128,
+      "token_sha256": "10bb7538bfc88fc2fec69b3706889104949d05f93c8714e6c22df68f3849cb29",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/90",
+      "input_tokens": 154,
+      "generated_tokens": 51,
+      "wall_seconds": 17.341637509001885,
+      "token_sha256": "25af7d1e4d4c90ebf83da8f1ac198754014c90a362ed0bdd1d0c050d15232abd",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/91",
+      "input_tokens": 137,
+      "generated_tokens": 40,
+      "wall_seconds": 17.318670856009703,
+      "token_sha256": "c66b27615a6070d4934bd157219406e8d5fd33a3ad2e70eb716d03e87af54f6f",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/92",
+      "input_tokens": 165,
+      "generated_tokens": 58,
+      "wall_seconds": 17.707356262020767,
+      "token_sha256": "52f5bad9dcffe7ce49177f4ce38eac3b06ffb95086ffa06a37ad9141c26a907e",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/93",
+      "input_tokens": 139,
+      "generated_tokens": 207,
+      "wall_seconds": 22.440611678990535,
+      "token_sha256": "80e41c3fb2ecdae3a63cc01e480fc4c4a24d3b916eab0dca4e409dccde1ba71b",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/94",
+      "input_tokens": 321,
+      "generated_tokens": 501,
+      "wall_seconds": 29.75794305402087,
+      "token_sha256": "5a26de74fce3d0d3eeb132a536a43e2dd6398d507afa2f9ea609d01e6cdd61c1",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/95",
+      "input_tokens": 199,
+      "generated_tokens": 67,
+      "wall_seconds": 17.94895596097922,
+      "token_sha256": "c43f226a75a3873067041c65c77ded00821376dda848423c5389f00df56d5168",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/96",
+      "input_tokens": 175,
+      "generated_tokens": 216,
+      "wall_seconds": 21.9320287409937,
+      "token_sha256": "7ba9e5c74bea25eb455c103a4270ac0c790c9e3fedeb67bef3b4696edb4212e0",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/97",
+      "input_tokens": 129,
+      "generated_tokens": 129,
+      "wall_seconds": 19.729101823002566,
+      "token_sha256": "107cd2f024d18c4d43558e412ee396abac61866a9ff8fa5d33c88d02777d1c4d",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/98",
+      "input_tokens": 102,
+      "generated_tokens": 101,
+      "wall_seconds": 18.701770131010562,
+      "token_sha256": "666ec4bf0e66bc52cf94a2cef158a0bd46ddae25139ed262491afe3ef2ff6cd5",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/99",
+      "input_tokens": 186,
+      "generated_tokens": 63,
+      "wall_seconds": 17.879100533027668,
+      "token_sha256": "4975030ce1a9ca9ac4107757fdf9de87c49b9f9154c48e26580913e9c5b3e5ac",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/100",
+      "input_tokens": 162,
+      "generated_tokens": 31,
+      "wall_seconds": 16.881196479022037,
+      "token_sha256": "9d9a03636d804f4ad6ece9dc5c813f0d092ad7d759e6a3f448d55b1510a87f7a",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/101",
+      "input_tokens": 146,
+      "generated_tokens": 25,
+      "wall_seconds": 16.777763653022703,
+      "token_sha256": "ac5201198ce151adb435c919bdac0e14de8a01487dc5314a47d4516ac9ae0640",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/102",
+      "input_tokens": 124,
+      "generated_tokens": 55,
+      "wall_seconds": 17.78224529704312,
+      "token_sha256": "459aaf46c3bb4d4d52ff219ff14a347cd2e8e916e0b263fc711852840b39d185",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/103",
+      "input_tokens": 170,
+      "generated_tokens": 162,
+      "wall_seconds": 21.043680102971848,
+      "token_sha256": "9d5121e242fc2787f45e488d884a29fca3dfac0b1b7b27644147c30409f3a13e",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/104",
+      "input_tokens": 133,
+      "generated_tokens": 131,
+      "wall_seconds": 19.653896300995257,
+      "token_sha256": "ae830bad2c11cc67aa86e34bc8a4ba727e3cd26d72d6fccb0cf54983c1e7c4c3",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/105",
+      "input_tokens": 306,
+      "generated_tokens": 79,
+      "wall_seconds": 18.20117387297796,
+      "token_sha256": "1b029faf077e06b751dc11d5589f4663c5a8628a59a39c42481a729260a8f707",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/106",
+      "input_tokens": 154,
+      "generated_tokens": 247,
+      "wall_seconds": 22.873425675963517,
+      "token_sha256": "dcf81b1e1422e03d7f45d3c5d01fa097d611e988aca0be05a900bbf3d8addd86",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/107",
+      "input_tokens": 241,
+      "generated_tokens": 90,
+      "wall_seconds": 18.477454320003744,
+      "token_sha256": "f146bf2442ec7ad706ef56c1efe74cb8bbfc1edf2329f99dda8f5770888e6841",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/108",
+      "input_tokens": 154,
+      "generated_tokens": 86,
+      "wall_seconds": 18.674741160997655,
+      "token_sha256": "0fb47287ebeee2ee9d6bd6fb7a122a7d1c65000cc05f590d319daffd05b01e79",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/109",
+      "input_tokens": 329,
+      "generated_tokens": 80,
+      "wall_seconds": 18.29744448303245,
+      "token_sha256": "eefc384774aa366a1b502d6c523e517079ad660423fb77995a623290289e4e8e",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/110",
+      "input_tokens": 227,
+      "generated_tokens": 102,
+      "wall_seconds": 18.948522882012185,
+      "token_sha256": "60b742d6dbead0ebc44ded7a3685cce77eacdca63ecd87cb5fa9bc51782a9a8c",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/111",
+      "input_tokens": 181,
+      "generated_tokens": 82,
+      "wall_seconds": 18.31015983398538,
+      "token_sha256": "c4a7299a1f4ef8eeffcc1e5e5747b26eaad59837afaf4d846b587482a8c16422",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/112",
+      "input_tokens": 192,
+      "generated_tokens": 40,
+      "wall_seconds": 17.20500863296911,
+      "token_sha256": "037f368f2342fd226a0270a7d8d3f96e6a74b45267ff1055d6cb8a09f2159ef0",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/113",
+      "input_tokens": 204,
+      "generated_tokens": 125,
+      "wall_seconds": 19.78901098598726,
+      "token_sha256": "c6b672cfd1027192a4a0853550acfcf92105c6e82ed6068a202071a546c60ab6",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/114",
+      "input_tokens": 118,
+      "generated_tokens": 132,
+      "wall_seconds": 19.645252688031178,
+      "token_sha256": "bb29e72e2afdf359ef7e702741e0cdc39100fdd0b02a7570a2c97d029913f023",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/115",
+      "input_tokens": 353,
+      "generated_tokens": 44,
+      "wall_seconds": 17.4625255530118,
+      "token_sha256": "2b0883588688bf87aad23fb30d796dd0da0b185cbd54f86a51fb5e1b599bdcb7",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/116",
+      "input_tokens": 200,
+      "generated_tokens": 2048,
+      "wall_seconds": 71.84915351500968,
+      "token_sha256": "f993e2bea53e8f08300e417581cd2781d421b9940d355466aa32db275716f2c6",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/117",
+      "input_tokens": 211,
+      "generated_tokens": 141,
+      "wall_seconds": 19.870377974992152,
+      "token_sha256": "23199d3a6fc297b27cccf7fb58c28fc17a8d00f7dbaa202794084498266da5ae",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/118",
+      "input_tokens": 179,
+      "generated_tokens": 301,
+      "wall_seconds": 24.459317340981215,
+      "token_sha256": "9f51210680768b827ccda7ec124bbfe63818180300ed812fe37b997ad2d2bdfa",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/119",
+      "input_tokens": 198,
+      "generated_tokens": 103,
+      "wall_seconds": 18.849557931011077,
+      "token_sha256": "c6140674e5269d4c067c7b03dc73752aecd917bcab701ccbed1925589c2f7353",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/120",
+      "input_tokens": 247,
+      "generated_tokens": 22,
+      "wall_seconds": 16.676276369020343,
+      "token_sha256": "fd5088302ad2dfdad8bcf8bb6868a670c7019df6cc9cd347aeb9619efced0dd1",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/121",
+      "input_tokens": 128,
+      "generated_tokens": 106,
+      "wall_seconds": 18.988480852975044,
+      "token_sha256": "aaab624274fad66ff65b8e06aefefd09121f5bcc3778eeafb4a3d672d315518a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/122",
+      "input_tokens": 158,
+      "generated_tokens": 32,
+      "wall_seconds": 16.981685025966726,
+      "token_sha256": "fb5d4ca4ae8d259db37be62d112d7573e69fcfef5549659e9fd0eb228e8085dc",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/123",
+      "input_tokens": 261,
+      "generated_tokens": 81,
+      "wall_seconds": 18.264638185035437,
+      "token_sha256": "5fb2721cc9c8a7bbfa2c3fbea6c7573accfaeef25b6d628f7b1dd6a2588c0bf8",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/124",
+      "input_tokens": 293,
+      "generated_tokens": 207,
+      "wall_seconds": 21.577450032986235,
+      "token_sha256": "bac9fe5860a77e1ee2038853630515ec6e1edbed2de2ba628691f1bf4d1e4e11",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/125",
+      "input_tokens": 170,
+      "generated_tokens": 69,
+      "wall_seconds": 18.021046822017524,
+      "token_sha256": "5ba523205b709874020d3402ac3760867b0fd6bc319c7289aa85daf2439d5047",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/126",
+      "input_tokens": 279,
+      "generated_tokens": 392,
+      "wall_seconds": 26.8713103759801,
+      "token_sha256": "982b1627bef32884c401a42ce5c80a06fe8ca57845a08720da0e3ef896aedc71",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/127",
+      "input_tokens": 284,
+      "generated_tokens": 124,
+      "wall_seconds": 19.46625536197098,
+      "token_sha256": "212ce646afbb9593f345fb146b01caf24f1cecf2492105d8b84253797938b7e9",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/128",
+      "input_tokens": 152,
+      "generated_tokens": 80,
+      "wall_seconds": 18.190481921017636,
+      "token_sha256": "a020e7a138ca33fb97b58fe1f99b0c541fd5cbabad13b34a287a56dd2f0d07bc",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/129",
+      "input_tokens": 426,
+      "generated_tokens": 1930,
+      "wall_seconds": 66.33309971302515,
+      "token_sha256": "f6e7aebc91e63a0dbbb5a36dcd6f5ab5998bb08b4ca214fdc74e75e5f1e10cf9",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/130",
+      "input_tokens": 265,
+      "generated_tokens": 878,
+      "wall_seconds": 39.1567129449686,
+      "token_sha256": "055d05eb95d544ef83e9f8431535baa066e00f5a69360fec30ab94d811c5fd3a",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/131",
+      "input_tokens": 101,
+      "generated_tokens": 124,
+      "wall_seconds": 19.379608147020917,
+      "token_sha256": "f23a03fbd25654456cc19e77b86ccc05281b3e902f8a24dd00e5fcd23cea8b4d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/132",
+      "input_tokens": 163,
+      "generated_tokens": 553,
+      "wall_seconds": 31.157488596974872,
+      "token_sha256": "6838f49a31cd3a8b7e6a4632fc2986fac0cc7aef8c32ed16f4b9dfc3ca352ee7",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/133",
+      "input_tokens": 187,
+      "generated_tokens": 30,
+      "wall_seconds": 16.987180707976222,
+      "token_sha256": "d4b408428725db9a99a86849e35c26144cbff607a8d2048fd91f729b66a53565",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/134",
+      "input_tokens": 167,
+      "generated_tokens": 60,
+      "wall_seconds": 17.984746511967387,
+      "token_sha256": "222bbe67f5b0e3a0a83e9f4135ad0ac04917d87268ab8e9fe802075cead937eb",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/135",
+      "input_tokens": 133,
+      "generated_tokens": 51,
+      "wall_seconds": 17.399509288021363,
+      "token_sha256": "15c76c6c7246be1e64cbf6231ab89a902d11a6c99217d4f066af395efa47a505",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/136",
+      "input_tokens": 168,
+      "generated_tokens": 78,
+      "wall_seconds": 18.149074085988104,
+      "token_sha256": "c6eff76f013153c67deee945a69faf8d14180d4f12c5affb825091a4efa91a1a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/137",
+      "input_tokens": 171,
+      "generated_tokens": 113,
+      "wall_seconds": 19.24789105000673,
+      "token_sha256": "a99576cf317b6e4111ad1491045606c68765dcb3915325b0672d46134813cbd1",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/138",
+      "input_tokens": 107,
+      "generated_tokens": 159,
+      "wall_seconds": 20.822875487967394,
+      "token_sha256": "c0787fb0c7be81961a7b3b22ee16985a6546356f40c86ae498d486f32b174896",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/139",
+      "input_tokens": 126,
+      "generated_tokens": 130,
+      "wall_seconds": 19.686158895958215,
+      "token_sha256": "65e557ac451be0ba21ca8e939f41e85cb848d0766f2fc5215de95924fd8f88c6",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/140",
+      "input_tokens": 136,
+      "generated_tokens": 141,
+      "wall_seconds": 20.185216712998226,
+      "token_sha256": "dfa749efd7b415f8e510b618e715e96b62422f5b74d36016373a49436cc85dbd",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/141",
+      "input_tokens": 244,
+      "generated_tokens": 112,
+      "wall_seconds": 19.165967823995743,
+      "token_sha256": "f28290dd34ed102943634b68d0b2be6487b29b86da7d4dad7a321420424065a8",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/142",
+      "input_tokens": 199,
+      "generated_tokens": 423,
+      "wall_seconds": 28.24844189902069,
+      "token_sha256": "cddc41628fe664afa23f94814ebcddf9aae359fb594a3859632a4e41bcf10789",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/143",
+      "input_tokens": 177,
+      "generated_tokens": 69,
+      "wall_seconds": 18.150299286004156,
+      "token_sha256": "cb69440ded72f4be6080c21aa21d5905faf19ab092c5e8afa9384725a6ba2323",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/144",
+      "input_tokens": 185,
+      "generated_tokens": 387,
+      "wall_seconds": 26.735292420024052,
+      "token_sha256": "601661cfd0fb11c5db4e4979fa1bed2d1c68ec95013fac22cc607d5c0cc513d8",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/145",
+      "input_tokens": 145,
+      "generated_tokens": 101,
+      "wall_seconds": 19.482716061989777,
+      "token_sha256": "096ab83f73394b5251499bf2c4b9f74dba1af2d6a8af124e42a39595b813a3b7",
+      "passed": false,
+      "reason": "test failure",
+      "exit_code": 1
+    },
+    {
+      "task_id": "HumanEval/146",
+      "input_tokens": 149,
+      "generated_tokens": 79,
+      "wall_seconds": 18.346935804001987,
+      "token_sha256": "fc3739dc2b5a0182f56ee192434b2a7b086872e3d79a7b7996fbdf48510f2b8a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/147",
+      "input_tokens": 195,
+      "generated_tokens": 568,
+      "wall_seconds": 31.69739661499625,
+      "token_sha256": "863043ea8d5fc744ae4b536f2dfba9104b542a45f28c2caf190b745ccca5bd13",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/148",
+      "input_tokens": 241,
+      "generated_tokens": 120,
+      "wall_seconds": 19.38023037899984,
+      "token_sha256": "9b5814a74bb18aca5da498a333edbd4d89e4d2197d64bda28a7f26c4f6755baa",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/149",
+      "input_tokens": 217,
+      "generated_tokens": 47,
+      "wall_seconds": 17.404395646997727,
+      "token_sha256": "8d67fd93edca8814743e67713ee235d63396871d53ef8ccb93b9743f41fa6b21",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/150",
+      "input_tokens": 116,
+      "generated_tokens": 80,
+      "wall_seconds": 18.3026798350038,
+      "token_sha256": "7b076bb0b2556a0fa4e018844de81230e2da783488ec821b65c1cec72844bc26",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/151",
+      "input_tokens": 167,
+      "generated_tokens": 42,
+      "wall_seconds": 17.237045229994692,
+      "token_sha256": "9a06d79e296ae7c9cb42c684e7a3e2654f70b53593ef1ee8036ae91a7b502a34",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/152",
+      "input_tokens": 260,
+      "generated_tokens": 97,
+      "wall_seconds": 18.870287229015958,
+      "token_sha256": "dc3b4755c31e26696636f8da51ca5df76be02666450844288573518962a280a7",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/153",
+      "input_tokens": 304,
+      "generated_tokens": 352,
+      "wall_seconds": 25.406465553038288,
+      "token_sha256": "c17a9ca5bab25ae5fb5aba5d64d901a013efd0f9d41252995048192ae50fc312",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/154",
+      "input_tokens": 159,
+      "generated_tokens": 415,
+      "wall_seconds": 27.763751346967183,
+      "token_sha256": "1dd142d5f3ce3de0f2dd91a5bd878f7d037c8d0d13b47c461bcc6bfd4565a7f6",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/155",
+      "input_tokens": 95,
+      "generated_tokens": 125,
+      "wall_seconds": 19.48162042401964,
+      "token_sha256": "a4e73aa2aa6fa6c840ad640fa5e0614ff44c2b4251a84477d3826f2ab60d6db7",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/156",
+      "input_tokens": 132,
+      "generated_tokens": 130,
+      "wall_seconds": 19.93840523401741,
+      "token_sha256": "1a329f1e4e2cbcffafb4641b00d852bce236c99d8f3e527b515dad48ef6e9954",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/157",
+      "input_tokens": 138,
+      "generated_tokens": 60,
+      "wall_seconds": 17.743638646032196,
+      "token_sha256": "79b068204bc54cac83650f274a90626439bb468fb38de126b7c4e806b831f98d",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/158",
+      "input_tokens": 150,
+      "generated_tokens": 177,
+      "wall_seconds": 21.270057350979187,
+      "token_sha256": "aee79bca867815244f3a552de2f812ac7803cd57f13021dd9f5ec3d78a78256a",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/159",
+      "input_tokens": 307,
+      "generated_tokens": 34,
+      "wall_seconds": 17.09667979402002,
+      "token_sha256": "b7fb7b93eea216cd225330bdbfaf06fc23095a28829144b2d0dc515f83609115",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/160",
+      "input_tokens": 237,
+      "generated_tokens": 52,
+      "wall_seconds": 17.420732442988083,
+      "token_sha256": "fc72216570c16baf107ffb8ddd3d4a0474797436fa030f7b92bd15814696bd36",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/161",
+      "input_tokens": 138,
+      "generated_tokens": 74,
+      "wall_seconds": 18.191788444994017,
+      "token_sha256": "3d8d406f2e4341430ffbdbd1c8b517b37b27a28707c786114f90215f5bf63256",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/162",
+      "input_tokens": 108,
+      "generated_tokens": 100,
+      "wall_seconds": 18.999455924960785,
+      "token_sha256": "50d2dd63f907a4e9261fe245122733c92089d192ac6cce5f65a2ec21514a8424",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    },
+    {
+      "task_id": "HumanEval/163",
+      "input_tokens": 134,
+      "generated_tokens": 58,
+      "wall_seconds": 17.733729681989644,
+      "token_sha256": "7c6e521461416ca234859f1ba41b96ee995f84e626ba6a6df1d84304a6ce6c9c",
+      "passed": true,
+      "reason": "passed",
+      "exit_code": 0
+    }
+  ]
+}

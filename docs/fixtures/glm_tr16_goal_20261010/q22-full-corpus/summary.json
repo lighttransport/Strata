@@ -1,0 +1,40 @@
+[
+  {
+    "name": "depth3-soft4-cache6656",
+    "exit_code": 0,
+    "complete": true,
+    "metrics": {
+      "sequence": 16,
+      "tokens": 8192,
+      "nll": 1.61280146549,
+      "perplexity": 5.01684608075,
+      "kl": 0.194541982188,
+      "top1_agreement": 0.854370117188,
+      "different_logits": 1268776860
+    },
+    "baseline": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q4-full-corpus/baseline/result.json",
+    "baseline_sha256": "6a140cd2cc9e9f14a8d983b078190e1dbf7af287d6a8cf08d2a2f78999085795",
+    "intentional_weight_change": {
+      "candidate": {
+        "path": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+        "size": 95919555808,
+        "mtime_ns": 1791320297705013336
+      },
+      "baseline": {
+        "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+        "size": 105488860384,
+        "mtime_ns": 1791196869907720248
+      }
+    },
+    "all_other_inputs_equal": true,
+    "failures": [
+      "KL 0.19454 > 0.16676 (baseline 0.13676)",
+      "top-1 0.8544 < 0.8671 (baseline 0.8771)",
+      "perplexity 5.0168 > 4.9708 (baseline 4.8260)"
+    ],
+    "ppl_increase_percent": 3.954192115711641,
+    "top1_drop_percentage_points": 2.270507812399991,
+    "quality_qualified": false,
+    "scope": "Full8192-target precision/routing evaluation; relaxed acceptance disabled; generated-task quality remains required"
+  }
+]

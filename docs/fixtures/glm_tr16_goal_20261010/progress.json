@@ -1,0 +1,95 @@
+{
+  "generated_utc": "2026-10-10T03:38:49.655693+00:00",
+  "status": "paused_by_user",
+  "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+  "hardware": "TR16 Threadripper1950X 128GB RAM, RTX5060Ti16GB, PCIe3x8",
+  "low_loss_30_achieved": false,
+  "useful_50_achieved": false,
+  "new_profile_quality_qualified": false,
+  "completed_evidence": [
+    "Q4 and split-verification128-token screens; best unpruned25.5109tok/s, still unqualified",
+    "Repetition helper CPU test passes21504 differentialcases; bounded-acceptance regression passes",
+    "Default/state-only output parity on three256-token pairs; short speed gains1.8-2.9percent",
+    "Combined experimental CUDA/HIP builds, fiveCUDAparities, tenroutingoracles, GLMshapedMMVQparity",
+    "32full-draft-state byte comparisons",
+    "2048-token corpus pilot rejects all three tested pruning combinations",
+    "55.4266tok/s median on trainingprompt512x3 rejected for repeated-sentence output",
+    "Paired8192 corpus: Q4aff08 PPL+2.04%, KL+.02965, top1-1.135pp; top1 gate fails",
+    "Paired first20 HumanEval: baseline20/20, Q4aff08 20/20;7 identical token hashes, full164 pending",
+    "Independent state-only CUDA and HIP builds and five CUDA parity tests passed",
+    "Standalone and proposal full-model controls passed; see proposal-model-controls/complete.json",
+    "Proposal CUDA/HIP builds, five CUDA parity tests, routing oracle, dense parity and model controls passed",
+    "Q3/GPU-cache CUDA and HIP builds, five CUDA parity tests and Q3 IL bitwise parity passed",
+    "Corrected Q3 IL timing completed; measured table available, defaults unchanged",
+    "Six native Q3 screens, three quality pilots and conditional IL screen complete; no quality promotion",
+    "Independent state-only default/on controls each preserve256tokens;8K diagnostic passes32 full-state comparisons; opt-in source integrated preserving prior deferral edits",
+    "Assembled root CUDA/HIP builds and five CUDA parity tests passed",
+    "Unbiased cache quality pilots complete: aff20 improves but fails low-loss limits; Q4aff08 passes PPL/top1 but fails KL",
+    "Assembled state-only integration removed after 8K control reproducibility failure; prior deferral edits preserved. Standalone patch retained.",
+    "Six corrected GPU draft CPU/GPU screens complete; depth-one pairs preserve256tokens, depth-three soft outputs differ; no target reached",
+    "Seven Q22 speed screens complete; fastest short depth-three margin2 run28.0924tok/s, not long-generation qualified",
+    "Two Q22 2048-target pilots complete: identical PPL+4.8676%, KL+.062961, top1-2.4414pp; fail lower-loss gates, PPL-only moderate pilot passes",
+    "Protected-route pruning default-off build: CUDA/HIP compilation, five CUDA parity suites and20/20 routing-oracle configurations passed; no AMD runtime test",
+    "Three protected-route model controls preserve all256 reference tokens and cache fingerprints; changed-routing candidate quality remains unqualified",
+    "Seven protected-route controls/screens complete; strongest ordinary-depth-one screen29.3498tok/s; inspect completed quality pilots before further testing",
+    "Cold-pruning pilots complete: mild PPL+7.5595% fails low-loss gates; strong29.3498tok/s PPL+20.6800% rejects both quality budgets. Neither qualified.",
+    "Q22/Q4 depth3 margin4 held-out512x3 complete:31.2495tok/s at2K,34.3397at8K; manual eight-continuation repetition screen passed; no task correctness or overall quality qualification",
+    "Q22 full8192 corpus complete: PPL+3.9542%,KL+.0577801,top1-2.27051pp; fails all provisional lower-loss limits, within moderate PPL exploration budget",
+    "Synchronous Nsight follow-up lost agent at second capture; first warm-up report retained, no steady-state profile or comparable timing",
+    "Q22 margin4 candidate rejected: HumanEval31 repeats a condition to2048-token cap, baseline passed; full task evaluation deliberately stopped and remains incomplete"
+  ],
+  "pending": [
+    "Fresh full guarded164 HumanEval; interrupted run9/164 only",
+    "Guarded held-out2K/8K512x3 and same-build8192 corpus",
+    "User quality-budget agreement before promotion",
+    "Steady-state profiling and further work for50tok/s",
+    "Unresolved root8K control discrepancy"
+  ],
+  "note": "Research patches are opt-in and unqualified. These fixtures do not establish either requested speed/quality target.",
+  "q22_humaneval_snapshot": {
+    "tasks_completed": 35,
+    "passes_so_far": 33,
+    "task_file_complete": false,
+    "overall_quality_qualified": false,
+    "note": "Partial file snapshot, not liveness or completion of post-run validation; check live session and final summary."
+  },
+  "pipeline_v11_snapshot": {
+    "current": null,
+    "completed": [
+      {
+        "name": "cold-prune-speed",
+        "exit_code": 0,
+        "time": 1791597751.5928402
+      },
+      {
+        "name": "cold-prune-quality",
+        "exit_code": 0,
+        "time": 1791598195.9536104
+      },
+      {
+        "name": "q22-cache-drafting",
+        "exit_code": 0,
+        "time": 1791598926.4647274
+      }
+    ]
+  },
+  "pipeline_snapshot_note": "Recorded orchestration state only; use live process/session evidence to determine liveness.",
+  "pause": {
+    "status": "paused_by_user",
+    "recorded_utc": "2026-10-10T03:38:49.233840+00:00",
+    "owned_benchmark_processes_stopped": [
+      3332639,
+      3332698,
+      3332701,
+      3332711
+    ],
+    "guarded_humaneval": {
+      "tasks_completed": 9,
+      "passes": 9,
+      "complete": false
+    },
+    "low_loss_30_achieved": false,
+    "useful_50_achieved": false,
+    "resume_document": "resume-tr16.md"
+  }
+}

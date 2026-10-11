@@ -57,7 +57,10 @@ def _mixer_ms(hw, cfg, params, layer, tokens, position=0):
 def _gemm_ms(hw, cfg, params, tokens, groups):
     # the MoE GEMMs are compute-bound: scale with tensor throughput
     scale = REFERENCE_GPU["tflops"] / max(1.0, hw.gpu.tflops)
-    us = params.prefill_gemm_us * (params.prefill_legacy_gemm if cfg.prefill_legacy else 1.0) / max(0.05, cfg.prefill_gemm_scale)
+    if cfg.prefill_backend not in ("legacy", "mmq", "bf16-wmma"):
+        raise ValueError("unsupported prefill backend: " + cfg.prefill_backend)
+    gemm_us = params.prefill_wmma_gemm_us if cfg.prefill_backend == "bf16-wmma" else params.prefill_gemm_us
+    us = gemm_us * (params.prefill_legacy_gemm if cfg.prefill_legacy else 1.0) / max(0.05, cfg.prefill_gemm_scale)
     return tokens * us * 1e-3 * scale + groups * params.prefill_group_fixed_ms
 
 
@@ -79,11 +82,14 @@ def chunk_seconds(hw, cfg, params, pack, chunk, ram_fraction=1.0, position=0):
     groups_per_layer = pack.experts / 16
     touched = groups_touched(chunk, pack.experts)
     groups = groups_per_layer * touched
-    group_bytes = pack.expert_bytes(3) * 16 + 16384
+    # Preserved IQ layers can be larger than the ordinary Q2_K/Q3_K layers.
+    # Account for every layer instead of extending layer 3's format to the model.
+    layer_group_bytes = {l: pack.expert_bytes(l) * 16 + 16384 for l in g.moe_layer_ids()}
+    upload_bytes = groups * sum(layer_group_bytes.values())
     gpus = max(1, cfg.gpus)
     experts = cfg.prefill_experts
     if experts == "auto":
-        gpu_est = groups * g.moe_layers * kernels.pcie_ms(hw, group_bytes)
+        gpu_est = kernels.pcie_ms(hw, upload_bytes)
         cpu_est = sum(_cpu_expert_ms(hw, cfg, params, pack, l, chunk, ram_fraction) for l in g.moe_layer_ids())
         experts = "cpu" if cpu_est < gpu_est else "gpu"
 
@@ -97,9 +103,10 @@ def chunk_seconds(hw, cfg, params, pack, chunk, ram_fraction=1.0, position=0):
     if experts == "gpu" and cfg.prefill_cpu_assist:
         # the CPU takes tokens off the GPU GEMMs while the GPU is upload-bound: as many as its dot rate allows
         rate = hw.cpu.peak_gflops() / 2 * pack.kernel_efficiency(3) * params.cpu_quant_scale * 1e9 / g.routed_macs_per_token()
-        upload_s = groups * g.moe_layers * kernels.pcie_ms(hw, group_bytes) / 1e3 / gpus
+        upload_s = kernels.pcie_ms(hw, upload_bytes) / 1e3 / gpus
         cpu_tokens = int(min(chunk // 2, upload_s * rate * 0.8))
     for layer in g.moe_layer_ids():
+        group_bytes = layer_group_bytes[layer]
         mixer = _mixer_ms(hw, cfg, params, layer, chunk, position)
         mixer_ms += mixer
         if experts == "cpu":

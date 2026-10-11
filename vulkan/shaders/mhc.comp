@@ -1,0 +1,26 @@
+#version 450
+layout(local_size_x=128) in;
+layout(binding=0,std430) readonly buffer R { float r[]; };
+layout(binding=1,std430) readonly buffer P { float data[]; };
+layout(binding=2,std430) buffer C { float coefficients[]; };
+layout(binding=3,std430) readonly buffer Y { float y[]; };
+layout(binding=6,std430) writeonly buffer Out { float result[]; };
+layout(push_constant) uniform Params { uint width; uint iterations; float eps; uint mode; } p;
+shared float c[24];
+float sig(float x){return 1/(1+exp(-x));}
+void main(){uint t=gl_LocalInvocationID.x;
+ if(t==0){
+  if(p.mode==1){for(uint i=0;i<24;i++)c[i]=coefficients[i];}
+  else{
+   for(uint i=0;i<4;i++){c[i]=sig(data[i]*data[48]+data[24+i])+p.eps;c[4+i]=2*sig(data[4+i]*data[49]+data[28+i]);}
+   for(uint i=0;i<4;i++){float mx=-3.402823e38,total=0;for(uint j=0;j<4;j++)mx=max(mx,data[8+i*4+j]*data[50]+data[32+i*4+j]);for(uint j=0;j<4;j++){c[8+i*4+j]=exp(data[8+i*4+j]*data[50]+data[32+i*4+j]-mx);total+=c[8+i*4+j];}for(uint j=0;j<4;j++)c[8+i*4+j]=c[8+i*4+j]/total+p.eps;}
+   for(uint n=0;n<p.iterations;n++){if(n>0){for(uint i=0;i<4;i++){float total=p.eps;for(uint j=0;j<4;j++)total+=c[8+i*4+j];for(uint j=0;j<4;j++)c[8+i*4+j]/=total;}}for(uint j=0;j<4;j++){float total=p.eps;for(uint i=0;i<4;i++)total+=c[8+i*4+j];for(uint i=0;i<4;i++)c[8+i*4+j]/=total;}}
+   for(uint i=0;i<24;i++)coefficients[i]=c[i];
+  }
+ }
+ barrier();
+ for(uint d=t;d<p.width;d+=128){
+  if(p.mode==0){precise float v=0;for(uint i=0;i<4;i++)v+=c[i]*r[i*p.width+d];result[d]=v;}
+  else{for(uint j=0;j<4;j++){precise float v=c[4+j]*y[d];for(uint i=0;i<4;i++)v+=c[8+i*4+j]*r[i*p.width+d];result[j*p.width+d]=v;}}
+ }
+}

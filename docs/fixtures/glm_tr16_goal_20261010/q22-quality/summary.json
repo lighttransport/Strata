@@ -1,0 +1,78 @@
+[
+  {
+    "name": "02-q22-aff08",
+    "exit_code": 0,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.37537480602,
+      "perplexity": 3.95655938731,
+      "kl": 0.165846559207,
+      "top1_agreement": 0.8681640625,
+      "different_logits": 317194216
+    },
+    "baseline": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-quality-pilot/00-renorm-default/result.json",
+    "baseline_sha256": "c2fea569d18ffaf0a3bf78c43cadcd0c7ead975f20c2e16d57924c8f5e1ab431",
+    "intentional_weight_change": {
+      "candidate": {
+        "path": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+        "size": 95919555808,
+        "mtime_ns": 1791320297705013336
+      },
+      "baseline": {
+        "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+        "size": 105488860384,
+        "mtime_ns": 1791196869907720248
+      }
+    },
+    "all_other_inputs_equal": true,
+    "failures": [
+      "KL 0.16585 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8682 < 0.8826 (baseline 0.8926)",
+      "perplexity 3.9566 > 3.8861 (baseline 3.7729)"
+    ],
+    "ppl_increase_percent": 4.867604498825728,
+    "top1_drop_percentage_points": 2.44140625,
+    "quality_qualified": false,
+    "scope": "2048-target precision/routing pilot only; relaxed acceptance disabled; full corpus and generated task quality remain required"
+  },
+  {
+    "name": "05-q22-aff08-depth3-soft2",
+    "exit_code": 0,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.37537480602,
+      "perplexity": 3.95655938731,
+      "kl": 0.165846559207,
+      "top1_agreement": 0.8681640625,
+      "different_logits": 317194216
+    },
+    "baseline": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-quality-pilot/00-renorm-default/result.json",
+    "baseline_sha256": "c2fea569d18ffaf0a3bf78c43cadcd0c7ead975f20c2e16d57924c8f5e1ab431",
+    "intentional_weight_change": {
+      "candidate": {
+        "path": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+        "size": 95919555808,
+        "mtime_ns": 1791320297705013336
+      },
+      "baseline": {
+        "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+        "size": 105488860384,
+        "mtime_ns": 1791196869907720248
+      }
+    },
+    "all_other_inputs_equal": true,
+    "failures": [
+      "KL 0.16585 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8682 < 0.8826 (baseline 0.8926)",
+      "perplexity 3.9566 > 3.8861 (baseline 3.7729)"
+    ],
+    "ppl_increase_percent": 4.867604498825728,
+    "top1_drop_percentage_points": 2.44140625,
+    "quality_qualified": false,
+    "scope": "2048-target precision/routing pilot only; relaxed acceptance disabled; full corpus and generated task quality remain required"
+  }
+]

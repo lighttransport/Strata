@@ -5,11 +5,21 @@ import unittest
 from glm_low_memory_bench import (
     cache_bytes, eval_counts, eval_complete, gpu_capacity_passed, gpu_used_limit,
     gpu_snapshot, gpu_usage, group_stats, hip_gpu_snapshot, model_files, parse_log,
-    prefill_repeats_passed,
+    prefill_repeats_passed, validate_hip_link, decode_complete, decode_trials_identical,
 )
 
 
 class LowMemoryBenchTest(unittest.TestCase):
+    def test_determinism_uses_eos_trial_boundaries(self):
+        rows = [dict(kind='single', tokens=2)] * 2
+        self.assertTrue(decode_trials_identical([1, 2, 9, 1, 2, 9], rows))
+        self.assertFalse(decode_trials_identical([1, 2, 9, 1, 3, 9], rows))
+        self.assertFalse(decode_trials_identical([1, 2, 9, 1, 2], rows))
+        self.assertFalse(decode_trials_identical([1, 2, 9, 1, 2, 9, 9], rows))
+        self.assertFalse(decode_trials_identical([], []))
+        self.assertFalse(decode_trials_identical([1, 2, 9, 1, 9],
+                         [dict(kind='single', tokens=2), dict(kind='single', tokens=1)]))
+
     def test_prefill_repeat_check_requires_all_trials_and_both_invariants(self):
         rows = parse_log("PREFILL_REPEAT trial=0 logits_identical=1 routes_identical=1\n"
                          "PREFILL_REPEAT trial=1 logits_identical=1 routes_identical=1\n")["prefill_repeat"]
@@ -24,6 +34,27 @@ class LowMemoryBenchTest(unittest.TestCase):
             missing = dict(rows[1])
             missing.pop(key)
             self.assertFalse(prefill_repeats_passed([rows[0], missing], 2))
+
+    def test_pci_preflight_rejects_cached_memory_after_bus_loss(self):
+        with tempfile.TemporaryDirectory() as folder:
+            device=Path(folder)
+            (device/'config').write_bytes(bytes.fromhex('02105075'))
+            validate_hip_link(device)
+            (device/'mem_info_vram_total').write_text(str(16*2**30))
+            (device/'mem_info_vram_used').write_text(str(2**30))
+            self.assertNotIn('performance',hip_gpu_snapshot(device,False,True))
+            (device/'config').write_bytes(b'\xff'*4)
+            with self.assertRaises(ValueError):hip_gpu_snapshot(device,False,True)
+            (device/'config').write_bytes(b'\x02')
+            with self.assertRaises(ValueError):validate_hip_link(device)
+
+    def test_eos_completion_and_partial_output(self):
+        rows=[dict(kind='single',tokens=2),dict(kind='external',tokens=4)]
+        self.assertTrue(decode_complete([1,2,9,1,2,3,4],rows,4,2,[9]))
+        self.assertFalse(decode_complete([1,2,3,1,2,3,4],rows,4,2,[9]))
+        self.assertFalse(decode_complete([1,9,9,1,2,3,4],rows,4,2,[9]))
+        self.assertFalse(decode_complete([1,2,9,1,2,3],rows,4,2,[9]))
+        self.assertFalse(decode_complete([1,2,9,1,2,3,4,5],rows,4,2,[9]))
 
     def test_timing_scopes_and_missing_measurements(self):
         log = """PREFILL trial=0 tokens=128 batch=64 ms=80000.5 tok_s=1.6

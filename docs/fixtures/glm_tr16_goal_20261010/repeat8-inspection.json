@@ -1,0 +1,35 @@
+{
+  "case": "02-repeat8",
+  "median_decode_tok_s": 36.5707,
+  "quality_qualified": false,
+  "text_samples_sha256": "e502615000bf4c3b3c9abcf3f01a8a14bb18efa68825139e54140739d0724837",
+  "inspection": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "finding": "Repeated passages, less sustained than the two looping timed trials"
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "finding": "Long loop repeating mmap with file descriptor and offset"
+    },
+    {
+      "trial": 2,
+      "warmup": false,
+      "finding": "Long loop repeating malformed function signature and syntax-error claim"
+    },
+    {
+      "trial": 3,
+      "warmup": false,
+      "finding": "No comparable sustained loop in512tokens; correctness not established"
+    }
+  ],
+  "blocked_by_trial": [
+    3,
+    0,
+    0,
+    0
+  ],
+  "decision": "Not qualified: two of three timed continuations still collapse; exact target matches bypass this guard."
+}

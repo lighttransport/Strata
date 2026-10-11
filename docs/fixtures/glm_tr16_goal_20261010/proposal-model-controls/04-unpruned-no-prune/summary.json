@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/proposal-model-controls/04-unpruned-no-prune/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 15.7198,
+    "prefill_tok_s": 131.29649999999998
+  }
+]

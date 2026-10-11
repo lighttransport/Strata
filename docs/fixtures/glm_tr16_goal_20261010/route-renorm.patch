@@ -1,0 +1,828 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -361,6 +361,15 @@
+                           src/platform/direct_file.cpp)
+   target_link_libraries(strata_kernels PUBLIC strata_core strata_artifact)
+   if((STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP) AND STRATA_BUILD_TESTS)
++    add_executable(glm_route_prune_test src/kernels/glm_route_prune_test.cpp)
++    target_link_libraries(glm_route_prune_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
++    foreach(_route_share 0 0.08 0.125 0.2 0.99)
++      foreach(_route_renorm 0 1)
++        add_test(NAME glm_route_prune_${_route_share}_${_route_renorm} COMMAND glm_route_prune_test)
++        set_tests_properties(glm_route_prune_${_route_share}_${_route_renorm} PROPERTIES
++          ENVIRONMENT "STRATA_GLM_ROUTE_MIN_SHARE=${_route_share};STRATA_GLM_ROUTE_RENORMALIZE=${_route_renorm}" LABELS glm)
++      endforeach()
++    endforeach()
+     add_executable(glm_parity src/kernels/glm_parity.cpp)
+     target_link_libraries(glm_parity PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+     add_test(NAME glm_parity COMMAND glm_parity)
+--- a/src/kernels/cuda/glm.cu
++++ b/src/kernels/cuda/glm.cu
+@@ -84,10 +84,32 @@
+         y[i] = a * sig(a) * b;
+     }
+ }
++// Opt-in pruning keeps the selected experts' original total mass. If the
++// threshold removes every expert, retain the largest original weight (first tie).
++// With no removed weight, do not touch the normalized values.
++__device__ void renormalize_routes(float *weights, int k, float cutoff) {
++    float total = 0.f, retained = 0.f, largest = -1.f;
++    int best = 0;
++    bool removed = false;
++    for (int j = 0; j < k; ++j) {
++        const float w = weights[j];
++        total += w;
++        if (w > largest) { largest = w; best = j; }
++        if (w < cutoff) { weights[j] = 0.f; removed |= w != 0.f; }
++        else retained += w;
++    }
++    if (!removed) return;
++    if (retained > 0.f) {
++        const float factor = total / retained;
++        for (int j = 0; j < k; ++j) weights[j] *= factor;
++    } else {
++        weights[best] = total;
++    }
++}
+ // `bonus` (optional, one value per expert) is added to the selection score only, so the caller can prefer experts
+ // that are cheap to run. Weights still come from the true probabilities of the selected experts.
+ __global__ void route(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
+-                      float scale, float min_share, const float *bonus) {
++                      float scale, float min_share, bool renormalize, const float *bonus) {
+     if (threadIdx.x || blockIdx.x)
+         return;
+     float sum = 0;
+@@ -111,14 +133,15 @@
+     }
+     for (int j = 0; j < k; ++j) {
+         weights[j] *= scale / (sum + 1e-20f);
+-        if (weights[j] < min_share * scale) weights[j] = 0.f;
+-    }
++        if (!renormalize && weights[j] < min_share * scale) weights[j] = 0.f;
++    }
++    if (renormalize) renormalize_routes(weights, k, min_share * scale);
+ }
+ // One warp caches each expert score once. Ties choose the first expert, as
+ // in the serial scan; lane zero retains the original normalization order.
+ // blockIdx.x selects the token; each token's selection is the single-token computation.
+ __device__ __forceinline__ void route_warp_body(const float *logits, const float *bias, int *ids, float *weights,
+-                                                int ne, int k, float scale, float min_share, const float *bonus,
++                                                int ne, int k, float scale, float min_share, bool renormalize, const float *bonus,
+                                                 int lane) {
+     float scores[16];
+     for (int i = 0; i < 16; ++i) {
+@@ -150,24 +173,26 @@
+         for (int i = 0; i < 16; ++i)
+             if (lane + 32 * i == selected) scores[i] = -INFINITY;
+     }
+-    if (lane == 0)
++    if (lane == 0) {
+         for (int j = 0; j < k; ++j) {
+             weights[j] *= scale / (sum + 1e-20f);
+-            if (weights[j] < min_share * scale) weights[j] = 0.f;
+-        }
++            if (!renormalize && weights[j] < min_share * scale) weights[j] = 0.f;
++        }
++        if (renormalize) renormalize_routes(weights, k, min_share * scale);
++    }
+ }
+ __global__ void route_warp(const float *logits, const float *bias, int *ids, float *weights,
+-                           int ne, int k, float scale, float min_share, const float *bonus) {
++                           int ne, int k, float scale, float min_share, bool renormalize, const float *bonus) {
+     route_warp_body(logits + (size_t)blockIdx.x * ne, bias, ids + (size_t)blockIdx.x * k,
+-                    weights + (size_t)blockIdx.x * k, ne, k, scale, min_share, bonus, threadIdx.x);
++                    weights + (size_t)blockIdx.x * k, ne, k, scale, min_share, renormalize, bonus, threadIdx.x);
+ }
+ // One token's router and mailbox publication in one launch (STRATA_GLM_FUSE_ROUTE=1): warp 0 routes, then the
+ // block copies ids, weights and the activation into the mailbox slot and sets the published flag, exactly as the
+ // separate publish kernel does (flags[slot * 32] is the published generation, see glm_mailbox.hpp).
+ __global__ void route_publish(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
+-                              float scale, float min_share, const float *bonus, GlmMailboxView v, int slot,
++                              float scale, float min_share, bool renormalize, const float *bonus, GlmMailboxView v, int slot,
+                               const float *x, const unsigned *generation) {
+-    if (threadIdx.x < 32) route_warp_body(logits, bias, ids, weights, ne, k, scale, min_share, bonus, threadIdx.x);
++    if (threadIdx.x < 32) route_warp_body(logits, bias, ids, weights, ne, k, scale, min_share, renormalize, bonus, threadIdx.x);
+     __syncthreads();
+     int *out_ids = v.ids + (size_t)slot * v.max_tokens * v.top_k;
+     float *out_weights = v.weights + (size_t)slot * v.max_tokens * v.top_k;
+@@ -195,6 +220,16 @@
+         return x;
+     }();
+     return v;
++}
++
++bool route_renormalize() {
++    static const bool enabled = [] {
++        const char *value = std::getenv("STRATA_GLM_ROUTE_RENORMALIZE");
++        if (!value || (value[0] == '0' && value[1] == '\0')) return false;
++        if (value[0] == '1' && value[1] == '\0') return true;
++        throw std::invalid_argument("STRATA_GLM_ROUTE_RENORMALIZE must be 0 or 1");
++    }();
++    return enabled;
+ }
+ 
+ __global__ void mhc_coeff(const float *p, const float *base, const float *scale, float *c, int iters,
+@@ -557,9 +592,9 @@
+     if (ne < 1 || k < 1 || k > ne)
+         throw std::invalid_argument("GLM: invalid routing geometry");
+     if (ne <= 512)
+-        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
++        route_warp<<<1, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus);
+     else
+-        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
++        route<<<1, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus);
+     check();
+ }
+ void glm_router_publish(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale,
+@@ -567,7 +602,7 @@
+                         void *s) {
+     if (ne < 1 || k < 1 || k > ne || ne > 512 || k != v.top_k || slot < 0 || slot >= v.slots || v.hidden % 4)
+         throw std::invalid_argument("GLM: invalid fused routing geometry");
+-    route_publish<<<1, 512, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus, v, slot, x, generation);
++    route_publish<<<1, 512, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus, v, slot, x, generation);
+     check();
+ }
+ void glm_hc_project(const float *x, const float *w, float *out, float *scratch, int width, void *s) {
+@@ -610,7 +645,7 @@
+                        void *s, const float *bonus) {
+     if (ne < 1 || k < 1 || k > ne || ne > 512 || tokens < 1)
+         throw std::invalid_argument("GLM: invalid batched routing geometry");
+-    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
++    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), route_renormalize(), bonus);
+     check();
+ }
+ void glm_hyper_head(const float *r, float *out, int n, void *s) {
+--- /dev/null
++++ b/src/kernels/glm_route_prune_test.cpp
+@@ -0,0 +1,84 @@
++// Independent routing oracle for opt-in mass-preserving pruning.
++#include "strata/kernels/glm.hpp"
++#include "strata/kernels/glm_mailbox.hpp"
++#include <cuda_runtime.h>
++#include <algorithm>
++#include <cmath>
++#include <cstdlib>
++#include <cstring>
++#include <iostream>
++#include <numeric>
++#include <stdexcept>
++#include <string>
++#include <vector>
++namespace k = strata::kernels;
++void ck(cudaError_t e) { if(e != cudaSuccess) throw std::runtime_error(cudaGetErrorString(e)); }
++template<class T> struct Buffer {
++    T *p=nullptr; size_t n;
++    explicit Buffer(size_t count):n(count) { ck(cudaMalloc(&p,n*sizeof(T))); }
++    ~Buffer(){cudaFree(p);}
++    void put(const std::vector<T>& v){ck(cudaMemcpy(p,v.data(),n*sizeof(T),cudaMemcpyHostToDevice));}
++    std::vector<T> get(){std::vector<T> v(n);ck(cudaMemcpy(v.data(),p,n*sizeof(T),cudaMemcpyDeviceToHost));return v;}
++};
++int main() { try {
++    const float share=std::getenv("STRATA_GLM_ROUTE_MIN_SHARE") ? std::stof(std::getenv("STRATA_GLM_ROUTE_MIN_SHARE")) : 0.f;
++    const bool renorm=std::getenv("STRATA_GLM_ROUTE_RENORMALIZE") && std::string(std::getenv("STRATA_GLM_ROUTE_RENORMALIZE"))=="1";
++    constexpr int top=8, nt=3, hidden=64;
++    constexpr float scale=2.5f;
++    int checks=0;
++    for(int ne : {16,288,513}) for(int shape=0;shape<4;++shape) {
++        std::vector<float> x(ne*nt),bias(ne),bonus(ne);
++        for(int e=0;e<ne;++e) {
++            bias[e]=-float(e)*0.25f; bonus[e]=(e%3)*0.01f;
++            for(int t=0;t<nt;++t)
++                x[t*ne+e]=shape==0 ? 0.f : shape==1 ? float(e%8)-5.f+t*.1f : shape==2 ? -1000.f : -float(e%8)*2.f+t*.1f;
++        }
++        Buffer<float> dx(x.size()),db(ne),dbonus(ne);dx.put(x);db.put(bias);dbonus.put(bonus);
++        auto verify=[&](const std::vector<int>& ids,const std::vector<float>& weights,int rows) {
++            for(int t=0;t<rows;++t) {
++                std::vector<int> ranking(ne);std::iota(ranking.begin(),ranking.end(),0);
++                auto prob=[&](int e){return 1.f/(1.f+std::exp(-x[t*ne+e]));};
++                auto score=[&](int e){return prob(e)+bias[e]+bonus[e];};
++                std::stable_sort(ranking.begin(),ranking.end(),[&](int a,int b){return score(a)>score(b);});
++                double denominator=0;for(int j=0;j<top;++j)denominator+=prob(ranking[j]);
++                std::vector<double> original(top),expected(top);double total=0,kept=0;
++                for(int j=0;j<top;++j){original[j]=prob(ranking[j])*scale/(denominator+1e-20);total+=original[j];}
++                for(int j=0;j<top;++j){expected[j]=original[j]<double(share)*scale ? 0 : original[j];kept+=expected[j];}
++                if(renorm && kept<total) {
++                    if(kept>0)for(double& w:expected)w*=total/kept;
++                    else expected[std::max_element(original.begin(),original.end())-original.begin()]=total;
++                }
++                double actual_mass=0;
++                for(int j=0;j<top;++j) {
++                    const float w=weights[t*top+j];actual_mass+=w;
++                    if(ids[t*top+j]!=ranking[j] || !std::isfinite(w) || std::abs(w-expected[j])>3e-6)
++                        throw std::runtime_error("route oracle mismatch ne="+std::to_string(ne)+" shape="+std::to_string(shape)+" row="+std::to_string(t)+" j="+std::to_string(j));
++                }
++                const double wanted=std::accumulate(expected.begin(),expected.end(),0.);
++                if(std::abs(actual_mass-wanted)>5e-6)throw std::runtime_error("route mass mismatch");
++                ++checks;
++            }
++        };
++        Buffer<int> ids(top);Buffer<float> weights(top);
++        k::glm_router(dx.p,db.p,ids.p,weights.p,ne,top,scale,nullptr,dbonus.p);
++        verify(ids.get(),weights.get(),1);
++        if(ne>512)continue;
++        Buffer<int> batched_ids(top*nt);Buffer<float> batched_weights(top*nt);
++        k::glm_router_tokens(dx.p,db.p,batched_ids.p,batched_weights.p,ne,top,scale,nt,nullptr,dbonus.p);
++        verify(batched_ids.get(),batched_weights.get(),nt);
++        const size_t bytes=k::glm_mailbox_bytes(1,1,top,hidden);
++        void *host=nullptr,*mapped=nullptr;ck(cudaHostAlloc(&host,bytes,cudaHostAllocMapped));std::memset(host,0,bytes);
++        ck(cudaHostGetDevicePointer(&mapped,host,0));
++        auto hv=k::glm_mailbox_view(host,1,1,top,hidden),dv=k::glm_mailbox_view(mapped,1,1,top,hidden);
++        Buffer<float> activation(hidden);activation.put(std::vector<float>(hidden,1.f));
++        Buffer<unsigned> generation(1);generation.put({17});
++        k::glm_router_publish(dx.p,db.p,ids.p,weights.p,ne,top,scale,dbonus.p,dv,0,activation.p,generation.p,nullptr);
++        ck(cudaDeviceSynchronize());
++        verify(std::vector<int>(hv.ids,hv.ids+top),std::vector<float>(hv.weights,hv.weights+top),1);
++        if(hv.flags[0]!=17)throw std::runtime_error("mailbox generation mismatch");
++        for(int j=0;j<hidden;++j)if(hv.act[j]!=1.f)throw std::runtime_error("mailbox activation mismatch");
++        ck(cudaFreeHost(host));
++    }
++    std::cout<<"PASS glm_route_prune_test share="<<share<<" renormalize="<<renorm<<" rows="<<checks<<'\n';
++    return 0;
++} catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;} }
+--- a/src/kernels/mmvq_il_parity.cpp
++++ b/src/kernels/mmvq_il_parity.cpp
+@@ -51,6 +51,31 @@
+     {"Q6_K 4096x2560", 14, 4096, 2560, 256, 210, {208, -1}},
+     {"Q6_K odd rows 2560x2051", 14, 2560, 2051, 256, 210, {208, -1}},
+     {"Q6_K 2560x512", 14, 2560, 512, 256, 210, {208, -1}},
++};
++
++// GLM GGUF dense shapes, plus Q4_K equivalents for the optional dense conversion.
++const Case GLM_CASES[] = {
++    {"GLM Q4_K 2048x4096", 12, 2048, 4096, 256, 144, {0, 2}},
++    {"GLM Q4_K 4096x1536", 12, 4096, 1536, 256, 144, {0, 2}},
++    {"GLM Q4_K 4096x2048", 12, 4096, 2048, 256, 144, {0, 2}},
++    {"GLM Q4_K 4096x8192", 12, 4096, 8192, 256, 144, {0, 2}},
++    {"GLM Q4_K 4096x12288", 12, 4096, 12288, 256, 144, {0, 2}},
++    {"GLM Q4_K 4096x154880", 12, 4096, 154880, 256, 144, {0, 2}},
++    {"GLM Q4_K 8192x4096", 12, 8192, 4096, 256, 144, {0, 2}},
++    {"GLM Q4_K 12288x4096", 12, 12288, 4096, 256, 144, {0, 2}},
++    {"GLM Q4_K 16384x4096", 12, 16384, 4096, 256, 144, {0, 2}},
++    {"GLM Q5_K 4096x1536", 13, 4096, 1536, 256, 176, {0, 2}},
++    {"GLM Q5_K 4096x2048", 13, 4096, 2048, 256, 176, {0, 2}},
++    {"GLM Q5_K 4096x8192", 13, 4096, 8192, 256, 176, {0, 2}},
++    {"GLM Q5_K 4096x12288", 13, 4096, 12288, 256, 176, {0, 2}},
++    {"GLM Q5_K 8192x4096", 13, 8192, 4096, 256, 176, {0, 2}},
++    {"GLM Q5_K 16384x4096", 13, 16384, 4096, 256, 176, {0, 2}},
++    {"GLM Q6_K 2048x4096", 14, 2048, 4096, 256, 210, {208, -1}},
++    {"GLM Q6_K 4096x1536", 14, 4096, 1536, 256, 210, {208, -1}},
++    {"GLM Q6_K 4096x2048", 14, 4096, 2048, 256, 210, {208, -1}},
++    {"GLM Q6_K 4096x8192", 14, 4096, 8192, 256, 210, {208, -1}},
++    {"GLM Q6_K 12288x4096", 14, 12288, 4096, 256, 210, {208, -1}},
++    {"GLM Q6_K 16384x4096", 14, 16384, 4096, 256, 210, {208, -1}},
+ };
+ 
+ uint16_t sane_half(std::mt19937& rng) {
+@@ -175,7 +200,40 @@
+ // the table as kIlRows prints it: per (type, ncols, n_out class) the fastest rows count if >= 3% under native_mmvq, else 0.
+ // A cell with several measured shapes takes the worst (smallest) gain of the best choice, as the shipped table does for
+ // two cards; a class with no measured shape prints the value of its neighbour below it (or 0).
+-void emit_table() {
++// GLM's buckets contain several input widths. Different per-shape winners do
++// not imply that no common setting helps: choose the best worst-case ratio.
++int robust_rows(const std::vector<Cell>& cells, int type, int nc, int cls) {
++    bool seen = false;
++    double worst[5] = {};
++    for (const Cell& c : cells) {
++        const int cc = c.n_out < 2048 ? 0 : c.n_out < 4096 ? 1 : c.n_out < 8192 ? 2 : c.n_out < 12288 ? 3 : 4;
++        if (c.type != type || c.T != nc || cc != cls) continue;
++        seen = true;
++        for (int rows : {1, 2, 4}) {
++            const double ratio = c.ref > 0 && c.il[rows] > 0 ? c.il[rows] / c.ref : INFINITY;
++            worst[rows] = std::max(worst[rows], ratio);
++        }
++    }
++    if (!seen) return -1;
++    int pick = 0;
++    double best = 0.97;
++    for (int rows : {1, 2, 4})
++        if (worst[rows] < best) { best = worst[rows]; pick = rows; }
++    return pick;
++}
++int check_robust_rows() {
++    const std::vector<Cell> disagree = {
++        {13, 2, 2048, 100, {0, 80, 81, 0, 90}},
++        {13, 2, 2560, 100, {0, 90, 82, 0, 79}},
++    };
++    const std::vector<Cell> insufficient = {{13, 2, 2048, 100, {0, 99, 98, 0, 97}}};
++    const std::vector<Cell> missing = {{13, 2, 2048, 100, {0, 0, 0, 0, 0}}};
++    const bool bad = robust_rows(disagree,13,2,1) != 2 || robust_rows(insufficient,13,2,1) != 0 ||
++        robust_rows(missing,13,2,1) != 0 || robust_rows(disagree,14,2,1) != -1;
++    if (bad) std::printf("FAIL GLM conservative table selection\n");
++    return bad;
++}
++void emit_table(bool glm_shapes) {
+     const int types[] = {23, 12, 13, 14};
+     const char* names[] = {"IQ4_XS", "Q4_K", "Q5_K", "Q6_K"};
+     std::printf("// measured on this card by mmvq_il_parity --bench --emit-table\n");
+@@ -196,6 +254,7 @@
+                         if (c.il[r] > 0 && c.il[r] < bt) { bt = c.il[r]; best = r; }
+                     pick = pick < 0 ? best : (pick == best ? pick : 0);   // shapes disagree: native_mmvq
+                 }
++                if (glm_shapes) pick = robust_rows(g_cells, types[ti], nc, cls);
+                 if (pick < 0) pick = prev;
+                 prev = pick;
+                 std::printf("%d%s", pick, cls < 4 ? ", " : "");
+@@ -236,12 +295,16 @@
+ int main(int argc, char** argv) {
+     const bool bench = argc > 1 && std::string(argv[1]) == "--bench";
+     const bool emit = bench && argc > 2 && std::string(argv[2]) == "--emit-table";
++    bool glm_shapes = false;
++    for (int i=1; i<argc; ++i) glm_shapes |= std::string(argv[i]) == "--glm-shapes";
+     cudaStream_t s;
+     cudaStreamCreate(&s);
+     int bad = 0;
+     bad += check_tables();
+-    for (const Case& c : CASES) bad += run_case(c, bench, s);
+-    if (emit) emit_table();
++    if (glm_shapes) { for (const Case& c : GLM_CASES) bad += run_case(c, bench, s); }
++    else { for (const Case& c : CASES) bad += run_case(c, bench, s); }
++    if (glm_shapes) bad += check_robust_rows();
++    if (emit) emit_table(glm_shapes);
+     std::printf("%s\n", bad ? "mmvq_il_parity: FAIL" : "mmvq_il_parity: OK (every case, T 2-4, rows 1/2/4 and the table, bitwise)");
+     return bad ? 1 : 0;
+ }
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -13,6 +13,7 @@
+ #include "strata/artifact/expert_block_screen.hpp"
+ #include "strata/artifact/json.hpp"
+ #include "strata/spec/suffix_drafter.hpp"
++#include "strata/spec/bounded_accept.hpp"
+ #include "strata/kernels/cpu/pool.hpp"
+ #include "strata/kernels/cpu/numa_weights.hpp"
+ #include "strata/kernels/cpu/iq_avx2.hpp"
+@@ -1821,6 +1822,12 @@
+         if (std::string(value) == "1") return true;
+         throw std::invalid_argument("GLM: Q8 decode must be 0 or 1");
+     }();
++    const bool interleaved_dense = [] {
++        const char *v = std::getenv("STRATA_GLM_MMVQ_IL");
++        if (!v || std::string(v) == "0") return false;
++        if (std::string(v) == "1") return true;
++        throw std::invalid_argument("GLM: MMVQ IL must be 0 or 1");
++    }();
+     std::unique_ptr<StepMailbox> mailbox;
+     // Split verify (STRATA_GLM_SPLIT_VERIFY=1): a pipelined verify window runs as two token groups interleaved per
+     // layer, so the GPU computes one group's attention while the CPU computes the other group's experts. Group B
+@@ -2809,6 +2816,18 @@
+                   << " ms=" << std::chrono::duration<double, std::milli>(
+                       std::chrono::steady_clock::now() - start).count() << '\n';
+     }
++    void quantized_dense_mat(int type, const void *w, const void *xq, float *y, int in, int out, int nt) {
++        // The interleaved copy preserves every Q8_1 byte. The kernel's existing
++        // per-architecture table selects supported 2..4-column shapes; HIP and
++        // unsupported shapes retain native_mmvq. All scratch stays on this stream.
++        if (interleaved_dense && !fast && k::native_mmvq_il_supported(type, nt, out)) {
++            auto &il = buf("dense_q8_il", (k::native_q8_1_il_bytes(in, nt) + 3) / 4);
++            k::native_q8_1_interleave(xq, il.p, in, nt, stream);
++            k::native_mmvq_il(type, w, xq, il.p, y, in, out, nt, stream);
++        } else {
++            k::native_mmvq(type, w, xq, y, in, out, nt, stream);
++        }
++    }
+     void mat(const std::string &name, const float *x, float *y, bool floating = false, int nt = 0) {
+         if (!nt)
+             nt = batch_tokens;
+@@ -2917,12 +2936,12 @@
+         if (!k::native_mmvq_supported(weight_type))
+             throw std::runtime_error("GLM: unsupported dense quantization: " + name);
+         if (shared_quant && x == shared_quant_src && in == shared_quant_in && nt == shared_quant_nt) {
+-            k::native_mmvq(weight_type, W.p, shared_quant->p, y, in, out, nt, stream);
++            quantized_dense_mat(weight_type, W.p, shared_quant->p, y, in, out, nt);
+             return;
+         }
+         auto &q = buf("q8", k::native_q8_1_bytes(in, nt) / 4);
+         k::native_quantize_q8_1(x, q.p, in, nt, stream);
+-        k::native_mmvq(weight_type, W.p, q.p, y, in, out, nt, stream);
++        quantized_dense_mat(weight_type, W.p, q.p, y, in, out, nt);
+     }
+     void norm(const std::string &name, const float *x, float *y, int width) {
+         auto &W = weight(name);
+@@ -5343,7 +5362,7 @@
+         check(cublasSgemmStridedBatched(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, tokens, in, &one, W.f(), in,
+                                         (long long)in * out, x, ld_x, in, &zero, y, ld_y, out, heads));
+     }
+-    void mla_gpu(const std::string &p, int l, const float *x, float *out) {
++    void mla_gpu(const std::string &p, int l, const float *x, float *out, bool state_only = false) {
+         auto &state = states[l];
+         const int *device_pos = graph_mla() && l < (int)m.layers.size() ? (const int *)mla_positions->p + buffer_group : nullptr;
+         int B = batch_tokens, heads = m.attention_heads, latent = m.kv_rank, dim = 256, ih = m.index_heads,
+@@ -5372,9 +5391,11 @@
+         auto &qr = buf("mla_qr", m.q_rank * B);
+         auto &q = buf("mla_q", heads * dim * B);
+         share_quant(x, m.hidden);
+-        mat(p + "attn_q_a.weight", x, low.f());
+-        norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
+-        mat(p + "attn_q_b.weight", qr.f(), q.f());
++        if (!state_only) {
++            mat(p + "attn_q_a.weight", x, low.f());
++            norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
++            mat(p + "attn_q_b.weight", qr.f(), q.f());
++        }
+         auto &raw = buf("mla_raw", latent * B);
+         mat(p + "attn_kv_a_mqa.weight", x, raw.f());
+         if (!row_sequences.empty()) {
+@@ -5394,8 +5415,10 @@
+         auto &ik = buf("index_k", idim * B);
+         auto &ikn = buf("index_kn", idim * B);
+         auto &gate = buf("index_gate", idim * B);
+-        mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
+-        mat(p + "indexer.proj.weight", x, iw.f());
++        if (!state_only) {
++            mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
++            mat(p + "indexer.proj.weight", x, iw.f());
++        }
+         mat(p + "indexer.attn_k.weight", x, ik.f());
+         mat(p + "indexer_compressor_gate.weight", x, gate.f());
+         end_share_quant();
+@@ -5428,6 +5451,9 @@
+         } else
+             k::glm_index_prepare(ikn.f(), gate.f(), ape.f(), state.keys->f(), state.gates->f(), state.pooled->f(),
+                                  position, B, pool_size, idim, stream, device_pos);
++        // All persistent MLA state is now updated. Draft resynchronization
++        // does not consume the attention output or the following feed-forward output.
++        if (state_only) return;
+         inspect("index_norm", ikn.f(), (size_t)B * idim, stream);
+         inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
+         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
+@@ -7076,7 +7102,16 @@
+     }
+     void set_mtp_cpu_experts(bool enabled) { mtp_cpu_experts = enabled; }
+     int token_position() const { return position; }
+-    std::vector<float> mtp_step(int token, const float *previous, bool head = true) {
++    const bool mtp_sync_state_only = [] {
++        const char *v = std::getenv("STRATA_GLM_MTP_SYNC_STATE_ONLY");
++        if (!v || std::string(v) == "0") return false;
++        if (std::string(v) == "1") return true;
++        throw std::invalid_argument("STRATA_GLM_MTP_SYNC_STATE_ONLY must be 0 or 1");
++    }();
++    const bool check_mtp_sync_state = std::getenv("STRATA_GLM_CHECK_MTP_SYNC_STATE") &&
++        std::string(std::getenv("STRATA_GLM_CHECK_MTP_SYNC_STATE")) == "1";
++    long mtp_sync_omitted = 0, mtp_sync_checked = 0;
++    std::vector<float> mtp_step(int token, const float *previous, bool head = true, bool force_full = false) {
+         check_stop();
+         if (!mtp_ready || token < 0 || token >= m.vocab || mtp_position >= (int)capacity)
+             throw std::out_of_range("GLM: invalid MTP token or position");
+@@ -7102,7 +7137,16 @@
+         norm(p + "nextn.hnorm.weight", prev.f(), joined.f(H), H);
+         mat(p + "nextn.eh_proj.weight", joined.f(), cur.f());
+         norm(p + "attn_norm.weight", cur.f(), x.f(), H);
+-        mla_gpu(p, 45, x.f(), y.f());
++        const bool state_only = !head && mtp_sync_state_only && !force_full;
++        if (state_only && !row_sequences.empty())
++            throw std::invalid_argument("GLM: state-only MTP sync requires one sequence");
++        mla_gpu(p, 45, x.f(), y.f(), state_only);
++        if (state_only) {
++            ++mtp_position;
++            ++mtp_sync_omitted;
++            check(cudaStreamSynchronize(stream));
++            return {};
++        }
+         const float one = 1;
+         check(cublasSaxpy(blas, H, &one, y.f(), 1, cur.f(), 1));
+         norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
+@@ -7125,7 +7169,19 @@
+         for (size_t i = 0; i < tokens.size(); ++i) {
+             const int prev = start + i - 1;
+             const float *hidden = prev < 0 ? zero.data() : target_hidden.data() + prev * m.hidden;
+-            mtp_step(tokens[i], hidden, false);
++            if (mtp_sync_state_only && check_mtp_sync_state && mtp_sync_checked < 16) {
++                // Diagnostic only: compare every persistent draft buffer,
++                // including append-only latent and pooled-key caches.
++                auto before = mtp_checkpoint(true), after = mtp_checkpoint(true);
++                save(before);
++                mtp_step(tokens[i], hidden, false);
++                save(after);
++                restore_mtp(before);
++                mtp_step(tokens[i], hidden, false, true);
++                check_mtp_state(after);
++                restore_mtp(after);
++                ++mtp_sync_checked;
++            } else mtp_step(tokens[i], hidden, false);
+         }
+     }
+     void rebalance_decode_cache() {
+@@ -7858,7 +7914,7 @@
+         return cp;
+     }
+     // Draft-block buffers only: save() and restore_mtp() then cover just the MTP state.
+-    Checkpoint mtp_checkpoint() {
++    Checkpoint mtp_checkpoint(bool append_only = false) {
+         Checkpoint cp;
+         size_t bytes = 0;
+         cp.draft_begin = 0;
+@@ -7870,6 +7926,9 @@
+                     cp.buffers.emplace_back(buffer, bytes);
+                     bytes += buffer->bytes;
+                 }
++            if (append_only)
++                for (Device *buffer : {state.cache.get(), state.pooled.get()})
++                    if (buffer) { cp.buffers.emplace_back(buffer, bytes); bytes += buffer->bytes; }
+         }
+         cp.storage = std::make_unique<Device>(std::max<size_t>(bytes, 256));
+         return cp;
+@@ -7897,6 +7956,22 @@
+                                   cudaMemcpyDeviceToDevice, stream));
+         }
+         mtp_position = cp.mtp_position;
++    }
++    void check_mtp_state(const Checkpoint &expected) {
++        if (expected.buffers.empty())
++            throw std::runtime_error("GLM: check has no MTP state buffers");
++        if (mtp_position != expected.mtp_position)
++            throw std::runtime_error("GLM: MTP position mismatch");
++        check(cudaStreamSynchronize(stream));
++        for (auto [buffer, offset] : expected.buffers) {
++            std::vector<unsigned char> actual(buffer->bytes), saved(buffer->bytes);
++            check(cudaMemcpy(actual.data(), buffer->p, buffer->bytes, cudaMemcpyDeviceToHost));
++            check(cudaMemcpy(saved.data(), (char *)expected.storage->p + offset, buffer->bytes,
++                             cudaMemcpyDeviceToHost));
++            if (actual != saved)
++                throw std::runtime_error("GLM: MTP state mismatch at byte offset " +
++                                         std::to_string(offset));
++        }
+     }
+ 
+     void check_sequences(const std::vector<int> &prompt) {
+@@ -8275,6 +8350,7 @@
+         }
+         pool.ms_multi_gu = pool.ms_multi_q = pool.ms_multi_down = pool.ms_layer_flow = 0;
+         trace = StepTrace{};
++        mtp_sync_omitted = mtp_sync_checked = 0;
+         pool.ms_native_local_prepare = 0;
+         pool.native_local_queries = 0;
+         pool.multi_bytes = 0;
+@@ -8327,6 +8403,9 @@
+         std::cerr << "CPU_EXPERT gu_ms=" << pool.ms_multi_gu << " quant_ms=" << pool.ms_multi_q
+                   << " down_ms=" << pool.ms_multi_down << " layer_flow_ms=" << pool.ms_layer_flow
+                   << " bytes=" << pool.multi_bytes << '\n';
++        if (mtp_sync_state_only)
++            std::cerr << "MTP_SYNC_STATE_ONLY omitted=" << mtp_sync_omitted
++                      << " checked=" << mtp_sync_checked << '\n';
+         if (step_trace && trace.steps)
+             std::cerr << "STEP_TRACE steps=" << trace.steps << " moe_layers=" << trace.layers
+                       << " pipelined=" << (mailbox ? 1 : 0) << " head_ms=" << trace.head_ms
+@@ -8677,6 +8756,25 @@
+                                const std::vector<int> &stops, int depth,
+                                const std::function<void(int)> &emit,
+                                const std::vector<int> *prompt = nullptr) {
++    static const strata::spec::BoundedAcceptPolicy acceptance = [] {
++        strata::spec::BoundedAcceptPolicy p;
++        if (const char *v = std::getenv("STRATA_GLM_MTP_ACCEPT_MARGIN")) {
++            size_t used = 0; p.margin = std::stof(v, &used);
++            if (v[used] || !(p.margin >= 0.f && p.margin <= 10.f))
++                throw std::invalid_argument("GLM: MTP accept margin must be 0..10 (0 is exact)");
++        }
++        auto integer = [](const char *name, int fallback, int low, int high) {
++            const char *v = std::getenv(name);
++            if (!v) return fallback;
++            size_t used = 0; const int n = std::stoi(v, &used);
++            if (v[used] || n < low || n > high)
++                throw std::invalid_argument(std::string("GLM: invalid ") + name);
++            return n;
++        };
++        p.top_k = integer("STRATA_GLM_MTP_ACCEPT_TOP_K", 4, 2, 64);
++        p.max_soft_per_window = integer("STRATA_GLM_MTP_ACCEPT_MAX_SOFT", 1, 1, 7);
++        return p;
++    }();
+     auto checkpoint = decoder.checkpoint();
+     // The first proposal already advanced the draft block with exactly the anchor's resync inputs (the
+     // target hidden of the last verified position), so the resync can start after the anchor.
+@@ -8698,6 +8796,21 @@
+             throw std::invalid_argument("GLM: MTP continuation margin must be 0..100");
+         return margin;
+     }();
++    static const float first_margin = [] {
++        const char *value = std::getenv("STRATA_GLM_MTP_FIRST_MARGIN");
++        if (!value) return 0.f;
++        size_t used = 0; const float margin = std::stof(value, &used);
++        if (value[used] || !(margin >= 0.f && margin <= 100.f))
++            throw std::invalid_argument("GLM: MTP first margin must be 0..100");
++        return margin;
++    }();
++    const bool check_first_state = [] {
++        const char *value = std::getenv("STRATA_GLM_CHECK_FIRST_MARGIN");
++        return value && std::string(value) == "1";
++    }();
++    std::unique_ptr<Decoder::Checkpoint> checked_anchor;
++    if (check_first_state)
++        checked_anchor = std::make_unique<Decoder::Checkpoint>(decoder.mtp_checkpoint(true));
+     decoder.enable_verify_history(std::max(depth, lookup_depth));
+     std::unique_ptr<strata::spec::SuffixDrafter> lookup;
+     if (lookup_depth) {
+@@ -8722,11 +8835,30 @@
+         lookup_depth = std::min(lookup_depth, decoder.verify_history_slots());
+     } else lookup_depth = 0;
+     std::cerr << "MTP_DEPTH requested=" << requested_depth << " effective=" << depth << '\n';
++    static const bool reuse_draft = [] {
++        const char *v = std::getenv("STRATA_GLM_MTP_REUSE_DRAFT");
++        if (!v || std::string(v) == "0") return false;
++        if (std::string(v) == "1") return true;
++        throw std::invalid_argument("GLM: MTP draft reuse must be 0 or 1");
++    }();
++    // These are draft states, not target states. Reusing a proposed prefix can
++    // change future proposals; every output still goes through target verification.
++    std::vector<Decoder::Checkpoint> draft_history;
++    if (reuse_draft) {
++        draft_history.reserve(depth);
++        for (int i = 0; i < depth; ++i) draft_history.push_back(decoder.mtp_checkpoint());
++    }
+     LookupStats stats;
+     double draft_ms = 0, verify_ms = 0, resync_ms = 0;
+     int lookup_rounds = 0, lookup_proposed = 0, lookup_accepted = 0;
+     std::array<int, 7> mtp_position_proposed{}, mtp_position_accepted{};
+     int margin_skipped = 0;
++    int first_margin_skipped = 0;
++    int first_states_checked = 0;
++    int reused_draft_tokens = 0, resync_steps_avoided = 0;
++    int soft_accepted = 0;
++    double soft_regret = 0;
++    float max_soft_regret = 0;
+     struct MatchStats { int rounds=0, proposed=0, accepted=0; };
+     std::array<MatchStats, 4> match_stats{};
+     auto elapsed_ms = [](auto begin) {
+@@ -8759,27 +8891,40 @@
+         const int pos = decoder.token_position();
+         std::vector<int> window{anchor};
+         int mtp_proposals = 0;
++        int draft_states_saved = 0;
++        bool first_skipped = false;
+         int lookup_proposals = use_lookup ? k : 0;
+         decoder.set_trace_phase(stats.rounds, "draft");
+         const auto draft_start = std::chrono::steady_clock::now();
+         if (use_lookup) window.insert(window.end(), lookup_tokens, lookup_tokens + k);
+         else for (int i = 0; i < k; ++i) {
+             const auto draft_logits = decoder.mtp_propose(window.back(), i == 0);
++            if (reuse_draft) {
++                decoder.save(draft_history[i]);
++                draft_states_saved = i + 1;
++            }
+             const int token = greedy(draft_logits);
+-            if (i && continuation_margin > 0.f) {
++            // Even when the first proposal is discarded, its anchor state can
++            // be reused after verifying the one-token {anchor} window below.
++            if (i == 0 && skip_anchor) decoder.save(anchor_state);
++            const float required_margin = i ? continuation_margin : first_margin;
++            if (required_margin > 0.f) {
+                 float runner_up = -std::numeric_limits<float>::infinity();
+                 for (size_t j = 0; j < draft_logits.size(); ++j)
+                     if ((int)j != token) runner_up = std::max(runner_up, draft_logits[j]);
+                 // Only the speculative window shrinks. The unused draft state
+                 // is restored below before resynchronizing verified tokens.
+-                if (draft_logits[token] - runner_up < continuation_margin) { ++margin_skipped; break; }
++                if (draft_logits[token] - runner_up < required_margin) {
++                    if (i) ++margin_skipped;
++                    else { ++first_margin_skipped; first_skipped = true; }
++                    break;
++                }
+             }
+             window.push_back(token);
+             ++mtp_position_proposed[i]; ++mtp_proposals;
+-            if (i == 0 && skip_anchor) decoder.save(anchor_state);
+         }
+         if (!use_lookup) k = mtp_proposals;
+-        if (!use_lookup && lookup_chain && lookup_depth > k) {
++        if (!use_lookup && k > 0 && lookup_chain && lookup_depth > k) {
+             const int extra = lookup->propose_after(window.data() + 1, k,
+                 std::min(lookup_depth, max_new - stats.generated - 1) - k, lookup_tokens);
+             if (extra >= 2) {
+@@ -8794,8 +8939,20 @@
+         verify_ms += elapsed_ms(verify_start);
+         ++stats.rounds; stats.proposed += k;
+         int accepted = 0;
+-        while (accepted < k && window[accepted + 1] ==
+-               greedy(all, (size_t)accepted * decoder.vocabulary(), decoder.vocabulary())) {
++        int soft_in_window = 0;
++        while (accepted < k) {
++            const size_t offset = (size_t)accepted * decoder.vocabulary();
++            const int target = greedy(all, offset, decoder.vocabulary());
++            if (window[accepted + 1] != target) {
++                if (acceptance.margin == 0.f) break;
++                const auto decision = strata::spec::bounded_accept(
++                    std::span<const float>(all.data() + offset, decoder.vocabulary()),
++                    window[accepted + 1], target, acceptance, soft_in_window, stops);
++                if (!decision.accepted) break;
++                ++soft_in_window; ++soft_accepted;
++                soft_regret += decision.regret;
++                max_soft_regret = std::max(max_soft_regret, decision.regret);
++            }
+             output(window[++accepted]);
+             if (stats.stopped) break;
+         }
+@@ -8810,7 +8967,13 @@
+         }
+         size_t resync_from = 0;
+         auto restore_draft = [&] {
+-            if (!use_lookup && skip_anchor && !window.empty()) { decoder.restore_mtp(anchor_state); resync_from = 1; }
++            if (!use_lookup && reuse_draft && draft_states_saved && !window.empty()) {
++                resync_from = std::min<size_t>(window.size(), draft_states_saved);
++                decoder.restore_mtp(draft_history[resync_from - 1]);
++                reused_draft_tokens += resync_from;
++                resync_steps_avoided += resync_from - (skip_anchor ? 1 : 0);
++            }
++            else if (!use_lookup && skip_anchor && !window.empty()) { decoder.restore_mtp(anchor_state); resync_from = 1; }
+             else decoder.restore_mtp(checkpoint);
+         };
+         if (accepted != k || stats.stopped) {
+@@ -8833,6 +8996,16 @@
+         decoder.set_trace_phase(stats.rounds - 1, "resync");
+         const auto resync_start = std::chrono::steady_clock::now();
+         decoder.sync_mtp(std::vector<int>(window.begin() + resync_from, window.end()), pos + (int)resync_from);
++        if (check_first_state && first_skipped) {
++            // Diagnostic only: compare the used draft state with an explicit
++            // restore and anchor resync. Keep these copies out of timing runs.
++            decoder.save(*checked_anchor);
++            decoder.restore_mtp(checkpoint);
++            decoder.sync_mtp({anchor}, pos);
++            decoder.check_mtp_state(*checked_anchor);
++            decoder.restore_mtp(*checked_anchor);
++            ++first_states_checked;
++        }
+         resync_ms += elapsed_ms(resync_start);
+     }
+     stats.milliseconds = std::chrono::duration<double, std::milli>(
+@@ -8843,11 +9016,22 @@
+               << " tok_s=" << std::max(0, stats.generated - 1) * 1000 / stats.milliseconds << '\n';
+     std::cerr << "MTP_TIMING draft_ms=" << draft_ms << " verify_ms=" << verify_ms
+               << " resync_ms=" << resync_ms << '\n';
++    if (acceptance.margin > 0.f)
++        std::cerr << "MTP_APPROX margin=" << acceptance.margin << " top_k=" << acceptance.top_k
++                  << " max_soft_per_window=" << acceptance.max_soft_per_window
++                  << " soft_accepted=" << soft_accepted << " sum_logit_regret=" << soft_regret
++                  << " max_logit_regret=" << max_soft_regret << '\n';
+     for (size_t i = 0; i < mtp_position_proposed.size(); ++i)
+         if (mtp_position_proposed[i]) std::cerr << "MTP_POSITION index=" << i
+             << " proposed=" << mtp_position_proposed[i] << " accepted=" << mtp_position_accepted[i] << '\n';
+     if (continuation_margin > 0.f) std::cerr << "MTP_MARGIN minimum=" << continuation_margin
+                                           << " skipped=" << margin_skipped << '\n';
++    if (first_margin > 0.f) std::cerr << "MTP_FIRST_MARGIN minimum=" << first_margin
++                                   << " skipped=" << first_margin_skipped << '\n';
++    if (check_first_state) std::cerr << "MTP_FIRST_STATE checked=" << first_states_checked
++                                    << " bits=identical\n";
++    if (reuse_draft) std::cerr << "MTP_REUSE reused_tokens=" << reused_draft_tokens
++                             << " resync_steps_avoided=" << resync_steps_avoided << '\n';
+     if (lookup) std::cerr << "MTP_LOOKUP rounds=" << lookup_rounds << " proposed=" << lookup_proposed
+                           << " accepted=" << lookup_accepted << " max_depth=" << lookup_depth << '\n';
+     for (size_t i = 0; lookup && i < match_stats.size(); ++i)
+--- /dev/null
++++ b/include/strata/spec/bounded_accept.hpp
+@@ -0,0 +1,41 @@
++#pragma once
++#include <algorithm>
++#include <cmath>
++#include <cstddef>
++#include <span>
++
++namespace strata::spec {
++// Experimental, approximate greedy verification. A zero margin is exact.
++// Target logits score the actual proposed prefix, including earlier soft accepts.
++struct BoundedAcceptPolicy {
++    float margin = 0;
++    int top_k = 4;
++    int max_soft_per_window = 1;
++};
++struct BoundedAcceptResult {
++    bool accepted = false;
++    bool soft = false;
++    float regret = 0;
++};
++inline BoundedAcceptResult bounded_accept(std::span<const float> logits, int draft, int target,
++                                         const BoundedAcceptPolicy &policy, int soft_used,
++                                         std::span<const int> stops) {
++    if (draft < 0 || target < 0 || static_cast<std::size_t>(draft) >= logits.size() ||
++        static_cast<std::size_t>(target) >= logits.size()) return {};
++    if (draft == target) return {true, false, 0};
++    if (!(policy.margin > 0) || !std::isfinite(policy.margin) || policy.top_k < 2 ||
++        soft_used >= policy.max_soft_per_window) return {};
++    // Soft verification must neither invent nor suppress a stop token.
++    for (int stop : stops) if (draft == stop || target == stop) return {};
++    const float gap = logits[target] - logits[draft];
++    if (!std::isfinite(gap) || gap < 0 || gap > policy.margin) return {};
++    int rank = 1;
++    for (std::size_t i = 0; i < logits.size(); ++i) {
++        if (!std::isfinite(logits[i])) return {};
++        // Deterministic rank: lower token ID wins equal-logit ties.
++        if (logits[i] > logits[draft] || (logits[i] == logits[draft] && i < static_cast<std::size_t>(draft)))
++            if (++rank > policy.top_k) return {};
++    }
++    return {true, true, gap};
++}
++} // namespace strata::spec
+--- a/include/strata/kernels/glm_prefill.hpp
++++ b/include/strata/kernels/glm_prefill.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <cstddef>
+ #include <cstdint>
+ namespace strata::kernels {
+ void glm_layer_norm_batch(const float *x, const float *w, const float *b, float *y, int width, int tokens,
+@@ -86,7 +87,7 @@
+ // One-query MLA products over `stride` gathered keys (keys[s][latent], fp32): scores[h][s] = keys[s] . q[h] and
+ // out[h] = sum_s p[h][s] * keys[s] (p and scores row-major with leading dimension stride). values needs
+ // glm_mla_one_scratch_bytes of scratch.
+-size_t glm_mla_one_scratch_bytes(int stride, int latent, int heads);
++std::size_t glm_mla_one_scratch_bytes(int stride, int latent, int heads);
+ void glm_mla_scores_one(const float *keys, const float *q, float *scores, int stride, int latent, int heads, void *stream);
+ void glm_mla_values_one(const float *keys, const float *p, float *out, float *scratch, int stride, int latent,
+                         int heads, void *stream);

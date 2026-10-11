@@ -1,0 +1,422 @@
+{
+  "complete": true,
+  "clean": true,
+  "repeated_tokens_equal": false,
+  "measurements": {
+    "prefill": [
+      {
+        "trial": 0,
+        "tokens": 8192,
+        "batch": 2048,
+        "milliseconds": 57293.9,
+        "tokens_per_second": 142.982
+      },
+      {
+        "trial": 1,
+        "tokens": 8192,
+        "batch": 2048,
+        "milliseconds": 57297.6,
+        "tokens_per_second": 142.973
+      }
+    ],
+    "decode": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 16975.3,
+        "tokens_per_second": 30.1025
+      }
+    ],
+    "cpu_expert": [
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 484.917,
+        "quant_ms": 6.20669,
+        "down_ms": 308.957,
+        "layer_flow_ms": 12325.8,
+        "bytes": 880895983616
+      },
+      {
+        "gu_ms": 371.975,
+        "quant_ms": 6.34992,
+        "down_ms": 249.322,
+        "layer_flow_ms": 12255.6,
+        "bytes": 872174452736
+      }
+    ],
+    "mtp_timing": [
+      {
+        "draft_ms": 2090.53,
+        "verify_ms": 14577.6,
+        "resync_ms": 190.418
+      },
+      {
+        "draft_ms": 1553.23,
+        "verify_ms": 14880.5,
+        "resync_ms": 179.583
+      }
+    ],
+    "mtp_positions": [
+      {
+        "index": 0,
+        "proposed": 146,
+        "accepted": 138
+      },
+      {
+        "index": 1,
+        "proposed": 146,
+        "accepted": 124
+      },
+      {
+        "index": 2,
+        "proposed": 146,
+        "accepted": 98
+      },
+      {
+        "index": 0,
+        "proposed": 151,
+        "accepted": 133
+      },
+      {
+        "index": 1,
+        "proposed": 151,
+        "accepted": 112
+      },
+      {
+        "index": 2,
+        "proposed": 151,
+        "accepted": 85
+      }
+    ],
+    "mtp_approx": [
+      {
+        "margin": 4,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 88,
+        "sum_logit_regret": 108.452,
+        "max_logit_regret": 3.92875
+      },
+      {
+        "margin": 4,
+        "top_k": 4,
+        "max_soft_per_window": 3,
+        "soft_accepted": 80,
+        "sum_logit_regret": 95.1267,
+        "max_logit_regret": 3.81038
+      }
+    ],
+    "mtp_first_margin": [],
+    "mtp_reuse": [],
+    "mtp_sync_state": [
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 0,
+        "checked": 0
+      },
+      {
+        "omitted": 365,
+        "checked": 0
+      },
+      {
+        "omitted": 360,
+        "checked": 0
+      }
+    ],
+    "mtp_repeat_guard": [],
+    "step_trace": [],
+    "decode_cache": [
+      {
+        "prefix_trained": 1,
+        "slots": 845,
+        "MiB": 6654.38,
+        "fingerprint": 5897579767964921230
+      }
+    ],
+    "speculation": [
+      {
+        "generated": 512,
+        "rounds": 148,
+        "proposed": 452,
+        "accepted": 363,
+        "replayed": 0,
+        "ms": 17148.1,
+        "tok_s": 29.7992
+      },
+      {
+        "generated": 512,
+        "rounds": 158,
+        "proposed": 502,
+        "accepted": 352,
+        "replayed": 0,
+        "ms": 16975.3,
+        "tok_s": 30.1025
+      }
+    ],
+    "affinity_quality": [],
+    "lookup_parity": [],
+    "median_prefill_tok_s": 142.97750000000002,
+    "median_decode_tok_s": 30.1025,
+    "peak_allocated_gpu_mib": 12869.6,
+    "gpu_live": [
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "other": 319.918,
+          "prefill": 3306.02,
+          "state": 426.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "other": 319.918,
+          "prefill": 3306.02,
+          "state": 426.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "dense_mtp": 156.84,
+          "other": 6751.91,
+          "prefill": 32.0,
+          "resident_exec": 5.88576,
+          "state": 426.105,
+          "verify_history": 233.265
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "dense_mtp": 156.84,
+          "other": 6751.91,
+          "prefill": 32.0,
+          "resident_exec": 5.88576,
+          "state": 426.105,
+          "verify_history": 233.265
+        }
+      }
+    ],
+    "page_faults": [
+      {
+        "trial": 0,
+        "major": 0,
+        "minor": 131076
+      },
+      {
+        "trial": 1,
+        "major": 0,
+        "minor": 131227
+      }
+    ],
+    "decode_warmup": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 17148.1,
+        "tokens_per_second": 29.7992
+      }
+    ]
+  },
+  "output_sha256": "0d1e4319ea3f4c4214b8adb31978078d6c94736349f6c7247853927afc9706ce",
+  "trial_token_sha256": [
+    "0265b44a55336f8b9c54cf996d93affb7ef5d448565dda5c60f6074892bce9ba",
+    "59dad9dd151ccd396d03e785dbce9de33b6b8673a3d66ff12c954d5426317c0f"
+  ],
+  "memory": {
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+      "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "@/mnt/nvme02/work/Strata/build-tr16-20261009/prompts8k/holdout-code.ids",
+      "512",
+      "4096",
+      "15",
+      "--context=12288",
+      "--prefill-batch=2048",
+      "--gpu-budget-mib=14336",
+      "--cpu-affinity=numa",
+      "--decode-experts=cpu",
+      "--bench=2",
+      "--decode-bench=2",
+      "--decode-cache-mib=6656",
+      "--prefill-experts=mmq",
+      "--decode-graphs",
+      "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+      "--speculative=mtp",
+      "--draft-depth=3",
+      "--mtp-experts=cpu",
+      "--stop-ids=154820,154827,154829"
+    ],
+    "peak_rss_kib": 103827268,
+    "peak_swap_kib": 0,
+    "minimum_available_kib": 124092140,
+    "sample_interval_ms": 100,
+    "rejected": null,
+    "interference": [],
+    "minimum_gpu_free_mib": 1280,
+    "required_gpu_free_mib": 512,
+    "exit_code": 0,
+    "wall_seconds": 324.669498932024
+  },
+  "inputs_unchanged": true,
+  "case": "baseline",
+  "config": {
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+    "model_name": "tr35-k5-lookup7",
+    "context": 12288,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 14336,
+    "gpu_devices": "0",
+    "threads": 15,
+    "cpu_affinity": "numa",
+    "prefill_batch": 2048,
+    "decode_experts": "cpu",
+    "speculative": "mtp",
+    "draft_depth": 3,
+    "decode_graphs": true,
+    "decode_cache_mib": 6656,
+    "env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme02/work/Strata/build-q2-redesign/calibration/coverage.json",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "1",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "512",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+      "STRATA_GLM_MLA_GRAPHS": "1",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_STAGE_PREFETCH": "1",
+      "STRATA_GLM_PREFETCH_GROUPS": "12",
+      "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_NUMA_AFTER_PREFILL": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512",
+      "STRATA_GLM_HC_FUSED": "1",
+      "STRATA_GLM_MLA_KERNELS": "1",
+      "STRATA_GLM_HEADS_BLOCKS": "1",
+      "STRATA_MMVQ_IL_ROWS": "23:2:0,0,0,0,0;23:3:0,0,0,0,0;23:4:0,0,0,0,0;12:2:1,0,0,0,0;12:3:2,4,4,2,4;12:4:1,1,2,2,2;13:2:0,0,0,0,1;13:3:0,1,4,1,1;13:4:1,1,2,2,1;14:2:1,4,0,1,1;14:3:4,1,4,4,4;14:4:4,2,2,2,2",
+      "STRATA_GLM_MTP_SYNC_STATE_ONLY": "1",
+      "STRATA_GLM_ROUTE_RENORMALIZE": "0",
+      "STRATA_GLM_MMVQ_IL": "1",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_ROUTE_MIN_SHARE": "0",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "4",
+      "STRATA_GLM_DENSE_Q4": "all",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+      "STRATA_GLM_MTP_GPU_CACHE": "0",
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7"
+    },
+    "prefill_experts": "mmq",
+    "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_patch": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2.patch",
+    "stop_token_ids": [
+      154820,
+      154827,
+      154829
+    ],
+    "experimental_role": "35/45 follow-up screen; routing and outputs can change; no quality qualification",
+    "mtp_experts": "cpu"
+  },
+  "manifest": {
+    "workspace_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_patch_sha256": "d4e11c442413d3f21d12bba74c409cc76764ac870bf968bc69b48efd3932f4d2",
+    "decoder_sha256": "47ddc27ef344ab39717f5c0b9fe5ecaf3cba7256d6de44274d39e18de2f0ae2b",
+    "runner_sha256": "031f7135f8c1e4475a252f577c0025fbcaea5b72657f60422505604c12de39c4",
+    "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+    "prompt_tokens": 8192,
+    "cases": [
+      "baseline"
+    ],
+    "decode_tokens": 512,
+    "timed_trials": 1,
+    "warmup_decode_trials": 1,
+    "allow_interference": false,
+    "created": "2026-10-10T15:47:48+0900",
+    "inputs": {
+      "weight_files": [
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "size": 9429859,
+          "mtime_ns": 1788737141224191838
+        },
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+          "size": 49294975936,
+          "mtime_ns": 1788742057416159536
+        },
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+          "size": 49949266048,
+          "mtime_ns": 1788747361801103295
+        },
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+          "size": 9466399584,
+          "mtime_ns": 1788748330324522715
+        },
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+          "size": 95919555808,
+          "mtime_ns": 1791320297705013336
+        }
+      ],
+      "expert_prior_sha256": "feb62d061e447a664ca005f11684a89cde3ce6eabf83c5b8672ab7c3558cd9e2",
+      "note": "Weight identity uses size and mtime, not a full content hash."
+    },
+    "nvidia_smi": "name, driver_version, memory.total [MiB], memory.used [MiB], pcie.link.gen.current, pcie.link.width.current, power.limit [W], power.default_limit [W], clocks.current.graphics [MHz], clocks.current.memory [MHz]\nNVIDIA GeForce RTX 5060 Ti, 615.71.09, 16311 MiB, 982 MiB, 3, 8, 150.00 W, 180.00 W, 2587 MHz, 13801 MHz\n"
+  },
+  "quiet": true,
+  "guard_exit_code": 0
+}

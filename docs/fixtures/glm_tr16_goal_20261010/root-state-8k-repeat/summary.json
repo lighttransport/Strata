@@ -1,0 +1,20 @@
+[
+  {
+    "name": "8k-root-control-repeat",
+    "decode_tok_s": 23.2198,
+    "prefill_tok_s": 435.053,
+    "tokens_identical": 18,
+    "all_tokens_identical": false,
+    "first_difference_by_trial": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "reference": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-heldout/8k-control",
+    "sync_state": [],
+    "quality_qualified": false,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/root-state-8k-repeat/8k-root-control-repeat.json",
+    "archived_tokens_identical": false
+  }
+]

@@ -1,0 +1,634 @@
+{
+  "complete": true,
+  "clean": true,
+  "repeated_tokens_equal": false,
+  "measurements": {
+    "prefill": [
+      {
+        "trial": 0,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 15619.9,
+        "tokens_per_second": 131.115
+      },
+      {
+        "trial": 1,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 15611.0,
+        "tokens_per_second": 131.19
+      },
+      {
+        "trial": 2,
+        "tokens": 2048,
+        "batch": 2048,
+        "milliseconds": 15599.4,
+        "tokens_per_second": 131.287
+      }
+    ],
+    "decode": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 8836.11,
+        "tokens_per_second": 57.8309
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 9277.2,
+        "tokens_per_second": 55.0813
+      },
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 9670.47,
+        "tokens_per_second": 52.8413
+      }
+    ],
+    "cpu_expert": [
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 759.203,
+        "quant_ms": 12.627,
+        "down_ms": 515.879,
+        "layer_flow_ms": 2596.87,
+        "bytes": 212288339968
+      },
+      {
+        "gu_ms": 702.915,
+        "quant_ms": 12.4451,
+        "down_ms": 472.548,
+        "layer_flow_ms": 1979.69,
+        "bytes": 170084139008
+      },
+      {
+        "gu_ms": 706.925,
+        "quant_ms": 12.5601,
+        "down_ms": 473.783,
+        "layer_flow_ms": 2616.44,
+        "bytes": 227341762560
+      },
+      {
+        "gu_ms": 713.993,
+        "quant_ms": 12.4447,
+        "down_ms": 480.271,
+        "layer_flow_ms": 2859.09,
+        "bytes": 246504161280
+      }
+    ],
+    "mtp_timing": [
+      {
+        "draft_ms": 1581.35,
+        "verify_ms": 7123.43,
+        "resync_ms": 1211.54
+      },
+      {
+        "draft_ms": 1473.03,
+        "verify_ms": 6262.06,
+        "resync_ms": 951.303
+      },
+      {
+        "draft_ms": 1493.54,
+        "verify_ms": 6736.57,
+        "resync_ms": 925.111
+      },
+      {
+        "draft_ms": 1541.87,
+        "verify_ms": 7069.31,
+        "resync_ms": 933.365
+      }
+    ],
+    "mtp_positions": [
+      {
+        "index": 0,
+        "proposed": 69,
+        "accepted": 69
+      },
+      {
+        "index": 1,
+        "proposed": 69,
+        "accepted": 69
+      },
+      {
+        "index": 2,
+        "proposed": 69,
+        "accepted": 67
+      },
+      {
+        "index": 3,
+        "proposed": 69,
+        "accepted": 66
+      },
+      {
+        "index": 4,
+        "proposed": 69,
+        "accepted": 64
+      },
+      {
+        "index": 5,
+        "proposed": 68,
+        "accepted": 62
+      },
+      {
+        "index": 6,
+        "proposed": 68,
+        "accepted": 45
+      },
+      {
+        "index": 0,
+        "proposed": 65,
+        "accepted": 65
+      },
+      {
+        "index": 1,
+        "proposed": 65,
+        "accepted": 65
+      },
+      {
+        "index": 2,
+        "proposed": 65,
+        "accepted": 65
+      },
+      {
+        "index": 3,
+        "proposed": 65,
+        "accepted": 65
+      },
+      {
+        "index": 4,
+        "proposed": 65,
+        "accepted": 65
+      },
+      {
+        "index": 5,
+        "proposed": 65,
+        "accepted": 63
+      },
+      {
+        "index": 6,
+        "proposed": 65,
+        "accepted": 58
+      },
+      {
+        "index": 0,
+        "proposed": 66,
+        "accepted": 66
+      },
+      {
+        "index": 1,
+        "proposed": 66,
+        "accepted": 66
+      },
+      {
+        "index": 2,
+        "proposed": 66,
+        "accepted": 65
+      },
+      {
+        "index": 3,
+        "proposed": 66,
+        "accepted": 64
+      },
+      {
+        "index": 4,
+        "proposed": 66,
+        "accepted": 63
+      },
+      {
+        "index": 5,
+        "proposed": 66,
+        "accepted": 61
+      },
+      {
+        "index": 6,
+        "proposed": 65,
+        "accepted": 60
+      },
+      {
+        "index": 0,
+        "proposed": 68,
+        "accepted": 67
+      },
+      {
+        "index": 1,
+        "proposed": 68,
+        "accepted": 67
+      },
+      {
+        "index": 2,
+        "proposed": 68,
+        "accepted": 67
+      },
+      {
+        "index": 3,
+        "proposed": 68,
+        "accepted": 64
+      },
+      {
+        "index": 4,
+        "proposed": 68,
+        "accepted": 62
+      },
+      {
+        "index": 5,
+        "proposed": 68,
+        "accepted": 59
+      },
+      {
+        "index": 6,
+        "proposed": 68,
+        "accepted": 57
+      }
+    ],
+    "mtp_approx": [
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 35,
+        "sum_logit_regret": 102.02,
+        "max_logit_regret": 9.29952
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 15,
+        "sum_logit_regret": 44.8841,
+        "max_logit_regret": 9.33607
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 30,
+        "sum_logit_regret": 72.4509,
+        "max_logit_regret": 7.31471
+      },
+      {
+        "margin": 10,
+        "top_k": 64,
+        "max_soft_per_window": 7,
+        "soft_accepted": 36,
+        "sum_logit_regret": 112.786,
+        "max_logit_regret": 9.23522
+      }
+    ],
+    "mtp_first_margin": [],
+    "mtp_reuse": [],
+    "mtp_sync_state": [],
+    "mtp_repeat_guard": [],
+    "step_trace": [],
+    "decode_cache": [
+      {
+        "prefix_trained": 1,
+        "slots": 725,
+        "MiB": 6298.44,
+        "fingerprint": 3147382140201347412
+      }
+    ],
+    "speculation": [
+      {
+        "generated": 512,
+        "rounds": 69,
+        "proposed": 481,
+        "accepted": 442,
+        "replayed": 0,
+        "ms": 10075.5,
+        "tok_s": 50.7173
+      },
+      {
+        "generated": 512,
+        "rounds": 65,
+        "proposed": 455,
+        "accepted": 446,
+        "replayed": 0,
+        "ms": 8836.11,
+        "tok_s": 57.8309
+      },
+      {
+        "generated": 512,
+        "rounds": 66,
+        "proposed": 461,
+        "accepted": 445,
+        "replayed": 0,
+        "ms": 9277.2,
+        "tok_s": 55.0813
+      },
+      {
+        "generated": 512,
+        "rounds": 68,
+        "proposed": 476,
+        "accepted": 443,
+        "replayed": 0,
+        "ms": 9670.47,
+        "tok_s": 52.8413
+      }
+    ],
+    "affinity_quality": [],
+    "lookup_parity": [],
+    "median_prefill_tok_s": 131.19,
+    "median_decode_tok_s": 55.0813,
+    "peak_allocated_gpu_mib": 12509.8,
+    "gpu_live": [
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "other": 319.918,
+          "prefill": 3306.02,
+          "state": 426.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "other": 319.918,
+          "prefill": 3306.02,
+          "state": 426.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "other": 319.918,
+          "prefill": 3306.02,
+          "state": 426.105
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "dense_mtp": 156.84,
+          "other": 6395.09,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 426.105,
+          "verify_history": 233.265
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "dense_mtp": 156.84,
+          "other": 6395.09,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 426.105,
+          "verify_history": 233.265
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "dense_mtp": 156.84,
+          "other": 6395.09,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 426.105,
+          "verify_history": 233.265
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 5117.95,
+          "dense_mtp": 156.84,
+          "other": 6395.09,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 426.105,
+          "verify_history": 233.265
+        }
+      }
+    ],
+    "page_faults": [
+      {
+        "trial": 0,
+        "major": 0,
+        "minor": 32770
+      },
+      {
+        "trial": 1,
+        "major": 0,
+        "minor": 32985
+      },
+      {
+        "trial": 2,
+        "major": 0,
+        "minor": 32921
+      }
+    ],
+    "decode_warmup": [
+      {
+        "kind": "mtp",
+        "tokens": 512,
+        "milliseconds": 10075.5,
+        "tokens_per_second": 50.7173
+      }
+    ]
+  },
+  "output_sha256": "c2f8e17fcd4130a28fb13c423ef1414c1a126c3065617aba4d6dbdb38ab3c80f",
+  "trial_token_sha256": [
+    "42281feaa8c12fd58996d40b95e1100195620e037eaaf67d7b90f554eafae962",
+    "0a5e54f88c099164b2e456fb23bfe895468782ca7d2a4ee798103459ad501005",
+    "6c786b0b2bc985beb123a9b19c7976b3cdf09faab908cd8e19dbb279dd6b9d35",
+    "e7c8b55b92bfe5603a4583523fd434925212a8cc373a1bcb1cd42ab4045cec0f"
+  ],
+  "memory": {
+    "command": [
+      "numactl",
+      "--interleave=all",
+      "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+      "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "@/mnt/nvme02/work/Strata/build-tr16-20261009/prompts2k/train-code.ids",
+      "512",
+      "4096",
+      "15",
+      "--context=12288",
+      "--prefill-batch=2048",
+      "--gpu-budget-mib=14336",
+      "--cpu-affinity=numa",
+      "--decode-experts=cpu",
+      "--bench=3",
+      "--decode-bench=4",
+      "--decode-cache-mib=6656",
+      "--prefill-experts=mmq",
+      "--decode-graphs",
+      "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+      "--speculative=mtp",
+      "--draft-depth=7",
+      "--mtp-experts=cpu",
+      "--stop-ids=154820,154827,154829"
+    ],
+    "peak_rss_kib": 112831568,
+    "peak_swap_kib": 0,
+    "minimum_available_kib": 124281244,
+    "sample_interval_ms": 100,
+    "rejected": null,
+    "interference": [],
+    "minimum_gpu_free_mib": 876,
+    "required_gpu_free_mib": 512,
+    "exit_code": 0,
+    "wall_seconds": 222.33512910903664
+  },
+  "inputs_unchanged": true,
+  "case": "baseline",
+  "config": {
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+    "model_name": "03-aggressive-control",
+    "context": 12288,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 14336,
+    "gpu_devices": "0",
+    "threads": 15,
+    "cpu_affinity": "numa",
+    "prefill_batch": 2048,
+    "decode_experts": "cpu",
+    "speculative": "mtp",
+    "draft_depth": 7,
+    "decode_graphs": true,
+    "decode_cache_mib": 6656,
+    "env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme02/work/Strata/build-q2-redesign/calibration/coverage.json",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "0",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "512",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.35",
+      "STRATA_GLM_MLA_GRAPHS": "1",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_STAGE_PREFETCH": "1",
+      "STRATA_GLM_PREFETCH_GROUPS": "12",
+      "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1024",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_NUMA_AFTER_PREFILL": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512",
+      "STRATA_GLM_HC_FUSED": "1",
+      "STRATA_GLM_MLA_KERNELS": "1",
+      "STRATA_GLM_HEADS_BLOCKS": "1",
+      "STRATA_GLM_MMVQ_IL": "1",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "10",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "64",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "7",
+      "STRATA_GLM_ROUTE_MIN_SHARE": "0.12",
+      "STRATA_GLM_DENSE_Q4": "all",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "0"
+    },
+    "prefill_experts": "mmq",
+    "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_patch": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route.patch",
+    "stop_token_ids": [
+      154820,
+      154827,
+      154829
+    ],
+    "experimental_role": "Aggressive repetition diagnostic; prior pruning quality failed; not quality qualified"
+  },
+  "manifest": {
+    "workspace_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_commit": "e5232ca3f2e926ffb41f9d3ff686efd4c8cc91de",
+    "source_patch_sha256": "4b9ef2bf77f55f462d2e55b601dcd1e6c9f7887367ed9eabaae0617f0396e504",
+    "decoder_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "runner_sha256": "8edbe6a0f33c181fa28f8b57bd5c0492a82299e506dad727bbf7dd4580d1332c",
+    "prompt_sha256": "b36fec1bce5401b8ad6346f66074896bd02494051c6fbf490c853914339539e6",
+    "prompt_tokens": 2048,
+    "cases": [
+      "baseline"
+    ],
+    "decode_tokens": 512,
+    "timed_trials": 3,
+    "warmup_decode_trials": 1,
+    "allow_interference": false,
+    "created": "2026-10-10T07:20:52+0900",
+    "inputs": {
+      "weight_files": [
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+          "size": 9429859,
+          "mtime_ns": 1788737141224191838
+        },
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+          "size": 49294975936,
+          "mtime_ns": 1788742057416159536
+        },
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+          "size": 49949266048,
+          "mtime_ns": 1788747361801103295
+        },
+        {
+          "path": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+          "size": 9466399584,
+          "mtime_ns": 1788748330324522715
+        },
+        {
+          "path": "/mnt/nvme02/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+          "size": 105488860384,
+          "mtime_ns": 1791196869907720248
+        }
+      ],
+      "expert_prior_sha256": "feb62d061e447a664ca005f11684a89cde3ce6eabf83c5b8672ab7c3558cd9e2",
+      "note": "Weight identity uses size and mtime, not a full content hash."
+    },
+    "nvidia_smi": "name, driver_version, memory.total [MiB], memory.used [MiB], pcie.link.gen.current, pcie.link.width.current\nNVIDIA GeForce RTX 5060 Ti, 615.71.09, 16311 MiB, 982 MiB, 3, 8\n"
+  },
+  "quiet": true,
+  "guard_exit_code": 0
+}

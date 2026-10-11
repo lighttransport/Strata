@@ -1,0 +1,17 @@
+{
+  "time": "2026-10-09T20:51:17.049773+00:00",
+  "bounded_accept_passed": true,
+  "repeat_guard_passed": true,
+  "repeat_guard_differential_cases": 21504,
+  "compiler_commands": [
+    "c++ -std=c++20 -O2 -Ibuild-tr16-goal-20261010/draft-route-source/include build-tr16-goal-20261010/test_repeat_guard.cpp -o build-tr16-goal-20261010/test_repeat_guard",
+    "c++ -std=c++20 -O2 -Ibuild-tr16-goal-20261010/draft-route-source/include build-tr16-goal-20261010/test_bounded_accept.cpp -o build-tr16-goal-20261010/test_bounded_accept_draft"
+  ],
+  "sha256": {
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-source/include/strata/spec/bounded_accept.hpp": "5aa9fd3587f0134486f02936cbe5f334efd34eede157918b29776378ee75dbc8",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/test_repeat_guard.cpp": "ce2052a80a0e5b389da8be7d3a103282942d46c880f59041bcada3428f98d29d",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/test_repeat_guard": "dee3ec8f56003001cce79ee44725fc84c113763ede662f30e2b5e6fa8a138218",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/test_bounded_accept.cpp": "60799cfa67bc1f94cc8818e834af2ed4cc93308ecee82c971e54d6a20eeba486",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/test_bounded_accept_draft": "61068e11022c60a97de4bfd27e7a9e1e9669468af041090412c57da7342150c2"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "audit_complete": true,
+  "tokens_per_case": 2048,
+  "old_binary_reproduces_archive": true,
+  "prepatch_matches_root_off": false,
+  "state_only_matches_root_off": false,
+  "quality_qualified": false
+}

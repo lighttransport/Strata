@@ -1,0 +1,18 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/stream8k/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 19.8018,
+    "prefill_tok_s": 426.395
+  },
+  {
+    "case": "stream-prefetch18",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-20261009/stream8k/001-stream-prefetch18.result.json",
+    "clean": true,
+    "repeated_tokens_equal": true,
+    "decode_tok_s": 20.0508,
+    "prefill_tok_s": 474.209
+  }
+]

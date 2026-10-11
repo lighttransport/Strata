@@ -1,0 +1,31 @@
+{
+  "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/gpu-cache-v2-cuda/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+    "0",
+    "1",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=256",
+    "--gpu-budget-mib=14336",
+    "--cpu-affinity=numa",
+    "--decode-graphs",
+    "--decode-cache-mib=6656",
+    "--expert-pack=/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q22.gguf",
+    "--eval-corpus=/mnt/nvme02/work/Strata/build-tr16-goal-20261010/q22-full-corpus/depth3-soft4-cache6656/corpus.ids",
+    "--eval-reference=/mnt/nvme01/models/glm53f/q2-cpu-experiment/eval-baseline.logits"
+  ],
+  "peak_rss_kib": 100753232,
+  "peak_swap_kib": 0,
+  "minimum_available_kib": 124257004,
+  "sample_interval_ms": 100,
+  "rejected": null,
+  "interference": [],
+  "minimum_gpu_free_mib": 1920,
+  "required_gpu_free_mib": 512,
+  "exit_code": 1,
+  "wall_seconds": 508.58409213100094
+}

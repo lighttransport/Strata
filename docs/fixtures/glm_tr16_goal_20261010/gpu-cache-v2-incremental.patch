@@ -1,0 +1,16 @@
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -7582,7 +7582,12 @@
+         if (secondary) report_prefill(secondary->device, secondary->gpu.get());
+         prefill_cache.release_spare();
+         if (secondary) secondary->cache.release_spare();
+-        if (!prepared_experts.empty() || mtp_experts || gpu_decode_experts)
++        // The opt-in draft owns its weights and rollback history before cache
++        // admission. It is separate from the unpacked CPU target experts.
++        const bool reserved_gpu_draft = cached_gpu_mtp_enabled() && tier_owned_reserve &&
++            capture_hidden && !mtp_cpu_experts && mtp_ready && verify_history &&
++            !secondary && !remote_tp && !decode_cache_auto;
++        if (!prepared_experts.empty() || (mtp_experts && !reserved_gpu_draft) || gpu_decode_experts)
+             throw std::invalid_argument("GLM: prefix-trained decode cache requires unpacked CPU target experts");
+         compact_decode();
+         if (decode_cache_auto) {

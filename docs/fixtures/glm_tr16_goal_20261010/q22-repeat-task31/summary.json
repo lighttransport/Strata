@@ -1,0 +1,26 @@
+[
+  {
+    "name": "q22-repeat0",
+    "exit_code": 0,
+    "focused_complete": true,
+    "tasks": 1,
+    "passes": 0,
+    "quality_qualified": false,
+    "guard_rejected": null,
+    "decoder_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "passes_minus_baseline": -1,
+    "protocol_matches_baseline": true
+  },
+  {
+    "name": "q22-repeat4",
+    "exit_code": 0,
+    "focused_complete": true,
+    "tasks": 1,
+    "passes": 1,
+    "quality_qualified": false,
+    "guard_rejected": null,
+    "decoder_sha256": "39afb8afe9e33e5fc660bf0674d0c5ccd6478fb988dd6148c209968ad1991edc",
+    "passes_minus_baseline": 0,
+    "protocol_matches_baseline": true
+  }
+]

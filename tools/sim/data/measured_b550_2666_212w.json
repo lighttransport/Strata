@@ -1,0 +1,1248 @@
+{
+  "records": [
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "prefill_backend": "mmq",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": false,
+        "tier_owned_reserve": true
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "tmp/glm-next/mmq-2048-8k.result.json",
+      "source_sha256": "cde9a44bb8ac9a84e35da46f64877082381639f167ac7a3364e7eb9d7d061209",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 924.103,
+            "bytes": 31725453312
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1074,
+            "MiB": 8457.75,
+            "fingerprint": 14353214317779942841
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8533.01,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "mmq-2048-8k.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 35.4356,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 3583.97,
+            "tokens_per_second": 35.4356
+          }
+        ]
+      }
+    },
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "prefill_backend": "mmq",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": false,
+        "tier_owned_reserve": true
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "tmp/glm-next/mmq-2048-8k.result.json",
+      "source_sha256": "cde9a44bb8ac9a84e35da46f64877082381639f167ac7a3364e7eb9d7d061209",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 924.103,
+            "bytes": 31725453312
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1074,
+            "MiB": 8457.75,
+            "fingerprint": 14353214317779942841
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 294.414,
+              "prefill": 1566.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8533.01,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "mmq-2048-8k.result-prefill",
+      "kind": "prefill",
+      "tolerance": 0.15,
+      "measured": {
+        "tok_s": 89.1281,
+        "trials": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 22978.2,
+            "tokens_per_second": 89.1281
+          }
+        ]
+      }
+    },
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 8192,
+        "prompt": 7936,
+        "generate": 128,
+        "prefill_chunk": 8192,
+        "prefill_backend": "mmq",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": true,
+        "tier_owned_reserve": true
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "tmp/glm-next/mmq-8192-8k.result.json",
+      "source_sha256": "0de3bb522ce751f7010beec6bbbd9c9368edfff224a8d66f432136ed70f36903",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 959.093,
+            "bytes": 32997113856
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1062,
+            "MiB": 8363.25,
+            "fingerprint": 16272416360696841699
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 966.977,
+              "prefill": 4638.0,
+              "state": 332.605
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8438.51,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 332.605
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "mmq-8192-8k.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 35.2158,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 3606.34,
+            "tokens_per_second": 35.2158
+          }
+        ]
+      }
+    },
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 8192,
+        "prompt": 7936,
+        "generate": 128,
+        "prefill_chunk": 8192,
+        "prefill_backend": "mmq",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": true,
+        "tier_owned_reserve": true
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "tmp/glm-next/mmq-8192-8k.result.json",
+      "source_sha256": "0de3bb522ce751f7010beec6bbbd9c9368edfff224a8d66f432136ed70f36903",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 959.093,
+            "bytes": 32997113856
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1062,
+            "MiB": 8363.25,
+            "fingerprint": 16272416360696841699
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 966.977,
+              "prefill": 4638.0,
+              "state": 332.605
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8438.51,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 332.605
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "mmq-8192-8k.result-prefill",
+      "kind": "prefill",
+      "tolerance": 0.15,
+      "measured": {
+        "tok_s": 121.526,
+        "trials": [
+          {
+            "trial": 0,
+            "tokens": 7936,
+            "batch": 8192,
+            "milliseconds": 65302.8,
+            "tokens_per_second": 121.526
+          }
+        ]
+      }
+    },
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "prefill_backend": "mmq",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": false,
+        "tier_owned_reserve": true
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "tmp/glm-next/wmma-2048-8k.result.json",
+      "source_sha256": "5a753840731aaa948d773239ccb917ad9ff15dd16f8ac9b45d474a7603de5a6f",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 924.292,
+            "bytes": 31725453312
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1074,
+            "MiB": 8457.75,
+            "fingerprint": 14353214317779942841
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1438.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8533.01,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "wmma-2048-8k.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 35.4471,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 3582.81,
+            "tokens_per_second": 35.4471
+          }
+        ]
+      }
+    },
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 4096,
+        "prompt": 2048,
+        "generate": 128,
+        "prefill_chunk": 2048,
+        "prefill_backend": "mmq",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": false,
+        "tier_owned_reserve": true
+      },
+      "fit": false,
+      "quiet": true,
+      "provenance": "tmp/glm-next/wmma-2048-8k.result.json",
+      "source_sha256": "5a753840731aaa948d773239ccb917ad9ff15dd16f8ac9b45d474a7603de5a6f",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 924.292,
+            "bytes": 31725453312
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1074,
+            "MiB": 8457.75,
+            "fingerprint": 14353214317779942841
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 806.414,
+              "prefill": 1438.0,
+              "state": 239.105
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8533.01,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 239.105
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "wmma-2048-8k.result-prefill",
+      "kind": "prefill",
+      "tolerance": 0.15,
+      "measured": {
+        "tok_s": 88.9345,
+        "trials": [
+          {
+            "trial": 0,
+            "tokens": 2048,
+            "batch": 2048,
+            "milliseconds": 23028.2,
+            "tokens_per_second": 88.9345
+          }
+        ]
+      }
+    },
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 8192,
+        "prompt": 7936,
+        "generate": 128,
+        "prefill_chunk": 8192,
+        "prefill_backend": "bf16-wmma",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": true,
+        "tier_owned_reserve": true
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "tmp/glm-next/wmma-8192-8k.result.json",
+      "source_sha256": "c73d9a1ebf3602e930fbebce28fb59be39942b88d7e1023c60aaa5651887b374",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 952.978,
+            "bytes": 32807190528
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1062,
+            "MiB": 8363.25,
+            "fingerprint": 16555315904729066549
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 1478.98,
+              "prefill": 4510.0,
+              "state": 332.605
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8438.51,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 332.605
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "wmma-8192-8k.result-decode",
+      "kind": "decode",
+      "tolerance": 0.1,
+      "measured": {
+        "tok_s": 35.3911,
+        "trials": [
+          {
+            "kind": "single",
+            "tokens": 127,
+            "milliseconds": 3588.47,
+            "tokens_per_second": 35.3911
+          }
+        ]
+      }
+    },
+    {
+      "hw": "tools/sim/data/hw_b550_2666_212w.json",
+      "config": {
+        "pack": "reap50_q22",
+        "quality_reference": "reap50_q22",
+        "threads": 12,
+        "context": 8192,
+        "prompt": 7936,
+        "generate": 128,
+        "prefill_chunk": 8192,
+        "prefill_backend": "bf16-wmma",
+        "speculation": "none",
+        "mtp_depth": 1,
+        "gpu_draft_experts": false,
+        "skip_anchor": true,
+        "decode_cache_mib": 12288,
+        "gpu_budget_mib": 15360,
+        "reserve_mib": 512.0,
+        "prefill_scratch_mib": 4096.0,
+        "split_verify": true,
+        "tier_policy": "adaptive",
+        "affinity": 0.08,
+        "expert_deferral": true,
+        "deferral_share": 0.25,
+        "routing_profile": "prof-fit4.json",
+        "routing_affinity_layers": {
+          "3": 0.12,
+          "4": 0.12,
+          "5": 0.12,
+          "6": 0.12,
+          "7": 0.12,
+          "8": 0.12,
+          "9": 0.12,
+          "10": 0.14,
+          "11": 0.14,
+          "12": 0.14,
+          "13": 0.14,
+          "14": 0.14,
+          "15": 0.14,
+          "16": 0.14,
+          "17": 0.2,
+          "18": 0.2,
+          "19": 0.2,
+          "20": 0.2,
+          "21": 0.2,
+          "22": 0.2,
+          "23": 0.2,
+          "24": 0.3,
+          "25": 0.3,
+          "26": 0.3,
+          "27": 0.3,
+          "28": 0.3,
+          "29": 0.3,
+          "30": 0.3,
+          "31": 0.36,
+          "32": 0.36,
+          "33": 0.36,
+          "34": 0.36,
+          "35": 0.36,
+          "36": 0.36,
+          "37": 0.36,
+          "38": 0.42,
+          "39": 0.42,
+          "40": 0.42,
+          "41": 0.42,
+          "42": 0.42,
+          "43": 0.42,
+          "44": 0.42,
+          "45": 0.42,
+          "46": 0.42
+        },
+        "pipeline": true,
+        "decode_graphs": true,
+        "ordered_kda": true,
+        "mhc_save_fused": true,
+        "prefill_mla_f16": false,
+        "prefill_kda_parts": true,
+        "tier_owned_reserve": true
+      },
+      "fit": true,
+      "quiet": true,
+      "provenance": "tmp/glm-next/wmma-8192-8k.result.json",
+      "source_sha256": "c73d9a1ebf3602e930fbebce28fb59be39942b88d7e1023c60aaa5651887b374",
+      "routing_profile_sha256": "f8836ffbf218ddb9ca51da22f11157a0f4e25048b1e10c630e2daec4ee10a92c",
+      "scope": "forecast",
+      "diagnostic": {
+        "step_trace": [],
+        "cpu_expert": [
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 0,
+            "bytes": 0
+          },
+          {
+            "gu_ms": 0,
+            "quant_ms": 0,
+            "down_ms": 0,
+            "layer_flow_ms": 952.978,
+            "bytes": 32807190528
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 1062,
+            "MiB": 8363.25,
+            "fingerprint": 16555315904729066549
+          }
+        ],
+        "gpu_live": [
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 1478.98,
+              "prefill": 4510.0,
+              "state": 332.605
+            }
+          },
+          {
+            "device": 0,
+            "tags": {
+              "dense": 5029.21,
+              "other": 8438.51,
+              "prefill": 32.0,
+              "resident_exec": 2.94288,
+              "state": 332.605
+            }
+          }
+        ],
+        "mtp_timing": [],
+        "mtp_positions": [],
+        "lookup_positions": [],
+        "draft_timing": [],
+        "external_prepare": [],
+        "external_ready": [],
+        "external_verification": []
+      },
+      "name": "wmma-8192-8k.result-prefill",
+      "kind": "prefill",
+      "tolerance": 0.15,
+      "measured": {
+        "tok_s": 464.126,
+        "trials": [
+          {
+            "trial": 0,
+            "tokens": 7936,
+            "batch": 8192,
+            "milliseconds": 17098.8,
+            "tokens_per_second": 464.126
+          }
+        ]
+      }
+    }
+  ]
+}

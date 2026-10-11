@@ -1,0 +1,67 @@
+{
+  "track": "35",
+  "gates": {
+    "ppl_rel_max": 0.06,
+    "kl_abs_max": 0.08,
+    "top1_drop_pp_max": 3.0,
+    "humaneval_min": 152,
+    "heldout_min_2k": 35.0,
+    "heldout_min_8k": 35.0
+  },
+  "steps": [
+    {
+      "step": "task31",
+      "exit_code": 0,
+      "complete": true,
+      "tasks": 1,
+      "passes": 1,
+      "baseline_passes": 1,
+      "net": 0,
+      "lost": [],
+      "gained": [],
+      "capped_2048": [],
+      "guard_rejected": null,
+      "passes_gate": true,
+      "quality_qualified": false
+    },
+    {
+      "step": "smoke20",
+      "exit_code": 0,
+      "complete": true,
+      "tasks": 20,
+      "passes": 19,
+      "baseline_passes": 20,
+      "net": -1,
+      "lost": [
+        "HumanEval/10"
+      ],
+      "gained": [],
+      "capped_2048": [],
+      "guard_rejected": null,
+      "passes_gate": true,
+      "quality_qualified": false
+    },
+    {
+      "step": "pilot2048",
+      "exit_code": 0,
+      "complete": true,
+      "metrics": {
+        "sequence": 4,
+        "tokens": 2048,
+        "nll": 1.42948376868,
+        "perplexity": 4.17654257324,
+        "kl": 0.228746967916,
+        "top1_agreement": 0.85498046875,
+        "different_logits": 317194216
+      },
+      "baseline": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/renorm-quality-pilot/00-renorm-default/result.json",
+      "ppl_increase_percent": 10.6982031276468,
+      "kl_increase": 0.125861777504,
+      "top1_drop_pp": 3.759765625,
+      "gate_scale": 1.5,
+      "passes_gate": false,
+      "note": "baseline is unchanged Q23; the Q22 pack change is intentional",
+      "quality_qualified": false
+    }
+  ]
+}

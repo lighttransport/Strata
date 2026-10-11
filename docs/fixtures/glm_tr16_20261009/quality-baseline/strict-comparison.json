@@ -1,0 +1,19 @@
+{
+  "reference": {
+    "tokens": 8192,
+    "kl": 0.136671986559,
+    "top1_agreement": 0.876831054688,
+    "perplexity": 4.82544736674,
+    "nll": 1.57390344899,
+    "recorded": "2026-10-09",
+    "build": "glm53f after the upstream 0.1.41 merge (b6e9919f + uncommitted engine work); 523 s on tr16; matches the documented q23 0.137 / 87.7 % / 4.825",
+    "different_logits": 1268776815
+  },
+  "tolerance": {
+    "kl_abs": 0.0002,
+    "kl_rel": 0.002,
+    "top1_abs": 0.001,
+    "ppl_rel": 0.002
+  },
+  "failures": []
+}

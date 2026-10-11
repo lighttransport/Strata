@@ -12,7 +12,7 @@ endif()
 # same wave32 / 64 KiB LDS / sudot4 family as gfx1100, on a unified-memory APU; experimental.
 set(_strata_hip_validated gfx1100 gfx1201)
 set(_strata_hip_community gfx1101 gfx1200)
-set(_strata_hip_unvalidated gfx1010 gfx1011 gfx1012 gfx1102 gfx1103 gfx1030 gfx1031 gfx1034 gfx1150 gfx1151)   # gfx1103: Radeon 780M iGPU, opt-in, portable kernels (no WMMA)
+set(_strata_hip_unvalidated gfx1010 gfx1011 gfx1012 gfx1102 gfx1103 gfx1030 gfx1031 gfx1034 gfx1150 gfx1151 gfx1152)   # gfx1103: Radeon 780M iGPU, opt-in, portable kernels (no WMMA); gfx1152: Krackan, Radeon 860M / 840M (#1625), builds with the portable kernels, no card report yet
 # CMake hands HIP a ';' list, but a -DCMAKE_HIP_ARCHITECTURES typed by hand (or ROCm's own Windows tooling) may use
 # spaces, which foreach(IN LISTS) would otherwise treat as one element.
 string(REPLACE " " ";" _strata_hip_norm "${CMAKE_HIP_ARCHITECTURES}")
@@ -55,6 +55,51 @@ foreach(_cfg IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
         "Flags used by the HIP compiler during ${_cfg} builds." FORCE)
   endif()
 endforeach()
+# ROCm's CMake packages sit in <rocm>/lib/cmake/hip, and <rocm> is not always /opt/rocm.  A distro package
+# installs there; a toolkit unpacks to a versioned directory (/opt/rocm/core-10.0, which has the packages and
+# /opt/rocm does not); ROCM_PATH / HIP_PATH may point somewhere else again; and on Windows ROCm's own tooling
+# passes the HIP compiler path.  find_package searches CMAKE_PREFIX_PATH, so derive it here instead of making
+# every caller (and setup.py's batch of -D flags) remember to pass one: a HIP configure that cannot find its
+# packages otherwise stops at "Could not find a package configuration file provided by hip" with no hint where
+# to point it.
+set(_strata_hip_roots "$ENV{ROCM_PATH}" "$ENV{HIP_PATH}" "$ENV{ROCM_HOME}" "/opt/rocm")
+file(GLOB _strata_rocm_cores LIST_DIRECTORIES true "/opt/rocm/core-*")
+if(_strata_rocm_cores)
+  list(SORT _strata_rocm_cores ORDER DESCENDING)
+  list(APPEND _strata_hip_roots ${_strata_rocm_cores})
+endif()
+# .../lib/llvm/bin/clang++ and .../bin/clang++.rocm both have the packages an ancestor directory up: the first
+# ancestor that has them wins, so a tree with several ROCm installs does not add all of them.
+if(DEFINED CMAKE_HIP_COMPILER AND NOT "${CMAKE_HIP_COMPILER}" STREQUAL "")
+  set(_strata_hip_dir "${CMAKE_HIP_COMPILER}")
+  foreach(_strata_up "" "/.." "/../.." "/../../.." "/../../../..")
+    get_filename_component(_strata_hip_dir "${_strata_hip_dir}" DIRECTORY   ABSOLUTE)   # no-op on the first pass
+    if(EXISTS "${_strata_hip_dir}${_strata_up}/lib/cmake/hip")
+      list(APPEND _strata_hip_roots "${_strata_hip_dir}${_strata_up}")
+      break()
+    endif()
+  endforeach()
+endif()
+set(_strata_rocm_found "")
+foreach(_strata_root IN LISTS _strata_hip_roots)
+  if("${_strata_root}" STREQUAL "")
+    continue()
+  endif()
+  if(EXISTS "${_strata_root}/lib/cmake/hip")
+    list(APPEND _strata_rocm_found "${_strata_root}")
+  endif()
+endforeach()
+if(_strata_rocm_found)
+  list(REMOVE_DUPLICATES _strata_rocm_found)
+  list(APPEND CMAKE_PREFIX_PATH ${_strata_rocm_found})
+  list(REMOVE_DUPLICATES CMAKE_PREFIX_PATH)
+  message(STATUS "Strata HIP: ROCm prefix ${_strata_rocm_found}")
+else()
+  message(WARNING
+    "Strata HIP: no ROCm install found next to the HIP compiler; pass -DCMAKE_PREFIX_PATH=<rocm> (the directory "
+    "holding lib/cmake/hip) if the packages are elsewhere")
+endif()
+
 find_package(hip CONFIG REQUIRED)
 find_package(hipblas CONFIG REQUIRED)
 # Older distro hipBLAS has no workspace API. The compatibility shim uses

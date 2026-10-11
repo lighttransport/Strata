@@ -1,0 +1,98 @@
+[
+  {
+    "name": "aff20-only",
+    "result_path": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/component-quality-pilot/aff20-only-retry1/result.json",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.42688186877,
+      "perplexity": 4.16568975259,
+      "kl": 0.20799964461,
+      "top1_agreement": 0.86279296875,
+      "different_logits": 317194211
+    },
+    "failures": [
+      "KL 0.20800 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8628 < 0.8826 (baseline 0.8926)",
+      "perplexity 4.1657 > 3.8861 (baseline 3.7729)"
+    ],
+    "quality_qualified": false,
+    "ppl_increase_percent": 10.410551864968621,
+    "top1_drop_percentage_points": 2.978515625
+  },
+  {
+    "name": "q4-aff0",
+    "result_path": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/component-quality-pilot/q4-aff0-retry1/result.json",
+    "exit_code": 0,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.33192162241,
+      "perplexity": 3.78831611074,
+      "kl": 0.113818395396,
+      "top1_agreement": 0.89404296875,
+      "different_logits": 317194198
+    },
+    "failures": [],
+    "quality_qualified": false,
+    "cpu_interference_policy": "record",
+    "performance_comparable": false,
+    "interference": [],
+    "ppl_increase_percent": 0.40835906363343444,
+    "top1_drop_percentage_points": -0.146484375
+  },
+  {
+    "name": "q4-aff08",
+    "result_path": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/component-quality-pilot/q4-aff08/result.json",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.34936603342,
+      "perplexity": 3.85498082682,
+      "kl": 0.138642357027,
+      "top1_agreement": 0.87890625,
+      "different_logits": 317194206
+    },
+    "failures": [
+      "KL 0.13864 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8789 < 0.8826 (baseline 0.8926)"
+    ],
+    "quality_qualified": false,
+    "cpu_interference_policy": "record",
+    "performance_comparable": false,
+    "interference": [],
+    "ppl_increase_percent": 2.1752904794302586,
+    "top1_drop_percentage_points": 1.3671875
+  },
+  {
+    "name": "q4-renorm08-aff08",
+    "result_path": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/component-quality-pilot/q4-renorm08-aff08/result.json",
+    "exit_code": 1,
+    "complete": true,
+    "metrics": {
+      "sequence": 4,
+      "tokens": 2048,
+      "nll": 1.44983555726,
+      "perplexity": 4.26241353455,
+      "kl": 0.243812842279,
+      "top1_agreement": 0.84814453125,
+      "different_logits": 317194217
+    },
+    "failures": [
+      "KL 0.24381 > 0.13289 (baseline 0.10289)",
+      "top-1 0.8481 < 0.8826 (baseline 0.8926)",
+      "perplexity 4.2624 > 3.8861 (baseline 3.7729)"
+    ],
+    "quality_qualified": false,
+    "cpu_interference_policy": "record",
+    "performance_comparable": false,
+    "interference": [],
+    "ppl_increase_percent": 12.974191208976604,
+    "top1_drop_percentage_points": 4.443359375
+  }
+]

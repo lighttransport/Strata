@@ -1,0 +1,74 @@
+"""Focused HumanEval31 diagnostic, fresh request history; never full qualification."""
+import copy,gzip,hashlib,json,os,signal,subprocess,sys,time
+from pathlib import Path
+root=Path('/mnt/nvme02/work/Strata');os.chdir(root)
+r=root/'build-tr16-goal-20261010';sys.path.insert(0,str(root/'tools'))
+from glm_q2_run_guard import descendants
+from glm_tr16_calibrate import input_identity,wait_idle,digest
+end=json.loads((r/'goal.json').read_text())['deadline']
+def identity(pid):
+ try:
+  f=Path(f'/proc/{pid}/stat').read_text().rsplit(')',1)[1].split()
+  return f[19] if f[0]!='Z' else None
+ except (FileNotFoundError,ProcessLookupError):return None
+assert time.time()+900<end, 'Reserve15min before focused diagnostic'
+long=r/'long-finalists/q22-soft2-diagnostic'
+assert json.loads((long/'complete.json').read_text())['speed_target_met']
+assert json.loads((long/'manual-review.json').read_text())['no_obvious_repetition_loop']
+built=json.loads((r/'gpu-cache-v2-build-complete.json').read_text())
+for path,expected in built['sha256'].items():assert digest(path)==expected
+c=json.loads((r/'q22-cache-screen/depth3-soft2-cache7424.json').read_text())
+assert c['draft_depth']==3 and c['env']['STRATA_GLM_MTP_ACCEPT_MARGIN']=='2'
+cases=[('q22-soft2',c)];inputs=input_identity(c)
+out=r/'q22-soft2-task31';out.mkdir(exist_ok=False)
+dataset=root/'build-q2-redesign/HumanEval.jsonl.gz'
+tasks=[json.loads(line) for line in gzip.decompress(dataset.read_bytes()).splitlines()]
+assert len(tasks)==164;expected_ids=['HumanEval/31']
+baseline_folder=root/'build-tr16-20261009/humaneval-baseline'
+baseline=json.loads((baseline_folder/'measurement.json').read_text())
+baseline_manifest=json.loads((baseline_folder/'manifest.json').read_text())
+assert baseline['complete'] and baseline['tasks']==164
+assert {v['task_id'] for v in baseline['results']}=={v['task_id'] for v in tasks}
+assert digest(dataset)==baseline_manifest['dataset_sha256']
+rows=[];python=str(root/'build-exl3-venv/bin/python')
+(out/'selection.json').write_text(json.dumps(dict(quality_qualified=False,baseline=str(baseline_folder),baseline_measurement_sha256=digest(baseline_folder/'measurement.json'),scope='One selected pinned task, same prompting/cap/test protocol but fresh first-request history. Passing does not prove the full-evaluation failure fixed; full164 remains required.'),indent=2)+'\n')
+for name,c in cases:
+ if time.time()+600>=end:raise SystemExit('Deadline before quality '+name)
+ if input_identity(c)!=inputs:raise RuntimeError('Input identity mismatch')
+ wait_idle(min(1800,max(1,end-time.time()-60)))
+ env={k:v for k,v in os.environ.items() if not k.startswith('STRATA_')};env.update(c['env'])
+ (out/(name+'.config.json')).write_text(json.dumps(c,indent=2)+'\n')
+ command=['numactl','--interleave=all',python,str(r/'humaneval-one-task.py'),c['model'],str(dataset),'--output',str(out/name),'--decoder',c['exe'],'--expert-pack',c['expert_pack'],'--tokens','2048','--limit','1','--task-id','HumanEval/31','--context',str(c['context']),'--prefill-batch',str(c['prefill_batch']),'--gpu-budget-mib',str(c['gpu_budget_mib']),'--decode-cache-mib',str(c['decode_cache_mib']),'--speculative','mtp','--draft-depth',str(c['draft_depth']),'--route-affinity',c['env'].get('STRATA_GLM_ROUTE_AFFINITY','0')]
+ guard=[python,'tools/glm_q2_run_guard.py','--output',str(out/(name+'-guard')),'--min-gpu-free-mib','512','--require-gpu-idle','--record-interference','--',*command]
+ print('START_HE_FOCUSED',name,flush=True)
+ with (out/(name+'-driver.log')).open('x') as log:
+  p=subprocess.Popen(guard,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+  try:code=p.wait(timeout=min(900,end-time.time()-30))
+  except subprocess.TimeoutExpired:
+   owned={pid:identity(pid) for pid in descendants(p.pid)}
+   for pid,token in owned.items():
+    if token and identity(pid)==token:
+     try:os.kill(pid,signal.SIGINT)
+     except ProcessLookupError:pass
+   time.sleep(10)
+   for pid,token in owned.items():
+    if token and identity(pid)==token:
+     try:os.kill(pid,signal.SIGKILL)
+     except ProcessLookupError:pass
+   p.wait();raise
+ measure=out/name/'measurement.json';x=json.loads(measure.read_text()) if measure.exists() else {}
+ memory_path=out/(name+'-guard.memory.json');memory=json.loads(memory_path.read_text()) if memory_path.exists() else {}
+ results=x.get('results',[])
+ complete=code==0 and x.get('tasks')==1 and [v.get('task_id') for v in results]==expected_ids and all(isinstance(v.get('passed'),bool) for v in results) and bool(memory) and not memory.get('rejected') and input_identity(c)==inputs
+ row={'name':name,'exit_code':code,'focused_complete':complete,'tasks':x.get('tasks',0),'passes':sum(v.get('passed') is True for v in results),'quality_qualified':False,'guard_rejected':memory.get('rejected'),'decoder_sha256':digest(c['exe'])}
+ if complete:
+  (out/name/'inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
+  row['passes_minus_baseline']=row['passes']-sum(v['passed'] for v in baseline['results'] if v['task_id'] in expected_ids)
+  manifest=json.loads((out/name/'manifest.json').read_text())
+  for key in ('dataset_revision','dataset_sha256','protocol','maximum_generated_tokens'):assert manifest[key]==baseline_manifest[key],key
+  row['protocol_matches_baseline']=True
+ rows.append(row);(out/'summary.json').write_text(json.dumps(rows,indent=2)+'\n');print('DONE_HE_FOCUSED',json.dumps(row),flush=True)
+ if not complete:raise RuntimeError('Focused diagnostic incomplete')
+print('HE_FOCUSED_COMPLETE',flush=True)
+
+(out/'complete.json').write_text(json.dumps(dict(focused_complete=True,quality_qualified=False))+'\n')

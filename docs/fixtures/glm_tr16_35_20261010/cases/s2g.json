@@ -1,0 +1,24 @@
+[
+ {
+  "name": "g1-aff012-guard4",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12",
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4"
+  },
+  "note": "draft-route binary; tests whether the guard prevents the x10 loop"
+ },
+ {
+  "name": "g2-aff016-guard4",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16",
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4"
+  }
+ },
+ {
+  "name": "g3-mix2-guard4",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json",
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4"
+  }
+ }
+]

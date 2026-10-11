@@ -1,0 +1,20 @@
+{
+  "scope": "128-token diagnostic only; absence of short repetition does not qualify task quality or long continuation",
+  "tokens_sha256": "b411089f778c9477ca8e320364504537218a7407b82373f304255bb7a721746f",
+  "quality_qualified": false,
+  "manual_review_pending": true,
+  "trials": [
+    {
+      "trial": 0,
+      "warmup": true,
+      "text": "We need to review the benchmark. It's a partial excerpt with an obvious syntax error: `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon, and the body references `args.output`, `completed`, `unit` which don't exist in that scope. Also the excerpt is truncated (omitted sections), so we should note that. Let's go through the visible code carefully and identify bugs:\n\n1. `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon \u2192 SyntaxError. Also body uses undefined names (args, completed, unit",
+      "distinct_fourgram_fraction": 0.856
+    },
+    {
+      "trial": 1,
+      "warmup": false,
+      "text": "We need to review the benchmark. It's a partial excerpt with an obvious syntax error: `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 missing colon, and body seems truncated/misindented (body belongs to another function). Also `gpu_usage` returns sum of column 1 but gpu_capacity_passed signature mismatch. Let's write a thorough review covering:\n\n1. Syntax error: missing colon after `def gpu_capacity_passed(capacity_mib, process_mib, _output=True)` \u2014 file won't even parse; also body indentation mismatch (body of launcher function pasted). Propose",
+      "distinct_fourgram_fraction": 0.872
+    }
+  ]
+}

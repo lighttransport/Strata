@@ -1,6 +1,8 @@
 #pragma once
 #include "strata/core/model.hpp"
 #include "strata/artifact/json.hpp"
+#include "strata/host/glm_expert_pack.h"
+#include "strata/host/glm_names.hpp"
 #include "strata/kernels/cpu/expert_observer.hpp"
 #include "strata/kernels/cpu/expert_block_mask.hpp"
 #include <array>
@@ -103,11 +105,11 @@ public:
         if(const auto* layers=config.find("layers")) {
             if(layers->kind!=Json::Object)throw std::invalid_argument("block profile layers must be an object");
             for(const auto& [key,value]:layers->object){size_t used=0;int layer=std::stoi(key,&used);auto count=value.integer();
-                if(used!=key.size()||layer<3||layer>44||count<1||count>128)throw std::invalid_argument("invalid block layer budget");
+                if(used!=key.size()||layer<STRATA_EP_FIRST_LAYER||layer>STRATA_EP_LAST_LAYER||count<1||count>128)throw std::invalid_argument("invalid block layer budget");
                 keep_[layer]=int(count);}
         }
-        for(size_t l=3;l<m.layers.size();++l) {
-            const auto p="blk."+std::to_string(l)+".ffn_";const auto& g=model.at(p+"gate_exps.weight");const auto& u=model.at(p+"up_exps.weight");const auto& d=model.at(p+"down_exps.weight");
+        for(size_t l=STRATA_EP_FIRST_LAYER;l<m.layers.size();++l) {
+            const auto p=strata::host::blk_name(int(l),"ffn_");const auto& g=model.at(p+"gate_exps.weight");const auto& u=model.at(p+"up_exps.weight");const auto& d=model.at(p+"down_exps.weight");
             const bool eligible=(g.tensor->type==10||g.tensor->type==11)&&u.tensor->type==g.tensor->type&&(d.tensor->type==10||d.tensor->type==11);
             if(norms_.eligible[l]!=eligible||g.tensor->shape!=std::vector<uint64_t>{4096,2048,uint64_t(m.experts)}||u.tensor->shape!=g.tensor->shape||d.tensor->shape!=std::vector<uint64_t>{2048,4096,uint64_t(m.experts)})
                 throw std::runtime_error("block norm projection mismatch");

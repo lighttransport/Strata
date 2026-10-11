@@ -6,7 +6,15 @@ import pathlib
 import subprocess
 import time
 import signal
-from glm_q2_coding_bench import process_cpu_snapshot
+import csv
+
+def gpu_compute_processes(index):
+    """CUDA clients, excluding the desktop's small compute context."""
+    value = subprocess.check_output(['nvidia-smi', '--id=' + str(index),
+        '--query-compute-apps=pid,process_name', '--format=csv,noheader'], text=True, timeout=3,
+        stderr=subprocess.STDOUT)
+    return [(int(pid.strip()), name.strip()) for pid, name in csv.reader(value.splitlines())
+            if pathlib.Path(name.strip()).name != 'gnome-remote-desktop-daemon']
 
 def gpu_free_mib(index):
     value = subprocess.check_output(["nvidia-smi", "--id=" + str(index),
@@ -35,6 +43,7 @@ def descendants(root):
         found = expanded
 
 def main():
+    from glm_q2_coding_bench import process_cpu_snapshot
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--require-idle", action="store_true")
@@ -45,6 +54,8 @@ def main():
     parser.add_argument("--min-gpu-free-mib", type=int,
                         help="reject when the selected NVIDIA GPU has less free memory; sampled once per second")
     parser.add_argument("--gpu-index", type=int, default=0)
+    parser.add_argument("--require-gpu-idle", action="store_true",
+                        help="reject other CUDA compute clients before and during this run")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.gpu_index < 0 or args.min_gpu_free_mib is not None and args.min_gpu_free_mib < 0:
@@ -52,6 +63,10 @@ def main():
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("a command is required")
+    if args.require_gpu_idle:
+        clients = gpu_compute_processes(args.gpu_index)
+        if clients:
+            parser.error('GPU is in use by other CUDA clients: ' + repr(clients))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     record = {"command": command, "peak_rss_kib": 0, "peak_swap_kib": 0, "minimum_available_kib": None,
               "sample_interval_ms": 100, "rejected": None, "interference": []}
@@ -85,15 +100,20 @@ def main():
                     record["peak_rss_kib"] = max(record["peak_rss_kib"], rss)
                     record["peak_swap_kib"] = max(record["peak_swap_kib"], swap)
                     record["minimum_available_kib"] = min(record["minimum_available_kib"] or available, available)
-                    if args.min_gpu_free_mib is not None and time.monotonic() >= next_gpu_check:
+                    if (args.min_gpu_free_mib is not None or args.require_gpu_idle) and time.monotonic() >= next_gpu_check:
                         next_gpu_check = time.monotonic() + 1
                         try:
-                            free = gpu_free_mib(args.gpu_index)
-                            previous = record["minimum_gpu_free_mib"]
-                            record["minimum_gpu_free_mib"] = free if previous is None else min(previous, free)
-                            if free < args.min_gpu_free_mib:
-                                record["rejected"] = {"reason": "GPU memory reserve", "free_mib": free,
-                                                      "required_mib": args.min_gpu_free_mib}
+                            if args.min_gpu_free_mib is not None:
+                                free = gpu_free_mib(args.gpu_index)
+                                previous = record["minimum_gpu_free_mib"]
+                                record["minimum_gpu_free_mib"] = free if previous is None else min(previous, free)
+                                if free < args.min_gpu_free_mib:
+                                    record["rejected"] = {"reason": "GPU memory reserve", "free_mib": free,
+                                                          "required_mib": args.min_gpu_free_mib}
+                            if args.require_gpu_idle:
+                                clients = [(pid, name) for pid, name in gpu_compute_processes(args.gpu_index) if pid not in owned]
+                                if clients:
+                                    record['rejected'] = dict(reason='external GPU work', clients=clients)
                         except (OSError, ValueError, subprocess.SubprocessError) as error:
                             record["rejected"] = {"reason": "GPU memory probe failed", "error": str(error)}
                     if swap > args.max_swap_mib * 1024 or rss > 118 * 1024**2 or available < 4 * 1024**2:

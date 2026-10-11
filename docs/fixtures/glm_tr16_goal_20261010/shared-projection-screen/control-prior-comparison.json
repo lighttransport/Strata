@@ -1,0 +1,23 @@
+{
+  "old": "dense-q3-screen/01-q4-control",
+  "new": "shared-projection-screen/00-q4-control",
+  "all_tokens_identical": true,
+  "first_difference": null,
+  "old_cache": [
+    [
+      "734",
+      "6376.62",
+      "12504415647370074505"
+    ]
+  ],
+  "new_cache": [
+    [
+      "734",
+      "6376.62",
+      "12504415647370074505"
+    ]
+  ],
+  "new_decode_tok_s": 25.647,
+  "old_decode_tok_s": 25.6458,
+  "quality_qualified": false
+}

@@ -1,0 +1,8 @@
+{
+  "reproduces_all_changed_files": true,
+  "includes_prior_deferral_edits": true,
+  "sha256": {
+    "src/program/glm_decode.cpp": "ceb27d440b0ae88a6acc5e9b1b61c1abe3f22b1e50e5d2482dc27a91277b9f0a",
+    "include/strata/kernels/glm_prefill.hpp": "c1fd5a3ee44eb775db69513414d00854a656fef61a3cd9e2b0b80a04ed64a0db"
+  }
+}

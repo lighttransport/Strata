@@ -1,0 +1,33 @@
+[
+ {
+  "name": "c1-aff010",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.10"
+  }
+ },
+ {
+  "name": "c2-aff012",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12"
+  }
+ },
+ {
+  "name": "c3-aff016",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.16"
+  }
+ },
+ {
+  "name": "c4-aff012-unbiased",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12",
+   "STRATA_GLM_TIER_LEARN_UNBIASED": "1"
+  }
+ },
+ {
+  "name": "c5-mix2",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json"
+  }
+ }
+]

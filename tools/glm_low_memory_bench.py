@@ -61,7 +61,7 @@ def clear_model_cache(config):
             argv = proc.read_bytes().split(b"\0")
         except (OSError, PermissionError):
             continue
-        if argv and Path(os.fsdecode(argv[0])).name.startswith("strata-glm-decode"):
+        if argv and Path(os.fsdecode(argv[0])).name.startswith(("strata-glm-decode", "strata-glm-vulkan")):
             raise RuntimeError("another GLM decoder is active; cannot clear model cache")
     records = []
     for path in model_files(config):
@@ -89,7 +89,13 @@ def parse_log(log):
                 for line in log.splitlines() if line.startswith(tag + " ")]
     return dict(prefill=prefill, decode=decode,
         cpu_expert=records("CPU_EXPERT"), mtp_timing=records("MTP_TIMING"),
-        mtp_positions=records("MTP_POSITION"), step_trace=records("STEP_TRACE"),
+        mtp_positions=records("MTP_POSITION"), lookup_positions=records("LOOKUP_POSITION"),
+        draft_timing=records("DRAFT_TIMING"), external_prepare=records("EXTERNAL_PREPARE"),
+        external_ready=records("EXTERNAL_READY"),
+        external_verification=re.findall(r'SPECULATIVE source=external .*verification=(\w+)',log),
+        mtp_approx=records("MTP_APPROX"), mtp_first_margin=records("MTP_FIRST_MARGIN"),
+        mtp_reuse=records("MTP_REUSE"), mtp_sync_state=records("MTP_SYNC_STATE_ONLY"),
+        mtp_repeat_guard=records("MTP_REPEAT_GUARD"), step_trace=records("STEP_TRACE"),
         decode_cache=records("DECODE_CACHE"), decode_page_faults=records("DECODE_FAULTS"), speculation=records("SPECULATIVE"),
         affinity_quality=records("AFFINITY_QUALITY"), lookup_parity=records("LOOKUP_PARITY"),
         prefill_repeat=records("PREFILL_REPEAT"),
@@ -106,6 +112,38 @@ def parse_log(log):
 def prefill_repeats_passed(rows, trials):
     return (trials > 1 and [row.get("trial") for row in rows] == list(range(trials)) and
             all(row.get("logits_identical") == 1 and row.get("routes_identical") == 1 for row in rows))
+
+
+def decode_complete(ids, rows, maximum, trials, stops=()):
+    """Validate each EOS-aware output against its own timing record."""
+    if len(rows) != trials:
+        return False
+    cursor = 0
+    for row in rows:
+        count = row['tokens'] + (row['kind'] == 'single')
+        tokens = ids[cursor:cursor+count]
+        if not 1 <= count <= maximum or len(tokens) != count:
+            return False
+        if any(t in stops for t in tokens[:-1]):
+            return False
+        if count < maximum and tokens[-1] not in stops:
+            return False
+        cursor += count
+    return cursor == len(ids)
+
+
+
+def decode_trials_identical(ids, rows):
+    """Compare complete trial outputs, including an early stop token."""
+    cursor = 0
+    outputs = []
+    for row in rows:
+        count = row['tokens'] + (row['kind'] == 'single')
+        if count < 1 or cursor + count > len(ids):
+            return False
+        outputs.append(ids[cursor:cursor + count])
+        cursor += count
+    return bool(outputs) and cursor == len(ids) and all(row == outputs[0] for row in outputs)
 
 
 def group_stats(group):
@@ -185,7 +223,17 @@ def hip_gpu_device(config):
     return devices[0].resolve()
 
 
-def hip_gpu_snapshot(device):
+def validate_hip_link(device):
+    # sysfs vendor/memory attributes can retain cached values after bus loss.
+    # Reading the PCI ID avoids issuing an SMU clock/metrics request.
+    with (device / 'config').open('rb') as stream:
+        identity=stream.read(4)
+    if len(identity)!=4 or int.from_bytes(identity[:2],'little')!=0x1002:
+        raise ValueError('AMD GPU PCI configuration is inaccessible; do not launch')
+
+
+def hip_gpu_snapshot(device, telemetry=True, require_pci=False):
+    if require_pci:validate_hip_link(device)
     total = int((device / "mem_info_vram_total").read_text())
     used = int((device / "mem_info_vram_used").read_text())
     if total <= 0 or used < 0 or used > total:
@@ -198,23 +246,25 @@ def hip_gpu_snapshot(device):
         result["gtt_used_mib"] = (int(gtt.read_text())+mib-1) // mib
     # Optional evidence for interpreting timings; missing clock attributes do
     # not weaken or disable the VRAM guard.
-    telemetry = {}
-    for name in ("power_dpm_force_performance_level", "pp_dpm_sclk", "pp_dpm_mclk",
-                 "gpu_busy_percent", "mem_busy_percent"):
+    performance = {}
+    for name in (("power_dpm_force_performance_level", "pp_dpm_sclk", "pp_dpm_mclk",
+                 "gpu_busy_percent", "mem_busy_percent")
+                 if telemetry else ()):
         try:
-            telemetry[name] = (device / name).read_text().strip()
+            performance[name] = (device / name).read_text().strip()
         except OSError:
             pass
-    if telemetry:
-        result["performance"] = telemetry
+    if performance:
+        result["performance"] = performance
     return result
 
 
 def read_gpu(config, pid=None):
-    if config.get("backend", "cuda") == "hip":
+    if config.get("backend", "cuda") in ("hip", "vulkan"):
         # Global VRAM includes the engine, driver and every other GPU client.
         # sysfs cannot attribute it to this PID, so do not invent a process value.
-        return None, hip_gpu_snapshot(hip_gpu_device(config))
+        return None, hip_gpu_snapshot(hip_gpu_device(config),config.get('gpu_telemetry',True),
+                                      config.get('gpu_pci_preflight',False))
     if config.get("backend", "cuda") != "cuda":
         raise ValueError("unsupported GPU backend for the memory guard")
     snapshot = gpu_snapshot(subprocess.check_output(["nvidia-smi", "--id=0",
@@ -245,6 +295,34 @@ def eval_counts(path, skip_prefix=0):
     if not counts:
         raise ValueError("empty evaluation corpus")
     return counts
+
+
+def vulkan_command(cfg, args):
+    """Keep unsupported Vulkan features explicit instead of silently ignoring them."""
+    if (args.single or args.eval_corpus or cfg.get('speculative', 'none') != 'none' or
+            cfg.get('decode_graphs') or cfg.get('decode_cache_mib') or
+            cfg.get('decode_cache_slots') or cfg.get('decode_checks') or cfg.get('mtp_greedy_control')):
+        raise ValueError('initial Vulkan runner supports greedy generation without a resident expert tier')
+    if cfg.get('prefill_batch', 1) != 1:
+        raise ValueError('initial Vulkan runner requires sequential prefill_batch=1')
+    if cfg.get('prefill_experts', 'cpu') != 'cpu':
+        raise ValueError('initial Vulkan prefill uses CPU experts')
+    supported = {'STRATA_GLM_MAPPED_LAZY', 'STRATA_GLM_MAPPED_OWNED', 'STRATA_GLM_GPU_RESERVE_MIB',
+                 'STRATA_GLM_TASK_TRACE', 'STRATA_GLM_STATE_TRACE_DIR'}
+    unsupported = [name for name in cfg.get('env', {}) if name.startswith('STRATA_GLM_') and name not in supported]
+    if unsupported:
+        raise ValueError('unsupported Vulkan settings: ' + ', '.join(sorted(unsupported)))
+    command = ['numactl', '--interleave=all', str(Path(cfg['exe']).resolve()),
+               '--model', cfg['model'], '--prompt-file', str(args.prompt.resolve()),
+               '--output', str(args.output.with_suffix('.vulkan.json').resolve()),
+               '--context', str(cfg['context']), '--generate', str(args.tokens),
+               '--trials', str(args.trials), '--threads', str(cfg.get('threads', 12)),
+               '--gpu-budget-mib', str(cfg['gpu_budget_mib'])]
+    if cfg.get('record_prefill_logits'):
+        command += ['--dump-prefill', str(args.output.with_suffix('.prefill.logits.bin').resolve())]
+    if cfg.get('stop_ids'):
+        command += ['--stop-ids', ','.join(map(str, cfg['stop_ids']))]
+    return command
 
 
 def eval_complete(rows, counts, decode_prefix=None):
@@ -292,25 +370,42 @@ def worker(args):
         command.append("--check-prefill-repeats")
     if cfg.get("expert_pack"):
         command.append("--expert-pack=" + cfg["expert_pack"])
+    if cfg.get("stop_ids"):
+        if not all(type(t) is int and t >= 0 for t in cfg['stop_ids']):
+            raise ValueError('stop_ids must contain nonnegative integer token IDs')
+        command.append('--stop-ids=' + ','.join(map(str, cfg['stop_ids'])))
     if cfg.get("decode_graphs"):
         command.append("--decode-graphs")
     if cfg.get("decode_cache_mib"):
         command.append("--decode-cache-mib=" + str(cfg["decode_cache_mib"]))
+    if cfg.get('decode_cache_slots'):
+        command.append('--decode-cache-slots='+str(cfg['decode_cache_slots']))
     if "decode_cache_window" in cfg:
         command.append("--decode-cache-window=" + str(cfg["decode_cache_window"]))
     for name in cfg.get("decode_checks", []):
-        if name not in ("verify", "verify_graphs", "decode_graphs"):
+        if name not in ("verify", "verify_graphs", "decode_graphs", "eval_stream"):
             raise ValueError("unknown decoder validation check: " + str(name))
         command.append("--check-" + name.replace("_", "-"))
+    if cfg.get('mtp_greedy_control'):
+        if args.single or args.eval_corpus or cfg.get('speculative','none')!='none':
+            raise ValueError('MTP greedy control requires an ordinary generation benchmark')
+        command += ['--speculative=mtp','--mtp-experts=cpu','--draft-depth='+str(cfg.get('draft_depth',1)),
+                    '--mtp-greedy-control']
     if not args.single and not args.eval_corpus and cfg.get("speculative") == "mtp":
         command += ["--speculative=mtp", "--mtp-experts=cpu", "--draft-depth=" + str(cfg.get("draft_depth", 2))]
     if not args.single and not args.eval_corpus and cfg.get("speculative") == "lookup":
         command += ["--speculative=lookup", "--lookup-depth=" + str(cfg.get("lookup_depth", 3))]
+    if not args.single and not args.eval_corpus and cfg.get("speculative") == "external":
+        command += ["--speculative=external", "--draft-depth=" + str(cfg.get("draft_depth", 2)),
+                    "--draft-worker-config=" + str(Path(cfg["draft_worker_config"]).resolve())]
+    if cfg.get('backend') == 'vulkan':
+        command = vulkan_command(cfg, args)
     group = Path("/sys/fs/cgroup" + Path("/proc/self/cgroup").read_text().strip().split(":")[-1])
     before = group_stats(group)
     if before["memory.max"] != args.ram_gib * 2**30 or before["memory.swap.max"] != 0:
         raise RuntimeError("effective cgroup limits do not match the requested benchmark")
     record = dict(started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        prompt_sha256=hashlib.sha256(args.prompt.read_bytes()).hexdigest(),
         config=cfg, command=command, memory_limit_gib=args.ram_gib, swap_limit_bytes=0,
         fit_only=args.fit_only,
         cgroup=str(group), cgroup_before=before, interference=[], samples=[])
@@ -323,8 +418,8 @@ def worker(args):
     record["peak_process_gpu_mib"] = 0
     record["gpu_physical_reserve_mib"] = int(env.get("STRATA_GLM_GPU_RESERVE_MIB", "512"))
     record["gpu_backend"] = cfg.get("backend", "cuda")
-    record["gpu_process_accounting"] = "unavailable; global AMD sysfs" if record["gpu_backend"] == "hip" else "NVIDIA process query"
-    if record["gpu_backend"] == "hip":
+    record["gpu_process_accounting"] = "unavailable; global AMD sysfs" if record["gpu_backend"] in ("hip", "vulkan") else "NVIDIA process query"
+    if record["gpu_backend"] in ("hip", "vulkan"):
         record["peak_process_gpu_mib"] = None
     _, initial_gpu = read_gpu(cfg)
     record["gpu_initial_snapshot"] = initial_gpu
@@ -334,7 +429,7 @@ def worker(args):
         record["gpu_physical_reserve_mib"], args.gpu_used_limit_mib, initial_gpu["reserved_mib"])
     record["gpu_allocation_budget_mib"] = cfg["gpu_budget_mib"]
     record["gpu_requested_used_limit_mib"] = args.gpu_used_limit_mib
-    record["peak_background_gpu_mib"] = None if record["gpu_backend"] == "hip" else 0
+    record["peak_background_gpu_mib"] = None if record["gpu_backend"] in ("hip", "vulkan") else 0
     record["minimum_gpu_free_mib"] = initial_gpu["free_mib"]
     with args.output.with_suffix(".stdout").open("w") as out, args.output.with_suffix(".log").open("w") as err:
         proc = subprocess.Popen(command, stdout=out, stderr=err, env=env, start_new_session=True)
@@ -450,11 +545,10 @@ def worker(args):
             ids = []
             record["output_parse_error"] = "decoder stdout contains non-token output"
         record["output_token_count"] = len(ids)
-        repeated = [ids[i:i + args.tokens] for i in range(0, len(ids), args.tokens)]
-        record["greedy_trials_identical"] = bool(repeated) and all(row == repeated[0] for row in repeated)
+        record["greedy_trials_identical"] = decode_trials_identical(ids, record["measurements"]["decode"])
         complete = (len(record["measurements"]["prefill"]) == args.trials and
-                    len(record["measurements"]["decode"]) == args.trials and
-                    len(ids) == args.tokens * args.trials)
+                    decode_complete(ids, record['measurements']['decode'], args.tokens,
+                                    args.trials, cfg.get('stop_ids', [])))
     record["complete"] = complete
     record["clean"] = not (args.fit_only or code or rejection or record["interference"] or
         record["cgroup_after"]["memory.events"].get("oom_kill", 0)) and complete

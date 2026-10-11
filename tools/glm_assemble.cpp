@@ -8,23 +8,29 @@ namespace {
 template<class T> void put(std::ostream& out,T v) { out.write(reinterpret_cast<const char*>(&v),sizeof v); }
 void str(std::ostream& out,const std::string& s) { put<uint64_t>(out,s.size());out.write(s.data(),s.size()); }
 struct Metadata { uint64_t count=0;std::string bytes; };
+// Copy a file's KV block verbatim, dropping the split.* keys: the assembly is one file even when the base is sharded.
 Metadata metadata(const std::filesystem::path& path) {
     strata::GgufFile file(path.string());
-    std::vector<uint8_t> header(file.data_start());
+    // A metadata-only shard (Unsloth's -00001-of-N) ends before its aligned data offset: read what exists.
+    std::vector<uint8_t> header(std::min<uint64_t>(file.data_start(), std::filesystem::file_size(path)));
     std::ifstream input(path,std::ios::binary);input.exceptions(std::ios::failbit|std::ios::badbit);
     input.read(reinterpret_cast<char*>(header.data()),header.size());
     strata::Cursor c(header.data(),header.size());c.read<uint32_t>();c.read<uint32_t>();c.read<uint64_t>();
-    Metadata result;result.count=c.read<uint64_t>();
-    for(uint64_t i=0;i<result.count;++i) { c.str();strata::read_value(c,static_cast<strata::MetaType>(c.read<uint32_t>())); }
-    result.bytes.assign(reinterpret_cast<const char*>(header.data()+24),c.pos()-24);return result;
+    Metadata result;const uint64_t count=c.read<uint64_t>();
+    for(uint64_t i=0;i<count;++i) {
+        const size_t start=c.pos();const std::string key=c.str();strata::read_value(c,static_cast<strata::MetaType>(c.read<uint32_t>()));
+        if(key.rfind("split.",0)==0)continue;
+        result.bytes.append(reinterpret_cast<const char*>(header.data()+start),c.pos()-start);++result.count;
+    }
+    return result;
 }
 }
 int main(int argc,char** argv) { try {
-    if(argc!=4)throw std::runtime_error("usage: strata-glm-assemble MODEL PACK OUTPUT");
+    if(argc!=4)throw std::runtime_error("usage: strata-glm-assemble MODEL PACK OUTPUT (MODEL may be the first shard of a split GGUF)");
     const std::filesystem::path source=argv[1],pack=argv[2],output=argv[3],partial=output.string()+".partial";
     if(std::filesystem::exists(output)||std::filesystem::exists(partial))throw std::runtime_error("refusing to overwrite output or partial");
     strata::GgufFile base(source.string());
-    if(base.get("split.count")||base.get("strata.expert_pack.version"))throw std::runtime_error("assembly requires an unsplit original GGUF");
+    if(base.get("strata.expert_pack.version"))throw std::runtime_error("assembly requires an original GGUF without pack metadata");
     strata::core::ModelArtifact model(source);
     const auto fingerprint=model.source_fingerprint();model.overlay_experts(pack);
     const auto source_meta=metadata(source),pack_meta=metadata(pack);
@@ -33,9 +39,21 @@ int main(int argc,char** argv) { try {
         if(base.get(key))throw std::runtime_error("duplicate metadata key: "+key);
     std::ostringstream header(std::ios::binary);
     put<uint32_t>(header,0x46554747);put<uint32_t>(header,3);put<uint64_t>(header,model.tensors().size());
-    put<uint64_t>(header,source_meta.count+pack_meta.count+1);
+    // Projections the pack left in their original format (e.g. layers 11/12/44 of UD-Q2_K_XL) are copied as they are;
+    // their count is recorded so the loader can require hashed + retained == every routed projection.  The count
+    // comes from the same scan the loader uses (strata_host), so the writer and the reader cannot disagree about
+    // which projections count.
+    strata::core::ExpertScanContext scan{&model.tensors()};
+    strata_ep_projection projections[STRATA_EP_PROJECTIONS];
+    size_t projection_count=0;uint32_t retained=0;char error[256];
+    if(strata_ep_scan(&scan,strata::core::expert_scan_lookup,projections,STRATA_EP_PROJECTIONS,&projection_count,error,sizeof error)!=STRATA_EP_OK)
+        throw std::runtime_error(error);
+    if(strata_ep_count_retained(projections,projection_count,&retained,error,sizeof error)!=STRATA_EP_OK)
+        throw std::runtime_error(error);
+    put<uint64_t>(header,source_meta.count+pack_meta.count+2);
     header<<source_meta.bytes<<pack_meta.bytes;
     str(header,"strata.expert_pack.assembled");put<uint32_t>(header,7);put<uint8_t>(header,1);
+    str(header,"strata.expert_pack.retained");put<uint32_t>(header,4);put<uint32_t>(header,retained);
     const uint64_t alignment=base.get("general.alignment")?base.get("general.alignment")->u:32;
     auto align=[&](uint64_t n){return (n+alignment-1)/alignment*alignment;};
     uint64_t offset=0;
@@ -68,6 +86,6 @@ int main(int argc,char** argv) { try {
     if(assembled.tensors().size()!=model.tensors().size()||assembled.census().total!=model.census().total)
         throw std::runtime_error("assembled tensor census mismatch");
     std::filesystem::rename(partial,output);
-    std::cout<<"ASSEMBLED tensors="<<copied<<" verified_experts="<<checked<<" bytes="<<std::filesystem::file_size(output)
-             <<" source_fingerprint="<<fingerprint<<'\n';return 0;
+    std::cout<<"ASSEMBLED tensors="<<copied<<" verified_experts="<<checked<<" retained_original_projections="<<retained
+             <<" bytes="<<std::filesystem::file_size(output)<<" source_fingerprint="<<fingerprint<<'\n';return 0;
 } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';return 1;} }

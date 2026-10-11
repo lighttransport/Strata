@@ -1,0 +1,14 @@
+{
+  "time": 1791583263.703753,
+  "source_integrated": true,
+  "default": "off",
+  "concurrent_deferral_edits_preserved": true,
+  "before_sha256": "6ab18623b8d77015d1b37a283c2a9295cb9cb46bdf500d7d51ff8add48963beb",
+  "after_sha256": "ceb27d440b0ae88a6acc5e9b1b61c1abe3f22b1e50e5d2482dc27a91277b9f0a",
+  "patch_sha256": "8355fd809402344d61c95fb56aa5b6baa16e3a98dabeb55545513bca20a2b155",
+  "independent_cuda_hip_built": true,
+  "independent_model_tokens_compared": 512,
+  "independent_full_state_checks_8k": 32,
+  "assembled_root_builds_pending": true,
+  "quality_qualified": false
+}

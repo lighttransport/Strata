@@ -1,0 +1,167 @@
+{
+  "scope": "One128-token timed trial plus128-token warmup, training prompt; all256 target tokens matched control. Grouped runs, not interleaved. Different round boundaries mean position rates are not paired predictions on the same prefixes.",
+  "rows": [
+    {
+      "name": "03-proposal-default",
+      "decode_tok_s": 15.6364,
+      "change_percent": 0.0,
+      "rounds": 54,
+      "accepted": 72,
+      "accepted_per_round": 1.3333333333333333,
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 54,
+          "accepted": 37
+        },
+        {
+          "index": 1,
+          "proposed": 54,
+          "accepted": 21
+        },
+        {
+          "index": 2,
+          "proposed": 54,
+          "accepted": 14
+        }
+      ],
+      "tokens_identical_to_control": 256,
+      "quality_qualified": false
+    },
+    {
+      "name": "04-unpruned-no-prune",
+      "decode_tok_s": 15.7198,
+      "change_percent": 0.5333708526259251,
+      "rounds": 54,
+      "accepted": 72,
+      "accepted_per_round": 1.3333333333333333,
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 54,
+          "accepted": 37
+        },
+        {
+          "index": 1,
+          "proposed": 54,
+          "accepted": 21
+        },
+        {
+          "index": 2,
+          "proposed": 54,
+          "accepted": 14
+        }
+      ],
+      "tokens_identical_to_control": 256,
+      "quality_qualified": false
+    },
+    {
+      "name": "05-blend0",
+      "decode_tok_s": 13.9268,
+      "change_percent": -10.933462945435013,
+      "rounds": 61,
+      "accepted": 65,
+      "accepted_per_round": 1.0655737704918034,
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 61,
+          "accepted": 39
+        },
+        {
+          "index": 1,
+          "proposed": 61,
+          "accepted": 18
+        },
+        {
+          "index": 2,
+          "proposed": 61,
+          "accepted": 8
+        }
+      ],
+      "tokens_identical_to_control": 256,
+      "quality_qualified": false
+    },
+    {
+      "name": "06-blend05",
+      "decode_tok_s": 15.9907,
+      "change_percent": 2.265866823565532,
+      "rounds": 53,
+      "accepted": 73,
+      "accepted_per_round": 1.3773584905660377,
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 53,
+          "accepted": 35
+        },
+        {
+          "index": 1,
+          "proposed": 53,
+          "accepted": 22
+        },
+        {
+          "index": 2,
+          "proposed": 53,
+          "accepted": 16
+        }
+      ],
+      "tokens_identical_to_control": 256,
+      "quality_qualified": false
+    },
+    {
+      "name": "07-blend075",
+      "decode_tok_s": 15.5455,
+      "change_percent": -0.581335857358467,
+      "rounds": 54,
+      "accepted": 72,
+      "accepted_per_round": 1.3333333333333333,
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 54,
+          "accepted": 37
+        },
+        {
+          "index": 1,
+          "proposed": 54,
+          "accepted": 21
+        },
+        {
+          "index": 2,
+          "proposed": 54,
+          "accepted": 14
+        }
+      ],
+      "tokens_identical_to_control": 256,
+      "quality_qualified": false
+    },
+    {
+      "name": "08-repeat-guard-exact",
+      "decode_tok_s": 15.6798,
+      "change_percent": 0.2775574940523384,
+      "rounds": 54,
+      "accepted": 72,
+      "accepted_per_round": 1.3333333333333333,
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 54,
+          "accepted": 37
+        },
+        {
+          "index": 1,
+          "proposed": 54,
+          "accepted": 21
+        },
+        {
+          "index": 2,
+          "proposed": 54,
+          "accepted": 14
+        }
+      ],
+      "tokens_identical_to_control": 256,
+      "quality_qualified": false
+    }
+  ]
+}

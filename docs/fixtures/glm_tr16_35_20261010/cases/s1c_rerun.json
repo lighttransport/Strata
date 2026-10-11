@@ -1,0 +1,9 @@
+[
+ {
+  "name": "c2-aff012",
+  "env": {
+   "STRATA_GLM_ROUTE_AFFINITY": "0.12"
+  },
+  "note": "rerun; first attempt rejected by external CPU work"
+ }
+]

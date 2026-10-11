@@ -222,11 +222,22 @@ void glm_q8_heads_gemv(const void *w, const float *x, float *y, int heads, int i
     auto s = (cudaStream_t)stream;
     const int rows = heads * out;
     static const bool by_blocks = [] { const char *v = std::getenv("STRATA_GLM_HEADS_BLOCKS"); return v && std::string(v) == "1"; }();
+    static const bool batch_blocks = [] {
+        const char *value = std::getenv("STRATA_GLM_HEADS_BLOCKS_BATCH");
+        if (!value || std::string(value) == "0") return false;
+        if (std::string(value) == "1") return true;
+        throw std::invalid_argument("GLM Q8_0 heads batch blocks must be 0 or 1");
+    }();
     const int blocks = in / 32;
-    if (by_blocks && tokens == 1 && blocks <= 32 && (blocks & (blocks - 1)) == 0) {
+    if (by_blocks && (tokens == 1 || batch_blocks) && blocks <= 32 && (blocks & (blocks - 1)) == 0) {
+        if (tokens > 1 && (ld_x < (int64_t)heads * in || ld_y < (int64_t)heads * out))
+            throw std::invalid_argument("GLM Q8_0 heads batch strides overlap token rows");
         const size_t threads = (size_t)rows * blocks;
-        heads_gemv_blocks<<<(unsigned)((threads + 255) / 256), 256, 0, s>>>((const uint8_t *)w, x, y, in, out, rows);
-        ok(cudaGetLastError(), "heads GEMV");
+        for (int token = 0; token < tokens; ++token) {
+            heads_gemv_blocks<<<(unsigned)((threads + 255) / 256), 256, 0, s>>>(
+                (const uint8_t *)w, x + (size_t)token * ld_x, y + (size_t)token * ld_y, in, out, rows);
+            ok(cudaGetLastError(), "heads GEMV");
+        }
         return;
     }
     switch (tokens) {

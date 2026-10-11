@@ -1,0 +1,299 @@
+[
+  {
+    "name": "g1-aff012-guard4",
+    "note": "draft-route binary; tests whether the guard prevents the x10 loop",
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s2g/g1-aff012-guard4.json",
+    "env_overrides": {
+      "STRATA_GLM_ROUTE_AFFINITY": "0.12",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103631828,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 190.6722922269837
+    },
+    "decode_tok_s": 33.8183,
+    "decode_trials": [
+      33.8183
+    ],
+    "decode_warmup_tok_s": 30.8863,
+    "prefill_tok_s": 143.041,
+    "rounds": 152,
+    "generated": 512,
+    "tokens_per_round": 3.3684210526315788,
+    "accepted_per_round": 2.3552631578947367,
+    "proposed_per_round": 2.9934210526315788,
+    "position_accept_rate": {
+      "0": 0.9407894736842105,
+      "1": 0.8092105263157895,
+      "2": 0.609271523178808
+    },
+    "soft_accepted": 81,
+    "logit_regret_per_token": 0.199671875,
+    "draft_ms_per_round": 9.98717105263158,
+    "verify_ms_per_round": 86.08026315789475,
+    "resync_ms_per_round": 1.172875,
+    "expert_gb_per_token": 1.304246016,
+    "flow_ms_per_token": 18.27259765625,
+    "ms_per_token": 29.5119140625,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 3
+      }
+    ],
+    "sync_state_only": [
+      {
+        "omitted": 359,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 1024,
+    "token_count_expected": 1024,
+    "distinct_4gram_fraction": [
+      0.9862475442043221,
+      0.93713163064833
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "0cc5a9c0128bdc493b9c3f64f7346e19a24ea90ac315896d8706ece92196bb45",
+      "423a8c012bb2e2e2ca50dfb1217b3a78055d2ac2ddc714288c8df7b0c2ad41f8"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      26,
+      3
+    ],
+    "control_rate": 32.9658,
+    "speed_change_percent": 2.5860133835672094,
+    "decision": "NOTE",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "g2-aff016-guard4",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s2g/g2-aff016-guard4.json",
+    "env_overrides": {
+      "STRATA_GLM_ROUTE_AFFINITY": "0.16",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103674472,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 188.9289415499661
+    },
+    "decode_tok_s": 33.5828,
+    "decode_trials": [
+      33.5828
+    ],
+    "decode_warmup_tok_s": 33.7681,
+    "prefill_tok_s": 142.97500000000002,
+    "rounds": 158,
+    "generated": 512,
+    "tokens_per_round": 3.240506329113924,
+    "accepted_per_round": 2.2278481012658227,
+    "proposed_per_round": 2.9936708860759493,
+    "position_accept_rate": {
+      "0": 0.9367088607594937,
+      "1": 0.740506329113924,
+      "2": 0.554140127388535
+    },
+    "soft_accepted": 95,
+    "logit_regret_per_token": 0.221337890625,
+    "draft_ms_per_round": 9.965253164556962,
+    "verify_ms_per_round": 82.9620253164557,
+    "resync_ms_per_round": 1.1080949367088608,
+    "expert_gb_per_token": 1.185170944,
+    "flow_ms_per_token": 16.5275,
+    "ms_per_token": 29.7189453125,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 3
+      }
+    ],
+    "sync_state_only": [
+      {
+        "omitted": 353,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 1024,
+    "token_count_expected": 1024,
+    "distinct_4gram_fraction": [
+      0.9096267190569745,
+      0.9567779960707269
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "7366c7672d65f82931440bb4d39207b5efcd8a1c78d3eafc5f8ee5f5e5373e2c",
+      "018e9a16ee4b186dd0e6909158243fd6cd31cd5eee056ae8b6fd7ac4f4cb061f"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      15,
+      10
+    ],
+    "control_rate": 32.9658,
+    "speed_change_percent": 1.8716366658779515,
+    "decision": "NOTE",
+    "input_identity_matches_base": true
+  },
+  {
+    "name": "g3-mix2-guard4",
+    "note": null,
+    "exact_expected": false,
+    "exit_code": 0,
+    "config": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s2g/g3-mix2-guard4.json",
+    "env_overrides": {
+      "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/affinity-profile-mix2.json",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4"
+    },
+    "set_overrides": {},
+    "exe": "/mnt/nvme02/work/Strata/build-tr16-goal-20261010/draft-route-cuda/strata-glm-decode",
+    "quality_qualified": false,
+    "clean": true,
+    "memory": {
+      "peak_rss_kib": 103622996,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1366,
+      "rejected": null,
+      "wall_seconds": 190.38837558298837
+    },
+    "decode_tok_s": 33.9592,
+    "decode_trials": [
+      33.9592
+    ],
+    "decode_warmup_tok_s": 31.4022,
+    "prefill_tok_s": 143.40949999999998,
+    "rounds": 151,
+    "generated": 512,
+    "tokens_per_round": 3.390728476821192,
+    "accepted_per_round": 2.377483443708609,
+    "proposed_per_round": 2.993377483443709,
+    "position_accept_rate": {
+      "0": 0.9337748344370861,
+      "1": 0.8013245033112583,
+      "2": 0.6466666666666666
+    },
+    "soft_accepted": 73,
+    "logit_regret_per_token": 0.1791005859375,
+    "draft_ms_per_round": 10.193311258278147,
+    "verify_ms_per_round": 86.12781456953643,
+    "resync_ms_per_round": 1.099019867549669,
+    "expert_gb_per_token": 1.30007552,
+    "flow_ms_per_token": 18.0040234375,
+    "ms_per_token": 29.3896484375,
+    "peak_gpu_mib": 12814.0,
+    "gpu_live": {
+      "dense": 5117.95,
+      "dense_mtp": 156.84,
+      "other": 6751.91,
+      "prefill": 32.0,
+      "resident_exec": 5.88576,
+      "state": 426.105,
+      "verify_history": 177.685
+    },
+    "repeat_guard": [
+      {
+        "ngram": 4,
+        "history": 128,
+        "blocked": 2
+      }
+    ],
+    "sync_state_only": [
+      {
+        "omitted": 360,
+        "checked": 0
+      }
+    ],
+    "lookup": [],
+    "mtp_depth": [
+      "MTP_DEPTH requested=3 effective=3"
+    ],
+    "actual_cache_slots": 845,
+    "actual_cache_mib": 6654.38,
+    "cache_fingerprint": "9246305806530966825",
+    "token_count": 1024,
+    "token_count_expected": 1024,
+    "distinct_4gram_fraction": [
+      0.8801571709233792,
+      0.9233791748526523
+    ],
+    "repeated_32gram": [
+      false,
+      false
+    ],
+    "trial_token_sha256": [
+      "acb5bee2ca78c259cef03e61de84af65118733b68ede7d8dfb910626bf50840c",
+      "c88ee92281dac773194f2ffc81322610e20a01b75a36cecf1bad9577abad5010"
+    ],
+    "tokens_identical_to_control": false,
+    "first_difference_index_by_trial": [
+      23,
+      12
+    ],
+    "control_rate": 32.9658,
+    "speed_change_percent": 3.0134260354670594,
+    "decision": "KEEP",
+    "input_identity_matches_base": true
+  }
+]

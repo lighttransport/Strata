@@ -1,18 +1,18 @@
 [0/2] Re-checking globbed directories...
 [1/2] Building CXX object CMakeFiles/strata-glm-decode.dir/src/program/glm_decode.cpp.o
-In file included from /home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:8:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/include/strata/core/exact_expert_cache.hpp: In member function ‘void strata::core::ExactExpertCache::worker()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/include/strata/core/exact_expert_cache.hpp:143:15: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+In file included from ~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:8:
+~/work/Strata-b550-calibration-15b787b5/include/strata/core/exact_expert_cache.hpp: In member function ‘void strata::core::ExactExpertCache::worker()’:
+~/work/Strata-b550-calibration-15b787b5/include/strata/core/exact_expert_cache.hpp:143:15: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
   143 |               if(stopping_)return; read=reads_[next_++]; }
       |               ^~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/include/strata/core/exact_expert_cache.hpp:143:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+~/work/Strata-b550-calibration-15b787b5/include/strata/core/exact_expert_cache.hpp:143:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
   143 |               if(stopping_)return; read=reads_[next_++]; }
       |                                    ^~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::DeviceScope::~DeviceScope()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:118:35: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::DeviceScope::~DeviceScope()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:118:35: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   118 |     ~DeviceScope() { cudaSetDevice(previous); }
 In file included from /opt/rocm/include/hip/hip_runtime.h:49,
-                 from /home/syoyo/work/Strata-b550-calibration-15b787b5/include/strata/hip_compat/cuda_runtime.h:12,
+                 from ~/work/Strata-b550-calibration-15b787b5/include/strata/hip_compat/cuda_runtime.h:12,
                  from <command-line>:
 /opt/rocm/include/hip/hip_runtime_api.h:2399:12: note: in call to ‘hipError_t hipSetDevice(int)’, declared here
  2399 | hipError_t hipSetDevice(int deviceId);
@@ -20,8 +20,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In constructor ‘{anonymous}::Device::Device(size_t, bool)’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:207:25: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In constructor ‘{anonymous}::Device::Device(size_t, bool)’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:207:25: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   207 |                 cudaFree(p); p = nullptr; a.live -= n;
 /opt/rocm/include/hip/hip_runtime_api.h:4926:12: note: in call to ‘hipError_t hipFree(void*)’, declared here
  4926 | hipError_t hipFree(void* ptr);
@@ -29,8 +29,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Device::~Device()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:215:21: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Device::~Device()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:215:21: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   215 |             cudaFree(p);
 /opt/rocm/include/hip/hip_runtime_api.h:4926:12: note: in call to ‘hipError_t hipFree(void*)’, declared here
  4926 | hipError_t hipFree(void* ptr);
@@ -38,8 +38,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Pinned::~Pinned()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:265:29: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Pinned::~Pinned()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:265:29: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   265 |     ~Pinned() { cudaFreeHost(p); }
 /opt/rocm/include/hip/hip_runtime_api.h:4938:12: note: in call to ‘hipError_t hipFreeHost(void*)’, declared here
  4938 | hipError_t hipFreeHost(void* ptr);
@@ -47,8 +47,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::StepMailbox::~StepMailbox()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:284:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::StepMailbox::~StepMailbox()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:284:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   284 |     ~StepMailbox() { cudaFreeHost(host); }
 /opt/rocm/include/hip/hip_runtime_api.h:4938:12: note: in call to ‘hipError_t hipFreeHost(void*)’, declared here
  4938 | hipError_t hipFreeHost(void* ptr);
@@ -56,15 +56,15 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In constructor ‘{anonymous}::RegisteredWeights::RegisteredWeights(const strata::core::ModelArtifact&, int, const std::vector<int>&)’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:348:58: warning: unused parameter ‘artifact’ [-Wunused-parameter]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In constructor ‘{anonymous}::RegisteredWeights::RegisteredWeights(const strata::core::ModelArtifact&, int, const std::vector<int>&)’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:348:58: warning: unused parameter ‘artifact’ [-Wunused-parameter]
   348 |     RegisteredWeights(const strata::core::ModelArtifact &artifact, int primary, const std::vector<int> &devices)
       |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:348:105: warning: unused parameter ‘devices’ [-Wunused-parameter]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:348:105: warning: unused parameter ‘devices’ [-Wunused-parameter]
   348 |     RegisteredWeights(const strata::core::ModelArtifact &artifact, int primary, const std::vector<int> &devices)
       |                                                                                 ~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::RegisteredWeights::~RegisteredWeights()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:397:22: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::RegisteredWeights::~RegisteredWeights()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:397:22: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   397 |         cudaGetDevice(&previous); cudaSetDevice(device);
 /opt/rocm/include/hip/hip_runtime_api.h:2426:12: note: in call to ‘hipError_t hipGetDevice(int*)’, declared here
  2426 | hipError_t hipGetDevice(int* deviceId);
@@ -72,7 +72,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:397:48: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:397:48: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   397 |         cudaGetDevice(&previous); cudaSetDevice(device);
 /opt/rocm/include/hip/hip_runtime_api.h:2399:12: note: in call to ‘hipError_t hipSetDevice(int)’, declared here
  2399 | hipError_t hipSetDevice(int deviceId);
@@ -80,7 +80,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:398:49: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:398:49: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   398 |         for (auto p : ranges) cudaHostUnregister(p);
 /opt/rocm/include/hip/hip_runtime_api.h:4869:12: note: in call to ‘hipError_t hipHostUnregister(void*)’, declared here
  4869 | hipError_t hipHostUnregister(void* hostPtr);
@@ -88,7 +88,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:399:22: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:399:22: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   399 |         cudaSetDevice(previous);
 /opt/rocm/include/hip/hip_runtime_api.h:2399:12: note: in call to ‘hipError_t hipSetDevice(int)’, declared here
  2399 | hipError_t hipSetDevice(int deviceId);
@@ -96,8 +96,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::GpuPrefill::~GpuPrefill()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:754:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::GpuPrefill::~GpuPrefill()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:754:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   754 |             cudaStreamSynchronize(copy);
 /opt/rocm/include/hip/hip_runtime_api.h:3118:12: note: in call to ‘hipError_t hipStreamSynchronize(hipStream_t)’, declared here
  3118 | hipError_t hipStreamSynchronize(hipStream_t stream);
@@ -105,7 +105,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:759:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:759:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   759 |                 cudaEventDestroy(ready[i]);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -113,7 +113,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:761:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:761:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   761 |                 cudaEventDestroy(done[i]);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -121,7 +121,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:763:55: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:763:55: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   763 |         for (auto event : pool_ready) cudaEventDestroy(event);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -129,7 +129,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:764:54: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:764:54: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   764 |         for (auto event : pool_done) cudaEventDestroy(event);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -137,7 +137,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:766:30: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:766:30: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
   766 |             cudaStreamDestroy(copy);
 /opt/rocm/include/hip/hip_runtime_api.h:3080:12: note: in call to ‘hipError_t hipStreamDestroy(hipStream_t)’, declared here
  3080 | hipError_t hipStreamDestroy(hipStream_t stream);
@@ -145,8 +145,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::ResidentExecutor::Graph::~Graph()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1174:49: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::ResidentExecutor::Graph::~Graph()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1174:49: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1174 |             if (executable) cudaGraphExecDestroy(executable);
 /opt/rocm/include/hip/hip_runtime_api.h:8828:12: note: in call to ‘hipError_t hipGraphExecDestroy(hipGraphExec_t)’, declared here
  8828 | hipError_t hipGraphExecDestroy(hipGraphExec_t graphExec);
@@ -154,7 +154,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1175:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1175:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1175 |             if (graph) cudaGraphDestroy(graph);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -162,8 +162,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::ResidentExecutor::ReaderEvent::~ReaderEvent()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1192:53: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::ResidentExecutor::ReaderEvent::~ReaderEvent()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1192:53: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1192 |         ~ReaderEvent() { if (event) cudaEventDestroy(event); }
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -171,8 +171,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::ResidentExecutor::run_device(const strata::kernels::NativeExpertLayout&, const float*, const int*, int, hipStream_t, bool, bool, int, bool)’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1283:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::ResidentExecutor::run_device(const strata::kernels::NativeExpertLayout&, const float*, const int*, int, hipStream_t, bool, bool, int, bool)’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1283:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1283 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -180,7 +180,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1284:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1284:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1284 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -188,8 +188,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::ResidentExecutor::run(const strata::kernels::NativeExpertLayout&, const std::map<int, std::vector<int> >&, const std::function<void*(int)>&, const float*, int, hipStream_t, bool, bool)’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1336:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::ResidentExecutor::run(const strata::kernels::NativeExpertLayout&, const std::map<int, std::vector<int> >&, const std::function<void*(int)>&, const float*, int, hipStream_t, bool, bool)’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1336:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1336 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -197,7 +197,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1337:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1337:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1337 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -205,8 +205,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::ExpertCopyWorker::~ExpertCopyWorker()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1408:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::ExpertCopyWorker::~ExpertCopyWorker()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1408:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1408 |         if (stream) cudaStreamSynchronize(stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3118:12: note: in call to ‘hipError_t hipStreamSynchronize(hipStream_t)’, declared here
  3118 | hipError_t hipStreamSynchronize(hipStream_t stream);
@@ -214,7 +214,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1409:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1409:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1409 |         if (completed) cudaEventDestroy(completed);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -222,7 +222,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1410:38: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1410:38: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1410 |         if (stream) cudaStreamDestroy(stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3080:12: note: in call to ‘hipError_t hipStreamDestroy(hipStream_t)’, declared here
  3080 | hipError_t hipStreamDestroy(hipStream_t stream);
@@ -230,8 +230,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::DecodeGraph::~DecodeGraph()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1437:45: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::DecodeGraph::~DecodeGraph()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1437:45: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1437 |         if (executable) cudaGraphExecDestroy(executable);
 /opt/rocm/include/hip/hip_runtime_api.h:8828:12: note: in call to ‘hipError_t hipGraphExecDestroy(hipGraphExec_t)’, declared here
  8828 | hipError_t hipGraphExecDestroy(hipGraphExec_t graphExec);
@@ -239,7 +239,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1438:36: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1438:36: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1438 |         if (graph) cudaGraphDestroy(graph);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -247,8 +247,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::SecondaryPrefill::TensorParallel::~TensorParallel()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1463:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::SecondaryPrefill::TensorParallel::~TensorParallel()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1463:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1463 |             if (x_ready) cudaEventDestroy(x_ready);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -256,7 +256,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1464:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1464:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1464 |             if (y_ready) cudaEventDestroy(y_ready);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -264,8 +264,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In lambda function:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1497:82: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In lambda function:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1497:82: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1497 |                 if (status == cudaErrorPeerAccessAlreadyEnabled) cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -273,8 +273,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::SecondaryPrefill::~SecondaryPrefill()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1552:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::SecondaryPrefill::~SecondaryPrefill()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1552:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1552 |         if (stream) cudaStreamSynchronize(stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3118:12: note: in call to ‘hipError_t hipStreamSynchronize(hipStream_t)’, declared here
  3118 | hipError_t hipStreamSynchronize(hipStream_t stream);
@@ -282,7 +282,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1556:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1556:42: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1556 |         if (back) { cudaStreamSynchronize(back); cudaStreamDestroy(back); }
 /opt/rocm/include/hip/hip_runtime_api.h:3118:12: note: in call to ‘hipError_t hipStreamSynchronize(hipStream_t)’, declared here
  3118 | hipError_t hipStreamSynchronize(hipStream_t stream);
@@ -290,7 +290,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1556:67: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1556:67: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1556 |         if (back) { cudaStreamSynchronize(back); cudaStreamDestroy(back); }
 /opt/rocm/include/hip/hip_runtime_api.h:3080:12: note: in call to ‘hipError_t hipStreamDestroy(hipStream_t)’, declared here
  3080 | hipError_t hipStreamDestroy(hipStream_t stream);
@@ -298,7 +298,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1557:39: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1557:39: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1557 |         if (produced) cudaEventDestroy(produced);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -306,7 +306,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1559:39: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1559:39: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1559 |         if (finished) cudaEventDestroy(finished);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -314,7 +314,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1560:38: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1560:38: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1560 |         if (stream) cudaStreamDestroy(stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3080:12: note: in call to ‘hipError_t hipStreamDestroy(hipStream_t)’, declared here
  3080 | hipError_t hipStreamDestroy(hipStream_t stream);
@@ -322,25 +322,25 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::moe(const std::string&, int, const float*, float*, const strata::core::LayerDescriptor&)’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:3606:45: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::moe(const std::string&, int, const float*, float*, const strata::core::LayerDescriptor&)’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:3606:45: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
  3606 |                 const int header[2] = {l, m.experts};
       |                                           ~~^~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:3612:59: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:3612:59: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
  3612 |                 const int header[3] = {position + t, l, m.experts};
       |                                                         ~~^~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::cpu_moe_mailbox(int, int, int, int, int, int)’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4104:62: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)G.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::cpu_moe_mailbox(int, int, int, int, int, int)’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4104:62: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)G.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
  4104 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
       |                                                    ~~~~~~~~~~^~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4104:78: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)D.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4104:78: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)D.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
  4104 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
       |                                                                    ~~~~~~~~~~^~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4104:93: warning: narrowing conversion of ‘(int64_t)layer.strata::core::LayerDescriptor::intermediate’ from ‘int64_t’ {aka ‘long int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4104:93: warning: narrowing conversion of ‘(int64_t)layer.strata::core::LayerDescriptor::intermediate’ from ‘int64_t’ {aka ‘long int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
  4104 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
       |                                                                                       ~~~~~~^~~~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Decoder::PipelineGuard::~PipelineGuard()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4753:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Decoder::PipelineGuard::~PipelineGuard()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4753:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  4753 |             cudaStreamSynchronize(decoder.stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3118:12: note: in call to ‘hipError_t hipStreamSynchronize(hipStream_t)’, declared here
  3118 | hipError_t hipStreamSynchronize(hipStream_t stream);
@@ -348,7 +348,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4754:29: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4754:29: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  4754 |             cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -356,8 +356,8 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Decoder::~Decoder()’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5851:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In destructor ‘{anonymous}::Decoder::~Decoder()’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5851:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5851 |             cudaStreamSynchronize(tier_stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3118:12: note: in call to ‘hipError_t hipStreamSynchronize(hipStream_t)’, declared here
  3118 | hipError_t hipStreamSynchronize(hipStream_t stream);
@@ -365,7 +365,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5852:60: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5852:60: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5852 |             for (auto event : tier_events) cudaEventDestroy(event);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -373,7 +373,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5854:30: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5854:30: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5854 |             cudaStreamDestroy(tier_stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3080:12: note: in call to ‘hipError_t hipStreamDestroy(hipStream_t)’, declared here
  3080 | hipError_t hipStreamDestroy(hipStream_t stream);
@@ -381,7 +381,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5867:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5867:34: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5867 |             cudaStreamSynchronize(stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3118:12: note: in call to ‘hipError_t hipStreamSynchronize(hipStream_t)’, declared here
  3118 | hipError_t hipStreamSynchronize(hipStream_t stream);
@@ -389,7 +389,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5869:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5869:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5869 |         if (moe_ready) cudaEventDestroy(moe_ready);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -397,7 +397,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5870:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5870:40: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5870 |         if (mla_ready) cudaEventDestroy(mla_ready);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -405,7 +405,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5871:50: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5871:50: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5871 |         if (packed_sum_uploaded) cudaEventDestroy(packed_sum_uploaded);
 /opt/rocm/include/hip/hip_runtime_api.h:3651:12: note: in call to ‘hipError_t hipEventDestroy(hipEvent_t)’, declared here
  3651 | hipError_t hipEventDestroy(hipEvent_t event);
@@ -413,7 +413,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5875:30: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:5875:30: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  5875 |             cudaStreamDestroy(stream);
 /opt/rocm/include/hip/hip_runtime_api.h:3080:12: note: in call to ‘hipError_t hipStreamDestroy(hipStream_t)’, declared here
  3080 | hipError_t hipStreamDestroy(hipStream_t stream);
@@ -421,30 +421,30 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In function ‘int main(int, char**)’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9344:75: warning: ‘hipError_t hipProfilerStart()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In function ‘int main(int, char**)’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9344:75: warning: ‘hipError_t hipProfilerStart()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
  9344 |                 if (profile_prefill && trial == 0) check(cudaProfilerStart());
 /opt/rocm/include/hip/hip_runtime_api.h:7470:12: note: declared here
  7470 | hipError_t hipProfilerStart();
       |            ^~~~~~~~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9346:74: warning: ‘hipError_t hipProfilerStop()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9346:74: warning: ‘hipError_t hipProfilerStop()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
  9346 |                 if (profile_prefill && trial == 0) check(cudaProfilerStop());
 /opt/rocm/include/hip/hip_runtime_api.h:7478:12: note: declared here
  7478 | hipError_t hipProfilerStop();
       |            ^~~~~~~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9650:52: warning: ‘hipError_t hipProfilerStart()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9650:52: warning: ‘hipError_t hipProfilerStart()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
  9650 |         if (profile_decode) check(cudaProfilerStart());
 /opt/rocm/include/hip/hip_runtime_api.h:7470:12: note: declared here
  7470 | hipError_t hipProfilerStart();
       |            ^~~~~~~~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9695:51: warning: ‘hipError_t hipProfilerStop()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:9695:51: warning: ‘hipError_t hipProfilerStop()’ is deprecated: use roctracer/rocTX instead [-Wdeprecated-declarations]
  9695 |         if (profile_decode) check(cudaProfilerStop());
 /opt/rocm/include/hip/hip_runtime_api.h:7478:12: note: declared here
  7478 | hipError_t hipProfilerStop();
       |            ^~~~~~~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6089:29:   required from here
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6089:29:   required from here
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1897 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -452,7 +452,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1898 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -460,7 +460,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1899 |                 cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -468,9 +468,9 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>&]’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6115:29:   required from here
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>&]’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6115:29:   required from here
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1897 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -478,7 +478,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1898 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -486,7 +486,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1899 |                 cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -494,9 +494,9 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6123:29:   required from here
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6123:29:   required from here
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1897 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -504,7 +504,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1898 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -512,7 +512,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1899 |                 cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -520,9 +520,9 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::tp_graph(int, F&&) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6137:29:   required from here
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4875:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::tp_graph(int, F&&) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6137:29:   required from here
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4875:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  4875 |                 cudaStreamEndCapture(other.stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -530,7 +530,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4876:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4876:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  4876 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -538,7 +538,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4877:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:4877:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  4877 |                 cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -546,9 +546,9 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6140:29:   required from here
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>]’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6140:29:   required from here
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1897 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -556,7 +556,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1898 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -564,7 +564,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1899 |                 cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -572,9 +572,9 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>&]’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6144:98:   required from here
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>&]’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6144:98:   required from here
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1897 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -582,7 +582,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1898 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -590,7 +590,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1899 |                 cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);
@@ -598,9 +598,9 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>&]’:
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6286:41:   required from here
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp: In instantiation of ‘void {anonymous}::Decoder::decode_graph(int, F&&, int) [with F = {anonymous}::Decoder::batch(const std::vector<int>&, bool, bool)::<lambda()>::<lambda()>&]’:
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:6286:41:   required from here
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1897:37: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1897 |                 cudaStreamEndCapture(stream, &invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8467:12: note: in call to ‘hipError_t hipStreamEndCapture(hipStream_t, ihipGraph**)’, declared here
  8467 | hipError_t hipStreamEndCapture(hipStream_t stream, hipGraph_t* pGraph);
@@ -608,7 +608,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1898:46: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1898 |                 if (invalid) cudaGraphDestroy(invalid);
 /opt/rocm/include/hip/hip_runtime_api.h:8556:12: note: in call to ‘hipError_t hipGraphDestroy(hipGraph_t)’, declared here
  8556 | hipError_t hipGraphDestroy(hipGraph_t graph);
@@ -616,7 +616,7 @@ In file included from /opt/rocm/include/hip/hip_runtime.h:49,
 /opt/rocm/include/hip/hip_runtime_api.h:410:3: note: ‘hipError_t’ declared here
   410 | } hipError_t;
       |   ^~~~~~~~~~
-/home/syoyo/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
+~/work/Strata-b550-calibration-15b787b5/src/program/glm_decode.cpp:1899:33: warning: ignoring returned value of type ‘hipError_t’, declared with attribute ‘nodiscard’ [-Wunused-result]
  1899 |                 cudaGetLastError();
 /opt/rocm/include/hip/hip_runtime_api.h:2903:12: note: in call to ‘hipError_t hipGetLastError()’, declared here
  2903 | hipError_t hipGetLastError(void);

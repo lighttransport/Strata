@@ -1,0 +1,11 @@
+[
+ {
+  "name": "p2-aff014-topk6-guard4-8kpass-stream",
+  "env": {
+   "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+   "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+   "STRATA_GLM_ROUTE_AFFINITY": "0.14"
+  },
+  "note": "streaming prefetch binary, single 8K pass"
+ }
+]

@@ -1,0 +1,10 @@
+[
+  {
+    "case": "baseline",
+    "result": "/mnt/nvme02/work/Strata/build-tr16-35-20261010/s1c-rerun/c2-aff012/000-baseline.result.json",
+    "clean": true,
+    "repeated_tokens_equal": false,
+    "decode_tok_s": 31.4051,
+    "prefill_tok_s": 143.2165
+  }
+]
