@@ -1,0 +1,143 @@
+{
+  "date": "2026-10-11",
+  "status": "qualified on recorded fixture; approximate quality tradeoff measured",
+  "hardware": {
+    "cpu": "Ryzen 9 3950X",
+    "installed_ram_gib": 64,
+    "os_ram_gib": 60.68,
+    "dimm_mts": 2400,
+    "gpu": "RTX 3070 8 GiB",
+    "cuda": "12.4",
+    "compiler": "GCC 13.4"
+  },
+  "model": {
+    "name": "GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "bytes": 63205406688,
+    "weight_files_modified": false
+  },
+  "protocol": {
+    "prompt_tokens": 2048,
+    "generated_tokens": 128,
+    "timed_transitions": 127,
+    "trials": 3,
+    "untimed_decode_warmup": 127,
+    "ram_limit_gib": 56,
+    "swap_limit_bytes": 0,
+    "context": 4096,
+    "threads": 12,
+    "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba"
+  },
+  "candidate": {
+    "preset": "configs/glm53f-reap50-q23-64g-rtx3070-decode-approx-experimental.json",
+    "route_min_share": 0.07,
+    "defer_routes": 2,
+    "defer_max_share": 0.15,
+    "defer_min_layer": 10,
+    "combine": "device",
+    "adaptive_cache": false,
+    "pruned_routes": 55392,
+    "selected_routes": 170688,
+    "decode_tok_s": [
+      15.5592,
+      15.5793,
+      15.56
+    ],
+    "median_decode_tok_s": 15.56,
+    "median_prefill_tok_s": 206.339,
+    "peak_ram_gib": 54.90610122680664,
+    "minimum_free_vram_mib": 746,
+    "decode_major_faults": [
+      0,
+      0,
+      0
+    ],
+    "repeated_greedy_outputs_identical": true,
+    "clean": true
+  },
+  "quality": {
+    "reference": "saved strict batch128 prefill logits",
+    "phase_aware": {
+      "prefix_targets": 128,
+      "single_decode_targets": 896,
+      "gpu_expert_slots": 107,
+      "metrics": {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 1.08298586993,
+        "perplexity": 2.95348512079,
+        "kl": 0.0581089221591,
+        "top1_agreement": 0.9462890625,
+        "different_logits": 138772462
+      }
+    },
+    "coding30": {
+      "tasks": 30,
+      "subset": "HumanEval/0 through HumanEval/29; not a full 164-task score",
+      "baseline_passed": 30,
+      "candidate_passed": 30,
+      "new_failures": [],
+      "identical_token_hashes": 9,
+      "dataset_revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "dataset_sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef",
+      "generation_limit": 1024
+    },
+    "strict_phase_aware": {
+      "sequence": 1,
+      "tokens": 1024,
+      "nll": 1.03910126045,
+      "perplexity": 2.82667542741,
+      "kl": 0.00787934245583,
+      "top1_agreement": 0.970703125,
+      "different_logits": 138772427
+    },
+    "matched_perplexity_increase_percent": 4.486178078683478,
+    "reference_note": "KL and top-1 agreement use saved strict batch128 prefill logits; both phase-aware modes also differ from that reference in their decode projection shapes. Perplexity increase uses the strict phase-aware run.",
+    "corpus_sha256": "e0819094220fa55adcdc6c968e2a8517d6975f13c6c176ca14343b527db51726",
+    "acceptance_note": "Measured perplexity increase is 4.49% on one frozen code sequence; no new failures on the matched 30-task coding subset. No universal quality claim."
+  },
+  "validation": {
+    "cuda_build": "passed",
+    "python_harness_tests": 11,
+    "server_tests": 5,
+    "hip": "toolchain unavailable",
+    "sycl": "GLM runner not a SYCL target",
+    "ordered_kda": "existing SM86 parity failure in optional path; disabled in selected presets",
+    "cuda_glm_previous_suite": {
+      "passed": 9,
+      "skipped": 3,
+      "failed_optional_ordered_kda": 1
+    }
+  },
+  "hashes": {
+    "src/program/glm_decode.cpp": "c299f848b44b26e6ced003c1865e3ad79fbbf3cfd7a56dc9f704c0e461921274",
+    "build-glm-3070-cuda12/strata-glm-decode": "3454f0c4e8d91df66dc19fb3f7a1fe04cfb91d40badfc15c3415f9ff53a3e37c",
+    "configs/glm53f-reap50-q23-64g-rtx3070-decode-approx-experimental.json": "e8bc17617ffa5d86f0d272a7ab4dd34cdb988998cb3dfaa0b08c19fb4b10c763"
+  },
+  "limitations": [
+    "Timing is one frozen coding-prefix fixture; not a general chat throughput guarantee.",
+    "Route-share threshold is per route, not a total omitted-weight bound.",
+    "Candidate outputs may differ from strict decoding.",
+    "No longer-context or multi-GPU qualification."
+  ],
+  "evidence_directory": "build-glm-3070-cuda12 (local, ignored)",
+  "public_preset_confirmation": {
+    "decode_tok_s": [
+      15.576,
+      15.5495,
+      15.5819
+    ],
+    "median_decode_tok_s": 15.576,
+    "median_prefill_tok_s": 205.76,
+    "peak_ram_gib": 54.96397399902344,
+    "minimum_free_vram_mib": 746,
+    "inference_swap_bytes": 0,
+    "decode_major_faults": [
+      0,
+      0,
+      0
+    ],
+    "clean": true,
+    "greedy_repetitions_identical": true,
+    "output_sha256": "832b1b16e750d19ede60d982adf345842318dd79eb8884e9586f2e7e404599c2"
+  }
+}

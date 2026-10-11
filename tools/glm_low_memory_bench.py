@@ -90,7 +90,7 @@ def parse_log(log):
     return dict(prefill=prefill, decode=decode,
         cpu_expert=records("CPU_EXPERT"), mtp_timing=records("MTP_TIMING"),
         mtp_positions=records("MTP_POSITION"), step_trace=records("STEP_TRACE"),
-        decode_cache=records("DECODE_CACHE"), speculation=records("SPECULATIVE"),
+        decode_cache=records("DECODE_CACHE"), decode_page_faults=records("DECODE_FAULTS"), speculation=records("SPECULATIVE"),
         affinity_quality=records("AFFINITY_QUALITY"), lookup_parity=records("LOOKUP_PARITY"),
         median_prefill_tok_s=statistics.median(r["tokens_per_second"] for r in prefill) if prefill else None,
         median_decode_tok_s=statistics.median(r["tokens_per_second"] for r in decode) if decode else None,
@@ -99,7 +99,7 @@ def parse_log(log):
         gpu_live=[dict(device=int(d), tags=dict((k, float(v)) for k, v in re.findall(r"(\w+)_MiB=([\d.]+)", tags)))
                   for d, tags in re.findall(r"GPU_LIVE device=(\d+) (.*)", log)],
         page_faults=[dict(trial=int(i), major=int(a), minor=int(b)) for i, a, b in re.findall(
-            r"FAULTS trial=(\d+) major=(\d+) minor=(\d+)", log)])
+            r"^FAULTS trial=(\d+) major=(\d+) minor=(\d+)", log, re.MULTILINE)])
 
 
 def group_stats(group):
@@ -222,7 +222,9 @@ def read_gpu(config, pid=None):
     return process, snapshot
 
 
-def eval_counts(path):
+def eval_counts(path, skip_prefix=0):
+    if skip_prefix < 0:
+        raise ValueError("evaluation prefix must be nonnegative")
     total = 0
     counts = []
     for line in path.read_text().splitlines():
@@ -230,16 +232,20 @@ def eval_counts(path):
             ids = [int(i) for i in line.split(",")]
             if len(ids) < 2:
                 raise ValueError("evaluation sequence needs at least two tokens")
-            total += len(ids) - 1
+            if skip_prefix >= len(ids) - 1:
+                raise ValueError("evaluation prefix must leave at least one target")
+            total += len(ids) - 1 - skip_prefix
             counts.append(total)
     if not counts:
         raise ValueError("empty evaluation corpus")
     return counts
 
 
-def eval_complete(rows, counts):
+def eval_complete(rows, counts, decode_prefix=None):
     return ([row.get("sequence") for row in rows] == list(range(1, len(counts) + 1)) and
-            [row.get("tokens") for row in rows] == counts)
+            [row.get("tokens") for row in rows] == counts and
+            (decode_prefix is None or all(row.get("decode_only") is True and
+                                         row.get("prefix_tokens") == decode_prefix for row in rows)))
 
 
 def worker(args):
@@ -268,6 +274,10 @@ def worker(args):
         command.append("--routing-trace=" + str(Path(cfg["routing_trace"]).resolve()))
     if cfg.get("profile_layers"):
         command.append("--profile")
+    if cfg.get("benchmark_decode_warmup") and not args.eval_corpus and args.trials > 1:
+        command.append("--decode-warmup")
+    if env.get("STRATA_GLM_WARM_ACTIVE_ONLY") == "1":
+        command.append("--warm-weights")
     if cfg.get("record_prefill_logits"):
         command.append("--dump-prefill-logits=" + str(args.output.with_suffix(".prefill.logits.bin").resolve()))
     if cfg.get("expert_pack"):
@@ -417,23 +427,34 @@ def worker(args):
     record["output_sha256"] = hashlib.sha256(args.output.with_suffix(".stdout").read_bytes()).hexdigest()
     if args.eval_corpus:
         rows = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
-        counts = eval_counts(args.eval_corpus)
+        decode_prefix = (int(env.get("STRATA_GLM_EVAL_DECODE_PREFIX", "0"))
+                         if env.get("STRATA_GLM_EVAL_DECODE_ONLY") == "1" else None)
+        counts = eval_counts(args.eval_corpus, skip_prefix=decode_prefix or 0)
         record["evaluation"] = rows
         record["evaluated_targets"] = rows[-1].get("tokens", 0) if rows else 0
-        complete = eval_complete(rows, counts)
+        complete = eval_complete(rows, counts, decode_prefix=decode_prefix)
     else:
-        ids = list(map(int, output.split()))
+        try:
+            ids = list(map(int, output.split()))
+        except ValueError:
+            ids = []
+            record["output_parse_error"] = "decoder stdout contains non-token output"
         record["output_token_count"] = len(ids)
+        repeated = [ids[i:i + args.tokens] for i in range(0, len(ids), args.tokens)]
+        record["greedy_trials_identical"] = bool(repeated) and all(row == repeated[0] for row in repeated)
         complete = (len(record["measurements"]["prefill"]) == args.trials and
                     len(record["measurements"]["decode"]) == args.trials and
                     len(ids) == args.tokens * args.trials)
     record["complete"] = complete
     record["clean"] = not (args.fit_only or code or rejection or record["interference"] or
         record["cgroup_after"]["memory.events"].get("oom_kill", 0)) and complete
+    if cfg.get("require_deterministic") and not record.get("greedy_trials_identical", True):
+        record["clean"] = False
+        record["determinism_failure"] = True
     args.output.with_suffix(".result.json").write_text(json.dumps(record, indent=2)+"\n")
     print(json.dumps({k: record[k] for k in ("exit_code", "wall_seconds", "complete", "clean", "rejected")}
         | {"measurements":record["measurements"]}), flush=True)
-    return code or (2 if rejection or not complete else 0)
+    return code or (2 if rejection or not complete or record.get("determinism_failure") else 0)
 
 
 def main():

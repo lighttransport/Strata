@@ -10,6 +10,7 @@ class LowMemoryBenchTest(unittest.TestCase):
         log = """PREFILL trial=0 tokens=128 batch=64 ms=80000.5 tok_s=1.6
 PREFILL trial=1 tokens=128 batch=64 ms=64000 tok_s=2
 FAULTS trial=0 major=500 minor=1000
+DECODE_FAULTS trial=0 major=0 minor=3
 DECODE steps=7 ms=7000 tok_s=1
 GPU peak_allocated_MiB=7429.27
 GPU_LIVE device=0 dense_MiB=6153.68 dense_mtp_MiB=220.84 other_MiB=90
@@ -19,6 +20,8 @@ GPU_LIVE device=0 dense_MiB=6153.68 dense_mtp_MiB=220.84 other_MiB=90
         self.assertEqual(result["decode"][0]["tokens"], 7)
         self.assertEqual(result["gpu_live"][0]["tags"]["dense_mtp"], 220.84)
         self.assertEqual(result["page_faults"][0]["major"], 500)
+        self.assertEqual(len(result["page_faults"]), 1)
+        self.assertEqual(result["decode_page_faults"][0]["major"], 0)
         failed = parse_log("GLM: prefill cannot fit GPU budget")
         self.assertIsNone(failed["median_prefill_tok_s"])
         self.assertIsNone(failed["median_decode_tok_s"])
@@ -90,6 +93,21 @@ GPU_LIVE device=0 dense_MiB=6153.68 dense_mtp_MiB=220.84 other_MiB=90
             self.assertFalse(eval_complete(rows[:1], counts))
             self.assertFalse(eval_complete(rows[::-1], counts))
             self.assertFalse(eval_complete([dict(sequence=1, tokens=2), dict(sequence=2, tokens=4)], counts))
+
+    def test_decode_only_quality_completeness(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "eval.ids"
+            path.write_text("1,2,3,4,5\n6,7,8,9\n")
+            counts = eval_counts(path, skip_prefix=2)
+            self.assertEqual(counts, [2, 3])
+            rows = [dict(sequence=1, tokens=2, decode_only=True, prefix_tokens=2),
+                    dict(sequence=2, tokens=3, decode_only=True, prefix_tokens=2)]
+            self.assertTrue(eval_complete(rows, counts, decode_prefix=2))
+            self.assertFalse(eval_complete(rows[:1], counts, decode_prefix=2))
+            self.assertFalse(eval_complete(rows, counts, decode_prefix=1))
+            self.assertFalse(eval_complete([dict(sequence=1, tokens=2), rows[1]], counts, decode_prefix=2))
+            with self.assertRaises(ValueError):
+                eval_counts(path, skip_prefix=3)
 
     def test_cache_inventory_excludes_other_models(self):
         with tempfile.TemporaryDirectory() as folder:

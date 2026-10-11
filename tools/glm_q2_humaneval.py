@@ -69,6 +69,8 @@ def main():
     parser.add_argument("dataset", type=pathlib.Path, help=f"download {DATA_URL}")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--decoder", default="build-glm/strata-glm-decode")
+    parser.add_argument("--config", type=pathlib.Path,
+                        help="optional engine config for context, batch, threads, affinity, cache and environment")
     parser.add_argument("--expert-pack", type=pathlib.Path)
     parser.add_argument("--expert-pack-profile", type=pathlib.Path)
     parser.add_argument("--tokens", type=int, default=2048)
@@ -106,6 +108,19 @@ def main():
     engine_args = [str(model), "8192", "4096", "15", "0", "256", ",".join(map(str, sorted(stops))),
                    str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), "numa", "0", "0", "0", "0", "0",
                    str(args.decode_cache_mib), "1", "256", "0", "mmq", "4k"]
+    cfg = json.loads(args.config.read_text()) if args.config else {}
+    for index, key in ((1, "context"), (2, "dense_cache_mib"), (3, "threads"), (5, "prefill_batch"),
+                       (7, "gpu_budget_mib"), (12, "cpu_affinity"), (18, "decode_cache_mib"),
+                       (20, "decode_cache_window"), (22, "prefill_experts")):
+        if key in cfg:
+            engine_args[index] = str(cfg[key])
+    if "decode_graphs" in cfg:
+        engine_args[19] = str(int(bool(cfg["decode_graphs"])))
+    if args.config:
+        # Match the GLM API's REAP end-of-turn handling for configured runs.
+        vocabulary = metadata.get("tokenizer.ggml.tokens", [])
+        stops.update(vocabulary.index(s) for s in ("<|user|>", "<|observation|>") if s in vocabulary)
+        engine_args[6] = ",".join(map(str, sorted(stops)))
     if args.expert_pack:
         engine_args += [str(args.expert_pack.resolve()), str(args.expert_pack_profile.resolve()) if args.expert_pack_profile else "", "native"]
     manifest = {"dataset_revision": REVISION, "dataset_sha256": DATA_SHA256,
@@ -114,9 +129,13 @@ def main():
                 "environment": {k: v for k, v in os.environ.items() if k.startswith("STRATA_")}}
     (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     engine_env = os.environ.copy()
+    engine_env.update(cfg.get("env", {}))
     if args.route_affinity:
         engine_env["STRATA_GLM_ROUTE_AFFINITY"] = str(args.route_affinity)
     manifest["route_affinity"] = args.route_affinity
+    if args.config:
+        manifest["config"] = cfg
+        manifest["environment"] = {k: v for k, v in engine_env.items() if k.startswith("STRATA_")}
     (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     engine = GlmEngine(args.decoder, engine_args, log=str(args.output / "engine.log"), env=engine_env)
     results = []
@@ -126,7 +145,7 @@ def main():
             chat = template.render(messages=[dict(role="user", content=prompt)], tools=None,
                                    add_generation_prompt=True, reasoning_effort="low")
             ids = tokenizer.encode(chat, parse_special=True)
-            if len(ids) + args.tokens > 8192:
+            if len(ids) + args.tokens > int(engine_args[1]):
                 raise ValueError("evaluation exceeds context budget")
             start = time.monotonic()
             generated = [t for t in engine.generate(ids, args.tokens, {}, threading.Event()) if t is not None]

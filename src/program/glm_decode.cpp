@@ -68,6 +68,7 @@
 #include <numeric>
 #include <queue>
 #include <sstream>
+#include <source_location>
 #include <set>
 #include <thread>
 #include <tuple>
@@ -101,9 +102,14 @@ int mtp_lookup_depth() {
     }();
     return depth;
 }
-void check(cudaError_t e) {
-    if (e != cudaSuccess)
+void check(cudaError_t e, std::source_location where = std::source_location::current()) {
+    if (e != cudaSuccess) {
+        const char *diagnose = std::getenv("STRATA_GLM_CUDA_CHECK_TRACE");
+        if (diagnose && std::string(diagnose) == "1")
+            throw std::runtime_error(std::string(cudaGetErrorString(e)) + " at " + where.function_name() +
+                                     ":" + std::to_string(where.line()));
         throw std::runtime_error(cudaGetErrorString(e));
+    }
 }
 void check(cublasStatus_t e) {
     if (e != CUBLAS_STATUS_SUCCESS)
@@ -226,7 +232,30 @@ struct Device {
         DeviceScope scope(owner);
         if (n > bytes)
             throw std::runtime_error("GLM: upload exceeds buffer");
-        check(cudaMemcpy(p, x, n, cudaMemcpyHostToDevice));
+        const auto status = cudaMemcpy(p, x, n, cudaMemcpyHostToDevice);
+        const char *registered = std::getenv("STRATA_GLM_PREFILL_REGISTERED_UPLOAD");
+        if (status != cudaErrorInvalidValue || !registered || std::string(registered) != "1") {
+            check(status);
+            return;
+        }
+        // Registering page-rounded expert ranges can also register a boundary
+        // page of a neighbouring dense tensor. CUDA rejects copies spanning
+        // registered and pageable memory. Keep its bytes unchanged and bound
+        // the temporary storage instead of pinning the whole dense tensor.
+        cudaGetLastError();
+        const size_t panel = std::min<size_t>(n, 1024 * 1024);
+        if (!panel) { check(status); return; }
+        void *bounce = nullptr;
+        check(cudaMallocHost(&bounce, panel));
+        try {
+            for (size_t offset = 0; offset < n; offset += panel) {
+                const size_t count = std::min(panel, n - offset);
+                std::memcpy(bounce, static_cast<const uint8_t *>(x) + offset, count);
+                check(cudaMemcpy(static_cast<uint8_t *>(p) + offset, bounce, count, cudaMemcpyHostToDevice));
+            }
+        } catch (...) { cudaFreeHost(bounce); throw; }
+        cudaFreeHost(bounce);
+        std::cerr << "REGISTERED_BOUNDARY_COPY bytes=" << n << " panel_bytes=" << panel << '\n';
     }
     void put_async(const void *x, size_t n, cudaStream_t stream) {
         DeviceScope scope(owner);
@@ -261,9 +290,24 @@ size_t prefill_expert_stride(const strata::core::ArtifactTensor &g,
 namespace mmq = strata::prefill::mmq;
 struct Pinned {
     void *p = nullptr;
-    explicit Pinned(size_t bytes) { check(cudaMallocHost(&p, bytes)); }
+    bool write_combined = false;
+    explicit Pinned(size_t bytes, bool wc = false) : write_combined(wc) {
+        if (!wc) { check(cudaMallocHost(&p, bytes)); return; }
+#ifdef STRATA_USE_HIP
+        throw std::invalid_argument("GLM: write-combined staging requires CUDA");
+#else
+        check(cudaHostAlloc(&p, bytes, cudaHostAllocWriteCombined));
+#endif
+    }
+    void finish_writes() const { if (write_combined) _mm_sfence(); }
     ~Pinned() { cudaFreeHost(p); }
 };
+bool staging_write_combined() {
+    const char *v = std::getenv("STRATA_GLM_STAGE_WRITE_COMBINED");
+    if (!v || std::string(v) == "0") return false;
+    if (std::string(v) != "1") throw std::invalid_argument("GLM: write-combined staging must be 0 or 1");
+    return true;
+}
 // GPU-driven decode step (STRATA_GLM_STEP_PIPELINE=1). One slot per layer; the generation advances once per
 // step, so a slot never needs clearing and a late flag from an earlier step cannot satisfy a wait.
 struct StepMailbox {
@@ -337,6 +381,12 @@ bool direct_upload_enabled() {
     if (!value || std::string(value) == "0") return false;
     if (std::string(value) != "1")
         throw std::invalid_argument("GLM: direct weight upload must be 0 or 1");
+    return true;
+}
+bool registered_prefill_upload_enabled() {
+    const char *v = std::getenv("STRATA_GLM_PREFILL_REGISTERED_UPLOAD");
+    if (!v || std::string(v) == "0") return false;
+    if (std::string(v) != "1") throw std::invalid_argument("GLM: registered prefill upload must be 0 or 1");
     return true;
 }
 // Registration owns no model bytes. It must outlive every GPU copy and be
@@ -482,8 +532,23 @@ class ExpertStager {
             if (value[used] || count < 1 || count > 8)
                 throw std::invalid_argument("GLM: staging workers must be 1..8");
         }
+        std::vector<int> placement = cpus;
+        const char *spread = std::getenv("STRATA_GLM_STAGE_SPREAD");
+        if (spread && std::string(spread) != "0" && std::string(spread) != "1")
+            throw std::invalid_argument("GLM: staging spread must be 0 or 1");
+        if (spread && std::string(spread) == "1" && !cpus.empty()) {
+            auto physical = cpu::physical_cores(false);
+            physical.erase(std::remove_if(physical.begin(), physical.end(), [&](int c) {
+                return std::find(cpus.begin(), cpus.end(), c) == cpus.end();
+            }), physical.end());
+            if (physical.size() >= (size_t)count) {
+                placement.clear();
+                for (int id = 0; id < count; ++id)
+                    placement.push_back(physical[(size_t)id * physical.size() / count]);
+            }
+        }
         for (int id = 0; id < count; ++id)
-            workers.emplace_back([this, id, cpus] {
+            workers.emplace_back([this, id, cpus = placement] {
 #ifdef __linux__
                 if (!cpus.empty()) {
                     cpu_set_t set;
@@ -567,7 +632,7 @@ struct GpuPrefill {
     uint64_t tensor_rows_actual = 0, tensor_rows_padded = 0, tensor_dequant_values = 0;
     double stage_ms = 0;
     bool defer_device_wait = false;
-    const bool direct_upload = direct_upload_enabled();
+    const bool direct_upload = direct_upload_enabled() || registered_prefill_upload_enabled();
     const bool staged_prefetch = [] {
         const char *v = std::getenv("STRATA_GLM_STAGE_PREFETCH");
         if (!v || std::string(v) == "0") return false;
@@ -625,8 +690,10 @@ struct GpuPrefill {
                     if (stride > 2 * gh + db)
                         std::memset(dest + 2 * gh + db, 0, stride - 2 * gh - db);
                 }
+                pinned[host_slot]->finish_writes();
             });
             std::memset(host + bytes, 0, 16384);
+            pinned[host_slot]->finish_writes();
             stage_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
             check(cudaMemcpyAsync(p, host, bytes + 16384, cudaMemcpyHostToDevice, copy));
             check(cudaEventRecord(pool_ready[index], copy));
@@ -648,8 +715,15 @@ struct GpuPrefill {
         transferred += bytes;
         fetched[{layer, group}] = index;
     }
+    static int mla_tile() {
+        const char *value = std::getenv("STRATA_GLM_PREFILL_MLA_TILE");
+        if (!value) return 64;
+        for (int tile : {8, 16, 32, 64})
+            if (std::string(value) == std::to_string(tile)) return tile;
+        throw std::invalid_argument("GLM: prefill MLA tile must be 8, 16, 32 or 64");
+    }
     static size_t arena_bytes(int width, size_t context) {
-        const size_t tile = std::min(width, 64), pools = std::max<size_t>(1, context / 4);
+        const size_t tile = std::min(width, mla_tile()), pools = std::max<size_t>(1, context / 4);
         const size_t mla = tile * (2052 * (512 + 64) + 2 * 64 * 512 + 33 * pools) * 4
                          + (size_t)width * 176 * 1024 + MiB;
         // The per-token MLA buffers (q, value, indexer queries) outgrow the allowance above once the context passes
@@ -699,7 +773,7 @@ struct GpuPrefill {
         for (int i = 0; i < 2; ++i) {
             if (!reuse_prefetch_slots) slots[i] = std::make_unique<Device>(slot_bytes);
             // Direct uploads read registered model pages; no staging buffer is ever touched.
-            if (!direct_upload) pinned[i] = std::make_unique<Pinned>(slot_bytes);
+            if (!direct_upload) pinned[i] = std::make_unique<Pinned>(slot_bytes, staging_write_combined());
         }
         counts = std::make_unique<Pinned>(289 * 4);
         stager = std::make_unique<ExpertStager>(locality.cpus);
@@ -818,16 +892,19 @@ struct GpuPrefill {
             // Model pages remain registered and immutable for the decoder's
             // lifetime, so CPU staging and pinned-buffer reuse waits disappear.
             check(cudaStreamWaitEvent(copy, done[slot], 0));
+            auto upload_part = [&](void *dst, const void *src, size_t count, const char *part) {
+                const auto status = cudaMemcpyAsync(dst, src, count, cudaMemcpyHostToDevice, copy);
+                if (status != cudaSuccess)
+                    throw std::runtime_error(std::string("GLM: registered expert upload ") + part + ": " +
+                                             cudaGetErrorString(status));
+            };
             for (int j = 0; j < n; ++j) {
                 const int expert = selected ? selected[j] : start + j;
                 const size_t gu = blobs ? j * stride : j * 2 * gh;
                 const size_t down = blobs ? gu + 2 * gh : n * 2 * gh + j * db;
-                check(cudaMemcpyAsync((char *)slots[slot]->p + gu,
-                    G.data() + expert * gh, gh, cudaMemcpyHostToDevice, copy));
-                check(cudaMemcpyAsync((char *)slots[slot]->p + gu + gh,
-                    U.data() + expert * gh, gh, cudaMemcpyHostToDevice, copy));
-                check(cudaMemcpyAsync((char *)slots[slot]->p + down,
-                    D.data() + expert * db, db, cudaMemcpyHostToDevice, copy));
+                upload_part((char *)slots[slot]->p + gu, G.data() + expert * gh, gh, "gate");
+                upload_part((char *)slots[slot]->p + gu + gh, U.data() + expert * gh, gh, "up");
+                upload_part((char *)slots[slot]->p + down, D.data() + expert * db, db, "down");
                 if (blobs && stride > 2 * gh + db)
                     check(cudaMemsetAsync((char *)slots[slot]->p + gu + 2 * gh + db,
                         0, stride - 2 * gh - db, copy));
@@ -853,8 +930,10 @@ struct GpuPrefill {
                 if (blobs && stride > 2 * gh + db)
                     std::memset(p + gu_offset + 2 * gh + db, 0, stride - 2 * gh - db);
             }
+            pinned[slot]->finish_writes();
         });
         std::memset((char *)pinned[slot]->p + bytes, 0, 16384);
+        pinned[slot]->finish_writes();
         stage_ms +=
             std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
         if (defer_device_wait) check(cudaStreamWaitEvent(copy, done[slot], 0));
@@ -1658,6 +1737,27 @@ class Decoder {
     std::set<std::string> prepared_projections;
     int projection_first = 0;
     bool fast = false, profile = false, gpu_decode_experts = false;
+    // Opt-in phase residency: stream unchanged dense matrices during a large
+    // logical prefill, then restore the persistent set before cache admission.
+    const size_t prefill_dense_budget = [] {
+        const char *value = std::getenv("STRATA_GLM_PREFILL_DENSE_MIB");
+        if (!value) return size_t(0);
+        size_t used = 0;
+        const auto mib = std::stoull(value, &used);
+        if (value[used] || mib < 1024 || mib > 4096)
+            throw std::invalid_argument("GLM: prefill dense budget must be 1024..4096 MiB");
+        return size_t(mib) * MiB;
+    }();
+    bool streaming_dense = false;
+    std::string active_dense_prefix;
+    size_t prefill_pinned_bytes = 0;
+    const int prefill_projection_rows = [] {
+        const char *value = std::getenv("STRATA_GLM_PREFILL_PROJECTION_ROWS");
+        if (!value) return 2048;
+        for (int rows : {128, 256, 512, 1024, 2048})
+            if (std::string(value) == std::to_string(rows)) return rows;
+        throw std::invalid_argument("GLM: prefill projection rows must be 128, 256, 512, 1024 or 2048");
+    }();
     std::unique_ptr<GpuPrefill> gpu;
     std::unique_ptr<GpuWorker> prefetch_launcher;
     std::future<void> prefetch_pending;
@@ -1665,6 +1765,16 @@ class Decoder {
     bool secondary_enabled = true;
     bool decode_prefill_cache = false;
     bool tensor_prefill_experts = false;
+    const bool prefill_tf32 = [] {
+        const char *v = std::getenv("STRATA_GLM_PREFILL_TF32");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) != "1") throw std::invalid_argument("GLM: prefill TF32 must be 0 or 1");
+#ifdef STRATA_USE_HIP
+        throw std::invalid_argument("GLM: prefill TF32 requires CUDA");
+#else
+        return true;
+#endif
+    }();
     bool tensor_batched_experts = false;
     bool tensor_prefill_bf16 = false;
     const bool bf16_wmma = [] { const char *v = std::getenv("STRATA_GLM_BF16_WMMA"); return v && std::string(v) == "1"; }();
@@ -1744,6 +1854,29 @@ class Decoder {
     bool async_decode_fill = std::getenv("STRATA_GLM_ASYNC_DECODE_FILL") != nullptr;
     bool split_mla = std::getenv("STRATA_GLM_MLA_SPLIT") != nullptr;
     bool tensor_mla = std::getenv("STRATA_GLM_MLA_F16") != nullptr;
+    const bool tensor_mla_decode = [] {
+        const char *v = std::getenv("STRATA_GLM_MLA_F16_DECODE");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) != "1") throw std::invalid_argument("GLM: decode FP16 MLA must be 0 or 1");
+#ifdef STRATA_USE_HIP
+        throw std::invalid_argument("GLM: decode FP16 MLA experiment requires CUDA");
+#else
+        return true;
+#endif
+    }();
+    std::unique_ptr<Device> mla_decode_workspace;
+    std::unique_ptr<strata::prefill::Gemm> mla_decode_gemm;
+    void prepare_mla_decode() {
+        if (!tensor_mla_decode || mla_decode_gemm) return;
+        if (!gpu || secondary || remote_tp || capture_hidden || !sequences.empty() || artifact.is_exl3())
+            throw std::invalid_argument("GLM: decode FP16 MLA requires ordinary single-GPU GGUF decode");
+        mla_decode_workspace = std::make_unique<Device>(4 * MiB);
+        auto gemm = std::make_unique<strata::prefill::Gemm>();
+        std::string error;
+        if (!gemm->init_external(stream, nullptr, 0, mla_decode_workspace->p, mla_decode_workspace->bytes, error))
+            throw std::runtime_error(error);
+        mla_decode_gemm = std::move(gemm);
+    }
     bool decode_tp = std::getenv("STRATA_GLM_DECODE_TP") != nullptr;
     // Prefill: the upper half of every KDA head's projections, convolution, recurrence and output on GPU1.
     bool kda_split = std::getenv("STRATA_GLM_KDA_SPLIT") != nullptr;
@@ -2264,6 +2397,19 @@ class Decoder {
         throw std::invalid_argument("GLM: fixed decode cache recent must be 0 or 1");
     }();
     std::vector<std::vector<int>> prefill_recent_ids;
+    // Rank only routes that the configured decode pruning would execute.
+    // Prefill still computes every original route; this changes residency only.
+    const float cache_route_min_share = [] {
+        const char *enabled = std::getenv("STRATA_GLM_CACHE_ACTIVE_ROUTES");
+        if (!enabled || std::string(enabled) == "0") return 0.f;
+        if (std::string(enabled) != "1")
+            throw std::invalid_argument("GLM: active cache routes must be 0 or 1");
+        const char *value = std::getenv("STRATA_GLM_ROUTE_MIN_SHARE");
+        const float share = value ? std::stof(value) : 0.f;
+        if (!(share >= 0.f && share < 1.f))
+            throw std::invalid_argument("GLM: cache route minimum share must be in [0, 1)");
+        return share;
+    }();
     std::array<std::unique_ptr<Device>, 2> decode_cache_storage;
     struct PromotedGroup {
         int layer, group;
@@ -2747,7 +2893,7 @@ class Decoder {
         if (floating && gpu && floating_q8_weight(name)) {
             // Q8 decode keeps only the Q8_0 copy resident; FP32 users (prefill GEMMs) get a scratch expansion.
             const auto raw_key = canonical_tensor_name(name) + ":raw";
-            if (!weights.count(raw_key) && name.starts_with("blk.45.")) weight(name, false);
+            if (!weights.count(raw_key) && (name.starts_with("blk.45.") || streaming_dense)) weight(name, false);
             auto raw = weights.find(raw_key);
             if (raw != weights.end()) {
                 size_t values = 1;
@@ -2761,7 +2907,7 @@ class Decoder {
                 return *scratch;
             }
         }
-        if (gpu && !artifact.is_exl3() && !name.starts_with("blk.45."))
+        if (gpu && !artifact.is_exl3() && !name.starts_with("blk.45.") && !streaming_dense)
             throw std::runtime_error("GLM: fixed GPU weight missing: " + key);
         const auto &t = artifact.at(name);
         std::vector<float> values;
@@ -2828,7 +2974,8 @@ class Decoder {
             // Previous kernels may still hold a pointer to an evicted weight.
             check(cudaStreamSynchronize(stream));
             auto victim = std::prev(lru.end());
-            while (native_pinned_weights.count(*victim)) {
+            while (native_pinned_weights.count(*victim) ||
+                   (streaming_dense && !active_dense_prefix.empty() && victim->starts_with(active_dense_prefix))) {
                 if (victim == lru.begin()) throw std::runtime_error("GLM: no evictable dense weight");
                 --victim;
             }
@@ -2856,6 +3003,14 @@ class Decoder {
         lru.push_front(key);
         auto [inserted, ok] = weights.emplace(key, Weight{std::move(data), lru.begin()});
         (void)ok;
+        // A cyclic layer walk defeats LRU. Keep a fixed subset and leave one
+        // third of the prefill budget for the current layer's operands. Q8
+        // copies stay pinned to avoid repeating startup quantization.
+        if (streaming_dense && (floating_q8_weight(name) ||
+            prefill_pinned_bytes + bytes <= prefill_dense_budget * 2 / 3)) {
+            if (native_pinned_weights.insert(key).second) prefill_pinned_bytes += bytes;
+            t.file->discard_tensor_pages(*t.tensor, t.bytes);
+        }
         return *inserted->second.data;
     }
     void release_gpu_dense_host_pages(bool draft = false) {
@@ -2881,6 +3036,8 @@ class Decoder {
                 name.starts_with("blk.45.") != draft) continue;
             const auto key = canonical_tensor_name(name);
             if (!weights.count(key + ":raw") && !weights.count(key + ":fp32")) continue;
+            if (prefill_dense_budget && !native_pinned_weights.count(key + ":raw") &&
+                !native_pinned_weights.count(key + ":fp32")) continue;
             tensor.file->discard_tensor_pages(*tensor.tensor, tensor.bytes);
             bytes += tensor.bytes;
             ++tensors;
@@ -2969,19 +3126,19 @@ class Decoder {
         if (fast && name != "output.weight") {
             if (t.type == 0 || floating) {
                 // Keep cuBLAS projection shapes identical across 2048/4096 chunk boundaries.
-                for (int t0 = 0; t0 < nt; t0 += 2048)
-                    check(cublasSgemm(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, std::min(2048, nt - t0), in, &one,
+                for (int t0 = 0; t0 < nt; t0 += prefill_projection_rows)
+                    check(cublasSgemm(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, std::min(prefill_projection_rows, nt - t0), in, &one,
                                       W.f(), in, x + (size_t)t0 * in, in, &zero, y + (size_t)t0 * out, out));
             } else {
                 auto &half = buf("mat_f16", (size_t)gpu->chunk * 16384 / 2);
                 k::glm_f16(x, (uint16_t *)half.p, (int64_t)nt * in, stream);
                 if (dequant_once) {
-                    gpu->gemm->native_chunked((uint16_t *)half.p, weight_type, W.p, y, nt, out, in, 2048);
+                    gpu->gemm->native_chunked((uint16_t *)half.p, weight_type, W.p, y, nt, out, in, prefill_projection_rows);
                     return;
                 }
-                for (int t0 = 0; t0 < nt; t0 += 2048)
+                for (int t0 = 0; t0 < nt; t0 += prefill_projection_rows)
                     gpu->gemm->native((uint16_t *)half.p + (size_t)t0 * in, weight_type, W.p, y + (size_t)t0 * out,
-                                     std::min(2048, nt - t0), out, in);
+                                     std::min(prefill_projection_rows, nt - t0), out, in);
             }
             return;
         }
@@ -3242,7 +3399,7 @@ class Decoder {
         if (prefetch_pending.valid()) prefetch_pending.get();
     }
     void prefetch_groups_sync(int layer_id) {
-        if (!fast || !gpu || gpu->pool.empty() || m.experts != 288) return;
+        if (!fast || !gpu || gpu->pool.empty() || m.experts % 16) return;
         const auto p = "blk." + std::to_string(layer_id) + ".";
         const auto &G = artifact.at(p + "ffn_gate_exps.weight");
         const auto &U = artifact.at(p + "ffn_up_exps.weight");
@@ -3265,7 +3422,7 @@ class Decoder {
     }
     void prefetch_groups(int layer_id) {
         finish_prefetch();
-        if (!fast || !gpu || gpu->pool.empty() || m.experts != 288) return;
+        if (!fast || !gpu || gpu->pool.empty() || m.experts % 16) return;
         if (!gpu->staged_prefetch) { prefetch_groups_sync(layer_id); return; }
         if (!prefetch_launcher) prefetch_launcher = std::make_unique<GpuWorker>(primary_device);
         // Enqueue the mixer on the main thread while the staging worker fills
@@ -3338,12 +3495,26 @@ class Decoder {
                 if (early_route_sync) tail = route_tail;
                 else check(cudaMemcpy(tail.data(), (int *)ids.p + (nt - recent) * K,
                                  tail.size() * sizeof(int), cudaMemcpyDeviceToHost));
+                if (cache_route_min_share > 0.f) {
+                    std::vector<float> weights(tail.size());
+                    check(cudaMemcpy(weights.data(), rw.f((size_t)(nt - recent) * K),
+                                     weights.size() * sizeof(float), cudaMemcpyDeviceToHost));
+                    for (size_t j = 0; j < tail.size(); ++j)
+                        if (weights[j] < cache_route_min_share * float(m.expert_scale)) tail[j] = -1;
+                }
                 auto &history = prefill_recent_ids.at(layer_id);
                 const size_t keep = std::min(history.size(), size_t(decode_cache_window - recent) * K);
                 history.erase(history.begin(), history.end() - keep);
                 history.insert(history.end(), tail.begin(), tail.end());
                 std::fill(frequency.begin(), frequency.end(), 0);
-                for (int expert : history) ++frequency[expert];
+                for (int expert : history) if (expert >= 0) ++frequency[expert];
+            } else if (cache_route_min_share > 0.f) {
+                std::vector<int> selected((size_t)nt * K);
+                std::vector<float> weights(selected.size());
+                check(cudaMemcpy(selected.data(), ids.p, selected.size() * sizeof(int), cudaMemcpyDeviceToHost));
+                check(cudaMemcpy(weights.data(), rw.p, weights.size() * sizeof(float), cudaMemcpyDeviceToHost));
+                for (size_t j = 0; j < selected.size(); ++j)
+                    if (weights[j] >= cache_route_min_share * float(m.expert_scale)) ++frequency[selected[j]];
             } else {
                 for (int e = 0; e < E; ++e) frequency[e] += hb[e + 1] - hb[e];
             }
@@ -4084,7 +4255,8 @@ class Decoder {
             if (expert_observer) expert_observer->input(l, position, nt, H, K, selected, activation);
             if (block_screen) block_screen->input(l, position, nt, H, K, selected, routing, activation);
             if (!cache_probe_routes.empty())
-                for (int j = 0; j < nt * K; ++j) ++cache_probe_routes.at(l).at(selected[j]);
+                for (int j = 0; j < nt * K; ++j)
+                    if (cache_route_min_share == 0.f || routing[j] != 0.f) ++cache_probe_routes.at(l).at(selected[j]);
             ram_touch(l, selected, mailbox->wanted(slot), nt * K);
             trace_routes(l, position, nt, K, selected);
         }
@@ -4733,6 +4905,13 @@ class Decoder {
     };
     std::unique_ptr<HostRegistration> tier_registration;
     void register_tier_sources() {
+        // Prefill registration covers these same native expert tensors and
+        // remains alive for the decoder's lifetime. Do not register them twice.
+        if (registered_prefill_upload_enabled() && registered_weights) {
+            tier_registration = std::make_unique<HostRegistration>();
+            std::cerr << "TIER_DIRECT reused_prefill_registration=1\n";
+            return;
+        }
         const auto t0 = std::chrono::steady_clock::now();
         const uintptr_t page = 4096;
         std::vector<std::pair<uintptr_t, uintptr_t>> spans, merged;
@@ -4763,11 +4942,14 @@ class Decoder {
     }
     void prepare_tier_staging() {
         if (!tier_adapt || tier_staging) return;
+        // Early GPU setup precedes warm_weights(); let prefill own the shared
+        // registration rather than registering the same mapping here first.
+        if (tier_direct && registered_prefill_upload_enabled() && !registered_weights) return;
         if (tier_direct && !tier_registration) register_tier_sources();
         // Pinned staging and CUDA objects are created here, before the step launches: allocating them while
         // the GPU waits on the service thread could synchronize with that wait.
         if (!tier_staging) {
-            tier_staging = std::make_unique<Pinned>(kTierInflight * kTierStagingBytes);
+            tier_staging = std::make_unique<Pinned>(tier_direct ? 1 : kTierInflight * kTierStagingBytes);
             for (size_t i = 0; i < kTierInflight; ++i) {
                 tier_free_staging.push_back((int)i);
                 cudaEvent_t event;
@@ -4775,7 +4957,7 @@ class Decoder {
                 tier_events.push_back(event);
             }
             check(cudaStreamCreateWithFlags(&tier_stream, cudaStreamNonBlocking));
-            tier_stager = std::make_unique<TierStager>();
+            if (!tier_direct) tier_stager = std::make_unique<TierStager>();
         }
     }
     void tier_begin_step() {
@@ -5459,7 +5641,7 @@ class Decoder {
         const int *device_pos = graph_mla() && l < (int)m.layers.size() ? (const int *)mla_positions->p + buffer_group : nullptr;
         int B = batch_tokens, heads = m.attention_heads, latent = m.kv_rank, dim = 256, ih = m.index_heads,
             idim = m.index_dim, pool_size = m.index_pool;
-        const int tile = fast ? 64 : 1;
+        const int tile = fast ? GpuPrefill::mla_tile() : 1;
         constexpr int stride = 2052;
         const bool diagnose = std::getenv("STRATA_GLM_CHECK_MLA") && p == "blk.35.";
         auto inspect = [&](const char *stage, const float *data, size_t n, cudaStream_t work) {
@@ -5616,7 +5798,11 @@ class Decoder {
                     k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * stride, d.stream);
                     d.gemm->f16_batched_nn(keys, d.attn16, d.av, latent, heads, stride, count);
                     inspect("absorbed_value", d.av, (size_t)count * heads * latent, d.stream);
-                absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
+                if (d.wv8)
+                    k::glm_q8_heads_gemv(d.wv8, d.av, d.value + (size_t)t * heads * dim,
+                                         (int)vb.shape[2], (int)vb.shape[0], (int)vb.shape[1], count,
+                                         heads * latent, heads * dim, d.stream);
+                else absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
                 inspect("head_value", d.value + (size_t)t * heads * dim, (size_t)count * heads * dim, d.stream);
                     if (d.back) {
                         check(cudaEventRecord(d.produced, d.stream));
@@ -5684,8 +5870,10 @@ class Decoder {
             }
         }
         const bool halves = tensor_mla && fast && gpu && gpu->gemm;
-        if (halves) {
-            local.gemm = gpu->gemm.get();
+        const bool decode_halves = tensor_mla_decode && !fast && B == 1 && !capturing_history && row_sequences.empty();
+        if (halves || decode_halves) {
+            local.gemm = halves ? gpu->gemm.get() : mla_decode_gemm.get();
+            if (!local.gemm) throw std::runtime_error("GLM: decode MLA GEMM not prepared");
             local.aq16 = (uint16_t *)buf("mla_absorbed_q16", ((size_t)ntile * heads * latent + 1) / 2).p;
             local.attn16 = (uint16_t *)buf("mla_scores16", ((size_t)ntile * heads * stride + 1) / 2).p;
         }
@@ -6037,7 +6225,7 @@ class Decoder {
             if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
             exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu);
         }
-        if (!artifact.is_exl3() && GpuPrefill::prefetch_groups() && m.experts == 288)
+        if (!artifact.is_exl3() && GpuPrefill::prefetch_groups() && m.experts % 16 == 0)
             for (size_t l = 0; l < m.layers.size(); ++l) {
                 if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
                 const auto p = "blk." + std::to_string(l) + ".";
@@ -6230,13 +6418,23 @@ class Decoder {
         }
     }
     std::vector<float> batch(const std::vector<int> &tokens, bool prefill = true, bool all_logits = false) {
+        if (!prefill && tensor_mla_decode) prepare_mla_decode();
+        if (!prefill && streaming_dense) compact_decode();
         if (!prefill) finish_prefill_repairs();
         if (decode_cache_adapt) for (int i = 0; i < 2; ++i) finish_copy(i);
         fast = gpu && prefill;
+        if (fast && registered_prefill_upload_enabled() && !registered_weights)
+            throw std::runtime_error("GLM: registered prefill upload requires --warm-weights before prefill");
         reset_phase();
         const int nt = tokens.size();
         if (nt < 1 || nt > (fast ? gpu->chunk : cpu::MAXT) || (row_sequences.empty() && position + nt > (int)capacity))
             throw std::out_of_range("GLM: invalid batch size or context capacity");
+#ifndef STRATA_USE_HIP
+        // Only prefill may use TF32. Restore the original mode for every decode
+        // call, including the untimed warmup and teacher-forced evaluation.
+        if (prefill_tf32 && gpu)
+            check(cublasSetMathMode(blas, fast ? CUBLAS_TF32_TENSOR_OP_MATH : glm_blas_math_mode));
+#endif
         for (int token : tokens)
             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
                 throw std::out_of_range("GLM: token or context out of range");
@@ -6363,6 +6561,7 @@ class Decoder {
         auto enqueue_layers = [&] {
         for (size_t l = 0; l < m.layers.size(); ++l) {
             const std::string p = "blk." + std::to_string(l) + ".";
+            if (streaming_dense) active_dense_prefix = p;
             const auto &layer = m.layers[l];
             check_stop();
             auto layer_start = std::chrono::steady_clock::now();
@@ -6498,6 +6697,7 @@ class Decoder {
             }
         }
         flush_deferred(nullptr);
+        active_dense_prefix.clear();
         if (kda_split_active()) kda_split_sync_back();
         else if (!tp_active()) tp_stale = true; // primary-only states advanced without the secondary halves
         reset_phase();
@@ -6894,6 +7094,7 @@ class Decoder {
         } catch (...) { capturing_history = false; throw; }
     }
     int vocabulary() const { return m.vocab; }
+    int prefill_capacity() const { return gpu ? gpu->chunk : 1; }
     void flush_expert_observer(){if(expert_observer)expert_observer->flush();if(block_screen)block_screen->report(std::cerr);}
     void set_block_screen_budget(int keep){if(!block_screen)throw std::invalid_argument("block sweep requires a screen profile");block_screen->uniform_budget(keep);}
     void set_block_screen_layer(int layer,int keep){if(!block_screen)throw std::invalid_argument("block sensitivity requires a screen profile");block_screen->layer_budget(layer,keep);}
@@ -7644,6 +7845,7 @@ class Decoder {
         if (!prepared_experts.empty() || mtp_experts || gpu_decode_experts)
             throw std::invalid_argument("GLM: prefix-trained decode cache requires unpacked CPU target experts");
         compact_decode();
+        prepare_mla_decode();
         if (decode_cache_auto) {
             if (!decode_cache_extend) prefill_cache.layers.clear();
             if (secondary) {
@@ -7696,6 +7898,8 @@ class Decoder {
         constexpr double prior_tokens = 256;
         if (fixed_cache_recent && !decode_cache_auto)
             std::cerr << "DECODE_CACHE_WINDOW mode=fixed tokens=" << decode_cache_window << '\n';
+        if (cache_route_min_share > 0.f)
+            std::cerr << "DECODE_CACHE_LEARN minimum_share=" << cache_route_min_share << '\n';
         for (size_t l = 0; l < m.layers.size(); ++l) {
             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
             if (canon_experts) {
@@ -7784,9 +7988,16 @@ class Decoder {
         if (const char *value = std::getenv("STRATA_GLM_TIER_RUNTIME_RESERVE_MIB")) {
             size_t end = 0;
             const auto mib = std::stoull(value, &end);
-            const size_t minimum = capture_hidden ? 512 : 256;
+            const char *tight = std::getenv("STRATA_GLM_TIER_TIGHT_RUNTIME");
+            if (tight && std::string(tight) != "0" && std::string(tight) != "1")
+                throw std::invalid_argument("GLM: tight tier runtime must be 0 or 1");
+            const bool ordinary_tight = tight && std::string(tight) == "1" && !capture_hidden &&
+                !cached_lookup_enabled() && !secondary && !remote_tp && sequences.empty() && !history_slots;
+            const size_t minimum = capture_hidden ? 512 : ordinary_tight ? 64 : 256;
             if (value[end] || mib < minimum || mib > 4096)
-                throw std::invalid_argument("GLM: tier runtime reserve must be 256..4096 MiB (at least 512 with MTP)");
+                throw std::invalid_argument(ordinary_tight
+                    ? "GLM: tight tier runtime reserve must be 64..4096 MiB"
+                    : "GLM: tier runtime reserve must be 256..4096 MiB (at least 512 with MTP)");
             scratch_reserve = mib * MiB;
             std::cerr << "DECODE_RUNTIME override_reserve_MiB=" << mib << '\n';
         }
@@ -7909,6 +8120,49 @@ class Decoder {
         phase.clear(); scratch.clear(); gpu.reset();
         gpu = std::make_unique<GpuPrefill>(cpu::MAXT, stream, true);
         fast = false;
+        if (streaming_dense) {
+            active_dense_prefix.clear();
+            budget = SIZE_MAX;
+            // Missing weights must remain loadable until restoration finishes.
+            preload_dense_weights();
+            streaming_dense = false;
+            release_gpu_dense_host_pages();
+            std::cerr << "DENSE_PHASE phase=decode resident_MiB=" << resident / double(MiB) << '\n';
+        }
+    }
+    static bool dense_floating(const std::string &name) {
+        const auto n = canonical_tensor_name(name);
+        return n.ends_with("hc_attn_fn.weight") || n.ends_with("hc_ffn_fn.weight") ||
+               n.ends_with("attn_k_b.weight") || n.ends_with("attn_v_b.weight");
+    }
+    void preload_dense_weights() {
+        for (const auto &[name, tensor] : artifact.tensors()) {
+            if (name == "token_embd.weight" || name.starts_with("blk.45.") || name.ends_with("_exps.weight")) continue;
+            const bool q8 = floating_q8_weight(name);
+            weight(name, dense_floating(name) && !q8);
+            if (q8) {
+                size_t values = 1;
+                for (auto d : tensor.tensor->shape) values *= d;
+                auto &scratch = q8_fp32_scratch[q8_scratch_role(name)];
+                if (!scratch || scratch->bytes < values * 4) scratch = std::make_unique<Device>(values * 4);
+            }
+        }
+    }
+    void begin_streaming_dense() {
+        check(cudaStreamSynchronize(stream));
+        streaming_dense = true;
+        budget = prefill_dense_budget;
+        while (resident > budget && !lru.empty()) {
+            auto victim = std::prev(lru.end());
+            while (native_pinned_weights.count(*victim)) {
+                if (victim == lru.begin()) throw std::runtime_error("GLM: prefill dense budget below pinned weights");
+                --victim;
+            }
+            const auto old = *victim;
+            resident -= weights.at(old).data->bytes;
+            weights.erase(old); lru.erase(victim);
+        }
+        std::cerr << "DENSE_PHASE phase=prefill budget_MiB=" << budget / MiB << '\n';
     }
     bool prepare_mtp_for_cache(const std::vector<int> &prompt, int depth) {
         if (!tier_owned_reserve || !capture_hidden || !mtp_cpu_experts ||
@@ -8102,6 +8356,8 @@ class Decoder {
         }
         if (gpu)
             return gpu->chunk;
+        if (prefill_dense_budget && (secondary || artifact.is_exl3() || direct_upload_enabled() || capture_hidden))
+            throw std::invalid_argument("GLM: streamed dense prefill requires single-GPU GGUF without speculation");
         if (floating_q8_repack && (!q8_decode || secondary || direct_upload_enabled()))
             throw std::invalid_argument("GLM: floating Q8 repacking requires single-GPU GGUF Q8 decode");
         if (dense_q4_repack && (secondary || direct_upload_enabled()))
@@ -8147,6 +8403,7 @@ class Decoder {
                 }
                 fixed += bytes;
             }
+        if (prefill_dense_budget) fixed = std::min(fixed, prefill_dense_budget);
         for (size_t bytes : q8_scratch_bytes) fixed += bytes;   // prefill's FP32 expansions of Q8-only weights
         size_t free, total;
         check(cudaMemGetInfo(&free, &total));
@@ -8172,7 +8429,12 @@ class Decoder {
                 " live_MiB=" + std::to_string(Device::live() / double(MiB)) +
                 "; reduce context or use legacy prefill");
         check(cublasSetMathMode(blas, glm_blas_math_mode));
+        if (prefill_dense_budget) begin_streaming_dense();
+        else
         budget = SIZE_MAX;
+        // The large head otherwise faults back in at the end of every logical
+        // prefill. Make it part of the fixed subset before filling the LRU.
+        if (streaming_dense) weight("output.weight");
         for (const auto &[n, t] : artifact.tensors())
             if (eligible(n)) {
                 const bool q8 = floating_q8_weight(n);
@@ -8216,6 +8478,12 @@ class Decoder {
     void configure_prefill(const std::vector<int> &devices, size_t total_budget,
                            size_t cache_bytes, bool automatic, bool reserve_mtp, bool tensor_experts = false,
                            bool tensor_batches = false, bool tensor_bf16 = false) {
+        if (registered_prefill_upload_enabled() &&
+            (devices.size() != 1 || artifact.is_exl3() || capture_hidden || reserve_mtp))
+            throw std::invalid_argument("GLM: registered prefill upload requires single-GPU GGUF without MTP");
+        if (prefill_dense_budget && (devices.size() != 1 || !sequences.empty() || capture_hidden ||
+                                    (tensor_experts && !tensor_batches) || reserve_mtp || cache_bytes || automatic))
+            throw std::invalid_argument("GLM: streamed dense prefill requires single-GPU MMQ or batched tensor experts without MTP or prefill cache");
         if (tensor_bf16 && (!tensor_batches || devices.size() != 1))
             throw std::invalid_argument("GLM: BF16 prefill experiment requires one GPU and batched experts");
         if (bf16_wmma && !tensor_bf16)
@@ -8335,11 +8603,21 @@ class Decoder {
         if (secondary) secondary->cache.reset();
     }
     void warm_weights(bool lock = false, const std::vector<int> &upload_devices = {}) {
+        if (registered_prefill_upload_enabled() &&
+            (lock || !gpu || secondary || remote_tp || !numa_experts.empty() || !prepared_experts.empty() ||
+             artifact.is_exl3()))
+            throw std::invalid_argument("GLM: registered prefill upload requires unlocked single-GPU native GGUF experts");
         if(artifact.is_exl3())throw std::invalid_argument("EXL3: GGUF weight locking is unsupported");
         if(lock && !numa_sources.empty())throw std::invalid_argument("Q2 NUMA weights cannot lock the original GGUF mappings");
         if (direct_upload_enabled() && !lock)
             throw std::invalid_argument("GLM: direct weight upload requires --lock-weights");
         const auto start = std::chrono::steady_clock::now();
+        const char *active_value = std::getenv("STRATA_GLM_WARM_ACTIVE_ONLY");
+        if (active_value && std::string(active_value) != "0" && std::string(active_value) != "1")
+            throw std::invalid_argument("GLM: active-only warmup must be 0 or 1");
+        const bool active_only = active_value && std::string(active_value) == "1";
+        if (active_only && (lock || !gpu || artifact.is_exl3() || direct_upload_enabled()))
+            throw std::invalid_argument("GLM: active-only warmup requires unlocked ordinary GGUF GPU prefill");
         volatile uint8_t checksum = 0;
         size_t locked = 0;
 #ifdef __linux__
@@ -8364,7 +8642,10 @@ class Decoder {
         }
 #endif
         for (const auto &[name, t] : artifact.tensors())
-            if (!name.starts_with("blk.45.") && !numa_sources.count(t.tensor) && !numa_local_only.count(t.tensor)) {
+            if (!name.starts_with("blk.45.") && !numa_sources.count(t.tensor) && !numa_local_only.count(t.tensor) &&
+                (!active_only || name == "token_embd.weight" || name.ends_with("_exps.weight") ||
+                 (!streaming_dense && !weights.count(canonical_tensor_name(name) + ":raw") &&
+                  !weights.count(canonical_tensor_name(name) + ":fp32")))) {
                 if (lock) {
 #ifdef __linux__
                     // A file-system client can invalidate clean file-backed
@@ -8394,7 +8675,8 @@ class Decoder {
         std::cerr << "main weights prefaulted checksum=" << (int)checksum << '\n';
         std::cerr << "HOST_WEIGHTS locked_bytes=" << locked << " ms="
                   << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() << '\n';
-        if (direct_upload_enabled() && !registered_weights) {
+        if (active_only) release_gpu_dense_host_pages();
+        if ((direct_upload_enabled() || registered_prefill_upload_enabled()) && !registered_weights) {
             auto devices = upload_devices;
             if (devices.empty()) {
                 devices.push_back(primary_device);
@@ -8402,6 +8684,7 @@ class Decoder {
             }
             registered_weights = std::make_unique<RegisteredWeights>(artifact, primary_device, devices);
         }
+        if (tier_direct && registered_prefill_upload_enabled()) prepare_tier_staging();
     }
     void set_gpu_decode_experts(bool value) {
         if(artifact.is_exl3()&&value)throw std::invalid_argument("EXL3: decode currently requires CPU routed experts");
@@ -8595,6 +8878,7 @@ class Decoder {
         }
         if (prefill_width_saved) {
             phase.clear(); scratch.clear(); gpu.reset(); mtp_experts.reset(); mtp_lookup.reset();
+            if (prefill_dense_budget) begin_streaming_dense();
             for (auto it = weights.begin(); it != weights.end();) {
                 if (it->first.starts_with("blk.45.")) {
                     resident -= it->second.data->bytes;
@@ -8674,6 +8958,28 @@ static void evaluate_corpus(Decoder& decoder,const std::string& corpus,const std
                             int prefill_chunk = 0) {
     if(!save_path.empty()&&!reference_path.empty())throw std::invalid_argument("choose eval save or reference, not both");
     if(prefill_chunk && decoder.has_decode_cache())throw std::invalid_argument("prefill evaluation requires the decode expert cache disabled");
+    // Opt-in phase-aware scoring: train residency on a real prefix, then score
+    // the remaining teacher-forced tokens through the one-token decode path.
+    const size_t decode_prefix = [] {
+        const char *v = std::getenv("STRATA_GLM_EVAL_DECODE_PREFIX");
+        if (!v) return size_t{0};
+        size_t used = 0;
+        const std::string value(v);
+        const auto n = std::stoul(value, &used);
+        if (used != value.size() || n == 0 || n > 16384)
+            throw std::invalid_argument("STRATA_GLM_EVAL_DECODE_PREFIX must be 1..16384");
+        return size_t(n);
+    }();
+    if (decode_prefix && (prefill_chunk || !decoder.has_decode_cache()))
+        throw std::invalid_argument("decode-prefix evaluation requires a decode cache and no --eval-prefill");
+    const bool decode_only = [] {
+        const char *v = std::getenv("STRATA_GLM_EVAL_DECODE_ONLY");
+        if (!v || std::string(v) == "0") return false;
+        if (std::string(v) != "1") throw std::invalid_argument("GLM: decode-only evaluation must be 0 or 1");
+        return true;
+    }();
+    if (decode_only && (!decode_prefix || !save_path.empty() || !reference_path.empty()))
+        throw std::invalid_argument("GLM: decode-only evaluation needs a prefix and scalar scoring without logit files");
     std::ifstream input(corpus);if(!input)throw std::runtime_error("cannot open evaluation corpus");
     std::ofstream saved;std::ifstream reference;
     const uint32_t header[2]={0x31455647,uint32_t(decoder.vocabulary())};
@@ -8683,6 +8989,8 @@ static void evaluate_corpus(Decoder& decoder,const std::string& corpus,const std
     while(std::getline(input,line)) {
         if(line.empty())continue;
         const auto ids=token_ids(line);if(ids.size()<2)throw std::runtime_error("evaluation sequence needs at least two tokens");
+        if (decode_prefix >= ids.size() - 1)
+            throw std::invalid_argument("evaluation decode prefix must leave at least one target");
         for(int id:ids)if(id<0||id>=vocab)throw std::runtime_error("invalid evaluation token");
         const uint32_t length=ids.size();
         if(saved.is_open()){saved.write(reinterpret_cast<const char*>(&length),4);saved.write(reinterpret_cast<const char*>(ids.data()),ids.size()*4);}
@@ -8690,14 +8998,27 @@ static void evaluate_corpus(Decoder& decoder,const std::string& corpus,const std
         decoder.reset();lock_small_runtime_mappings();
         // A configured GPU tier takes part in the evaluation (its selection has no prompt routes here, so it
         // starts from the calibration prior): modes whose output depends on residency are measured as they run.
-        if(decoder.has_decode_cache())decoder.prepare_decode_cache();
+        if(decoder.has_decode_cache() && !decode_prefix)decoder.prepare_decode_cache();
         // STRATA_GLM_EVAL_WIDTH: tokens per decode call (default 4); 1 scores one-token decode paths.
         static const size_t eval_width = [] { const char *v = std::getenv("STRATA_GLM_EVAL_WIDTH"); return v ? std::stoul(v) : 4ul; }();
         if (eval_width < 1 || eval_width > (size_t)cpu::MAXT) throw std::invalid_argument("STRATA_GLM_EVAL_WIDTH must be 1..8");
         const size_t width = prefill_chunk ? prefill_chunk : eval_width;
-        for(size_t start=0;start+1<ids.size();start+=width) {
-            const size_t end=std::min(start+width,ids.size()-1);auto logits=decoder.batch(std::vector<int>(ids.begin()+start,ids.begin()+end),prefill_chunk != 0,true);
+        std::vector<float> prefix_last_logits;
+        for(size_t start=0;start+1<ids.size();) {
+            if (decode_prefix && start == decode_prefix) {
+                // Match ordinary request preparation when the opt-in cache
+                // probe is enabled; its generated tokens are never scored.
+                decoder.probe_decode_cache(prefix_last_logits, {});
+                decoder.prepare_decode_cache();
+            }
+            const bool prefix_phase = decode_prefix && start < decode_prefix;
+            const size_t end = prefix_phase ? (decode_only ? std::min(start + size_t(decoder.prefill_capacity()), decode_prefix) : decode_prefix)
+                                           : std::min(start + (decode_prefix ? 1 : width), ids.size()-1);
+            auto logits=decoder.batch(std::vector<int>(ids.begin()+start,ids.begin()+end),prefix_phase || prefill_chunk != 0,
+                                      !(decode_only && prefix_phase));
+            if (prefix_phase) prefix_last_logits.assign(logits.end() - vocab, logits.end());
             if(start==0)lock_small_runtime_mappings();
+            if (decode_only && prefix_phase) { start = end; continue; }
             for(size_t t=0;t<end-start;++t) {
                 const auto* row=logits.data()+t*vocab;const double maximum=*std::max_element(row,row+vocab);double sum=0;
                 for(int k=0;k<vocab;++k){if(!std::isfinite(row[k]))throw std::runtime_error("nonfinite evaluation logits");sum+=std::exp(double(row[k])-maximum);}const double logz=maximum+std::log(sum);
@@ -8710,8 +9031,10 @@ static void evaluate_corpus(Decoder& decoder,const std::string& corpus,const std
                     top1+=(std::max_element(row,row+vocab)-row)==(std::max_element(base.begin(),base.end())-base.begin());
                 }
             }
+            start = end;
         }
         ++sequence;std::cout<<"{\"sequence\":"<<sequence<<",\"tokens\":"<<count<<",\"nll\":"<<std::setprecision(12)<<nll/count<<",\"perplexity\":"<<std::exp(nll/count);
+        if (decode_only) std::cout << ",\"prefix_tokens\":" << decode_prefix << ",\"decode_only\":true";
         if(reference.is_open())std::cout<<",\"kl\":"<<kl/count<<",\"top1_agreement\":"<<double(top1)/count<<",\"different_logits\":"<<different_logits;
         std::cout<<"}\n"<<std::flush;
     }
@@ -9153,6 +9476,8 @@ static int serve(int argc, char **argv) {
     }
     decoder.prepare_numa_weights();
     if (argc > 18 && std::string(argv[18]) == "1" && !direct_upload_enabled()) decoder.warm_weights(true);
+    else if (const char *active = std::getenv("STRATA_GLM_WARM_ACTIVE_ONLY"); active && std::string(active) == "1")
+        decoder.warm_weights(false);
     if (use_mtp) decoder.enable_mtp_capture();
     if (parallel) return serve_sequences(decoder, parallel, ctx, width, stops, use_mtp, draft_depth);
     std::cout << "INFO engine=glm-experimental sampling=greedy\nREADY " << ctx
@@ -9381,6 +9706,7 @@ int main(int argc, char **argv) {
         bool check_verify = false, stream_decode = false, pin_cpu = false, use_mtp = false;
         bool mtp_cpu_experts = false, decode_prefill_cache = false, decode_cache_auto = false, decode_cache_extend = false;
         int draft_depth = 3, decode_repetitions = 1;
+        bool decode_warmup = false;
         bool decode_mode_sweep = false, decode_mtp_sweep = false;
         size_t cpu_prepack_mib = 0, prefill_cache_bytes = 0;
         bool prefill_cache_auto = false, check_gpu_split = false, tensor_experts = false, tensor_batches = false;
@@ -9449,6 +9775,7 @@ int main(int argc, char **argv) {
             else if (flag == "--decode-mode-sweep") decode_mode_sweep = true;
             else if (flag == "--decode-mode-sweep=mtp") decode_mode_sweep = decode_mtp_sweep = true;
             else if (flag.starts_with("--decode-bench=")) decode_repetitions = std::stoi(flag.substr(15));
+            else if (flag == "--decode-warmup") decode_warmup = true;
             else if (flag == "--speculative=lookup")
                 lookup_depth = 3;
             else if (flag == "--speculative=none") { lookup_depth = 0; use_mtp = false; }
@@ -9523,6 +9850,8 @@ int main(int argc, char **argv) {
             throw std::invalid_argument("GLM: direct weight upload requires locked original weights");
         if (decode_repetitions < 1 || decode_repetitions > 10 || draft_depth < 1 || draft_depth > 7 || (use_mtp && (lookup_depth || replay || stream_decode)))
             throw std::invalid_argument("MTP needs depth 1..7, CPU experts, and no lookup or replay");
+        if (decode_warmup && (steps < 2 || decode_repetitions < 2 || use_mtp || lookup_depth || decode_mode_sweep || replay))
+            throw std::invalid_argument("GLM: decode warmup requires repeated ordinary decode with at least two outputs");
         if (mtp_cpu_experts && !use_mtp)
             throw std::invalid_argument("--mtp-experts=cpu requires --speculative=mtp");
         if (lookup_depth < 0 || lookup_depth > 7 || (lookup_depth && replay))
@@ -9984,6 +10313,17 @@ int main(int argc, char **argv) {
         std::unique_ptr<Decoder::Snapshot> decode_start_state;
         const auto decode_start_logits = logits;
         if (decode_repetitions > 1 || decode_mode_sweep) decode_start_state = std::make_unique<Decoder::Snapshot>(decoder.snapshot());
+        if (decode_warmup) {
+            const int warm_steps = std::min(512, steps - 1);
+            int completed = 0;
+            for (; completed < warm_steps; ++completed) {
+                const int token = greedy(logits);
+                if (std::find(stops.begin(), stops.end(), token) != stops.end()) break;
+                logits = decoder.step(token);
+            }
+            decoder.restore(*decode_start_state); logits = decode_start_logits;
+            std::cerr << "DECODE_WARMUP steps=" << completed << " excluded_from_timing=1\n";
+        }
         const int modes = decode_mode_sweep ? (decode_mtp_sweep ? 4 : 7) : 1;
         for (int mode_index = 0; mode_index < modes; ++mode_index) {
             const int mode = decode_mtp_sweep && mode_index ? mode_index + 3 : mode_index;
@@ -10001,6 +10341,12 @@ int main(int argc, char **argv) {
             }
             lock_small_runtime_mappings();
             std::cerr << "DECODE_TRIAL index=" << trial << '\n';
+#ifdef __linux__
+        const char *fault_option = std::getenv("STRATA_GLM_PHASE_FAULTS");
+        const bool phase_faults = fault_option && std::string(fault_option) == "1";
+        rusage decode_faults_before{};
+        if (phase_faults) getrusage(RUSAGE_SELF, &decode_faults_before);
+#endif
         if (profile_decode) check(cudaProfilerStart());
         decoder.reset_decode_stats();
         if (trial_mtp) {
@@ -10046,6 +10392,14 @@ int main(int argc, char **argv) {
                           << " tok_s=" << decode_steps * 1000 / decode_ms << '\n';
         }
         decoder.report_gpu();
+#ifdef __linux__
+        if (phase_faults) {
+            rusage after{}; getrusage(RUSAGE_SELF, &after);
+            std::cerr << "DECODE_FAULTS trial=" << trial
+                      << " major=" << after.ru_majflt - decode_faults_before.ru_majflt
+                      << " minor=" << after.ru_minflt - decode_faults_before.ru_minflt << '\n';
+        }
+#endif
         if (profile_decode) check(cudaProfilerStop());
         }
                 }

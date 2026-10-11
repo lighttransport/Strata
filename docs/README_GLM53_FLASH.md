@@ -163,3 +163,137 @@ A roughly 1 GB/s NVMe SSD is adequate for loading but cannot sustain decode from
 Measure the actual DIMM operating speed and sustained read bandwidth, negotiated PCIe width, native mixed-quantization expert throughput and GPU headroom. Then rerun both the 4096-prefix/256-output repeated benchmark and the chat-template C++ quality task. Report cold/warm state, output token count, MTP priming time, single/speculative rates and output checks separately. General throughput claims need multiple realistic coding prompts and sampled competing CPU activity, not only the favorable source-prefix fixture.
 
 The [full performance record](GLM53_FLASH_PERFORMANCE.md) retains earlier experiments and theoretical estimates. Its historical sections describe implementations and targets at the time of measurement; this guide summarizes the current accepted configuration and known quality limitations.
+
+## RTX 3070: bounded Q23 prefill (experimental)
+
+The opt-in [3070 preset](../configs/glm53f-reap50-q23-64g-rtx3070-streamed-experimental.json)
+uses the unchanged REAP50 Q23 assembly, CPU decode experts, unbiased top-8 routing,
+4K context and a 2048-token logical prefill batch. The development host is a
+Ryzen 9 3950X, four 16 GiB DIMMs reporting 2400 MT/s, and an RTX 3070 8 GiB.
+Linux reports 60.68 GiB RAM. Inference tests use a 56 GiB cgroup with swap disabled.
+The 300 tok/s prefill target has not been qualified.
+
+During prefill, `STRATA_GLM_PREFILL_DENSE_MIB=4096` bounds the dense GPU cache.
+A fixed subset, including the output head, remains resident; the other matrices
+stream unchanged through the cache. Current-layer operands cannot be evicted
+while callers retain their pointers. Before decode-cache admission, prefill
+buffers are released and all fixed decode weights are restored. Repeated requests
+restore the large prefill workspace after draining transfers and invalidating
+captured graphs. This mode is for one GGUF GPU with MMQ experts and no MTP,
+parallel sequences or prefill expert cache. Allocation guards remain enabled.
+
+`STRATA_GLM_WARM_ACTIVE_ONLY=1` warms CPU-required weights without rereading dense
+source pages already owned by the GPU. Streamed dense source pages remain reusable;
+only the fixed GPU subset's source pages are discarded. No model files are edited
+and no whole-model COW copies or registrations are made.
+
+`STRATA_GLM_PREFILL_PROJECTION_ROWS=128` keeps the original small-batch projection
+shapes while amortizing expert transfers over the logical batch. On a frozen
+1024-target teacher-forced code prefix, these panels reproduced every reference
+logit bit. Larger projection panels failed the gate (mean KL 0.01093, top-1
+agreement 96.48%) and are not selected. Expert weight precision is unchanged.
+
+`STRATA_GLM_PREFILL_MLA_TILE` accepts 8, 16, 32 or 64 (default 64); admission and
+attention execution use the same tile. The preset retains 64. Two staged prefetch
+groups reuse the ordinary upload slots, including on REAP50's 144-expert geometry.
+`STRATA_GLM_STAGE_SPREAD=1` spreads staging workers over allowed physical cores.
+All new options are absent from existing presets and do not change engine defaults.
+
+For timing, the memory harness accepts `benchmark_decode_warmup: true` to perform
+an untimed ordinary decode and restore its starting state before repeated trials.
+The equivalent CLI switch is `--decode-warmup`, with `--decode-bench=3` or more.
+`STRATA_GLM_PHASE_FAULTS=1` records decode major/minor faults separately from prefill.
+`require_deterministic: true` rejects differing repeated greedy outputs.
+The coding evaluator accepts `--config` for the preset's batch, context, CPU,
+cache and environment settings; specify `--decoder` separately. Configured REAP
+evaluations use the API's user/observation turn stops. Existing evaluator defaults
+remain unchanged.
+
+For phase-aware teacher-forced checks, set `STRATA_GLM_EVAL_DECODE_PREFIX=128`
+with a decode-cache budget and `--eval-corpus` (without `--eval-prefill`). The
+runner scores the initial prefix through prefill, trains residency on its routes,
+then scores remaining targets one token at a time. This exercises resident expert
+combination and one-token approximation options. The prefix must leave at least
+one target; ordinary evaluation remains unchanged when the variable is absent.
+
+Use the repository's CUDA build instructions with `CMAKE_CUDA_ARCHITECTURES=86`.
+On the development host, CUDA 12.4 and GCC 13 build the runner in
+`build-glm-3070-cuda12`. Set the preset's model path to the assembled file, or put
+it under the repository's `models/glm53f-reap/`. Keep cold startup, warmed timing,
+profiling overhead, page faults, cache admission and quality results separate.
+
+Two alternating same-day rounds used the same frozen 2048-token coding prefix,
+128 generated tokens and three trials per round. Load and an untimed 127-step
+decode warmup were excluded. The medians were:
+
+| Configuration | Prefill, round 1 / 2 (tok/s) | Decode, round 1 / 2 (tok/s) |
+|---|---:|---:|
+| Reference batch 128 | 26.360 / 26.379 | 10.210 / 10.212 |
+| Streamed batch 2048, projection rows 128 | 206.762 / 206.430 | 10.217 / 10.216 |
+
+This is a 7.8x prefill improvement on this fixture. Decode meets 10 tok/s;
+prefill does not meet 300 tok/s. Candidate peak RAM was 55.17 GiB, inference
+swap was zero, and sampled free VRAM stayed at least 746 MiB. Candidate prefill
+major faults were 0/0/0 and 1/0/0; all timed decode major faults were zero.
+All repeated and baseline/candidate output tokens matched. Decode cache admission
+was 107 reference slots (929.56 MiB) versus 108 candidate slots (938.25 MiB).
+The [machine-readable record](benchmarks/glm_rtx3070_q23_20261011.json) retains
+the protocol, individual timings, quality checks and validation limits.
+
+Both configurations passed HumanEval tasks 0 through 29 with identical generated
+token hashes on all 30 tasks (1024-token generation limit). This is a matched
+subset check, not a full HumanEval score. CUDA builds and selected-path parity
+checks passed; the existing optional ordered-KDA bitwise test fails on SM86, so
+that path remains disabled. HIP was not built because its toolchain is unavailable;
+the GLM runner has no SYCL target.
+
+## RTX 3070: approximate decode (experimental)
+
+The separate [approximate decode preset](../configs/glm53f-reap50-q23-64g-rtx3070-decode-approx-experimental.json)
+keeps the same Q23 weight file and the bounded prefill configuration. It drops
+selected routes whose normalized share is below 0.07, uses device-side expert
+combination, disables adaptive GPU-cache replacement, and defers up to two
+low-weight cold routes in layers 10 onward. Deferral changes when the next
+hyper-connection mixer sees their contribution. The existing strict preset is
+unchanged; these approximations are opt-in.
+
+On the frozen 2048-token prefix, three warmed 127-transition trials measured
+15.559, 15.579 and 15.560 tok/s. Repeated greedy outputs matched, timed decode
+major faults were zero, peak RAM was 54.91 GiB, and sampled free VRAM stayed at
+least 746 MiB. This timing includes every decode transition and excludes loading
+and the untimed ordinary decode warmup. It is not a general chat throughput rate.
+The 0.07 threshold pruned about 32% of selected routes in this run; it is not a
+7% bound on total omitted weight.
+
+Phase-aware teacher-forced scoring used 128 prefill targets, trained GPU residency,
+and 896 one-token decode targets. Perplexity was 2.827 strict versus 2.953
+approximate, an increase of 4.5%. Against the saved strict batch-128 prefill logits,
+candidate top-1 agreement was 94.6% and mean KL was 0.0581; the phase-aware strict
+run itself had 97.1% agreement and KL 0.00788 against that reference because the
+decode projection shapes differ. Both presets passed HumanEval tasks 0 through
+29, with no newly failing tasks. Nine completions retained identical token hashes;
+21 changed. This subset does not establish a full HumanEval score or universal
+quality equivalence.
+
+See the [decode measurement record](benchmarks/glm_rtx3070_decode_20261011.json)
+for configuration hashes, memory limits, validation and the final preset timing.
+The public preset's separate three-trial confirmation measured 15.576, 15.550
+and 15.582 tok/s (median 15.576), with identical repeated outputs and zero timed
+decode major faults. Its median prefill rate was 205.76 tok/s.
+
+Further RTX 3070 experiments are recorded in the
+[20 tok/s optimization record](benchmarks/glm_rtx3070_goal20_20261011.json).
+Registered expert uploads with the experimental prefill arithmetic measured
+377.42 tok/s at 2K and 448.64 tok/s at 8K on the same 3950X, DDR4-2400 and
+3070. These rates exclude loading and response preparation. The 18.26 tok/s
+decode candidate increased matched perplexity by 7.9%, but introduced a failure
+on HumanEval/10 and was rejected. The public preset above remains unchanged;
+the 20 tok/s decode target and quality qualification across contexts are pending.
+
+For long-context diagnostics, `STRATA_GLM_EVAL_DECODE_ONLY=1` together with
+`STRATA_GLM_EVAL_DECODE_PREFIX=<tokens>` feeds the prefix in configured prefill
+batches and scores only the subsequent one-token decode targets. It avoids
+retaining prefix logits, requires scalar scoring without saved/reference logit
+files, and reports the prefix separately. Compare strict and candidate runs on
+identical prefix and target tokens. The original evaluation mode remains the
+default.

@@ -30,7 +30,7 @@ td.log
 /.venv-glm/
 /build/
 /third_party/llama.cpp
-/models/
+/models
 /packs/
 /mtp/
 /run-*.bat
