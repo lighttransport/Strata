@@ -531,6 +531,15 @@ kda_rows(float *state, const float *q, const float *k, const float *v, const flo
 }
 // Each output column is independent; retain the original eight/four partial
 // sums and their order while distributing one head across four CTAs.
+// Ordered KDA rows must reproduce kda_chunk's bits. HIP compiles this file with -ffp-contract=off, so there both
+// kernels round every multiply and add as written. nvcc contracts by default, and for kda_chunk it rounds v*d for
+// the memory dot but folds it into the state update, fma(v, d, round(kn*delta)); the ordered kernel spells that
+// out with intrinsics (sm_120, nvcc 13, checked by glm_prefill_parity).
+#if defined(__HIPCC__)
+constexpr bool kda_nvcc_update = false;
+#else
+constexpr bool kda_nvcc_update = true;
+#endif
 template <int parts, bool prepared = false, int cols = 32, bool ordered = false>
 __global__ void __launch_bounds__(cols *parts, 1)
     kda_rows_columns(float *state, const float *q, const float *k, const float *v, const float *g,
@@ -574,19 +583,21 @@ __global__ void __launch_bounds__(cols *parts, 1)
             }
         }
         __syncthreads();
-        float mem = 0;
+        constexpr bool nvcc_update = ordered && kda_nvcc_update;
+        float mem = 0, kept[nvcc_update ? rows : 1];
 #pragma unroll
         for (int i = 0; i < rows; ++i) {
             const int row = part * rows + i;
-            if constexpr (!ordered) {
-                values[i] *= decay[row];
-                mem += values[i] * kn[row];
-            }
+            if constexpr (nvcc_update) { kept[i] = values[i]; values[i] = __fmul_rn(values[i], decay[row]); }
+            else values[i] *= decay[row];
+            if constexpr (!ordered) mem += values[i] * kn[row];
         }
         if constexpr (ordered) {
             // Carry the original sequential FMA accumulator between row
             // partitions, rather than adding independently rounded partials.
-            // Each thread keeps 32 state values with four parts.
+            // Each thread keeps 32 state values with four parts. Under nvcc
+            // this dot contracts to fma(round(values*decay), kn, total),
+            // matching kda_chunk's bit pattern.
             if (!part) partial[lane] = 0.f;
             __syncthreads();
 #pragma unroll
@@ -594,10 +605,7 @@ __global__ void __launch_bounds__(cols *parts, 1)
                 if (part == p) {
                     float total = partial[lane];
 #pragma unroll
-                    for (int i = 0; i < rows; ++i) {
-                        const int row = part * rows + i;
-                        total = __fmaf_rn(__fmul_rn(values[i], decay[row]), kn[row], total);
-                    }
+                    for (int i = 0; i < rows; ++i) total += values[i] * kn[part * rows + i];
                     partial[lane] = total;
                 }
                 __syncthreads();
@@ -622,8 +630,7 @@ __global__ void __launch_bounds__(cols *parts, 1)
             // The original column kernel contracts the old-state decay with
             // the rounded key*delta update. Keep the undecayed state until here;
             // contracting key*delta with an already rounded decay changes bits.
-            if constexpr (ordered)
-                values[i] = __fmaf_rn(values[i], decay[row], __fmul_rn(kn[row], delta[lane]));
+            if constexpr (nvcc_update) values[i] = __fmaf_rn(kept[i], decay[row], __fmul_rn(kn[row], delta[lane]));
             else values[i] = values[i] + kn[row] * delta[lane];
             if constexpr (!ordered) sum += values[i] * qr[row] * qi;
         }

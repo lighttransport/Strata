@@ -29,7 +29,9 @@ class GlmBoundary(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "glm.json"
-            config.write_text(json.dumps({"exe": "unused", "model": "reap.gguf", "prefill_experts": "f16-batched"}))
+            model = Path(directory) / "reap.gguf"
+            model.touch()                     # the server checks that the model exists before loading
+            config.write_text(json.dumps({"exe": "unused", "model": str(model), "prefill_experts": "f16-batched"}))
             metadata = {"general.architecture": "glm5-next", "tokenizer.ggml.eos_token_id": 100,
                         "tokenizer.ggml.tokens": ["ordinary", "<|user|>", "<|observation|>", "<|assistant|>"],
                         "tokenizer.chat_template": "{% for m in messages %}{{m.content}}{% endfor %}"}
@@ -94,6 +96,79 @@ class GlmBoundary(unittest.TestCase):
         self.assertEqual(svc.stop_ids, {154820, 154827, 154829})
         with self.assertRaisesRegex(ValueError, "tool-call"):
             svc.prepare([{"role": "user", "content": "hello"}], [{"name": "test"}], {}, 2)
+
+
+class GlmConfigChecks(unittest.TestCase):
+    """Combinations the engine refuses only after loading the weights are refused at startup."""
+
+    def start(self, cfg, extra_files=()):
+        import serve.server as server
+        import gguf_reader
+        import strata_tokenizer
+        with tempfile.TemporaryDirectory() as directory:
+            model = Path(directory) / "m.gguf"
+            model.touch()
+            for name in extra_files:
+                (Path(directory) / name).touch()
+            cfg = {k: (str(Path(directory) / v) if isinstance(v, str) and v.endswith(".gguf") else v)
+                   for k, v in cfg.items()}
+            config = Path(directory) / "glm.json"
+            config.write_text(json.dumps({"exe": "unused", "model": str(model), **cfg}))
+            metadata = {"general.architecture": "glm5next", "tokenizer.ggml.eos_token_id": 1,
+                        "tokenizer.ggml.tokens": ["a", "b"], "tokenizer.chat_template": "{{ messages }}"}
+            with mock.patch.object(sys, "argv", ["server", "--engine", "glm", "--config", str(config), "--port", "0"]), \
+                 mock.patch.object(gguf_reader, "GGUFFile", return_value=mock.Mock(metadata=metadata)), \
+                 mock.patch.object(strata_tokenizer.Tokenizer, "from_gguf", return_value=ByteTokenizer()), \
+                 mock.patch.object(server, "GlmEngine", side_effect=RuntimeError("engine would start")), \
+                 mock.patch("sys.stderr"):
+                with self.assertRaises((SystemExit, RuntimeError)) as caught:
+                    server.main()
+            return caught.exception
+
+    def assertRefused(self, cfg, extra_files=()):
+        self.assertIsInstance(self.start(cfg, extra_files), SystemExit, cfg)
+
+    def assertAccepted(self, cfg, extra_files=()):
+        e = self.start(cfg, extra_files)
+        self.assertIsInstance(e, RuntimeError, cfg)  # reached the engine constructor
+
+    def test_refusals(self):
+        self.assertRefused({"expert_pack": "missing-pack.gguf"})
+        self.assertRefused({"speculative": "none", "lookup_depth": 3})
+        self.assertRefused({"speculative": "lookup", "lookup_depth": 0})
+        self.assertRefused({"decode_cache_mib": True})
+        self.assertRefused({"decode_cache_mib": 99999})
+        self.assertRefused({"decode_cache_mib": 1024, "decode_experts": "gpu"})
+        self.assertRefused({"decode_cache_mib": "auto", "prefill_batch": 8})
+        self.assertRefused({"speculative": "mtp", "expert_cache_mib": 512})
+        self.assertRefused({"parallel": 9})
+        self.assertRefused({"parallel": 2, "speculative": "lookup"})
+        self.assertRefused({"reasoning_loop_recovery": "recover"})
+
+    def test_accepted(self):
+        self.assertAccepted({})
+        self.assertAccepted({"speculative": "lookup"})
+        self.assertAccepted({"speculative": "mtp", "draft_depth": 3, "decode_cache_mib": "auto", "prefill_batch": 2048})
+        self.assertAccepted({"expert_pack": "pack.gguf"}, extra_files=("pack.gguf",))
+        self.assertAccepted({"parallel": 4})
+
+
+class GlmEngineBehaviour(unittest.TestCase):
+    def test_greedy_noop_settings_accepted(self):
+        llama_defaults = {"temperature": 0, "repeat_penalty": 1, "penalty_last_n": 64, "typical_p": 1,
+                          "mirostat": 0, "top_k": -1, "seed": -1, "dyn_temp_range": 0}
+        self.assertEqual(GlmEngine.sampling_keys(llama_defaults), "")
+        with self.assertRaisesRegex(ValueError, "repeat_penalty"):
+            GlmEngine.sampling_keys({"repeat_penalty": 1.1})
+        with self.assertRaisesRegex(ValueError, "typical_p"):
+            GlmEngine.sampling_keys({"typical_p": 0.9})
+
+    def test_no_yield_and_no_sessions(self):
+        from serve.server import SessionRefused
+        self.assertEqual(GlmEngine.YIELDS_MAX, 0)
+        engine = GlmEngine.__new__(GlmEngine)
+        with self.assertRaises(SessionRefused):
+            engine.session_file("save", "x.bin")
 
 
 if __name__ == "__main__":

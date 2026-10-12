@@ -158,6 +158,14 @@ PACKS = {
                 **_uniform(("Q2_K", "Q2_K", "Q2_K"), exceptions={
                     11: ("IQ3_XXS", "IQ3_XXS", "IQ4_XS"), 12: ("Q2_K", "Q2_K", "IQ4_XS"),
                     44: ("Q2_K", "Q2_K", "IQ4_XS")})),
+    "reap224_q23": Pack("reap224_q23", description="Strata REAP-style prune to 224 experts, Q23 (95.5 GB assembled)",
+                        **_uniform(("Q2_K", "Q2_K", "Q3_K"), experts=224, exceptions={
+                            11: ("IQ3_XXS", "IQ3_XXS", "IQ4_XS"), 12: ("Q2_K", "Q2_K", "IQ4_XS"),
+                            44: ("Q2_K", "Q2_K", "IQ4_XS")}), skew=0.8),
+    "reap224_q22": Pack("reap224_q22", description="Strata REAP-style prune to 224 experts, Q22 (88.1 GB assembled)",
+                        **_uniform(("Q2_K", "Q2_K", "Q2_K"), experts=224, exceptions={
+                            11: ("IQ3_XXS", "IQ3_XXS", "IQ4_XS"), 12: ("Q2_K", "Q2_K", "IQ4_XS"),
+                            44: ("Q2_K", "Q2_K", "IQ4_XS")}), skew=0.8),
     "reap50_q23": Pack("reap50_q23", description="REAP-50 (144 experts) in Q2_K/Q3_K, all 42 layers (55.1 GB)",
                        **_uniform(("Q2_K", "Q2_K", "Q3_K"), experts=144), skew=0.8),
     "reap50_q22": Pack("reap50_q22", description="REAP-50 Q23 assembly with Q2_K down sidecar",

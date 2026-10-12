@@ -1916,20 +1916,38 @@ class GlmEngine(StrataEngine):
     # GLM has no reusable prefix cache. Admit parallel requests directly into slots:
     # promotion would re-prefill generated tokens and can change rounding and logits.
     solo_promotion = False
+    # A yielded admission (BYIELD) is abandoned by the GLM engine and its next BGEN reads the whole prompt again
+    # (decoder.reset(), no prefix reuse), so giving way to a shorter request only multiplies prompt reads.
+    YIELDS_MAX = 0
 
     @staticmethod
     def sampling_keys(sampling):
+        # Values that leave greedy decoding unchanged are accepted (llama.cpp clients send them by default).
         neutral = {"temperature": 0, "top_p": 1, "top_k": 0, "min_p": 0,
-                   "repetition_penalty": 1, "frequency_penalty": 0, "presence_penalty": 0}
+                   "repetition_penalty": 1, "frequency_penalty": 0, "presence_penalty": 0,
+                   "repeat_penalty": 1, "typical_p": 1, "mirostat": 0, "dyn_temp_range": 0}
         # The caller passes the entire API request, including model/messages/stream.
         settings = sampling or {}
-        sampling_fields = (*neutral, "seed", "penalty_last_n", "typical_p", "mirostat",
-                           "dyn_temp_range", "repeat_penalty")
+        sampling_fields = (*neutral, "seed", "penalty_last_n")
+        penalised = any(settings.get(k) not in (None, neutral[k])
+                        for k in ("repetition_penalty", "frequency_penalty", "presence_penalty", "repeat_penalty"))
         for key in sampling_fields:
             value = settings.get(key)
-            if value is not None and (key not in neutral or value != neutral[key]):
+            if value is None:
+                continue
+            if key == "seed" and isinstance(value, int) and value <= 0:   # unset (-1 / 0), as for the other engines
+                continue
+            if key == "penalty_last_n" and not penalised:   # a window with no penalty changes nothing
+                continue
+            if key == "top_k" and value == -1:   # llama.cpp's "no limit"
+                continue
+            if key not in neutral or value != neutral[key]:
                 raise ValueError(f"GLM currently supports greedy decoding only; unsupported setting {key}")
         return ""
+
+    def session_file(self, action, path):
+        # The GLM engine has no SAVE/RESTORE: sending one would desynchronize its line protocol and end it.
+        raise SessionRefused("invalid", "slot save/restore is not supported by the GLM engine")
 
     def generate(self, ids, max_new, sampling, cancel, embeddings=None):
         if embeddings is not None:
@@ -6160,9 +6178,51 @@ def main() -> int:
             ap.error("GLM cpu_affinity must be none, auto or numa")
         if not 1 <= int(cfg.get("draft_depth", 3)) <= 7:
             ap.error("GLM draft_depth must be 1..7")
+        # Combinations the engine rejects only after loading the weights (minutes): refuse them here.
+        if not Path(cfg["model"]).exists():
+            ap.error(f"GLM model not found: {cfg['model']}")
+        if cfg.get("expert_pack") and not Path(cfg["expert_pack"]).is_file():
+            ap.error(f"GLM expert_pack not found: {cfg['expert_pack']}")
+        spec = cfg.get("speculative", "none")
+        lookup = int(cfg.get("lookup_depth", 3 if spec == "lookup" else 0))
+        if (spec == "lookup") != (lookup > 0):
+            ap.error("GLM lookup_depth > 0 requires speculative=lookup, and speculative=lookup requires lookup_depth > 0")
+        if not 0 <= lookup <= 7:
+            ap.error("GLM lookup_depth must be 0..7")
+        dcache = cfg.get("decode_cache_mib", 0)
+        if isinstance(dcache, bool) or not (isinstance(dcache, int) and dcache >= 0 or dcache in ("auto", "extend")):
+            ap.error('GLM decode_cache_mib must be a whole number of MiB (0..12288), "auto" or "extend"')
+        if isinstance(dcache, int) and dcache > 12288:
+            ap.error("GLM decode_cache_mib must be at most 12288")
+        gpu_decode = cfg.get("decode_experts", "cpu") == "gpu"
+        expert_mib, prepack = int(cfg.get("expert_cache_mib", 0)), int(cfg.get("cpu_prepack_mib", 0))
+        if dcache and (gpu_decode or lookup or expert_mib or prepack):
+            ap.error("GLM decode_cache_mib needs CPU decode experts without lookup, expert_cache_mib or cpu_prepack_mib")
+        if dcache in ("auto", "extend") and int(cfg.get("prefill_batch", 8)) <= 8:
+            ap.error("GLM decode_cache_mib auto/extend needs GPU prompt prefill (prefill_batch > 8)")
+        if cfg.get("decode_prefill_cache") and (prepack or expert_mib):
+            ap.error("GLM decode_prefill_cache cannot be combined with cpu_prepack_mib or expert_cache_mib")
+        if not 0 <= int(cfg.get("decode_cache_window", 256)) <= 8192:
+            ap.error("GLM decode_cache_window must be 0..8192")
+        if spec == "mtp" and (lookup or gpu_decode or expert_mib):
+            ap.error("GLM speculative=mtp cannot be combined with lookup, decode_experts=gpu or expert_cache_mib")
+        parallel = cfg.get("parallel")
+        if isinstance(parallel, int) and not isinstance(parallel, bool) and parallel > 1:
+            if parallel > 8:
+                ap.error("GLM parallel must be 2..8 (the engine has at most 8 sequence slots)")
+            devices_cfg = cfg.get("gpu_devices", "0")
+            n_devices = len(devices_cfg) if isinstance(devices_cfg, list) else len(str(devices_cfg).split(","))
+            if lookup or gpu_decode or expert_mib or prepack or n_devices > 1:
+                ap.error("GLM parallel requires one GPU, CPU decode experts, no lookup, no expert_cache_mib "
+                         "and no cpu_prepack_mib")
+        recovery = cfg.get("reasoning_loop_recovery", False)
+        if recovery is True or recovery == "recover":
+            ap.error('GLM decodes greedily only: reasoning_loop_recovery "recover" would resample; use "stop"')
         context = int(cfg.get("context", 8192 if glm_native else 4096))
         if glm_native and (context > 65536 or cfg.get("speculative", "none") != "none" or cfg.get("lookup_depth", 0) or cfg.get("decode_experts", "cpu") != "cpu"):
             ap.error("native EXL3 requires context <=64K, CPU decode experts and speculative=none")
+        if glm_native and (cfg.get("decode_graphs") or cfg.get("decode_cache_mib", 0)):
+            ap.error("native EXL3 does not support decode_graphs or decode_cache_mib")
         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
                 str(cfg.get("threads", 15 if glm_native else 6)), str(cfg.get("expert_cache_mib", 0)),
                 str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(map(str, sorted(glm_stop_ids))), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native else "none"), str(cfg.get("cpu_prepack_mib", 0))]

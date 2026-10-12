@@ -132,6 +132,42 @@ files, which would add 30–60% if they port).
    appears; the plan otherwise mirrors GLM-5.3 (row split 75/25 over IB,
    `docs/GLM53_FULL_TR16_B550.md`).
 
+## Conversion to a Strata expert pack (measured on TR16, 2026-10-11)
+
+Step 2 of the plan is done without calibration; `mimo_v2` itself is still not implemented, so nothing
+below has been run through the engine.
+
+1. **Base GGUF, lossless experts.** llama.cpp's `conversion/mimo.py` (local branch `mimo-mxfp4-experts`
+   of the llama.cpp checkout) was patched to keep the checkpoint's MXFP4 experts as GGML MXFP4 instead of
+   dequantizing them: U8 codes plus U8 E8M0 `weight_scale`, repacked per expert by
+   `repack_mxfp4_blocks` and written as a chunked tensor so the converter holds one expert at a time
+   (about 4 GB RSS instead of the whole model). `convert_hf_to_gguf.py --outtype q8_0` then gives
+   `MiMo-V2.6-Flash-RL-MXFP4.gguf`: 168.4 GB, architecture `mimo2`, 51 blocks (48 + 3 MTP), 141 MXFP4
+   expert tensors (149.8 GiB), trunk Q8_0 (6.9 GiB; the FP8/BF16 originals are not kept), norms F32. Nine
+   sampled experts of layers 1, 23 and 47 match the safetensors bit for bit. About 15 minutes.
+2. **Pack.** `strata-mimo-q2-pack` (`tools/mimo_q2_pack.cpp`) is a separate tool, not a change to the GLM
+   one: same sidecar format, keys and source fingerprint as `strata-glm-q2-pack`, plus
+   `strata.expert_pack.architecture = "mimo2"`; routed layers 1..47; MXFP4 or K-quant sources.
+   Calibration is explicit: `--imatrix=FILE` weights the quantization with the per-expert mean squared inputs
+   of a llama.cpp `llama-imatrix` run on the same GGUF (`<weight>.in_sum2` / `<weight>.counts`; an expert the
+   text never reached gets the layer's pooled mean), or `--uncalibrated`. The imatrix path was checked on one
+   layer with a synthetic imatrix (pack verifies, `calibrated` recorded); a real imatrix run over this 168 GB
+   base has not been done.
+
+   ```
+   build-glm-release/strata-mimo-q2-pack MiMo-V2.6-Flash-RL-MXFP4.gguf experts-q23.gguf --uncalibrated --threads=16
+   build-glm-release/strata-mimo-q2-pack --verify MiMo-V2.6-Flash-RL-MXFP4.gguf experts-q23.gguf
+   ```
+
+   `experts-q23.gguf`: 109.6 GB (Q2_K gate/up, Q3_K down), 141 projections, 84 minutes at 16 threads;
+   verification reads it back in 3 minutes. Weight-space normalized MSE against the MXFP4 source:
+   gate 0.096 (0.083-0.149 per layer), up 0.095 (0.072-0.148), down 0.024 (0.016-0.032). These are
+   reconstruction errors, not model quality; an imatrix-style calibration should lower them and is the
+   next step once a calibration path for MiMo exists (llama.cpp's `llama-imatrix` supports `mimo2`).
+
+The experiment in `experiment/fp4` measures the matching kernels: Q2_K/Q3_K expert GEMVs and the fused
+MoE layer for this pack mix on the 5060 Ti and the 1950X.
+
 ## Simulator changes
 
 `tools/sim/model.py` registers `mimo_flash` and `mimo_pro` (`MODELS`,

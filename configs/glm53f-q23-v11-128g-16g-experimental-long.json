@@ -1,7 +1,6 @@
 {
   "exe": "tools/glm_numa_interleave.sh",
-  "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
-  "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+  "model": "/mnt/nvme01/models/glm53f/assembled/GLM-5.3-Flash-Q23-assembled.gguf",
   "model_name": "glm53f-q23-v11-128g-16g-experimental-long",
   "context": 12288,
   "dense_cache_mib": 4096,
@@ -57,7 +56,7 @@
     "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
     "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
     "STRATA_Q23_PREFETCH": "512",
-    "STRATA_GLM_NUMA_EXECUTABLE": "build-q2-v11-dual/strata-glm-decode-dense-q4"
+    "STRATA_GLM_NUMA_EXECUTABLE": "build-glm-release/strata-glm-decode"
   },
   "log": "build-q2-v11-dual/full-v11-long-server.log"
 }

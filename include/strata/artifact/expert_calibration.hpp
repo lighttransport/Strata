@@ -19,6 +19,8 @@ class ExpertCalibration final:public kernels::cpu::ExpertObserver {
     struct Moments {int columns=0;std::vector<double> sum;std::vector<uint64_t> count;};
     int experts_=288;
     std::map<std::pair<int,bool>,Moments> data_;
+    // Router gate weights per expert (sum, sum of squares), for REAP-style saliency: written to gates.json.
+    std::map<int,std::pair<std::vector<double>,std::vector<double>>> gates_;
     std::filesystem::path directory_;
     std::ofstream trace_;
     int trace_positions_=24,first_position_=-1;
@@ -46,8 +48,13 @@ public:
         if(!directory_.empty())std::filesystem::create_directories(directory_);
         if(!trace.empty()){trace_.open(trace,std::ios::binary|std::ios::trunc);if(!trace_)throw std::runtime_error("cannot create expert activation trace");}
     }
-    void input(int layer,int position,int nt,int n,int topk,const int* ids,const float* values) {
+    // weights: the normalized routing weights next to ids (nt*topk), or nullptr when the caller has none.
+    void input(int layer,int position,int nt,int n,int topk,const int* ids,const float* values,const float* weights=nullptr) {
         if(layer<3||layer>44)return;
+        if(weights&&!directory_.empty()) {
+            auto& g=gates_[layer];if(g.first.empty()){g.first.assign(experts_,0.);g.second.assign(experts_,0.);}
+            for(int j=0;j<nt*topk;++j){const int e=ids[j];if(e<0||e>=experts_||!std::isfinite(weights[j]))throw std::runtime_error("calibration routing mismatch");g.first[e]+=weights[j];g.second[e]+=double(weights[j])*weights[j];}
+        }
         if(first_position_<0)first_position_=position;
         if(trace_.is_open()&&position-first_position_<trace_positions_) {
             const uint32_t header[]={0x31435247,uint32_t(layer),uint32_t(position),uint32_t(nt),uint32_t(n),uint32_t(topk)};
@@ -72,6 +79,15 @@ public:
             comma=true;report<<"{\"name\":\""<<name<<"\",\"counts\":[";for(int e=0;e<experts_;++e){if(e)report<<',';report<<m.count[e];}report<<"]}";
         }
         report<<"]}\n";report.close();if(!report)throw std::runtime_error("calibration coverage write failed");
+        if(!gates_.empty()) {
+            std::ofstream g(directory_/"gates.json");g<<"{\"layers\":[";bool c2=false;
+            for(const auto& [layer,v]:gates_) {
+                if(c2)g<<',';
+                c2=true;g<<"{\"layer\":"<<layer<<",\"sum\":[";for(int e=0;e<experts_;++e){if(e)g<<',';g<<v.first[e];}
+                g<<"],\"sum_sq\":[";for(int e=0;e<experts_;++e){if(e)g<<',';g<<v.second[e];}g<<"]}";
+            }
+            g<<"]}\n";g.close();if(!g)throw std::runtime_error("calibration gates write failed");
+        }
     }
 };
 }

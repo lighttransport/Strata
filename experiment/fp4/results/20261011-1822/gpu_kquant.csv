@@ -1,0 +1,11 @@
+device,kernel,op,weights,n_tok,threads_or_cfg,us_med,us_p10,us_p90,bytes,gbps,pct_peak,tflops,rel_l2,max_abs,hash
+gpu,kq_q2k_dp4a,gu8,dummy,1,rows1,173.25,173.00,198.34,44040192,254.2,71.2,1.55,1.001e-02,5.319e-01,b98e03119ad161ce
+gpu,kq_q2k_dp4a,gu8,dummy,1,rows2,112.95,111.70,141.46,44040192,389.9,109.2,2.38,1.001e-02,5.319e-01,b98e03119ad161ce
+gpu,kq_q2k_dp4a,gu8,dummy,1,rows4,110.37,108.49,173.47,44040192,399.0,111.8,2.43,1.001e-02,5.319e-01,b98e03119ad161ce
+gpu,kq_q3k_dp4a,down8,dummy,1,rows1,102.77,102.64,102.80,28835840,280.6,78.6,1.31,1.017e-02,5.307e-01,76117b8cf0da8e7a
+gpu,kq_q3k_dp4a,down8,dummy,1,rows2,85.08,84.65,85.44,28835840,338.9,94.9,1.58,1.017e-02,5.307e-01,76117b8cf0da8e7a
+gpu,kq_q3k_dp4a,down8,dummy,1,rows4,79.17,78.71,79.47,28835840,364.2,102.0,1.70,1.017e-02,5.307e-01,76117b8cf0da8e7a
+gpu,moe_q23_strata,moe_layer,dummy,1,2launch,243.88,243.20,335.84,72876032,298.8,83.7,1.65,1.678e-02,4.748e+00,6960f2d03ed15aa2
+gpu,moe_q23_strata,moe47_graph,dummy,1,per_layer,281.77,267.15,287.47,72876032,258.6,72.5,1.43,0.000e+00,0.000e+00,0000000000000000
+gpu,moe_q2k_mxdown_ggmlorg,moe_layer,dummy,1,2launch,259.72,232.11,315.76,79691776,306.8,86.0,1.55,1.677e-02,4.983e+00,730476ad4c830336
+gpu,moe_q2k_mxdown_ggmlorg,moe47_graph,dummy,1,per_layer,266.40,264.65,279.14,79691776,299.1,83.8,1.51,0.000e+00,0.000e+00,0000000000000000

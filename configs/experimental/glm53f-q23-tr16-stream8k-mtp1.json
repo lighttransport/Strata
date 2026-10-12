@@ -1,7 +1,6 @@
 {
-  "exe": "/mnt/nvme02/work/Strata/build-tr16-20261009/stream/strata-glm-decode",
-  "model": "/mnt/nvme01/models/glm53f/q2/GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
-  "expert_pack": "/mnt/nvme01/models/glm53f/q2-cpu-experiment/experts-q23.gguf",
+  "exe": "/mnt/nvme02/work/Strata/build-spec/stream-loader-cuda/strata-glm-decode",
+  "model": "/mnt/nvme01/models/glm53f/assembled/GLM-5.3-Flash-Q23-assembled.gguf",
   "model_name": "glm53f-q23-tr16-stream8k-mtp1",
   "context": 12288,
   "dense_cache_mib": 4096,

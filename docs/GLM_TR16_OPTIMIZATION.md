@@ -1195,3 +1195,57 @@ the 128-token check was 32.25 tokens/s (one short trial, not comparable to the
 512×3 numbers). Two earlier attempts were rejected by the quiet-run guard (another
 session's compile, then kernel memory compaction while 118 GB of page cache was in
 use); evicting the cache of unused large files fixed the second.
+
+## Speculative decoding bounds on TR16 (2026-10-11)
+
+Question: can a different speculative algorithm reach 40+ tokens/s losslessly? Inputs: the soft4 control's
+measured per-position acceptance (0.98 / 0.88 / 0.71 at depth 3, 3.58 tokens per round, 8K held-out code) and
+the simulator's verify cost per window width (`tools/sim`, Q22 / Q4 dense / affinity 0.08, scaled to the
+measured 91 ms at width 4): 45.9, 58.9, 83.9, 94.5, 110.9, 127.5, 146.5, 165.7 ms for widths 1-8, draft 4.0 ms
+per MTP token. Scripts: `build-spec/adaptive_bound.py`, `build-spec/suffix_replay.py` (research directory).
+
+- **Draft length.** Fixed depth 3 predicts 33.2 tokens/s (measured 34.1). An oracle that verifies exactly up to
+  the first rejection, depth up to 7, reaches 38.1. A confidence gate with a realistic predictor (AUC 0.75-0.95)
+  gives 32.3-35.0. Each extra verified token costs 16-19 ms of CPU expert bytes, so utility-optimal adaptive
+  depth (EVICT, arXiv 2605.00342) cannot reach 40 here.
+- **Model-free drafting.** Replaying the logged held-out outputs through a suffix matcher: on the review/explain
+  prompts a cost-aware hybrid (suffix draft only when its expected tokens per ms beats MTP) never chooses the
+  suffix draft and equals MTP; the old rule (any match replaces MTP) loses 6-9%, matching the measured -11.7%.
+  Suffix drafting pays only when the answer repeats the context (code edits, refactors, agent tool loops).
+- **Planner.** `glm_sim.py plan --target-decode 40` finds nothing lossless at 40; every 40+ candidate combines a
+  block drafter (DFlash) with lossy routing levers.
+- **Cost-aware lookup policy** (`STRATA_GLM_MTP_LOOKUP_POLICY=cost`, patch `build-spec/cost-policy.patch` on the
+  streaming source, binary `build-spec/cost-cuda`): a lookup (suffix) draft replaces the MTP draft only when its
+  expected tokens per ms is higher. Per-token acceptance is learned per match-length bucket from optimistic starts
+  (0.55 / 0.75 / 0.88 / 0.95 for 4-7 / 8-15 / 16-23 / 24+ tokens); matches of 24+ tokens are always taken;
+  verify cost per window width starts from TR16 measurements (4 wide 101-103 ms, 8 wide 156-179 ms) and is
+  refined online; lookup tokens are accepted only on exact target matches (lossless). Indicative screen
+  (2026-10-12, another agent's builds on the machine; soft4 Q22 base, MTP depth 3, 512 tokens x 3, medians):
+
+  | Prompt | MTP only | Any match replaces MTP (old rule) | Cost policy |
+  |---|---:|---:|---:|
+  | edit-cpp (rewrite a C++ file with comments) | 31.9 | 39.3 | **38.6 (+21%)** |
+  | edit-py (reformat a Python file) | 33.8 | 32.1 | **33.6 (−0.6%)** |
+  | 8K held-out code review | 28.5 | 27.6 | **28.2 (−1%)** |
+
+  Lookup acceptance: edit-cpp 92%, edit-py about 53-62%, review about 41%. Earlier versions show why each rule
+  matters: pessimistic priors (0.3-0.7) took no lookup at all (edit-cpp 31.2); without the 24+ rule, +10-15%.
+
+  Ported to the main decoder (`src/program/glm_decode.cpp`, opt-in, exact acceptance only). Screen on TR16
+  (2026-10-12, machine quiet; `configs/glm53f-q2-v3.json`: assembled Q23, MTP depth 3, lookup depth 7 with
+  minimum match 4, GPU budget 13824 MiB, 512 tokens x 3, medians):
+
+  | Prompt | MTP only | Any match replaces MTP | Cost policy, research-build costs | Cost policy, this setup's costs |
+  |---|---:|---:|---:|---:|
+  | edit-cpp | 20.1 | 21.5 (+7%) | 20.8 (+3.5%) | 20.9 (+4%) |
+  | edit-py | 22.6 | 19.9 (−12%) | 21.4 (−5%) | 22.1 (−2%) |
+  | 8K held-out code review | 14.7 | 14.3 (−3%) | 15.3 | 15.3 |
+
+  On the review prompt the policy took no lookup round and ran the same rounds as MTP only; the 14.7 vs 15.3
+  difference is run-to-run drift, not the policy. The cost-policy output matched MTP only token for token on
+  all three prompts; the replace rule's output differed on the review prompt. On this configuration verify
+  time grows about 31 ms per window token (4-token windows 147-149 ms, 7-token lookup windows 239-255 ms,
+  derived from the replace runs), twice the research build's slope, so lookup windows gain less here. The
+  shipped starting costs are these measurements; the research-build costs (4 wide 102 ms, about 15 ms per
+  token) made the policy take losing lookup rounds on edit-py. One edit-py cost run was stopped by the GPU
+  memory reserve guard (483 MiB free of the 512 MiB reserve at a 13824 MiB budget) and was repeated.

@@ -1,0 +1,12 @@
+date: 2026-10-11T18:22:25+09:00
+Linux tr16 6.8.0-142-generic #142-Ubuntu SMP PREEMPT_DYNAMIC Wed Sep  2 14:24:27 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Model name:                              AMD Ryzen Threadripper 1950X 16-Core Processor
+CPU(s) scaling MHz:                      72%
+CPU max MHz:                             3400.0000
+CPU min MHz:                             2200.0000
+NUMA node(s):                            2
+NUMA node0 CPU(s):                       0-7,16-23
+NUMA node1 CPU(s):                       8-15,24-31
+name, driver_version, clocks.max.sm [MHz], clocks.max.memory [MHz], power.limit [W]
+NVIDIA GeForce RTX 5060 Ti, 615.71.09, 3105 MHz, 14001 MHz, 150.00 W
+ 18:22:25 up 6 days, 11:56,  6 users,  load average: 2.31, 1.45, 0.89

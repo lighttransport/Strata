@@ -67,9 +67,10 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
             try {
                 while (begin < ids.size()) {
                     const int id = ids[begin]; auto &slot = slots[id];
-                    const int k = std::min(depth, slot.limit - slot.generated - 1);
-                    if (input.size() + k + 1 > 8) break;
                     decoder.select_sequence(id);
+                    // A sequence without a primed draft state (never reached prepare_mtp) verifies only its token.
+                    const int k = decoder.draft_ready() ? std::min(depth, slot.limit - slot.generated - 1) : 0;
+                    if (input.size() + k + 1 > 8) break;
                     work.push_back({id, (int)input.size(), decoder.token_position(), {slot.token}, {}});
                     auto &w = work.back();
                     // A one-row tail cannot reject a draft and needs no rollback allocation.
@@ -159,9 +160,18 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                 request = std::move(requests.front()); requests.pop_front(); active = request.cancel;
             } else if (ended && !running()) break;
         }
-        if (request.line == "QUIT") break;
-        if (request.line.empty()) {
+        if (request.line == "QUIT") {
+            for (int i = 0; i < count; ++i) if (slots[i].active) finish(i, "cancel");
+            std::cout << std::flush;
+            break;
+        }
+        if (!request.cancel) {          // nothing was queued: decode one step for the running slots
             safe_pump();
+            continue;
+        }
+        if (request.line.empty()) {     // a blank line from the client is a malformed request
+            std::cout << "ERR empty request line\n" << std::flush;
+            { std::lock_guard lock(mutex); active.reset(); }
             continue;
         }
         bool batched = false;
@@ -217,7 +227,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                         if (cancelled()) throw std::runtime_error("cancelled");
                         ++delivered_control;
                         std::cout << "T " << token << '\n' << std::flush;
-                    });
+                    }, &prompt);
                     generated = result.generated; reason = result.stopped ? "stop" : "length";
                 } else {
                     reason = "length";
@@ -236,7 +246,8 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
             std::cout << std::flush;
         } catch (const std::exception &e) {
             decoder.set_cancel({});
-            if (*request.cancel || (batched && slot >= 0 && slot < count && stopped[slot])) {
+            if ((*request.cancel || (batched && slot >= 0 && slot < count && stopped[slot])) &&
+                std::string(e.what()) == "cancelled") {
                 std::cout << "DONE " << delivered_control << " 0 0 0 cancel 0 0 0\n";
                 if (batched) std::cout << "BADM " << slot << " 0\n";
                 std::cout << std::flush;

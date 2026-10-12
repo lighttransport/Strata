@@ -1,0 +1,19 @@
+# started on Sun Oct 11 18:26:56 2026
+
+
+ Performance counter stats for '/mnt/nvme02/work/Strata/experiment/fp4/build/bench_cpu --threads 16 --sets 4 --iters 40':
+
+    72,639,214,607      cycles                                                                  (83.26%)
+   143,948,064,729      instructions                     #    1.98  insn per cycle            
+                                                  #    0.36  stalled cycles per insn     (83.25%)
+     3,067,021,522      cache-references                                                        (83.36%)
+       179,533,822      cache-misses                     #    5.85% of all cache refs           (83.42%)
+       255,231,042      stalled-cycles-frontend          #    0.35% frontend cycles idle        (83.37%)
+    51,940,841,639      stalled-cycles-backend           #   71.51% backend cycles idle         (83.33%)
+
+       2.053942145 seconds time elapsed
+
+      19.269079000 seconds user
+       1.638209000 seconds sys
+
+
