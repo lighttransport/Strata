@@ -444,6 +444,60 @@ Timing results and resource guards are recorded in
 patches, configs and raw logs are retained locally under `build-tr16-incremental-20261013/`.
 
 
+## RX 9070 XT on TR16 (2026-10-14)
+
+These HIP screens used a Threadripper 1950X, 128 GiB RAM and one RX 9070 XT
+16 GiB (`gfx1201`), Ubuntu 24.04.5, kernel `6.8.0-147-generic`, and ROCm 10.1
+in `/opt/rocm/core-10.1` (HIP runtime `7.16.26385`). The earlier TR16 handoff
+reports DDR4-3200; RAM speed was not remeasured here. The runner was built from
+`6ade1961`, after merging `origin/glm53f`. Set
+[`LD_LIBRARY_PATH` for this installation](AMD_HIP.md#build) before launching it.
+
+The model was REAP-224 Q23 with Q4 dense projections. Decode used CPU experts,
+15 NUMA workers, MTP depth 3, soft acceptance margin 4, top-k 6, at most three
+soft accepts per window, and the existing four-token repetition guard.
+Prefill used bucketed FP16 batched expert products. Every completed screen
+used the frozen 8,192-token held-out code prompt, three prefill trials, then
+one 512-token decode warmup and three timed 512-token continuations in one
+process. User services enforced `MemorySwapMax=0`; the guard recorded CPU
+interference and runner swap. These are repeated screens, not independent
+process speed gates.
+
+| Configuration | Expert cache slots | Prefill tok/s, median | Decode tok/s, median |
+|---|---:|---:|---:|
+| Direct registration, affinity 0.10 | 856 | 561.370 | 27.1913 |
+| NUMA relocation, 1 GiB reserves, affinity 0.10 | 754 | 567.361 | 30.6665 |
+| NUMA relocation, intermediate reserve, affinity 0.12 | 831 | 555.711 | 33.5650 |
+| NUMA relocation, intermediate reserve, affinity 0.14 | 831 | 560.732 | 34.0785 |
+
+The direct-registration case left expert pages without post-prefill NUMA
+relocation and used six tasks per worker. Disabling direct registration,
+restoring `STRATA_GLM_NUMA_AFTER_PREFILL=1`, and restoring twelve tasks per
+worker raised measured CPU layer-flow bandwidth from about 51 to 69 GB/s.
+Those changes were combined; their individual contributions were not isolated.
+
+An initial NUMA run with 856 cache slots reached 34.0242 tok/s in one timed
+continuation, then refused a checkpoint allocation that would consume GPU
+runtime headroom. It is incomplete. Increasing both GPU and tier runtime
+reserves to 1 GiB let all trials finish but reduced the cache to 754 slots.
+The intermediate setting used `STRATA_GLM_TIER_RUNTIME_RESERVE_MIB=768` and
+`STRATA_GLM_GPU_RESERVE_MIB=512`, retaining 831 slots. An earlier attempt was
+also rejected for 24 KiB of swapped stack pages before the swap-disabled
+services were used. Both failures are retained in the evidence.
+
+All four completed screens had zero runner swap, no recorded CPU interference,
+and no repeated 32-token sequence in their short continuations. Outputs differed
+between repetitions. Affinity 0.14 gained only 1.5% over 0.12 and adds routing
+loss; it did not establish 35+ tok/s. No 2K screen, corpus gate, HumanEval rerun
+or soak test was performed. The later tuned-profile HumanEval result remains
+150/164 against the 152-pass floor ([release record](GLM_RELEASE_20261013.md));
+these timing results do not qualify a replacement profile or change defaults.
+
+The [compact evidence](benchmarks/glm_tr16_9070xt_reap224_20261014.json) records
+the configs, build and prompt hashes, trial rates, memory and failed runs.
+Frozen configs, token outputs and logs remain locally under
+`build-hip-rocm101-tr16/pruned-mtp-20261014/`.
+
 ## Reproduce
 
 ```

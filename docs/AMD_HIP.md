@@ -237,6 +237,21 @@ If CMake cannot find the HIP compiler, add
 host this was `/usr/lib64/rocm/llvm/bin/clang++`. Use the compiler and libraries
 from the same ROCm installation. Do not enable both GPU backends in one build.
 
+For a versioned ROCm installation, set its library path before launching the
+engine or Python server. `ROCM_PATH` selects the build toolkit; the Linux loader
+also needs `LD_LIBRARY_PATH` when those libraries are not on its search path:
+
+```sh
+export ROCM_PATH=/opt/rocm/core-10.1
+export LD_LIBRARY_PATH="$ROCM_PATH/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+On TR16 (Threadripper 1950X, RX 9070 XT, Linux), ROCm 10.1 required this setting
+on 2026-10-14: without it, `strata-device` could not find `libamdhip64.so.7`.
+With it, the GPU kernel diagnostic, Strata device self-test and one-step
+GLM-5.3f REAP224 Q23 inference passed. The GLM runner's HIP, hipBLAS, hipBLASLt,
+rocBLAS and HSA libraries resolved under `/opt/rocm/core-10.1/lib`.
+
 Native IQ experts are enabled by default. CMake fetches the llama.cpp revision
 pinned by this repository. For an offline build, point `STRATA_GGML_DIR` at a
 checkout of that exact revision; using an arbitrary newer checkout changes the

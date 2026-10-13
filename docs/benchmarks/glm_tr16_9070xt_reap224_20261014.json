@@ -1,0 +1,1621 @@
+{
+  "date": "2026-10-14",
+  "source_commit": "6ade1961f35f42a298029b6f78de892d3782784a",
+  "hardware": "TR16 Threadripper 1950X / 128 GiB RAM / RX 9070 XT 16 GiB",
+  "ram_speed": {
+    "mt_s": 3200,
+    "source": "Earlier TR16 handoff; user-reported, not remeasured in this screen"
+  },
+  "os": "Ubuntu 24.04.5 LTS",
+  "kernel": "6.8.0-147-generic",
+  "rocm_root": "/opt/rocm/core-10.1",
+  "hip_runtime_version": "7.16.26385",
+  "gpu_arch": "gfx1201",
+  "decoder_sha256": "c2489ef9d433f870343f20ffd974f3d8975d26e449a54c4b21c609309d7ceab9",
+  "prompt": {
+    "path": "docs/fixtures/glm_tr16_20261009/prompts/8k/holdout-code.ids",
+    "sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49"
+  },
+  "protocol": {
+    "prompt_tokens": 8192,
+    "output_tokens": 512,
+    "timed_decode_trials": 3,
+    "decode_warmup_trials": 1,
+    "swap_disabled": true
+  },
+  "cases": [
+    {
+      "name": "q23-8k-noswap",
+      "config": {
+        "exe": "<build-dir>/strata-glm-decode",
+        "model": "<model-dir>/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+        "context": 12288,
+        "dense_cache_mib": 4096,
+        "gpu_budget_mib": 15360,
+        "gpu_devices": "0",
+        "threads": 15,
+        "cpu_affinity": "numa",
+        "prefill_batch": 8192,
+        "decode_experts": "cpu",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": true,
+        "decode_cache_mib": 12288,
+        "env": {
+          "STRATA_GLM_QUANT_ONCE": "1",
+          "STRATA_NATIVE_NUMA_LOCAL": "0",
+          "STRATA_POOL_SPIN_US": "20000",
+          "STRATA_IQ2_TABLE_SIGNS": "1",
+          "STRATA_GLM_LAYER_GRAPHS": "1",
+          "STRATA_GLM_VERIFY_GRAPHS": "1",
+          "STRATA_NATIVE_TASKS_PER_THREAD": "6",
+          "STRATA_GLM_STEP_PIPELINE": "1",
+          "STRATA_GLM_Q8_DECODE": "1",
+          "STRATA_GLM_LAYER_FLOW": "1",
+          "STRATA_GLM_MAPPED_OWNED": "1",
+          "STRATA_GLM_EXPERT_PRIOR": "<model-dir>/coverage-keep224.json",
+          "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+          "STRATA_GLM_SPLIT_VERIFY": "1",
+          "STRATA_GLM_CANON": "1",
+          "STRATA_GLM_TIER_ADAPT": "1",
+          "STRATA_GLM_GPU_RESERVE_MIB": "512",
+          "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+          "STRATA_GLM_Q23_WIDE": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.10",
+          "STRATA_GLM_MLA_GRAPHS": "1",
+          "STRATA_GLM_STAGE_WORKERS": "4",
+          "STRATA_GLM_DEFER_COPY_WAIT": "1",
+          "STRATA_GLM_DEQUANT_ONCE": "1",
+          "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_MAPPED_LAZY": "1",
+          "STRATA_GLM_COMPACT_STAGING": "1",
+          "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+          "STRATA_GLM_TIER_PREALLOCATE": "1",
+          "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+          "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+          "STRATA_Q23_PREFETCH": "512",
+          "STRATA_GLM_REAP_PREFETCH": "1",
+          "STRATA_GLM_STAGE_PREFETCH": "1",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+          "STRATA_GLM_PREFETCH_GROUPS": "14",
+          "STRATA_GLM_MTP_ACCEPT_MARGIN": "4",
+          "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+          "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+          "STRATA_GLM_DENSE_Q4": "all",
+          "STRATA_GLM_MTP_SYNC_STATE_ONLY": "1",
+          "STRATA_GLM_MTP_DRAFT_TOP_K": "4",
+          "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+          "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "4",
+          "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+          "STRATA_Q23_AVX2": "1",
+          "STRATA_GLM_DEQUANT_COALESCED": "1",
+          "STRATA_GLM_TIER_DIRECT": "1",
+          "STRATA_GLM_MLA_KERNELS": "1",
+          "STRATA_GLM_HC_FUSED": "1",
+          "STRATA_GLM_HC_FUSED_BATCH": "1",
+          "STRATA_GLM_HEADS_BLOCKS": "1",
+          "STRATA_GLM_HEADS_BLOCKS_BATCH": "1",
+          "STRATA_GLM_FUSE_ROUTE": "1",
+          "STRATA_GLM_NORM_Q8_FUSED": "1",
+          "STRATA_GLM_TIER_LOOKUP_ONCE": "1",
+          "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "512",
+          "STRATA_GLM_F16_BUCKETS": "1",
+          "STRATA_GLM_F16_BUCKET_STEP": "64",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_PACK_FUSE_QUANT": "0",
+          "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576",
+          "LD_LIBRARY_PATH": "/opt/rocm/core-10.1/lib",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0"
+        },
+        "prefill_experts": "f16-batched",
+        "stop_token_ids": [
+          154820,
+          154827,
+          154829
+        ],
+        "model_name": "glm53f-q23-reap224-tr16-tuned",
+        "experimental_role": "REAP-224 Q23 tuned profile, TR16 2026-10-13. Prefill 615 tok/s (8K), 604 (16K in 8K passes); decode 32.3 (8K) / 30.6 (2K) tok/s. 35-track gate: corpus perplexity +4.90%, KL +0.0636, top-1 -1.90 pp vs 288-expert Q23; HumanEval 152/164 (short prompts are bit-identical to that measured profile; lossy prefill paths apply only from 4096 tokens, prefill-path KL +0.0015).",
+        "backend": "hip",
+        "source_commit": "6ade1961f35f42a298029b6f78de892d3782784a"
+      },
+      "original_config_sha256": "ae405c8633326d389e6e6aa3713b26e8aafe9e5a319db568cc6c9f215789af7c",
+      "complete": true,
+      "clean": true,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 15431.3,
+          "tokens_per_second": 530.869
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14567.0,
+          "tokens_per_second": 562.366
+        },
+        {
+          "trial": 2,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14592.9,
+          "tokens_per_second": 561.37
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 18792.7,
+          "tokens_per_second": 27.1913
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 19004.1,
+          "tokens_per_second": 26.8889
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 18509.5,
+          "tokens_per_second": 27.6074
+        }
+      ],
+      "median_prefill_tok_s": 561.37,
+      "median_decode_tok_s": 27.1913,
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 856,
+          "MiB": 7436.5,
+          "fingerprint": 9842873831138282208
+        }
+      ],
+      "peak_allocated_gpu_mib": 13608.7,
+      "peak_rss_kib": 88690840,
+      "peak_swap_kib": 0,
+      "interference": [],
+      "exit_code": 0,
+      "repeated_tokens_equal": false,
+      "trial_token_sha256": [
+        "5a3c14bbb7b7acb907c4b21252c489a5f493f7a831ac9869b8504ad4f7d991f8",
+        "328e44c1737140d6dc62bd677d37bf65000346bccbb5db1a6e851133a598a3e5",
+        "97d1c10062ba2c72b338c89ede30411335f3421b4b88d8e3f50c338a1a5101d6",
+        "0234feb3eacfbf1a8e3e328d92b56bc804762de4181902ed1694096bbe7c1732"
+      ],
+      "repetition_diagnostic": [
+        {
+          "trial": 0,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 1,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 2,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 3,
+          "duplicate_32grams": 0
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 827.585,
+          "quant_ms": 3.36404,
+          "down_ms": 581.38,
+          "layer_flow_ms": 15996.9,
+          "bytes": 825571999744
+        },
+        {
+          "gu_ms": 264.938,
+          "quant_ms": 3.1927,
+          "down_ms": 180.919,
+          "layer_flow_ms": 14433.5,
+          "bytes": 741399789568
+        },
+        {
+          "gu_ms": 234.769,
+          "quant_ms": 3.24785,
+          "down_ms": 160.078,
+          "layer_flow_ms": 14366.2,
+          "bytes": 735274467328
+        },
+        {
+          "gu_ms": 208.316,
+          "quant_ms": 3.08477,
+          "down_ms": 139.513,
+          "layer_flow_ms": 14145.3,
+          "bytes": 724514832384
+        }
+      ],
+      "mtp_timing": [
+        {
+          "prepare_ms": 2.99954,
+          "draft_ms": 3822.44,
+          "verify_ms": 18319.9,
+          "resync_ms": 304.517
+        },
+        {
+          "prepare_ms": 0.457585,
+          "draft_ms": 1456.9,
+          "verify_ms": 16958.8,
+          "resync_ms": 212.691
+        },
+        {
+          "prepare_ms": 0.456095,
+          "draft_ms": 1430.09,
+          "verify_ms": 17187.3,
+          "resync_ms": 220.882
+        },
+        {
+          "prepare_ms": 0.405333,
+          "draft_ms": 1334.35,
+          "verify_ms": 16721.9,
+          "resync_ms": 198.519
+        }
+      ],
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 154,
+          "opportunities": 154,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 154,
+          "opportunities": 146,
+          "accepted": 122
+        },
+        {
+          "index": 2,
+          "proposed": 154,
+          "opportunities": 122,
+          "accepted": 89
+        },
+        {
+          "index": 0,
+          "proposed": 154,
+          "opportunities": 154,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 154,
+          "opportunities": 146,
+          "accepted": 122
+        },
+        {
+          "index": 2,
+          "proposed": 153,
+          "opportunities": 121,
+          "accepted": 89
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 145
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 145,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 121,
+          "accepted": 87
+        },
+        {
+          "index": 0,
+          "proposed": 153,
+          "opportunities": 153,
+          "accepted": 144
+        },
+        {
+          "index": 1,
+          "proposed": 153,
+          "opportunities": 144,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 153,
+          "opportunities": 120,
+          "accepted": 94
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 142.509
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 111,
+          "sum_logit_regret": 148.924
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 109,
+          "sum_logit_regret": 150.893
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 112,
+          "sum_logit_regret": 149.608
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 5
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ]
+    },
+    {
+      "name": "q23-8k-numa-reserve",
+      "config": {
+        "exe": "<build-dir>/strata-glm-decode",
+        "model": "<model-dir>/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+        "context": 12288,
+        "dense_cache_mib": 4096,
+        "gpu_budget_mib": 15360,
+        "gpu_devices": "0",
+        "threads": 15,
+        "cpu_affinity": "numa",
+        "prefill_batch": 8192,
+        "decode_experts": "cpu",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": true,
+        "decode_cache_mib": 12288,
+        "env": {
+          "STRATA_GLM_QUANT_ONCE": "1",
+          "STRATA_NATIVE_NUMA_LOCAL": "0",
+          "STRATA_POOL_SPIN_US": "20000",
+          "STRATA_IQ2_TABLE_SIGNS": "1",
+          "STRATA_GLM_LAYER_GRAPHS": "1",
+          "STRATA_GLM_VERIFY_GRAPHS": "1",
+          "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+          "STRATA_GLM_STEP_PIPELINE": "1",
+          "STRATA_GLM_Q8_DECODE": "1",
+          "STRATA_GLM_LAYER_FLOW": "1",
+          "STRATA_GLM_MAPPED_OWNED": "1",
+          "STRATA_GLM_EXPERT_PRIOR": "<model-dir>/coverage-keep224.json",
+          "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+          "STRATA_GLM_SPLIT_VERIFY": "1",
+          "STRATA_GLM_CANON": "1",
+          "STRATA_GLM_TIER_ADAPT": "1",
+          "STRATA_GLM_GPU_RESERVE_MIB": "1024",
+          "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+          "STRATA_GLM_Q23_WIDE": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.10",
+          "STRATA_GLM_MLA_GRAPHS": "1",
+          "STRATA_GLM_STAGE_WORKERS": "4",
+          "STRATA_GLM_DEFER_COPY_WAIT": "1",
+          "STRATA_GLM_DEQUANT_ONCE": "1",
+          "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_MAPPED_LAZY": "1",
+          "STRATA_GLM_COMPACT_STAGING": "1",
+          "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+          "STRATA_GLM_TIER_PREALLOCATE": "1",
+          "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+          "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+          "STRATA_Q23_PREFETCH": "512",
+          "STRATA_GLM_REAP_PREFETCH": "1",
+          "STRATA_GLM_STAGE_PREFETCH": "1",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+          "STRATA_GLM_PREFETCH_GROUPS": "14",
+          "STRATA_GLM_MTP_ACCEPT_MARGIN": "4",
+          "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+          "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+          "STRATA_GLM_DENSE_Q4": "all",
+          "STRATA_GLM_MTP_SYNC_STATE_ONLY": "1",
+          "STRATA_GLM_MTP_DRAFT_TOP_K": "4",
+          "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+          "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "4",
+          "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+          "STRATA_Q23_AVX2": "1",
+          "STRATA_GLM_DEQUANT_COALESCED": "1",
+          "STRATA_GLM_TIER_DIRECT": "0",
+          "STRATA_GLM_MLA_KERNELS": "1",
+          "STRATA_GLM_HC_FUSED": "1",
+          "STRATA_GLM_HC_FUSED_BATCH": "1",
+          "STRATA_GLM_HEADS_BLOCKS": "1",
+          "STRATA_GLM_HEADS_BLOCKS_BATCH": "1",
+          "STRATA_GLM_FUSE_ROUTE": "1",
+          "STRATA_GLM_NORM_Q8_FUSED": "1",
+          "STRATA_GLM_TIER_LOOKUP_ONCE": "1",
+          "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "1024",
+          "STRATA_GLM_F16_BUCKETS": "1",
+          "STRATA_GLM_F16_BUCKET_STEP": "64",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_PACK_FUSE_QUANT": "0",
+          "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576",
+          "LD_LIBRARY_PATH": "/opt/rocm/core-10.1/lib",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "STRATA_GLM_NUMA_AFTER_PREFILL": "1"
+        },
+        "prefill_experts": "f16-batched",
+        "stop_token_ids": [
+          154820,
+          154827,
+          154829
+        ],
+        "model_name": "glm53f-q23-reap224-tr16-tuned",
+        "experimental_role": "REAP-224 Q23 tuned profile, TR16 2026-10-13. Prefill 615 tok/s (8K), 604 (16K in 8K passes); decode 32.3 (8K) / 30.6 (2K) tok/s. 35-track gate: corpus perplexity +4.90%, KL +0.0636, top-1 -1.90 pp vs 288-expert Q23; HumanEval 152/164 (short prompts are bit-identical to that measured profile; lossy prefill paths apply only from 4096 tokens, prefill-path KL +0.0015).",
+        "backend": "hip",
+        "source_commit": "6ade1961f35f42a298029b6f78de892d3782784a"
+      },
+      "original_config_sha256": "2ea1c0d330699df3d5e6e476f277c314ad1173747ef3cb15e57d51d1dc0481df",
+      "complete": true,
+      "clean": true,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14644.6,
+          "tokens_per_second": 559.386
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14373.3,
+          "tokens_per_second": 569.947
+        },
+        {
+          "trial": 2,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14438.8,
+          "tokens_per_second": 567.361
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16663.1,
+          "tokens_per_second": 30.6665
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16208.6,
+          "tokens_per_second": 31.5265
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16676.4,
+          "tokens_per_second": 30.6421
+        }
+      ],
+      "median_prefill_tok_s": 567.361,
+      "median_decode_tok_s": 30.6665,
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 754,
+          "MiB": 6550.38,
+          "fingerprint": 509818225751756953
+        }
+      ],
+      "peak_allocated_gpu_mib": 13588.9,
+      "peak_rss_kib": 88702780,
+      "peak_swap_kib": 0,
+      "interference": [],
+      "exit_code": 0,
+      "repeated_tokens_equal": false,
+      "trial_token_sha256": [
+        "251cdceef1370ce6d7318bfd8022e36c14bea12b82d1a8c045b58c4d99e18a6e",
+        "98c30dff6a9dfc86083f44857d63a256d9d9946ca4fc8ebdd6539f1318dd5c67",
+        "3c2a86c1b11e30e9248e69ac0ac4428be5ea69cef3834e853a8ca4415788bfa1",
+        "a65bf2ca824557d8250e4ce3f9bcec5c02f7cdb461bce79637e8ebe617e52e2b"
+      ],
+      "repetition_diagnostic": [
+        {
+          "trial": 0,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 1,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 2,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 3,
+          "duplicate_32grams": 0
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 291.351,
+          "quant_ms": 3.19932,
+          "down_ms": 175.281,
+          "layer_flow_ms": 11835,
+          "bytes": 821137244160
+        },
+        {
+          "gu_ms": 206.991,
+          "quant_ms": 3.14237,
+          "down_ms": 139.904,
+          "layer_flow_ms": 11387.6,
+          "bytes": 787674628096
+        },
+        {
+          "gu_ms": 196.004,
+          "quant_ms": 3.03191,
+          "down_ms": 133.16,
+          "layer_flow_ms": 11539.8,
+          "bytes": 796383444992
+        },
+        {
+          "gu_ms": 207.574,
+          "quant_ms": 3.22604,
+          "down_ms": 138.894,
+          "layer_flow_ms": 11373.5,
+          "bytes": 786159501312
+        }
+      ],
+      "mtp_timing": [
+        {
+          "prepare_ms": 2.74182,
+          "draft_ms": 2902.83,
+          "verify_ms": 15405.3,
+          "resync_ms": 298.993
+        },
+        {
+          "prepare_ms": 0.34327,
+          "draft_ms": 1377.15,
+          "verify_ms": 14848.9,
+          "resync_ms": 221.421
+        },
+        {
+          "prepare_ms": 0.426403,
+          "draft_ms": 1313.17,
+          "verify_ms": 14519,
+          "resync_ms": 197.063
+        },
+        {
+          "prepare_ms": 0.33095,
+          "draft_ms": 1391.27,
+          "verify_ms": 14844.8,
+          "resync_ms": 225.18
+        }
+      ],
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 154,
+          "opportunities": 154,
+          "accepted": 142
+        },
+        {
+          "index": 1,
+          "proposed": 154,
+          "opportunities": 142,
+          "accepted": 122
+        },
+        {
+          "index": 2,
+          "proposed": 154,
+          "opportunities": 122,
+          "accepted": 92
+        },
+        {
+          "index": 0,
+          "proposed": 154,
+          "opportunities": 154,
+          "accepted": 148
+        },
+        {
+          "index": 1,
+          "proposed": 154,
+          "opportunities": 148,
+          "accepted": 118
+        },
+        {
+          "index": 2,
+          "proposed": 153,
+          "opportunities": 117,
+          "accepted": 91
+        },
+        {
+          "index": 0,
+          "proposed": 148,
+          "opportunities": 148,
+          "accepted": 140
+        },
+        {
+          "index": 1,
+          "proposed": 148,
+          "opportunities": 140,
+          "accepted": 127
+        },
+        {
+          "index": 2,
+          "proposed": 147,
+          "opportunities": 126,
+          "accepted": 96
+        },
+        {
+          "index": 0,
+          "proposed": 156,
+          "opportunities": 156,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 155,
+          "opportunities": 146,
+          "accepted": 117
+        },
+        {
+          "index": 2,
+          "proposed": 155,
+          "opportunities": 117,
+          "accepted": 91
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 116,
+          "sum_logit_regret": 159.943
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 98,
+          "sum_logit_regret": 148.909
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 98,
+          "sum_logit_regret": 133.495
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 115,
+          "sum_logit_regret": 154.522
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 3
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ]
+    },
+    {
+      "name": "q23-8k-aff12",
+      "config": {
+        "exe": "<build-dir>/strata-glm-decode",
+        "model": "<model-dir>/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+        "context": 12288,
+        "dense_cache_mib": 4096,
+        "gpu_budget_mib": 15360,
+        "gpu_devices": "0",
+        "threads": 15,
+        "cpu_affinity": "numa",
+        "prefill_batch": 8192,
+        "decode_experts": "cpu",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": true,
+        "decode_cache_mib": 12288,
+        "env": {
+          "STRATA_GLM_QUANT_ONCE": "1",
+          "STRATA_NATIVE_NUMA_LOCAL": "0",
+          "STRATA_POOL_SPIN_US": "20000",
+          "STRATA_IQ2_TABLE_SIGNS": "1",
+          "STRATA_GLM_LAYER_GRAPHS": "1",
+          "STRATA_GLM_VERIFY_GRAPHS": "1",
+          "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+          "STRATA_GLM_STEP_PIPELINE": "1",
+          "STRATA_GLM_Q8_DECODE": "1",
+          "STRATA_GLM_LAYER_FLOW": "1",
+          "STRATA_GLM_MAPPED_OWNED": "1",
+          "STRATA_GLM_EXPERT_PRIOR": "<model-dir>/coverage-keep224.json",
+          "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+          "STRATA_GLM_SPLIT_VERIFY": "1",
+          "STRATA_GLM_CANON": "1",
+          "STRATA_GLM_TIER_ADAPT": "1",
+          "STRATA_GLM_GPU_RESERVE_MIB": "512",
+          "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+          "STRATA_GLM_Q23_WIDE": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.12",
+          "STRATA_GLM_MLA_GRAPHS": "1",
+          "STRATA_GLM_STAGE_WORKERS": "4",
+          "STRATA_GLM_DEFER_COPY_WAIT": "1",
+          "STRATA_GLM_DEQUANT_ONCE": "1",
+          "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_MAPPED_LAZY": "1",
+          "STRATA_GLM_COMPACT_STAGING": "1",
+          "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+          "STRATA_GLM_TIER_PREALLOCATE": "1",
+          "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+          "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+          "STRATA_Q23_PREFETCH": "512",
+          "STRATA_GLM_REAP_PREFETCH": "1",
+          "STRATA_GLM_STAGE_PREFETCH": "1",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+          "STRATA_GLM_PREFETCH_GROUPS": "14",
+          "STRATA_GLM_MTP_ACCEPT_MARGIN": "4",
+          "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+          "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+          "STRATA_GLM_DENSE_Q4": "all",
+          "STRATA_GLM_MTP_SYNC_STATE_ONLY": "1",
+          "STRATA_GLM_MTP_DRAFT_TOP_K": "4",
+          "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+          "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "4",
+          "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+          "STRATA_Q23_AVX2": "1",
+          "STRATA_GLM_DEQUANT_COALESCED": "1",
+          "STRATA_GLM_TIER_DIRECT": "0",
+          "STRATA_GLM_MLA_KERNELS": "1",
+          "STRATA_GLM_HC_FUSED": "1",
+          "STRATA_GLM_HC_FUSED_BATCH": "1",
+          "STRATA_GLM_HEADS_BLOCKS": "1",
+          "STRATA_GLM_HEADS_BLOCKS_BATCH": "1",
+          "STRATA_GLM_FUSE_ROUTE": "1",
+          "STRATA_GLM_NORM_Q8_FUSED": "1",
+          "STRATA_GLM_TIER_LOOKUP_ONCE": "1",
+          "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "768",
+          "STRATA_GLM_F16_BUCKETS": "1",
+          "STRATA_GLM_F16_BUCKET_STEP": "64",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_PACK_FUSE_QUANT": "0",
+          "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576",
+          "LD_LIBRARY_PATH": "/opt/rocm/core-10.1/lib",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "STRATA_GLM_NUMA_AFTER_PREFILL": "1"
+        },
+        "prefill_experts": "f16-batched",
+        "stop_token_ids": [
+          154820,
+          154827,
+          154829
+        ],
+        "model_name": "glm53f-q23-reap224-tr16-tuned",
+        "experimental_role": "REAP-224 Q23 tuned profile, TR16 2026-10-13. Prefill 615 tok/s (8K), 604 (16K in 8K passes); decode 32.3 (8K) / 30.6 (2K) tok/s. 35-track gate: corpus perplexity +4.90%, KL +0.0636, top-1 -1.90 pp vs 288-expert Q23; HumanEval 152/164 (short prompts are bit-identical to that measured profile; lossy prefill paths apply only from 4096 tokens, prefill-path KL +0.0015).",
+        "backend": "hip",
+        "source_commit": "6ade1961f35f42a298029b6f78de892d3782784a"
+      },
+      "original_config_sha256": "abee4aa8643f83665bee8da17bc9d13cda41fd364a1485ad1ae24a18385094c7",
+      "complete": true,
+      "clean": true,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14741.5,
+          "tokens_per_second": 555.711
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14759.3,
+          "tokens_per_second": 555.041
+        },
+        {
+          "trial": 2,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14738.1,
+          "tokens_per_second": 555.839
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 15224.2,
+          "tokens_per_second": 33.565
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 15223.8,
+          "tokens_per_second": 33.566
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 15867.6,
+          "tokens_per_second": 32.204
+        }
+      ],
+      "median_prefill_tok_s": 555.711,
+      "median_decode_tok_s": 33.565,
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 831,
+          "MiB": 7219.31,
+          "fingerprint": 22038081698125572
+        }
+      ],
+      "peak_allocated_gpu_mib": 13588.9,
+      "peak_rss_kib": 88710828,
+      "peak_swap_kib": 0,
+      "interference": [],
+      "exit_code": 0,
+      "repeated_tokens_equal": false,
+      "trial_token_sha256": [
+        "59a66df502d805e644e55f3de5178e2fa96e23e9292619d1416e65c45fb7a696",
+        "a560b717532df93d3806ecab6a5b7a365e33ea05e8ee6cadf446f768ee6ddfde",
+        "d71dd87ae7dd718bd9981ed10807e55f166a307110c6123b07dfce8dde101acf",
+        "ccc0f6266ea6c852dd8b458dc8d5f7ab6416af82bcf81affd41eb65844368a35"
+      ],
+      "repetition_diagnostic": [
+        {
+          "trial": 0,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 1,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 2,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 3,
+          "duplicate_32grams": 0
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 308.562,
+          "quant_ms": 3.47113,
+          "down_ms": 188.185,
+          "layer_flow_ms": 11838.7,
+          "bytes": 811801051136
+        },
+        {
+          "gu_ms": 202.639,
+          "quant_ms": 3.1011,
+          "down_ms": 134.329,
+          "layer_flow_ms": 10057.2,
+          "bytes": 688982261760
+        },
+        {
+          "gu_ms": 191.63,
+          "quant_ms": 3.42999,
+          "down_ms": 128.671,
+          "layer_flow_ms": 10314.5,
+          "bytes": 703049498624
+        },
+        {
+          "gu_ms": 209.179,
+          "quant_ms": 3.3438,
+          "down_ms": 140.497,
+          "layer_flow_ms": 10226.9,
+          "bytes": 685982941184
+        }
+      ],
+      "mtp_timing": [
+        {
+          "prepare_ms": 2.92885,
+          "draft_ms": 3025.34,
+          "verify_ms": 15491.4,
+          "resync_ms": 302.413
+        },
+        {
+          "prepare_ms": 0.420752,
+          "draft_ms": 1303.99,
+          "verify_ms": 13499.2,
+          "resync_ms": 193.911
+        },
+        {
+          "prepare_ms": 0.418812,
+          "draft_ms": 1298.04,
+          "verify_ms": 13537.7,
+          "resync_ms": 191.704
+        },
+        {
+          "prepare_ms": 0.446783,
+          "draft_ms": 1376.59,
+          "verify_ms": 14077.3,
+          "resync_ms": 215.061
+        }
+      ],
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 162,
+          "opportunities": 162,
+          "accepted": 144
+        },
+        {
+          "index": 1,
+          "proposed": 161,
+          "opportunities": 143,
+          "accepted": 117
+        },
+        {
+          "index": 2,
+          "proposed": 161,
+          "opportunities": 117,
+          "accepted": 88
+        },
+        {
+          "index": 0,
+          "proposed": 146,
+          "opportunities": 146,
+          "accepted": 140
+        },
+        {
+          "index": 1,
+          "proposed": 146,
+          "opportunities": 140,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 145,
+          "opportunities": 124,
+          "accepted": 100
+        },
+        {
+          "index": 0,
+          "proposed": 145,
+          "opportunities": 145,
+          "accepted": 142
+        },
+        {
+          "index": 1,
+          "proposed": 145,
+          "opportunities": 142,
+          "accepted": 125
+        },
+        {
+          "index": 2,
+          "proposed": 144,
+          "opportunities": 124,
+          "accepted": 99
+        },
+        {
+          "index": 0,
+          "proposed": 154,
+          "opportunities": 154,
+          "accepted": 144
+        },
+        {
+          "index": 1,
+          "proposed": 154,
+          "opportunities": 144,
+          "accepted": 122
+        },
+        {
+          "index": 2,
+          "proposed": 153,
+          "opportunities": 121,
+          "accepted": 91
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 126,
+          "sum_logit_regret": 163.802
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 98,
+          "sum_logit_regret": 119.098
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 92,
+          "sum_logit_regret": 117.233
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 128,
+          "sum_logit_regret": 178.751
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        }
+      ]
+    },
+    {
+      "name": "q23-8k-aff14",
+      "config": {
+        "exe": "<build-dir>/strata-glm-decode",
+        "model": "<model-dir>/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+        "context": 12288,
+        "dense_cache_mib": 4096,
+        "gpu_budget_mib": 15360,
+        "gpu_devices": "0",
+        "threads": 15,
+        "cpu_affinity": "numa",
+        "prefill_batch": 8192,
+        "decode_experts": "cpu",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": true,
+        "decode_cache_mib": 12288,
+        "env": {
+          "STRATA_GLM_QUANT_ONCE": "1",
+          "STRATA_NATIVE_NUMA_LOCAL": "0",
+          "STRATA_POOL_SPIN_US": "20000",
+          "STRATA_IQ2_TABLE_SIGNS": "1",
+          "STRATA_GLM_LAYER_GRAPHS": "1",
+          "STRATA_GLM_VERIFY_GRAPHS": "1",
+          "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+          "STRATA_GLM_STEP_PIPELINE": "1",
+          "STRATA_GLM_Q8_DECODE": "1",
+          "STRATA_GLM_LAYER_FLOW": "1",
+          "STRATA_GLM_MAPPED_OWNED": "1",
+          "STRATA_GLM_EXPERT_PRIOR": "<model-dir>/coverage-keep224.json",
+          "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+          "STRATA_GLM_SPLIT_VERIFY": "1",
+          "STRATA_GLM_CANON": "1",
+          "STRATA_GLM_TIER_ADAPT": "1",
+          "STRATA_GLM_GPU_RESERVE_MIB": "512",
+          "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+          "STRATA_GLM_Q23_WIDE": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.14",
+          "STRATA_GLM_MLA_GRAPHS": "1",
+          "STRATA_GLM_STAGE_WORKERS": "4",
+          "STRATA_GLM_DEFER_COPY_WAIT": "1",
+          "STRATA_GLM_DEQUANT_ONCE": "1",
+          "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "4096",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_MAPPED_LAZY": "1",
+          "STRATA_GLM_COMPACT_STAGING": "1",
+          "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+          "STRATA_GLM_TIER_PREALLOCATE": "1",
+          "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+          "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+          "STRATA_Q23_PREFETCH": "512",
+          "STRATA_GLM_REAP_PREFETCH": "1",
+          "STRATA_GLM_STAGE_PREFETCH": "1",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+          "STRATA_GLM_PREFETCH_GROUPS": "14",
+          "STRATA_GLM_MTP_ACCEPT_MARGIN": "4",
+          "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+          "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+          "STRATA_GLM_DENSE_Q4": "all",
+          "STRATA_GLM_MTP_SYNC_STATE_ONLY": "1",
+          "STRATA_GLM_MTP_DRAFT_TOP_K": "4",
+          "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+          "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "4",
+          "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+          "STRATA_Q23_AVX2": "1",
+          "STRATA_GLM_DEQUANT_COALESCED": "1",
+          "STRATA_GLM_TIER_DIRECT": "0",
+          "STRATA_GLM_MLA_KERNELS": "1",
+          "STRATA_GLM_HC_FUSED": "1",
+          "STRATA_GLM_HC_FUSED_BATCH": "1",
+          "STRATA_GLM_HEADS_BLOCKS": "1",
+          "STRATA_GLM_HEADS_BLOCKS_BATCH": "1",
+          "STRATA_GLM_FUSE_ROUTE": "1",
+          "STRATA_GLM_NORM_Q8_FUSED": "1",
+          "STRATA_GLM_TIER_LOOKUP_ONCE": "1",
+          "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "768",
+          "STRATA_GLM_F16_BUCKETS": "1",
+          "STRATA_GLM_F16_BUCKET_STEP": "64",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_PACK_FUSE_QUANT": "0",
+          "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576",
+          "LD_LIBRARY_PATH": "/opt/rocm/core-10.1/lib",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "STRATA_GLM_NUMA_AFTER_PREFILL": "1"
+        },
+        "prefill_experts": "f16-batched",
+        "stop_token_ids": [
+          154820,
+          154827,
+          154829
+        ],
+        "model_name": "glm53f-q23-reap224-tr16-tuned",
+        "experimental_role": "REAP-224 Q23 tuned profile, TR16 2026-10-13. Prefill 615 tok/s (8K), 604 (16K in 8K passes); decode 32.3 (8K) / 30.6 (2K) tok/s. 35-track gate: corpus perplexity +4.90%, KL +0.0636, top-1 -1.90 pp vs 288-expert Q23; HumanEval 152/164 (short prompts are bit-identical to that measured profile; lossy prefill paths apply only from 4096 tokens, prefill-path KL +0.0015).",
+        "backend": "hip",
+        "source_commit": "6ade1961f35f42a298029b6f78de892d3782784a"
+      },
+      "original_config_sha256": "4c3c4177954d7e1ecd5e4df7f43c2aa2ff58075292ea934da42fb2c95edbc7af",
+      "complete": true,
+      "clean": true,
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14599.1,
+          "tokens_per_second": 561.129
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14609.5,
+          "tokens_per_second": 560.732
+        },
+        {
+          "trial": 2,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14642.7,
+          "tokens_per_second": 559.46
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 15747.2,
+          "tokens_per_second": 32.4503
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 14858.2,
+          "tokens_per_second": 34.3917
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 14994.8,
+          "tokens_per_second": 34.0785
+        }
+      ],
+      "median_prefill_tok_s": 560.732,
+      "median_decode_tok_s": 34.0785,
+      "cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 831,
+          "MiB": 7219.31,
+          "fingerprint": 22038081698125572
+        }
+      ],
+      "peak_allocated_gpu_mib": 13588.9,
+      "peak_rss_kib": 88711000,
+      "peak_swap_kib": 0,
+      "interference": [],
+      "exit_code": 0,
+      "repeated_tokens_equal": false,
+      "trial_token_sha256": [
+        "9762bb964b343d7a4c23affd318299ba2e7a9c4cb37d16ac4b8ca55cecdab291",
+        "39bb9414c31264979c3a59c156a7776d897714ad6b65c3f6ff197cc8fb9b3830",
+        "fbba82bbb84ffd62b787dc62fcc29ccf5c321b9ed14b778639a65e311684f151",
+        "7f846249ac05aca5672c04ece4aca9e2c74e9b430ff760b9aaf7a55e2672f6b3"
+      ],
+      "repetition_diagnostic": [
+        {
+          "trial": 0,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 1,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 2,
+          "duplicate_32grams": 0
+        },
+        {
+          "trial": 3,
+          "duplicate_32grams": 0
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 0,
+          "bytes": 0
+        },
+        {
+          "gu_ms": 268.678,
+          "quant_ms": 3.10654,
+          "down_ms": 161.914,
+          "layer_flow_ms": 10289.3,
+          "bytes": 709511020544
+        },
+        {
+          "gu_ms": 206.744,
+          "quant_ms": 3.23843,
+          "down_ms": 140.54,
+          "layer_flow_ms": 10012.5,
+          "bytes": 685075333120
+        },
+        {
+          "gu_ms": 195.815,
+          "quant_ms": 3.24298,
+          "down_ms": 132.56,
+          "layer_flow_ms": 9508.34,
+          "bytes": 652946046976
+        },
+        {
+          "gu_ms": 193.307,
+          "quant_ms": 3.17181,
+          "down_ms": 130.761,
+          "layer_flow_ms": 9841.1,
+          "bytes": 668952559616
+        }
+      ],
+      "mtp_timing": [
+        {
+          "prepare_ms": 3.27368,
+          "draft_ms": 2767.81,
+          "verify_ms": 13722.7,
+          "resync_ms": 306.642
+        },
+        {
+          "prepare_ms": 0.360184,
+          "draft_ms": 1359.37,
+          "verify_ms": 13994.2,
+          "resync_ms": 204.79
+        },
+        {
+          "prepare_ms": 0.331523,
+          "draft_ms": 1283.07,
+          "verify_ms": 13201.4,
+          "resync_ms": 199.826
+        },
+        {
+          "prepare_ms": 0.358664,
+          "draft_ms": 1282.55,
+          "verify_ms": 13346.2,
+          "resync_ms": 191.531
+        }
+      ],
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 146,
+          "opportunities": 146,
+          "accepted": 145
+        },
+        {
+          "index": 1,
+          "proposed": 145,
+          "opportunities": 144,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 145,
+          "opportunities": 121,
+          "accepted": 99
+        },
+        {
+          "index": 0,
+          "proposed": 155,
+          "opportunities": 155,
+          "accepted": 142
+        },
+        {
+          "index": 1,
+          "proposed": 154,
+          "opportunities": 141,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 154,
+          "opportunities": 120,
+          "accepted": 94
+        },
+        {
+          "index": 0,
+          "proposed": 148,
+          "opportunities": 148,
+          "accepted": 145
+        },
+        {
+          "index": 1,
+          "proposed": 147,
+          "opportunities": 144,
+          "accepted": 123
+        },
+        {
+          "index": 2,
+          "proposed": 147,
+          "opportunities": 123,
+          "accepted": 95
+        },
+        {
+          "index": 0,
+          "proposed": 148,
+          "opportunities": 148,
+          "accepted": 141
+        },
+        {
+          "index": 1,
+          "proposed": 148,
+          "opportunities": 141,
+          "accepted": 123
+        },
+        {
+          "index": 2,
+          "proposed": 147,
+          "opportunities": 122,
+          "accepted": 99
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 133,
+          "sum_logit_regret": 166.349
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 94,
+          "sum_logit_regret": 152.203
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 85,
+          "sum_logit_regret": 119.993
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 101,
+          "sum_logit_regret": 133.991
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        }
+      ]
+    }
+  ],
+  "failed_runs": [
+    {
+      "name": "q23-8k",
+      "reason": "strict guard detected 24 KiB swapped stack pages"
+    },
+    {
+      "name": "q23-8k-numa",
+      "reason": "checkpoint allocation would consume runtime headroom; one timed continuation completed at 34.0242 tok/s"
+    }
+  ],
+  "findings": [
+    "The direct-registration profile left expert pages without post-prefill NUMA relocation and used six tasks per worker; CPU layer-flow bandwidth was about 51 GB/s. Disabling direct registration, restoring NUMA relocation, and restoring twelve tasks per worker produced about 69 GB/s.",
+    "A 856-slot NUMA run reached 34.0242 tok/s for one timed continuation, then refused a checkpoint allocation to preserve GPU runtime headroom. It is an incomplete result.",
+    "Larger reserves reduced cache capacity to 754 slots and decode to 30.6665 tok/s. Intermediate reserves retained 831 slots.",
+    "Affinity 0.14 improved throughput by about 1.5% over affinity 0.12, still below 35 tok/s."
+  ],
+  "limitations": [
+    "One process per configuration, with repeated continuations; no independent-process speed gate or soak test.",
+    "2K workload not measured in this investigation.",
+    "Quality/corpus/HumanEval gates were not rerun. Historical REAP224 tuned rerun scored 150/164 against a 152-pass floor; historical 34.34 tok/s Q22/Q4 CUDA profile scored 151/164.",
+    "N-gram checks on these short continuations are not coding-quality validation."
+  ],
+  "target_met": false,
+  "conclusion": "35+ decode is not demonstrated. Best complete 8K screen: 34.0785 tok/s. CPU placement, cache capacity, and verification/drafting overhead limit this profile.",
+  "raw_evidence": "Local build-hip-rocm101-tr16/pruned-mtp-20261014/; raw outputs retained unchanged",
+  "path_note": "Config paths use placeholders in this derived compact record; original config hashes identify the local frozen configs."
+}
