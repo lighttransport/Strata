@@ -211,6 +211,44 @@ __global__ void route_warp(const float *logits, const float *bias, int *ids, flo
     route_warp_body(logits + (size_t)blockIdx.x * ne, bias, ids + (size_t)blockIdx.x * k,
                     weights + (size_t)blockIdx.x * k, ne, k, scale, min_share, bonus, threadIdx.x);
 }
+// Window expert sharing (STRATA_GLM_ROUTE_WINDOW_MARGIN, opt-in, lossy): one block routes a whole verify window, one
+// warp per token. After a first selection, every expert chosen by any token of the window gets `margin` added to
+// its selection score (with the resident-tier bonus, if any) and each token selects again, so near-tied tokens
+// share experts and the window reads fewer distinct experts. Weights stay the true router probabilities.
+__global__ void route_window(const float *logits, const float *bias, int *ids, float *weights, int ne, int k,
+                             float scale, float min_share, const float *bonus, int tokens, float margin) {
+    // A token's selection bonus is margin x (other tokens of the window that chose the expert in the first pass),
+    // so it gives up its weakest picks for experts its neighbours read anyway when those are within the margin.
+    __shared__ int count[512];
+    __shared__ float combined[8][512];
+    const int t = threadIdx.x / 32, lane = threadIdx.x % 32;
+    for (int e = threadIdx.x; e < ne; e += blockDim.x) count[e] = 0;
+    __syncthreads();
+    if (t < tokens)
+        route_warp_body(logits + (size_t)t * ne, bias, ids + (size_t)t * k, weights + (size_t)t * k, ne, k, scale,
+                        min_share, bonus, lane);
+    __syncthreads();
+    if (t < tokens)
+        for (int j = lane; j < k; j += 32) { const int e = ids[(size_t)t * k + j]; if (e >= 0 && e < ne) atomicAdd(&count[e], 1); }
+    __syncthreads();
+    if (t < tokens) {
+        for (int e = lane; e < ne; e += 32) combined[t][e] = (bonus ? bonus[e] : 0.f) + margin * (float)count[e];
+        __syncwarp();
+        for (int j = lane; j < k; j += 32) { const int e = ids[(size_t)t * k + j]; if (e >= 0 && e < ne) combined[t][e] -= margin; }
+        __syncwarp();
+        route_warp_body(logits + (size_t)t * ne, bias, ids + (size_t)t * k, weights + (size_t)t * k, ne, k, scale,
+                        min_share, combined[t], lane);
+    }
+}
+float route_window_margin() {
+    static const float v = [] {
+        const char *e = std::getenv("STRATA_GLM_ROUTE_WINDOW_MARGIN");
+        const float x = e ? std::strtof(e, nullptr) : 0.f;
+        if (!(x >= 0.f && x < 1.f)) throw std::invalid_argument("STRATA_GLM_ROUTE_WINDOW_MARGIN must be in [0, 1)");
+        return x;
+    }();
+    return v;
+}
 // One token's router and mailbox publication in one launch (STRATA_GLM_FUSE_ROUTE=1): warp 0 routes, then the
 // block copies ids, weights and the activation into the mailbox slot and sets the published flag, exactly as the
 // separate publish kernel does (flags[slot * 32] is the published generation, see glm_mailbox.hpp).
@@ -686,7 +724,11 @@ void glm_router_tokens(const float *l, const float *b, int *ids, float *w, int n
                        void *s, const float *bonus) {
     if (ne < 1 || k < 1 || k > ne || ne > 512 || tokens < 1)
         throw std::invalid_argument("GLM: invalid batched routing geometry");
-    route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
+    const float window = route_window_margin();
+    if (window > 0.f && tokens > 1 && tokens <= 8 && ne <= 512)
+        route_window<<<1, 32 * tokens, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus, tokens,
+                                                              window);
+    else route_warp<<<tokens, 32, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus);
     check();
 }
 void glm_hyper_head(const float *r, float *out, int n, void *s) {

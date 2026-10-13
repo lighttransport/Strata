@@ -6,6 +6,7 @@
 #include <cstring>
 #include <stdexcept>
 namespace strata::kernels {
+extern bool glm_prefill_lossy_allowed;
 namespace {
 __device__ float sigmoid(float x) { return 1.f / (1.f + expf(-x)); }
 void check() {
@@ -209,6 +210,41 @@ __global__ void routing(const float *l, const float *bias, int *ids, float *w, i
     }
     for (int j = 0; j < top; ++j)
         w[j] *= scale / (sum + 1e-20f);
+}
+// routing with one warp per token: each lane scores its experts once, then `top` warp-wide argmax rounds (ties to the
+// lower expert id, as the serial scan) pick the routes; lane 0 forms the weights in the serial order.
+__global__ void routing_warp(const float *l, const float *bias, int *ids, float *w, int ne, int top, float scale,
+                             const float *bonus, int tokens) {
+    const int t = blockIdx.x * (blockDim.x / 32) + (threadIdx.x >> 5), lane = threadIdx.x & 31;
+    if (t >= tokens) return;
+    l += (int64_t)t * ne; ids += t * top; w += t * top;
+    constexpr int kMax = 16;   // up to 512 experts
+    float score[kMax];
+    for (int k = 0; k < kMax; ++k) {
+        const int e = lane + 32 * k;
+        score[k] = e < ne ? sigmoid(l[e]) + bias[e] + (bonus ? bonus[e] : 0.f) : -INFINITY;
+    }
+    for (int j = 0; j < top; ++j) {
+        float best = -INFINITY; int chosen = 0x7fffffff;
+        for (int k = 0; k < kMax; ++k) {
+            const int e = lane + 32 * k;
+            if (e < ne && score[k] > best) { best = score[k]; chosen = e; }
+        }
+        for (int o = 16; o; o >>= 1) {
+            const float ob = __shfl_xor_sync(0xffffffffu, best, o);
+            const int oc = __shfl_xor_sync(0xffffffffu, chosen, o);
+            if (ob > best || (ob == best && oc < chosen)) { best = ob; chosen = oc; }
+        }
+        if (best == -INFINITY) chosen = -1;
+        if (chosen >= 0 && (chosen & 31) == lane) score[chosen >> 5] = -INFINITY;
+        if (!lane) ids[j] = chosen;
+    }
+    __syncwarp();
+    if (!lane) {
+        float sum = 0;
+        for (int j = 0; j < top; ++j) { w[j] = sigmoid(l[ids[j]]); sum += w[j]; }
+        for (int j = 0; j < top; ++j) w[j] *= scale / (sum + 1e-20f);
+    }
 }
 __global__ void count_routes(const int *ids, int *b, int count) {
     int i = blockIdx.x * 256 + threadIdx.x;
@@ -662,10 +698,17 @@ __global__ void __launch_bounds__(cols *parts, 1)
         state[(part * rows + i) * dim + j] = values[i];
 }
 __global__ void kda_output(const float *x, const float *g, const float *w, float *out, int dim, float eps) {
+    // Thread 0 forms the sum of squares in the same sequential order every thread used to repeat.
     int h = blockIdx.x, j = threadIdx.x;
-    float sum = 0;
-    for (int i = 0; i < dim; ++i)
-        sum += x[h * dim + i] * x[h * dim + i];
+    __shared__ float shared_sum;
+    if (!j) {
+        float sum = 0;
+        for (int i = 0; i < dim; ++i)
+            sum += x[h * dim + i] * x[h * dim + i];
+        shared_sum = sum;
+    }
+    __syncthreads();
+    const float sum = shared_sum;
     out[h * dim + j] = x[h * dim + j] * rsqrtf(sum / dim + eps) * w[j] * sigmoid(g[h * dim + j]);
 }
 __global__ void decode_position(int *position, int value) { *position = value; }
@@ -837,6 +880,25 @@ __global__ void gather_vector_half(const float *cache, const int *ids, const int
         for (int d = threadIdx.x; d < latent; d += blockDim.x) destination[d] = 0;
     }
 }
+// gather_vector_half for latent % 512 == 0: 64 threads per key, four keys per block, eight values per thread
+// (two float4 loads, one 16-byte store). The FP16 values are those of gather_vector_half.
+__global__ void gather_vector_half8(const float *cache, const int *ids, const int *counts, uint16_t *out,
+                                    int stride, int latent) {
+    const int key = blockIdx.x * 4 + (threadIdx.x >> 6), query = blockIdx.y, t = threadIdx.x & 63;
+    if (key >= stride) return;
+    uint4 *destination = reinterpret_cast<uint4 *>(out + ((int64_t)query * stride + key) * latent);
+    const bool live = key < counts[query];
+    const float4 *source = live ? reinterpret_cast<const float4 *>(cache + (int64_t)ids[query * stride + key] * latent) : nullptr;
+    for (int d = t; d < latent / 8; d += 64) {
+        if (!live) { destination[d] = make_uint4(0, 0, 0, 0); continue; }
+        const float4 a = source[2 * d], b = source[2 * d + 1];
+        const __half2 h0 = __floats2half2_rn(a.x, a.y), h1 = __floats2half2_rn(a.z, a.w),
+                      h2 = __floats2half2_rn(b.x, b.y), h3 = __floats2half2_rn(b.z, b.w);
+        uint4 v;
+        memcpy(&v.x, &h0, 4); memcpy(&v.y, &h1, 4); memcpy(&v.z, &h2, 4); memcpy(&v.w, &h3, 4);
+        destination[d] = v;
+    }
+}
 __global__ void softmax(float *scores, const int *counts, int heads, int stride, float scale) {
     int q = blockIdx.x / heads;
     float *row = scores + (int64_t)blockIdx.x * stride;
@@ -870,6 +932,65 @@ __global__ void softmax(float *scores, const int *counts, int heads, int stride,
         row[i] /= reduce[0];
 }
 
+// softmax that writes the normalized probabilities only as FP16 (round to nearest, as glm_f16): the same values the
+// FP16 attention path casts, without the FP32 rewrite and the separate cast pass.
+__global__ void softmax_f16(float *scores, const int *counts, uint16_t *out, int heads, int stride, float scale) {
+    int q = blockIdx.x / heads;
+    float *row = scores + (int64_t)blockIdx.x * stride;
+    uint16_t *dst = out + (int64_t)blockIdx.x * stride;
+    __shared__ float reduce[256];
+    int tid = threadIdx.x, n = counts[q];
+    float mx = -INFINITY;
+    for (int i = tid; i < n; i += 256)
+        mx = fmaxf(mx, row[i] * scale);
+    reduce[tid] = mx;
+    __syncthreads();
+    for (int z = 128; z; z /= 2) {
+        if (tid < z)
+            reduce[tid] = fmaxf(reduce[tid], reduce[tid + z]);
+        __syncthreads();
+    }
+    mx = reduce[0];
+    float sum = 0;
+    for (int i = tid; i < stride; i += 256) {
+        float p = i < n ? expf(row[i] * scale - mx) : 0;
+        row[i] = p;
+        sum += p;
+    }
+    reduce[tid] = sum;
+    __syncthreads();
+    for (int z = 128; z; z /= 2) {
+        if (tid < z)
+            reduce[tid] += reduce[tid + z];
+        __syncthreads();
+    }
+    for (int i = tid; i < stride; i += 256)
+        dst[i] = __half_as_ushort(__float2half(row[i] / reduce[0]));
+}
+// softmax over FP16 scores into FP16 probabilities (STRATA_GLM_MLA_F16_OUT); exp is evaluated twice instead of
+// keeping an FP32 row.
+__global__ void softmax_h2h(const uint16_t *scores, const int *counts, uint16_t *out, int heads, int stride, float scale) {
+    int q = blockIdx.x / heads;
+    const __half *row = reinterpret_cast<const __half *>(scores) + (int64_t)blockIdx.x * stride;
+    uint16_t *dst = out + (int64_t)blockIdx.x * stride;
+    __shared__ float reduce[256];
+    int tid = threadIdx.x, n = counts[q];
+    float mx = -INFINITY;
+    for (int i = tid; i < n; i += 256) mx = fmaxf(mx, __half2float(row[i]) * scale);
+    reduce[tid] = mx;
+    __syncthreads();
+    for (int z = 128; z; z /= 2) { if (tid < z) reduce[tid] = fmaxf(reduce[tid], reduce[tid + z]); __syncthreads(); }
+    mx = reduce[0];
+    __syncthreads();
+    float sum = 0;
+    for (int i = tid; i < n; i += 256) sum += expf(__half2float(row[i]) * scale - mx);
+    reduce[tid] = sum;
+    __syncthreads();
+    for (int z = 128; z; z /= 2) { if (tid < z) reduce[tid] += reduce[tid + z]; __syncthreads(); }
+    const float inv = 1.f / reduce[0];
+    for (int i = tid; i < stride; i += 256)
+        dst[i] = __half_as_ushort(__float2half(i < n ? expf(__half2float(row[i]) * scale - mx) * inv : 0.f));
+}
 // One-query MLA decode products (STRATA_GLM_MLA_KERNELS=1) in place of the two strided-batched SGEMMs, whose
 // 512 x 64 x 2052 shapes leave most of a GPU idle. Same fp32 products, different summation order.
 // scores[h][s] = sum_k keys[s][k] * q[h][k]: a block takes 16 keys into shared memory; a thread is one head and
@@ -1049,7 +1170,8 @@ void glm_conv_batch(const float *x, const float *w, float *h, float *y, int n, i
 }
 void glm_route_batch(const float *l, const float *b, int *ids, float *w, int ne, int top, float scale,
                      int tokens, void *s, const float *bonus) {
-    routing<<<tokens, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale, bonus);
+    if (ne <= 512) routing_warp<<<(tokens + 7) / 8, 256, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale, bonus, tokens);
+    else routing<<<tokens, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale, bonus);
     check();
 }
 void glm_group_routes(const int *ids, int *b, int *d, int *src, int *cursor, int ne, int top, int tokens,
@@ -1135,7 +1257,7 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
                 kda_rows_columns<4, false, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
             check(); return;
         }
-        if (std::getenv("STRATA_GLM_KDA_COLUMN_TILES")) {
+        if (std::getenv("STRATA_GLM_KDA_COLUMN_TILES") && glm_prefill_lossy_allowed) {
             const dim3 grid(heads, 4);
             if (prepared_qi) {
                 if (row_parts == 4)
@@ -1184,6 +1306,88 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
         kda_chunk<128><<<heads, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens,
                                                             snapshots, snapshot_stride, snapshot_tokens);
     else throw std::invalid_argument("GLM: KDA columns must be 32, 64 or 128");
+    check();
+}
+// Q2_K / Q3_K expert rows -> Q8_0 (one warp per 32-value output block), for STRATA_PREFILL_Q8_TRANSCODE. Each value
+// is dequantized as ggml's dequantize_row_q2_K / _q3_K, then the 32-value block takes scale amax / 127 and rounded
+// codes, as quantize_row_q8_0_ref does.
+__device__ __forceinline__ float half_at(const unsigned char *p) {
+    __half h; memcpy(&h, p, 2); return __half2float(h);
+}
+__device__ __forceinline__ float kquant_value(const unsigned char *b, int type, int i) {
+    const int n = i >> 7, rem = i & 127, j = rem >> 5, l = rem & 31, is = n * 8 + j * 2 + (l >> 4);
+    if (type == 10) {   // block_q2_K: scales[16], qs[64], d, dmin
+        const unsigned char sc = b[is];
+        const int q = (b[16 + n * 32 + l] >> (2 * j)) & 3;
+        return half_at(b + 80) * (sc & 15) * q - half_at(b + 82) * (sc >> 4);
+    }
+    // block_q3_K: hmask[32], qs[64], scales[12], d
+    const unsigned char *sc12 = b + 96;
+    int scale;
+    if (is < 8) scale = (sc12[is] & 15) | (((sc12[8 + (is & 3)] >> (2 * (is >> 2))) & 3) << 4);
+    else scale = (sc12[is - 8] >> 4) | (((sc12[8 + (is & 3)] >> (2 * (is >> 2))) & 3) << 4);
+    const int q = ((b[32 + n * 32 + l] >> (2 * j)) & 3) - ((b[l] >> (n * 4 + j)) & 1 ? 0 : 4);
+    return half_at(b + 108) * (scale - 32) * q;
+}
+__global__ void __launch_bounds__(256) transcode_q8_0(const unsigned char *src, int type, unsigned char *dst,
+                                                       long long rows, long long cols, long long src_stride,
+                                                       long long dst_stride) {
+    // One warp per 256-value super-block; lane L dequantizes values 8L..8L+7, four lanes form one Q8_0 block. The
+    // super-block's eight Q8_0 blocks (272 contiguous bytes, 16-byte aligned) are staged in shared memory and
+    // written as 16-byte words.
+    __shared__ __align__(16) unsigned char stage[8][272];
+    const int super_per_row = (int)(cols / 256), warp = threadIdx.x >> 5, lane = threadIdx.x & 31;
+    const long long sblock = (long long)blockIdx.x * 8 + warp;
+    const bool live = sblock < rows * super_per_row;
+    const int sb = type == 10 ? 84 : 110;
+    const unsigned char *b = src + (long long)blockIdx.y * src_stride + (live ? sblock : 0) * sb;
+    const int v0 = lane * 8, n = v0 >> 7, j = (v0 & 127) >> 5, l = v0 & 31, is = n * 8 + j * 2 + (l >> 4);
+    float v[8];
+    // Q2_K super-blocks (84 bytes) keep 4-byte alignment; Q3_K ones (110 bytes) only 2-byte, so those words are
+    // assembled from bytes.
+    auto word = [&](int offset) {
+        if (type == 10) return *reinterpret_cast<const unsigned int *>(b + offset);
+        unsigned int w; memcpy(&w, b + offset, 4); return w;
+    };
+    if (type == 10) {
+        const unsigned char sc = b[is];
+        const float dl = half_at(b + 80) * (sc & 15), ml = half_at(b + 82) * (sc >> 4);
+        const unsigned int q0 = word(16 + n * 32 + l), q1 = word(20 + n * 32 + l);
+        for (int k = 0; k < 8; ++k) v[k] = dl * ((((k < 4 ? q0 : q1) >> (8 * (k & 3))) >> (2 * j)) & 3) - ml;
+    } else {
+        const unsigned char *sc12 = b + 96;
+        const int scale = (is < 8 ? (sc12[is] & 15) : (sc12[is - 8] >> 4)) |
+                          (((sc12[8 + (is & 3)] >> (2 * (is >> 2))) & 3) << 4);
+        const float dl = half_at(b + 108) * (scale - 32);
+        const int bit = n * 4 + j;
+        const unsigned int q0 = word(32 + n * 32 + l), q1 = word(36 + n * 32 + l), h0 = word(l), h1 = word(l + 4);
+        for (int k = 0; k < 8; ++k) {
+            const unsigned int q = ((k < 4 ? q0 : q1) >> (8 * (k & 3))) & 255, h = ((k < 4 ? h0 : h1) >> (8 * (k & 3))) & 255;
+            v[k] = dl * (int((q >> (2 * j)) & 3) - ((h >> bit) & 1 ? 0 : 4));
+        }
+    }
+    float amax = 0;
+    for (int k = 0; k < 8; ++k) amax = fmaxf(amax, fabsf(v[k]));
+    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 1));
+    amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, 2));
+    const float d = amax / 127.f, id = d ? 1.f / d : 0.f;
+    unsigned char *blk = stage[warp] + (lane >> 2) * 34;
+    for (int k = 0; k < 8; ++k) blk[2 + (lane & 3) * 8 + k] = (unsigned char)(signed char)roundf(v[k] * id);
+    if (!(lane & 3)) { const __half h = __float2half(d); memcpy(blk, &h, 2); }
+    __syncwarp();
+    if (!live) return;
+    uint4 *out = reinterpret_cast<uint4 *>(dst + (long long)blockIdx.y * dst_stride + sblock * 272);
+    const uint4 *in = reinterpret_cast<const uint4 *>(stage[warp]);
+    if (lane < 17) out[lane] = in[lane];
+}
+bool glm_prefill_lossy_allowed = true;
+void glm_set_prefill_lossy(bool allowed) { glm_prefill_lossy_allowed = allowed; }
+void glm_transcode_q8_0(const void *src, int type, void *dst, long long rows, long long cols, int experts,
+                        long long src_stride, long long dst_stride, void *stream) {
+    if ((type != 10 && type != 11) || cols % 256 || experts <= 0) throw std::invalid_argument("GLM: Q8_0 transcode needs Q2_K/Q3_K rows");
+    const long long supers = rows * (cols / 256);   // one warp each, 8 warps per 256-thread block
+    transcode_q8_0<<<dim3((unsigned)((supers + 7) / 8), experts), 256, 0, (cudaStream_t)stream>>>(
+        (const unsigned char *)src, type, (unsigned char *)dst, rows, cols, src_stride, dst_stride);
     check();
 }
 void glm_kda_output_batch(const float *x, const float *g, const float *w, float *y, int h, int d, float eps,
@@ -1237,7 +1441,19 @@ void glm_mla_gather(const float *c, const int *ids, const int *counts, float *ou
 void glm_mla_gather_f16(const float *c, const int *ids, const int *counts, uint16_t *out, int q, int stride,
                         int latent, void *s) {
     if (q < 1 || q > 65535 || stride < 1 || latent < 1) throw std::invalid_argument("GLM: invalid FP16 MLA gather");
-    gather_vector_half<<<dim3(stride, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
+    if (latent % 512 == 0)
+        gather_vector_half8<<<dim3((stride + 3) / 4, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
+    else gather_vector_half<<<dim3(stride, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
+    check();
+}
+void glm_mla_softmax_f16(float *scores, const int *counts, uint16_t *out, int heads, int stride, int q, float scale,
+                         void *s) {
+    softmax_f16<<<heads * q, 256, 0, (cudaStream_t)s>>>(scores, counts, out, heads, stride, scale);
+    check();
+}
+void glm_mla_softmax_h2h(const uint16_t *scores, const int *counts, uint16_t *out, int heads, int stride, int q,
+                         float scale, void *s) {
+    softmax_h2h<<<heads * q, 256, 0, (cudaStream_t)s>>>(scores, counts, out, heads, stride, scale);
     check();
 }
 void glm_mla_softmax(float *scores, const int *counts, int heads, int stride, int q, float scale, void *s) {

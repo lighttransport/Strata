@@ -97,6 +97,64 @@ template<int TY,int NT> void dot(const uint8_t* w,int blocks,const void* const* 
     }
     for(int t=0;t<NT;++t)result[t]=sum(acc[t]);
 }
+// STRATA_Q2K_LUT=1 (opt-in): Q2_K rows with the 4-bit sub-block scale folded into the 2-bit code by a byte table
+// lookup (q * s, at most 45) instead of an int16 multiply per chunk. maddubs(q * s, y) then gives s * (q * y) per pair
+// (at most 11,430, so two chunks still fit int16), and one madd per two chunks widens to int32. The integer sums, and
+// therefore every float result, are identical to dot<10, NT>; Zen 1 issues integer vector multiplies on one pipe,
+// so this removes about a third of that pipe's work per block.
+bool q2k_lut() {
+    static const bool on=[]{const char* v=std::getenv("STRATA_Q2K_LUT");return v&&v[0]=='1';}();
+    return on;
+}
+template<int NT> void dot_q2k_lut(const uint8_t* w,int blocks,const void* const* acts,float* result,int pf) {
+    __m256 acc[NT];for(auto& a:acc)a=_mm256_setzero_ps();
+    const __m256i three=_mm256_set1_epi8(3),ones=_mm256_set1_epi16(1);
+    for(int b=0;b<blocks;++b) {
+        const auto* raw=w+b*sizeof(block_q2_K);
+        if(pf) {
+            _mm_prefetch(reinterpret_cast<const char*>(raw)+pf,_MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(raw)+pf+64,_MM_HINT_T0);
+        }
+        const auto& x=*reinterpret_cast<const block_q2_K*>(raw);
+        ggml_half h[2];std::memcpy(h,raw+80,4);const float d=half(h[0]),dm=half(h[1]);
+        const __m128i sc=_mm_loadu_si128(reinterpret_cast<const __m128i*>(x.scales));
+        const __m128i s1=_mm_and_si128(sc,_mm_set1_epi8(15)),s2=_mm_add_epi8(s1,s1),s3=_mm_add_epi8(s2,s1),z=_mm_setzero_si128();
+        const __m256i mins=_mm256_cvtepu8_epi16(_mm_and_si128(_mm_srli_epi16(sc,4),_mm_set1_epi8(15)));
+        // Per sub-block j a 4-byte table {0, s_j, 2 s_j, 3 s_j}: T[0] holds j 0-3, T[1] 4-7, T[2] 8-11, T[3] 12-15.
+        const __m128i a0=_mm_unpacklo_epi8(z,s1),b0=_mm_unpacklo_epi8(s2,s3),a1=_mm_unpackhi_epi8(z,s1),b1=_mm_unpackhi_epi8(s2,s3);
+        const __m128i T0=_mm_unpacklo_epi16(a0,b0),T1=_mm_unpackhi_epi16(a0,b0),T2=_mm_unpacklo_epi16(a1,b1),T3=_mm_unpackhi_epi16(a1,b1);
+        // Chunk H's lane 0 is sub-block 2H (codes qs[0..15] of its 32 bytes), lane 1 is 2H+1: even tables low, odd high.
+        auto pick=[](__m128i lo,__m128i hi,int sel){return _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(lo),_mm_castsi128_ps(hi),sel));};
+        const __m256i tabA=_mm256_inserti128_si256(_mm256_castsi128_si256(pick(T0,T1,_MM_SHUFFLE(2,0,2,0))),pick(T0,T1,_MM_SHUFFLE(3,1,3,1)),1);
+        const __m256i tabB=_mm256_inserti128_si256(_mm256_castsi128_si256(pick(T2,T3,_MM_SHUFFLE(2,0,2,0))),pick(T2,T3,_MM_SHUFFLE(3,1,3,1)),1);
+        const __m256i q0=_mm256_loadu_si256(reinterpret_cast<const __m256i*>(x.qs)),q1=_mm256_loadu_si256(reinterpret_cast<const __m256i*>(x.qs+32));
+        const int8_t* y[NT];
+        for(int t=0;t<NT;++t)y[t]=static_cast<const block_q8_K*>(acts[t])[b].qs;
+        __m256i sums[NT];for(auto& s:sums)s=_mm256_setzero_si256();
+        __m256i pair[NT];
+        for(int H=0;H<8;++H) {
+            const __m256i src=H<4?q0:q1;
+            const __m256i q=_mm256_or_si256(_mm256_and_si256(_mm256_srli_epi16(src,2*(H%4)),three),_mm256_set1_epi8(char((H%4)<<2)));
+            const __m256i lut=_mm256_shuffle_epi8(H<4?tabA:tabB,q);
+            for(int t=0;t<NT;++t) {
+                const __m256i p=_mm256_maddubs_epi16(lut,_mm256_loadu_si256(reinterpret_cast<const __m256i*>(y[t]+32*H)));
+                if(H%2==0)pair[t]=p;
+                else sums[t]=_mm256_add_epi32(sums[t],_mm256_madd_epi16(_mm256_add_epi16(pair[t],p),ones));
+            }
+        }
+        for(int t=0;t<NT;++t) {
+            const auto& yb=static_cast<const block_q8_K*>(acts[t])[b];
+            const auto offset=_mm256_madd_epi16(mins,_mm256_loadu_si256(reinterpret_cast<const __m256i*>(yb.bsums)));
+            acc[t]=_mm256_fmadd_ps(_mm256_set1_ps(-dm*yb.d),_mm256_cvtepi32_ps(offset),acc[t]);
+            acc[t]=_mm256_fmadd_ps(_mm256_set1_ps(d*yb.d),_mm256_cvtepi32_ps(sums[t]),acc[t]);
+        }
+    }
+    for(int t=0;t<NT;++t)result[t]=sum(acc[t]);
+}
+template<int TY,int NT> inline void dot_any(const uint8_t* w,int blocks,const void* const* act,float* result,const __m256i* p4,int pf) {
+    if constexpr(TY==10) { if(q2k_lut()) { dot_q2k_lut<NT>(w,blocks,act,result,pf); return; } }
+    dot<TY,NT>(w,blocks,act,result,p4,pf);
+}
 template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,float* const* out,int first,int last,float clamp,bool canon,float skip) {
     // Q3_K: 4 * (pair sums of activations) per 32-value chunk, so (q + 4) * y - 4 * y stays exact in int16.
     alignas(32) __m256i p4[TY==11?NT*kMaxBlocks*8:1];
@@ -109,11 +167,11 @@ template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stri
     }
     const int pf=prefetch_distance();
     for(int r=first;r<last;++r) {
-        float a[NT],u[NT];dot<TY,NT>(w+size_t(r)*stride,n/256,act,a,p4,pf);
+        float a[NT],u[NT];dot_any<TY,NT>(w+size_t(r)*stride,n/256,act,a,p4,pf);
         // Gate skipping (canonical, opt-in): when every token's unit is below the threshold its up row is not read.
         bool need_up=up!=nullptr;
         if(need_up&&canon&&skip>0) {need_up=false;for(int t=0;t<NT;++t){need_up=need_up||!canon_gate_skipped(a[t],clamp,skip);u[t]=0;}}
-        if(need_up)dot<TY,NT>(up+size_t(r)*stride,n/256,act,u,p4,pf);
+        if(need_up)dot_any<TY,NT>(up+size_t(r)*stride,n/256,act,u,p4,pf);
         for(int t=0;t<NT;++t) {
             if(up&&canon)out[t][r]=canon_swiglu(a[t],u[t],clamp,skip);
             else if(up) {float g=clamp>0?std::fmin(a[t],clamp):a[t],v=clamp>0?std::fmax(-clamp,std::fmin(u[t],clamp)):u[t];out[t][r]=g/(1.f+std::exp(-g))*v;}

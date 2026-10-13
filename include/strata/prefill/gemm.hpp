@@ -45,6 +45,13 @@ public:
     void bf16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches,
                       bool wmma = false);
 
+    /// Batched Y[b][t][n] (fp32, ldy per token, n-stride N per batch) = sum_k W[b][n][k] X[b-th K slice of token t]
+    /// (X rows ldx apart, batch b at offset b*K), both FP16, FP32 accumulation: the layout of a per-head absorb.
+    void f16_strided_batched(const uint16_t* W, const uint16_t* X, float* Y, int N, int T, int K, int batches,
+                             int ldx, int ldy);
+    /// f16_batched / f16_batched_nn with FP16 accumulation and FP16 output (CUDA; lossy, for the FP16 MLA chain).
+    void f16_batched_out16(const uint16_t* X, const uint16_t* W, uint16_t* Y, int T, int N, int K, int batches);
+    void f16_batched_nn_out16(const uint16_t* A, const uint16_t* B, uint16_t* C, int M, int N, int K, int batches);
     /// Column-major contiguous batches: C[M,N] (fp32) = A[M,K] . B[K,N], both FP16.
     void f16_batched_nn(const uint16_t* A, const uint16_t* B, float* C, int M, int N, int K, int batches);
 
@@ -67,6 +74,9 @@ public:
     /// Caller-owned buffers only: the scratch and workspace moved (the prompt path laid its buffers out again).
     void rebind(uint16_t* scratch, int64_t scratch_elems, void* workspace, size_t ws_bytes);
 
+    /// Lossy prefill paths (STRATA_PREFILL_F16_ACCUM) apply only while this is set; the decoder sets it per batch
+    /// from the batch width (STRATA_PREFILL_LOSSY_MIN_TOKENS), so short prompts keep the exact products.
+    static inline bool lossy_allowed = true;
     uint16_t* scratch() const { return scratch_; }
     int64_t scratch_elems() const { return scratch_elems_; }
     void* stream() const { return stream_; }

@@ -198,7 +198,7 @@ def main():
     ap.add_argument('--cases', nargs='+', default=['baseline'])
     ap.add_argument('--tokens', type=int, default=512)
     ap.add_argument('--trials', type=int, default=3)
-    ap.add_argument('--prefill-batch', type=int, choices=[2048, 4096, 8192])
+    ap.add_argument('--prefill-batch', type=int, choices=[2048, 4096, 8192, 16384])
     ap.add_argument('--interleave', action='store_true')
     ap.add_argument('--allow-interference', action='store_true', help='diagnostics only; such runs are not quiet calibration')
     ap.add_argument('--require-repeat-equal', action='store_true')
@@ -214,7 +214,9 @@ def main():
         base['exe'] = str(args.decoder.resolve())
     if args.prefill_batch:
         base['prefill_batch'] = args.prefill_batch
-        base['env']['STRATA_GLM_PREFILL_SCRATCH_CAP_MIB'] = '2048' if args.prefill_batch == 8192 else '1024'
+        default = {8192: 2048, 16384: 4096}.get(args.prefill_batch, 1024)
+        configured = int(base['env'].get('STRATA_GLM_PREFILL_SCRATCH_CAP_MIB', '0'))
+        base['env']['STRATA_GLM_PREFILL_SCRATCH_CAP_MIB'] = str(max(default, configured))
     configs = [base, *(case_config(base, name) for name in args.cases)]
     missing = missing_decoder_flags(configs, Path(base['exe']).read_bytes())
     if missing:
