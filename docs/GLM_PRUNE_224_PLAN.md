@@ -1,5 +1,36 @@
 # REAP-224 on TR16: plan for 600+ tok/s prefill and 35+ tok/s decode
 
+Optimization stopped at the user's request on 2026-10-13. This document retains the plan and historical
+results. Failed runtime experiments were removed during release preparation; see
+[the release record](GLM_RELEASE_20261013.md) for the retained code and validation. The future work below
+is not scheduled as part of the release.
+
+Architectural follow-up, 2026-10-13: the next two-hour iteration raised the prefill target to 700 tok/s at 8K.
+Implemented opt-in ready/early-device expert merging, fused KDA verification, uneven verify groups,
+device-resident draft hidden rows, selective MTP extension, and long-prefill group/top-k budgets and MMQ tile
+hints. Decode did not reach 35 at both widths. The default profile is unchanged; 2,048 default-output tokens
+matched the frozen baseline. CUDA and HIP compile, and the new functional checks pass. Quality gates were
+deferred at the user's request. See "Architectural continuation" in [GLM_PRUNE_224.md](GLM_PRUNE_224.md) and
+[its evidence](fixtures/glm_tr16_arch_20261013/summary.json) for the prefill screens and repeats. Nine groups
+with top-k 6 reached 718.39 tok/s median over three 8K passes in one process, with quality unqualified.
+
+The user authorized a further one-hour iteration. Staged admission now measures B after a prefix of A's
+CPU experts: front sizes 1, 2 and 4 measured 29.30, 29.48 and 29.64 tok/s at 2K, below the preceding 30.06
+control. The largest prefix saved only 1.0% of CPU expert bytes. An additional opt-in route-first GPU order
+publishes both groups before their resident/shared experts; with a two-expert prefix it measured 29.27
+tok/s at 2K. Its checks and measurements are recorded in
+[the extension evidence](fixtures/glm_tr16_incremental_20261013/summary.json). Neither experiment changes
+the tuned profile. Final default controls measured 29.89/31.55 tok/s at 2K/8K, with all 2,048 warmup and
+timed tokens matching the frozen baseline. The decode target remains unmet. The exact expert-MMA and
+fused MLA kernels below remain future work. The new lossy prefill budgets later failed the release
+rejection screen and were removed; a speed screen alone was insufficient.
+
+Decode follow-up, 2026-10-13: the coarse CPU schedule and causal window-scoring experiments missed their 5%
+gates. Existing recency/unbiased tier screens also stayed below 35 tok/s; readback tracing did not establish
+0.5 ms/token of removable stalls. The tuned profile remains unchanged. See "Decode-35 experiments" in
+[GLM_PRUNE_224.md](GLM_PRUNE_224.md) for the fresh 29.87/31.55 tok/s held-out baseline, protocol and results.
+The continuation used mapped weights and did not retry huge-page allocation or force memory compaction.
+
 Status on 2026-10-12, measured on TR16 (Threadripper 1950X, DDR4, RTX 5060 Ti 16 GB on PCIe 3.0 x8, 7.2 GB/s),
 `configs/experimental/glm53f-q23-reap224-tr16-tuned.json`, quality gate passed (corpus perplexity +4.90%, KL +0.0636,
 top-1 −1.90 pp vs 288-expert Q23; HumanEval 152/164, the floor):

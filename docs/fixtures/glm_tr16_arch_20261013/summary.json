@@ -1,0 +1,3904 @@
+{
+  "scope": "Time-boxed architectural iteration; quality gates deferred by user, no profile promotion",
+  "goal": {
+    "start_utc": "2026-10-13 04:25:25",
+    "deadline_utc": "2026-10-13 06:25:25",
+    "decode_target_tok_s": 35,
+    "prefill_8k_target_tok_s": 700,
+    "quality": "Deferred by user for architectural iteration; no qualification until later gates",
+    "gpu_power_w": 150,
+    "min_gpu_free_mib": 512,
+    "max_swap_mib": 0
+  },
+  "hardware": {
+    "cpu": "Threadripper 1950X, 16 cores, 2 NUMA nodes",
+    "ram": "128 GB DDR4-3200",
+    "gpu": "RTX 5060 Ti 16 GB, PCIe 3.0 x8, 150 W limit"
+  },
+  "model": {
+    "name": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "sha256": "3ef5726ae4a9768fa8311453927674401f3958a8c3884effddac92fc41262003"
+  },
+  "source_commit": "889136c3511e69697b07d80b45ba3bdd03baaff3",
+  "quality_qualified": false,
+  "builds": {
+    "arch1": {
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "patch_sha256": "24d95d76378f51d339bfd9f1da8bee3a1e58e86bfc2ff769ec6c5c73959072a4"
+    },
+    "arch2": {
+      "decoder_sha256": "ca3266252ee5b92cb0a273b9d8a0cc6e67641eb1fa89dfed2dba52093e23e9e0",
+      "patch_sha256": "93745c1896d1ac5f9caca9638eaa314f2fada0802e069b8c30b4ca0d6ac2c466"
+    },
+    "arch3": {
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "patch_sha256": "59294e408391312c027b63804f3ffd7606ec450ec04906ae7faadbf4a8e0d22d"
+    }
+  },
+  "screens": [
+    {
+      "name": "arch2-control-2048",
+      "config_sha256": "2edc51d12571997ee32250a48aad036928f4340e00b501472340993dce0f4208",
+      "decoder_sha256": "ca3266252ee5b92cb0a273b9d8a0cc6e67641eb1fa89dfed2dba52093e23e9e0",
+      "raw_result_sha256": "f697c261481f6a3431c2ad6f74f481fddef87be0cede88b505029c58d45f3fdc",
+      "settings": {},
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12154.0,
+          "tokens_per_second": 168.504
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12155.8,
+          "tokens_per_second": 168.479
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 17006.1,
+          "tokens_per_second": 30.0481
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 269.245,
+        "quant_ms": 3.40721,
+        "down_ms": 177.341,
+        "layer_flow_ms": 11152.6,
+        "bytes": 778205986816
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.511715,
+        "draft_ms": 1419.05,
+        "verify_ms": 14981,
+        "resync_ms": 223.457
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 865
+    },
+    {
+      "name": "arch2-devicehidden-2048",
+      "config_sha256": "4e7619a1ef27a38c6fd5f02a360d0e16be5b02ece653956cb1796d80fc74f5f5",
+      "decoder_sha256": "ca3266252ee5b92cb0a273b9d8a0cc6e67641eb1fa89dfed2dba52093e23e9e0",
+      "raw_result_sha256": "0095361a45a2460e0991e6e824fb49699814af4fddf7c37bf8ce8cb5710b0911",
+      "settings": {
+        "STRATA_GLM_MTP_DEVICE_HIDDEN": "1"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12149.4,
+          "tokens_per_second": 168.567
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12152.7,
+          "tokens_per_second": 168.522
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16985.3,
+          "tokens_per_second": 30.0849
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 270.781,
+        "quant_ms": 3.49293,
+        "down_ms": 180.626,
+        "layer_flow_ms": 11138.5,
+        "bytes": 778205986816
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.569246,
+        "draft_ms": 1407.89,
+        "verify_ms": 14947.2,
+        "resync_ms": 231.785
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [
+        "MTP_DEVICE_HIDDEN rows=945"
+      ],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 865
+    },
+    {
+      "name": "arch2-earlydevice-2048",
+      "config_sha256": "7d18dd9a74be778a1f4254b88a60cc92be0f9306de3ef2aec8ed42595b06823f",
+      "decoder_sha256": "ca3266252ee5b92cb0a273b9d8a0cc6e67641eb1fa89dfed2dba52093e23e9e0",
+      "raw_result_sha256": "7ebd9720836f9a7acff0d4ce7f4ebc1eeb2ab9bb9112bd1552691a8b6b35b086",
+      "settings": {
+        "STRATA_GLM_MOE_MERGE_GROUPS": "early-device"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12148.8,
+          "tokens_per_second": 168.576
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12149.6,
+          "tokens_per_second": 168.566
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 19725.0,
+          "tokens_per_second": 25.9062
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 263.862,
+        "quant_ms": 3.45605,
+        "down_ms": 177.19,
+        "layer_flow_ms": 10778.3,
+        "bytes": 726254485504
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.523035,
+        "draft_ms": 1406.35,
+        "verify_ms": 17719.1,
+        "resync_ms": 216.895
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [
+        "EXPERT_GROUP_MERGE layers=12285"
+      ],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 865
+    },
+    {
+      "name": "arch2-fuse-2048",
+      "config_sha256": "25dfb6e5b43d0a180e3c3d014d3835e8d09af546440425da3c5bab0b20f06458",
+      "decoder_sha256": "ca3266252ee5b92cb0a273b9d8a0cc6e67641eb1fa89dfed2dba52093e23e9e0",
+      "raw_result_sha256": "bd6f9593d7c57e3e639ac378f20483710291559b097d57d5ecc680ce85c5992c",
+      "settings": {
+        "STRATA_GLM_VERIFY_FUSE_KDA": "1"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12147.4,
+          "tokens_per_second": 168.596
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12150.4,
+          "tokens_per_second": 168.554
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 19793.7,
+          "tokens_per_second": 25.8163
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 269.281,
+        "quant_ms": 3.40041,
+        "down_ms": 177.017,
+        "layer_flow_ms": 10847.4,
+        "bytes": 725468250112
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.526066,
+        "draft_ms": 1398.17,
+        "verify_ms": 17781.5,
+        "resync_ms": 223.882
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [
+        "VERIFY_FUSE_KDA layers=9765"
+      ],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 873
+    },
+    {
+      "name": "arch2-prefill11c32-8192",
+      "config_sha256": "53f235d7c9d971b1dfa3969b853f2eb0c1164778c8d6814f61954ad271aa4dc6",
+      "decoder_sha256": "ca3266252ee5b92cb0a273b9d8a0cc6e67641eb1fa89dfed2dba52093e23e9e0",
+      "raw_result_sha256": "45572e4b962d5a006ecb3f4b637b6ed4fce8febd119b8a8d4a55649e1c0ed05d",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "11",
+        "STRATA_PREFILL_MMQ_COLUMNS": "32"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 64,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14877.9,
+          "tokens_per_second": 550.616
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 14750.9,
+          "tokens_per_second": 555.356
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 64,
+          "milliseconds": 2135.46,
+          "tokens_per_second": 29.5018
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 36.1931,
+        "quant_ms": 0.413849,
+        "down_ms": 28.8778,
+        "layer_flow_ms": 1371.2,
+        "bytes": 97362903040
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.653009,
+        "draft_ms": 252.396,
+        "verify_ms": 1819.33,
+        "resync_ms": 21.7696
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 20,
+          "opportunities": 20,
+          "accepted": 20
+        },
+        {
+          "index": 1,
+          "proposed": 20,
+          "opportunities": 20,
+          "accepted": 13
+        },
+        {
+          "index": 2,
+          "proposed": 20,
+          "opportunities": 13,
+          "accepted": 9
+        },
+        {
+          "index": 0,
+          "proposed": 19,
+          "opportunities": 19,
+          "accepted": 17
+        },
+        {
+          "index": 1,
+          "proposed": 18,
+          "opportunities": 16,
+          "accepted": 14
+        },
+        {
+          "index": 2,
+          "proposed": 18,
+          "opportunities": 14,
+          "accepted": 13
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 8,
+          "sum_logit_regret": 11.0742
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 5,
+          "sum_logit_regret": 11.6977
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        67958420992,
+        67958420992
+      ],
+      "architecture_counters": [],
+      "token_sha256": "7aac10546879cf057560ce0a84e8e9c8717fc34fdb2ea22cea7a809652c96b0b",
+      "all_trial_token_sha256": [
+        "6b3809f5aaf639ee1ea124819bc35b92b21e083574eccb56643ef8ba17c315c1",
+        "7aac10546879cf057560ce0a84e8e9c8717fc34fdb2ea22cea7a809652c96b0b"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 1.0,
+      "timed_distinct_4gram_ratios": [
+        1.0
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "arch2-prefill11c64-8192",
+      "config_sha256": "e76f678b102a3a932f8b34a1af9551bae66a522675170d4b248fe89d1ea6bbcc",
+      "decoder_sha256": "ca3266252ee5b92cb0a273b9d8a0cc6e67641eb1fa89dfed2dba52093e23e9e0",
+      "raw_result_sha256": "9f2c5c99943462de76fa3e5e1a2c29ba80bedd68b379f7ea58c0527e4850da56",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "11",
+        "STRATA_PREFILL_MMQ_COLUMNS": "64"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 64,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13183.9,
+          "tokens_per_second": 621.363
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13203.9,
+          "tokens_per_second": 620.425
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 64,
+          "milliseconds": 2150.34,
+          "tokens_per_second": 29.2976
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 49.9059,
+        "quant_ms": 0.452364,
+        "down_ms": 26.34,
+        "layer_flow_ms": 1372.91,
+        "bytes": 97362903040
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.650289,
+        "draft_ms": 255.846,
+        "verify_ms": 1822.94,
+        "resync_ms": 29.3187
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 20,
+          "opportunities": 20,
+          "accepted": 20
+        },
+        {
+          "index": 1,
+          "proposed": 20,
+          "opportunities": 20,
+          "accepted": 13
+        },
+        {
+          "index": 2,
+          "proposed": 20,
+          "opportunities": 13,
+          "accepted": 9
+        },
+        {
+          "index": 0,
+          "proposed": 19,
+          "opportunities": 19,
+          "accepted": 17
+        },
+        {
+          "index": 1,
+          "proposed": 18,
+          "opportunities": 16,
+          "accepted": 14
+        },
+        {
+          "index": 2,
+          "proposed": 18,
+          "opportunities": 14,
+          "accepted": 13
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 8,
+          "sum_logit_regret": 11.0742
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 5,
+          "sum_logit_regret": 11.6977
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        67958420992,
+        67958420992
+      ],
+      "architecture_counters": [],
+      "token_sha256": "7aac10546879cf057560ce0a84e8e9c8717fc34fdb2ea22cea7a809652c96b0b",
+      "all_trial_token_sha256": [
+        "6b3809f5aaf639ee1ea124819bc35b92b21e083574eccb56643ef8ba17c315c1",
+        "7aac10546879cf057560ce0a84e8e9c8717fc34fdb2ea22cea7a809652c96b0b"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 1.0,
+      "timed_distinct_4gram_ratios": [
+        1.0
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "arch3-control-2048",
+      "config_sha256": "0b29b24f8137b4ca963144eb429afda7611385dcfd70c0f00f36fd66875a74b7",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "52228c474ab2b8b4c791c83ae29b884b339feecbba083a1778d90e46872ad3c0",
+      "settings": {},
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12148.8,
+          "tokens_per_second": 168.576
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12146.8,
+          "tokens_per_second": 168.604
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16998.6,
+          "tokens_per_second": 30.0613
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 267.818,
+        "quant_ms": 3.45534,
+        "down_ms": 177.297,
+        "layer_flow_ms": 11137.3,
+        "bytes": 778205986816
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.535897,
+        "draft_ms": 1417.78,
+        "verify_ms": 14970.4,
+        "resync_ms": 208.02
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 859
+    },
+    {
+      "name": "arch3-control-8192",
+      "config_sha256": "c0f743ad1fafcb3fd15952a2d525fdc0259c855583cf676ba3196d21b28ee15a",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "59109fd99e8db24f762ad7760e8014b62763373ec577a60eaaa7376c59eb4606",
+      "settings": {},
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 512,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13356.2,
+          "tokens_per_second": 613.35
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13422.5,
+          "tokens_per_second": 610.32
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16069.3,
+          "tokens_per_second": 31.7998
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 250.969,
+        "quant_ms": 3.15123,
+        "down_ms": 162.684,
+        "layer_flow_ms": 11313.4,
+        "bytes": 785578852352
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.629579,
+        "draft_ms": 1292.84,
+        "verify_ms": 14241,
+        "resync_ms": 196.033
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 139,
+          "opportunities": 137,
+          "accepted": 123
+        },
+        {
+          "index": 2,
+          "proposed": 139,
+          "opportunities": 123,
+          "accepted": 110
+        },
+        {
+          "index": 0,
+          "proposed": 142,
+          "opportunities": 142,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 142,
+          "opportunities": 138,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 142,
+          "opportunities": 121,
+          "accepted": 98
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 107,
+          "sum_logit_regret": 150.087
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 113,
+          "sum_logit_regret": 163.941
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415",
+      "all_trial_token_sha256": [
+        "e3483f04282f08116392d149b9e93e9f1e1a678cf71c7788f941ba24e9878809",
+        "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.8958742632612967,
+      "timed_distinct_4gram_ratios": [
+        0.8958742632612967
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "arch3-extend2-2048",
+      "config_sha256": "e91ed164fc1fea9b7dcdce663f26e0707b20e5b6125de74cbddd09be43559670",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "aae701dd7d414af9c2469a1d2828dd954cda29673786715c932d39babbd6ac27",
+      "settings": {
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "5",
+        "STRATA_GLM_MTP_EXTENSION_MARGIN": "2"
+      },
+      "removed_env": [],
+      "draft_depth": 5,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12147.7,
+          "tokens_per_second": 168.592
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12148.8,
+          "tokens_per_second": 168.576
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16449.4,
+          "tokens_per_second": 31.065
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 288.348,
+        "quant_ms": 3.65934,
+        "down_ms": 190.972,
+        "layer_flow_ms": 11699.2,
+        "bytes": 807268843520
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.523215,
+        "draft_ms": 1524.13,
+        "verify_ms": 14448.8,
+        "resync_ms": 198.75
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 142,
+          "opportunities": 142,
+          "accepted": 132
+        },
+        {
+          "index": 1,
+          "proposed": 142,
+          "opportunities": 132,
+          "accepted": 115
+        },
+        {
+          "index": 2,
+          "proposed": 142,
+          "opportunities": 115,
+          "accepted": 90
+        },
+        {
+          "index": 3,
+          "proposed": 33,
+          "opportunities": 27,
+          "accepted": 25
+        },
+        {
+          "index": 4,
+          "proposed": 12,
+          "opportunities": 9,
+          "accepted": 7
+        },
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 135
+        },
+        {
+          "index": 1,
+          "proposed": 140,
+          "opportunities": 135,
+          "accepted": 115
+        },
+        {
+          "index": 2,
+          "proposed": 140,
+          "opportunities": 115,
+          "accepted": 89
+        },
+        {
+          "index": 3,
+          "proposed": 29,
+          "opportunities": 23,
+          "accepted": 21
+        },
+        {
+          "index": 4,
+          "proposed": 15,
+          "opportunities": 12,
+          "accepted": 11
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 5,
+          "soft_accepted": 89,
+          "sum_logit_regret": 137.272
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 5,
+          "soft_accepted": 92,
+          "sum_logit_regret": 128.68
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [
+        "MTP_EXTENSION base_depth=3 margin=2 stopped=129",
+        "MTP_EXTENSION base_depth=3 margin=2 stopped=124"
+      ],
+      "token_sha256": "8e6e26033b55f3782e54917005d32cc56426c2e7be0a6db7fcb7a1cd83a244bd",
+      "all_trial_token_sha256": [
+        "f573198648946760cb483d21d33ccbc2ba5f8f0b08ca097c54d3ac293a4a4cef",
+        "8e6e26033b55f3782e54917005d32cc56426c2e7be0a6db7fcb7a1cd83a244bd"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9724950884086444,
+      "timed_distinct_4gram_ratios": [
+        0.9724950884086444
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 823
+    },
+    {
+      "name": "arch3-extend2-8192",
+      "config_sha256": "d0653d10784af5009c3a653fee9de87760886fe775ce72bac548cb4a4ccac63c",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "4cfe07609c8e60c39cad4442310bca801c8c8be6d0057552667e4da7e673d3d4",
+      "settings": {
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "5",
+        "STRATA_GLM_MTP_EXTENSION_MARGIN": "2"
+      },
+      "removed_env": [],
+      "draft_depth": 5,
+      "prefill_batch": 8192,
+      "decode_tokens": 512,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13608.7,
+          "tokens_per_second": 601.969
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13597.7,
+          "tokens_per_second": 602.454
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 17227.7,
+          "tokens_per_second": 29.6615
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 302.099,
+        "quant_ms": 3.94814,
+        "down_ms": 199.486,
+        "layer_flow_ms": 11883.2,
+        "bytes": 823142776832
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.67691,
+        "draft_ms": 1621.62,
+        "verify_ms": 15090.5,
+        "resync_ms": 202.408
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 137
+        },
+        {
+          "index": 1,
+          "proposed": 140,
+          "opportunities": 137,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 140,
+          "opportunities": 121,
+          "accepted": 92
+        },
+        {
+          "index": 3,
+          "proposed": 23,
+          "opportunities": 17,
+          "accepted": 14
+        },
+        {
+          "index": 4,
+          "proposed": 12,
+          "opportunities": 6,
+          "accepted": 6
+        },
+        {
+          "index": 0,
+          "proposed": 146,
+          "opportunities": 146,
+          "accepted": 136
+        },
+        {
+          "index": 1,
+          "proposed": 146,
+          "opportunities": 136,
+          "accepted": 111
+        },
+        {
+          "index": 2,
+          "proposed": 145,
+          "opportunities": 110,
+          "accepted": 90
+        },
+        {
+          "index": 3,
+          "proposed": 27,
+          "opportunities": 22,
+          "accepted": 18
+        },
+        {
+          "index": 4,
+          "proposed": 14,
+          "opportunities": 10,
+          "accepted": 10
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 5,
+          "soft_accepted": 120,
+          "sum_logit_regret": 155.438
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 5,
+          "soft_accepted": 98,
+          "sum_logit_regret": 136.763
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [
+        "MTP_EXTENSION base_depth=3 margin=2 stopped=128",
+        "MTP_EXTENSION base_depth=3 margin=2 stopped=131"
+      ],
+      "token_sha256": "83611ca0c1332f853704d817c876321688794e58c2514d629ad79a7fed277eff",
+      "all_trial_token_sha256": [
+        "2f4a6339d15b7ecf28ed4f77ed5586262555040fa5459e60373a81a7353f2c79",
+        "83611ca0c1332f853704d817c876321688794e58c2514d629ad79a7fed277eff"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9390962671905697,
+      "timed_distinct_4gram_ratios": [
+        0.9390962671905697
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 783
+    },
+    {
+      "name": "arch3-prefill10top6-8192",
+      "config_sha256": "5155b17ad009094b321bb905d402867cd49621df0d0a0372abc5604318eebcbb",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "07bec412496b3241ff920c5172b8e8473df00d5792d44ed29f3aed0837dc60b0",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "10",
+        "STRATA_GLM_PREFILL_TOP_K": "6"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 64,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11474.9,
+          "tokens_per_second": 713.905
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11488.9,
+          "tokens_per_second": 713.036
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 64,
+          "milliseconds": 1938.62,
+          "tokens_per_second": 32.4973
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 42.9337,
+        "quant_ms": 0.379921,
+        "down_ms": 28.0925,
+        "layer_flow_ms": 1324.64,
+        "bytes": 93273260032
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.714343,
+        "draft_ms": 231.969,
+        "verify_ms": 1642.55,
+        "resync_ms": 24.1816
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 18,
+          "opportunities": 18,
+          "accepted": 18
+        },
+        {
+          "index": 1,
+          "proposed": 17,
+          "opportunities": 17,
+          "accepted": 15
+        },
+        {
+          "index": 2,
+          "proposed": 17,
+          "opportunities": 15,
+          "accepted": 12
+        },
+        {
+          "index": 0,
+          "proposed": 17,
+          "opportunities": 17,
+          "accepted": 17
+        },
+        {
+          "index": 1,
+          "proposed": 17,
+          "opportunities": 17,
+          "accepted": 16
+        },
+        {
+          "index": 2,
+          "proposed": 16,
+          "opportunities": 15,
+          "accepted": 13
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 12,
+          "sum_logit_regret": 18.6608
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 10,
+          "sum_logit_regret": 13.0367
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        61780382720,
+        61780382720
+      ],
+      "architecture_counters": [],
+      "token_sha256": "74eba284ebc5ef9fcdcd8b3490a08a372534eb75580b46532a9408ade1d24f8a",
+      "all_trial_token_sha256": [
+        "ac68c57ae2cb6e298dc0c08d10874994d47f3bfa2912a10ce86bab4fd83a9fe2",
+        "74eba284ebc5ef9fcdcd8b3490a08a372534eb75580b46532a9408ade1d24f8a"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 1.0,
+      "timed_distinct_4gram_ratios": [
+        1.0
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "arch3-prefill10top6-repeat-8192",
+      "config_sha256": "5155b17ad009094b321bb905d402867cd49621df0d0a0372abc5604318eebcbb",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "d8c5c2abbbc14f7423065a11ef36330710c890b4be7842fce888421e697a67ca",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "10",
+        "STRATA_GLM_PREFILL_TOP_K": "6"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 512,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 3,
+      "protocol": "One fresh process, one warmup plus 3 timed decode(s), 3 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11939.1,
+          "tokens_per_second": 686.149
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11809.8,
+          "tokens_per_second": 693.662
+        },
+        {
+          "trial": 2,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11888.9,
+          "tokens_per_second": 689.047
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 14783.2,
+          "tokens_per_second": 34.5662
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 14896.2,
+          "tokens_per_second": 34.3041
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 14663.7,
+          "tokens_per_second": 34.8479
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 229.917,
+        "quant_ms": 3.05788,
+        "down_ms": 155.35,
+        "layer_flow_ms": 9926.28,
+        "bytes": 687186771968
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.64723,
+        "draft_ms": 1206.26,
+        "verify_ms": 13086.4,
+        "resync_ms": 139.859
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 153,
+          "opportunities": 153,
+          "accepted": 144
+        },
+        {
+          "index": 1,
+          "proposed": 152,
+          "opportunities": 143,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 152,
+          "opportunities": 124,
+          "accepted": 90
+        },
+        {
+          "index": 0,
+          "proposed": 135,
+          "opportunities": 135,
+          "accepted": 135
+        },
+        {
+          "index": 1,
+          "proposed": 135,
+          "opportunities": 135,
+          "accepted": 130
+        },
+        {
+          "index": 2,
+          "proposed": 135,
+          "opportunities": 130,
+          "accepted": 110
+        },
+        {
+          "index": 0,
+          "proposed": 135,
+          "opportunities": 135,
+          "accepted": 134
+        },
+        {
+          "index": 1,
+          "proposed": 135,
+          "opportunities": 134,
+          "accepted": 127
+        },
+        {
+          "index": 2,
+          "proposed": 135,
+          "opportunities": 127,
+          "accepted": 108
+        },
+        {
+          "index": 0,
+          "proposed": 135,
+          "opportunities": 135,
+          "accepted": 135
+        },
+        {
+          "index": 1,
+          "proposed": 134,
+          "opportunities": 134,
+          "accepted": 127
+        },
+        {
+          "index": 2,
+          "proposed": 134,
+          "opportunities": 127,
+          "accepted": 114
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 128.855
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 69,
+          "sum_logit_regret": 103.212
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 67,
+          "sum_logit_regret": 86.5319
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 62,
+          "sum_logit_regret": 84.2054
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        61780382720,
+        61780382720,
+        61780382720
+      ],
+      "architecture_counters": [],
+      "token_sha256": "8ffae80f0ef0ab0a8aadbc5967573ddc759d305492a86d477fde91f0038c4a02",
+      "all_trial_token_sha256": [
+        "46aa0c33dc50f1adbc0c73758e8c6b2b5d09ef8701dfcb8f2214237ab8eb2467",
+        "1e0e8b408b5270efa562771e36f74ac8de0aa26109535a88b634d86e1acec1d8",
+        "d1d22c3b59d200371e4fc89dcc30e973e75b755355684ceabc7b29ac410ed1d6",
+        "8ffae80f0ef0ab0a8aadbc5967573ddc759d305492a86d477fde91f0038c4a02"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9430255402750491,
+      "timed_distinct_4gram_ratios": [
+        0.931237721021611,
+        0.9469548133595285,
+        0.9430255402750491
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 815
+    },
+    {
+      "name": "arch3-prefill11top7-8192",
+      "config_sha256": "1d79d0ccebee6b7344ddc03cbdfebccf0f188adf0de6c71c0d82efa0526c1347",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "7886e7ba9480215acab2615c1dbadffde9d345ca8ea49de50caccf473ea190da",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "11",
+        "STRATA_GLM_PREFILL_TOP_K": "7"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 64,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12090.8,
+          "tokens_per_second": 677.539
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12070.5,
+          "tokens_per_second": 678.68
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 64,
+          "milliseconds": 2090.01,
+          "tokens_per_second": 30.1434
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 47.6575,
+        "quant_ms": 0.391061,
+        "down_ms": 40.3048,
+        "layer_flow_ms": 1465.12,
+        "bytes": 103593279488
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.658378,
+        "draft_ms": 252.472,
+        "verify_ms": 1776.84,
+        "resync_ms": 24.6056
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 17,
+          "opportunities": 17,
+          "accepted": 16
+        },
+        {
+          "index": 1,
+          "proposed": 17,
+          "opportunities": 16,
+          "accepted": 15
+        },
+        {
+          "index": 2,
+          "proposed": 17,
+          "opportunities": 15,
+          "accepted": 15
+        },
+        {
+          "index": 0,
+          "proposed": 18,
+          "opportunities": 18,
+          "accepted": 18
+        },
+        {
+          "index": 1,
+          "proposed": 17,
+          "opportunities": 17,
+          "accepted": 14
+        },
+        {
+          "index": 2,
+          "proposed": 17,
+          "opportunities": 14,
+          "accepted": 13
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 9,
+          "sum_logit_regret": 10.7547
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 10,
+          "sum_logit_regret": 12.8279
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        67958420992,
+        67958420992
+      ],
+      "architecture_counters": [],
+      "token_sha256": "ad5634d02a54edf48f24df07433cc01cfee78b6c66b6625ee571453b4a263265",
+      "all_trial_token_sha256": [
+        "d229378132a375e5acd4fc573654c16e7805cd5bc34860dcc8d4eeecd45c10c7",
+        "ad5634d02a54edf48f24df07433cc01cfee78b6c66b6625ee571453b4a263265"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 1.0,
+      "timed_distinct_4gram_ratios": [
+        1.0
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "arch3-prefill12top6-8192",
+      "config_sha256": "09a7f42d92cebb24f5e7b36e53348dc6561cc442fac623887160bb66e22e7931",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "bb32bab64704c9691c53c7189c080c6e82044d32a593d87070e1b92bbd2cb5e3",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "12",
+        "STRATA_GLM_PREFILL_TOP_K": "6"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 64,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12055.0,
+          "tokens_per_second": 679.55
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12065.1,
+          "tokens_per_second": 678.984
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 64,
+          "milliseconds": 2299.79,
+          "tokens_per_second": 27.3938
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 51.1376,
+        "quant_ms": 0.421038,
+        "down_ms": 38.8379,
+        "layer_flow_ms": 1658.65,
+        "bytes": 115287195648
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.677619,
+        "draft_ms": 251.226,
+        "verify_ms": 1964.01,
+        "resync_ms": 42.1975
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 18,
+          "opportunities": 18,
+          "accepted": 17
+        },
+        {
+          "index": 1,
+          "proposed": 18,
+          "opportunities": 17,
+          "accepted": 15
+        },
+        {
+          "index": 2,
+          "proposed": 18,
+          "opportunities": 15,
+          "accepted": 12
+        },
+        {
+          "index": 0,
+          "proposed": 19,
+          "opportunities": 19,
+          "accepted": 18
+        },
+        {
+          "index": 1,
+          "proposed": 19,
+          "opportunities": 18,
+          "accepted": 15
+        },
+        {
+          "index": 2,
+          "proposed": 19,
+          "opportunities": 15,
+          "accepted": 11
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 18,
+          "sum_logit_regret": 30.6143
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 15,
+          "sum_logit_regret": 27.4567
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        74136459264,
+        74136459264
+      ],
+      "architecture_counters": [],
+      "token_sha256": "7685e7b4db989ae2c4266f0a8c649dc8397b7d84a91f6c6ac19c7de379afddac",
+      "all_trial_token_sha256": [
+        "faf2bbfde01acee8551e2e1f5b43ab40eb619ab1417d750b5adc0b76db6599bd",
+        "7685e7b4db989ae2c4266f0a8c649dc8397b7d84a91f6c6ac19c7de379afddac"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 1.0,
+      "timed_distinct_4gram_ratios": [
+        1.0
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "arch3-prefill9top6-repeat-8192",
+      "config_sha256": "7227078e84286998c31737e5cd5e21b7c12d96de4baf803a366cebf0c45a0847",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "d82e35762269bca40ab71cfdf16c7613ca7b821b93cffabfda4dd00d1a31a650",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "9",
+        "STRATA_GLM_PREFILL_TOP_K": "6"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 512,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 3,
+      "protocol": "One fresh process, one warmup plus 3 timed decode(s), 3 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11403.3,
+          "tokens_per_second": 718.39
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11387.6,
+          "tokens_per_second": 719.378
+        },
+        {
+          "trial": 2,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 11412.7,
+          "tokens_per_second": 717.799
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 15053.5,
+          "tokens_per_second": 33.9456
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 15345.2,
+          "tokens_per_second": 33.3003
+        },
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 14626.3,
+          "tokens_per_second": 34.9371
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 164.916,
+        "quant_ms": 2.2007,
+        "down_ms": 110.078,
+        "layer_flow_ms": 10528.2,
+        "bytes": 721174331392
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.709841,
+        "draft_ms": 890.635,
+        "verify_ms": 13341.4,
+        "resync_ms": 157.318
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 141,
+          "opportunities": 141,
+          "accepted": 134
+        },
+        {
+          "index": 1,
+          "proposed": 141,
+          "opportunities": 134,
+          "accepted": 126
+        },
+        {
+          "index": 2,
+          "proposed": 141,
+          "opportunities": 126,
+          "accepted": 109
+        },
+        {
+          "index": 0,
+          "proposed": 142,
+          "opportunities": 142,
+          "accepted": 140
+        },
+        {
+          "index": 1,
+          "proposed": 141,
+          "opportunities": 139,
+          "accepted": 123
+        },
+        {
+          "index": 2,
+          "proposed": 141,
+          "opportunities": 123,
+          "accepted": 106
+        },
+        {
+          "index": 0,
+          "proposed": 138,
+          "opportunities": 138,
+          "accepted": 137
+        },
+        {
+          "index": 1,
+          "proposed": 138,
+          "opportunities": 137,
+          "accepted": 122
+        },
+        {
+          "index": 2,
+          "proposed": 138,
+          "opportunities": 122,
+          "accepted": 98
+        },
+        {
+          "index": 0,
+          "proposed": 101,
+          "opportunities": 101,
+          "accepted": 99
+        },
+        {
+          "index": 1,
+          "proposed": 100,
+          "opportunities": 98,
+          "accepted": 93
+        },
+        {
+          "index": 2,
+          "proposed": 100,
+          "opportunities": 93,
+          "accepted": 79
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 76,
+          "sum_logit_regret": 93.8058
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 79,
+          "sum_logit_regret": 96.4117
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 77,
+          "sum_logit_regret": 106.755
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 52,
+          "sum_logit_regret": 65.1549
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 4
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        }
+      ],
+      "prefill_weight_bytes": [
+        55602344448,
+        55602344448,
+        55602344448
+      ],
+      "architecture_counters": [],
+      "token_sha256": "c0b27751d3b06bb64df74230334c079945431cc8667d80bd11e2149aa3f4d9ac",
+      "all_trial_token_sha256": [
+        "de86f7913fa72878fe5ca2b5d1f8e89eb92321a9ec1bd5977a38e06d0a2ae714",
+        "48ddebe80c0367ceb806c5358df8781af7a2851dabb0932f295a6b9f808e5d8e",
+        "e41e7ac38a538b1e6612810a7d69788b98f4f8d92668274ed96f7266c55d4c3b",
+        "c0b27751d3b06bb64df74230334c079945431cc8667d80bd11e2149aa3f4d9ac"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9489194499017681,
+      "timed_distinct_4gram_ratios": [
+        0.862475442043222,
+        0.9273084479371316,
+        0.9489194499017681
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 797
+    },
+    {
+      "name": "arch3-split1-2048",
+      "config_sha256": "6f640f4015234b29a6075ee0b61a50b62ac51ed43488a4418b4da407a25782db",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "3bfee914556d9c7a30c58b8381cb3604edde797b05357113e36de889b2339eaa",
+      "settings": {
+        "STRATA_GLM_VERIFY_SPLIT_FIRST": "1"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12145.5,
+          "tokens_per_second": 168.622
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12145.6,
+          "tokens_per_second": 168.62
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 17706.8,
+          "tokens_per_second": 28.859
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 263.483,
+        "quant_ms": 3.45763,
+        "down_ms": 176.662,
+        "layer_flow_ms": 11163.3,
+        "bytes": 767511756800
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.522995,
+        "draft_ms": 1412.86,
+        "verify_ms": 15682.4,
+        "resync_ms": 224.65
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 865
+    },
+    {
+      "name": "arch3-split3-2048",
+      "config_sha256": "1e5e911b62c98d0658905a60f4840d388b2659c82488e6a1662ae5f970958a16",
+      "decoder_sha256": "559fc75f438cfd38754b02c58aab43200a81cc913611d049dd12da8b3e40c975",
+      "raw_result_sha256": "11764c311243e576dd7a8a3cb1f9ca66d03d5978678fa80447a2dc1816f840b6",
+      "settings": {
+        "STRATA_GLM_VERIFY_SPLIT_FIRST": "3"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12152.0,
+          "tokens_per_second": 168.532
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12154.2,
+          "tokens_per_second": 168.501
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 17673.6,
+          "tokens_per_second": 28.9132
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 264.664,
+        "quant_ms": 3.6075,
+        "down_ms": 177.462,
+        "layer_flow_ms": 11187.6,
+        "bytes": 763520679936
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.528045,
+        "draft_ms": 1423,
+        "verify_ms": 15644.9,
+        "resync_ms": 221.242
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 865
+    },
+    {
+      "name": "control-2048",
+      "config_sha256": "09639d27d2d826ba70b42771bff3f6e5213f754775d1279afb0817eb81ca7b4c",
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "raw_result_sha256": "0c37455a28df4f5875b9c28e81ddf32a87aeb1d82515a84ef9690883531b2ce9",
+      "settings": {},
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12148.1,
+          "tokens_per_second": 168.586
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12148.3,
+          "tokens_per_second": 168.584
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16974.2,
+          "tokens_per_second": 30.1045
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 268.234,
+        "quant_ms": 3.32112,
+        "down_ms": 174.725,
+        "layer_flow_ms": 11127,
+        "bytes": 778205986816
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.521726,
+        "draft_ms": 1418.72,
+        "verify_ms": 14965.1,
+        "resync_ms": 219.413
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 865
+    },
+    {
+      "name": "control-8192",
+      "config_sha256": "b68595fea83993c574734b98628dbe5edb213c964688b8829712162252accb08",
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "raw_result_sha256": "1f239eb9bac7b27beeb9b013d756f510bf92b6fd96984c124d91598731382703",
+      "settings": {},
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 512,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13371.7,
+          "tokens_per_second": 612.638
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13392.6,
+          "tokens_per_second": 611.681
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16165.0,
+          "tokens_per_second": 31.6115
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 252.358,
+        "quant_ms": 3.12044,
+        "down_ms": 163.685,
+        "layer_flow_ms": 11406.6,
+        "bytes": 785578852352
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.632496,
+        "draft_ms": 1305.52,
+        "verify_ms": 14344.7,
+        "resync_ms": 186.919
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 139,
+          "opportunities": 137,
+          "accepted": 123
+        },
+        {
+          "index": 2,
+          "proposed": 139,
+          "opportunities": 123,
+          "accepted": 110
+        },
+        {
+          "index": 0,
+          "proposed": 142,
+          "opportunities": 142,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 142,
+          "opportunities": 138,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 142,
+          "opportunities": 121,
+          "accepted": 98
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 107,
+          "sum_logit_regret": 150.087
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 113,
+          "sum_logit_regret": 163.941
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415",
+      "all_trial_token_sha256": [
+        "e3483f04282f08116392d149b9e93e9f1e1a678cf71c7788f941ba24e9878809",
+        "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.8958742632612967,
+      "timed_distinct_4gram_ratios": [
+        0.8958742632612967
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "prefill11-8192",
+      "config_sha256": "74fb52b9a65a2b24ab5f0c498162baf37ae88151e066502566066d51bfe57de3",
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "raw_result_sha256": "ff4d30d20e8ab469c364c2c916cce29fd1fc79fc21150378f567a10e061550cc",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "11"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 64,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12515.7,
+          "tokens_per_second": 654.536
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12498.7,
+          "tokens_per_second": 655.427
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 64,
+          "milliseconds": 2161.72,
+          "tokens_per_second": 29.1434
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 39.4365,
+        "quant_ms": 0.421738,
+        "down_ms": 26.9513,
+        "layer_flow_ms": 1383,
+        "bytes": 97362903040
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.661345,
+        "draft_ms": 250.082,
+        "verify_ms": 1831.46,
+        "resync_ms": 23.9075
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 20,
+          "opportunities": 20,
+          "accepted": 20
+        },
+        {
+          "index": 1,
+          "proposed": 20,
+          "opportunities": 20,
+          "accepted": 13
+        },
+        {
+          "index": 2,
+          "proposed": 20,
+          "opportunities": 13,
+          "accepted": 9
+        },
+        {
+          "index": 0,
+          "proposed": 19,
+          "opportunities": 19,
+          "accepted": 17
+        },
+        {
+          "index": 1,
+          "proposed": 18,
+          "opportunities": 16,
+          "accepted": 14
+        },
+        {
+          "index": 2,
+          "proposed": 18,
+          "opportunities": 14,
+          "accepted": 13
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 8,
+          "sum_logit_regret": 11.0742
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 5,
+          "sum_logit_regret": 11.6977
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        67958420992,
+        67958420992
+      ],
+      "architecture_counters": [],
+      "token_sha256": "7aac10546879cf057560ce0a84e8e9c8717fc34fdb2ea22cea7a809652c96b0b",
+      "all_trial_token_sha256": [
+        "6b3809f5aaf639ee1ea124819bc35b92b21e083574eccb56643ef8ba17c315c1",
+        "7aac10546879cf057560ce0a84e8e9c8717fc34fdb2ea22cea7a809652c96b0b"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 1.0,
+      "timed_distinct_4gram_ratios": [
+        1.0
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "prefill12-8192",
+      "config_sha256": "12af9d2c43c43ff11c83e32190c57f56d929c37435946334461f419d3bd86dba",
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "raw_result_sha256": "b84f32bb9464f4e569e14df4a2b37c2a918d0cd0051ffd2e7192d83630877564",
+      "settings": {
+        "STRATA_GLM_PREFILL_GROUP_BUDGET": "12"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 64,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12720.8,
+          "tokens_per_second": 643.983
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 12720.9,
+          "tokens_per_second": 643.979
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 64,
+          "milliseconds": 2137.94,
+          "tokens_per_second": 29.4677
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 43.95,
+        "quant_ms": 0.394809,
+        "down_ms": 25.137,
+        "layer_flow_ms": 1475.03,
+        "bytes": 99456188416
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.689115,
+        "draft_ms": 239.67,
+        "verify_ms": 1812.94,
+        "resync_ms": 30.4194
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 17,
+          "opportunities": 17,
+          "accepted": 17
+        },
+        {
+          "index": 1,
+          "proposed": 17,
+          "opportunities": 17,
+          "accepted": 16
+        },
+        {
+          "index": 2,
+          "proposed": 17,
+          "opportunities": 16,
+          "accepted": 12
+        },
+        {
+          "index": 0,
+          "proposed": 18,
+          "opportunities": 18,
+          "accepted": 18
+        },
+        {
+          "index": 1,
+          "proposed": 18,
+          "opportunities": 18,
+          "accepted": 16
+        },
+        {
+          "index": 2,
+          "proposed": 17,
+          "opportunities": 15,
+          "accepted": 11
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 8,
+          "sum_logit_regret": 14.1779
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 13,
+          "sum_logit_regret": 26.5634
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        74136459264,
+        74136459264
+      ],
+      "architecture_counters": [],
+      "token_sha256": "da1d9778d5165033a46e62b68851e92b58f3bb1c04091faad82b5d4f476ef18f",
+      "all_trial_token_sha256": [
+        "67d7cfc92735c89e16c329649c48222bab39cce816f7f72138a1ae1c28d1d120",
+        "da1d9778d5165033a46e62b68851e92b58f3bb1c04091faad82b5d4f476ef18f"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 1.0,
+      "timed_distinct_4gram_ratios": [
+        1.0
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "ready-2048",
+      "config_sha256": "5a92f139d2303493043f03f1de31a46d1ae629b14a1dd155eceb5e525b32298d",
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "raw_result_sha256": "9d3ab5deb3293f7b1f81f6c550906b4e2c2e6876baaeb18ad3607b2f5af06d5d",
+      "settings": {
+        "STRATA_GLM_MOE_MERGE_GROUPS": "ready"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12147.8,
+          "tokens_per_second": 168.59
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12149.4,
+          "tokens_per_second": 168.568
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16760.2,
+          "tokens_per_second": 30.4889
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 260.709,
+        "quant_ms": 3.34033,
+        "down_ms": 169.639,
+        "layer_flow_ms": 11805.9,
+        "bytes": 817853038592
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.512087,
+        "draft_ms": 1356.2,
+        "verify_ms": 14807.1,
+        "resync_ms": 217.366
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 150,
+          "opportunities": 150,
+          "accepted": 144
+        },
+        {
+          "index": 1,
+          "proposed": 150,
+          "opportunities": 144,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 150,
+          "opportunities": 124,
+          "accepted": 91
+        },
+        {
+          "index": 0,
+          "proposed": 152,
+          "opportunities": 152,
+          "accepted": 145
+        },
+        {
+          "index": 1,
+          "proposed": 152,
+          "opportunities": 145,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 152,
+          "opportunities": 124,
+          "accepted": 89
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 96,
+          "sum_logit_regret": 127.483
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 108,
+          "sum_logit_regret": 148.055
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 1
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [
+        "EXPERT_GROUP_READY pairs=11817 ready=0"
+      ],
+      "token_sha256": "600e185d13b9e602198cbd08acd471411752cd3cfc64390d39b1eb733e00d9cc",
+      "all_trial_token_sha256": [
+        "ec7211278a5da514d47dc301fc07f6f09785c1888295afd397b3d32f20c1f8c0",
+        "600e185d13b9e602198cbd08acd471411752cd3cfc64390d39b1eb733e00d9cc"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9803536345776032,
+      "timed_distinct_4gram_ratios": [
+        0.9803536345776032
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 865
+    },
+    {
+      "name": "ready-8192",
+      "config_sha256": "85acde7f9a05c87a268356a6d665ba7a6f5e25bc4f165f96306437fb06799f43",
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "raw_result_sha256": "115d74586de95fcd08e0e870a947179563277ed4019118dee92d1f053a9ce2aa",
+      "settings": {
+        "STRATA_GLM_MOE_MERGE_GROUPS": "ready"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 8192,
+      "decode_tokens": 512,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13492.7,
+          "tokens_per_second": 607.143
+        },
+        {
+          "trial": 1,
+          "tokens": 8192,
+          "batch": 8192,
+          "milliseconds": 13451.8,
+          "tokens_per_second": 608.988
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 16145.2,
+          "tokens_per_second": 31.6503
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 264.947,
+        "quant_ms": 3.10087,
+        "down_ms": 161.405,
+        "layer_flow_ms": 11357.1,
+        "bytes": 785578852352
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.630056,
+        "draft_ms": 1313.29,
+        "verify_ms": 14309.9,
+        "resync_ms": 196.524
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 139,
+          "opportunities": 137,
+          "accepted": 123
+        },
+        {
+          "index": 2,
+          "proposed": 139,
+          "opportunities": 123,
+          "accepted": 110
+        },
+        {
+          "index": 0,
+          "proposed": 142,
+          "opportunities": 142,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 142,
+          "opportunities": 138,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 142,
+          "opportunities": 121,
+          "accepted": 98
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 107,
+          "sum_logit_regret": 150.087
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 113,
+          "sum_logit_regret": 163.941
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [
+        "EXPERT_GROUP_READY pairs=11115 ready=0"
+      ],
+      "token_sha256": "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415",
+      "all_trial_token_sha256": [
+        "e3483f04282f08116392d149b9e93e9f1e1a678cf71c7788f941ba24e9878809",
+        "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.8958742632612967,
+      "timed_distinct_4gram_ratios": [
+        0.8958742632612967
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 825
+    },
+    {
+      "name": "unsplit-2048",
+      "config_sha256": "7cee54207a2010041cd170818824a5bdbb4c6737824b4574f05a809498c8e692",
+      "decoder_sha256": "94e7590f4efd7ede493b03415c607f38da7e7b292f70020ff4813b361ecfaa01",
+      "raw_result_sha256": "78b316914d776d84452292a7ded196e9216f5716c6fe3bdb3c472835f9817a99",
+      "settings": {
+        "STRATA_GLM_SPLIT_VERIFY": "0"
+      },
+      "removed_env": [],
+      "draft_depth": 3,
+      "prefill_batch": 2048,
+      "decode_tokens": 512,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "timed_trials": 1,
+      "protocol": "One fresh process, one warmup plus 1 timed decode(s), 2 prefills",
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12152.1,
+          "tokens_per_second": 168.531
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 12156.6,
+          "tokens_per_second": 168.468
+        }
+      ],
+      "decode": [
+        {
+          "kind": "mtp",
+          "tokens": 512,
+          "milliseconds": 19462.1,
+          "tokens_per_second": 26.2561
+        }
+      ],
+      "cpu_expert": {
+        "gu_ms": 260.347,
+        "quant_ms": 3.50053,
+        "down_ms": 176.689,
+        "layer_flow_ms": 10536.6,
+        "bytes": 708170219520
+      },
+      "mtp_timing": {
+        "prepare_ms": 0.50393,
+        "draft_ms": 1414,
+        "verify_ms": 17447,
+        "resync_ms": 210.309
+      },
+      "mtp_positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 147
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 147,
+          "accepted": 120
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 120,
+          "accepted": 86
+        },
+        {
+          "index": 0,
+          "proposed": 158,
+          "opportunities": 158,
+          "accepted": 146
+        },
+        {
+          "index": 1,
+          "proposed": 158,
+          "opportunities": 146,
+          "accepted": 124
+        },
+        {
+          "index": 2,
+          "proposed": 158,
+          "opportunities": 124,
+          "accepted": 82
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 106,
+          "sum_logit_regret": 166.169
+        },
+        {
+          "margin": 4,
+          "top_k": 6,
+          "max_soft_per_window": 3,
+          "soft_accepted": 110,
+          "sum_logit_regret": 158.67
+        }
+      ],
+      "mtp_repeat_guard": [
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 0
+        },
+        {
+          "ngram": 4,
+          "history": 128,
+          "blocked": 2
+        }
+      ],
+      "prefill_weight_bytes": [
+        86492535808,
+        86492535808
+      ],
+      "architecture_counters": [],
+      "token_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "all_trial_token_sha256": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "repeated_tokens_equal": false,
+      "distinct_4gram_ratio": 0.9941060903732809,
+      "timed_distinct_4gram_ratios": [
+        0.9941060903732809
+      ],
+      "complete": true,
+      "clean": true,
+      "quiet": true,
+      "inputs_unchanged": true,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 877
+    }
+  ],
+  "functional_checks": [
+    {
+      "name": "arch2-verify-earlydevice",
+      "exit_code": 0,
+      "rejected": null,
+      "peak_swap_kib": 0,
+      "evidence": [
+        "VERIFY_HISTORY slots=3 MiB=177.685 compact_replay=1",
+        "VERIFY_HISTORY slots=3 MiB=177.685 compact_replay=1",
+        "VERIFY_GRAPHS widths=1,2,3,4 mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal",
+        "VERIFY_HISTORY slots=7 MiB=233.265 compact_replay=1",
+        "VERIFY retained prefixes and next-token logits identical",
+        "VERIFY sequential logits and device rollback identical",
+        "EXPERT_GROUP_MERGE layers=10140"
+      ],
+      "raw_log_sha256": "2c67aca0df34cc2260459d377807e95ac33c7b797a691a7786c59e2a18987ee2"
+    },
+    {
+      "name": "arch2-verify-fuse-input-failure",
+      "exit_code": 1,
+      "rejected": null,
+      "peak_swap_kib": 0,
+      "evidence": [
+        "invalid token ID"
+      ],
+      "raw_log_sha256": "799ecdedda836eb56d48fa5abbeb2ac655b757e126110344a8d7c5bfb32ae66e"
+    },
+    {
+      "name": "arch2-verify-fuse",
+      "exit_code": 0,
+      "rejected": null,
+      "peak_swap_kib": 0,
+      "evidence": [
+        "VERIFY_HISTORY slots=3 MiB=177.685 compact_replay=1",
+        "VERIFY_HISTORY slots=3 MiB=177.685 compact_replay=1",
+        "VERIFY_GRAPHS widths=1,2,3,4 mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal",
+        "VERIFY_HISTORY slots=7 MiB=233.265 compact_replay=1",
+        "VERIFY retained prefixes and next-token logits identical",
+        "VERIFY sequential logits and device rollback identical",
+        "VERIFY_FUSE_KDA layers=2294"
+      ],
+      "raw_log_sha256": "f09e474783c7f97ca40aa266a7c76c579f299a2f29e063367e30bc1e919c0cdc"
+    },
+    {
+      "name": "arch3-verify-split3",
+      "exit_code": 0,
+      "rejected": null,
+      "peak_swap_kib": 0,
+      "evidence": [
+        "VERIFY_HISTORY slots=3 MiB=177.685 compact_replay=1",
+        "VERIFY_HISTORY slots=3 MiB=177.685 compact_replay=1",
+        "VERIFY_GRAPHS widths=1,2,3,4 mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal",
+        "VERIFY_HISTORY slots=7 MiB=233.265 compact_replay=1",
+        "VERIFY retained prefixes and next-token logits identical",
+        "VERIFY sequential logits and device rollback identical"
+      ],
+      "raw_log_sha256": "ee35ca203f210a28968e30ac15c02e95581d9cce44e444248427d1bbff8e9759"
+    }
+  ],
+  "additional_source_files_sha256": {
+    "include/strata/host/glm_expert_replay.h": "89ff9ed5806baa882244cd2a11481561c41b99b1588fa8fcbdcff3042bca669d",
+    "tests/host/glm_expert_replay_test.c": "94619a33bce9892aab528ba70130e9c88c9e8d1beee902f5c3f405c1675dccf4",
+    "tools/glm_tier_window_replay.py": "cf667fab6aef1ae05469c921abf7d8f4f66205d390d2eed8ed7102918641ebcf",
+    "tools/glm_tr16_decode35.py": "d0ffc8f9209f74b6db640eb8cba1175d9a715c2bd84d326f35e0abefbb2f2f5a",
+    "tools/test_glm_tier_window_replay.py": "b916511228739f030eb992973ce474b1c9aab4b52a67ea1e8e04103d797e9090",
+    "tools/test_glm_tr16_decode35.py": "e6801ddd904ba1a9d638309d978309d402604c6249aebde0a197ca2b612de589"
+  },
+  "source_note": "Frozen patches cover tracked changes; additional new source files are separately hashed and copied under local source-support/",
+  "base_profile": {
+    "path": "configs/experimental/glm53f-q23-reap224-tr16-tuned.json",
+    "sha256": "7d2c0ae04b9f017a8ab5c9d8261dc34eebd0454bb6e6b95b3cf045db0539f8cb"
+  },
+  "toolchains": {
+    "cuda": "CUDA 13.2.86 / GCC 13.3",
+    "hip": "ROCm core-10.0 / Clang 23 / gfx1201",
+    "sycl_shared_cpu": "oneAPI 2026.1"
+  },
+  "cpu_worker_screens": {
+    "7": {
+      "timed_GB_s": [],
+      "median_GB_s": null,
+      "status": "Rejected: captured NUMA service needs pinned workers on both nodes"
+    },
+    "11": {
+      "timed_GB_s": [
+        40.1302,
+        40.3591,
+        40.5397,
+        40.4712
+      ],
+      "median_GB_s": 40.41515,
+      "status": "bitwise reference parity"
+    },
+    "15": {
+      "timed_GB_s": [
+        69.6618,
+        69.9136,
+        69.7216,
+        69.7332
+      ],
+      "median_GB_s": 69.72739999999999,
+      "status": "bitwise reference parity"
+    }
+  },
+  "skipped_screens": [
+    {
+      "name": "extend4",
+      "reason": "Use remaining time for extension2 at 8K, latest default parity, and prefill repeat."
+    },
+    {
+      "name": "prefill9",
+      "reason": "Replaced by group10/top6 after group12/top6 remained below 700. Group11/top7 was already loading when skip marker was written, so retain that completed screen."
+    }
+  ],
+  "activation_reuse_screen": {
+    "scope": "First 1024 captured CPU services per training width; cold-job count proxy, not a quality measurement",
+    "results": [
+      {
+        "width": 2048,
+        "relative_rms": 0.02,
+        "cold_jobs": 9124,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 2048,
+        "relative_rms": 0.05,
+        "cold_jobs": 9124,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 2048,
+        "relative_rms": 0.1,
+        "cold_jobs": 9124,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 2048,
+        "relative_rms": 0.2,
+        "cold_jobs": 9124,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 2048,
+        "relative_rms": 0.3,
+        "cold_jobs": 9124,
+        "avoided_jobs": 13,
+        "avoided_fraction": 0.001424813678211311,
+        "route_hit_fraction": 0.0013569836192691674
+      },
+      {
+        "width": 2048,
+        "relative_rms": 0.5,
+        "cold_jobs": 9124,
+        "avoided_jobs": 55,
+        "avoided_fraction": 0.006028057869355546,
+        "route_hit_fraction": 0.005621789279829407
+      },
+      {
+        "width": 8192,
+        "relative_rms": 0.02,
+        "cold_jobs": 9687,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 8192,
+        "relative_rms": 0.05,
+        "cold_jobs": 9687,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 8192,
+        "relative_rms": 0.1,
+        "cold_jobs": 9687,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 8192,
+        "relative_rms": 0.2,
+        "cold_jobs": 9687,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 8192,
+        "relative_rms": 0.3,
+        "cold_jobs": 9687,
+        "avoided_jobs": 0,
+        "avoided_fraction": 0.0,
+        "route_hit_fraction": 0.0
+      },
+      {
+        "width": 8192,
+        "relative_rms": 0.5,
+        "cold_jobs": 9687,
+        "avoided_jobs": 137,
+        "avoided_fraction": 0.014142665427893053,
+        "route_hit_fraction": 0.015081730335049219
+      }
+    ]
+  },
+  "validation": {
+    "cuda": "Build and MMQ default/32/64/128 GPU screens passed",
+    "hip": "All three decoder revisions and MMQ compiled for gfx1201; no AMD GPU execution",
+    "python": "16 measurement-tool tests passed; final git diff --check passed",
+    "sycl": "Only unchanged shared CPU components were built in preceding experiment; no Intel GPU execution",
+    "quality": "Deferred: corpus, long-prefill quality and HumanEval not rerun",
+    "verify": "Fused KDA, early-device merge and 3+1 split passed graph, mixed-width, retained-prefix and rollback bitwise checks"
+  },
+  "default_output_checks": {
+    "2048": {
+      "warmup_tokens": 512,
+      "timed_tokens": 512,
+      "all_trial_hashes_match": true,
+      "reference_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "candidate_sha256": "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191",
+      "matched": true
+    },
+    "8192": {
+      "warmup_tokens": 512,
+      "timed_tokens": 512,
+      "all_trial_hashes_match": true,
+      "reference_sha256": "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415",
+      "candidate_sha256": "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415",
+      "matched": true
+    }
+  },
+  "work_completed_utc": "2026-10-13T06:23:34.623190+00:00",
+  "profile_promoted": false,
+  "screen_thresholds": {
+    "decode_35": false,
+    "prefill_700": true,
+    "repeated_speed_gate": false,
+    "quality_qualified": false
+  }
+}

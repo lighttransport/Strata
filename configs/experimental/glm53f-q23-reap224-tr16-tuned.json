@@ -1,6 +1,6 @@
 {
   "exe": "build-glm-release/strata-glm-decode",
-  "model": "/mnt/nvme01/models/glm53f/prune/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+  "model": "models/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
   "context": 12288,
   "dense_cache_mib": 4096,
   "gpu_budget_mib": 14336,
@@ -25,7 +25,7 @@
     "STRATA_GLM_Q8_DECODE": "1",
     "STRATA_GLM_LAYER_FLOW": "1",
     "STRATA_GLM_MAPPED_OWNED": "1",
-    "STRATA_GLM_EXPERT_PRIOR": "/mnt/nvme01/models/glm53f/prune/coverage-keep224.json",
+    "STRATA_GLM_EXPERT_PRIOR": "models/coverage-keep224.json",
     "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
     "STRATA_GLM_SPLIT_VERIFY": "1",
     "STRATA_GLM_CANON": "1",

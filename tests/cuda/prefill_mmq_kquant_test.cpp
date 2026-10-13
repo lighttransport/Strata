@@ -169,6 +169,10 @@ int main() {
 #endif
                 ++trial;
             }
+            // Large, skewed Q8 groups exercise the grouped launch bounds.
+            // Include an empty expert, partial tiles, permuted rows, and a fallback output-row geometry.
+            product(ctx, s, "Q8_0 large groups", GGML_TYPE_Q8_0, 128, 512, {257, 0, 513, 254}, 31);
+            product(ctx, s, "Q8_0 large fallback", GGML_TYPE_Q8_0, 160, 512, {1, 1023, 0}, 32);
         }
         ck(cudaStreamDestroy(s), "destroy");
         std::printf("prefill MMQ K-quant screen passed\n");

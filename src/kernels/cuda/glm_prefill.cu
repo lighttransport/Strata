@@ -1,4 +1,5 @@
 #include "strata/kernels/glm_prefill.hpp"
+#include "strata/host/glm_env.h"
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <cmath>
@@ -915,6 +916,7 @@ __global__ void softmax(float *scores, const int *counts, int heads, int stride,
         __syncthreads();
     }
     mx = reduce[0];
+    __syncthreads(); // Every warp must read the maximum before reduce[0] is reused for sums.
     float sum = 0;
     for (int i = tid; i < stride; i += 256) {
         float p = i < n ? expf(row[i] * scale - mx) : 0;
@@ -951,6 +953,7 @@ __global__ void softmax_f16(float *scores, const int *counts, uint16_t *out, int
         __syncthreads();
     }
     mx = reduce[0];
+    __syncthreads(); // Every warp must read the maximum before reduce[0] is reused for sums.
     float sum = 0;
     for (int i = tid; i < stride; i += 256) {
         float p = i < n ? expf(row[i] * scale - mx) : 0;
@@ -1257,7 +1260,7 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
                 kda_rows_columns<4, false, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
             check(); return;
         }
-        if (std::getenv("STRATA_GLM_KDA_COLUMN_TILES") && glm_prefill_lossy_allowed) {
+        if (strata_env_is_set("STRATA_GLM_KDA_COLUMN_TILES") && glm_prefill_lossy_allowed) {
             const dim3 grid(heads, 4);
             if (prepared_qi) {
                 if (row_parts == 4)

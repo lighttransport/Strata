@@ -1,5 +1,6 @@
 // src/prefill/gemm.cu - see include/strata/prefill/gemm.hpp.
 #include "strata/prefill/gemm.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/kernels/dequant_bf16.hpp"
 #if defined(STRATA_PREFILL_MMQ) && defined(__HIPCC__)
 #include "strata/prefill/moe_mmq.hpp"
@@ -718,7 +719,7 @@ void Gemm::f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_
 #if !defined(__HIPCC__)
     // STRATA_PREFILL_F16_ACCUM=1 (opt-in, lossy): FP16 accumulation, which GeForce tensor cores run at twice the
     // FP32-accumulate rate; the FP16 result is widened in place. Only beta = 0 products; others keep FP32 accumulation.
-    static const bool f16_accum = [] { const char* v = std::getenv("STRATA_PREFILL_F16_ACCUM"); return v && v[0] == '1'; }();
+    static const bool f16_accum = strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM");
     if (f16_accum && lossy_allowed && beta == 0.0f) {
         const int64_t ld = ldy > 0 ? ldy : N;
         const __half one_h = __float2half(1.0f), zero_h = __float2half(0.0f);
@@ -761,14 +762,14 @@ void Gemm::f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_
 // STRATA_PREFILL_F16_ACCUM_BATCHED=1 (CUDA, opt-in, lossy): the batched FP16 products (MLA attention) accumulate in
 // FP16 into the FP32 output's own rows (ldc doubled) and are widened in place, as Gemm::f16 does with F16_ACCUM.
 static bool f16_accum_batched() {
-    static const bool on = [] { const char* v = std::getenv("STRATA_PREFILL_F16_ACCUM_BATCHED"); return v && v[0] == '1'; }();
+    static const bool on = strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM_BATCHED");
     return on;
 }
 #endif
 void Gemm::f16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches) {
     if (T <= 0 || N <= 0 || batches <= 0) return;
 #if !defined(__HIPCC__)
-    if (f16_accum_batched()) {
+    if (f16_accum_batched() && lossy_allowed) {
         const __half one_h = __float2half(1.0f), zero_h = __float2half(0.0f);
         ck(cublasGemmStridedBatchedEx((cublasHandle_t)handle_, CUBLAS_OP_T, CUBLAS_OP_N,
             N, T, K, &one_h, W, CUDA_R_16F, K, (long long)N * K, X, CUDA_R_16F, K, (long long)T * K, &zero_h,
@@ -842,7 +843,7 @@ void Gemm::f16_batched_nn_out16(const uint16_t*, const uint16_t*, uint16_t*, int
 void Gemm::f16_batched_nn(const uint16_t* A, const uint16_t* B, float* C, int M, int N, int K, int batches) {
     if (M <= 0 || N <= 0 || K <= 0 || batches <= 0) return;
 #if !defined(__HIPCC__)
-    if (f16_accum_batched()) {   // C is column-major: each of the N * batches columns is a row of M values
+    if (f16_accum_batched() && lossy_allowed) {   // C is column-major: each of the N * batches columns is a row of M values
         const __half one_h = __float2half(1.0f), zero_h = __float2half(0.0f);
         ck(cublasGemmStridedBatchedEx((cublasHandle_t)handle_, CUBLAS_OP_N, CUBLAS_OP_N,
             M, N, K, &one_h, A, CUDA_R_16F, M, (long long)M * K, B, CUDA_R_16F, K, (long long)K * N, &zero_h,

@@ -37,7 +37,11 @@ def missing_decoder_flags(configs, binary):
              'STRATA_GLM_MTP_ACCEPT_MAX_SOFT', 'STRATA_GLM_MMVQ_IL', 'STRATA_GLM_MTP_FIRST_MARGIN',
              'STRATA_GLM_MTP_REUSE_DRAFT', 'STRATA_GLM_ROUTE_RENORMALIZE', 'STRATA_GLM_MTP_SYNC_STATE_ONLY',
              'STRATA_GLM_MTP_UNPRUNED', 'STRATA_GLM_MTP_RECURSIVE_BLEND', 'STRATA_GLM_MTP_REPEAT_GUARD',
-             'STRATA_GLM_DENSE_Q3', 'STRATA_GLM_TIER_LEARN_UNBIASED', 'STRATA_GLM_MTP_GPU_CACHE', 'STRATA_GLM_CACHE_PROBE')
+             'STRATA_GLM_DENSE_Q3', 'STRATA_GLM_TIER_LEARN_UNBIASED', 'STRATA_GLM_MTP_GPU_CACHE', 'STRATA_GLM_CACHE_PROBE',
+             'STRATA_NATIVE_FLOW_SCHEDULE', 'STRATA_NATIVE_FLOW_PARTS', 'STRATA_GLM_VERIFY_FUSE_KDA',
+             'STRATA_GLM_PREFILL_GROUP_BUDGET', 'STRATA_GLM_MOE_MERGE_GROUPS', 'STRATA_GLM_MERGE_FRONT_EXPERTS', 'STRATA_GLM_MTP_DEVICE_HIDDEN',
+             'STRATA_PREFILL_MMQ_COLUMNS', 'STRATA_GLM_VERIFY_SPLIT_FIRST', 'STRATA_GLM_MTP_EXTENSION_MARGIN',
+             'STRATA_GLM_PREFILL_TOP_K', 'STRATA_GLM_VERIFY_ROUTE_FIRST')
     defaults = {'STRATA_GLM_MTP_RECURSIVE_BLEND': '1'}
     return [flag for flag in flags
             if any(c.get('env', {}).get(flag, defaults.get(flag, '0')) != defaults.get(flag, '0')
@@ -222,7 +226,8 @@ def main():
     if missing:
         ap.error(', '.join(missing) + ' requires the isolated patched decoder via --decoder')
     for key in base.get('env', {}):
-        if key.startswith('STRATA_GLM_CHECK_') or key in ('STRATA_GLM_STEP_TRACE', 'STRATA_GLM_ACTIVATION_TRACE'):
+        if key.startswith('STRATA_GLM_CHECK_') or key in ('STRATA_GLM_STEP_TRACE', 'STRATA_GLM_ACTIVATION_TRACE',
+                                                        'STRATA_GLM_EXPERT_REPLAY'):
             ap.error('diagnostic instrumentation cannot be used for throughput')
     prompt_tokens = len([x for x in re.split(r'[\s,]+', args.prompt.read_text().strip()) if x])
     if prompt_tokens + args.tokens > base['context']:

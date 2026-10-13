@@ -14,9 +14,132 @@
 #include <atomic>
 #include <thread>
 #include "strata/kernels/cpu/q23_avx2.hpp"
+#include "strata/host/glm_expert_replay.h"
 using namespace strata::kernels::cpu;
+namespace {
+// Replay the CPU service calls exactly as captured, including repeated positions after rollback.
+// Mapped half-row views borrow the model; this path never relocates or duplicates expert matrices.
+int replay(const char *model_path, const char *trace_path, int rounds, int workers) {
+    if (rounds < 1 || rounds > 20 || workers < 1 || workers > 256) throw std::runtime_error("invalid replay bounds");
+    strata::core::ModelArtifact model(model_path);
+    const auto &descriptor = model.descriptor();
+    if (descriptor.architecture != "glm5next" || descriptor.hidden != 4096 || descriptor.top_k != 8 ||
+        descriptor.layers.size() != 45) throw std::runtime_error("replay requires GLM5.3Flash");
+    ExpertPool pool(workers, true);
+    struct Frame {
+        uint32_t h[STRATA_REPLAY_WORDS]{};
+        NativeFmt f;
+        std::vector<int> ids;
+        std::vector<float> weights, out, sum, reference, reference_sum;
+        std::vector<uint8_t> cold;
+        std::vector<std::vector<uint8_t>> acts;
+        std::vector<ExpertJobMulti> jobs;
+    };
+    std::ifstream input(trace_path, std::ios::binary);
+    if (!input) throw std::runtime_error("cannot open expert replay");
+    auto read = [&](void *p, size_t bytes) {
+        if (!input.read(static_cast<char *>(p), bytes)) throw std::runtime_error("truncated expert replay");
+    };
+    std::vector<std::unique_ptr<Frame>> frames;
+    uint64_t bytes = 0, cold_routes = 0, all_routes = 0;
+    while (input.peek() != std::ifstream::traits_type::eof()) {
+        if (frames.size() == 4096) throw std::runtime_error("expert replay exceeds 4096 records");
+        auto frame = std::make_unique<Frame>(); auto &x = *frame;
+        read(x.h, sizeof(x.h));
+        if (!strata_replay_header_valid(x.h) || x.h[8] != descriptor.experts)
+            throw std::runtime_error("invalid expert replay header or model expert count");
+        const int layer = x.h[2], nt = x.h[5], H = x.h[6], K = x.h[7];
+        const bool owned = x.h[9] & STRATA_REPLAY_NUMA;
+        if (owned && !pool.numa_rows_available()) throw std::runtime_error("captured NUMA service needs a two-node pinned pool");
+        x.ids.resize(nt * K); x.weights.resize(nt * K); x.cold.resize(nt * K);
+        std::vector<float> activation(nt * H);
+        read(x.ids.data(), x.ids.size() * 4); read(x.weights.data(), x.weights.size() * 4);
+        read(x.cold.data(), x.cold.size()); read(activation.data(), activation.size() * 4);
+        for (float v : activation) if (!std::isfinite(v)) throw std::runtime_error("nonfinite replay activation");
+        const auto p = "blk." + std::to_string(layer) + ".ffn_";
+        const auto &G = model.at(p + "gate_exps.weight"), &U = model.at(p + "up_exps.weight"),
+                   &D = model.at(p + "down_exps.weight");
+        std::string error;
+        if (!native_fmt(G.tensor->type, D.tensor->type, H, descriptor.layers[layer].intermediate, x.f, error))
+            throw std::runtime_error(error);
+        if (G.bytes != x.f.up_off * descriptor.experts || U.bytes != G.bytes ||
+            D.bytes != (x.f.bytes - x.f.down_off) * descriptor.experts)
+            throw std::runtime_error("replay model projection geometry differs");
+        x.f.swiglu_limit = descriptor.layers[layer].swiglu_limit;
+        x.f.canon = x.h[9] & STRATA_REPLAY_CANON;
+        x.f.fuse_h_quant = x.h[9] & STRATA_REPLAY_FUSE_QUANT;
+        if (x.f.canon && !((x.f.gu_type == 10 || x.f.gu_type == 11) && (x.f.d_type == 10 || x.f.d_type == 11)))
+            throw std::runtime_error("replay canonical flag differs from model types");
+        x.acts.resize(nt, std::vector<uint8_t>(x.f.act_bytes));
+        for (int t = 0; t < nt; ++t) native_quant_act(x.f, activation.data() + t * H, x.acts[t].data());
+        x.out.assign(nt * K * H, 0.f); x.sum.resize(nt * H);
+        x.jobs.reserve(nt * K);
+        std::map<int, size_t> index;
+        for (int t = 0; t < nt; ++t) {
+            std::set<int> unique;
+            for (int k = 0; k < K; ++k) {
+                const int r = t * K + k, e = x.ids[r];
+                if (e < 0 || e >= int(descriptor.experts) || !unique.insert(e).second ||
+                    !std::isfinite(x.weights[r]) || x.cold[r] > 1 || (x.cold[r] && x.weights[r] == 0))
+                    throw std::runtime_error("invalid replay route");
+                ++all_routes;
+                if (!x.cold[r]) { x.weights[r] = 0; continue; }
+                ++cold_routes;
+                if (!index.contains(e)) {
+                    index[e] = x.jobs.size();
+                    auto &j = x.jobs.emplace_back(); j.expert_id = e;
+                    j.blob = G.data() + size_t(e) * x.f.up_off;
+                    j.native_up = U.data() + size_t(e) * x.f.up_off;
+                    j.native_down = D.data() + size_t(e) * (x.f.bytes - x.f.down_off);
+                    if (owned) for (int node = 0; node < 2; ++node)
+                        j.numa[node] = {j.blob + node * (x.f.n_ff / 2) * x.f.gu_row,
+                                        j.native_up + node * (x.f.n_ff / 2) * x.f.gu_row,
+                                        j.native_down + node * (x.f.n_embd / 2) * x.f.d_row};
+                }
+                auto &j = x.jobs[index.at(e)]; const int at = j.nt++;
+                j.nact[at] = x.acts[t].data(); j.out[at] = x.out.data() + r * H;
+            }
+        }
+        bytes += x.jobs.size() * x.f.bytes;
+        frames.push_back(std::move(frame));
+    }
+    if (frames.empty()) throw std::runtime_error("empty expert replay");
+    const auto previous = pin_current_thread(planned_host_core());
+    // The phased pool is the oracle, independent of the schedule selected for the timed flow path.
+    for (auto &frame : frames) {
+        auto &x = *frame;
+        if (!x.jobs.empty()) pool.run_split_multi_native(x.f, x.jobs.data(), x.jobs.size());
+        pool.reduce_routed(x.out.data(), x.weights.data(), x.sum.data(), x.h[5], x.h[7], x.h[6], x.f.canon);
+        x.reference = x.out; x.reference_sum = x.sum;
+    }
+    std::cout << "scope=captured_cpu_service records=" << frames.size() << " packed_bytes=" << bytes
+              << " cold_routes=" << cold_routes << " all_routes=" << all_routes << " workers=" << workers << '\n';
+    for (int round = -1; round < rounds; ++round) {
+        double ms = 0; uint64_t hash = 14695981039346656037ULL;
+        for (auto &frame : frames) {
+            auto &x = *frame;
+            const auto start = std::chrono::steady_clock::now();
+            pool.run_layer_native(x.f, x.jobs.data(), x.jobs.size(), x.out.data(), x.weights.data(),
+                                  x.sum.data(), x.h[5], x.h[7]);
+            ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            if (std::memcmp(x.out.data(), x.reference.data(), x.out.size() * 4) ||
+                std::memcmp(x.sum.data(), x.reference_sum.data(), x.sum.size() * 4))
+                throw std::runtime_error("replay differs from phased oracle at layer " + std::to_string(x.h[2]));
+            for (const auto *v : {&x.out, &x.sum}) for (size_t i = 0; i < v->size() * 4; ++i) {
+                hash ^= reinterpret_cast<const uint8_t *>(v->data())[i]; hash *= 1099511628211ULL;
+            }
+        }
+        if (round >= 0) std::cout << "round=" << round << " ms=" << ms << " packed_GB_s=" << bytes / ms / 1e6
+                                  << " output_hash=" << hash << " parity=bitwise\n";
+    }
+    if (previous.valid) restore_thread_affinity(previous);
+    return 0;
+}
+}
 int main(int argc,char** argv){try {
-    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-kernel-bench MODEL ROUTES [mmap|numa] [nt=1] [workers=15] [rounds=5] [native|q2|q23] [first-layer=3] [last-layer=44] [row|direct|lut] [skip-positions=0]");
+    if (argc >= 4 && std::string(argv[2]) == "--replay")
+        return replay(argv[1], argv[3], argc > 4 ? std::stoi(argv[4]) : 6, argc > 5 ? std::stoi(argv[5]) : 15);
+    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-kernel-bench MODEL --replay TRACE [rounds=6] [workers=15], or MODEL ROUTES [mmap|numa] [nt=1] [workers=15] [rounds=5] [native|q2|q23] [first-layer=3] [last-layer=44] [row|direct|lut] [skip-positions=0]");
     if(argc>3 && std::string(argv[3])!="numa" && std::string(argv[3])!="mmap")throw std::runtime_error("invalid placement policy");
     bool owned=argc>3 && std::string(argv[3])=="numa";int nt=argc>4?std::stoi(argv[4]):1,workers=argc>5?std::stoi(argv[5]):15,rounds=argc>6?std::stoi(argv[6]):5;
     if(nt<1||nt>MAXT||workers<1||rounds<1||rounds>20)throw std::runtime_error("invalid benchmark bounds");

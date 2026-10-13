@@ -1,3 +1,4 @@
+#include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/q23_avx2.hpp"
 #include "strata/kernels/canon_expert.hpp"
 #define GGML_COMMON_DECL_CPP
@@ -103,7 +104,7 @@ template<int TY,int NT> void dot(const uint8_t* w,int blocks,const void* const* 
 // therefore every float result, are identical to dot<10, NT>; Zen 1 issues integer vector multiplies on one pipe,
 // so this removes about a third of that pipe's work per block.
 bool q2k_lut() {
-    static const bool on=[]{const char* v=std::getenv("STRATA_Q2K_LUT");return v&&v[0]=='1';}();
+    static const bool on = strata_env_truthy_one("STRATA_Q2K_LUT");
     return on;
 }
 template<int NT> void dot_q2k_lut(const uint8_t* w,int blocks,const void* const* acts,float* result,int pf) {
@@ -124,14 +125,18 @@ template<int NT> void dot_q2k_lut(const uint8_t* w,int blocks,const void* const*
         const __m128i a0=_mm_unpacklo_epi8(z,s1),b0=_mm_unpacklo_epi8(s2,s3),a1=_mm_unpackhi_epi8(z,s1),b1=_mm_unpackhi_epi8(s2,s3);
         const __m128i T0=_mm_unpacklo_epi16(a0,b0),T1=_mm_unpackhi_epi16(a0,b0),T2=_mm_unpacklo_epi16(a1,b1),T3=_mm_unpackhi_epi16(a1,b1);
         // Chunk H's lane 0 is sub-block 2H (codes qs[0..15] of its 32 bytes), lane 1 is 2H+1: even tables low, odd high.
-        auto pick=[](__m128i lo,__m128i hi,int sel){return _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(lo),_mm_castsi128_ps(hi),sel));};
-        const __m256i tabA=_mm256_inserti128_si256(_mm256_castsi128_si256(pick(T0,T1,_MM_SHUFFLE(2,0,2,0))),pick(T0,T1,_MM_SHUFFLE(3,1,3,1)),1);
-        const __m256i tabB=_mm256_inserti128_si256(_mm256_castsi128_si256(pick(T2,T3,_MM_SHUFFLE(2,0,2,0))),pick(T2,T3,_MM_SHUFFLE(3,1,3,1)),1);
+        auto tables=[](__m128i lo,__m128i hi) {
+            // Clang/oneAPI require the shuffle immediate at the intrinsic, before inlining.
+            const auto even=_mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(lo),_mm_castsi128_ps(hi),_MM_SHUFFLE(2,0,2,0)));
+            const auto odd=_mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(lo),_mm_castsi128_ps(hi),_MM_SHUFFLE(3,1,3,1)));
+            return _mm256_inserti128_si256(_mm256_castsi128_si256(even),odd,1);
+        };
+        const __m256i tabA=tables(T0,T1),tabB=tables(T2,T3);
         const __m256i q0=_mm256_loadu_si256(reinterpret_cast<const __m256i*>(x.qs)),q1=_mm256_loadu_si256(reinterpret_cast<const __m256i*>(x.qs+32));
         const int8_t* y[NT];
         for(int t=0;t<NT;++t)y[t]=static_cast<const block_q8_K*>(acts[t])[b].qs;
         __m256i sums[NT];for(auto& s:sums)s=_mm256_setzero_si256();
-        __m256i pair[NT];
+        __m256i pair[NT];for(auto& p:pair)p=_mm256_setzero_si256();
         for(int H=0;H<8;++H) {
             const __m256i src=H<4?q0:q1;
             const __m256i q=_mm256_or_si256(_mm256_and_si256(_mm256_srli_epi16(src,2*(H%4)),three),_mm256_set1_epi8(char((H%4)<<2)));

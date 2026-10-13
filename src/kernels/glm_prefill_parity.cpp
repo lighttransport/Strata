@@ -58,6 +58,33 @@ void near(const std::vector<float> &a, const std::vector<float> &b, float tolera
                 " actual_bits=" + std::to_string(std::bit_cast<uint32_t>(a[i])) +
                 " expected_bits=" + std::to_string(std::bit_cast<uint32_t>(b[i])));
 }
+// Small and partial rows expose shared reduction-storage reuse between warps.
+void check_softmax_precision() {
+    for (int stride : {1, 7, 31, 33, 255, 257, 2052}) {
+        constexpr int heads = 3, queries = 3;
+        std::vector<int> counts{1, std::max(1, stride / 2), stride};
+        std::vector<float> input(heads * queries * stride), expected(input.size());
+        for (size_t i = 0; i < input.size(); ++i) input[i] = (int(i % 79) - 39) * .125f;
+        for (int row = 0; row < heads * queries; ++row) {
+            const int n = counts[row / heads];
+            double sum = 0;
+            for (int i = 0; i < n; ++i) sum += std::exp(double(input[row * stride + i]) * .25);
+            for (int i = 0; i < n; ++i) expected[row * stride + i] = std::exp(double(input[row * stride + i]) * .25) / sum;
+        }
+        Buffer<int> dc(counts);
+        Buffer<float> scores(input), fused(input);
+        Buffer<uint16_t> expected_half(input.size()), actual_half(input.size());
+        for (int repeat = 0; repeat < 8; ++repeat) {
+            scores.put(input); fused.put(input);
+            k::glm_mla_softmax(scores.p, dc.p, heads, stride, queries, .25f, nullptr);
+            near(scores.get(), expected, 2e-6f);
+            k::glm_f16(scores.p, expected_half.p, input.size(), nullptr);
+            k::glm_mla_softmax_f16(fused.p, dc.p, actual_half.p, heads, stride, queries, .25f, nullptr);
+            if (expected_half.get() != actual_half.get())
+                throw std::runtime_error("fused FP16 softmax differs from FP32 softmax plus cast");
+        }
+    }
+}
 void check_vector_gather(bool benchmark) {
     const char* original = std::getenv("STRATA_GLM_MLA_VECTOR_GATHER");
     struct Restore {
@@ -230,6 +257,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && !benchmark) return 2;
     try {
         check_device_positions();
+        check_softmax_precision();
         check_vector_gather(benchmark);
         check_batched_resident();
         for (int primary = 1; primary < 18; ++primary) {

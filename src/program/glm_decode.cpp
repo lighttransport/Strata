@@ -7,6 +7,8 @@
 #include "strata/core/expert_cache.hpp"
 #include "strata/core/exact_expert_cache.hpp"
 #include "strata/core/model.hpp"
+#include "strata/host/glm_expert_replay.h"
+#include "strata/host/glm_env.h"
 #include "strata/core/device.hpp"
 #include "strata/core/runtime_memory.hpp"
 #include "strata/artifact/expert_calibration.hpp"
@@ -1705,6 +1707,9 @@ struct RemoteTp {
     }
 };
 class Decoder {
+    std::ofstream expert_replay;
+    unsigned expert_replay_records = 0;
+    static constexpr unsigned kExpertReplayRecords = 1024;
     strata::core::ModelArtifact artifact;
     const strata::core::ModelDescriptor &m;
     std::unique_ptr<RegisteredWeights> registered_weights;
@@ -1725,9 +1730,9 @@ class Decoder {
     std::unique_ptr<GpuWorker> prefetch_launcher;
     std::future<void> prefetch_pending;
     const bool stream_prefetch = [] {
-        const char *v = std::getenv("STRATA_GLM_PREFETCH_STREAM");
-        if (!v || std::string(v) == "0") return false;
-        if (std::string(v) == "1") return true;
+        const char *key = "STRATA_GLM_PREFETCH_STREAM";
+        if (!strata_env_is_set(key) || strata_env_equals(key, "0")) return false;
+        if (strata_env_is_one(key)) return true;
         throw std::invalid_argument("GLM: prefetch stream must be 0 or 1");
     }();
     int primary_device = 0;
@@ -2032,14 +2037,14 @@ class Decoder {
         return v ? std::max(1, std::atoi(v)) : 4096;
     }();
     bool lossy_prefill() const { return fast && batch_tokens >= lossy_prefill_min; }
-    const bool mla_absorb_f16 = [] { const char *v = std::getenv("STRATA_GLM_MLA_ABSORB_F16"); return v && std::string(v) == "1"; }();
+    const bool mla_absorb_f16 = strata_env_is_one("STRATA_GLM_MLA_ABSORB_F16");
     // STRATA_GLM_MLA_F16_OUT=1 (opt-in, lossy; with MLA_ABSORB_F16): scores and absorbed values are FP16-accumulated
     // FP16 outputs, the softmax reads FP16 scores, and the value absorb takes the FP16 values directly.
-    const bool mla_f16_out = [] { const char *v = std::getenv("STRATA_GLM_MLA_F16_OUT"); return v && std::string(v) == "1"; }();
+    const bool mla_f16_out = strata_env_is_one("STRATA_GLM_MLA_F16_OUT");
     std::unique_ptr<Device> absorb_w16[2], absorb_x16;
     // STRATA_GLM_MLA_INDEX_F16=1 (opt-in, lossy; prefill tensor attention): the indexer's pooled-key scores run as an
     // FP16 tensor GEMM; the pooled keys are cast once per layer call, the index queries per tile.
-    const bool mla_index_f16 = [] { const char *v = std::getenv("STRATA_GLM_MLA_INDEX_F16"); return v && std::string(v) == "1"; }();
+    const bool mla_index_f16 = strata_env_is_one("STRATA_GLM_MLA_INDEX_F16");
     std::unique_ptr<Device> index_pool16, index_q16;
     // STRATA_PREFILL_Q8_TRANSCODE: the down projection's transcode runs on a side stream while gate/up multiplies.
     cudaStream_t q8_side = nullptr;
@@ -2051,7 +2056,7 @@ class Decoder {
     struct StepTrace {
         long steps = 0, layers = 0;
         double head_ms = 0, cpu_ms = 0, gap_ms = 0, tail_ms = 0, enqueue_ms = 0;
-        double sync_ms = 0, plan_ms = 0, copy_ms = 0;  // tail parts: stream sync, tier bookkeeping, logits readback
+        double sync_ms = 0, plan_ms = 0, copy_ms = 0, hidden_ms = 0;  // tail parts; readbacks include their waits
         std::chrono::steady_clock::time_point start, last_done, seen;
         bool any = false;
         // STRATA_GLM_STEP_TRACE=2: the same split per mailbox slot (layer, and layer + stride for group B).
@@ -3343,7 +3348,7 @@ class Decoder {
             }
             // STRATA_PREFILL_Q8_TRANSCODE=1 (opt-in, lossy): a Q2_K/Q3_K group is rewritten as Q8_0 once per group
             // (each 32-value block requantized from the dequantized values) and multiplied by MMQ's faster Q8_0 path.
-            static const bool q8_transcode = [] { const char *v = std::getenv("STRATA_PREFILL_Q8_TRANSCODE"); return v && v[0] == '1'; }();
+            static const bool q8_transcode = strata_env_truthy_one("STRATA_PREFILL_Q8_TRANSCODE");
             // Transcoding a whole group only pays for itself on long prefills (and needs ~430 MiB of scratch).
             static const int q8_transcode_min = [] {
                 const char *v = std::getenv("STRATA_PREFILL_Q8_TRANSCODE_MIN_TOKENS");
@@ -3352,7 +3357,7 @@ class Decoder {
             const void *mw = weights;
             int gtype = (int)G.tensor->type, dtype = (int)D.tensor->type;
             size_t mstride = stride, down_offset = 2 * gh;
-            if (q8_transcode && nt >= q8_transcode_min && (gtype == 10 || gtype == 11) && (dtype == 10 || dtype == 11) &&
+            if (q8_transcode && lossy_prefill() && nt >= q8_transcode_min && (gtype == 10 || gtype == 11) && (dtype == 10 || dtype == 11) &&
                 begin < end) {
                 const size_t gu_q8 = (size_t)2 * F * (H / 32) * 34, d_q8 = (size_t)H * (F / 32) * 34, s8 = gu_q8 + d_q8;
                 auto &q8w = workspace("q8_transcode", (16 * s8 + 3) / 4);
@@ -3780,7 +3785,7 @@ class Decoder {
             return n < 0 ? 0 : n;
         }();
         // 0: the draft layer skips its routed experts entirely (shared expert only).
-        static const bool draft_no_experts = [] { const char *v = std::getenv("STRATA_GLM_MTP_DRAFT_TOP_K"); return v && std::string(v) == "0"; }();
+        static const bool draft_no_experts = strata_env_equals("STRATA_GLM_MTP_DRAFT_TOP_K", "0");
         std::vector<float> route_weight(K);
         if (mtp_cpu_experts && draft_top_k && draft_top_k < K)
             check(cudaMemcpyAsync(route_weight.data(), routing.p, K * 4, cudaMemcpyDeviceToHost, stream));
@@ -4377,6 +4382,28 @@ class Decoder {
             const int slot = job.nt++;
             job.nact[slot] = host_quant[t].data();
             job.out[slot] = results + (size_t)j * H;
+        }
+        if (expert_replay.is_open() && expert_replay_records < kExpertReplayRecords && primary) {
+            if (second_slot >= 0 || remote_tp || exact_cache || f.q23_layout || f.gate_skip || f.hidden_transform ||
+                prepared != prepared_experts.end())
+                throw std::invalid_argument("GLM: expert replay requires unmerged native local CPU service");
+            const uint32_t header[STRATA_REPLAY_WORDS] = {
+                STRATA_REPLAY_MAGIC, 1, uint32_t(l), uint32_t(position), uint32_t(slot), uint32_t(nt),
+                uint32_t(H), uint32_t(K), uint32_t(m.experts),
+                uint32_t((f.canon ? STRATA_REPLAY_CANON : 0) | (owned != numa_experts.end() ? STRATA_REPLAY_NUMA : 0) |
+                         (f.fuse_h_quant ? STRATA_REPLAY_FUSE_QUANT : 0)),
+                uint32_t(routing_round), uint32_t(routing_request)};
+            if (!strata_replay_header_valid(header)) throw std::runtime_error("GLM: invalid expert replay geometry");
+            std::array<uint8_t, cpu::MAXT * 8> cold{};
+            for (int j = 0; j < nt * K; ++j)
+                cold[j] = routing[j] != 0.f && !(resident && resident[selected[j]]) && (route_mask >> j & 1u);
+            expert_replay.write(reinterpret_cast<const char *>(header), sizeof(header));
+            expert_replay.write(reinterpret_cast<const char *>(selected), nt * K * sizeof(int));
+            expert_replay.write(reinterpret_cast<const char *>(routing), nt * K * sizeof(float));
+            expert_replay.write(reinterpret_cast<const char *>(cold.data()), nt * K);
+            expert_replay.write(reinterpret_cast<const char *>(activation), nt * H * sizeof(float));
+            if (!expert_replay) throw std::runtime_error("GLM: expert replay write failed");
+            if (++expert_replay_records == kExpertReplayRecords) expert_replay.flush();
         }
         std::vector<std::shared_ptr<strata::core::ExactExpertCache::Entry>> exact_leases;
         if (exact_cache) {
@@ -5872,17 +5899,18 @@ class Decoder {
                     }
                     d.gemm->f16_batched(d.aq16, keys, d.attn, heads, stride, latent, count);
                     inspect("attention_scores", d.attn, (size_t)count * heads * stride, d.stream);
-                if (diagnose) {
-                    k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
-                    inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
-                    k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * stride, d.stream);
-                } else
-                    k::glm_mla_softmax_f16(d.attn, d.counts, d.attn16, heads, stride, count, 1.f / std::sqrt((float)dim),
-                                           d.stream);
+                    if (diagnose) {
+                        k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
+                        inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
+                        k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * stride, d.stream);
+                    } else {
+                        k::glm_mla_softmax_f16(d.attn, d.counts, d.attn16, heads, stride, count, 1.f / std::sqrt((float)dim),
+                                               d.stream);
+                    }
                     d.gemm->f16_batched_nn(keys, d.attn16, d.av, latent, heads, stride, count);
                     inspect("absorbed_value", d.av, (size_t)count * heads * latent, d.stream);
-                absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
-                inspect("head_value", d.value + (size_t)t * heads * dim, (size_t)count * heads * dim, d.stream);
+                    absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
+                    inspect("head_value", d.value + (size_t)t * heads * dim, (size_t)count * heads * dim, d.stream);
                     if (d.back) {
                         check(cudaEventRecord(d.produced, d.stream));
                         check(cudaStreamWaitEvent(d.back, d.produced, 0));
@@ -6255,6 +6283,10 @@ class Decoder {
             GpuPrefill::slot_bytes = std::max(GpuPrefill::slot_bytes, (group + MiB - 1) / MiB * MiB);
         }
         const char* calibration_dir=std::getenv("STRATA_GLM_CALIBRATION_DIR"),*activation_trace=std::getenv("STRATA_GLM_ACTIVATION_TRACE");
+        if (const char *path = std::getenv("STRATA_GLM_EXPERT_REPLAY")) {
+            expert_replay.open(path, std::ios::binary | std::ios::trunc);
+            if (!expert_replay) throw std::runtime_error("GLM: cannot open expert replay");
+        }
         if(calibration_dir||activation_trace) {
             if(artifact.is_exl3()||((calibration_dir&&*calibration_dir)&&!expert_pack.empty()))throw std::invalid_argument("moment calibration requires original GGUF; activation capture requires GGUF");
             expert_observer=std::make_unique<strata::artifact::ExpertCalibration>(calibration_dir?calibration_dir:"",activation_trace?activation_trace:"",(int)m.experts);
@@ -6273,11 +6305,11 @@ class Decoder {
                 for(const auto& name:list.array)if(!retained.insert(name.string()).second)throw std::invalid_argument("duplicate retained projection");
             }
             artifact.overlay_experts(expert_pack,retained);q23_layout=cpu_backend=="packed-dot"?1:cpu_backend=="packed-lut"?2:0;
-            packed_huge_pages=std::getenv("STRATA_GLM_PACK_HUGE")&&std::string(std::getenv("STRATA_GLM_PACK_HUGE"))=="1";
+            packed_huge_pages=strata_env_is_one("STRATA_GLM_PACK_HUGE");
             std::cerr<<"EXPERT_PACK source="<<expert_pack<<" backend="<<(cpu_backend=="auto"?"native":cpu_backend)<<" retained="<<retained.size()<<'\n';
         } else if(artifact.has_expert_pack())
             // An assembled single file carries the pack inside; owned NUMA arenas may use 2 MiB pages here too.
-            packed_huge_pages=std::getenv("STRATA_GLM_PACK_HUGE")&&std::string(std::getenv("STRATA_GLM_PACK_HUGE"))=="1";
+            packed_huge_pages=strata_env_is_one("STRATA_GLM_PACK_HUGE");
         // Opt-in for small GPUs: size staging from the effective artifact, after
         // overlays. The historical 208 MiB floor needlessly occupies two slots
         // when every group in this model is smaller. The projection bytes and
@@ -6409,6 +6441,11 @@ class Decoder {
         cpu::restore_thread_affinity(host_affinity);
         if (stream)
             cudaStreamSynchronize(stream);
+        // The side stream may still own an in-flight down-projection transcode after an exception.
+        if (q8_side) (void)cudaStreamSynchronize(q8_side);
+        if (q8_weights_ready) (void)cudaEventDestroy(q8_weights_ready);
+        if (q8_down_ready) (void)cudaEventDestroy(q8_down_ready);
+        if (q8_side) (void)cudaStreamDestroy(q8_side);
         gpu.reset();
         if (moe_ready) cudaEventDestroy(moe_ready);
         if (mla_ready) cudaEventDestroy(mla_ready);
@@ -6978,6 +7015,8 @@ class Decoder {
         else if (pipelining) run_pipelined_step(enqueue_layers);
         else enqueue_layers();
         prefill_trace("output_head_begin", -1);
+        const bool trace_hidden = step_trace && !fast && trace.any && capture_hidden;
+        const auto hidden_begin = trace_hidden ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         if (capture_hidden && !row_sequences.empty()) {
             for (int t = 0; t < nt; ++t) {
                 auto &hidden = row_sequences[t] == current_sequence ? target_hidden : sequences[row_sequences[t]].hidden;
@@ -6991,6 +7030,8 @@ class Decoder {
                              cudaMemcpyDeviceToHost));
             if (fast && mtp_batched) mtp_prime_batch(tokens, x.f());
         }
+        if (trace_hidden)
+            trace.hidden_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - hidden_begin).count();
         const int head_tokens = all_logits ? nt : 1;
         // Prefill evaluation otherwise materializes ~4.7 GiB of logits at 8K.
         // Stream the same MAXT head panels to the scorer when requested; normal
@@ -7549,9 +7590,9 @@ class Decoder {
     // persistent attention state and skips the attention output, MoE and head, which nothing reads; the next
     // proposal starts from the verified target hidden state. Draft proposals are unchanged.
     const bool mtp_sync_state_only = [] {
-        const char *v = std::getenv("STRATA_GLM_MTP_SYNC_STATE_ONLY");
-        if (!v || std::string(v) == "0") return false;
-        if (std::string(v) == "1") return true;
+        const char *key = "STRATA_GLM_MTP_SYNC_STATE_ONLY";
+        if (!strata_env_is_set(key) || strata_env_equals(key, "0")) return false;
+        if (strata_env_is_one(key)) return true;
         throw std::invalid_argument("GLM: MTP sync state only must be 0 or 1");
     }();
     long mtp_sync_omitted = 0;
@@ -8573,6 +8614,12 @@ class Decoder {
             throw std::invalid_argument("GLM: BF16 WMMA requires bf16-batched prefill experts");
         if ((floating_q8_repack || dense_q4_repack) && (devices.size() != 1 || artifact.is_exl3()))
             throw std::invalid_argument("GLM: dense repacking requires one GPU and GGUF weights");
+        // These experiments own one set of scratch buffers/events on the primary device.
+        if (devices.size() != 1 && (mla_absorb_f16 || mla_f16_out || mla_index_f16 ||
+            strata_env_truthy_one("STRATA_PREFILL_Q8_TRANSCODE") ||
+            strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM") ||
+            strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM_BATCHED")))
+            throw std::invalid_argument("GLM: lossy FP16/Q8 prefill experiments require one GPU");
         if(artifact.is_exl3()) {if(devices.size()!=1||cache_bytes||automatic||reserve_mtp||tensor_experts||tensor_batches)throw std::invalid_argument("EXL3: requires single GPU, CPU experts, no speculation/cache");return;}
         if (primary_prefill_groups != 9 && (devices.size() != 2 || m.experts != 288))
             throw std::invalid_argument("GLM: weighted prefill partition requires two GPUs and 288 experts");
@@ -8826,6 +8873,7 @@ class Decoder {
                       << " pipelined=" << (mailbox ? 1 : 0) << " head_ms=" << trace.head_ms
                       << " cpu_ms=" << trace.cpu_ms << " between_ms=" << trace.gap_ms << " tail_ms=" << trace.tail_ms
                       << " tail_sync_ms=" << trace.sync_ms << " tail_plan_ms=" << trace.plan_ms << " tail_copy_ms=" << trace.copy_ms
+                      << " hidden_readback_ms=" << trace.hidden_ms
                       << " enqueue_ms=" << trace.enqueue_ms << " tier_swaps=" << tier_swaps << " split_windows=" << split_windows << " per_step_ms="
                       << (trace.head_ms + trace.cpu_ms + trace.gap_ms + trace.tail_ms) / trace.steps << '\n';
         if (step_trace_slots && trace.steps)
