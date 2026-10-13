@@ -30,8 +30,8 @@ int main(int argc,char** argv){try {
     if(skip<0)throw std::runtime_error("negative routing position offset");
     strata::core::ModelArtifact model(argv[1]);
     const auto& descriptor=model.descriptor();
-    if(descriptor.architecture!="glm5next" || descriptor.hidden!=4096 || (descriptor.experts!=288 && descriptor.experts!=144) || descriptor.top_k!=8 || descriptor.layers.size()!=45)
-        throw std::runtime_error("benchmark requires the GLM5.3Flash 4096/(144 or 288)/top8 geometry");
+    if(descriptor.architecture!="glm5next" || descriptor.hidden!=4096 || (descriptor.experts%16!=0 || descriptor.experts>288) || descriptor.top_k!=8 || descriptor.layers.size()!=45)
+        throw std::runtime_error("benchmark requires the GLM5.3Flash 4096/(16k experts, at most 288)/top8 geometry");
     const bool flow = std::getenv("STRATA_GLM_LAYER_FLOW") && std::string(std::getenv("STRATA_GLM_LAYER_FLOW")) == "1";
     const bool canonical = std::getenv("STRATA_GLM_CANON") && std::string(std::getenv("STRATA_GLM_CANON")) == "1";
     ExpertPool pool(workers,true);

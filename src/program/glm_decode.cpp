@@ -1,3 +1,4 @@
+#include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/exl3/pool.hpp"
 #include "strata/kernels/cpu/exl3/dense_q8.hpp"
 #include "strata/kernels/exl3.hpp"
@@ -12,6 +13,7 @@
 #include "strata/artifact/expert_calibration.hpp"
 #include "strata/artifact/expert_block_screen.hpp"
 #include "strata/artifact/json.hpp"
+#include "strata/spec/bounded_accept.hpp"
 #include "strata/spec/external_worker.hpp"
 #include "strata/spec/suffix_drafter.hpp"
 #include "strata/kernels/cpu/pool.hpp"
@@ -640,15 +642,27 @@ struct GpuPrefill {
     std::vector<std::unique_ptr<Device>> pool;
     std::vector<cudaEvent_t> pool_ready, pool_done;
     std::map<std::pair<int, int>, int> fetched;
+    // STRATA_GLM_PREFETCH_STREAM: the foreground owns the map. A streaming producer publishes each slot only after
+    // cudaEventRecord has been issued; waiting on an unrecorded event would let the consumer read unfinished weights.
+    bool streaming_prefetch = false;
+    std::array<std::atomic<bool>, 18> queued{};
+    std::atomic<bool> prefetch_failed{false};
     int take(int layer, int group) {
         auto it = fetched.find({layer, group});
         if (it == fetched.end()) return -1;
         const int index = it->second;
+        if (streaming_prefetch) {
+            while (!queued[index].load(std::memory_order_acquire)) {
+                if (prefetch_failed.load(std::memory_order_acquire))
+                    throw std::runtime_error("GLM: streaming prefetch producer failed");
+                std::this_thread::yield();
+            }
+        }
         fetched.erase(it);
         return index;
     }
     void prefetch(const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
-                  const strata::core::ArtifactTensor &D, int layer, int group, int index, size_t stride) {
+                  const strata::core::ArtifactTensor &D, int layer, int group, int index, size_t stride, bool publish = true) {
         const size_t experts = G.tensor->shape[2];
         if (!experts || experts % 16 || U.tensor->shape[2] != experts || D.tensor->shape[2] != experts ||
             group < 0 || size_t(group) >= experts / 16 || index < 0 || size_t(index) >= pool.size())
@@ -682,7 +696,7 @@ struct GpuPrefill {
             check(cudaEventRecord(pool_ready[index], copy));
             check(cudaEventRecord(ready[host_slot], copy));
             transferred += bytes;
-            fetched[{layer, group}] = index;
+            if (publish) fetched[{layer, group}] = index;
             return;
         }
         for (int j = 0; j < 16; ++j) {
@@ -696,7 +710,7 @@ struct GpuPrefill {
         check(cudaMemsetAsync(p + bytes, 0, 16384, copy));
         check(cudaEventRecord(pool_ready[index], copy));
         transferred += bytes;
-        fetched[{layer, group}] = index;
+        if (publish) fetched[{layer, group}] = index;
     }
     static size_t arena_bytes(int width, size_t context) {
         const size_t tile = std::min(width, 64), pools = std::max<size_t>(1, context / 4);
@@ -1711,6 +1725,11 @@ class Decoder {
     std::unique_ptr<GpuPrefill> gpu;
     std::unique_ptr<GpuWorker> prefetch_launcher;
     std::future<void> prefetch_pending;
+    const bool stream_prefetch = [] {
+        if (!strata_env_is_set("STRATA_GLM_PREFETCH_STREAM") || strata_env_equals("STRATA_GLM_PREFETCH_STREAM", "0")) return false;
+        if (strata_env_is_one("STRATA_GLM_PREFETCH_STREAM")) return true;
+        throw std::invalid_argument("GLM: prefetch stream must be 0 or 1");
+    }();
     int primary_device = 0;
     bool secondary_enabled = true;
     bool decode_prefill_cache = false;
@@ -1723,8 +1742,10 @@ class Decoder {
         if (std::string(value) == "1") return true;
         throw std::invalid_argument("GLM: REAP prefetch must be 0 or 1");
     }();
+    // STRATA_GLM_REAP_PREFETCH=1 extends staged prefetch from 288 experts to pruned GGUF models with fewer experts
+    // (a multiple of 16: 144 for REAP-50, 224 for the REAP-224 prune); the prefetch pool spans all their groups.
     bool prefetch_geometry_supported() const {
-        return m.experts == 288 || (reap_prefetch && m.experts == 144);
+        return m.experts == 288 || (reap_prefetch && m.experts < 288);
     }
     const bool bf16_wmma = [] { const char *v = std::getenv("STRATA_GLM_BF16_WMMA"); return v && std::string(v) == "1"; }();
     const int f16_prefill_min_tokens = [] {
@@ -1825,14 +1846,19 @@ class Decoder {
     const float *shared_quant_src = nullptr;
     int shared_quant_in = 0,shared_quant_nt=0;
     Device *shared_quant = nullptr;
+    // Prefill: inside a share region the projections' common input is cast to FP16 once (mat reuses mat_f16 while
+    // it still holds this input's cast); the caller guarantees x is unchanged until end_share_quant.
+    const float *fast_share_src = nullptr, *last_f16_src = nullptr;
+    size_t last_f16_n = 0;
     void share_quant(const float *x, int in) {
-        if (!quant_once || fast || batch_tokens > cpu::MAXT) return;
+        if (fast) { fast_share_src = x; last_f16_src = nullptr; return; }   // the region's first mat casts afresh
+        if (!quant_once || batch_tokens > cpu::MAXT) return;
         if (shared_quant && shared_quant_src == x && shared_quant_in == in && shared_quant_nt==batch_tokens) return;
         shared_quant = &buf("q8_shared", k::native_q8_1_bytes(in, batch_tokens) / 4);
         k::native_quantize_q8_1(x, shared_quant->p, in, batch_tokens, stream);
         shared_quant_src = x; shared_quant_in = in;shared_quant_nt=batch_tokens;
     }
-    void end_share_quant() { shared_quant_src = nullptr; shared_quant = nullptr; }
+    void end_share_quant() { shared_quant_src = nullptr; shared_quant = nullptr; fast_share_src = nullptr; last_f16_src = nullptr; }
     bool tp_stale = true;
     std::vector<int> route_tail;
     int primary_prefill_groups = [] {
@@ -1995,6 +2021,30 @@ class Decoder {
     }();
     const bool mla_one_kernels = [] { const char *v = std::getenv("STRATA_GLM_MLA_KERNELS"); return v && std::string(v) == "1"; }();
     std::unique_ptr<Device> mla_one_scratch;
+    // STRATA_GLM_MLA_ABSORB_F16=1 (opt-in, lossy; prefill tensor attention): the per-head query/value absorb products
+    // run as FP16 tensor GEMMs with FP32 accumulation instead of FP32 SGEMMs. The FP16 weights are cast once per
+    // layer (keyed by layer, since the FP32 source may be a reused dequantization buffer).
+    // Lossy prefill paths (FP16 accumulation, FP16 MLA absorb/scores/index, KDA column tiles, Q8_0 transcode) apply
+    // only to prefill batches of at least STRATA_PREFILL_LOSSY_MIN_TOKENS (default 4096) tokens: short prompts keep
+    // the exact products (on short coding prompts the lossy paths cost HumanEval passes).
+    const int lossy_prefill_min = [] {
+        const char *v = std::getenv("STRATA_PREFILL_LOSSY_MIN_TOKENS");
+        return v ? std::max(1, std::atoi(v)) : 4096;
+    }();
+    bool lossy_prefill() const { return fast && batch_tokens >= lossy_prefill_min; }
+    const bool mla_absorb_f16 = [] { return strata_env_is_one("STRATA_GLM_MLA_ABSORB_F16"); }();
+    // STRATA_GLM_MLA_F16_OUT=1 (opt-in, lossy; with MLA_ABSORB_F16): scores and absorbed values are FP16-accumulated
+    // FP16 outputs, the softmax reads FP16 scores, and the value absorb takes the FP16 values directly.
+    const bool mla_f16_out = [] { return strata_env_is_one("STRATA_GLM_MLA_F16_OUT"); }();
+    std::unique_ptr<Device> absorb_w16[2], absorb_x16;
+    // STRATA_GLM_MLA_INDEX_F16=1 (opt-in, lossy; prefill tensor attention): the indexer's pooled-key scores run as an
+    // FP16 tensor GEMM; the pooled keys are cast once per layer call, the index queries per tile.
+    const bool mla_index_f16 = [] { return strata_env_is_one("STRATA_GLM_MLA_INDEX_F16"); }();
+    std::unique_ptr<Device> index_pool16, index_q16;
+    // STRATA_PREFILL_Q8_TRANSCODE: the down projection's transcode runs on a side stream while gate/up multiplies.
+    cudaStream_t q8_side = nullptr;
+    cudaEvent_t q8_weights_ready = nullptr, q8_down_ready = nullptr;
+    int absorb_w16_layer[2] = {-1, -1};
     std::unique_ptr<Device> defer_coefficients;  // the deferred layer's 24 hyper-connection coefficients
     // Per-step host timeline (STRATA_GLM_STEP_TRACE=1): routed CPU work versus everything between layers.
     bool step_trace = std::getenv("STRATA_GLM_STEP_TRACE") != nullptr;
@@ -3025,6 +3075,9 @@ class Decoder {
             check(cudaGetLastError());return;
         }
         auto &W = weight(name, floating);
+        // Every layer's first product passes here, so the lossy-path switches follow the current batch (decode included).
+        strata::prefill::Gemm::lossy_allowed = lossy_prefill();
+        k::glm_set_prefill_lossy(lossy_prefill());
         const float one = 1, zero = 0;
         if (fast && name != "output.weight") {
             if (t.type == 0 || floating) {
@@ -3034,7 +3087,11 @@ class Decoder {
                                       W.f(), in, x + (size_t)t0 * in, in, &zero, y + (size_t)t0 * out, out));
             } else {
                 auto &half = buf("mat_f16", (size_t)gpu->chunk * 16384 / 2);
-                k::glm_f16(x, (uint16_t *)half.p, (int64_t)nt * in, stream);
+                const size_t cast_n = (size_t)nt * in;
+                if (!(strata_env_is_one("STRATA_GLM_PREFILL_CAST_REUSE") && fast_share_src == x && last_f16_src == x && last_f16_n == cast_n)) {
+                    k::glm_f16(x, (uint16_t *)half.p, (int64_t)cast_n, stream);
+                    last_f16_src = x; last_f16_n = cast_n;
+                }
                 if (dequant_once) {
                     gpu->gemm->native_chunked((uint16_t *)half.p, weight_type, W.p, y, nt, out, in, 2048);
                     return;
@@ -3186,6 +3243,9 @@ class Decoder {
             if (begin == end) continue;
             const int slot = target.groups % 2;
             const int fetched = n == 16 ? target.take(layer_id, first / 16) : -1;
+            // The ring shares the producer's two pinned buffers. It may only
+            // stage a non-prefetched group after the producer has relinquished them.
+            if (fetched < 0 && target.streaming_prefetch) finish_prefetch();
             void *weights = fetched >= 0 ? cache.adopt(layer_id, first, target, fetched, stride, work_stream)
                                          : cache.weights(layer_id, first, n, target, slot, G, U, D, work_stream,
                                                          lazy_experts ? hb : nullptr);
@@ -3281,6 +3341,34 @@ class Decoder {
                 if (group_done) group_done(first);
                 continue;
             }
+            // STRATA_PREFILL_Q8_TRANSCODE=1 (opt-in, lossy): a Q2_K/Q3_K group is rewritten as Q8_0 once per group
+            // (each 32-value block requantized from the dequantized values) and multiplied by MMQ's faster Q8_0 path.
+            static const bool q8_transcode = [] { return strata_env_truthy_one("STRATA_PREFILL_Q8_TRANSCODE"); }();
+            // Transcoding a whole group only pays for itself on long prefills (and needs ~430 MiB of scratch).
+            static const int q8_transcode_min = [] {
+                const char *v = std::getenv("STRATA_PREFILL_Q8_TRANSCODE_MIN_TOKENS");
+                return v ? std::max(1, std::atoi(v)) : 4096;
+            }();
+            const void *mw = weights;
+            int gtype = (int)G.tensor->type, dtype = (int)D.tensor->type;
+            size_t mstride = stride, down_offset = 2 * gh;
+            if (q8_transcode && lossy_prefill() && nt >= q8_transcode_min && (gtype == 10 || gtype == 11) && (dtype == 10 || dtype == 11) &&
+                begin < end) {
+                const size_t gu_q8 = (size_t)2 * F * (H / 32) * 34, d_q8 = (size_t)H * (F / 32) * 34, s8 = gu_q8 + d_q8;
+                auto &q8w = workspace("q8_transcode", (16 * s8 + 3) / 4);
+                if (!q8_side) {
+                    check(cudaStreamCreateWithFlags(&q8_side, cudaStreamNonBlocking));
+                    check(cudaEventCreateWithFlags(&q8_weights_ready, cudaEventDisableTiming));
+                    check(cudaEventCreateWithFlags(&q8_down_ready, cudaEventDisableTiming));
+                }
+                check(cudaEventRecord(q8_weights_ready, work_stream));
+                check(cudaStreamWaitEvent(q8_side, q8_weights_ready, 0));
+                k::glm_transcode_q8_0((const char *)weights + 2 * gh, dtype, (char *)q8w.p + gu_q8, H, F, n,
+                                      (long long)stride, (long long)s8, q8_side);
+                check(cudaEventRecord(q8_down_ready, q8_side));
+                k::glm_transcode_q8_0(weights, gtype, q8w.p, 2LL * F, H, n, (long long)stride, (long long)s8, work_stream);
+                mw = q8w.p; gtype = dtype = 8; mstride = s8; down_offset = gu_q8;
+            }
             for (int offset = begin; offset < end; offset += max_rows) {
                 check_stop();
                 const int rows = std::min(max_rows, end - offset);
@@ -3288,13 +3376,14 @@ class Decoder {
                 for (int e = first; e < first + n; ++e)
                     most = std::max(most, std::max(0, std::min(offset + rows, hb[e + 1]) - std::max(offset, hb[e])));
                 k::glm_group_bounds(bounds, (int *)local.p, first, n, offset, rows, work_stream);
-                mmq::quantize(x, source + offset, qx.p, G.tensor->type, H, H, rows, work_stream);
-                mmq::Product gate{weights, (int)G.tensor->type, 2 * F, H, stride, n, qx.p,
+                mmq::quantize(x, source + offset, qx.p, gtype, H, H, rows, work_stream);
+                mmq::Product gate{mw, gtype, 2 * F, H, mstride, n, qx.p,
                                   (int *)local.p, (int *)identity.p, rows, most, gu.f(), 2 * F};
                 target.context->run(gate, work_stream);
                 mmq::swiglu(gu.f(), hidden.f(), rows, F, false, work_stream, layer.swiglu_limit);
-                mmq::quantize(hidden.f(), nullptr, qh.p, D.tensor->type, F, F, rows, work_stream);
-                mmq::Product down{(char *)weights + 2 * gh, (int)D.tensor->type, H, F, stride, n,
+                mmq::quantize(hidden.f(), nullptr, qh.p, dtype, F, F, rows, work_stream);
+                if (mw != weights) check(cudaStreamWaitEvent(work_stream, q8_down_ready, 0));
+                mmq::Product down{(const char *)mw + down_offset, dtype, H, F, mstride, n,
                                   qh.p, (int *)local.p, dest + offset, rows, most, result, H};
                 target.context->run(down, work_stream);
             }
@@ -3305,6 +3394,7 @@ class Decoder {
     // Queue this layer's leading non-resident groups on the copy streams before its mixer.
     void finish_prefetch() {
         if (prefetch_pending.valid()) prefetch_pending.get();
+        if (gpu) gpu->streaming_prefetch = false;
     }
     void prefetch_groups_sync(int layer_id) {
         if (!fast || !gpu || gpu->pool.empty() || !prefetch_geometry_supported()) return;
@@ -3333,6 +3423,39 @@ class Decoder {
         if (!fast || !gpu || gpu->pool.empty() || !prefetch_geometry_supported()) return;
         if (!gpu->staged_prefetch) { prefetch_groups_sync(layer_id); return; }
         if (!prefetch_launcher) prefetch_launcher = std::make_unique<GpuWorker>(primary_device);
+        if (stream_prefetch && !(secondary && secondary_enabled)) {
+            // Build the entire immutable producer plan before launching it. Only
+            // the foreground reads/erases fetched; the worker never touches it.
+            const auto p = "blk." + std::to_string(layer_id) + ".";
+            const auto *g = &artifact.at(p + "ffn_gate_exps.weight");
+            const auto *u = &artifact.at(p + "ffn_up_exps.weight");
+            const auto *d = &artifact.at(p + "ffn_down_exps.weight");
+            const size_t stride = prefill_expert_stride(*g, *u, *d);
+            std::vector<std::pair<int, int>> plan;
+            gpu->fetched.clear();
+            gpu->prefetch_failed.store(false, std::memory_order_relaxed);
+            const auto found = prefill_cache.layers.find(layer_id);
+            for (int group = 0; group < prefill_expert_groups && plan.size() < gpu->pool.size(); ++group) {
+                if (found != prefill_cache.layers.end() && found->second.entries.count(group)) continue;
+                const int index = (int)plan.size();
+                gpu->queued[index].store(false, std::memory_order_relaxed);
+                gpu->fetched[{layer_id, group}] = index;
+                plan.emplace_back(group, index);
+            }
+            gpu->streaming_prefetch = true;
+            prefetch_pending = prefetch_launcher->submit([this, layer_id, g, u, d, stride, plan] {
+                try {
+                    for (const auto &[group, index] : plan) {
+                        gpu->prefetch(*g, *u, *d, layer_id, group, index, stride, false);
+                        gpu->queued[index].store(true, std::memory_order_release);
+                    }
+                } catch (...) {
+                    gpu->prefetch_failed.store(true, std::memory_order_release);
+                    throw;
+                }
+            });
+            return;
+        }
         // Enqueue the mixer on the main thread while the staging worker fills
         // the extra pool and queues its H2D copies. Join before consuming the map.
         prefetch_pending = prefetch_launcher->submit([this, layer_id] { prefetch_groups_sync(layer_id); });
@@ -3392,7 +3515,7 @@ class Decoder {
             ffn(p, x, out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
             check(cudaStreamSynchronize(stream));
         }
-        finish_prefetch();
+        if (!gpu->streaming_prefetch) finish_prefetch();
         const int *hb = (int *)gpu->counts->p;
         if ((decode_cache_budget || decode_cache_auto) && std::stoi(p.substr(4)) < (int)prefill_routes.size()) {
             const int layer_id = std::stoi(p.substr(4));
@@ -3552,6 +3675,9 @@ class Decoder {
             }
         }
         k::glm_route_sum(result.f(), rw.f(), out, H, K, nt, stream);
+        // Also joins unused prefetched groups (e.g. a sparse short prompt), and
+        // makes producer statistics safe to read before the next layer/reset.
+        if (gpu->streaming_prefetch) finish_prefetch();
     }
     void moe_streamed(const std::string &p, const float *x, float *out,
                       const strata::core::LayerDescriptor &layer) {
@@ -3644,6 +3770,20 @@ class Decoder {
         auto *selected = (int *)host_moe->p;
         check(cudaMemcpyAsync(selected, ids.p, K * 4, cudaMemcpyDeviceToHost, stream));
         auto *activation = (float *)(selected + cpu::MAXT * K) + cpu::MAXT * K;
+        // STRATA_GLM_MTP_DRAFT_TOP_K=n (opt-in): the CPU draft layer runs only its n highest-weight routes. Drafts
+        // are proposals that the target verifies, so this changes acceptance and speed, not which outputs are valid.
+        static const int draft_top_k = [] {
+            const char *v = std::getenv("STRATA_GLM_MTP_DRAFT_TOP_K");
+            if (!v) return 0;
+            size_t used = 0; const int n = std::stoi(v, &used);
+            if (v[used] || n < 0 || n > 64) throw std::invalid_argument("GLM: MTP draft top-k must be 0..64");
+            return n < 0 ? 0 : n;
+        }();
+        // 0: the draft layer skips its routed experts entirely (shared expert only).
+        static const bool draft_no_experts = [] { return strata_env_equals("STRATA_GLM_MTP_DRAFT_TOP_K", "0"); }();
+        std::vector<float> route_weight(K);
+        if (mtp_cpu_experts && draft_top_k && draft_top_k < K)
+            check(cudaMemcpyAsync(route_weight.data(), routing.p, K * 4, cudaMemcpyDeviceToHost, stream));
         if (mtp_cpu_experts)
             check(cudaMemcpyAsync(activation, x, H * 4, cudaMemcpyDeviceToHost, stream));
         check(cudaEventRecord(moe_ready, stream));
@@ -3661,10 +3801,16 @@ class Decoder {
             host_quant.resize(1);
             host_quant[0].resize(format.act_bytes);
             cpu::native_quant_act(format, activation, host_quant[0].data());
-            host_results.resize(K * H);
-            host_jobs.assign(K, cpu::ExpertJobMulti{});
-            for (int j = 0; j < K; ++j) {
-                auto &job = host_jobs[j];
+            host_results.assign((size_t)K * H, 0.f);
+            std::vector<int> order(K);
+            for (int j = 0; j < K; ++j) order[j] = j;
+            const int run = draft_no_experts ? 0 : draft_top_k && draft_top_k < K ? draft_top_k : K;
+            if (run < K)
+                std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return route_weight[a] > route_weight[b]; });
+            host_jobs.assign(run, cpu::ExpertJobMulti{});
+            for (int r = 0; r < run; ++r) {
+                const int j = order[r];
+                auto &job = host_jobs[r];
                 job.blob = G.data() + selected[j] * (G.bytes / m.experts);
                 job.native_up = U.data() + selected[j] * (U.bytes / m.experts);
                 job.native_down = D.data() + selected[j] * (D.bytes / m.experts);
@@ -3672,7 +3818,7 @@ class Decoder {
                 job.nact[0] = host_quant[0].data();
                 job.out[0] = host_results.data() + j * H;
             }
-            pool.run_split_multi_native(format, host_jobs.data(), K);
+            if (run) pool.run_split_multi_native(format, host_jobs.data(), run);
             auto &result = buf("mtp_expert_results", K * H);
             result.put(host_results.data(), K * H * 4);
             k::glm_route_sum(result.f(), routing.f(), out, H, K, 1, stream);
@@ -5519,7 +5665,7 @@ class Decoder {
         check(cublasSgemmStridedBatched(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, tokens, in, &one, W.f(), in,
                                         (long long)in * out, x, ld_x, in, &zero, y, ld_y, out, heads));
     }
-    void mla_gpu(const std::string &p, int l, const float *x, float *out) {
+    void mla_gpu(const std::string &p, int l, const float *x, float *out, bool state_only = false) {
         auto &state = states[l];
         const int *device_pos = graph_mla() && l < (int)m.layers.size() ? (const int *)mla_positions->p + buffer_group : nullptr;
         int B = batch_tokens, heads = m.attention_heads, latent = m.kv_rank, dim = 256, ih = m.index_heads,
@@ -5548,9 +5694,11 @@ class Decoder {
         auto &qr = buf("mla_qr", m.q_rank * B);
         auto &q = buf("mla_q", heads * dim * B);
         share_quant(x, m.hidden);
-        mat(p + "attn_q_a.weight", x, low.f());
-        norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
-        mat(p + "attn_q_b.weight", qr.f(), q.f());
+        if (!state_only) {
+            mat(p + "attn_q_a.weight", x, low.f());
+            norm(p + "attn_q_a_norm.weight", low.f(), qr.f(), m.q_rank);
+            mat(p + "attn_q_b.weight", qr.f(), q.f());
+        }
         auto &raw = buf("mla_raw", latent * B);
         mat(p + "attn_kv_a_mqa.weight", x, raw.f());
         if (!row_sequences.empty()) {
@@ -5570,8 +5718,10 @@ class Decoder {
         auto &ik = buf("index_k", idim * B);
         auto &ikn = buf("index_kn", idim * B);
         auto &gate = buf("index_gate", idim * B);
-        mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
-        mat(p + "indexer.proj.weight", x, iw.f());
+        if (!state_only) {
+            mat(p + "indexer.attn_q_b.weight", qr.f(), iq.f());
+            mat(p + "indexer.proj.weight", x, iw.f());
+        }
         mat(p + "indexer.attn_k.weight", x, ik.f());
         mat(p + "indexer_compressor_gate.weight", x, gate.f());
         end_share_quant();
@@ -5604,6 +5754,9 @@ class Decoder {
         } else
             k::glm_index_prepare(ikn.f(), gate.f(), ape.f(), state.keys->f(), state.gates->f(), state.pooled->f(),
                                  position, B, pool_size, idim, stream, device_pos);
+        // All persistent MLA state is now updated; a draft resynchronization does not consume the attention
+        // output or the following feed-forward output (STRATA_GLM_MTP_SYNC_STATE_ONLY).
+        if (state_only) return;
         inspect("index_norm", ikn.f(), (size_t)B * idim, stream);
         inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
@@ -5639,8 +5792,27 @@ class Decoder {
         auto run_tiles = [&, B, heads, latent, dim, ih, idim, pool_size, pools, tile](const Tiles &d, bool stoppable) {
             const float one = 1, zero = 0;
             auto absorb = [&](const strata::TensorInfo &t, const float *W, const float *x, float *y, int tokens,
-                              int ld_x, int ld_y) {
+                              int ld_x, int ld_y, const uint16_t *x16_ready = nullptr) {
                 const int in = t.shape[0], out = t.shape[1], count = t.shape[2];
+                if (mla_absorb_f16 && d.gemm && lossy_prefill()) {
+                    const int slot = W == d.wv ? 1 : 0;
+                    const size_t wn = (size_t)in * out * count, xn = (size_t)(tokens - 1) * ld_x + (size_t)in * count;
+                    if (!absorb_w16[slot] || absorb_w16[slot]->bytes < wn * 2) {
+                        absorb_w16[slot] = std::make_unique<Device>(wn * 2); absorb_w16_layer[slot] = -1;
+                    }
+                    if (absorb_w16_layer[slot] != l) {
+                        k::glm_f16(W, (uint16_t *)absorb_w16[slot]->p, (int64_t)wn, d.stream); absorb_w16_layer[slot] = l;
+                    }
+                    const uint16_t *x16 = x16_ready;
+                    if (!x16) {
+                        if (!absorb_x16 || absorb_x16->bytes < xn * 2) absorb_x16 = std::make_unique<Device>(xn * 2);
+                        k::glm_f16(x, (uint16_t *)absorb_x16->p, (int64_t)xn, d.stream);
+                        x16 = (const uint16_t *)absorb_x16->p;
+                    }
+                    d.gemm->f16_strided_batched((uint16_t *)absorb_w16[slot]->p, x16, y, out, tokens,
+                                                in, count, ld_x, ld_y);
+                    return;
+                }
                 check(cublasSgemmStridedBatched(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, out, tokens, in, &one, W, in,
                                                 (long long)in * out, x, ld_x, in, &zero, y, ld_y, out, count));
             };
@@ -5658,7 +5830,19 @@ class Decoder {
                 float *aq_t = hoisted ? d.aq_all + (size_t)t * heads * latent : d.aq;
                 float *av_t = hoisted ? d.av_all + (size_t)t * heads * latent : d.av;
                 const int scored_pools = active_index_pools ? (at + count) / pool_size : pools;
-                if (scored_pools)
+                if (scored_pools && mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill()) {
+                    // Pooled rows only grow within this call, so one cast covers every tile; rows beyond a tile's
+                    // scored_pools are not read.
+                    const size_t pn = (size_t)pools * idim, qn = (size_t)count * ih * idim;
+                    if (t == 0 || !index_pool16) {
+                        if (!index_pool16 || index_pool16->bytes < pn * 2) index_pool16 = std::make_unique<Device>(pn * 2);
+                        k::glm_f16(pooled_rows, (uint16_t *)index_pool16->p, (int64_t)pn, d.stream);
+                    }
+                    if (!index_q16 || index_q16->bytes < qn * 2) index_q16 = std::make_unique<Device>(qn * 2);
+                    k::glm_f16(d.iq + (size_t)t * ih * idim, (uint16_t *)index_q16->p, (int64_t)qn, d.stream);
+                    d.gemm->f16((uint16_t *)index_q16->p, (uint16_t *)index_pool16->p, d.dots, count * ih, scored_pools,
+                                idim, pools);
+                } else if (scored_pools)
                     check(cublasSgemm(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, scored_pools, count * ih, idim, &one,
                                       pooled_rows, idim, d.iq + (size_t)t * ih * idim, idim, &zero, d.dots, pools));
                 k::glm_index_reduce(d.dots, d.iw + (size_t)t * ih, d.scores, ih, pools, count, at, pool_size,
@@ -5674,11 +5858,27 @@ class Decoder {
                     auto *keys = (uint16_t *)d.gathered;
                     k::glm_mla_gather_f16(cache_rows, d.ids, d.counts, keys, count, stride, latent, d.stream);
                     k::glm_f16(d.aq, d.aq16, (int64_t)count * heads * latent, d.stream);
+                    if (mla_f16_out && mla_absorb_f16 && lossy_prefill() && !diagnose && !d.back) {
+                        auto *scores16 = (uint16_t *)d.attn;   // FP16 rows in the FP32 score buffer
+                        d.gemm->f16_batched_out16(d.aq16, keys, scores16, heads, stride, latent, count);
+                        k::glm_mla_softmax_h2h(scores16, d.counts, d.attn16, heads, stride, count,
+                                               1.f / std::sqrt((float)dim), d.stream);
+                        const size_t vn = (size_t)count * heads * latent;
+                        if (!absorb_x16 || absorb_x16->bytes < vn * 2) absorb_x16 = std::make_unique<Device>(vn * 2);
+                        d.gemm->f16_batched_nn_out16(keys, d.attn16, (uint16_t *)absorb_x16->p, latent, heads, stride, count);
+                        absorb(vb, d.wv, nullptr, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim,
+                               (const uint16_t *)absorb_x16->p);
+                        continue;
+                    }
                     d.gemm->f16_batched(d.aq16, keys, d.attn, heads, stride, latent, count);
                     inspect("attention_scores", d.attn, (size_t)count * heads * stride, d.stream);
-                k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
-                inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
-                    k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * stride, d.stream);
+                    if (diagnose || !strata_env_is_one("STRATA_GLM_MLA_SOFTMAX_F16")) {
+                        k::glm_mla_softmax(d.attn, d.counts, heads, stride, count, 1.f / std::sqrt((float)dim), d.stream);
+                        inspect("attention_probabilities", d.attn, (size_t)count * heads * stride, d.stream);
+                        k::glm_f16(d.attn, d.attn16, (int64_t)count * heads * stride, d.stream);
+                    } else
+                        k::glm_mla_softmax_f16(d.attn, d.counts, d.attn16, heads, stride, count, 1.f / std::sqrt((float)dim),
+                                               d.stream);
                     d.gemm->f16_batched_nn(keys, d.attn16, d.av, latent, heads, stride, count);
                     inspect("absorbed_value", d.av, (size_t)count * heads * latent, d.stream);
                 absorb(vb, d.wv, d.av, d.value + (size_t)t * heads * dim, count, heads * latent, heads * dim);
@@ -6038,10 +6238,10 @@ class Decoder {
           budget(cache_bytes) {
         if (m.experts % 16 || m.experts > 288) throw std::invalid_argument("GLM: expert count must be a multiple of 16, at most 288");
         prefill_expert_groups = (int)m.experts / 16;
-        if (reap_prefetch && (artifact.is_exl3() || m.experts != 144 || direct_upload_enabled() ||
+        if (reap_prefetch && (artifact.is_exl3() || m.experts >= 288 || direct_upload_enabled() ||
                              !std::getenv("STRATA_GLM_STAGE_PREFETCH") ||
                              std::string(std::getenv("STRATA_GLM_STAGE_PREFETCH")) != "1"))
-            throw std::invalid_argument("GLM: REAP prefetch requires 144 GGUF experts, staged prefetch and no direct upload");
+            throw std::invalid_argument("GLM: REAP prefetch requires fewer than 288 GGUF experts, staged prefetch and no direct upload");
         GpuPrefill::prefetch_group_limit = reap_prefetch ? prefill_expert_groups : 18;
         if (reap_prefetch) {
             GpuPrefill::prefetch_bytes = 0;
@@ -6075,7 +6275,9 @@ class Decoder {
             artifact.overlay_experts(expert_pack,retained);q23_layout=cpu_backend=="packed-dot"?1:cpu_backend=="packed-lut"?2:0;
             packed_huge_pages=std::getenv("STRATA_GLM_PACK_HUGE")&&std::string(std::getenv("STRATA_GLM_PACK_HUGE"))=="1";
             std::cerr<<"EXPERT_PACK source="<<expert_pack<<" backend="<<(cpu_backend=="auto"?"native":cpu_backend)<<" retained="<<retained.size()<<'\n';
-        }
+        } else if(artifact.has_expert_pack())
+            // An assembled single file carries the pack inside; owned NUMA arenas may use 2 MiB pages here too.
+            packed_huge_pages=std::getenv("STRATA_GLM_PACK_HUGE")&&std::string(std::getenv("STRATA_GLM_PACK_HUGE"))=="1";
         // Opt-in for small GPUs: size staging from the effective artifact, after
         // overlays. The historical 208 MiB floor needlessly occupies two slots
         // when every group in this model is smaller. The projection bytes and
@@ -6207,6 +6409,12 @@ class Decoder {
         cpu::restore_thread_affinity(host_affinity);
         if (stream)
             cudaStreamSynchronize(stream);
+        if (q8_side) {
+            cudaStreamSynchronize(q8_side);
+            cudaStreamDestroy(q8_side);
+        }
+        if (q8_weights_ready) cudaEventDestroy(q8_weights_ready);
+        if (q8_down_ready) cudaEventDestroy(q8_down_ready);
         gpu.reset();
         if (moe_ready) cudaEventDestroy(moe_ready);
         if (mla_ready) cudaEventDestroy(mla_ready);
@@ -6318,6 +6526,8 @@ class Decoder {
             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
                 throw std::out_of_range("GLM: token or context out of range");
         batch_tokens = nt;
+        strata::prefill::Gemm::lossy_allowed = lossy_prefill();
+        k::glm_set_prefill_lossy(lossy_prefill());
         task_trace(prefill ? "prefill_batch_begin" : "decode_batch_begin", position, nt);
         const bool trace_prefill = fast && std::getenv("STRATA_GLM_TASK_TRACE");
         const char *trace_sync_value = std::getenv("STRATA_GLM_TASK_TRACE_SYNC");
@@ -7343,6 +7553,15 @@ class Decoder {
     }
     void set_mtp_cpu_experts(bool enabled) { mtp_cpu_experts = enabled; }
     int token_position() const { return position; }
+    // STRATA_GLM_MTP_SYNC_STATE_ONLY=1: a draft resynchronization step (head=false) updates only the draft layer's
+    // persistent attention state and skips the attention output, MoE and head, which nothing reads; the next
+    // proposal starts from the verified target hidden state. Draft proposals are unchanged.
+    const bool mtp_sync_state_only = [] {
+        if (!strata_env_is_set("STRATA_GLM_MTP_SYNC_STATE_ONLY") || strata_env_equals("STRATA_GLM_MTP_SYNC_STATE_ONLY", "0")) return false;
+        if (strata_env_is_one("STRATA_GLM_MTP_SYNC_STATE_ONLY")) return true;
+        throw std::invalid_argument("GLM: MTP sync state only must be 0 or 1");
+    }();
+    long mtp_sync_omitted = 0;
     std::vector<float> mtp_step(int token, const float *previous, bool head = true) {
         check_stop();
         if (!mtp_ready || token < 0 || token >= m.vocab || mtp_position >= (int)capacity)
@@ -7369,7 +7588,16 @@ class Decoder {
         norm(p + "nextn.hnorm.weight", prev.f(), joined.f(H), H);
         mat(p + "nextn.eh_proj.weight", joined.f(), cur.f());
         norm(p + "attn_norm.weight", cur.f(), x.f(), H);
-        mla_gpu(p, 45, x.f(), y.f());
+        const bool state_only = !head && mtp_sync_state_only;
+        if (state_only && !row_sequences.empty())
+            throw std::invalid_argument("GLM: state-only MTP sync requires one sequence");
+        mla_gpu(p, 45, x.f(), y.f(), state_only);
+        if (state_only) {
+            ++mtp_position;
+            ++mtp_sync_omitted;
+            check(cudaStreamSynchronize(stream));
+            return {};
+        }
         const float one = 1;
         check(cublasSaxpy(blas, H, &one, y.f(), 1, cur.f(), 1));
         norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
@@ -8352,6 +8580,8 @@ class Decoder {
             throw std::invalid_argument("GLM: BF16 WMMA requires bf16-batched prefill experts");
         if ((floating_q8_repack || dense_q4_repack) && (devices.size() != 1 || artifact.is_exl3()))
             throw std::invalid_argument("GLM: dense repacking requires one GPU and GGUF weights");
+        if (devices.size() != 1 && (mla_absorb_f16 || mla_index_f16 || mla_f16_out))
+            throw std::invalid_argument("GLM: experimental FP16 MLA scratch requires one GPU");
         if(artifact.is_exl3()) {if(devices.size()!=1||cache_bytes||automatic||reserve_mtp||tensor_experts||tensor_batches)throw std::invalid_argument("EXL3: requires single GPU, CPU experts, no speculation/cache");return;}
         if (primary_prefill_groups != 9 && (devices.size() != 2 || m.experts != 288))
             throw std::invalid_argument("GLM: weighted prefill partition requires two GPUs and 288 experts");
@@ -9123,9 +9353,45 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
             std::chrono::steady_clock::now() - begin).count();
     };
     const double prepare_ms = elapsed_ms(start);
+    // STRATA_GLM_MTP_ACCEPT_MARGIN (opt-in, lossy): accept an MTP draft token that is not the target's greedy token
+    // when it is within the margin in logits and among the top-k; at most ACCEPT_MAX_SOFT per window. Lookup tokens
+    // stay exact. STRATA_GLM_MTP_REPEAT_GUARD=n refuses a soft accept that completes an n-gram already emitted in
+    // the last 128 tokens (routing changes under soft acceptance otherwise loop). Margin 0 (default) is exact.
+    static const strata::spec::BoundedAcceptPolicy acceptance = [] {
+        strata::spec::BoundedAcceptPolicy p;
+        if (const char *v = std::getenv("STRATA_GLM_MTP_ACCEPT_MARGIN")) {
+            size_t used = 0; p.margin = std::stof(v, &used);
+            if (v[used] || !(p.margin >= 0.f && p.margin <= 10.f))
+                throw std::invalid_argument("GLM: MTP accept margin must be 0..10 (0 is exact)");
+        }
+        auto integer = [](const char *name, int fallback, int low, int high) {
+            const char *v = std::getenv(name);
+            if (!v) return fallback;
+            size_t used = 0; const int n = std::stoi(v, &used);
+            if (v[used] || n < low || n > high) throw std::invalid_argument(std::string("GLM: invalid ") + name);
+            return n;
+        };
+        p.top_k = integer("STRATA_GLM_MTP_ACCEPT_TOP_K", 4, 2, 64);
+        p.max_soft_per_window = integer("STRATA_GLM_MTP_ACCEPT_MAX_SOFT", 1, 1, 7);
+        return p;
+    }();
+    static const int repeat_ngram = [] {
+        const char *v = std::getenv("STRATA_GLM_MTP_REPEAT_GUARD");
+        if (!v) return 0;
+        size_t used = 0; const int n = std::stoi(v, &used);
+        if (v[used] || (n != 0 && (n < 2 || n > 8))) throw std::invalid_argument("GLM: MTP repeat guard must be 0 or 2..8");
+        return n;
+    }();
+    std::vector<int> emitted_history;
+    int repeat_blocked = 0, soft_accepted = 0;
+    double soft_regret = 0;
     auto output = [&](int token) {
         emit(token); ++stats.generated;
         if (lookup) lookup->append(token);
+        if (repeat_ngram) {
+            emitted_history.push_back(token);
+            if (emitted_history.size() > 128) emitted_history.erase(emitted_history.begin());
+        }
         stats.stopped = std::find(stops.begin(), stops.end(), token) != stops.end();
     };
     while (stats.generated < max_new && !stats.stopped) {
@@ -9198,9 +9464,24 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
         verify_ms += elapsed_ms(verify_start);
         ++stats.rounds; stats.proposed += k;
         int accepted = 0;
+        int soft_in_window = 0;
         while (accepted < k) {
             if (accepted < mtp_proposals) ++mtp_position_opportunities[accepted];
-            if (window[accepted + 1] != greedy(all, (size_t)accepted * decoder.vocabulary(), decoder.vocabulary())) break;
+            const size_t offset = (size_t)accepted * decoder.vocabulary();
+            const int target = greedy(all, offset, decoder.vocabulary());
+            if (window[accepted + 1] != target) {
+                if (acceptance.margin == 0.f || accepted >= mtp_proposals) break;
+                const auto decision = strata::spec::bounded_accept(
+                    std::span<const float>(all.data() + offset, decoder.vocabulary()),
+                    window[accepted + 1], target, acceptance, soft_in_window, stops);
+                if (!decision.accepted) break;
+                // Exact target matches bypass this guard; only a soft accept that completes a recent n-gram is refused.
+                if (repeat_ngram && strata::spec::repeats_ngram(emitted_history, window[accepted + 1], repeat_ngram)) {
+                    ++repeat_blocked;
+                    break;
+                }
+                ++soft_in_window; ++soft_accepted; soft_regret += decision.regret;
+            }
             output(window[++accepted]);
             if (stats.stopped) break;
         }
@@ -9265,6 +9546,11 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
             << " proposed=" << mtp_position_proposed[i] << " opportunities=" << mtp_position_opportunities[i] << " accepted=" << mtp_position_accepted[i] << '\n';
     if (continuation_margin > 0.f) std::cerr << "MTP_MARGIN minimum=" << continuation_margin
                                           << " skipped=" << margin_skipped << '\n';
+    if (acceptance.margin > 0.f)
+        std::cerr << "MTP_APPROX margin=" << acceptance.margin << " top_k=" << acceptance.top_k
+                  << " max_soft_per_window=" << acceptance.max_soft_per_window << " soft_accepted=" << soft_accepted
+                  << " sum_logit_regret=" << soft_regret << '\n';
+    if (repeat_ngram) std::cerr << "MTP_REPEAT_GUARD ngram=" << repeat_ngram << " history=128 blocked=" << repeat_blocked << '\n';
     if (lookup) std::cerr << "MTP_LOOKUP rounds=" << lookup_rounds << " proposed=" << lookup_proposed
                           << " accepted=" << lookup_accepted << " max_depth=" << lookup_depth << '\n';
     if (lookup && cost_policy)

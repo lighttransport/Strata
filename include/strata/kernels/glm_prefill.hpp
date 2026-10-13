@@ -102,4 +102,15 @@ void glm_mla_gather_f16(const float *cache, const int *ids, const int *counts, u
                         int stride, int latent, void *stream);
 void glm_mla_softmax(float *scores, const int *counts, int heads, int stride, int queries, float scale,
                      void *stream);
+// Softmax over FP16 scores into FP16 probabilities (STRATA_GLM_MLA_F16_OUT).
+void glm_mla_softmax_h2h(const uint16_t *scores, const int *counts, uint16_t *out, int heads, int stride, int queries,
+                         float scale, void *stream);
+// glm_mla_softmax followed by the FP16 cast of the probabilities, in one pass; `scores` is left unnormalized.
+void glm_mla_softmax_f16(float *scores, const int *counts, uint16_t *out, int heads, int stride, int queries,
+                         float scale, void *stream);
+// Lossy prefill kernels (KDA column tiles) apply only while allowed; set per batch by the decoder.
+void glm_set_prefill_lossy(bool allowed);
+// Q2_K (type 10) / Q3_K (11) rows of `experts` matrices [rows, cols] -> Q8_0 (34 bytes per 32 values).
+void glm_transcode_q8_0(const void *src, int type, void *dst, long long rows, long long cols, int experts,
+                        long long src_stride, long long dst_stride, void *stream);
 } // namespace strata::kernels

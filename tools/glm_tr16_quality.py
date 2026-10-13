@@ -101,8 +101,11 @@ def main():
            str(c['dense_cache_mib']), str(c['threads']), '--context=' + str(c['context']),
            '--prefill-batch=256', '--gpu-budget-mib=' + str(c['gpu_budget_mib']),
            '--cpu-affinity=' + c['cpu_affinity'], '--decode-graphs',
-           '--decode-cache-mib=' + str(c['decode_cache_mib']), '--expert-pack=' + c['expert_pack'],
-           '--eval-corpus=' + str(output / 'corpus.ids'), '--eval-reference=' + str(reference)]
+           '--decode-cache-mib=' + str(c['decode_cache_mib'])]
+    # An assembled single-file model has no separate expert pack.
+    if c.get('expert_pack'):
+        cmd.append('--expert-pack=' + c['expert_pack'])
+    cmd += ['--eval-corpus=' + str(output / 'corpus.ids'), '--eval-reference=' + str(reference)]
     result = dict(config=c, command=cmd, decoder_sha256=digest(c['exe']), runner_sha256=digest(__file__),
                   inputs=input_identity(c),
                   corpus_sha256=digest(corpus), reference=str(reference), reference_size=refstat.st_size,
