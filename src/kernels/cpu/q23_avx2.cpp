@@ -125,9 +125,10 @@ template<int NT> void dot_q2k_lut(const uint8_t* w,int blocks,const void* const*
         const __m128i a0=_mm_unpacklo_epi8(z,s1),b0=_mm_unpacklo_epi8(s2,s3),a1=_mm_unpackhi_epi8(z,s1),b1=_mm_unpackhi_epi8(s2,s3);
         const __m128i T0=_mm_unpacklo_epi16(a0,b0),T1=_mm_unpackhi_epi16(a0,b0),T2=_mm_unpacklo_epi16(a1,b1),T3=_mm_unpackhi_epi16(a1,b1);
         // Chunk H's lane 0 is sub-block 2H (codes qs[0..15] of its 32 bytes), lane 1 is 2H+1: even tables low, odd high.
-        auto pick=[](__m128i lo,__m128i hi,int sel){return _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(lo),_mm_castsi128_ps(hi),sel));};
-        const __m256i tabA=_mm256_inserti128_si256(_mm256_castsi128_si256(pick(T0,T1,_MM_SHUFFLE(2,0,2,0))),pick(T0,T1,_MM_SHUFFLE(3,1,3,1)),1);
-        const __m256i tabB=_mm256_inserti128_si256(_mm256_castsi128_si256(pick(T2,T3,_MM_SHUFFLE(2,0,2,0))),pick(T2,T3,_MM_SHUFFLE(3,1,3,1)),1);
+        auto even=[](__m128i lo,__m128i hi){return _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(lo),_mm_castsi128_ps(hi),_MM_SHUFFLE(2,0,2,0)));};
+        auto odd=[](__m128i lo,__m128i hi){return _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(lo),_mm_castsi128_ps(hi),_MM_SHUFFLE(3,1,3,1)));};
+        const __m256i tabA=_mm256_inserti128_si256(_mm256_castsi128_si256(even(T0,T1)),odd(T0,T1),1);
+        const __m256i tabB=_mm256_inserti128_si256(_mm256_castsi128_si256(even(T2,T3)),odd(T2,T3),1);
         const __m256i q0=_mm256_loadu_si256(reinterpret_cast<const __m256i*>(x.qs)),q1=_mm256_loadu_si256(reinterpret_cast<const __m256i*>(x.qs+32));
         const int8_t* y[NT];
         for(int t=0;t<NT;++t)y[t]=static_cast<const block_q8_K*>(acts[t])[b].qs;
