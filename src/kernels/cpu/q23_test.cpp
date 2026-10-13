@@ -10,7 +10,9 @@
 #include <stdexcept>
 #include <cstring>
 using namespace strata::kernels::cpu;
-int main(){try {
+int main(int argc,char** argv){try {
+    const bool dump=argc==2&&std::string(argv[1])=="--dump";
+    if(argc>1&&!dump)throw std::runtime_error("usage: q23_test [--dump]");
     ggml_cpu_init();std::mt19937 rng(731);int checked=0;
     for(int ty:{10,11})for(int cols:{256,2048,4096})for(int pattern=0;pattern<4;++pattern) {
         constexpr int rows=64,nt=4;const auto type=ggml_type(ty);
@@ -33,6 +35,7 @@ int main(){try {
             ap[t]=acts[t].data();op[t]=got[t].data();
         }
         q23_rows(ty,q.data(),stride,cols,ap,nt,op,1,rows-1);
+        if(dump)for(const auto& row:got)std::cout.write(reinterpret_cast<const char*>(row.data()),row.size()*sizeof(float));
         for(int t=0;t<nt;++t)for(int r=1;r<rows-1;++r) {
             double ref=0,norm=0;for(int k=0;k<cols;++k){double v=double(decoded[r*cols+k])*a[t][k];ref+=v;norm+=std::abs(v);}
             if(!std::isfinite(got[t][r])||std::abs(got[t][r]-ref)>1e-5*norm+1e-5)throw std::runtime_error("Q23 scalar dot mismatch");

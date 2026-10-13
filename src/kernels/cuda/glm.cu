@@ -1,3 +1,4 @@
+#include "strata/host/glm_env.h"
 // GLM-5.3-Flash equations follow the Transformers glm5_next reference.
 // https://github.com/huggingface/transformers/tree/main/src/transformers/models/glm5_next
 #include "strata/kernels/glm.hpp"

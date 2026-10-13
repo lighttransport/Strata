@@ -1387,7 +1387,7 @@ bool glm_prefill_lossy_allowed = true;
 void glm_set_prefill_lossy(bool allowed) { glm_prefill_lossy_allowed = allowed; }
 void glm_transcode_q8_0(const void *src, int type, void *dst, long long rows, long long cols, int experts,
                         long long src_stride, long long dst_stride, void *stream) {
-    if ((type != 10 && type != 11) || cols % 256 || experts <= 0) throw std::invalid_argument("GLM: Q8_0 transcode needs Q2_K/Q3_K rows");
+    if ((type != 10 && type != 11) || rows <= 0 || cols <= 0 || cols % 256 || experts <= 0 || experts > 65535 || src_stride < rows * (cols / 256) * (type == 10 ? 84 : 110) || dst_stride < rows * (cols / 32) * 34 || dst_stride % 16) throw std::invalid_argument("GLM: Q8_0 transcode needs Q2_K/Q3_K rows");
     const long long supers = rows * (cols / 256);   // one warp each, 8 warps per 256-thread block
     transcode_q8_0<<<dim3((unsigned)((supers + 7) / 8), experts), 256, 0, (cudaStream_t)stream>>>(
         (const unsigned char *)src, type, (unsigned char *)dst, rows, cols, src_stride, dst_stride);

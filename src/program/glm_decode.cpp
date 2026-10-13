@@ -6557,6 +6557,8 @@ class Decoder {
             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
                 throw std::out_of_range("GLM: token or context out of range");
         batch_tokens = nt;
+        strata::prefill::Gemm::lossy_allowed = lossy_prefill();
+        k::glm_set_prefill_lossy(lossy_prefill());
         task_trace(prefill ? "prefill_batch_begin" : "decode_batch_begin", position, nt);
         const bool trace_prefill = fast && std::getenv("STRATA_GLM_TASK_TRACE");
         const char *trace_sync_value = std::getenv("STRATA_GLM_TASK_TRACE_SYNC");
