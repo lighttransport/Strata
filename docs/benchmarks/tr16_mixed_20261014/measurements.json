@@ -1,0 +1,1346 @@
+{
+  "hardware": {
+    "path": "tools/sim/data/hw_tr16_mixed.json",
+    "sha256": "d87a7db81ab8275490137f522735cdb4d39dda7176f1ff065c95d183b2f6440d"
+  },
+  "quality_floor": 152,
+  "quality_total": 164,
+  "packs": {
+    "reap224": {
+      "measurements": {
+        "source": {
+          "path": "build-glm-release/tr16-redesign-20261014/after-reap224/results.json",
+          "sha256": "020af0be63cdc316ed6c83cbfc141a49ae33061bc7ead33c1327b950b746565f"
+        },
+        "executables": {
+          "cuda/strata-glm-decode": "ecf5e681400080970269adec3e5c67e8c6fc859f33bfa49e297275336cfffcd1",
+          "cuda/strata-glm-gpu-worker": "8e367c052b7c3f83a3a43b731741fb8c75b7c2208a03c99c0346c96266015725",
+          "hip/strata-glm-decode": "6294c431aa2072946a30bdbb0badba38cec1f931b8334e676abfd39c87e8d1af",
+          "hip/strata-glm-gpu-worker": "8a751896e0a178a6abde8c3cb5a283ac5f238b98bdd6772d1ea1425ddd0fa287"
+        },
+        "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+        "source_sha256": {
+          "CMakeLists.txt": "10d15723d61072f1864141928982a86b8c9c677992cda59b476656299be8d0bb",
+          "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+          "src/program/glm_gpu_worker.cpp": "58fff2e77d5c3ebfa324718cb03384ea764021dec369d94e510a2ee4f69d9ed5",
+          "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+          "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+          "src/host/glm_mixed.c": "52f04c1ff898e4fd2ca059d0e4a9673a47c2172aaeecf787be055e8d45aeeb2e",
+          "include/strata/host/glm_mixed.h": "8816ba5c242beffd2e0152267877e1aa9d893445aafaf968d540d9c7ef27e7e3",
+          "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+          "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+          "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+        },
+        "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+        "timed_trials_per_process": 3,
+        "weight_identity": [
+          {
+            "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+            "size": 95538419872,
+            "mtime_ns": 1791722782811009660
+          }
+        ],
+        "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+        "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+        "config_sha256": "39a7cc5b0d3cbaa3246e58015788a318413ab9594ddabaf7f1b4b7ccf3eb8c05",
+        "executed_processes": 12,
+        "executed_matrix": true,
+        "rows": [
+          {
+            "case": "cuda",
+            "size": "2k",
+            "prompt": "holdout-chat",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 31.7479,
+            "decode_range": [
+              30.4771,
+              32.0931
+            ],
+            "prefill_tok_s": 162.731,
+            "prefill_range": [
+              162.72,
+              163.043
+            ],
+            "elapsed_seconds": 233.1364728260014,
+            "model_loading_and_other_seconds": 129.7436728260014,
+            "cpu_bytes_per_output": 1565194026.6666667,
+            "last_prompt_logits_hashes": [
+              "acf0dad537eecc003078af6179aba7a613846b427d04cdb392a25f284364e2fc"
+            ]
+          },
+          {
+            "case": "cuda",
+            "size": "2k",
+            "prompt": "train-code",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 31.6495,
+            "decode_range": [
+              30.46,
+              32.2709
+            ],
+            "prefill_tok_s": 163.309,
+            "prefill_range": [
+              163.28,
+              163.458
+            ],
+            "elapsed_seconds": 233.1514940670022,
+            "model_loading_and_other_seconds": 129.4958940670022,
+            "cpu_bytes_per_output": 1415478954.6666667,
+            "last_prompt_logits_hashes": [
+              "ec032ee0aa5079c9fda751495dd822ee6c306ed9c2bc4416878a5b2d247c40c5"
+            ]
+          },
+          {
+            "case": "cuda",
+            "size": "8k",
+            "prompt": "holdout-chat",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 31.1443,
+            "decode_range": [
+              29.8227,
+              31.3368
+            ],
+            "prefill_tok_s": 392.512,
+            "prefill_range": [
+              390.898,
+              393.052
+            ],
+            "elapsed_seconds": 270.15351479299716,
+            "model_loading_and_other_seconds": 140.37791479299716,
+            "cpu_bytes_per_output": 1433999658.6666667,
+            "last_prompt_logits_hashes": [
+              "1f7c0046421e668773fcb1498d2cf147df5e567e1e3224f69d44d5126903bc1f"
+            ]
+          },
+          {
+            "case": "cuda",
+            "size": "8k",
+            "prompt": "train-code",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 31.1324,
+            "decode_range": [
+              29.9494,
+              31.6665
+            ],
+            "prefill_tok_s": 394.997,
+            "prefill_range": [
+              389.175,
+              401.169
+            ],
+            "elapsed_seconds": 272.17400895399624,
+            "model_loading_and_other_seconds": 142.21330895399623,
+            "cpu_bytes_per_output": 1421325269.3333333,
+            "last_prompt_logits_hashes": [
+              "f21023ef87754cdc42150baadce6e7db4d0a1c038159c2494049080eea4cad38"
+            ]
+          },
+          {
+            "case": "hip",
+            "size": "2k",
+            "prompt": "holdout-chat",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 35.1361,
+            "decode_range": [
+              34.4193,
+              37.7551
+            ],
+            "prefill_tok_s": 240.431,
+            "prefill_range": [
+              240.187,
+              240.528
+            ],
+            "elapsed_seconds": 210.11949494099827,
+            "model_loading_and_other_seconds": 125.35855494099826,
+            "cpu_bytes_per_output": 1208462506.6666667,
+            "last_prompt_logits_hashes": [
+              "ede5e7d99902d6a5f8e89b5df8e79f2c4e5c361f3190ae9a6eec0a415bbf9dc5"
+            ]
+          },
+          {
+            "case": "hip",
+            "size": "2k",
+            "prompt": "train-code",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 31.5122,
+            "decode_range": [
+              31.3319,
+              31.9943
+            ],
+            "prefill_tok_s": 240.626,
+            "prefill_range": [
+              239.825,
+              241.297
+            ],
+            "elapsed_seconds": 221.1827226050009,
+            "model_loading_and_other_seconds": 128.6200526050009,
+            "cpu_bytes_per_output": 1168563242.6666667,
+            "last_prompt_logits_hashes": [
+              "b0070c67972864b6c86e46dc43478d93d6c885f6845cb72361ee984b40cebf36"
+            ]
+          },
+          {
+            "case": "hip",
+            "size": "8k",
+            "prompt": "holdout-chat",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 35.0148,
+            "decode_range": [
+              33.9601,
+              35.1931
+            ],
+            "prefill_tok_s": 554.016,
+            "prefill_range": [
+              553.371,
+              554.291
+            ],
+            "elapsed_seconds": 237.12504619800166,
+            "model_loading_and_other_seconds": 132.16964619800166,
+            "cpu_bytes_per_output": 1235876480.0,
+            "last_prompt_logits_hashes": [
+              "d400b634848317b2884fc86c700594605b7881fa812efddcd9ac1a62129aad2e"
+            ]
+          },
+          {
+            "case": "hip-cuda",
+            "size": "2k",
+            "prompt": "holdout-chat",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 32.7097,
+            "decode_range": [
+              31.6966,
+              35.3363
+            ],
+            "prefill_tok_s": 133.946,
+            "prefill_range": [
+              133.441,
+              134.909
+            ],
+            "elapsed_seconds": 246.1297798739979,
+            "model_loading_and_other_seconds": 134.23537987399789,
+            "cpu_bytes_per_output": 648316970.6666666,
+            "last_prompt_logits_hashes": [
+              "890a5c00220d8eca41350293f5204275aa8888e637108a10599f1b99b9ad8346"
+            ]
+          },
+          {
+            "case": "hip-cuda",
+            "size": "2k",
+            "prompt": "train-code",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 29.1405,
+            "decode_range": [
+              28.843,
+              30.6915
+            ],
+            "prefill_tok_s": 133.577,
+            "prefill_range": [
+              132.032,
+              133.757
+            ],
+            "elapsed_seconds": 254.1313111030031,
+            "model_loading_and_other_seconds": 134.8313111030031,
+            "cpu_bytes_per_output": 643266517.3333334,
+            "last_prompt_logits_hashes": [
+              "293163a2689c46458a3342726616205ba12eba0ae7de673cb8930c532dd54cae"
+            ]
+          },
+          {
+            "case": "hip-cuda",
+            "size": "8k",
+            "prompt": "holdout-chat",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 33.7221,
+            "decode_range": [
+              32.93,
+              35.3949
+            ],
+            "prefill_tok_s": 523.012,
+            "prefill_range": [
+              515.4,
+              523.197
+            ],
+            "elapsed_seconds": 249.13047095100046,
+            "model_loading_and_other_seconds": 137.32047095100046,
+            "cpu_bytes_per_output": 624654506.6666666,
+            "last_prompt_logits_hashes": [
+              "8accf5912de9f6f85d56fc150babacc33dcbe39015215bcfe9114c749732350c"
+            ]
+          },
+          {
+            "case": "hip-cuda",
+            "size": "8k",
+            "prompt": "train-code",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 31.1075,
+            "decode_range": [
+              31.0969,
+              33.3035
+            ],
+            "prefill_tok_s": 525.573,
+            "prefill_range": [
+              525.165,
+              531.258
+            ],
+            "elapsed_seconds": 250.15734036600043,
+            "model_loading_and_other_seconds": 135.47294036600044,
+            "cpu_bytes_per_output": 627119701.3333334,
+            "last_prompt_logits_hashes": [
+              "53878b67869a51566fbebeede8df0c43abd8ea44840b74a6e723ef497a9e7545"
+            ]
+          }
+        ],
+        "excluded": [
+          {
+            "case": "hip",
+            "prompt": "train-code.ids",
+            "repetition": 0,
+            "returncode": 0,
+            "reason": "failed, incomplete, instrumented or loop-rejected",
+            "warmup_loop": {
+              "start": 183,
+              "period": 32,
+              "repeats": 3
+            },
+            "timed_loop_trials": [],
+            "unqualified_decode_tok_s": 31.4263,
+            "unqualified_prefill_tok_s": 552.37
+          }
+        ],
+        "complete_matrix": false
+      },
+      "holdout": {
+        "records": [
+          {
+            "case": "cuda",
+            "size": "2k",
+            "kind": "decode",
+            "split": "holdout",
+            "predicted_tok_s": 31.6495,
+            "measured_tok_s": 31.7479,
+            "error_fraction": -0.0030994175992743456,
+            "tolerance": 0.1,
+            "within": true
+          },
+          {
+            "case": "cuda",
+            "size": "2k",
+            "kind": "prefill",
+            "split": "holdout",
+            "predicted_tok_s": 163.309,
+            "measured_tok_s": 162.731,
+            "error_fraction": 0.0035518739514905917,
+            "tolerance": 0.15,
+            "within": true
+          },
+          {
+            "case": "cuda",
+            "size": "8k",
+            "kind": "decode",
+            "split": "holdout",
+            "predicted_tok_s": 31.1324,
+            "measured_tok_s": 31.1443,
+            "error_fraction": -0.0003820923892975392,
+            "tolerance": 0.1,
+            "within": true
+          },
+          {
+            "case": "cuda",
+            "size": "8k",
+            "kind": "prefill",
+            "split": "holdout",
+            "predicted_tok_s": 394.997,
+            "measured_tok_s": 392.512,
+            "error_fraction": 0.006331016631338615,
+            "tolerance": 0.15,
+            "within": true
+          },
+          {
+            "case": "hip",
+            "size": "2k",
+            "kind": "decode",
+            "split": "holdout",
+            "predicted_tok_s": 31.5122,
+            "measured_tok_s": 35.1361,
+            "error_fraction": -0.10313893687688724,
+            "tolerance": 0.1,
+            "within": false
+          },
+          {
+            "case": "hip",
+            "size": "2k",
+            "kind": "prefill",
+            "split": "holdout",
+            "predicted_tok_s": 240.626,
+            "measured_tok_s": 240.431,
+            "error_fraction": 0.0008110435010459938,
+            "tolerance": 0.15,
+            "within": true
+          },
+          {
+            "case": "hip-cuda",
+            "size": "2k",
+            "kind": "decode",
+            "split": "holdout",
+            "predicted_tok_s": 29.1405,
+            "measured_tok_s": 32.7097,
+            "error_fraction": -0.10911747891298296,
+            "tolerance": 0.1,
+            "within": false
+          },
+          {
+            "case": "hip-cuda",
+            "size": "2k",
+            "kind": "prefill",
+            "split": "holdout",
+            "predicted_tok_s": 133.577,
+            "measured_tok_s": 133.946,
+            "error_fraction": -0.0027548415032924156,
+            "tolerance": 0.15,
+            "within": true
+          },
+          {
+            "case": "hip-cuda",
+            "size": "8k",
+            "kind": "decode",
+            "split": "holdout",
+            "predicted_tok_s": 31.1075,
+            "measured_tok_s": 33.7221,
+            "error_fraction": -0.07753372417494742,
+            "tolerance": 0.1,
+            "within": true
+          },
+          {
+            "case": "hip-cuda",
+            "size": "8k",
+            "kind": "prefill",
+            "split": "holdout",
+            "predicted_tok_s": 525.573,
+            "measured_tok_s": 523.012,
+            "error_fraction": 0.004896637170848983,
+            "tolerance": 0.15,
+            "within": true
+          }
+        ],
+        "calibrated": false,
+        "scope": "Same configuration/context training-code throughput predicts held-out chat. No held-out routing or acceptance used in the fit. Does not qualify new scheduling policies."
+      }
+    },
+    "full": {
+      "measurements": {
+        "source": {
+          "path": "build-glm-release/tr16-redesign-20261014/after-full/results.json",
+          "sha256": "9407426f15ba3397896907ee99d7136cd994e1f848175eae839416b6757ee1e5"
+        },
+        "executables": {
+          "cuda/strata-glm-decode": "ecf5e681400080970269adec3e5c67e8c6fc859f33bfa49e297275336cfffcd1",
+          "cuda/strata-glm-gpu-worker": "8e367c052b7c3f83a3a43b731741fb8c75b7c2208a03c99c0346c96266015725",
+          "hip/strata-glm-decode": "6294c431aa2072946a30bdbb0badba38cec1f931b8334e676abfd39c87e8d1af",
+          "hip/strata-glm-gpu-worker": "8a751896e0a178a6abde8c3cb5a283ac5f238b98bdd6772d1ea1425ddd0fa287"
+        },
+        "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+        "source_sha256": {
+          "CMakeLists.txt": "c40222968cd7e36ac3c7fedcc071b34493e2680fa5ab248a97b4ff29e4eeaecb",
+          "src/program/glm_decode.cpp": "73b3cc97d02bb8a6739095aa0a6100bc646c99f870f4d14c56e7feca26d49f1c",
+          "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+          "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+          "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+          "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+          "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+          "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+          "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+          "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+        },
+        "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+        "timed_trials_per_process": 3,
+        "weight_identity": [
+          {
+            "path": "GLM-5.3-Flash-Q23-assembled.gguf",
+            "size": 120875172704,
+            "mtime_ns": 1791633119626455167
+          }
+        ],
+        "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+        "expert_prior_sha256": "feb62d061e447a664ca005f11684a89cde3ce6eabf83c5b8672ab7c3558cd9e2",
+        "config_sha256": "4dd573efa843f7f597ecad639d9ba568012cd0c1eedd96b4d426efb95d4a1f29",
+        "executed_processes": 2,
+        "executed_matrix": false,
+        "rows": [
+          {
+            "case": "cuda",
+            "size": "8k",
+            "prompt": "train-code",
+            "processes": 1,
+            "quality_qualified": false,
+            "repetitions": [
+              0
+            ],
+            "timed_decode_trials": 3,
+            "decode_tok_s": 28.3773,
+            "decode_range": [
+              28.0274,
+              28.553
+            ],
+            "prefill_tok_s": 345.11,
+            "prefill_range": [
+              343.422,
+              345.413
+            ],
+            "elapsed_seconds": 413.228007933998,
+            "model_loading_and_other_seconds": 266.48060793399804,
+            "cpu_bytes_per_output": 1524254421.3333333,
+            "last_prompt_logits_hashes": [
+              "1335972b29ef21a1e409f2dfbe16b02ca1ef41fa0c3c5824a644dca5160bd666"
+            ]
+          }
+        ],
+        "excluded": [
+          {
+            "case": "hip",
+            "prompt": "train-code.ids",
+            "repetition": 0,
+            "returncode": 0,
+            "reason": "Final build checks overlapped this run; retained as unqualified evidence",
+            "warmup_loop": null,
+            "timed_loop_trials": [],
+            "unqualified_decode_tok_s": 31.8344,
+            "unqualified_prefill_tok_s": 526.219
+          }
+        ],
+        "complete_matrix": false
+      },
+      "holdout": {
+        "records": [],
+        "calibrated": false,
+        "scope": "Same configuration/context training-code throughput predicts held-out chat. No held-out routing or acceptance used in the fit. Does not qualify new scheduling policies."
+      }
+    }
+  },
+  "before": {
+    "source": {
+      "path": "build-glm-release/tr16-redesign-20261014/before-reap224-trials/results.json",
+      "sha256": "9822bc321068d0a6db7ff1e18139b2bdba51be31084493e140c5137231761326"
+    },
+    "executables": {
+      "cuda/strata-glm-decode": "7bb2f7f0c12ccc6f232e1d352051c53245426695e520814591f7a642a0d18485",
+      "cuda/strata-glm-gpu-worker": "aac0dfb83f187bbbac65f5fabb4cc3f2fb0e06a4b3ca00488c16400e4e8976e2",
+      "hip/strata-glm-decode": "19d347f119eb3dfcb4f9f947e412e8345cbe317cdfe1a24aaae2865cb1842805",
+      "hip/strata-glm-gpu-worker": "57807b320d571ce29ebdaf376895169945dbe7b0585ce5e2b3865d12b34f48a8"
+    },
+    "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+    "source_sha256": {
+      "CMakeLists.txt": "10d15723d61072f1864141928982a86b8c9c677992cda59b476656299be8d0bb",
+      "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+      "src/program/glm_gpu_worker.cpp": "58fff2e77d5c3ebfa324718cb03384ea764021dec369d94e510a2ee4f69d9ed5",
+      "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+      "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+      "src/host/glm_mixed.c": "52f04c1ff898e4fd2ca059d0e4a9673a47c2172aaeecf787be055e8d45aeeb2e",
+      "include/strata/host/glm_mixed.h": "8816ba5c242beffd2e0152267877e1aa9d893445aafaf968d540d9c7ef27e7e3",
+      "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+      "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+      "tools/glm_mixed_bench.py": "e6ab53fd1aa40491f0a135ff807665efbccc3ae6a49cc54c9f9a3bc094f7aa68"
+    },
+    "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+    "timed_trials_per_process": 3,
+    "weight_identity": [
+      {
+        "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+        "size": 95538419872,
+        "mtime_ns": 1791722782811009660
+      }
+    ],
+    "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+    "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+    "config_sha256": "39a7cc5b0d3cbaa3246e58015788a318413ab9594ddabaf7f1b4b7ccf3eb8c05",
+    "executed_processes": 3,
+    "executed_matrix": false,
+    "rows": [
+      {
+        "case": "cuda",
+        "size": "8k",
+        "prompt": "train-code",
+        "processes": 1,
+        "quality_qualified": false,
+        "repetitions": [
+          0
+        ],
+        "timed_decode_trials": 3,
+        "decode_tok_s": 32.2897,
+        "decode_range": [
+          30.4486,
+          33.2153
+        ],
+        "prefill_tok_s": 422.915,
+        "prefill_range": [
+          414.488,
+          423.804
+        ],
+        "elapsed_seconds": 261.1467481160071,
+        "model_loading_and_other_seconds": 136.57934811600705,
+        "cpu_bytes_per_output": 1421676544.0,
+        "last_prompt_logits_hashes": [
+          "f21023ef87754cdc42150baadce6e7db4d0a1c038159c2494049080eea4cad38"
+        ]
+      },
+      {
+        "case": "hip",
+        "size": "8k",
+        "prompt": "train-code",
+        "processes": 1,
+        "quality_qualified": false,
+        "repetitions": [
+          0
+        ],
+        "timed_decode_trials": 3,
+        "decode_tok_s": 34.0263,
+        "decode_range": [
+          31.5695,
+          34.4945
+        ],
+        "prefill_tok_s": 555.873,
+        "prefill_range": [
+          547.125,
+          556.963
+        ],
+        "elapsed_seconds": 242.13496408399806,
+        "model_loading_and_other_seconds": 132.40646408399806,
+        "cpu_bytes_per_output": 1177391829.3333333,
+        "last_prompt_logits_hashes": [
+          "d20a4a04a24ff197745be2cabeac268dc44b351f921d2f7d7f93e314bbb93433"
+        ]
+      },
+      {
+        "case": "hip-cuda",
+        "size": "8k",
+        "prompt": "train-code",
+        "processes": 1,
+        "quality_qualified": false,
+        "repetitions": [
+          0
+        ],
+        "timed_decode_trials": 3,
+        "decode_tok_s": 33.522,
+        "decode_range": [
+          32.2752,
+          34.4946
+        ],
+        "prefill_tok_s": 525.814,
+        "prefill_range": [
+          518.985,
+          528.061
+        ],
+        "elapsed_seconds": 247.1462241429981,
+        "model_loading_and_other_seconds": 135.11652414299812,
+        "cpu_bytes_per_output": 611733589.3333334,
+        "last_prompt_logits_hashes": [
+          "53878b67869a51566fbebeede8df0c43abd8ea44840b74a6e723ef497a9e7545"
+        ]
+      }
+    ],
+    "excluded": [],
+    "complete_matrix": false
+  },
+  "upstream_comparison": [
+    {
+      "case": "cuda",
+      "size": "8k",
+      "prompt": "train-code",
+      "prefill_change_percent": -6.601326507690675,
+      "decode_change_percent": -3.5841150583622694,
+      "prefill_last_logits_equal": true,
+      "process_counts": [
+        1,
+        1
+      ]
+    },
+    {
+      "case": "hip-cuda",
+      "size": "8k",
+      "prompt": "train-code",
+      "prefill_change_percent": -0.04583369784753044,
+      "decode_change_percent": -7.202732533858347,
+      "prefill_last_logits_equal": true,
+      "process_counts": [
+        1,
+        1
+      ]
+    }
+  ],
+  "historical_trace_transport_bounds": {
+    "full": {
+      "scope": "Fixed-byte transfer bounds at supplied measured rates; exclude compute, control, protocol overhead and contention",
+      "cold_prefill": {
+        "disk:model": {
+          "tok_s": 68.78232926748863,
+          "expert_read_seconds": 119.10035742090106,
+          "maximum_disk_MB_per_output_at_50_tok_s": 18.671464015016856
+        },
+        "disk:work": {
+          "tok_s": 271.4967567882218,
+          "expert_read_seconds": 30.173472777025047,
+          "maximum_disk_MB_per_output_at_50_tok_s": 73.69977112655222
+        }
+      },
+      "encoding_only_bounds": {
+        "cold_prefill": {
+          "disk:model": {
+            "tok_s": 72.54293453580502,
+            "expert_read_seconds": 112.92622848
+          },
+          "disk:work": {
+            "tok_s": 290.17173814322007,
+            "expert_read_seconds": 28.23155712
+          }
+        },
+        "scope": "PCIe lane/encoding ceiling only; omits packet overhead, storage limits and all computation"
+      }
+    },
+    "reap224": {
+      "scope": "Fixed-byte transfer bounds at supplied measured rates; exclude compute, control, protocol overhead and contention",
+      "all_ram_misses_streamed_to_gpus_tok_s": 29.31729028535617,
+      "cold_prefill": {
+        "disk:model": {
+          "tok_s": 88.43442334391395,
+          "expert_read_seconds": 92.63361132736749,
+          "maximum_disk_MB_per_output_at_50_tok_s": 18.671464015016856
+        },
+        "disk:work": {
+          "tok_s": 349.0672587277137,
+          "expert_read_seconds": 23.468256604352813,
+          "maximum_disk_MB_per_output_at_50_tok_s": 73.69977112655222
+        }
+      },
+      "encoding_only_bounds": {
+        "all_ram_misses_streamed_to_gpus_tok_s": 32.21024183154307,
+        "cold_prefill": {
+          "disk:model": {
+            "tok_s": 93.26948726032073,
+            "expert_read_seconds": 87.83151104000001
+          },
+          "disk:work": {
+            "tok_s": 373.0779490412829,
+            "expert_read_seconds": 21.957877760000002
+          }
+        },
+        "scope": "PCIe lane/encoding ceiling only; omits packet overhead, storage limits and all computation"
+      }
+    }
+  },
+  "historical_trace_transport_bounds_scope": "CPU bytes from pre-merge redesign-trace-v2, fixed routes/acceptance. Full/reap differ only in cold expert-table read size here; no full-pack decode prediction.",
+  "complete": false,
+  "measurement_execution_complete": false,
+  "follow_up": {
+    "maya-old-control": {
+      "source": {
+        "path": "build-glm-release/tr16-redesign-20261014/maya-old-control/results.json",
+        "sha256": "662f7d0c8b6414062a341e70d5f6f930edf607bfaf5faecb74701f524c44fec8"
+      },
+      "executables": {
+        "cuda/strata-glm-decode": "ecf5e681400080970269adec3e5c67e8c6fc859f33bfa49e297275336cfffcd1",
+        "cuda/strata-glm-gpu-worker": "8e367c052b7c3f83a3a43b731741fb8c75b7c2208a03c99c0346c96266015725",
+        "hip/strata-glm-decode": "6294c431aa2072946a30bdbb0badba38cec1f931b8334e676abfd39c87e8d1af",
+        "hip/strata-glm-gpu-worker": "8a751896e0a178a6abde8c3cb5a283ac5f238b98bdd6772d1ea1425ddd0fa287"
+      },
+      "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+      "source_sha256": {
+        "CMakeLists.txt": "cd1a10ec2f006fbe3085d478bbe4efae20795bd4afc71dd60be43f018365d2ee",
+        "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+        "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+        "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+        "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+        "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+        "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+        "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+        "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+        "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+      },
+      "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+      "timed_trials_per_process": 3,
+      "weight_identity": [
+        {
+          "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+          "size": 95538419872,
+          "mtime_ns": 1791722782811009660
+        }
+      ],
+      "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "config_sha256": "17680526104d8ef16d852ec2454e05e56225fe5879c4d43d381b9db29b71b1cf",
+      "executed_processes": 1,
+      "executed_matrix": false,
+      "rows": [
+        {
+          "case": "hip-cuda",
+          "size": "8k",
+          "prompt": "holdout-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 3,
+          "decode_tok_s": 31.7183,
+          "decode_range": [
+            30.0092,
+            32.9242
+          ],
+          "prefill_tok_s": 519.367,
+          "prefill_range": [
+            508.283,
+            520.576
+          ],
+          "elapsed_seconds": 252.13520582899946,
+          "model_loading_and_other_seconds": 135.32350582899946,
+          "cpu_bytes_per_output": 743621162.6666666,
+          "last_prompt_logits_hashes": [
+            "50bd073d50e96341683c0193ec0af1d17d7a6e2177cabf80679113cbb3a19fab"
+          ]
+        }
+      ],
+      "excluded": [],
+      "complete_matrix": false
+    },
+    "maya-default-control": {
+      "source": {
+        "path": "build-glm-release/tr16-redesign-20261014/maya-default-control/results.json",
+        "sha256": "fb27a5b80a86f3e329ba2386871a6f9ea5497c77d28cfff45776a77435398c54"
+      },
+      "executables": {
+        "cuda/strata-glm-decode": "5855225d944c4ff76afe1864e36a71ca5b24493cdd7d785e14079972459e54e1",
+        "cuda/strata-glm-gpu-worker": "2e0ce9271d4e549e6abe0dac37f87951dbd9985c234de5c08343ceb5481902eb",
+        "hip/strata-glm-decode": "5356dd151fcfe23049dacd13a4de1f99e5b8ef01ef0ffd6d1080719d875f0997",
+        "hip/strata-glm-gpu-worker": "28b4eb9bf028e05170066d2ef50e400be79e7754dd7906dba9da2ba64783b2d1"
+      },
+      "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+      "source_sha256": {
+        "CMakeLists.txt": "cd1a10ec2f006fbe3085d478bbe4efae20795bd4afc71dd60be43f018365d2ee",
+        "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+        "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+        "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+        "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+        "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+        "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+        "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+        "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+        "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+      },
+      "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+      "timed_trials_per_process": 3,
+      "weight_identity": [
+        {
+          "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+          "size": 95538419872,
+          "mtime_ns": 1791722782811009660
+        }
+      ],
+      "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "config_sha256": "17680526104d8ef16d852ec2454e05e56225fe5879c4d43d381b9db29b71b1cf",
+      "executed_processes": 1,
+      "executed_matrix": false,
+      "rows": [
+        {
+          "case": "hip-cuda",
+          "size": "8k",
+          "prompt": "holdout-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 3,
+          "decode_tok_s": 30.0891,
+          "decode_range": [
+            29.999,
+            31.0433
+          ],
+          "prefill_tok_s": 513.566,
+          "prefill_range": [
+            512.739,
+            521.184
+          ],
+          "elapsed_seconds": 255.14489802699973,
+          "model_loading_and_other_seconds": 135.7443980269997,
+          "cpu_bytes_per_output": 699388842.6666666,
+          "last_prompt_logits_hashes": [
+            "50bd073d50e96341683c0193ec0af1d17d7a6e2177cabf80679113cbb3a19fab"
+          ]
+        }
+      ],
+      "excluded": [],
+      "complete_matrix": false
+    },
+    "maya-admission": {
+      "source": {
+        "path": "build-glm-release/tr16-redesign-20261014/maya-admission/results.json",
+        "sha256": "5ca1bd5c62f411faea7bdee4578a923d785d0f553c5a58f395ab8f265176577c"
+      },
+      "executables": {
+        "cuda/strata-glm-decode": "5855225d944c4ff76afe1864e36a71ca5b24493cdd7d785e14079972459e54e1",
+        "cuda/strata-glm-gpu-worker": "2e0ce9271d4e549e6abe0dac37f87951dbd9985c234de5c08343ceb5481902eb",
+        "hip/strata-glm-decode": "5356dd151fcfe23049dacd13a4de1f99e5b8ef01ef0ffd6d1080719d875f0997",
+        "hip/strata-glm-gpu-worker": "28b4eb9bf028e05170066d2ef50e400be79e7754dd7906dba9da2ba64783b2d1"
+      },
+      "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+      "source_sha256": {
+        "CMakeLists.txt": "cd1a10ec2f006fbe3085d478bbe4efae20795bd4afc71dd60be43f018365d2ee",
+        "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+        "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+        "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+        "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+        "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+        "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+        "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+        "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+        "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+      },
+      "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+      "timed_trials_per_process": 3,
+      "weight_identity": [
+        {
+          "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+          "size": 95538419872,
+          "mtime_ns": 1791722782811009660
+        }
+      ],
+      "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "config_sha256": "0b51bde70e8097e85a10ce223c9e15a6092deec2ad2406e45c2ee88078932655",
+      "executed_processes": 1,
+      "executed_matrix": false,
+      "rows": [
+        {
+          "case": "hip-cuda",
+          "size": "8k",
+          "prompt": "holdout-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 3,
+          "decode_tok_s": 30.677,
+          "decode_range": [
+            30.2221,
+            30.7495
+          ],
+          "prefill_tok_s": 517.967,
+          "prefill_range": [
+            513.543,
+            521.413
+          ],
+          "elapsed_seconds": 256.1449836169995,
+          "model_loading_and_other_seconds": 137.00088361699952,
+          "cpu_bytes_per_output": 659057237.3333334,
+          "last_prompt_logits_hashes": [
+            "50bd073d50e96341683c0193ec0af1d17d7a6e2177cabf80679113cbb3a19fab"
+          ]
+        }
+      ],
+      "excluded": [],
+      "complete_matrix": false
+    },
+    "prefill-10of14": {
+      "source": {
+        "path": "build-glm-release/tr16-redesign-20261014/prefill-10of14/results.json",
+        "sha256": "f8654023d6862f4f0e1b79615a7085893d8444f66a78c0217bd47f3d36c9c6b6"
+      },
+      "executables": {
+        "cuda/strata-glm-decode": "5855225d944c4ff76afe1864e36a71ca5b24493cdd7d785e14079972459e54e1",
+        "cuda/strata-glm-gpu-worker": "2e0ce9271d4e549e6abe0dac37f87951dbd9985c234de5c08343ceb5481902eb",
+        "hip/strata-glm-decode": "5356dd151fcfe23049dacd13a4de1f99e5b8ef01ef0ffd6d1080719d875f0997",
+        "hip/strata-glm-gpu-worker": "28b4eb9bf028e05170066d2ef50e400be79e7754dd7906dba9da2ba64783b2d1"
+      },
+      "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+      "source_sha256": {
+        "CMakeLists.txt": "cd1a10ec2f006fbe3085d478bbe4efae20795bd4afc71dd60be43f018365d2ee",
+        "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+        "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+        "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+        "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+        "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+        "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+        "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+        "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+        "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+      },
+      "protocol": "new process per repetition; one 32-token engine warmup then 1 timed 32-token decode trials",
+      "timed_trials_per_process": 1,
+      "weight_identity": [
+        {
+          "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+          "size": 95538419872,
+          "mtime_ns": 1791722782811009660
+        }
+      ],
+      "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "config_sha256": "17680526104d8ef16d852ec2454e05e56225fe5879c4d43d381b9db29b71b1cf",
+      "executed_processes": 2,
+      "executed_matrix": false,
+      "rows": [
+        {
+          "case": "hip-cuda",
+          "size": "2k",
+          "prompt": "holdout-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 1,
+          "decode_tok_s": 32.1048,
+          "decode_range": [
+            32.1048,
+            32.1048
+          ],
+          "prefill_tok_s": 168.0305,
+          "prefill_range": [
+            166.682,
+            169.379
+          ],
+          "elapsed_seconds": 165.09249198999896,
+          "model_loading_and_other_seconds": 135.42426298999897,
+          "cpu_bytes_per_output": 987230208.0,
+          "last_prompt_logits_hashes": [
+            "4a5144f2d1a53674629cc7d89c912226bb9b640c5bfde6b378a055bf2ac357e3"
+          ]
+        },
+        {
+          "case": "hip-cuda",
+          "size": "8k",
+          "prompt": "holdout-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 1,
+          "decode_tok_s": 27.5268,
+          "decode_range": [
+            27.5268,
+            27.5268
+          ],
+          "prefill_tok_s": 562.09,
+          "prefill_range": [
+            561.307,
+            562.873
+          ],
+          "elapsed_seconds": 171.09367946699786,
+          "model_loading_and_other_seconds": 136.33069946699786,
+          "cpu_bytes_per_output": 1173602304.0,
+          "last_prompt_logits_hashes": [
+            "c099a797a12182dec03e54fcaa3ee0985c463f0bbabec415bf7a7ea56086a01c"
+          ]
+        }
+      ],
+      "excluded": [],
+      "complete_matrix": false
+    },
+    "late-upstream-before": {
+      "source": {
+        "path": "build-glm-release/tr16-redesign-20261014/late-upstream-before/results.json",
+        "sha256": "fbdf9981588218bcabaa866528200771b52bbdf2acb0c6fffd9db2b9185aaed8"
+      },
+      "executables": {
+        "cuda/strata-glm-decode": "7bb2f7f0c12ccc6f232e1d352051c53245426695e520814591f7a642a0d18485",
+        "cuda/strata-glm-gpu-worker": "aac0dfb83f187bbbac65f5fabb4cc3f2fb0e06a4b3ca00488c16400e4e8976e2",
+        "hip/strata-glm-decode": "19d347f119eb3dfcb4f9f947e412e8345cbe317cdfe1a24aaae2865cb1842805",
+        "hip/strata-glm-gpu-worker": "57807b320d571ce29ebdaf376895169945dbe7b0585ce5e2b3865d12b34f48a8"
+      },
+      "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+      "source_sha256": {
+        "CMakeLists.txt": "cd1a10ec2f006fbe3085d478bbe4efae20795bd4afc71dd60be43f018365d2ee",
+        "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+        "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+        "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+        "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+        "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+        "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+        "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+        "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+        "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+      },
+      "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+      "timed_trials_per_process": 3,
+      "weight_identity": [
+        {
+          "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+          "size": 95538419872,
+          "mtime_ns": 1791722782811009660
+        }
+      ],
+      "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "config_sha256": "17680526104d8ef16d852ec2454e05e56225fe5879c4d43d381b9db29b71b1cf",
+      "executed_processes": 1,
+      "executed_matrix": false,
+      "rows": [
+        {
+          "case": "cuda",
+          "size": "8k",
+          "prompt": "train-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 3,
+          "decode_tok_s": 30.9439,
+          "decode_range": [
+            29.4127,
+            33.1315
+          ],
+          "prefill_tok_s": 392.884,
+          "prefill_range": [
+            392.068,
+            395.288
+          ],
+          "elapsed_seconds": 269.1564151919956,
+          "model_loading_and_other_seconds": 138.8144151919956,
+          "cpu_bytes_per_output": 1364148736.0,
+          "last_prompt_logits_hashes": [
+            "f21023ef87754cdc42150baadce6e7db4d0a1c038159c2494049080eea4cad38"
+          ]
+        }
+      ],
+      "excluded": [],
+      "complete_matrix": false
+    },
+    "late-upstream-after": {
+      "source": {
+        "path": "build-glm-release/tr16-redesign-20261014/late-upstream-after/results.json",
+        "sha256": "21e5a048763052ba17fb68a8bef64d6765453a2af86bbc9fbc43d9ce03fa94ef"
+      },
+      "executables": {
+        "cuda/strata-glm-decode": "ecf5e681400080970269adec3e5c67e8c6fc859f33bfa49e297275336cfffcd1",
+        "cuda/strata-glm-gpu-worker": "8e367c052b7c3f83a3a43b731741fb8c75b7c2208a03c99c0346c96266015725",
+        "hip/strata-glm-decode": "6294c431aa2072946a30bdbb0badba38cec1f931b8334e676abfd39c87e8d1af",
+        "hip/strata-glm-gpu-worker": "8a751896e0a178a6abde8c3cb5a283ac5f238b98bdd6772d1ea1425ddd0fa287"
+      },
+      "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+      "source_sha256": {
+        "CMakeLists.txt": "c40222968cd7e36ac3c7fedcc071b34493e2680fa5ab248a97b4ff29e4eeaecb",
+        "src/program/glm_decode.cpp": "2da712c6e9e61e5c3e4b551131d9c92256d83a28e71665af246b396eeb036450",
+        "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+        "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+        "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+        "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+        "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+        "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+        "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+        "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+      },
+      "protocol": "new process per repetition; one 512-token engine warmup then 3 timed 512-token decode trials",
+      "timed_trials_per_process": 3,
+      "weight_identity": [
+        {
+          "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+          "size": 95538419872,
+          "mtime_ns": 1791722782811009660
+        }
+      ],
+      "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "config_sha256": "17680526104d8ef16d852ec2454e05e56225fe5879c4d43d381b9db29b71b1cf",
+      "executed_processes": 1,
+      "executed_matrix": false,
+      "rows": [
+        {
+          "case": "cuda",
+          "size": "8k",
+          "prompt": "train-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 3,
+          "decode_tok_s": 30.8213,
+          "decode_range": [
+            29.5092,
+            33.1774
+          ],
+          "prefill_tok_s": 391.502,
+          "prefill_range": [
+            391.034,
+            395.052
+          ],
+          "elapsed_seconds": 272.1511995619949,
+          "model_loading_and_other_seconds": 141.69759956199488,
+          "cpu_bytes_per_output": 1364148736.0,
+          "last_prompt_logits_hashes": [
+            "f21023ef87754cdc42150baadce6e7db4d0a1c038159c2494049080eea4cad38"
+          ]
+        }
+      ],
+      "excluded": [],
+      "complete_matrix": false
+    },
+    "primary-only-smoke": {
+      "source": {
+        "path": "build-glm-release/tr16-redesign-20261014/primary-only-smoke/results.json",
+        "sha256": "fbd74bce7c92acfd2a5413ef45be3d5adaa025dc786c6e989ab396c08456064e"
+      },
+      "executables": {
+        "cuda/strata-glm-decode": "4b44f75af8e8e43493d65aafeb06583c2a05d1877b5cbe4d4ffdef7ddac40988",
+        "cuda/strata-glm-gpu-worker": "2e0ce9271d4e549e6abe0dac37f87951dbd9985c234de5c08343ceb5481902eb",
+        "hip/strata-glm-decode": "ee706d2073daf053bdd8505cec6bd8cf1fc090f27999abb3a3067ae3bc95ac93",
+        "hip/strata-glm-gpu-worker": "28b4eb9bf028e05170066d2ef50e400be79e7754dd7906dba9da2ba64783b2d1"
+      },
+      "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+      "source_sha256": {
+        "CMakeLists.txt": "c40222968cd7e36ac3c7fedcc071b34493e2680fa5ab248a97b4ff29e4eeaecb",
+        "src/program/glm_decode.cpp": "73b3cc97d02bb8a6739095aa0a6100bc646c99f870f4d14c56e7feca26d49f1c",
+        "src/program/glm_gpu_worker.cpp": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+        "src/program/glm_gpu_buffers.hpp": "6c54b74a6cffe2ac08fc1db4403b706cba215c337f45a34fbd33856bf694f69a",
+        "src/program/glm_resident_executor.hpp": "884dbce9e10a920bcc5573e94e9df01de4c503ff3216b9a83541aefbf5f48817",
+        "src/host/glm_mixed.c": "80e4f40c3aa8e4d05c18c7d24b1837b414784977eca5c1a5be1549327cdea945",
+        "include/strata/host/glm_mixed.h": "afd6aba9cf9c0a0d488d62fa48f38b87983537945f296ab1d0fc6784394d0327",
+        "include/strata/core/glm_mixed.hpp": "7cdbf10c0073b7a1504324fd7b767101747a56fe73a295d21d6f2e4d1cf78447",
+        "tools/glm_mixed_run.py": "1d0b1c6d3f0c364977e2e1381f2ac2cd5aadadf0ae182d4711fe8432fb8d8106",
+        "tools/glm_mixed_bench.py": "946ffd54ee064ba6090e2ed1d41dc1105e02b5db1d461a313776b2ef229dc638"
+      },
+      "protocol": "new process per repetition; one 32-token engine warmup then 1 timed 32-token decode trials",
+      "timed_trials_per_process": 1,
+      "weight_identity": [
+        {
+          "path": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+          "size": 95538419872,
+          "mtime_ns": 1791722782811009660
+        }
+      ],
+      "weight_identity_scope": "Weight identity uses size and mtime, not a full content hash.",
+      "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+      "config_sha256": "1c72f3ecc40b8fdb95738c30495fcbceb4cb565fff4d5384c9bd5260b4669376",
+      "executed_processes": 2,
+      "executed_matrix": false,
+      "rows": [
+        {
+          "case": "hip",
+          "size": "2k",
+          "prompt": "holdout-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 1,
+          "decode_tok_s": 12.9069,
+          "decode_range": [
+            12.9069,
+            12.9069
+          ],
+          "prefill_tok_s": 242.1035,
+          "prefill_range": [
+            241.958,
+            242.249
+          ],
+          "elapsed_seconds": 272.1511897349992,
+          "model_loading_and_other_seconds": 247.2950697349992,
+          "cpu_bytes_per_output": 1888063488.0,
+          "last_prompt_logits_hashes": [
+            "600d2c0286eb672d981d19c4a39af09a5eaed1f7a1784a3f0747f9058d1ab7f1"
+          ]
+        },
+        {
+          "case": "hip-cuda",
+          "size": "2k",
+          "prompt": "holdout-code",
+          "processes": 1,
+          "quality_qualified": false,
+          "repetitions": [
+            0
+          ],
+          "timed_decode_trials": 1,
+          "decode_tok_s": 32.1882,
+          "decode_range": [
+            32.1882,
+            32.1882
+          ],
+          "prefill_tok_s": 244.359,
+          "prefill_range": [
+            244.199,
+            244.519
+          ],
+          "elapsed_seconds": 152.08637354500388,
+          "model_loading_and_other_seconds": 130.0357475450039,
+          "cpu_bytes_per_output": 894943232.0,
+          "last_prompt_logits_hashes": [
+            "600d2c0286eb672d981d19c4a39af09a5eaed1f7a1784a3f0747f9058d1ab7f1"
+          ]
+        }
+      ],
+      "excluded": [],
+      "complete_matrix": false,
+      "scope": "32-token numerical/liveness smoke, not performance qualification; parity checks overlapped the single-GPU control"
+    }
+  },
+  "wrap_up": {
+    "reason": "User requested wrap-up; stopped between completed inference processes",
+    "completed_rows": 2,
+    "full_matrix_complete": false,
+    "trace_collection_complete": false
+  },
+  "limitations": [
+    "Quality cannot be simulated; the existing 152/164 floor remains an empirical gate.",
+    "Repeated prompts warm the exact workload cache; these rates do not predict fresh-request throughput.",
+    "Cold disk bounds assume reading every expert weight once, without RAM-cache hits.",
+    "Three timed trials in one process are a small sample, not a confidence interval; restart controls are retained separately.",
+    "Same-shape holdouts do not validate changes of architecture, precision, pruning or speculative acceptance."
+  ]
+}

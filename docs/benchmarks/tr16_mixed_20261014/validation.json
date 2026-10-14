@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-14",
+  "python_checks": 128,
+  "cuda_glm_checks": 22,
+  "hip_glm_checks": 21,
+  "initial_hip_suite": "Missing test targets and absent LD_LIBRARY_PATH; built targets and reran with ROCm 10.1 path, all passed",
+  "backends": {
+    "cuda": {
+      "arch": "sm_120"
+    },
+    "hip": {
+      "arch": "gfx1201",
+      "rocm": "10.1",
+      "required_env": {
+        "LD_LIBRARY_PATH": "/opt/rocm/core-10.1/lib"
+      }
+    }
+  },
+  "worker_default_component": {
+    "cuda": {
+      "bytes": 983040,
+      "old_sha256": "129d0c498fc20cf647e767dff1243cd5f150c597556fcbaee8ecd6d046eede69",
+      "new_sha256": "129d0c498fc20cf647e767dff1243cd5f150c597556fcbaee8ecd6d046eede69",
+      "byte_equal": true,
+      "scope": "layer 3, experts 0/1, rows 1/2/4/8, two repeats; not whole-decode parity"
+    },
+    "hip": {
+      "bytes": 983040,
+      "old_sha256": "129d0c498fc20cf647e767dff1243cd5f150c597556fcbaee8ecd6d046eede69",
+      "new_sha256": "129d0c498fc20cf647e767dff1243cd5f150c597556fcbaee8ecd6d046eede69",
+      "byte_equal": true,
+      "scope": "layer 3, experts 0/1, rows 1/2/4/8, two repeats; not whole-decode parity"
+    }
+  },
+  "simulator_example": {
+    "transfer_bytes": 9100000,
+    "source": "ram",
+    "target": "hip",
+    "milliseconds": 0.6359397802765164,
+    "scope": "Component example, not GLM throughput"
+  },
+  "quality": {
+    "floor": 152,
+    "total": 164,
+    "new_humaneval_run": false
+  },
+  "skipped": [
+    "SYCL build/runtime: SDK absent",
+    "Complete full-model matrix",
+    "Fresh instrumented full/reap routing matrix"
+  ],
+  "binaries": {
+    "cuda/strata-glm-decode": "4b44f75af8e8e43493d65aafeb06583c2a05d1877b5cbe4d4ffdef7ddac40988",
+    "cuda/strata-glm-gpu-worker": "2e0ce9271d4e549e6abe0dac37f87951dbd9985c234de5c08343ceb5481902eb",
+    "hip/strata-glm-decode": "ee706d2073daf053bdd8505cec6bd8cf1fc090f27999abb3a3067ae3bc95ac93",
+    "hip/strata-glm-gpu-worker": "28b4eb9bf028e05170066d2ef50e400be79e7754dd7906dba9da2ba64783b2d1"
+  },
+  "primary_only_prefill_smoke": {
+    "prompt": "2k/holdout-code",
+    "generated_tokens": 32,
+    "cases": [
+      {
+        "case": "hip",
+        "returncode": 0,
+        "prefill_groups": null,
+        "prefill_last_logits_sha256": "600d2c0286eb672d981d19c4a39af09a5eaed1f7a1784a3f0747f9058d1ab7f1"
+      },
+      {
+        "case": "hip-cuda",
+        "returncode": 0,
+        "prefill_groups": {
+          "primary": 14,
+          "worker": 0
+        },
+        "prefill_last_logits_sha256": "600d2c0286eb672d981d19c4a39af09a5eaed1f7a1784a3f0747f9058d1ab7f1"
+      }
+    ],
+    "prefill_last_logits_equal": true,
+    "scope": "Liveness and last-prompt logits only; no decode quality/performance qualification; parity checks overlapped single-GPU control"
+  },
+  "c11_simulator_binding": "Loaded CUDA-build shared library; minimum routes 6/gain 10 selection passed"
+}

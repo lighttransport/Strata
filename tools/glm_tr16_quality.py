@@ -66,15 +66,17 @@ def compare(result, baseline):
     return check_quality(result['metrics'], baseline['metrics'], TOLERANCE)
 
 
-def quality_guard(output, command, record_cpu_interference=False):
+def quality_guard(output, command, record_cpu_interference=False, shared_model=False, allow_desktop=False):
     """CPU contention may be recorded for scoring, never for timing claims."""
     return [sys.executable, str(ROOT / 'tools/glm_q2_run_guard.py'), '--output', str(output / 'eval'),
             '--min-gpu-free-mib', '512', '--require-gpu-idle',
-            '--record-interference' if record_cpu_interference else '--require-idle', '--', *command]
+            '--record-interference' if record_cpu_interference else '--require-idle',
+            *(['--memory-metric=pss'] if shared_model else []), *(['--allow-desktop-gpu'] if allow_desktop else []), '--', *command]
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument('--allow-desktop-gpu', action='store_true')
     ap.add_argument('--config', type=Path, required=True)
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--baseline', type=Path)
@@ -102,6 +104,7 @@ def main():
            '--prefill-batch=256', '--gpu-budget-mib=' + str(c['gpu_budget_mib']),
            '--cpu-affinity=' + c['cpu_affinity'], '--decode-graphs',
            '--decode-cache-mib=' + str(c['decode_cache_mib'])]
+    if c.get('prefill_experts'): cmd.append('--prefill-experts='+c['prefill_experts'])
     # An assembled single-file model has no separate expert pack.
     if c.get('expert_pack'):
         cmd.append('--expert-pack=' + c['expert_pack'])
@@ -119,10 +122,13 @@ def main():
         result['baseline_result_sha256'] = digest(args.baseline)
     (output / 'runner.py').write_bytes(Path(__file__).read_bytes())
     (output / 'manifest.json').write_text(json.dumps(result, indent=2) + '\n')
-    wait_idle(args.wait_idle_seconds)
+    if args.allow_desktop_gpu:
+        from glm_mixed_bench import wait_mixed_idle
+        result['desktop_gpu_contexts']=wait_mixed_idle(args.wait_idle_seconds,True)
+    else: wait_idle(args.wait_idle_seconds)
     env = {k: v for k, v in os.environ.items() if not k.startswith('STRATA_')}
     env.update(c['env'])
-    guard = quality_guard(output, cmd, args.record_cpu_interference)
+    guard = quality_guard(output, cmd, args.record_cpu_interference, bool(c['env'].get('STRATA_GLM_MIXED_PRIMARY')),args.allow_desktop_gpu)
     with (output / 'guard.log').open('w') as log:
         proc = subprocess.run(guard, env=env, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
     stdout = (output / 'eval.stdout').read_text() if (output / 'eval.stdout').exists() else ''

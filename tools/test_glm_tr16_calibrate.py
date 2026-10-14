@@ -17,6 +17,15 @@ class CalibrationTest(unittest.TestCase):
             self.assertEqual(args[args.index('--min-gpu-free-mib') + 1], '512')
             self.assertEqual(args[-3:], ['--', 'decoder', '--eval-corpus=test'])
 
+    def test_quality_desktop_allowance_keeps_guards(self):
+        from pathlib import Path
+        from glm_tr16_quality import quality_guard
+        args=quality_guard(Path('/tmp/test'),['decoder'],True,True,True)
+        self.assertIn('--allow-desktop-gpu',args)
+        self.assertIn('--require-gpu-idle',args)
+        self.assertIn('--memory-metric=pss',args)
+        self.assertIn('--record-interference',args)
+
     def test_draft_backend_is_explicit_and_gpu_is_not_fit_as_cpu(self):
         import json
         import tempfile

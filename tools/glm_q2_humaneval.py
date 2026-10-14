@@ -78,6 +78,7 @@ def main():
     parser.add_argument("--speculative", choices=("none", "mtp"), default="none")
     parser.add_argument("--draft-depth", type=int, default=1)
     parser.add_argument("--context", type=int, default=8192)
+    parser.add_argument("--prefill-experts", choices=("mmq", "f16", "f16-batched"), default="mmq")
     parser.add_argument("--prefill-batch", type=int, default=256)
     parser.add_argument("--route-affinity", type=float, default=0.0, help="lossy: STRATA_GLM_ROUTE_AFFINITY for the engine")
     args = parser.parse_args()
@@ -109,7 +110,7 @@ def main():
     template = environment.from_string(metadata["tokenizer.chat_template"])
     engine_args = [str(model), str(args.context), "4096", "15", "0", str(args.prefill_batch), ",".join(map(str, sorted(stops))),
                    str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), "numa", "0", "0", "0", "0", "0",
-                   str(args.decode_cache_mib), "1", "256", "0", "mmq", "4k"]
+                   str(args.decode_cache_mib), "1", "256", "0", args.prefill_experts, "4k"]
     if args.expert_pack:
         engine_args += [str(args.expert_pack.resolve()), str(args.expert_pack_profile.resolve()) if args.expert_pack_profile else "", "native"]
     manifest = {"dataset_revision": REVISION, "dataset_sha256": DATA_SHA256,

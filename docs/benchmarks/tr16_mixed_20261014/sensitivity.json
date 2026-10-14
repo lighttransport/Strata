@@ -1,0 +1,336 @@
+{
+  "sources": [
+    {
+      "path": "build-glm-release/mixed-validation/redesign-prefill-sim-v2.json",
+      "sha256": "812fc4de33c5f9a876c18f217e1e5809060f9fed5c47866928206f271ad52b7a"
+    },
+    {
+      "path": "build-glm-release/mixed-validation/redesign-decode-trace-v2.json",
+      "sha256": "a61bc03bec9753654fb2b906bd8192e4a2bba4841be53233be63eb0e1152348a"
+    },
+    {
+      "path": "build-glm-release/mixed-redesign-trace-v2/results.json",
+      "sha256": "f56060a699ffd24833de3c271da4c53ab9dd9c275fd71b99e8d9cf02420413a8"
+    }
+  ],
+  "quality_qualified": false,
+  "calibrated": false,
+  "scope": "Historical REAP224 aggregate-phase sensitivity, fixed acceptance; future speedups assumed",
+  "decode": [
+    {
+      "host_service_speedup": 1,
+      "between_wait_speedup": 1,
+      "conditional_tok_s": 32.33952066628272
+    },
+    {
+      "host_service_speedup": 1,
+      "between_wait_speedup": 1.25,
+      "conditional_tok_s": 33.76416674397405
+    },
+    {
+      "host_service_speedup": 1,
+      "between_wait_speedup": 1.5,
+      "conditional_tok_s": 34.785773639690184
+    },
+    {
+      "host_service_speedup": 1,
+      "between_wait_speedup": 2,
+      "conditional_tok_s": 36.15313647915145
+    },
+    {
+      "host_service_speedup": 1.25,
+      "between_wait_speedup": 1,
+      "conditional_tok_s": 36.43218409161233
+    },
+    {
+      "host_service_speedup": 1.25,
+      "between_wait_speedup": 1.25,
+      "conditional_tok_s": 38.25036970367117
+    },
+    {
+      "host_service_speedup": 1.25,
+      "between_wait_speedup": 1.5,
+      "conditional_tok_s": 39.56678372377894
+    },
+    {
+      "host_service_speedup": 1.25,
+      "between_wait_speedup": 2,
+      "conditional_tok_s": 41.34545054404464
+    },
+    {
+      "host_service_speedup": 1.5,
+      "between_wait_speedup": 1,
+      "conditional_tok_s": 39.78914091273642
+    },
+    {
+      "host_service_speedup": 1.5,
+      "between_wait_speedup": 1.25,
+      "conditional_tok_s": 41.9678468802696
+    },
+    {
+      "host_service_speedup": 1.5,
+      "between_wait_speedup": 1.5,
+      "conditional_tok_s": 43.557892786778865
+    },
+    {
+      "host_service_speedup": 1.5,
+      "between_wait_speedup": 2,
+      "conditional_tok_s": 45.72330510597785
+    },
+    {
+      "host_service_speedup": 2,
+      "between_wait_speedup": 1,
+      "conditional_tok_s": 44.96853962247547
+    },
+    {
+      "host_service_speedup": 2,
+      "between_wait_speedup": 1.25,
+      "conditional_tok_s": 47.77134967992261
+    },
+    {
+      "host_service_speedup": 2,
+      "between_wait_speedup": 1.5,
+      "conditional_tok_s": 49.84240955049494
+    },
+    {
+      "host_service_speedup": 2,
+      "between_wait_speedup": 2,
+      "conditional_tok_s": 52.698231979473476
+    }
+  ],
+  "prefill": [
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1,
+      "expert_speedup": 1,
+      "primary_groups": 6,
+      "conditional_tok_s": 508.500652873196
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1,
+      "expert_speedup": 1.25,
+      "primary_groups": 6,
+      "conditional_tok_s": 539.4678230454473
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1,
+      "expert_speedup": 1.5,
+      "primary_groups": 6,
+      "conditional_tok_s": 562.2966854363644
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1,
+      "expert_speedup": 2,
+      "primary_groups": 6,
+      "conditional_tok_s": 593.7015496351743
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 1,
+      "primary_groups": 6,
+      "conditional_tok_s": 564.603114355662
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 1.25,
+      "primary_groups": 6,
+      "conditional_tok_s": 603.0386442567308
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 1.5,
+      "primary_groups": 6,
+      "conditional_tok_s": 631.7077778689664
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 2,
+      "primary_groups": 6,
+      "conditional_tok_s": 671.6197215678077
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 1,
+      "primary_groups": 6,
+      "conditional_tok_s": 609.4282624694786
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 1.25,
+      "primary_groups": 6,
+      "conditional_tok_s": 654.452368058698
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 1.5,
+      "primary_groups": 6,
+      "conditional_tok_s": 688.3558457849547
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 2,
+      "primary_groups": 6,
+      "conditional_tok_s": 736.0169423542815
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 2,
+      "expert_speedup": 1,
+      "primary_groups": 6,
+      "conditional_tok_s": 676.5714825072926
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 2,
+      "expert_speedup": 1.25,
+      "primary_groups": 6,
+      "conditional_tok_s": 732.5184729575319
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 2,
+      "expert_speedup": 1.5,
+      "primary_groups": 6,
+      "conditional_tok_s": 775.2567842066306
+    },
+    {
+      "primary": "cuda",
+      "mixer_speedup": 2,
+      "expert_speedup": 2,
+      "primary_groups": 6,
+      "conditional_tok_s": 836.2444539233597
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1,
+      "expert_speedup": 1,
+      "primary_groups": 8,
+      "conditional_tok_s": 590.7504655157757
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1,
+      "expert_speedup": 1.25,
+      "primary_groups": 8,
+      "conditional_tok_s": 632.9614824438289
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1,
+      "expert_speedup": 1.5,
+      "primary_groups": 8,
+      "conditional_tok_s": 664.6210191728744
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1,
+      "expert_speedup": 2,
+      "primary_groups": 8,
+      "conditional_tok_s": 708.9462053191984
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 1,
+      "primary_groups": 8,
+      "conditional_tok_s": 646.0717039994723
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 1.25,
+      "primary_groups": 8,
+      "conditional_tok_s": 696.8987495222372
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 1.5,
+      "primary_groups": 8,
+      "conditional_tok_s": 735.4722617144386
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.25,
+      "expert_speedup": 2,
+      "primary_groups": 8,
+      "conditional_tok_s": 790.1403317558728
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 1,
+      "primary_groups": 8,
+      "conditional_tok_s": 689.0920397636291
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 1.25,
+      "primary_groups": 8,
+      "conditional_tok_s": 747.2178371155288
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 1.5,
+      "primary_groups": 8,
+      "conditional_tok_s": 791.7407347321987
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 1.5,
+      "expert_speedup": 2,
+      "primary_groups": 8,
+      "conditional_tok_s": 855.456060984661
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 2,
+      "expert_speedup": 1,
+      "primary_groups": 8,
+      "conditional_tok_s": 751.6556833933562
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 2,
+      "expert_speedup": 1.25,
+      "primary_groups": 8,
+      "conditional_tok_s": 821.3490009933133
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 2,
+      "expert_speedup": 1.5,
+      "primary_groups": 8,
+      "conditional_tok_s": 875.4642086983077
+    },
+    {
+      "primary": "hip",
+      "mixer_speedup": 2,
+      "expert_speedup": 2,
+      "primary_groups": 8,
+      "conditional_tok_s": 954.035944382287
+    }
+  ],
+  "decode_timed_tokens": 511,
+  "prefill_residual_ms_per_moe": 64.58928571428571,
+  "limitations": [
+    "Host service includes worker waits; CPU flow must not be added to it.",
+    "Serial phase scopes reproduce a diagnostic, not a scheduling improvement.",
+    "Proportional FFN scaling includes shared work and is optimistic.",
+    "The CUDA-primary residual is applied to AMD-primary without validation.",
+    "No new kernel implementation or quality result is implied."
+  ]
+}

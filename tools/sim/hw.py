@@ -138,6 +138,7 @@ class HardwareConfig:
     runtime_vram: dict = dataclasses.field(default_factory=dict)
     fixed_weight_bytes: dict = dataclasses.field(default_factory=dict) # optional exact deployed GGUF census
     fixed_weight_pack: str = ""       # restrict an exact census to its deployed pack
+    heterogeneous: dict = dataclasses.field(default_factory=dict)  # explicit devices/resources; opt-in scheduler
     notes: str = ""
 
     def to_dict(self):
@@ -217,7 +218,7 @@ def tr16():
         runtime_vram={pack: dict(staging=0, prefetch=0, prefill_scratch=32, misc=228, tier_fill_reserve=1280, runtime_headroom=1024,
                                  mtp_dense_mib=156.84, verify_history_by_depth={"1": 145.6, "2": 291.2, "3": 436.8})
                       for pack in ("q23", "q22")},
-        notes="calibration machine; model drive nvme0n1 is x1 (~1 GB/s), pack drive nvme1n1 is x4",
+        notes="calibration machine; model mount /mnt/nvme01 is x1 (~1 GB/s), work mount /mnt/nvme02 is x4; device numbers are not stable",
     )
 
 
@@ -291,7 +292,17 @@ def tr16_plus_b550_gbe():
     return hw
 
 
+def tr16_mixed():
+    h=tr16()
+    h.name='tr16-mixed'
+    profile=pathlib.Path(__file__).resolve().parent/'data'/'hw_tr16_mixed.json'
+    h.heterogeneous=json.loads(profile.read_text())
+    h.notes='Use the heterogeneous subcommand; the legacy identical-GPU model cannot price this topology.'
+    return h
+
+
 PRESETS = {
+    "tr16-mixed": tr16_mixed,
     "tr16": tr16,
     "b550": b550,
     "xeon_v100": xeon_v100,
@@ -307,5 +318,9 @@ def load(spec):
         return PRESETS[spec]()
     path = pathlib.Path(spec)
     if path.exists():
-        return from_dict(json.loads(path.read_text()))
+        data=json.loads(path.read_text())
+        if data.get('schema')=='strata.heterogeneous.hardware.v1':
+            return HardwareConfig(name=data['name'],heterogeneous=data,
+                                  notes='Explicit heterogeneous manifest; legacy identical-GPU estimator is disabled')
+        return from_dict(data)
     raise ValueError(f"unknown hardware preset or file: {spec} (presets: {', '.join(PRESETS)})")

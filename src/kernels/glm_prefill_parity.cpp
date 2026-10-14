@@ -302,10 +302,46 @@ void check_transcode_reference() {
     }
     std::cout<<"Q8 transcode GGML reference and guards passed\n";
 }
+void check_selected_rows_sum() {
+    constexpr int width=33,top=8,tokens=2;
+    std::vector<float> rows(tokens*top*width,NAN),weights(tokens*top,0.f),expected(tokens*width,0.f);
+    for (int route: {1,3,8,14}) {
+        weights[route]=0.125f*(route%3+1);
+        for (int c=0;c<width;++c) rows[route*width+c]=float(route-c)*0.0625f;
+    }
+    for (int t=0;t<tokens;++t) for (int c=0;c<width;++c)
+        for (int r=top-1;r>=0;--r) if (weights[t*top+r]!=0)
+            expected[t*width+c]=std::fma(weights[t*top+r],rows[(t*top+r)*width+c],expected[t*width+c]);
+    Buffer<float> input(rows),w(weights),sum(expected.size());
+    k::glm_sum_selected_rows(input.p,w.p,sum.p,width,top,tokens,nullptr);near(sum.get(),expected,0.f);
+}
+void check_mixed_partial_rows() {
+    constexpr int width=33,rows=3,groups=2,top=8;
+    // Uneven expert lengths, padding, repeated token destinations, and an
+    // existing shared-expert sum. No model is needed.
+    std::vector<int> bounds{0,2,5},dest{0,8,1,9,17};
+    std::vector<float> weights(24,0.f),input(groups*rows*width),expected(3*width,0.25f);
+    for (int route:dest) weights[route]=0.125f*(route%3+1);
+    for (size_t i=0;i<input.size();++i) input[i]=float(int(i%23)-11)*0.0625f;
+    for (int group=0;group<groups;++group) for (int row=0;row<bounds[group+1]-bounds[group];++row) {
+        int route=dest[bounds[group]+row];
+        for (int c=0;c<width;++c) expected[(route/top)*width+c]+=weights[route]*input[(group*rows+row)*width+c];
+    }
+    Buffer<int> b(bounds),d(dest);Buffer<float> x(input),w(weights),out(std::vector<float>(3*width,0.25f));
+    k::glm_scatter_expert_weighted(x.p,out.p,w.p,b.p,d.p,0,groups,0,rows,width,top,nullptr);
+    near(out.get(),expected,1e-6);
+    std::vector<int> tokens{2,0};std::vector<float> additions(2*width,0.5f);
+    Buffer<int> t(tokens);Buffer<float> a(additions);
+    k::glm_accumulate_token_rows(a.p,out.p,t.p,2,width,nullptr);
+    for (int token:tokens) for (int c=0;c<width;++c) expected[token*width+c]+=0.5f;
+    near(out.get(),expected,1e-6);
+}
 int main(int argc, char** argv) {
     const bool benchmark = argc == 2 && std::string(argv[1]) == "--benchmark";
     if (argc > 1 && !benchmark) return 2;
     try {
+        check_selected_rows_sum();
+        check_mixed_partial_rows();
         check_half_attention_reference();
         check_transcode_reference();
         check_device_positions();

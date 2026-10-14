@@ -8,13 +8,14 @@ import time
 import signal
 import csv
 
-def gpu_compute_processes(index):
+def gpu_compute_processes(index, allow_desktop=False):
     """CUDA clients, excluding the desktop's small compute context."""
     value = subprocess.check_output(['nvidia-smi', '--id=' + str(index),
         '--query-compute-apps=pid,process_name', '--format=csv,noheader'], text=True, timeout=3,
         stderr=subprocess.STDOUT)
     return [(int(pid.strip()), name.strip()) for pid, name in csv.reader(value.splitlines())
-            if pathlib.Path(name.strip()).name != 'gnome-remote-desktop-daemon']
+            if pathlib.Path(name.strip()).name != 'gnome-remote-desktop-daemon'
+            and not (allow_desktop and name.strip().split() and pathlib.Path(name.strip().split()[0]).name in {'chrome','chromium','chromium-browser'})]
 
 def gpu_free_mib(index):
     value = subprocess.check_output(["nvidia-smi", "--id=" + str(index),
@@ -45,6 +46,7 @@ def descendants(root):
 def main():
     from glm_q2_coding_bench import process_cpu_snapshot
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--memory-metric", choices=("rss", "pss"), default="rss", help="PSS avoids counting shared model mappings twice; use for mixed-GPU quality checks")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--require-idle", action="store_true")
     parser.add_argument("--record-interference", action="store_true",
@@ -54,6 +56,7 @@ def main():
     parser.add_argument("--min-gpu-free-mib", type=int,
                         help="reject when the selected NVIDIA GPU has less free memory; sampled once per second")
     parser.add_argument("--gpu-index", type=int, default=0)
+    parser.add_argument("--allow-desktop-gpu", action="store_true", help="allow existing Chrome desktop GPU contexts; other compute clients are still rejected")
     parser.add_argument("--require-gpu-idle", action="store_true",
                         help="reject other CUDA compute clients before and during this run")
     parser.add_argument("command", nargs=argparse.REMAINDER)
@@ -64,12 +67,15 @@ def main():
     if not command:
         parser.error("a command is required")
     if args.require_gpu_idle:
-        clients = gpu_compute_processes(args.gpu_index)
+        clients = gpu_compute_processes(args.gpu_index,args.allow_desktop_gpu)
         if clients:
             parser.error('GPU is in use by other CUDA clients: ' + repr(clients))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     record = {"command": command, "peak_rss_kib": 0, "peak_swap_kib": 0, "minimum_available_kib": None,
               "sample_interval_ms": 100, "rejected": None, "interference": []}
+    if args.allow_desktop_gpu: record['allow_desktop_gpu']=True
+    if args.memory_metric == "pss":
+        record.update(memory_metric="pss", peak_pss_kib=0)
     old = process_cpu_snapshot()
     hot = set()
     start = time.monotonic()
@@ -83,7 +89,7 @@ def main():
             while process.poll() is None:
                 try:
                     owned = descendants(process.pid)
-                    rss = swap = 0
+                    rss = swap = pss = 0
                     swapped_pids = []
                     for pid in owned:
                         try:
@@ -91,6 +97,12 @@ def main():
                         except FileNotFoundError:
                             continue
                         rss += int(fields.get("VmRSS", "0 kB").split()[0])
+                        if args.memory_metric == "pss":
+                            try:
+                                for line in pathlib.Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines():
+                                    if line.startswith("Pss:"): pss += int(line.split()[1]); break
+                            except FileNotFoundError:
+                                continue
                         swapped = int(fields.get("VmSwap", "0 kB").split()[0])
                         swap += swapped
                         if swapped:
@@ -111,13 +123,16 @@ def main():
                                     record["rejected"] = {"reason": "GPU memory reserve", "free_mib": free,
                                                           "required_mib": args.min_gpu_free_mib}
                             if args.require_gpu_idle:
-                                clients = [(pid, name) for pid, name in gpu_compute_processes(args.gpu_index) if pid not in owned]
+                                clients = [(pid, name) for pid, name in gpu_compute_processes(args.gpu_index,args.allow_desktop_gpu) if pid not in owned]
                                 if clients:
                                     record['rejected'] = dict(reason='external GPU work', clients=clients)
                         except (OSError, ValueError, subprocess.SubprocessError) as error:
                             record["rejected"] = {"reason": "GPU memory probe failed", "error": str(error)}
-                    if swap > args.max_swap_mib * 1024 or rss > 118 * 1024**2 or available < 4 * 1024**2:
+                    measured_memory = pss if args.memory_metric == "pss" else rss
+                    if args.memory_metric == "pss": record["peak_pss_kib"] = max(record["peak_pss_kib"], pss)
+                    if swap > args.max_swap_mib * 1024 or measured_memory > 118 * 1024**2 or available < 4 * 1024**2:
                         record["rejected"] = {"reason": "memory limit", "rss_kib": rss, "swap_kib": swap, "available_kib": available}
+                        if args.memory_metric == "pss": record["rejected"]["pss_kib"] = pss
                         if swap:
                             swapped = []
                             region = {}
