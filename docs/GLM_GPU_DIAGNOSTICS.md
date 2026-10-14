@@ -152,3 +152,38 @@ A later traced repeatability check compared the untimed first prefill and two
 timed repeats and passed bitwise equality. Thus repetition alone has not been
 established as the cause of the cross-process difference. Preserve both kinds
 of evidence; a passing repeat check does not resolve the earlier discrepancy.
+
+## Local experimental prefill and drafting controls
+
+The following controls are opt-in. Unset controls retain the prior kernel selection;
+no speed or full-model quality improvement has been qualified for them.
+
+- `STRATA_GLM_PREFILL_ROUTE_WARP=1`, `STRATA_GLM_MLA_GATHER_VECTOR=1`, and
+  `STRATA_GLM_KDA_OUTPUT_SHARED=1` select synthetic-parity-tested prefill kernels.
+- `STRATA_GLM_PREFILL_CAST_REUSE=1` reuses a cast within a projection input region.
+  `STRATA_GLM_MLA_SOFTMAX_F16=1` fuses normalization and the probability cast.
+- `STRATA_PREFILL_F16_ACCUM=1` and `STRATA_PREFILL_F16_ACCUM_BATCHED=1` select
+  CUDA FP16 accumulation. `STRATA_GLM_MLA_ABSORB_F16=1`,
+  `STRATA_GLM_MLA_INDEX_F16=1`, and `STRATA_GLM_MLA_F16_OUT=1` select approximate
+  single-GPU MLA products. `STRATA_PREFILL_Q8_TRANSCODE=1` requantizes expert rows.
+  The decoder restricts these lossy paths to batches of at least
+  `STRATA_PREFILL_LOSSY_MIN_TOKENS` (default 4096); the transcode has an additional
+  `STRATA_PREFILL_Q8_TRANSCODE_MIN_TOKENS` threshold (default 4096).
+- `STRATA_Q2K_LUT=1` selects the CPU Q2_K integer lookup path. Synthetic outputs
+  matched the original path bit for bit, including zero and extreme activations.
+- `STRATA_GLM_PREFETCH_STREAM=1` permits staged producer/consumer overlap.
+  `STRATA_GLM_REAP_PREFETCH=1` permits pruned expert counts divisible by 16 below 288.
+- `STRATA_GLM_MTP_DRAFT_TOP_K` limits CPU draft experts; zero uses shared experts only.
+  `STRATA_GLM_MTP_SYNC_STATE_ONLY=1` omits unused draft resynchronization products.
+  `STRATA_GLM_MTP_ACCEPT_MARGIN` permits bounded approximate acceptance; zero is exact.
+  Soft acceptance cannot invent or suppress stop tokens. The top-k, per-window cap,
+  and `STRATA_GLM_MTP_REPEAT_GUARD` provide additional restrictions.
+  `STRATA_GLM_ROUTE_WINDOW_MARGIN` changes multi-token expert selection and is lossy.
+
+Synthetic GPU checks on 2026-10-14 used a GeForce RTX 3070 8 GiB with NVIDIA
+580.178.04 and native `86-real` CUDA code. The previous architecture-75 build's
+PTX was rejected by this driver; that failed launch is not a kernel parity failure.
+Primitive, prefill, Q23, FP16 helper, and GGML transcode-reference checks passed.
+CUDA, ROCm 10.1 HIP, and Vulkan builds passed. No AMD GPU was installed; SYCL's
+`icpx` was unavailable. Full-model default-output parity, coding quality, throughput,
+streaming-prefetch integration, multi-GPU execution and soak checks were not run.

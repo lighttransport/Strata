@@ -2,6 +2,7 @@
 #include "strata/kernels/glm_prefill.hpp"
 #include "strata/prefill/partition.hpp"
 #include <cuda_runtime.h>
+#include <ggml.h>
 #include <cublas_v2.h>
 #include <algorithm>
 #include <cmath>
@@ -267,6 +268,55 @@ void check_mla_softmax() {
     }
     std::cout << "MLA softmax short/full rows, masked NaNs, guards and repeated bits passed\n";
 }
+void check_half_attention_reference() {
+    constexpr int B=3,C=7,L=512,H=2;
+    std::vector<float> cache(4*L),wanted(B*C*L,0),scores(B*H*C);
+    for(size_t i=0;i<cache.size();++i)cache[i]=float(int(i%37)-18)/7;
+    std::vector<int> ids(B*C),counts{0,3,7};
+    for(int b=0;b<B;++b)for(int c=0;c<C;++c){ids[b*C+c]=c%4;if(c<counts[b])std::copy_n(cache.data()+(c%4)*L,L,wanted.data()+(b*C+c)*L);}
+    Buffer<float> dc(cache);Buffer<int> di(ids),dn(counts);Buffer<uint16_t> gathered(B*C*L);
+    k::glm_mla_gather_f16(dc.p,di.p,dn.p,gathered.p,B,C,L,nullptr);
+    auto g=gathered.get();for(size_t i=0;i<g.size();++i)if(g[i]!=ggml_fp32_to_fp16(wanted[i]))throw std::runtime_error("FP16 gather mismatch");
+    counts[0]=1;dn.put(counts);
+    for(size_t i=0;i<scores.size();++i)scores[i]=float(int(i%13)-6)/3;
+    Buffer<float> a(scores),b(scores);Buffer<uint16_t> expected(scores.size()),actual(scores.size()),half(scores.size());
+    k::glm_mla_softmax(a.p,dn.p,H,C,B,.5f,nullptr);k::glm_f16(a.p,expected.p,scores.size(),nullptr);
+    k::glm_mla_softmax_f16(b.p,dn.p,actual.p,H,C,B,.5f,nullptr);
+    if(expected.get()!=actual.get())throw std::runtime_error("Fused FP16 softmax changed cast probabilities");
+    std::vector<float> rounded(scores.size());for(size_t i=0;i<scores.size();++i)rounded[i]=ggml_fp16_to_fp32(ggml_fp32_to_fp16(scores[i]));
+    a.put(rounded);b.put(scores);k::glm_f16(b.p,half.p,scores.size(),nullptr);
+    k::glm_mla_softmax(a.p,dn.p,H,C,B,.5f,nullptr);k::glm_f16(a.p,expected.p,scores.size(),nullptr);
+    k::glm_mla_softmax_h2h(half.p,dn.p,actual.p,H,C,B,.5f,nullptr);
+    auto e=expected.get(),v=actual.get();for(size_t i=0;i<v.size();++i)if(std::abs(ggml_fp16_to_fp32(e[i])-ggml_fp16_to_fp32(v[i]))>1e-3f)throw std::runtime_error("FP16-input softmax error");
+    std::cout<<"FP16 gather/softmax references passed\n";
+}
+void check_transcode_reference() {
+    std::mt19937 rng(7301);
+    constexpr int rows=3, cols=512, experts=2;
+    for (auto type : {GGML_TYPE_Q2_K, GGML_TYPE_Q3_K}) {
+        const size_t bytes=ggml_row_size(type,cols)*rows, stride=(rows*cols/32)*34;
+        std::vector<uint8_t> input(bytes*experts);
+        for(auto &b:input)b=uint8_t(rng());
+        for(size_t j=0;j<input.size();j+=ggml_type_size(type)) {
+            ggml_fp16_t one=ggml_fp32_to_fp16(1.f), half=ggml_fp32_to_fp16(.5f);
+            const size_t at=type==GGML_TYPE_Q2_K?80:108;
+            std::memcpy(input.data()+j+at,&one,2);
+            if(type==GGML_TYPE_Q2_K)std::memcpy(input.data()+j+82,&half,2);
+        }
+        std::vector<float> decoded(rows*cols);
+        std::vector<uint8_t> expected(stride*experts),initial(stride*experts+32,0xa5);
+        for(int e=0;e<experts;++e) {
+            ggml_get_type_traits(type)->to_float(input.data()+e*bytes,decoded.data(),decoded.size());
+            ggml_quantize_chunk(GGML_TYPE_Q8_0,decoded.data(),expected.data()+e*stride,0,rows,cols,nullptr);
+        }
+        Buffer<uint8_t> src(input),out(initial);
+        k::glm_transcode_q8_0(src.p,int(type),out.p+16,rows,cols,experts,bytes,stride,nullptr);
+        ck(cudaDeviceSynchronize());auto actual=out.get();
+        if(!std::equal(expected.begin(),expected.end(),actual.begin()+16))throw std::runtime_error("Q8 transcode differs from GGML reference");
+        for(size_t j=0;j<16;++j)if(actual[j]!=0xa5||actual[actual.size()-1-j]!=0xa5)throw std::runtime_error("Q8 transcode guard overwritten");
+    }
+    std::cout<<"Q8 transcode GGML reference and guards passed\n";
+}
 int main(int argc, char** argv) {
     const bool benchmark = argc == 2 && std::string(argv[1]) == "--benchmark";
     const bool softmax_only = argc == 2 && std::string(argv[1]) == "--softmax-only";
@@ -274,6 +324,8 @@ int main(int argc, char** argv) {
     try {
         check_mla_softmax();
         if (softmax_only) return 0;
+        check_half_attention_reference();
+        check_transcode_reference();
         check_device_positions();
         check_vector_gather(benchmark);
         check_batched_resident();
