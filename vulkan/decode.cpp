@@ -17,6 +17,9 @@
 #include <ggml.h>
 #include <iostream>
 #include <numeric>
+#include <set>
+#include "strata/kernels/canon_expert.hpp"
+#include "strata/host/glm_env.h"
 #include <sstream>
 #include <stdexcept>
 #ifdef __linux__
@@ -89,7 +92,23 @@ class Decoder {
   bool overlap_experts_ = false, cpu_mhc_ = false, joined_projections_ = false;
   double cpu_expert_ms_ = 0;
   bool phased_experts_ = false, fused_kda_ = false;
+  size_t expert_budget_ = 0, expert_resident_ = 0;
+  bool cache_ready_ = false;
+  uint64_t expert_hits_ = 0, expert_routes_ = 0;
+  std::map<int, uint64_t> route_counts_;
+  std::set<int> cached_experts_;
+  bool mtp_enabled_ = false, prefill_gpu_ = false, verification_ = false;
+  int mtp_position_ = 0;
+  Vec mtp_hidden_;
+  std::vector<Vec> target_hidden_;
   std::map<std::string, Vec> scalars_;
+  std::map<std::string, std::vector<Vec>> batch_projections_;
+  int batch_slot_ = -1;
+  std::vector<Vec> batch_mla_rows_, batch_mla_q_;
+  std::vector<std::vector<int>> batch_mla_ids_;
+  std::vector<Vec> batch_index_queries_,batch_index_weights_;
+  std::vector<int> batch_pool_counts_;
+  bool gpu_indexer_ = strata_env_is_one("STRATA_VULKAN_GPU_INDEXER");
   struct State {
     std::array<Vec, 3> conv;
     Vec keys, gates, pooled, fused_weights;
@@ -107,9 +126,19 @@ class Decoder {
     return scalars_.emplace(name, std::move(v)).first->second;
   }
   Vec mat(const std::string &name, std::span<const float> x, int heads = 1) {
+    if (batch_slot_ >= 0) {
+      auto found=batch_projections_.find(name);
+      if(found!=batch_projections_.end()) return found->second.at(batch_slot_);
+    }
     return projections_.mat(name, artifact_.at(name), x, heads);
   }
   std::vector<Vec> mats(const std::vector<std::string> &names, const Vec &x) {
+    if(batch_slot_>=0) {
+      std::vector<Vec> result;
+      for(const auto &name:names)result.push_back(mat(name,x));
+      return result;
+    }
+
     std::vector<std::pair<std::string, const strata::core::ArtifactTensor *>>
         items;
     for (const auto &name : names)
@@ -123,7 +152,7 @@ class Decoder {
   }
   std::vector<Vec> low_gates(const std::string &p, const Vec &f, const Vec &g) {
     const std::string fn = p + "ssm_f_b.weight", gn = p + "ssm_g_b.weight";
-    if (joined_projections_)
+    if (joined_projections_ && batch_slot_<0)
       return projections_.multiple(
           {{fn, &artifact_.at(fn)}, {gn, &artifact_.at(gn)}}, {f, g});
     return {mat(fn, f), mat(gn, g)};
@@ -179,7 +208,7 @@ class Decoder {
       g[i] = ref::swiglu(g[i], u[i], limit);
     return mat(p + "ffn_down" + suffix + ".weight", g);
   }
-  Vec kda(const std::string &p, int layer, const Vec &x) {
+  Vec kda(const std::string &p, int layer, const Vec &x, bool project = true) {
     int n = m_.linear_heads * m_.linear_dim;
     auto &s = states_[layer];
     std::array<Vec, 3> qkv;
@@ -208,7 +237,7 @@ class Decoder {
                          scalar(p + "ssm_dt.bias"), scalar(p + "ssm_a"),
                          scalar(p + "ssm_norm.weight"), y, m_.linear_heads,
                          m_.conv_kernel, m_.gate_lower_bound, m_.rms_epsilon);
-      return mat(p + "attn_output.weight", y);
+      return project ? mat(p + "attn_output.weight", y) : y;
     }
     for (int part = 0; part < 3; part++) {
       const auto &raw = qk[part];
@@ -254,9 +283,9 @@ class Decoder {
         y[j] = y[j] * inv * w[i] * ref::sigmoid(gate[j]);
       }
     }
-    return mat(p + "attn_output.weight", y);
+    return project ? mat(p + "attn_output.weight", y) : y;
   }
-  Vec mla(const std::string &p, int layer, const Vec &x) {
+  Vec mla(const std::string &p, int layer, const Vec &x, bool project = true, bool collect = false) {
     auto initial = mats({p + "attn_q_a.weight", p + "attn_kv_a_mqa.weight",
                          p + "indexer.proj.weight", p + "indexer.attn_k.weight",
                          p + "indexer_compressor_gate.weight"},
@@ -288,6 +317,13 @@ class Decoder {
       ref::pool(s.keys.data(), s.gates.data(),
                 scalar(p + "indexer_compressor_ape.weight").data(),
                 s.pooled.data() + (pools - 1) * dim, pool, dim);
+    if(collect && gpu_indexer_) {
+      batch_mla_rows_.push_back(row);
+      batch_mla_q_.push_back(mat(p+"attn_k_b.weight",q,m_.attention_heads));
+      batch_index_queries_.push_back(iq);batch_index_weights_.push_back(iw);batch_pool_counts_.push_back(pools);
+      batch_mla_ids_.emplace_back();
+      return Vec(size_t(m_.attention_heads)*m_.kv_rank);
+    }
     Vec scores(pools);
     for (int b = 0; b < pools; b++) {
       float score = 0;
@@ -315,8 +351,13 @@ class Decoder {
     auto aq = mat(p + "attn_k_b.weight", q, m_.attention_heads);
     Vec av(aq.size());
     int head_dim = artifact_.at(p + "attn_k_b.weight").tensor->shape[0];
+    if(collect) {
+      batch_mla_rows_.push_back(row);batch_mla_q_.push_back(aq);batch_mla_ids_.push_back(ids);
+      return av;
+    }
     compute_.mla(layer, row, position_, capacity_, aq, ids, av,
                  m_.attention_heads, 1 / std::sqrt(float(head_dim)));
+    if (!project) return av;
     auto value = mat(p + "attn_v_b.weight", av, m_.attention_heads);
     return mat(p + "attn_output.weight", value);
   }
@@ -355,9 +396,35 @@ class Decoder {
       j.nact[0] = act.data();
       j.out[0] = results.data() + i * m_.hidden;
     }
+    const int layer = std::stoi(p.substr(4));
+    std::vector<cpu::ExpertJobMulti> missing;
+    std::vector<int> hit_indices;
+    for (int i = 0; i < m_.top_k; ++i) {
+      const int key = layer * m_.experts + ids[i];
+      if (!cache_ready_ && expert_budget_ && layer<int(m_.layers.size())) route_counts_[key]++;
+      if (cache_ready_) expert_routes_++;
+      if (cache_ready_ && format.canon && cached_experts_.contains(key)) {
+        hit_indices.push_back(i); expert_hits_++;
+      } else missing.push_back(jobs[i]);
+    }
+    const bool mixed = !hit_indices.empty();
+    auto gpu_routed = [&] {
+      for (int i : hit_indices) {
+        const int key = layer * m_.experts + ids[i];
+        auto gu = compute_.expert_dot(key, act, m_.hidden, 2*desc.intermediate, G.tensor->type, 0);
+        for (int j=0;j<desc.intermediate;++j)
+          gu[j]=cpu::canon_swiglu(gu[j],gu[desc.intermediate+j],desc.swiglu_limit);
+        std::vector<uint8_t> hidden(format.h_bytes);
+        cpu::native_quant_h(format,gu.data(),hidden.data());
+        auto output=compute_.expert_dot(key,hidden,desc.intermediate,m_.hidden,D.tensor->type,2*G.bytes/m_.experts);
+        std::copy(output.begin(),output.end(),results.begin()+i*m_.hidden);
+      }
+    };
     auto routed = [&] {
       const auto started = Clock::now();
-      if (phased_experts_) {
+      if (mixed) {
+        if (!missing.empty()) pool_.run_split_multi_native(format, missing.data(), missing.size());
+      } else if (phased_experts_) {
         pool_.run_split_multi_native(format, jobs.data(), jobs.size());
         pool_.reduce_routed(results.data(), routing.data(), sum.data(), 1,
                             m_.top_k, m_.hidden, format.canon);
@@ -376,6 +443,7 @@ class Decoder {
       auto pending = executor_ ? executor_->submit(routed)
                                : std::async(std::launch::async, routed);
       try {
+        gpu_routed();
         shared = ffn(p, x, "_shexp", desc.shared_swiglu_limit);
       } catch (...) {
         // Persistent tasks need an explicit join on exceptional GPU paths too.
@@ -385,8 +453,11 @@ class Decoder {
       pending.get();
     } else {
       routed();
+      gpu_routed();
       shared = ffn(p, x, "_shexp", desc.shared_swiglu_limit);
     }
+    if (mixed) pool_.reduce_routed(results.data(), routing.data(), sum.data(), 1,
+                                    m_.top_k, m_.hidden, format.canon);
     for (size_t i = 0; i < sum.size(); i++)
       sum[i] += shared[i];
     return sum;
@@ -394,11 +465,11 @@ class Decoder {
 
 public:
   Decoder(const std::string &model, int device, int threads, int capacity,
-          size_t gpu_budget)
+          size_t gpu_budget, size_t expert_budget = 0, bool mtp_enabled = false, bool prefill_gpu = false)
       : artifact_(model), m_(strata::vulkan::checked_model(artifact_)),
-        projections_(device, gpu_budget - 1536ULL * 1024 * 1024),
-        compute_(projections_.device_name(), 1024ULL * 1024 * 1024),
-        pool_(threads, true, true), capacity_(capacity) {
+        projections_(device, gpu_budget - expert_budget - 1536ULL * 1024 * 1024),
+        compute_(projections_.device_name(), 1024ULL * 1024 * 1024 + expert_budget),
+        pool_(threads, true, true), capacity_(capacity), expert_budget_(expert_budget), mtp_enabled_(mtp_enabled), prefill_gpu_(prefill_gpu) {
     if (m_.architecture != "glm5next" || m_.streams != 4 || m_.rope_dim != 0 ||
         m_.linear_dim != 128 || m_.top_k > 16 || m_.experts != 144)
       throw std::invalid_argument(
@@ -415,6 +486,16 @@ public:
         states_[l].pooled.resize(size_t(capacity / m_.index_pool) *
                                  m_.index_dim);
       }
+    }
+    if(mtp_enabled_) {
+      if(m_.draft_layers.size()!=1 || m_.draft_layers[0].mixer!=strata::core::MixerKind::SparseMla)
+        throw std::invalid_argument("Vulkan MTP requires exactly one MLA draft block");
+      artifact_.shape("blk.45.nextn.enorm.weight",{uint64_t(m_.hidden)});
+      artifact_.shape("blk.45.nextn.hnorm.weight",{uint64_t(m_.hidden)});
+      artifact_.shape("blk.45.nextn.eh_proj.weight",{uint64_t(2*m_.hidden),uint64_t(m_.hidden)});
+      artifact_.shape("blk.45.nextn.shared_head_norm.weight",{uint64_t(m_.hidden)});
+      State state;state.keys.resize(m_.index_pool*m_.index_dim);state.gates.resize(state.keys.size());
+      state.pooled.resize(size_t(capacity/m_.index_pool)*m_.index_dim);states_.push_back(std::move(state));
     }
     const char *fused = std::getenv("STRATA_VULKAN_FUSED_KDA");
     fused_kda_ = fused && std::string(fused) == "1";
@@ -452,14 +533,410 @@ public:
     std::cerr
         << "VULKAN_MODEL layers=" << m_.layers.size() << " hidden=" << m_.hidden
         << " experts=" << m_.experts << " cpu_workers=" << pool_.workers()
-        << " expert_cache_slots=0 prefill=sequential speculative=unsupported\n";
+        << " expert_cache_budget_MiB=" << expert_budget_/1048576
+        << " prefill_experts=" << (prefill_gpu_?"gpu":"cpu")
+        << " speculative_modes=none,lookup,mtp\n";
   }
   ~Decoder() {
     executor_.reset();
     cpu::restore_thread_affinity(gpu_affinity_);
   }
+  std::vector<Vec> batch_product(const std::string &name, const std::vector<Vec> &inputs, int heads=1) {
+    if(inputs.empty())throw std::invalid_argument("Empty Vulkan projection batch");
+    const auto &tensor=artifact_.at(name);
+    const size_t in=tensor.tensor->shape[0],out=tensor.tensor->shape[1],nt=inputs.size();
+    Vec packed(in*heads*nt);
+    for(size_t t=0;t<nt;++t) {
+      if(inputs[t].size()!=in*heads)throw std::invalid_argument("Vulkan batched input width differs");
+      for(int h=0;h<heads;++h)std::copy_n(inputs[t].data()+h*in,in,packed.data()+(h*nt+t)*in);
+    }
+    Vec product;
+    const bool mmv=strata_env_is_one("STRATA_VULKAN_BATCH_MMV");
+    if(strata_env_is_one("STRATA_VULKAN_BATCH_GEMV") || (mmv && heads>1)) {
+      product.resize(out*heads*nt);
+      for(size_t t=0;t<nt;++t) {
+        auto y=projections_.mat(name,tensor,inputs[t],heads,1);
+        for(int h=0;h<heads;++h)std::copy_n(y.data()+h*out,out,product.data()+(h*nt+t)*out);
+      }
+    } else if(mmv) {
+      // GGML's vector path accepts at most eight columns. Larger or per-head
+      // batches select a different GEMM reduction and can change greedy IDs.
+      product.resize(out*nt);
+      for(size_t offset=0;offset<nt;offset+=8) {
+        const size_t count=std::min<size_t>(8,nt-offset);
+        auto y=projections_.mat(name,tensor,{packed.data()+offset*in,count*in},1,count);
+        std::copy(y.begin(),y.end(),product.begin()+offset*out);
+      }
+    } else product=projections_.mat(name,tensor,packed,heads,nt);
+    std::vector<Vec> result(nt,Vec(out*heads));
+    for(size_t t=0;t<nt;++t)for(int h=0;h<heads;++h)
+      std::copy_n(product.data()+(h*nt+t)*out,out,result[t].data()+h*out);
+    batch_projections_[name]=result;return result;
+  }
+  std::vector<Vec> ffn_batch(const std::string &p,const std::vector<Vec> &x,
+                             const std::string &suffix,float limit) {
+    auto gate=batch_product(p+"ffn_gate"+suffix+".weight",x);
+    auto up=batch_product(p+"ffn_up"+suffix+".weight",x);
+    for(size_t t=0;t<x.size();++t)for(size_t i=0;i<gate[t].size();++i)
+      gate[t][i]=ref::swiglu(gate[t][i],up[t][i],limit);
+    return batch_product(p+"ffn_down"+suffix+".weight",gate);
+  }
+  std::vector<Vec> moe_batch(const std::string &p,const std::vector<Vec> &x,
+                             const strata::core::LayerDescriptor &desc) {
+    auto logits=batch_product(p+"ffn_gate_inp.weight",x);
+    const size_t nt=x.size();const int top=m_.top_k,H=m_.hidden;
+    std::vector<int> ids(nt*top);Vec routing(nt*top),results(nt*top*H);
+    const auto &G=artifact_.at(p+"ffn_gate_exps.weight"), &U=artifact_.at(p+"ffn_up_exps.weight"),
+               &D=artifact_.at(p+"ffn_down_exps.weight");
+    cpu::NativeFmt format;std::string error;
+    if(!cpu::native_fmt(G.tensor->type,D.tensor->type,H,desc.intermediate,format,error))throw std::runtime_error(error);
+    format.canon=(G.tensor->type==10 || G.tensor->type==11)&&(D.tensor->type==10 || D.tensor->type==11);
+    format.swiglu_limit=desc.swiglu_limit;
+    std::vector<uint8_t> activations(nt*format.act_bytes);
+    std::map<int,std::vector<int>> groups;
+    const int layer=std::stoi(p.substr(4));
+    for(size_t t=0;t<nt;++t) {
+      ref::router(logits[t].data(),scalar(p+"exp_probs_b.bias").data(),m_.experts,top,m_.expert_scale,
+                  ids.data()+t*top,routing.data()+t*top);
+      cpu::native_quant_act(format,x[t].data(),activations.data()+t*format.act_bytes);
+      for(int k=0;k<top;++k) {
+        const int id=ids[t*top+k];groups[id].push_back(t*top+k);
+        if(expert_budget_ && !cache_ready_)route_counts_[layer*m_.experts+id]++;
+      }
+    }
+    std::vector<cpu::ExpertJobMulti> jobs;
+    std::vector<int> gpu_groups;
+    for(const auto &[id,entries]:groups) {
+      const bool cached=cache_ready_ && cached_experts_.contains(layer*m_.experts+id);
+      const bool gpu=format.canon && ((prefill_gpu_ && !verification_) || (verification_ && cached));
+      if(gpu) {gpu_groups.push_back(id);if(verification_)expert_hits_+=entries.size();continue;}
+      for(size_t offset=0;offset<entries.size();offset+=cpu::MAXT) {
+        cpu::ExpertJobMulti job;job.expert_id=id;job.nt=std::min<size_t>(cpu::MAXT,entries.size()-offset);
+        job.blob=G.data()+id*G.bytes/m_.experts;job.native_up=U.data()+id*U.bytes/m_.experts;
+        job.native_down=D.data()+id*D.bytes/m_.experts;
+        for(int k=0;k<job.nt;++k) {
+          const int entry=entries[offset+k];job.nact[k]=activations.data()+(entry/top)*format.act_bytes;
+          job.out[k]=results.data()+size_t(entry)*H;
+        }
+        jobs.push_back(job);
+      }
+    }
+    if(verification_ && cache_ready_)expert_routes_+=nt*top;
+    auto cpu_work=[&] {
+      const auto started=Clock::now();
+      if(!jobs.empty())pool_.run_split_multi_native(format,jobs.data(),jobs.size());
+      cpu_expert_ms_+=std::chrono::duration<double,std::milli>(Clock::now()-started).count();
+    };
+    auto gpu_work=[&] {
+      for(int id:gpu_groups) {
+        const auto &entries=groups.at(id);
+        const int cache_key=layer*m_.experts+id;
+        const bool cached=cache_ready_ && cached_experts_.contains(cache_key);
+        const int key=cached?cache_key:1000000;
+        const size_t gb=G.bytes/m_.experts,db=D.bytes/m_.experts;
+        if(!cached)compute_.upload_expert(key,{G.data()+id*gb,gb},{U.data()+id*gb,gb},{D.data()+id*db,db});
+        for(size_t offset=0;offset<entries.size();offset+=cpu::MAXT) {
+          const int count=std::min<size_t>(cpu::MAXT,entries.size()-offset);
+          std::vector<uint8_t> acts(count*format.act_bytes),hidden(count*format.h_bytes);
+          for(int t=0;t<count;++t)std::memcpy(acts.data()+t*format.act_bytes,
+                        activations.data()+(entries[offset+t]/top)*format.act_bytes,format.act_bytes);
+          auto gu=compute_.expert_dot(key,acts,H,2*desc.intermediate,G.tensor->type,0,count);
+          for(int t=0;t<count;++t) {
+            float *row=gu.data()+size_t(t)*2*desc.intermediate;
+            for(int i=0;i<desc.intermediate;++i)row[i]=cpu::canon_swiglu(row[i],row[desc.intermediate+i],desc.swiglu_limit);
+            cpu::native_quant_h(format,row,hidden.data()+t*format.h_bytes);
+          }
+          auto output=compute_.expert_dot(key,hidden,desc.intermediate,H,D.tensor->type,2*gb,count);
+          for(int t=0;t<count;++t)std::copy_n(output.data()+size_t(t)*H,H,
+                                           results.data()+size_t(entries[offset+t])*H);
+        }
+        if(!cached)compute_.release_expert(key);
+      }
+    };
+    std::vector<Vec> shared;
+    if(overlap_experts_ && !jobs.empty()) {
+      auto pending=executor_?executor_->submit(cpu_work):std::async(std::launch::async,cpu_work);
+      try {gpu_work();shared=ffn_batch(p,x,"_shexp",desc.shared_swiglu_limit);}
+      catch(...){pending.wait();throw;}
+      pending.get();
+    } else {cpu_work();gpu_work();shared=ffn_batch(p,x,"_shexp",desc.shared_swiglu_limit);}
+    std::vector<Vec> sum(nt,Vec(H));
+    for(size_t t=0;t<nt;++t) {
+      pool_.reduce_routed(results.data()+t*top*H,routing.data()+t*top,sum[t].data(),1,top,H,format.canon);
+      for(int i=0;i<H;++i)sum[t][i]+=shared[t][i];
+    }
+    return sum;
+  }
+  Vec prefill(std::span<const int> tokens,int chunk, std::vector<Vec> *all_logits = nullptr) {
+    if(chunk==1) {Vec logits;for(int id:tokens){logits=step(id);if(all_logits)all_logits->push_back(logits);}return logits;}
+    if(chunk<1 || chunk>1024 || tokens.empty() || size_t(position_)+tokens.size()>size_t(capacity_))
+      throw std::invalid_argument("Vulkan prefill geometry invalid");
+    Vec logits;
+    try {
+      for(size_t offset=0;offset<tokens.size();offset+=chunk) {
+        const int nt=std::min<size_t>(chunk,tokens.size()-offset),base=position_;
+        std::vector<Vec> residual(nt,Vec(4*m_.hidden));
+        const auto &embedding=artifact_.at("token_embd.weight");
+        auto *traits=ggml_get_type_traits(ggml_type(embedding.tensor->type));
+        for(int t=0;t<nt;++t) {
+          const int id=tokens[offset+t];if(id<0 || id>=m_.vocab)throw std::out_of_range("Invalid Vulkan prefill token");
+          Vec e(m_.hidden);const auto *src=embedding.data()+size_t(id)*embedding.bytes/m_.vocab;
+          if(embedding.tensor->type==0)std::memcpy(e.data(),src,e.size()*4);
+          else if(traits && traits->to_float)traits->to_float(src,e.data(),e.size());
+          else throw std::runtime_error("Vulkan prefill embedding type unsupported");
+          for(int h=0;h<4;++h)std::copy(e.begin(),e.end(),residual[t].begin()+h*m_.hidden);
+        }
+        for(size_t layer=0;layer<m_.layers.size();++layer) {
+          const std::string p="blk."+std::to_string(layer)+".";
+          const auto &desc=m_.layers[layer];std::vector<Vec> x(nt),coefficients(nt);
+          strata::vulkan::set_operation_context(base,int(layer));
+          trace("prefill_layer_begin",base,layer);
+          auto hc_inputs=residual;
+          for(auto &v:hc_inputs)v=norm(v,{},m_.rms_epsilon);
+          batch_product(p+"hc_attn_fn.weight",hc_inputs);
+          for(int t=0;t<nt;++t) {
+            batch_slot_=t;auto readout=read(p,"attn",residual[t]);coefficients[t]=std::move(readout.second);
+            x[t]=normalize(p+"attn_norm.weight",readout.first);
+          }
+          batch_slot_=-1;
+          std::vector<Vec> mixed(nt);
+          if(desc.mixer==strata::core::MixerKind::Kda) {
+            for(const char *name:{"attn_q","attn_k","attn_v","ssm_f_a","ssm_g_a","ssm_beta"})
+              batch_product(p+name+".weight",x);
+            batch_product(p+"ssm_f_b.weight",batch_projections_.at(p+"ssm_f_a.weight"));
+            batch_product(p+"ssm_g_b.weight",batch_projections_.at(p+"ssm_g_a.weight"));
+            for(int t=0;t<nt;++t) {batch_slot_=t;position_=base+t;mixed[t]=kda(p,layer,x[t],false);}
+          } else {
+            for(const char *name:{"attn_q_a","attn_kv_a_mqa","indexer.proj","indexer.attn_k","indexer_compressor_gate"})
+              batch_product(p+name+".weight",x);
+            auto qr=batch_projections_.at(p+"attn_q_a.weight");
+            for(auto &v:qr)v=normalize(p+"attn_q_a_norm.weight",v);
+            auto q=batch_product(p+"attn_q_b.weight",qr);
+            batch_product(p+"indexer.attn_q_b.weight",qr);
+            batch_product(p+"attn_k_b.weight",q,m_.attention_heads);
+            batch_mla_rows_.clear();batch_mla_q_.clear();batch_mla_ids_.clear();
+            batch_index_queries_.clear();batch_index_weights_.clear();batch_pool_counts_.clear();
+            for(int t=0;t<nt;++t) {batch_slot_=t;position_=base+t;mla(p,layer,x[t],false,true);}
+            if(gpu_indexer_) {
+              Vec iq,iw;
+              for(const auto &v:batch_index_queries_)iq.insert(iq.end(),v.begin(),v.end());
+              for(const auto &v:batch_index_weights_)iw.insert(iw.end(),v.begin(),v.end());
+              const int max_pools=(base+nt)/m_.index_pool;
+              auto scores=compute_.index_scores({states_[layer].pooled.data(),size_t(max_pools)*m_.index_dim},
+                                               iq,iw,batch_pool_counts_,m_.index_heads,m_.index_dim);
+              for(int t=0;t<nt;++t) {
+                const int pools=batch_pool_counts_[t];std::vector<int> order(pools);std::iota(order.begin(),order.end(),0);
+                std::stable_sort(order.begin(),order.end(),[&](int a,int b){return scores[t*max_pools+a]>scores[t*max_pools+b];});
+                order.resize(std::min<int>(m_.index_top_k/m_.index_pool,pools));std::sort(order.begin(),order.end());
+                auto &ids=batch_mla_ids_[t];
+                for(int pool:order)for(int i=0;i<m_.index_pool;++i)ids.push_back(pool*m_.index_pool+i);
+                for(int i=pools*m_.index_pool;i<=base+t;++i)ids.push_back(i);
+              }
+            }
+            Vec rows,queries;
+            for(auto &v:batch_mla_rows_)rows.insert(rows.end(),v.begin(),v.end());
+            for(auto &v:batch_mla_q_)queries.insert(queries.end(),v.begin(),v.end());
+            const auto head_dim=artifact_.at(p+"attn_k_b.weight").tensor->shape[0];
+            auto av=compute_.mla_batch(layer,rows,base,capacity_,queries,batch_mla_ids_,m_.attention_heads,
+                                       1/std::sqrt(float(head_dim)));
+            const size_t width=av.size()/nt;
+            for(int t=0;t<nt;++t)mixed[t]=Vec(av.begin()+t*width,av.begin()+(t+1)*width);
+            batch_slot_=-1;mixed=batch_product(p+"attn_v_b.weight",mixed,m_.attention_heads);
+          }
+          batch_slot_=-1;mixed=batch_product(p+"attn_output.weight",mixed);
+          for(int t=0;t<nt;++t)write(residual[t],coefficients[t],mixed[t]);
+          hc_inputs=residual;
+          for(auto &v:hc_inputs)v=norm(v,{},m_.rms_epsilon);
+          batch_product(p+"hc_ffn_fn.weight",hc_inputs);
+          for(int t=0;t<nt;++t) {
+            batch_slot_=t;auto f=read(p,"ffn",residual[t]);coefficients[t]=std::move(f.second);
+            x[t]=normalize(p+"ffn_norm.weight",f.first);
+          }
+          batch_slot_=-1;
+          auto ffn=desc.ffn==strata::core::FfnKind::Dense?ffn_batch(p,x,"",desc.swiglu_limit):moe_batch(p,x,desc);
+          for(int t=0;t<nt;++t)write(residual[t],coefficients[t],ffn[t]);
+          if(base==0)save_layer_trace(int(layer),residual[0]);
+          batch_projections_.clear();projections_.release_plans();
+          trace("prefill_layer_complete",base,layer);
+        }
+        std::vector<Vec> normalized;
+        const int first=(all_logits || mtp_enabled_)?0:nt-1;
+        if(mtp_enabled_)target_hidden_.resize(base+nt);
+        for(int t=first;t<nt;++t) {
+          Vec collapsed(m_.hidden);const auto &r=residual[t];
+          for(int d=0;d<m_.hidden;++d)collapsed[d]=(r[d]+r[m_.hidden+d]+r[2*m_.hidden+d]+r[3*m_.hidden+d])*.25f;
+          auto x=normalize("output_norm.weight",collapsed);
+          if(mtp_enabled_)target_hidden_[base+t]=x;
+          normalized.push_back(std::move(x));
+        }
+        if(all_logits) {
+          auto heads=batch_product("output.weight",normalized);
+          logits=heads.back();all_logits->insert(all_logits->end(),heads.begin(),heads.end());
+          batch_projections_.clear();projections_.release_plans();
+        } else logits=mat("output.weight",normalized.back());
+        position_=base+nt;
+      }
+      batch_mla_rows_.clear();batch_mla_q_.clear();batch_mla_ids_.clear();
+      compute_.release_working_buffers();
+      return logits;
+    } catch(...) {batch_slot_=-1;batch_projections_.clear();throw;}
+  }
+  void prepare_decode_cache() {
+    if (!expert_budget_) return;
+    const auto started=Clock::now();
+    std::vector<std::pair<uint64_t,int>> ranked;
+    for (auto [key,count] : route_counts_) ranked.emplace_back(count,key);
+    std::sort(ranked.begin(),ranked.end(),[](auto a,auto b){return a.first!=b.first?a.first>b.first:a.second<b.second;});
+    for (auto [count,key] : ranked) {
+      const int layer=key/m_.experts,id=key%m_.experts;
+      const std::string p="blk."+std::to_string(layer)+".";
+      const auto &G=artifact_.at(p+"ffn_gate_exps.weight"), &U=artifact_.at(p+"ffn_up_exps.weight"),
+                 &D=artifact_.at(p+"ffn_down_exps.weight");
+      if((G.tensor->type!=10 && G.tensor->type!=11) || (D.tensor->type!=10 && D.tensor->type!=11))continue;
+      const size_t gb=G.bytes/m_.experts, db=D.bytes/m_.experts,bytes=gb*2+db;
+      // Vulkan memory requirements can add alignment beyond the packed bytes.
+      const size_t charged=(bytes+4095)&~size_t(4095);
+      if(charged>expert_budget_-expert_resident_)continue;
+      const size_t allocated=compute_.upload_expert(key,{G.data()+id*gb,gb},{U.data()+id*gb,gb},
+                                                    {D.data()+id*db,db},expert_budget_-expert_resident_);
+      cached_experts_.insert(key);expert_resident_+=allocated;
+    }
+    cache_ready_=true;
+    std::cerr << "VULKAN_CACHE slots=" << cached_experts_.size()
+              << " resident_MiB=" << expert_resident_/1048576.0
+              << " setup_ms=" << std::chrono::duration<double,std::milli>(Clock::now()-started).count() << '\n';
+  }
+  struct Snapshot {
+    strata::vulkan::Compute::Snapshot gpu;
+    std::vector<State> states;
+    size_t hidden_count;
+    int position;
+  };
+  Snapshot checkpoint() {return {compute_.checkpoint(),states_,target_hidden_.size(),position_};}
+  void restore(const Snapshot &snapshot) {
+    compute_.restore(snapshot.gpu);states_=snapshot.states;
+    target_hidden_.resize(snapshot.hidden_count);position_=snapshot.position;
+  }
+  Vec mtp_step(int token,const Vec &previous,bool head=true) {
+    if(!mtp_enabled_ || token<0 || token>=m_.vocab || previous.size()!=size_t(m_.hidden) || mtp_position_>=capacity_)
+      throw std::invalid_argument("Vulkan MTP input invalid");
+    struct RestorePosition {int &p;int old;~RestorePosition(){p=old;}} restore_position{position_,position_};
+    position_=mtp_position_;
+    const std::string p="blk.45.";const auto &embedding=artifact_.at("token_embd.weight");
+    Vec e(m_.hidden);const auto *src=embedding.data()+size_t(token)*embedding.bytes/m_.vocab;
+    if(embedding.tensor->type==0)std::memcpy(e.data(),src,e.size()*4);
+    else ggml_get_type_traits(ggml_type(embedding.tensor->type))->to_float(src,e.data(),e.size());
+    Vec joined=normalize(p+"nextn.enorm.weight",e);
+    auto prev=normalize(p+"nextn.hnorm.weight",previous);joined.insert(joined.end(),prev.begin(),prev.end());
+    auto cur=mat(p+"nextn.eh_proj.weight",joined);
+    auto x=normalize(p+"attn_norm.weight",cur),y=mla(p,45,x);
+    for(size_t i=0;i<cur.size();++i)cur[i]+=y[i];
+    x=normalize(p+"ffn_norm.weight",cur);y=moe(p,x,m_.draft_layers[0]);
+    for(size_t i=0;i<cur.size();++i)cur[i]+=y[i];
+    mtp_hidden_=normalize(p+"nextn.shared_head_norm.weight",cur);++mtp_position_;
+    return head?mat("output.weight",mtp_hidden_):Vec{};
+  }
+  void prime_mtp(std::span<const int> tokens,int start=0) {
+    if(!mtp_enabled_)return;
+    const auto begin=Clock::now();Vec zero(m_.hidden);
+    for(size_t i=0;i<tokens.size();++i) {
+      const int previous=start+int(i)-1;
+      mtp_step(tokens[i],previous<0?zero:target_hidden_.at(previous),false);
+    }
+    std::cerr << "VULKAN_MTP_SYNC tokens=" << tokens.size() << " ms="
+              << std::chrono::duration<double,std::milli>(Clock::now()-begin).count() << '\n';
+  }
+  static std::vector<int> lookup_draft(const std::vector<int> &history,int anchor,int depth) {
+    auto context=history;context.push_back(anchor);
+    for(int n=std::min<int>(4,context.size());n>=1;--n) {
+      for(int i=int(history.size())-n;i>=0;--i) {
+        if(std::equal(context.end()-n,context.end(),history.begin()+i)) {
+          std::vector<int> result;
+          for(int k=i+n;k<int(history.size()) && int(result.size())<depth;++k)result.push_back(history[k]);
+          if(!result.empty())return result;
+        }
+      }
+    }
+    return {};
+  }
+  std::vector<int> speculative(Vec &logits,const std::vector<int> &prompt,int maximum,
+                                const std::vector<int> &stops,const std::string &source,
+                                int depth,bool batch_verify) {
+    auto argmax=[](const Vec &v){return int(std::max_element(v.begin(),v.end())-v.begin());};
+    auto stop=[&](int token){return std::find(stops.begin(),stops.end(),token)!=stops.end();};
+    std::vector<int> history=prompt,output;
+    uint64_t proposed=0,accepted=0,rounds=0,rejected=0,target_steps=0;
+    double draft_ms=0,verify_ms=0,rollback_ms=0;
+    while(int(output.size())<maximum) {
+      const int anchor=argmax(logits),start=position_,remaining=maximum-int(output.size());
+      if(stop(anchor) || remaining==1) {output.push_back(anchor);std::cout << anchor << '\n' << std::flush;break;}
+      ++rounds;std::vector<int> drafts;
+      State draft_state;Vec draft_hidden;int draft_position=mtp_position_;
+      auto began=Clock::now();
+      if(source=="mtp") {
+        draft_state=states_.at(45);draft_hidden=mtp_hidden_;
+        Vec predicted=mtp_step(anchor,target_hidden_.back());
+        for(int i=0;i<std::min(depth,remaining-1);++i) {
+          const int token=argmax(predicted);drafts.push_back(token);
+          if(stop(token) || i+1>=std::min(depth,remaining-1))break;
+          predicted=mtp_step(token,mtp_hidden_);
+        }
+      } else drafts=lookup_draft(history,anchor,std::min(depth,remaining-1));
+      draft_ms+=std::chrono::duration<double,std::milli>(Clock::now()-began).count();
+      proposed+=drafts.size();std::vector<int> window{anchor},committed;
+      window.insert(window.end(),drafts.begin(),drafts.end());
+      began=Clock::now();
+      if(batch_verify && !drafts.empty()) {
+        auto saved=checkpoint();std::vector<Vec> verified;
+        verification_=true;
+        try {prefill(window,window.size(),&verified);} catch(...) {verification_=false;throw;}
+        verification_=false;target_steps+=window.size();
+        committed.push_back(anchor);
+        for(size_t i=0;i<drafts.size();++i) {
+          if(argmax(verified[i])!=drafts[i]) {++rejected;break;}
+          committed.push_back(drafts[i]);++accepted;
+          if(stop(drafts[i]))break;
+        }
+        verify_ms+=std::chrono::duration<double,std::milli>(Clock::now()-began).count();
+        if(committed.size()!=window.size()) {
+          began=Clock::now();restore(saved);logits=prefill(committed,1);target_steps+=committed.size();
+          rollback_ms+=std::chrono::duration<double,std::milli>(Clock::now()-began).count();
+        } else logits=verified.back();
+      } else {
+        committed.push_back(anchor);logits=step(anchor);++target_steps;
+        for(int token:drafts) {
+          if(argmax(logits)!=token){++rejected;break;}
+          committed.push_back(token);++accepted;
+          if(stop(token))break;
+          logits=step(token);++target_steps;
+        }
+        verify_ms+=std::chrono::duration<double,std::milli>(Clock::now()-began).count();
+      }
+      for(int token:committed) {output.push_back(token);history.push_back(token);std::cout << token << '\n' << std::flush;}
+      if(source=="mtp" && !stop(output.back()) && int(output.size())<maximum) {
+        states_[45]=std::move(draft_state);mtp_hidden_=std::move(draft_hidden);mtp_position_=draft_position;
+        compute_.rewind_mla(45,draft_position);prime_mtp(committed,start);
+      }
+      if(stop(output.back()))break;
+    }
+    std::cerr << "VULKAN_SPEC source=" << source << " rounds=" << rounds << " proposed=" << proposed
+              << " accepted=" << accepted << " rejected_windows=" << rejected << " target_steps=" << target_steps
+              << " draft_ms=" << draft_ms << " verify_ms=" << verify_ms << " rollback_ms=" << rollback_ms
+              << " verify_batch=" << batch_verify << '\n';
+    return output;
+  }
+  size_t cache_slots() const { return cached_experts_.size(); }
   int vocabulary() const { return m_.vocab; }
   int position() const { return position_; }
+  void save_layer_trace(int layer,const Vec &r) {
+    const char *directory=std::getenv("STRATA_GLM_STATE_TRACE_DIR");
+    if(!directory || !*directory)return;
+    const auto path=std::filesystem::path(directory)/("layer-"+std::to_string(layer)+".bin");
+    std::filesystem::create_directories(path.parent_path());
+    if(std::filesystem::exists(path))throw std::runtime_error("Vulkan: refusing to overwrite layer trace");
+    std::ofstream file(path,std::ios::binary);file.write(reinterpret_cast<const char*>(r.data()),r.size()*4);
+    if(!file)throw std::runtime_error("Vulkan layer trace write failed");
+  }
   Vec step(int token) {
     if (token < 0 || token >= m_.vocab || position_ >= capacity_)
       throw std::out_of_range("Vulkan token/context out of bounds");
@@ -517,6 +994,7 @@ public:
                       r[3 * m_.hidden + d]) *
                      .25f;
     auto x = normalize("output_norm.weight", collapsed);
+    if(mtp_enabled_) {target_hidden_.resize(position_+1);target_hidden_[position_]=x;}
     strata::vulkan::set_operation_context(position_, -1);
     auto logits = mat("output.weight", x);
     position_++;
@@ -524,6 +1002,10 @@ public:
     return logits;
   }
   void reset() {
+    mtp_position_=0;mtp_hidden_.clear();target_hidden_.clear();
+    compute_.clear_experts();
+    cached_experts_.clear();route_counts_.clear();expert_resident_=0;cache_ready_=false;
+    expert_hits_=0;expert_routes_=0;
     compute_.reset();
     for (auto &s : states_) {
       for (auto &v : s.conv)
@@ -533,6 +1015,21 @@ public:
       std::fill(s.pooled.begin(), s.pooled.end(), 0);
     }
     position_ = 0;
+  }
+  std::array<double, 7> work_snapshot() const {
+    return {projections_.compute_ms, projections_.transfer_ms, cpu_expert_ms_,
+            compute_.dispatch_ms, double(projections_.calls), double(projections_.submissions),compute_.transfer_ms};
+  }
+  void phase_report(const char *phase, int trial, const std::array<double,7> &before) {
+    const auto after = work_snapshot();
+    std::cerr << "VULKAN_PHASE phase=" << phase << " trial=" << trial
+              << " projection_compute_ms=" << after[0]-before[0]
+              << " projection_transfer_ms=" << after[1]-before[1]
+              << " cpu_expert_ms=" << after[2]-before[2]
+              << " custom_dispatch_ms=" << after[3]-before[3]
+              << " projection_calls=" << after[4]-before[4]
+              << " projection_submissions=" << after[5]-before[5]
+              << " custom_transfer_ms=" << after[6]-before[6] << '\n';
   }
   void report() {
     std::cerr << "VULKAN_WORK projection_calls=" << projections_.calls
@@ -544,16 +1041,24 @@ public:
               << " custom_dispatch_ms=" << compute_.dispatch_ms
               << " projection_resident_MiB="
               << projections_.resident_bytes() / 1048576.0
+              << " expert_cache_hits=" << expert_hits_ << " expert_routes=" << expert_routes_
               << " custom_peak_MiB=" << compute_.peak_bytes() / 1048576.0
               << '\n';
   }
 };
 int main(int argc, char **argv) {
   try {
-    std::string model, prompt, output, dump;
+    std::string model, prompt, output, dump, speculative = "none", prefill_experts = "cpu";
+    int draft_depth = 1;
+    bool verify_batch = false;
     std::vector<int> stops;
-    int device = 0, threads = 12, capacity = 4096, generate = 32, trials = 1;
-    size_t budget = 15360ULL * 1024 * 1024;
+    int device = 0, threads = 12, capacity = 4096, generate = 32, trials = 1, prefill_batch = 1;
+    size_t budget = 15360ULL * 1024 * 1024, expert_budget = 0;
+    auto mib=[](const std::string &text) {
+      size_t consumed=0;const auto number=std::stoull(text,&consumed);
+      if(consumed!=text.size() || number>15360)throw std::invalid_argument("MiB value must be 0..15360");
+      return size_t(number)*1024*1024;
+    };
     for (int i = 1; i < argc; i++) {
       std::string a = argv[i];
       auto value = [&] {
@@ -591,15 +1096,30 @@ int main(int argc, char **argv) {
         generate = std::stoi(value());
       else if (a == "--trials")
         trials = std::stoi(value());
+      else if (a == "--prefill-experts")
+        prefill_experts = value();
+      else if (a == "--speculative")
+        speculative = value();
+      else if (a == "--draft-depth")
+        draft_depth = std::stoi(value());
+      else if (a == "--verify-batch")
+        verify_batch = true;
+      else if (a == "--prefill-batch")
+        prefill_batch = std::stoi(value());
+      else if (a == "--decode-cache-mib")
+        expert_budget = mib(value());
       else if (a == "--gpu-budget-mib")
-        budget = std::stoull(value()) * 1024 * 1024;
+        budget = mib(value());
       else
         throw std::invalid_argument("unknown argument: " + a);
     }
-    if (model.empty() || prompt.empty() || output.empty() || threads < 1 ||
+    if ((prefill_experts!="cpu" && prefill_experts!="gpu") || (prefill_experts=="gpu" && prefill_batch==1) ||
+        (speculative!="none" && speculative!="lookup" && speculative!="mtp") || draft_depth<1 || draft_depth>3 ||
+        prefill_batch<1 || prefill_batch>1024 || model.empty() || prompt.empty() || output.empty() || threads < 1 ||
         threads > 32 || capacity < 2 || capacity > 32768 || generate < 2 ||
         generate > 4096 || trials < 1 || trials > 5 ||
-        budget < 2048ULL * 1024 * 1024 || budget > 15360ULL * 1024 * 1024)
+        budget < 2048ULL * 1024 * 1024 || budget > 15360ULL * 1024 * 1024 ||
+        expert_budget > 8192ULL * 1024 * 1024 || expert_budget > budget - 2048ULL*1024*1024)
       throw std::invalid_argument(
           "usage: strata-glm-vulkan --model MODEL --prompt-file IDS --output "
           "JSON [--generate 32 --trials 1 --context 4096 --threads 12 "
@@ -621,29 +1141,29 @@ int main(int argc, char **argv) {
         (!dump.empty() && std::filesystem::exists(dump)))
       throw std::invalid_argument("refusing to overwrite Vulkan evidence");
     trace("model_load_begin", 0);
-    Decoder decoder(model, device, threads, capacity, budget);
+    Decoder decoder(model, device, threads, capacity, budget, expert_budget, speculative=="mtp", prefill_experts=="gpu");
     trace("model_load_complete", 0);
     std::vector<double> prefill_rates, decode_rates;
     std::vector<std::vector<int>> outputs;
     Vec logits;
     if (trials > 1) {
       decoder.reset();
-      for (int id : tokens)
-        logits = decoder.step(id);
+      logits = decoder.prefill(tokens,prefill_batch);
     }
     for (int trial = 0; trial < trials; trial++) {
       decoder.reset();
       trace("prefill_begin", 0);
+      auto phase_start = decoder.work_snapshot();
       auto start = Clock::now();
-      for (int id : tokens)
-        logits = decoder.step(id);
+      logits = decoder.prefill(tokens,prefill_batch);
       double ms =
           std::chrono::duration<double, std::milli>(Clock::now() - start)
               .count();
       prefill_rates.push_back(tokens.size() * 1000 / ms);
       std::cerr << "PREFILL trial=" << trial << " tokens=" << tokens.size()
-                << " batch=1 ms=" << ms << " tok_s=" << prefill_rates.back()
+                << " batch=" << prefill_batch << " ms=" << ms << " tok_s=" << prefill_rates.back()
                 << '\n';
+      decoder.phase_report("prefill", trial, phase_start);
       trace("prefill_complete", tokens.size());
       if (trial == 0 && !dump.empty()) {
         std::ofstream f(dump, std::ios::binary);
@@ -652,8 +1172,14 @@ int main(int argc, char **argv) {
         if (!f)
           throw std::runtime_error("prefill dump failed");
       }
+      decoder.prime_mtp(tokens);
+      decoder.prepare_decode_cache();
       std::vector<int> ids;
+      phase_start = decoder.work_snapshot();
       start = Clock::now();
+      if(speculative!="none")
+        ids=decoder.speculative(logits,tokens,generate,stops,speculative,draft_depth,verify_batch);
+      else {
       for (int i = 0; i < generate; i++) {
         int id =
             std::max_element(logits.begin(), logits.end()) - logits.begin();
@@ -664,12 +1190,16 @@ int main(int argc, char **argv) {
         if (i + 1 < generate)
           logits = decoder.step(id);
       }
+      }
       ms = std::chrono::duration<double, std::milli>(Clock::now() - start)
                .count();
       decode_rates.push_back((ids.size() - 1) * 1000 / ms);
       outputs.push_back(ids);
-      std::cerr << "DECODE steps=" << ids.size() - 1 << " ms=" << ms
-                << " tok_s=" << decode_rates.back() << '\n';
+      if(speculative=="none")
+        std::cerr << "DECODE steps=" << ids.size() - 1 << " ms=" << ms << " tok_s=" << decode_rates.back() << '\n';
+      else std::cerr << "SPECULATIVE source=" << speculative << " generated=" << ids.size()
+                     << " ms=" << ms << " tok_s=" << decode_rates.back() << '\n';
+      decoder.phase_report("decode", trial, phase_start);
       decoder.report();
     }
     auto median = [](std::vector<double> x) {
@@ -677,8 +1207,8 @@ int main(int argc, char **argv) {
       return x[x.size() / 2];
     };
     std::ofstream f(output);
-    f << "{\"backend\":\"vulkan\",\"prefill_mode\":\"sequential\",\"expert_"
-         "cache_slots\":0,\"prefill_tok_s\":"
+    f << "{\"backend\":\"vulkan\",\"prefill_mode\":\"" << (prefill_batch==1?"sequential":"batched") << "\",\"expert_"
+         "cache_slots\":" << decoder.cache_slots() << ",\"prefill_tok_s\":"
       << median(prefill_rates) << ",\"decode_tok_s\":" << median(decode_rates)
       << ",\"output_ids\":[";
     for (size_t t = 0; t < outputs.size(); t++) {

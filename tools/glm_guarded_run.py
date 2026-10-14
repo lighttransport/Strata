@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import signal
 import subprocess
+import sys
 import time
 import uuid
 
@@ -101,9 +102,9 @@ def delta_log(before, after):
     return after[len(before):] if after.startswith(before) else after
 
 
-def run(config, prompt, output, *, tokens=512, trials=1, timeout=1200, extra=()):
-    if not 2 <= tokens <= 4096 or not 1 <= trials <= 5 or not 10 <= timeout <= 3600:
-        raise ValueError('tokens 2..4096, trials 1..5, timeout 10..3600 required')
+def run(config, prompt, output, *, tokens=512, trials=1, timeout=1200, extra=(), correctness_only=False):
+    if not 2 <= tokens <= 4096 or not 1 <= trials <= 5 or not 10 <= timeout <= 10800:
+        raise ValueError('tokens 2..4096, trials 1..5, timeout 10..10800 required')
     config, prompt, output = Path(config).resolve(), Path(prompt).resolve(), Path(output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     events = output.with_suffix('.tasks.jsonl')
@@ -128,7 +129,7 @@ def run(config, prompt, output, *, tokens=512, trials=1, timeout=1200, extra=())
                '--property=MemoryMax=60G', '--property=MemorySwapMax=0',
                '--property=RuntimeMaxSec='+str(timeout+30), '--property=OOMPolicy=kill',
                '--property=WorkingDirectory='+str(ROOT),
-               'python3', str(ROOT/'tools/glm_low_memory_bench.py'), str(config), str(prompt),
+               sys.executable, str(ROOT/'tools/glm_low_memory_bench.py'), str(config), str(prompt),
                '--output', str(output), '--ram-gib', '60', '--tokens', str(tokens),
                '--trials', str(trials), '--timeout', str(timeout),
                '--gpu-capacity-mib', '16304', '--gpu-used-limit-mib', '15792', '--worker', *extra]
@@ -224,13 +225,23 @@ def run(config, prompt, output, *, tokens=512, trials=1, timeout=1200, extra=())
         status['pci_after'] = str(error)
     result = output.with_suffix('.result.json')
     measurement_clean = False
+    correctness_complete = False
     if result.exists():
         try:
-            measurement_clean = json.loads(result.read_text()).get('clean') is True
+            measurement = json.loads(result.read_text())
+            measurement_clean = measurement.get('clean') is True
+            group = measurement.get('cgroup_after', {})
+            correctness_complete = (measurement.get('complete') is True and
+                not measurement.get('rejected') and not measurement.get('determinism_failure') and
+                group.get('memory.swap.current') == 0 and
+                all(not group.get('memory.events', {}).get(key,0) for key in ('oom','oom_kill','oom_group_kill')))
         except (OSError, ValueError) as error:
             status['result_error'] = str(error)
     status['passed'] = (process.poll() == 0 and not status['termination_reason'] and not status['faults']
-                        and status['pci_after'] == initial and measurement_clean)
+                        and status['pci_after'] == initial and
+                        (correctness_complete if correctness_only else measurement_clean))
+    status['test_kind'] = 'correctness' if correctness_only else 'performance'
+    status['performance_qualified'] = status['passed'] and measurement_clean and not correctness_only
     write_status(status_path, status)
     task_event(events, output.name, 'passed' if status['passed'] else 'failed',
                termination_reason=status['termination_reason'], exit_code=status['exit_code'],
@@ -245,8 +256,10 @@ def main():
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--tokens', type=int, default=512); p.add_argument('--trials', type=int, default=1)
     p.add_argument('--timeout', type=int, default=1200)
+    p.add_argument('--correctness-only', action='store_true',
+                   help='retain resource/fault checks; never qualify timings, tolerate recorded CPU competition')
     a = p.parse_args()
-    status = run(a.config, a.prompt, a.output, tokens=a.tokens, trials=a.trials, timeout=a.timeout)
+    status = run(a.config, a.prompt, a.output, tokens=a.tokens, trials=a.trials, timeout=a.timeout,correctness_only=a.correctness_only)
     print(json.dumps(status, indent=2), flush=True)
     return 0 if status['passed'] else 1
 

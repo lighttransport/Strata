@@ -76,14 +76,15 @@ def clear_model_cache(config):
 
 
 def parse_log(log):
+    number=r"(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
     prefill = [dict(trial=int(i), tokens=int(n), batch=int(b), milliseconds=float(ms),
                     tokens_per_second=float(rate)) for i, n, b, ms, rate in re.findall(
-        r"PREFILL trial=(\d+) tokens=(\d+) batch=(\d+) ms=([\d.]+) tok_s=([\d.]+)", log)]
+        rf"PREFILL trial=(\d+) tokens=(\d+) batch=(\d+) ms=({number}) tok_s=({number})(?:\s|$)", log)]
     decode = [dict(kind="single", tokens=int(n), milliseconds=float(ms), tokens_per_second=float(rate))
-              for n, ms, rate in re.findall(r"DECODE steps=(\d+) ms=([\d.]+) tok_s=([\d.]+)", log)]
+              for n, ms, rate in re.findall(rf"DECODE steps=(\d+) ms=({number}) tok_s=({number})(?:\s|$)", log)]
     decode += [dict(kind=kind, tokens=int(n), milliseconds=float(ms), tokens_per_second=float(rate))
                for kind, n, ms, rate in re.findall(
-        r"SPECULATIVE source=(\w+) generated=(\d+).*? ms=([\d.]+) tok_s=([\d.]+)", log)]
+        rf"SPECULATIVE source=(\w+) generated=(\d+).*? ms=({number}) tok_s=({number})(?:\s|$)", log)]
     def records(tag):
         return [{k: int(v) if v.isdigit() else float(v) for k, v in re.findall(r"(\w+)=([0-9.eE+-]+)(?:\s|$)", line)}
                 for line in log.splitlines() if line.startswith(tag + " ")]
@@ -299,14 +300,16 @@ def eval_counts(path, skip_prefix=0):
 
 def vulkan_command(cfg, args):
     """Keep unsupported Vulkan features explicit instead of silently ignoring them."""
-    if (args.single or args.eval_corpus or cfg.get('speculative', 'none') != 'none' or
-            cfg.get('decode_graphs') or cfg.get('decode_cache_mib') or
+    if (args.single or args.eval_corpus or cfg.get('speculative', 'none') not in ('none','lookup','mtp') or
+            cfg.get('decode_graphs') or
             cfg.get('decode_cache_slots') or cfg.get('decode_checks') or cfg.get('mtp_greedy_control')):
-        raise ValueError('initial Vulkan runner supports greedy generation without a resident expert tier')
-    if cfg.get('prefill_batch', 1) != 1:
-        raise ValueError('initial Vulkan runner requires sequential prefill_batch=1')
-    if cfg.get('prefill_experts', 'cpu') != 'cpu':
-        raise ValueError('initial Vulkan prefill uses CPU experts')
+        raise ValueError('unsupported Vulkan generation or CUDA graph control')
+    batch = cfg.get('prefill_batch', 1)
+    if type(batch) is not int or not 1 <= batch <= 1024:
+        raise ValueError('Vulkan prefill_batch must be 1..1024')
+    experts = cfg.get('prefill_experts', 'cpu')
+    if experts not in ('cpu','gpu') or (experts=='gpu' and batch==1):
+        raise ValueError('Vulkan GPU prefill experts require prefill_batch > 1')
     supported = {'STRATA_GLM_MAPPED_LAZY', 'STRATA_GLM_MAPPED_OWNED', 'STRATA_GLM_GPU_RESERVE_MIB',
                  'STRATA_GLM_TASK_TRACE', 'STRATA_GLM_STATE_TRACE_DIR'}
     unsupported = [name for name in cfg.get('env', {}) if name.startswith('STRATA_GLM_') and name not in supported]
@@ -318,6 +321,22 @@ def vulkan_command(cfg, args):
                '--context', str(cfg['context']), '--generate', str(args.tokens),
                '--trials', str(args.trials), '--threads', str(cfg.get('threads', 12)),
                '--gpu-budget-mib', str(cfg['gpu_budget_mib'])]
+    if batch != 1:
+        command += ['--prefill-batch', str(batch)]
+    if experts != 'cpu':
+        command += ['--prefill-experts', experts]
+    if cfg.get('speculative', 'none') != 'none':
+        depth=cfg.get('draft_depth',1)
+        if type(depth) is not int or not 1 <= depth <= 3:
+            raise ValueError('Vulkan draft_depth must be 1..3')
+        command += ['--speculative',cfg['speculative'],'--draft-depth',str(depth)]
+        if cfg.get('verify_batch'):
+            command += ['--verify-batch']
+    if cfg.get('decode_cache_mib'):
+        cache = cfg['decode_cache_mib']
+        if type(cache) is not int or not 0 <= cache <= 8192:
+            raise ValueError('Vulkan decode_cache_mib must be 0..8192')
+        command += ['--decode-cache-mib', str(cache)]
     if cfg.get('record_prefill_logits'):
         command += ['--dump-prefill', str(args.output.with_suffix('.prefill.logits.bin').resolve())]
     if cfg.get('stop_ids'):
@@ -332,11 +351,18 @@ def eval_complete(rows, counts, decode_prefix=None):
                                          row.get("prefix_tokens") == decode_prefix for row in rows)))
 
 
+def benchmark_environment(cfg):
+    prefixes=("STRATA_GLM_", "STRATA_Q23_", "STRATA_NATIVE_")
+    if cfg.get('backend')=='vulkan':prefixes+=("STRATA_VULKAN_", "GGML_VK_")
+    env={k:v for k,v in os.environ.items() if not k.startswith(prefixes)}
+    env.update(cfg.get("env", {}))
+    return env
+
+
 def worker(args):
     from glm_q2_coding_bench import process_cpu_snapshot
     cfg = json.loads(args.config.read_text())
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("STRATA_GLM_", "STRATA_Q23_", "STRATA_NATIVE_"))}
-    env.update(cfg.get("env", {}))
+    env = benchmark_environment(cfg)
     command = ["numactl", "--interleave=all", str(Path(cfg["exe"]).resolve()), cfg["model"],
         "@" + str(args.prompt.resolve()), str(args.tokens), str(cfg.get("dense_cache_mib", 4096)),
         str(cfg.get("threads", 15)), "--context=" + str(cfg["context"]),

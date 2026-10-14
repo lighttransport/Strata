@@ -10,6 +10,15 @@ from glm_low_memory_bench import (
 
 
 class LowMemoryBenchTest(unittest.TestCase):
+    def test_scientific_notation_from_long_vulkan_runs(self):
+        value=parse_log('PREFILL trial=0 tokens=8192 batch=1 ms=3.91337e+06 tok_s=2.09333\n'
+                        'DECODE steps=137 ms=7.23801E4 tok_s=1.89279\n'
+                        'SPECULATIVE source=mtp generated=138 ms=1e+06 tok_s=1.37e-1\n')
+        self.assertEqual(value['prefill'][0]['milliseconds'],3913370)
+        self.assertEqual(value['decode'][0]['milliseconds'],72380.1)
+        self.assertEqual(value['decode'][1]['tokens_per_second'],.137)
+        self.assertEqual(parse_log('PREFILL trial=0 tokens=8192 batch=1 ms=1e+06 tok_s=2.0bad')['prefill'],[])
+
     def test_determinism_uses_eos_trial_boundaries(self):
         rows = [dict(kind='single', tokens=2)] * 2
         self.assertTrue(decode_trials_identical([1, 2, 9, 1, 2, 9], rows))

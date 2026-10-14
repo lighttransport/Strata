@@ -49,6 +49,9 @@ class OwnedGuardTest(unittest.TestCase):
             self.assertEqual(cleanup.call_args.args[0][-1],'strata-glm-opt-'+'a'*32+'.service')
             self.assertIn('--property=MemoryMax=60G',launch.call_args.args[0])
             self.assertIn('--property=MemorySwapMax=0',launch.call_args.args[0])
+            command = launch.call_args.args[0]
+            working_directory = command.index('--property=WorkingDirectory='+str(guard.ROOT))
+            self.assertEqual(command[working_directory+1], guard.sys.executable)
             kill.assert_called_once()
 
     def test_already_failed_boot_does_not_launch(self):

@@ -1,0 +1,221 @@
+{
+  "date_local": "2026-10-14",
+  "purpose": "Untuned RX570 Vulkan performance baseline",
+  "base_commit": "63c2aaf874706255feb62281bf16974daedac7b2",
+  "working_tree": "Merge conflicts resolved; uncommitted. Exact compiled sources identified by hashes.",
+  "hardware": {
+    "cpu": "AMD Ryzen 9 3950X",
+    "ram": "64 GB installed; Linux MemTotal about 60 GiB",
+    "ram_speed": "not measured",
+    "gpu": "RX 570 16 GiB, RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "sampled_power_cap_w": 135
+  },
+  "build": {
+    "type": "Release",
+    "compiler": "GCC 15.2.0",
+    "shaderc": "2026.1-1",
+    "ggml_commit": "3cf03257f",
+    "executable_sha256": "cfa9267296437716f235ccedfaddafbf3793062ce22d369e5be5ecaf0e9f6747",
+    "source_sha256": {
+      "src/program/glm_decode.cpp": "76f8f444935000ed7028a7f6f7a627bd0df15652dd05c0a6cba479041b748ac5",
+      "tools/glm_guarded_run.py": "de6e74121322132708118e55f3868f21ba2f8dc4565d220c66ff56a3ad09a71b",
+      "tools/glm_low_memory_bench.py": "16517ab8b5238d8793508e7e1586a944ac1d416334f7c5fa1895957933db4ca5",
+      "CMakeLists.txt": "20727d5cb37dc0610a042bb5de68555f96caebf6c5da24a57e02c4b33a05ba41",
+      "vulkan/CMakeLists.txt": "cb418516a6b0a13b60098d807a7257912b7a7352ebe55d4ab4041aaf0babbe84",
+      "vulkan/cpu_executor.hpp": "34dcc9e1fd4b9d6cf94158e93f35a32381f448f2165fe86d1c730d57722a5809",
+      "vulkan/decode.cpp": "779137a60dd8ed9ef35705e199133762e74241d1a5e64b66696e501fe8e4bc48",
+      "vulkan/embed_spirv.cmake": "c23d7580f0394bf68c5fc088e8ef3acf966308f6f3bb67ef75763d36b124edf4",
+      "vulkan/executor_check.cpp": "e91f93793dff39ff5eccd13cb4fcfee80793eb521519b40a78f353e4dc1bd9f5",
+      "vulkan/model_checks.hpp": "455231fa502667089d5b03673d15bd091d9cbdff635347b812f0bfab08804ce5",
+      "vulkan/native_dots.cmake": "5775ae96eb48ea73963584ec3febc166cbd39553e9d5dd650d79b5f263d06f8a",
+      "vulkan/parity.cpp": "501ba70d10e863b403781e17b1082cea178fa4c69829b68340f001bd6a71bcc5",
+      "vulkan/projections.cpp": "ccbaef124a520c437bc066183d65cb5ee67af15e9c58cc9cc068ded05e476794",
+      "vulkan/projections.hpp": "63245868546085d5de4780c06bc1f1c41c586955ed559854a7b082c205514159",
+      "vulkan/runtime.cpp": "06d1be9586f8fa50f52c0ddcbf6c67834f0ca8593c2a9306d770478af3ef7302",
+      "vulkan/runtime.hpp": "08e65d6762e6576bd9031491e66dd13ef05bc6c947329a790613a46c1eefaac4",
+      "vulkan/shaders/kda.comp": "c84be56fcfee8904ea97b223ed574a494861807915207ae1e6d374085dfb82a3",
+      "vulkan/shaders/kda_fused.comp": "dc096981cc21beb16c039570929916cde01e605be9e84b2382779e963d55f832",
+      "vulkan/shaders/mhc.comp": "b0a9acca97c1182c121eddf77c74e0e174735c4e5e585c58a11d010e907eb057",
+      "vulkan/shaders/mla.comp": "1eebe247237dd8e57dd72c9cfff53494d7e9364bb997b3a8051c7586fde5806f",
+      "vulkan/task_trace.hpp": "e710c07db900722e529c359da3ce8a74598095c1c48d145f544974f9b36d8360"
+    }
+  },
+  "protocol": {
+    "config": "configs/experimental/glm53f-reap50-vulkan-rx570-64g-16g.json",
+    "config_sha256": "4918ad29a335b50a6ae48d590d089229e79831a1d2a859968e41dc8a607fa110",
+    "model": "GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "model_bytes": 63205406688,
+    "prompt": "bench/fixtures/glm53_vulkan_prefix32.ids",
+    "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+    "prompt_tokens": 32,
+    "generated_tokens_per_trial": 64,
+    "timed_decode_steps_per_trial": 63,
+    "trials": 5,
+    "untimed_prefill_warmup": true,
+    "model_file_cache_cleared_before_launch": true,
+    "threads": 12,
+    "context": 4096,
+    "prefill": "sequential",
+    "routed_experts": "CPU; no GPU expert cache",
+    "gpu_budget_mib": 15360,
+    "memory_limit_gib": 60,
+    "swap_limit_bytes": 0,
+    "performance_options": "none",
+    "engine_trace": "disabled"
+  },
+  "results": {
+    "prefill_trials": [
+      {
+        "trial": 0,
+        "tokens": 32,
+        "milliseconds": 8676.58,
+        "tokens_per_second": 3.68809
+      },
+      {
+        "trial": 1,
+        "tokens": 32,
+        "milliseconds": 8712.46,
+        "tokens_per_second": 3.6729
+      },
+      {
+        "trial": 2,
+        "tokens": 32,
+        "milliseconds": 8699.05,
+        "tokens_per_second": 3.67856
+      },
+      {
+        "trial": 3,
+        "tokens": 32,
+        "milliseconds": 8644.03,
+        "tokens_per_second": 3.70197
+      },
+      {
+        "trial": 4,
+        "tokens": 32,
+        "milliseconds": 8712.24,
+        "tokens_per_second": 3.67299
+      }
+    ],
+    "decode_trials": [
+      {
+        "trial": 0,
+        "steps": 63,
+        "milliseconds": 19966.3,
+        "tokens_per_second": 3.15532
+      },
+      {
+        "trial": 1,
+        "steps": 63,
+        "milliseconds": 17493.2,
+        "tokens_per_second": 3.6014
+      },
+      {
+        "trial": 2,
+        "steps": 63,
+        "milliseconds": 17417.2,
+        "tokens_per_second": 3.61711
+      },
+      {
+        "trial": 3,
+        "steps": 63,
+        "milliseconds": 17419.6,
+        "tokens_per_second": 3.61661
+      },
+      {
+        "trial": 4,
+        "steps": 63,
+        "milliseconds": 17519.5,
+        "tokens_per_second": 3.59599
+      }
+    ],
+    "median_prefill_tok_s": 3.67856,
+    "median_decode_tok_s": 3.6014,
+    "warm_decode_median_tok_s": 3.609005,
+    "peak_ram_gib": 41.21510314941406,
+    "peak_sampled_global_vram_mib": 5298,
+    "peak_swap_bytes": 0,
+    "wall_seconds_including_load_and_warmup": 161.42611637900018
+  },
+  "validation": {
+    "passed": true,
+    "all_320_output_ids_match_across_trials": true,
+    "output_ids_one_trial": [
+      860,
+      698,
+      1067,
+      330,
+      495,
+      459,
+      14100,
+      42087,
+      76699,
+      25734,
+      75,
+      18,
+      4322,
+      1749,
+      860,
+      698,
+      1067,
+      330,
+      495,
+      459,
+      14100,
+      42087,
+      76699,
+      25734,
+      75,
+      18,
+      4322,
+      1749,
+      860,
+      698,
+      1067,
+      330,
+      495,
+      459,
+      14100,
+      42087,
+      76699,
+      25734,
+      75,
+      18,
+      4322,
+      1749,
+      860,
+      698,
+      1067,
+      330,
+      495,
+      459,
+      14100,
+      42087,
+      76699,
+      25734,
+      75,
+      18,
+      4322,
+      1749,
+      860,
+      698,
+      1067,
+      330,
+      495,
+      459,
+      14100,
+      42087
+    ],
+    "faults": [],
+    "pci_unchanged": true,
+    "interference": []
+  },
+  "raw_evidence": "build-vulkan/rx570-perf-baseline.* (local, not committed)",
+  "limitations": [
+    "One five-trial run on a 32-token prompt; no long-context throughput measurement.",
+    "No same-day HIP/CUDA or tuned Vulkan comparison.",
+    "No new coding or perplexity quality qualification.",
+    "Global VRAM telemetry includes all clients; no process GPU accounting.",
+    "Full 16 GiB allocation not exercised."
+  ]
+}

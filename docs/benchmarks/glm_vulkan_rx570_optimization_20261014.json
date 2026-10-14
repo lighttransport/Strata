@@ -1,0 +1,478 @@
+{
+  "hardware": {
+    "gpu": "RX570 modified 16 GiB",
+    "cpu": "Ryzen 3950X",
+    "installed_ram_gib": 64,
+    "guard_ram_gib": 60,
+    "guard_swap_gib": 0
+  },
+  "performance_qualified": false,
+  "timing_status": "Deferred by user; unrelated C++ compilation active.",
+  "correctness_checks": {
+    "rx570-batch32-corrected": {
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "tokens": 64,
+      "trials": 2,
+      "rows": [
+        {
+          "profile": "configured",
+          "guard_passed": true,
+          "executable_sha256": "fb870aebd8860d93616db3851f542ae6238e4c489429aae7db7ced4e1d3fcec8",
+          "config_sha256": "8e1b814ce1ecfbaf9c3ef1160acd96a7ecc1c98c4d17c261c2527881a045b7de",
+          "qualified": false,
+          "output_ids_match": true,
+          "generated": [
+            64,
+            64
+          ],
+          "correctness_passed": true,
+          "timings_qualified": false
+        }
+      ]
+    },
+    "rx570-streamed-expert-check": {
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "tokens": 64,
+      "trials": 2,
+      "rows": [
+        {
+          "profile": "configured",
+          "guard_passed": true,
+          "executable_sha256": "a42f285ca94f252638715c3640f03ea07c31cf4b272349e13ff46a9e469be22f",
+          "config_sha256": "b1d3859cee4f4fe5022c705665071d6e9e1bd2c7c9b1ccc0817e9a852e5bd8bf",
+          "qualified": false,
+          "output_ids_match": true,
+          "generated": [
+            64,
+            64
+          ],
+          "correctness_passed": true,
+          "timings_qualified": false
+        }
+      ]
+    },
+    "rx570-mtp-batch-check": {
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "tokens": 64,
+      "trials": 2,
+      "rows": [
+        {
+          "profile": "configured",
+          "guard_passed": true,
+          "executable_sha256": "62eb6239946f94e512fa9c698c7d87270452c9df09bbdfde482b7e3572655bde",
+          "config_sha256": "548e2d9cde4b08299d0afdbc740c72270d72f895e8bc7eb2e2ff96fee5949f08",
+          "qualified": false,
+          "output_ids_match": true,
+          "generated": [
+            64,
+            64
+          ],
+          "correctness_passed": true,
+          "timings_qualified": false
+        }
+      ]
+    },
+    "rx570-all-paths-check": {
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "tokens": 64,
+      "trials": 2,
+      "rows": [
+        {
+          "profile": "configured",
+          "guard_passed": true,
+          "executable_sha256": "62eb6239946f94e512fa9c698c7d87270452c9df09bbdfde482b7e3572655bde",
+          "config_sha256": "ce0cb45194312cc0827fc2902ee416fd1671fd5da9f53a8a4a1d15face9c7cce",
+          "qualified": false,
+          "output_ids_match": true,
+          "generated": [
+            64,
+            64
+          ],
+          "correctness_passed": true,
+          "timings_qualified": false
+        }
+      ]
+    }
+  },
+  "primitive_suite": "rx570-budget-hardware-parity.log: passed including real Q2_K/Q3_K experts, causal MLA, index scores, snapshots, oversized dispatches and near-limit scratch allocation",
+  "source_sha256": {
+    "vulkan/CMakeLists.txt": "cc308d559c84928fafbeb25cbbb6f3f177c894cfa8e83f6d5c37f25aa5822284",
+    "vulkan/decode.cpp": "e1d432c428ee639e42491b39e419a12a22a75b98cb43de76f8e99dcc7a9ef58d",
+    "vulkan/runtime.cpp": "7cf224cca3e286cbb1b04a08229a7b9c720f24979e90ecbe6a91dd64f81cc334",
+    "vulkan/runtime.hpp": "f27b81626d02d3cd4c649ec80e065fc43a5b4568c0e946a3721fc29a6a16c5fe",
+    "vulkan/projections.cpp": "8a0238ce31552719f9bf08f032f5b6a17f3d3db366dde76f6df934184f18b8f3",
+    "vulkan/projections.hpp": "b9735e2ebfa541a52729f9cb6451f7e1ea9f9631b20279943a722aed028735fe",
+    "vulkan/parity.cpp": "01c03b9ab131932cbcab7f1f5b10ba80c9bb311f51ab7e3324232ab8ca71b4a4",
+    "vulkan/bench.cpp": "ea3443e01228af464610c084e89694d32001b2d7c3b63ba059f1b3c7ef7cb798",
+    "vulkan/shaders/expert_dot.comp": "89597c7843df07369b5fcfe292e6787565976dc1aa25c0304ef9a25cea459833",
+    "vulkan/shaders/mla_batch.comp": "26a4bcf36ee6c436470735c6569820fcc8d3d1743781a61e6f03c42ac36ebfba",
+    "vulkan/shaders/index_scores.comp": "52436b9302438f1e9f6228d2e4e2cd9025f7db7919b8272d38000484ea01503f",
+    "tools/glm_guarded_run.py": "fa4ecd30f5e1a23da16c4a42ccaf9b17a424e60ef8ad09b8611425702e8d9a82",
+    "tools/glm_low_memory_bench.py": "2aa10a423f3e429537af9fbc830816c4a20413a2481472ba207d036f7fe5d7f1",
+    "tools/glm_vulkan_qualify.py": "559c7d4c5f92914602be42f5459c888af0e4241d9ce27d9bfe0d5a9442fdc365",
+    "tools/glm_vulkan_quality.py": "8eed30193fddd8dd04d78823603dfbf32f58203e7557a18919017817185fb9f2",
+    "tools/sim/vulkan.py": "45f1424cc483e55fc8d8ea2345d4570d7b71488dee92c7f7dc9f5c95c0b1a5bf"
+  },
+  "pending": [
+    "Three untouched long holdouts (one 8K, two 16K); corrected known-failure 8K regression passed.",
+    "Quiet-machine repeated performance and warmed calibration.",
+    "Native-host whole-model comparison."
+  ],
+  "retained_failures": [
+    "Batched mHC initially lacked RMS normalization; fixed using training layer traces.",
+    "Expert specialization produced bit differences; specialization removed.",
+    "One matrix expert primitive check failed before serial rebuild and repeat; later repetitions passed. Cause not established."
+  ],
+  "training_gate": {
+    "candidate": "rx570-all-paths",
+    "task": "parse_u64",
+    "passed": false,
+    "first_different_token_1_based": 6,
+    "strict_generated": 503,
+    "candidate_generated": 330,
+    "both_stop_terminated": true,
+    "proposals": 233,
+    "accepted": 213,
+    "rejected_windows": 15,
+    "status": "Retained failed training experiment; the subsequent multi-vector candidate passed all three training comparisons and 30 coding holdouts.",
+    "isolated_batched_projection": {
+      "passed": false,
+      "first_different_token_1_based": 9,
+      "generated": 457,
+      "fused_kda": false,
+      "cpu_mhc": false
+    }
+  },
+  "multi_vector_primitives": {
+    "passed": true,
+    "formats": [
+      "Q4_K",
+      "Q6_K",
+      "FP32"
+    ],
+    "columns": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "comparison": "bitwise against individual products",
+    "record": "rx570-final-parity.log"
+  },
+  "multi_vector_training": {
+    "status": "complete",
+    "requested": 3,
+    "completed": 3,
+    "rows": [
+      {
+        "name": "parse_u64",
+        "split": "training",
+        "prompt_sha256": "434f0be5afb23715c6eae62b9446326799dd3d89ebdda7f60f086a84fd4676cc",
+        "output_ids_match": true,
+        "stop_terminated": true,
+        "passed": true,
+        "generated": 503,
+        "control_executable_sha256": "cfa9267296437716f235ccedfaddafbf3793062ce22d369e5be5ecaf0e9f6747",
+        "candidate_executable_sha256": "1d68a2afc3252a42034c636b1b764c71bc9a291246324352526d53a0513a0794",
+        "strict_control_oracle": {
+          "passed": false,
+          "reason": "expected exactly one complete C++ code block"
+        },
+        "oracle_regression": false
+      },
+      {
+        "name": "checked_slice",
+        "split": "training",
+        "prompt_sha256": "f7d9dbff83721b61d57ebdce5075455b16f50b17064920e5a21e33b5ced9e1a3",
+        "output_ids_match": true,
+        "stop_terminated": true,
+        "passed": true,
+        "generated": 931,
+        "control_executable_sha256": "cfa9267296437716f235ccedfaddafbf3793062ce22d369e5be5ecaf0e9f6747",
+        "candidate_executable_sha256": "1d68a2afc3252a42034c636b1b764c71bc9a291246324352526d53a0513a0794",
+        "strict_control_oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "oracle_regression": false
+      },
+      {
+        "name": "reduce_routed",
+        "split": "training",
+        "prompt_sha256": "c06644a16bafa8aa04ac86a2617d6504bbc830a1566c5cce79f3a2e6a8dc0f76",
+        "output_ids_match": true,
+        "stop_terminated": true,
+        "passed": true,
+        "generated": 462,
+        "control_executable_sha256": "cfa9267296437716f235ccedfaddafbf3793062ce22d369e5be5ecaf0e9f6747",
+        "candidate_executable_sha256": "1d68a2afc3252a42034c636b1b764c71bc9a291246324352526d53a0513a0794",
+        "strict_control_oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "oracle_regression": false
+      }
+    ],
+    "parser_speculation": {
+      "proposed": 367,
+      "accepted": 319,
+      "rejected_windows": 33,
+      "output_ids_matched": true
+    },
+    "timings_qualified": false,
+    "all_output_ids_matched": true,
+    "strict_oracles_passed": 2
+  },
+  "host_tests": {
+    "passed": 7,
+    "skipped": [
+      "q23_pool_test",
+      "flow_pool_test",
+      "numa_pool_test"
+    ],
+    "failed": 0
+  },
+  "python_tests": {
+    "passed": 37,
+    "failed": 0
+  },
+  "cache_8g_allocation_check": {
+    "correctness_passed": true,
+    "trials": 2,
+    "output_tokens_per_trial": 64,
+    "prompt_tokens": 32,
+    "slots": 942,
+    "expert_allocation_mib": 8183.62,
+    "sampled_total_device_vram_used_mib": 13721,
+    "cgroup_peak_gib": 38.242156982421875,
+    "swap_bytes": 0,
+    "timings_qualified": false
+  },
+  "native_host": {
+    "build_passed": true,
+    "gpu_primitive_suite_passed": true,
+    "avx2_activation_bits_matched": true,
+    "device_state": true,
+    "whole_model_quality_qualified": false,
+    "current_executable_sha256": "4344aa436eb6158734573bc6fcbac61a177c7cde471024b2f4e5afbd4c5c061b"
+  },
+  "lookup_speculation": {
+    "correctness_passed": true,
+    "trials": 2,
+    "generated_per_trial": 64,
+    "proposed_per_trial": 46,
+    "accepted_per_trial": 46,
+    "depth": 3,
+    "verify_batch": true,
+    "timings_qualified": false
+  },
+  "default_token_gate": {
+    "passed": true,
+    "trials": 2,
+    "generated_per_trial": 64,
+    "reference": "frozen original Vulkan executable",
+    "executable_sha256": "34407d83361b0e70655813653d7aff84f5de12c1b1ad353798e38d03cdc54764",
+    "record": "build-vulkan/rx570-default-index-exact-check"
+  },
+  "default_prefill_logits": {
+    "byte_identical": true,
+    "bytes": 619520,
+    "sha256": "137d092bce9645aaa52627c101b2f24ca49b0520032212c9816a0355e465e093",
+    "prompt_tokens": 32,
+    "executable_sha256": "34407d83361b0e70655813653d7aff84f5de12c1b1ad353798e38d03cdc54764"
+  },
+  "heldout_campaign": {
+    "status": "stopped at first long-context mismatch",
+    "coding_cases": 30,
+    "long_cases": 4,
+    "input_manifest_sha256": "9536eea068c727497994745ce86caddf4df8be32a6b5c7e20528dd15aeeaf5e1",
+    "output_directory": "build-vulkan/rx570-heldout-mmv",
+    "timings_qualified": false,
+    "completed": 31,
+    "output_gates_passed": 30,
+    "strict_oracles_passed": 31,
+    "coding_complete": true,
+    "coding_all_output_ids_match": true,
+    "coding_oracles_passed": 30,
+    "coding_generated_tokens": 4334,
+    "long_failure": {
+      "case": "prime-8192",
+      "first_difference_1_based": 15,
+      "strict_generated": 138,
+      "candidate_generated": 157,
+      "both_stop_terminated": true,
+      "strict_oracle_passed": true,
+      "resource_guards_passed": true,
+      "candidate_independent_oracle": {
+        "passed": true,
+        "checks": 400538,
+        "record": "build-vulkan/rx570-heldout-mmv/prime-8192-candidate.independent-oracle.json"
+      }
+    },
+    "coding_max_prompt_plus_output_tokens": 783,
+    "coding_exercised_sparse_pool_pruning": false
+  },
+  "dispatch_boundary_extension": {
+    "reason": "1024 tokens * 64 attention heads exceeds the RX570 X-axis workgroup limit of 65535.",
+    "legacy_shaders_byte_identical": true,
+    "software_vulkan_passed": true,
+    "rx570_execution_pending": false,
+    "source_snapshot_for_frozen_campaign": "build-vulkan/rx570-mmv-source-snapshot",
+    "legacy_shader_sha256": {
+      "mla_batch": "d8d529de195ac54676d73e8342b7879355dcfa924f51cdc2fe5b31bee3e065be",
+      "index_scores": "af4c5a22e7d4d5afbbabaea24b077fc40e1283b84274f6ab8a74becfe38bcdc4"
+    },
+    "rx570_hardware_passed": true,
+    "native_software_vulkan_passed": true,
+    "hardware_record": "build-vulkan/rx570-wide-hardware-parity.log",
+    "reference_process_briefly_paused_and_resumed": true,
+    "byte_identity_scope": "Dispatch extension only; the subsequent canonical index-score rounding fix intentionally changes its shader."
+  },
+  "frozen_heldout_executable_sha256": "1d68a2afc3252a42034c636b1b764c71bc9a291246324352526d53a0513a0794",
+  "working_executable_sha256": "34407d83361b0e70655813653d7aff84f5de12c1b1ad353798e38d03cdc54764",
+  "scratch_budget_regression": {
+    "before": "near-limit allocation rejected while old and replacement scratch buffers were both charged",
+    "after": "release fenced scratch before growing; release large attention matrices before expert streaming",
+    "software_vulkan_passed": true,
+    "native_software_vulkan_passed": true,
+    "rx570_passed": true,
+    "portable_peak_mib": 1013.06,
+    "native_device_state_peak_mib": 1015.06,
+    "working_budget_mib": 1024,
+    "context_capacity": 32768,
+    "batch_tokens": 1024,
+    "heads": 64,
+    "latent": 512,
+    "streamed_expert_mib": 20,
+    "hardware_record": "build-vulkan/rx570-budget-hardware-parity.log"
+  },
+  "long_control_parser_recheck": {
+    "case": "prime-8192",
+    "engine_exit_code": 0,
+    "generated_tokens": 138,
+    "raw_guard_passed": false,
+    "rechecked_correctness_passed": true,
+    "performance_qualified": false,
+    "reason": "Scientific notation in prefill milliseconds was not recognized.",
+    "raw_evidence_preserved": true,
+    "rechecked_guard_sha256": "136c0385f1d7368daca1633fa51aa4c9599a8dbc4b2a17c5b16ddeb7fb691946"
+  },
+  "canonical_index_scores": {
+    "before_relative_l2": 1.26423e-07,
+    "before_max_abs": 4.65661e-10,
+    "after_bit_identical": true,
+    "pools": 257,
+    "queries": 3,
+    "geometries": [
+      [
+        4,
+        16
+      ],
+      [
+        32,
+        128
+      ]
+    ],
+    "hardware_record": "build-vulkan/rx570-index-exact-hardware-parity.log",
+    "fix": "CPU-rounded normalization roots and FP64 division",
+    "long_mismatch_cause_established": false,
+    "native_software_passed": true
+  },
+  "post_failure_training": {
+    "case": "parse_u64-3072",
+    "status": "passed",
+    "executable_sha256": "34407d83361b0e70655813653d7aff84f5de12c1b1ad353798e38d03cdc54764",
+    "inputs": "build-vulkan/rx570-long-training-index-exact-inputs",
+    "holdout_reused_for_tuning": false,
+    "output_ids_matched": true,
+    "generated": 402,
+    "strict_oracle_passed": true,
+    "timings_qualified": false,
+    "record": "build-vulkan/rx570-long-training-index-exact/summary.json"
+  },
+  "full_geometry_primitives": {
+    "passed": true,
+    "record": "build-vulkan/rx570-full-geometry-hardware-parity.log",
+    "attention_heads": 64,
+    "attention_latent": 512,
+    "selected_rows": [
+      2049,
+      2050,
+      2051
+    ],
+    "projection_rows_up_to": 8192,
+    "joined_projection_bits_matched": true,
+    "owned_training_service_paused_and_resumed": true,
+    "timings_qualified": false,
+    "native_software_passed": true,
+    "native_software_record": "build-vulkan/rx570-index-exact-native-full-geometry-software.log"
+  },
+  "corrected_8k_regression": {
+    "status": "passed",
+    "case": "prime-8192",
+    "role": "known-failure regression, not an unseen holdout",
+    "output_directory": "build-vulkan/rx570-prime8192-index-exact-regression",
+    "executable_sha256": "34407d83361b0e70655813653d7aff84f5de12c1b1ad353798e38d03cdc54764",
+    "timings_qualified": false,
+    "output_ids_matched": true,
+    "generated": 138,
+    "stop_terminated": true,
+    "strict_oracle_passed": true,
+    "oracle_checks": 400538,
+    "resource_guard_passed": true,
+    "cgroup_peak_gib": 53.19554138183594,
+    "swap_bytes": 0,
+    "faults": []
+  },
+  "all_projection_geometries": {
+    "passed": true,
+    "geometries": 21,
+    "checks": 147,
+    "formats": [
+      "FP32",
+      "Q4_K",
+      "Q5_0",
+      "Q6_K"
+    ],
+    "tokens": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "comparison": "bitwise against individual products",
+    "record": "build-vulkan/rx570-all-projection-shapes-parity.log",
+    "native_host_hardware_passed": true,
+    "native_host_hardware_record": "build-vulkan/rx570-native-all-projection-shapes-parity.log",
+    "scope": "All distinct two-dimensional blk.* tensor geometries; output-head behavior is covered by end-to-end comparisons."
+  },
+  "backend_builds": {
+    "vulkan_portable": "passed",
+    "vulkan_native_host": "passed",
+    "cuda_conflict_resolution": "compile checked earlier",
+    "hip": "toolchain unavailable",
+    "sycl": "toolchain unavailable"
+  },
+  "streamed_expert_final_check": {
+    "executable_sha256": "34407d83361b0e70655813653d7aff84f5de12c1b1ad353798e38d03cdc54764",
+    "config_sha256": "c7a18fe26c0ca5efe23f3f9a487105fdbc420f82f2ac65b28832e475bb3d732b",
+    "guard_passed": true,
+    "output_ids_match": true,
+    "generated": [
+      64,
+      64
+    ],
+    "correctness_passed": true,
+    "timings_qualified": false,
+    "prompt_tokens": 32,
+    "prefill_batch": 32,
+    "context_capacity": 24576,
+    "record": "build-vulkan/rx570-streamed-expert-index-exact-check/summary.json"
+  }
+}

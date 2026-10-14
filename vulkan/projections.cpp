@@ -1,4 +1,5 @@
 #include "projections.hpp"
+#include "strata/host/glm_env.h"
 #include "task_trace.hpp"
 #include <algorithm>
 #include <array>
@@ -165,6 +166,21 @@ Projections::~Projections() {
   if (backend_)
     ggml_backend_free(backend_);
 }
+void Projections::release_plans() {
+  ggml_backend_synchronize(backend_); pending_=false;
+  for(auto &[name,g]:groups_) {
+    resident_-=ggml_backend_buffer_get_size(g.buffer);
+    ggml_backend_buffer_free(g.buffer);ggml_free(g.context);
+  }
+  groups_.clear();
+  for(auto &[name,w]:weights_) {
+    if(w.plan_buffer)ggml_backend_buffer_free(w.plan_buffer);
+    if(w.plan_context)ggml_free(w.plan_context);
+    resident_-=w.plan_bytes;
+    w.plan_buffer=nullptr;w.plan_context=nullptr;w.input=nullptr;w.output=nullptr;
+    w.graph=nullptr;w.tokens=0;w.plan_bytes=0;
+  }
+}
 std::string Projections::device_name() const {
   char text[512]{};
   ggml_backend_vk_get_device_description(device_, text, sizeof(text));
@@ -180,9 +196,12 @@ std::vector<float> Projections::mat(const std::string &name,
       (heads > 1 &&
        (t.tensor->shape.size() != 3 || t.tensor->shape[2] != uint64_t(heads))))
     throw std::invalid_argument("Vulkan matrix head geometry invalid: " + name);
-  return product(name, ggml_type(t.tensor->type), t.data(), t.bytes,
-                 int(t.tensor->shape[0]), int(t.tensor->shape[1]), x, tokens,
-                 heads);
+  const bool cold = !weights_.contains(name);
+  auto result = product(name, ggml_type(t.tensor->type), t.data(), t.bytes,
+                         int(t.tensor->shape[0]), int(t.tensor->shape[1]), x, tokens, heads);
+  if(cold && strata_env_is_one("STRATA_VULKAN_RELEASE_DENSE_HOST") && t.file)
+    t.file->discard_tensor_pages(*t.tensor,t.bytes);
+  return result;
 }
 std::vector<std::vector<float>> Projections::joined(
     const std::vector<
