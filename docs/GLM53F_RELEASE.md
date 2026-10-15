@@ -71,6 +71,9 @@ SHA-256 of the large files (first 16 hex digits): full `8e280fd86714b606`, REAP-
 
 ## Setup
 
+For a machine that is not one of the measured ones, the step-by-step bring-up, tuning and benchmarking
+protocol is in [GLM53F_NEW_HARDWARE.md](GLM53F_NEW_HARDWARE.md); the commands below are the short form.
+
 ### Build
 
 CUDA (NVIDIA; set the architecture of your card, 120 is the RTX 5060 Ti, 70 the V100):
@@ -158,7 +161,7 @@ a calibrated kernel table.
 
 ## Documents
 
-Current: this page, [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (two-GPU work, sections 12-15 are
+Current: this page, [GLM53F_NEW_HARDWARE.md](GLM53F_NEW_HARDWARE.md) (new-machine guide and benchmark protocol), [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (two-GPU work, sections 12-15 are
 the release-phase measurements), [GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md), [MULTI_GPU.md](MULTI_GPU.md),
 [GLM_RELEASE_Q2Q3.md](GLM_RELEASE_Q2Q3.md) (full-model and sidecar recipes), [GLM_PRUNE_224.md](GLM_PRUNE_224.md),
 [GLM_B550_REAP50.md](GLM_B550_REAP50.md), [GLM53_V100.md](GLM53_V100.md), [GLM_TESTS.md](GLM_TESTS.md).

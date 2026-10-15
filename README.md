@@ -29,6 +29,7 @@ With the fastest (ungated) two-GPU settings the desktop reaches 49 tok/s at 1K; 
 quality gate and is not shipped. Removing every approximation leaves 20 tok/s.
 
 - **[Release notes: measurements, weights on Hugging Face, setup for one and two GPUs](docs/GLM53F_RELEASE.md)**
+- **[Running and benchmarking it on your own hardware](docs/GLM53F_NEW_HARDWARE.md)**
 - **Weights:** [`lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts`](https://huggingface.co/lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts)
   (full Q23 120.9 GB, REAP-224 95.5 GB, REAP-50 63.2 GB, expert sidecars)
 - **Two-GPU runner and the simulator that planned it:** [GLM_TR16_RUNNER_PLAN.md](docs/GLM_TR16_RUNNER_PLAN.md),
