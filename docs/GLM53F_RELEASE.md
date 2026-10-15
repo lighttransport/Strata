@@ -5,6 +5,10 @@ with which quality evidence, where the weights are, and how to set it up. Speeds
 trials of timed runs on the machines named; a token is about three quarters of a word. Quality claims are
 only the ones that were measured; "not gated" means no quality run exists for that configuration.
 
+Attribution: this work studied [Project Maya](https://github.com/mw00/project-maya) (peasantsmith, MIT License),
+a separate GLM-5.3-Flash engine that also started from Strata. The ideas taken from it are listed in
+[the comparison below](#how-this-differs-from-project-maya); no Maya code or weights are used.
+
 ## The machines
 
 | name | CPU, RAM | GPU(s) | links |
@@ -158,6 +162,34 @@ a calibrated kernel table.
 `tools/glm_tr16_quality.py --quality-gate tr16-35` runs the 35-track corpus gate against a baseline run;
 `tools/glm_q2_humaneval.py` runs the 164-task HumanEval with isolated tests (about two hours on TR16);
 `tools/glm_mixed_bench.py` reports distinct 4-gram fractions and repeat-guard counts so loops show up.
+
+## How this differs from Project Maya
+
+[Project Maya](https://github.com/mw00/project-maya) (studied at v1.1.8, commit `5c970a86`) and this fork both
+start from Strata and both run GLM-5.3-Flash with experts outside VRAM, but they answer different questions.
+
+| | Project Maya | this fork |
+|---|---|---|
+| target machine | one to sixteen NVIDIA GPUs (AMD experimental), mostly 24-48 GB cards; its published results lead with 4x RTX 4090 (118 tok/s) and 2x RTX 3090 (53 tok/s decode, 885 prefill, Threadripper 3970X, 128 GB) | commodity desktops: one 8-16 GB card, or two 16 GB cards of different vendors (RTX 5060 Ti + RX 9070 XT), DDR4 desktops with 64-128 GB; plus an old V100 server |
+| weights | its own quantizations of the FP8 release (Maya-S, S24, M, L: 94.7-156.3 GB), made with statistics from the FP8 model | the Unsloth UD-Q2_K_XL base with the routed experts requantized to Q2_K/Q3_K ("Q23"), optionally REAP-pruned to 224 or 144 experts per layer (95.5 / 63.2 GB) |
+| where experts run | a VRAM / RAM / NVMe tier hierarchy: the hottest experts in VRAM, the next in RAM, the rest on the SSD, moved as the conversation goes; the engine pins most free RAM for its tier, so the model need not fit in RAM | routed experts execute on the CPU directly from RAM (a NUMA-aware expert pool), with a GPU-resident tier for the hottest experts; the model must fit in RAM |
+| several GPUs | layer-range split of the model across GPUs | expert-parallel: one primary GPU runs the model, a worker process on the second GPU (any vendor) runs a share of the experts over a shared-memory exchange; a layer split was built and measured slower on this hardware (12.5-17.6 against 36 tok/s, plan section 11) and removed |
+| drafting | the model's MTP block, optionally a separate DFlash2 drafter | the model's MTP block, with draft experts on the GPU and bounded soft acceptance |
+| tuning | `--calibrate` measures the machine and sets the configuration | profiles per machine, a calibrated simulator ([GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md)) to rank changes, and a [bring-up guide](GLM53F_NEW_HARDWARE.md) |
+| quality evidence | zero-shot accuracy of each quantization relative to FP8 | every lossy setting gated against the unpruned Q23 model: 35-track corpus perplexity/KL/top-1 limits and HumanEval at or above 152/164 |
+
+What was taken from Maya, all reimplemented independently: the aged route-count admission rule for the
+GPU expert cache (`STRATA_GLM_MIXED_ADAPT_MIN_ROUTES` / `MIN_GAIN_PCT`, default off; it did not help on
+held-out prompts here), the idea of pricing CPU expert service against host-to-device transfer as
+concurrent lanes (the simulator's miss-lane model), separating fresh-prompt from repeated warmed-prompt
+measurements, and the layer-range split, which was built and then removed for the reason above. Its
+RDNA expert kernels target IQ2/IQ3 on gfx1100/gfx1151 and were not applicable to Q2_K/Q3_K on gfx1201.
+The study is recorded in [GLM_TR16_MIXED_REDESIGN.md](GLM_TR16_MIXED_REDESIGN.md#project-maya-follow-up).
+
+The published numbers are not a controlled comparison. Maya's closest machine, two RTX 3090 (48 GB of VRAM)
+on a Threadripper 3970X, decodes 53 tok/s and prefills 885 tok/s with its own quantization; the two-GPU
+desktop here (32 GB of VRAM over two vendors, an older Threadripper 1950X) decodes 40-44 and prefills 870
+with the gated Q23 REAP-224 configuration. Quantization, quality measure, VRAM and prompts all differ.
 
 ## Documents
 

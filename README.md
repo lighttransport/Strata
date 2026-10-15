@@ -1,7 +1,7 @@
 # Strata-GLM53F: GLM-5.3-Flash on desktops and budget servers
 
-This fork runs **GLM-5.3-Flash** (a 110B-parameter mixture-of-experts model) from ordinary RAM with one or
-two consumer GPUs. Fixed layers, attention and batched prompt processing run on the GPU; the routed experts
+This fork runs **GLM-5.3-Flash** (a mixture-of-experts model, about 321B parameters with about 18B active per
+token) from ordinary RAM with one or two consumer GPUs. Fixed layers, attention and batched prompt processing run on the GPU; the routed experts
 run from RAM on the CPU, with a GPU-resident tier for the hottest ones and GPU-drafted speculative decoding.
 The model is served in the fork's own Q2/Q3 expert quantization ("Q23"), either complete or with the least
 useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-50: 144 experts, 63 GB).
@@ -35,6 +35,13 @@ quality gate and is not shipped. Removing every approximation leaves 20 tok/s.
 - **Two-GPU runner and the simulator that planned it:** [GLM_TR16_RUNNER_PLAN.md](docs/GLM_TR16_RUNNER_PLAN.md),
   [GLM_RUNNER_SIM.md](docs/GLM_RUNNER_SIM.md), [MULTI_GPU.md](docs/MULTI_GPU.md)
 - **Terminal demo:** [simple ASCII chat with a decode-speed counter](demos/glm53_chat/README.md)
+
+**Acknowledgement.** Several ideas in this work were studied in
+**[Project Maya](https://github.com/mw00/project-maya)** by peasantsmith (MIT License), an independent Strata
+derivative for GLM-5.3-Flash with its own engine and quantizations: its layer-range split across GPUs, aged
+route-count admission for GPU-resident experts, CPU-versus-transfer lane pricing and its measurement practice
+informed our designs. No Maya code or weights are used here; how the two projects differ is described in the
+[release notes](docs/GLM53F_RELEASE.md#how-this-differs-from-project-maya).
 
 ## Original Strata README: Qwen3.8-Flash-Next
 
