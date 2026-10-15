@@ -102,7 +102,12 @@ def main():
         layout = layouts[0]
     library_env.setdefault('STRATA_GLM_GPU_RESERVE_MIB','1024')
     library_env.setdefault('STRATA_GLM_BUDGET_RESERVE_MIB','1024')
-    with tempfile.TemporaryFile(prefix='strata-mixed-') as memory:
+    # CUDA cannot register file-backed shared pages (HIP can): a registered exchange needs anonymous memfd pages.
+    def shared_memory():
+        if os.environ.get('STRATA_GLM_MIXED_REGISTER') == '1':
+            return os.fdopen(os.memfd_create('strata-mixed'), 'w+b', buffering=0)
+        return tempfile.TemporaryFile(prefix='strata-mixed-')
+    with shared_memory() as memory:
         size = int(subprocess.check_output([a.worker, '--protocol-size'], text=True, env=library_env))
         if layout is not None and size != layout['bytes']:
             p.error('mixed worker protocol size differs from its layout')

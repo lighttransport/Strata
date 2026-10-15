@@ -248,6 +248,18 @@ bool direct_upload_enabled() {
         throw std::invalid_argument("GLM: direct weight upload must be 0 or 1");
     return true;
 }
+// STRATA_GLM_MLA_TILE=64|128|256 (opt-in): query tokens per MLA prefill tile; 64 by default. Attention products
+// stay per token; the absorbed projections run on wider panels.
+static int mla_prefill_tile() {
+    static const int tile = [] {
+        const char *v = std::getenv("STRATA_GLM_MLA_TILE");
+        if (!v) return 64;
+        const std::string s(v);
+        if (s != "64" && s != "128" && s != "256") throw std::invalid_argument("GLM: MLA tile must be 64, 128 or 256");
+        return std::stoi(s);
+    }();
+    return tile;
+}
 // Registration owns no model bytes. It must outlive every GPU copy and be
 // released before the artifact unmaps its original, byte-identical COW pages.
 struct RegisteredWeights {
@@ -256,13 +268,15 @@ struct RegisteredWeights {
     size_t bytes = 0;
     RegisteredWeights(const strata::core::ModelArtifact &artifact, int primary, const std::vector<int> &devices)
         : device(primary) {
-#if defined(__linux__) && !defined(STRATA_USE_HIP)
+#if defined(__linux__)
         DeviceScope scope(primary);
+#ifndef STRATA_USE_HIP
         for (int id : devices) {
             int supported = 0;
             check(cudaDeviceGetAttribute(&supported, cudaDevAttrHostRegisterReadOnlySupported, id));
             if (!supported) throw std::runtime_error("GLM: device cannot register read-only model pages");
         }
+#endif
         const auto begin = std::chrono::steady_clock::now();
         const size_t page = sysconf(_SC_PAGESIZE);
         std::vector<std::pair<uintptr_t, uintptr_t>> spans, merged;
@@ -297,7 +311,7 @@ struct RegisteredWeights {
                   << " ms=" << std::chrono::duration<double, std::milli>(
                       std::chrono::steady_clock::now() - begin).count() << '\n';
 #else
-        throw std::invalid_argument("GLM: direct read-only weight upload requires Linux CUDA");
+        throw std::invalid_argument("GLM: direct read-only weight upload requires Linux");
 #endif
     }
     ~RegisteredWeights() {
@@ -308,6 +322,10 @@ struct RegisteredWeights {
         cudaSetDevice(previous);
     }
 };
+static bool stage_numa_split() {
+    static const bool on = strata_env_truthy_one("STRATA_GLM_STAGE_NUMA_SPLIT");
+    return on;
+}
 struct GpuLocality {
     std::vector<int> cpus;
 #ifdef __linux__
@@ -339,6 +357,28 @@ struct GpuLocality {
             for (int i = a; i <= b; ++i)
                 if (i < CPU_SETSIZE && CPU_ISSET(i, &allocation_cpus))
                     cpus.push_back(i);
+        }
+        // STRATA_GLM_STAGE_NUMA_SPLIT=1 (opt-in): staging workers alternate between both nodes' CPUs, so each can
+        // copy the half of every NUMA-split expert that lives on its own node.
+        if (stage_numa_split() && node >= 0) {
+            std::array<std::vector<int>, 2> per_node;
+            for (int n = 0; n < 2; ++n) {
+                std::ifstream f("/sys/devices/system/node/node" + std::to_string(n) + "/cpulist");
+                std::string text; f >> text;
+                std::istringstream items(text); std::string item;
+                while (std::getline(items, item, ',')) {
+                    auto dash = item.find('-');
+                    int a = std::stoi(item), b = dash == std::string::npos ? a : std::stoi(item.substr(dash + 1));
+                    for (int i = a; i <= b; ++i)
+                        if (i < CPU_SETSIZE && CPU_ISSET(i, &allocation_cpus)) per_node[n].push_back(i);
+                }
+            }
+            if (!per_node[0].empty() && !per_node[1].empty()) {
+                cpus.clear();
+                for (size_t i = 0; i < std::min(per_node[0].size(), per_node[1].size()); ++i) {
+                    cpus.push_back(per_node[0][i]); cpus.push_back(per_node[1][i]);
+                }
+            }
         }
         // Consumer PCIe devices often report numa_node=-1. The decoder's
         // coordinator is already pinned to one core here; inheriting that mask
@@ -533,7 +573,8 @@ struct GpuPrefill {
         if (bytes + 16384 > pool[index]->bytes) throw std::runtime_error("GLM: native expert group exceeds prefetch slot");
         auto *p = (char *)pool[index]->p;
         check(cudaStreamWaitEvent(copy, pool_done[index], 0));
-        if (staged_prefetch) {
+        if (direct_prefetch) register_layer_sources(layer, G, U, D);
+        if (staged_prefetch && !direct_prefetch) {
             // Reuse the regular two pinned buffers. The foreground ring uploader
             // runs only after the prefetch future joins; the shared ready events
             // protect both users from overwriting a host buffer during DMA.
@@ -541,7 +582,22 @@ struct GpuPrefill {
             check(cudaEventSynchronize(ready[host_slot]));
             auto *host = static_cast<uint8_t *>(pinned[host_slot]->p);
             const auto begin = std::chrono::steady_clock::now();
+            const bool split_nodes = stage_numa_split() && numa_sources && stager->size() % 2 == 0;
             stager->run([&](int worker) {
+                if (split_nodes) {
+                    // Worker parity is its node (see GpuLocality): it copies that node's half of each expert.
+                    const int node = worker % 2, lanes = (int)stager->size() / 2;
+                    for (int j = worker / 2; j < 16; j += lanes) {
+                        const int expert = group * 16 + j;
+                        auto *dest = host + j * stride;
+                        copy_half(G, expert, dest, gh, node);
+                        copy_half(U, expert, dest + gh, gh, node);
+                        copy_half(D, expert, dest + 2 * gh, db, node);
+                        if (node == 0 && stride > 2 * gh + db)
+                            std::memset(dest + 2 * gh + db, 0, stride - 2 * gh - db);
+                    }
+                    return;
+                }
                 for (int j = worker; j < 16; j += stager->size()) {
                     const int expert = group * 16 + j;
                     auto *dest = host + j * stride;
@@ -574,8 +630,31 @@ struct GpuPrefill {
         transferred += bytes;
         if (publish) fetched[{layer, group}] = index;
     }
+    // STRATA_GLM_PREFETCH_DIRECT=1 (opt-in): prefetched groups are copied by DMA straight from the model pages,
+    // without CPU staging. Each layer's expert tensors are registered (pinned) on first use and stay registered
+    // until the prefill engine is destroyed, so the pinned host memory grows to the experts this device uploads.
+    const bool direct_prefetch = strata_env_truthy_one("STRATA_GLM_PREFETCH_DIRECT");
+    std::map<int, void *> registered_layers;
+    size_t registered_bytes = 0;
+    void register_layer_sources(int layer, const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
+                                const strata::core::ArtifactTensor &D) {
+        if (registered_layers.count(layer)) return;
+        const uintptr_t page = 4096;
+        uintptr_t first = UINTPTR_MAX, last = 0;
+        for (const auto *t : {&G, &U, &D}) {
+            first = std::min(first, (uintptr_t)t->data() / page * page);
+            last = std::max(last, ((uintptr_t)t->data() + t->bytes + page - 1) / page * page);
+        }
+        const auto status = cudaHostRegister((void *)first, last - first, cudaHostRegisterReadOnly | cudaHostRegisterPortable);
+        if (status != cudaSuccess) {
+            cudaGetLastError();
+            throw std::runtime_error(std::string("GLM: direct prefetch registration failed: ") + cudaGetErrorString(status));
+        }
+        registered_layers[layer] = (void *)first;
+        registered_bytes += last - first;
+    }
     static size_t arena_bytes(int width, size_t context) {
-        const size_t tile = std::min(width, 64), pools = std::max<size_t>(1, context / 4);
+        const size_t tile = std::min(width, mla_prefill_tile()), pools = std::max<size_t>(1, context / 4);
         const size_t mla = tile * (2052 * (512 + 64) + 2 * 64 * 512 + 33 * pools) * 4
                          + (size_t)width * 176 * 1024 + MiB;
         // The per-token MLA buffers (q, value, indexer queries) outgrow the allowance above once the context passes
@@ -678,6 +757,7 @@ struct GpuPrefill {
         DeviceScope scope(owner);
         if (copy)
             cudaStreamSynchronize(copy);
+        for (const auto &[layer, address] : registered_layers) cudaHostUnregister(address);
         context.reset();
         gemm.reset();
         for (int i = 0; i < 2; ++i) {
@@ -728,6 +808,18 @@ struct GpuPrefill {
             if(found!=trimmed_sources->end()){found->second.copy(t.data(),expert,static_cast<uint8_t*>(dest));return;}
         }
         std::memcpy(dest,t.data()+size_t(expert)*bytes,bytes);
+    }
+    // One node's half of an expert's rows (NUMA-split tensors); other tensors are copied whole by node 0.
+    void copy_half(const strata::core::ArtifactTensor& t,int expert,void* dest,size_t bytes,int node)const {
+        if(numa_sources) {
+            auto found=numa_sources->find(t.tensor);
+            if(found!=numa_sources->end() && !found->second->packed()) {
+                const auto& n=*found->second;
+                std::memcpy(static_cast<uint8_t*>(dest)+node*n.half_rows*n.row_bytes,n.shard(expert,node),n.half_rows*n.row_bytes);
+                return;
+            }
+        }
+        if(node==0) copy_part(t,expert,dest,bytes);
     }
     void upload(const strata::core::ArtifactTensor &G, const strata::core::ArtifactTensor &U,
                 const strata::core::ArtifactTensor &D, int start, int n, int slot, void *stream,
@@ -1581,6 +1673,7 @@ class Decoder {
         throw std::invalid_argument("GLM: dense Q4 must be 0, mixers, all, q5, outputs or q3mixers");
     }();
     bool early_route_sync = std::getenv("STRATA_GLM_EARLY_ROUTE_SYNC") != nullptr;
+    const bool mixed_early_submit = strata_env_truthy_one("STRATA_GLM_MIXED_EARLY_SUBMIT");
     bool async_peer_return = std::getenv("STRATA_GLM_ASYNC_PEER_RETURN") != nullptr;
     // "2": each finished group (or MLA tile) returns on the secondary's back stream at once.
     bool incremental_return = async_peer_return && std::string(std::getenv("STRATA_GLM_ASYNC_PEER_RETURN")) == "2";
@@ -2871,8 +2964,11 @@ class Decoder {
         if (fast && name != "output.weight") {
             if (t.type == 0 || floating) {
                 // Keep cuBLAS projection shapes identical across 2048/4096 chunk boundaries.
-                for (int t0 = 0; t0 < nt; t0 += 2048)
-                    check(cublasSgemm(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, std::min(2048, nt - t0), in, &one,
+                // STRATA_GLM_ROUTER_WHOLE=1 (opt-in): the router runs as one product over the whole batch.
+                static const bool router_whole = strata_env_truthy_one("STRATA_GLM_ROUTER_WHOLE");
+                const int panel = router_whole && name.ends_with("ffn_gate_inp.weight") ? nt : 2048;
+                for (int t0 = 0; t0 < nt; t0 += panel)
+                    check(cublasSgemm(blas, CUBLAS_OP_T, CUBLAS_OP_N, out, std::min(panel, nt - t0), in, &one,
                                       W.f(), in, x + (size_t)t0 * in, in, &zero, y + (size_t)t0 * out, out));
             } else {
                 auto &half = buf("mat_f16", (size_t)gpu->chunk * 16384 / 2);
@@ -3002,6 +3098,46 @@ class Decoder {
         if (mixed) return prefill_expert_groups;
 #endif
         return 18; // Preserve the existing homogeneous runner's partition.
+    }
+    // Worker inputs of a mixed prefill layer: activations (FP16 into the registered mapping when requested),
+    // routes and route weights. Queued on the main stream; the caller synchronizes before the worker reads them.
+    bool mixed_copies_queued = false;
+    // STRATA_GLM_PREFILL_ORDERED_SCATTER=1 (opt-in): partial prefill adds expert products per expert in stream
+    // order instead of with atomics; the worker's partial is added on the main stream afterwards.
+    const bool ordered_scatter = strata_env_truthy_one("STRATA_GLM_PREFILL_ORDERED_SCATTER");
+    int deferred_rows = 0;
+    // STRATA_GLM_MIXED_HALF_PARTIAL=1 (opt-in, lossy): the worker's partial arrives as FP16; needs ordered scatter.
+    const bool half_partial = strata_env_truthy_one("STRATA_GLM_MIXED_HALF_PARTIAL");
+    const bool prefetch_early = strata_env_truthy_one("STRATA_GLM_PREFETCH_EARLY");
+    int early_prefetched_layer = -1;
+    cudaEvent_t mixed_rows_free = nullptr;
+    cudaEvent_t mixed_shared_done = nullptr;
+    void enqueue_mixed_copies(const float *x, Device &ids, Device &rw, int nt, bool mixed_partial) {
+        const int H = m.hidden, K = m.top_k;
+        const bool half_exchange=mixed_half_exchange && mixed_registered;
+        const size_t activation_bytes=size_t(nt)*H*(half_exchange ? sizeof(uint16_t) : sizeof(float));
+        if (!mixed_activation_staging) {
+            mixed_activation_staging=std::make_unique<Pinned>(size_t(STRATA_MIXED_TOKENS)*H*sizeof(float));
+            mixed_route_staging=std::make_unique<Pinned>(STRATA_MIXED_ROUTES*sizeof(int));
+            mixed_weight_staging=std::make_unique<Pinned>(STRATA_MIXED_ROUTES*sizeof(float));
+        }
+        if (mixed_registered) {
+            // The shared buffer is pinned: the activations go straight to it (as FP16 when requested).
+            if (half_exchange) {
+                auto &xh=buf("mixed_x_half",(size_t(nt)*H+1)/2);
+                k::glm_f16(x,(uint16_t *)xh.p,(int64_t)nt*H,stream);
+                check(cudaMemcpyAsync(mixed->buffer->activation,xh.p,activation_bytes,cudaMemcpyDeviceToHost,stream));
+            } else check(cudaMemcpyAsync(mixed->buffer->activation,x,activation_bytes,cudaMemcpyDeviceToHost,stream));
+        } else check(cudaMemcpyAsync(mixed_activation_staging->p,x,size_t(nt)*H*sizeof(float),cudaMemcpyDeviceToHost,stream));
+        check(cudaMemcpyAsync(mixed_route_staging->p,ids.p,size_t(nt)*K*sizeof(int),cudaMemcpyDeviceToHost,stream));
+        if (mixed_partial) check(cudaMemcpyAsync(mixed_weight_staging->p,rw.p,size_t(nt)*K*sizeof(float),cudaMemcpyDeviceToHost,stream));
+    }
+    // STRATA_GLM_TASK_TRACE with STRATA_GLM_TASK_TRACE_SYNC: MoE prefill sub-phase markers after a stream sync.
+    void moe_trace(const char *phase, int layer) {
+        static const bool on = std::getenv("STRATA_GLM_TASK_TRACE") && std::getenv("STRATA_GLM_TASK_TRACE_SYNC");
+        if (!on || !fast) return;
+        check(cudaStreamSynchronize(stream));
+        task_trace(phase, position, batch_tokens, layer);
     }
     bool mixed_prefill_split_enabled() const {
 #ifdef __linux__
@@ -3142,7 +3278,10 @@ class Decoder {
                             }
                             if (bf16) target.gemm->bf16_batched((uint16_t *)th.p, dense, td.f(), rows, H, F, batches, bf16_wmma);
                             else target.gemm->f16_batched((uint16_t *)th.p, dense_down, td.f(), rows, H, F, batches);
-                            if (partial_weights)
+                            if (partial_weights && ordered_scatter)
+                                k::glm_scatter_expert_weighted_ordered(td.f(),result,partial_weights,bounds,dest,
+                                                              first,batches,offset,rows,H,m.top_k,work_stream,mask);
+                            else if (partial_weights)
                                 k::glm_scatter_expert_weighted(td.f(),result,partial_weights,bounds,dest,
                                                               first,batches,offset,rows,H,m.top_k,work_stream,mask);
                             else k::glm_scatter_expert_rows(td.f(), result, bounds, dest,
@@ -3343,9 +3482,20 @@ class Decoder {
                 check(cudaMemcpyAsync(route_tail.data(), (int *)ids.p + (nt - recent) * K,
                                       route_tail.size() * sizeof(int), cudaMemcpyDeviceToHost, stream));
             }
+#ifdef __linux__
+            // STRATA_GLM_MIXED_EARLY_SUBMIT=1: the worker's inputs leave before the shared expert, so the worker
+            // starts while the primary runs it. Same values; only the copy order changes.
+            if (mixed_early_submit && mixed_prefill_split_enabled() && fast) {
+                const bool partial_inputs=lossy_prefill() && strata_env_truthy_one("STRATA_GLM_MIXED_PARTIAL_PREFILL");
+                enqueue_mixed_copies(x,ids,rw,nt,partial_inputs);
+                mixed_copies_queued=true;
+            }
+#endif
             check(cudaEventRecord(moe_ready, stream));
             ffn(p, x, out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
             check(cudaEventSynchronize(moe_ready));
+            if (fast && std::getenv("STRATA_GLM_TASK_TRACE") && std::getenv("STRATA_GLM_TASK_TRACE_SYNC"))
+                task_trace("moe_routed", position, batch_tokens, std::stoi(p.substr(4)));
         } else {
             ffn(p, x, out, "_shexp", m.shared_intermediate, layer.shared_swiglu_limit);
             check(cudaStreamSynchronize(stream));
@@ -3422,21 +3572,25 @@ class Decoder {
             const auto *host_weights=static_cast<const float *>(mixed_weight_staging->p);
             const bool half_exchange=mixed_half_exchange && mixed_registered;
             const size_t activation_bytes=size_t(nt)*H*(half_exchange ? sizeof(uint16_t) : sizeof(float));
-            if (mixed_registered) {
-                // The shared buffer is pinned: the activations go straight to it (as FP16 when requested).
-                if (half_exchange) {
-                    auto &xh=buf("mixed_x_half",(size_t(nt)*H+1)/2);
-                    k::glm_f16(x,(uint16_t *)xh.p,(int64_t)nt*H,stream);
-                    check(cudaMemcpyAsync(mixed->buffer->activation,xh.p,activation_bytes,cudaMemcpyDeviceToHost,stream));
-                } else check(cudaMemcpyAsync(mixed->buffer->activation,x,activation_bytes,cudaMemcpyDeviceToHost,stream));
-            } else check(cudaMemcpyAsync(mixed_activation_staging->p,x,size_t(nt)*H*sizeof(float),cudaMemcpyDeviceToHost,stream));
-            check(cudaMemcpyAsync(mixed_route_staging->p,ids.p,size_t(nt)*K*sizeof(int),cudaMemcpyDeviceToHost,stream));
-            if (mixed_partial) check(cudaMemcpyAsync(mixed_weight_staging->p,rw.p,size_t(nt)*K*sizeof(float),cudaMemcpyDeviceToHost,stream));
-            check(cudaStreamSynchronize(stream));
+            // Early submit: the copies were queued before the shared expert; wait for them only, and order the
+            // worker's accumulation into `out` after the shared expert has written it.
+            const bool early_inputs=mixed_copies_queued;
+            if (early_inputs) {
+                if (!mixed_shared_done) check(cudaEventCreateWithFlags(&mixed_shared_done, cudaEventDisableTiming));
+                check(cudaEventRecord(mixed_shared_done, stream));
+                check(cudaEventSynchronize(moe_ready));
+            } else {
+                enqueue_mixed_copies(x,ids,rw,nt,mixed_partial);
+                check(cudaStreamSynchronize(stream));
+            }
+            mixed_copies_queued=false;
             const int layer_id=std::stoi(p.substr(4));
-            mixed_prefill=std::async(std::launch::async,[&,layer_id,host_x,host_ids,host_weights,half_exchange,activation_bytes] {
+            moe_trace("moe_worker_submit",layer_id);
+            mixed_prefill=std::async(std::launch::async,[&,layer_id,host_x,host_ids,host_weights,half_exchange,activation_bytes,early_inputs] {
                 DeviceScope scope(primary_device);
                 cudaStream_t transfer;check(cudaStreamCreateWithFlags(&transfer,cudaStreamNonBlocking));
+                if (early_inputs) check(cudaStreamWaitEvent(transfer,mixed_shared_done,0));
+                if (ordered_scatter && mixed_rows_free) check(cudaStreamWaitEvent(transfer,mixed_rows_free,0));
                 std::array<std::unique_ptr<ResidentExecutor::ReaderEvent>,2> copied;
                 try {
                     if (pipelined_return) for (auto &event:copied) event=std::make_unique<ResidentExecutor::ReaderEvent>();
@@ -3461,7 +3615,7 @@ class Decoder {
                             const unsigned slot=pipelined_return ? chunk++%2 : 0;
                             if (busy[slot]) check(cudaEventSynchronize(copied[slot]->event));
                             if (mixed_registered) {
-                                rows_buffer[slot]->put_async(mixed->output(),size_t(b.chunk_rows)*H*sizeof(float),transfer);
+                                rows_buffer[slot]->put_async(mixed->output(),size_t(b.chunk_rows)*H*(half_partial ? sizeof(uint16_t) : sizeof(float)),transfer);
                                 dest_buffer[slot]->put_async(mixed->destinations(),size_t(b.chunk_rows)*sizeof(int),transfer);
                             } else {
                                 std::memcpy(row_staging[slot]->p,mixed->output(),size_t(b.chunk_rows)*H*sizeof(float));
@@ -3469,7 +3623,14 @@ class Decoder {
                                 rows_buffer[slot]->put_async(row_staging[slot]->p,size_t(b.chunk_rows)*H*sizeof(float),transfer);
                                 dest_buffer[slot]->put_async(dest_staging[slot]->p,size_t(b.chunk_rows)*sizeof(int),transfer);
                             }
-                            if (mixed_partial)
+                            if (mixed_partial && half_partial && !(ordered_scatter && mixed_registered))
+                                throw std::runtime_error("GLM: FP16 mixed partial needs ordered scatter and a registered mapping");
+                            if (mixed_partial && ordered_scatter) {
+                                // One chunk (protocol 5): the rows stay in rows_buffer[0]; the main stream adds them
+                                // after the primary's own experts, so `out` has a single writer at a time.
+                                if (deferred_rows || pipelined_return) throw std::runtime_error("GLM: ordered scatter needs one partial chunk");
+                                deferred_rows=b.chunk_rows;
+                            } else if (mixed_partial)
                                 k::glm_accumulate_token_rows(rows_buffer[slot]->f(),out,static_cast<int *>(dest_buffer[slot]->p),b.chunk_rows,H,transfer);
                             else k::glm_copy_route_rows(rows_buffer[slot]->f(),result.f(),static_cast<int *>(dest_buffer[slot]->p),
                                                         0,b.chunk_rows,H,false,transfer);
@@ -3580,6 +3741,7 @@ class Decoder {
                           (int *)source.p, hb, mixed_partial ? out : result.f(), stream, 0, (split || mixed_split) ? 2 : 1,
                           [&](const std::string &name, size_t n) -> Device & { return buf("moe_" + name, n); },
                           {},nullptr,mixed_partial ? rw.f() : nullptr);
+            moe_trace("moe_own_complete",std::stoi(p.substr(4)));
         } catch (...) {
             if (pending.valid()) pending.wait();
 #ifdef __linux__
@@ -3620,12 +3782,32 @@ class Decoder {
             }
         }
 #ifdef __linux__
-        if (mixed_prefill.valid()) mixed_prefill.get();
+        if (mixed_prefill.valid()) {
+            mixed_prefill.get();
+            if (deferred_rows) {
+                if (half_partial)
+                    k::glm_accumulate_token_rows_half(static_cast<const uint16_t *>(mixed_rows->p),out,static_cast<int *>(mixed_destinations->p),deferred_rows,H,stream);
+                else k::glm_accumulate_token_rows(mixed_rows->f(),out,static_cast<int *>(mixed_destinations->p),deferred_rows,H,stream);
+                deferred_rows=0;
+                if (!mixed_rows_free) check(cudaEventCreateWithFlags(&mixed_rows_free, cudaEventDisableTiming));
+                check(cudaEventRecord(mixed_rows_free, stream));
+            }
+            moe_trace("moe_worker_joined",std::stoi(p.substr(4)));
+        }
 #endif
         if (!mixed_partial) k::glm_route_sum(result.f(), rw.f(), out, H, K, nt, stream);
         // Also joins unused prefetched groups (e.g. a sparse short prompt), and
         // makes producer statistics safe to read before the next layer/reset.
         if (gpu->streaming_prefetch) finish_prefetch();
+        // STRATA_GLM_PREFETCH_EARLY=1 (opt-in): start the next MoE layer's group uploads now. Each copy still waits for
+        // its pool slot's consumption event, so the uploads overlap this layer's queued expert products.
+        if (prefetch_early && fast) {
+            const int next = std::stoi(p.substr(4)) + 1;
+            if (next < (int)m.layers.size() && m.layers[next].ffn == strata::core::FfnKind::Moe && owns_layer(next)) {
+                prefetch_groups(next);
+                early_prefetched_layer = next;
+            }
+        }
     }
     void moe_streamed(const std::string &p, const float *x, float *out,
                       const strata::core::LayerDescriptor &layer) {
@@ -5767,7 +5949,7 @@ class Decoder {
         const int *device_pos = graph_mla() && l < (int)m.layers.size() ? (const int *)mla_positions->p + buffer_group : nullptr;
         int B = batch_tokens, heads = m.attention_heads, latent = m.kv_rank, dim = 256, ih = m.index_heads,
             idim = m.index_dim, pool_size = m.index_pool;
-        const int tile = fast ? 64 : 1;
+        const int tile = fast ? mla_prefill_tile() : 1;
         constexpr int stride = 2052;
         const bool diagnose = std::getenv("STRATA_GLM_CHECK_MLA") && p == "blk.35.";
         auto inspect = [&](const char *stage, const float *data, size_t n, cudaStream_t work) {
@@ -6850,7 +7032,10 @@ class Decoder {
             check_stop();
             auto layer_start = std::chrono::steady_clock::now();
             reset_phase();
-            if (fast && !artifact.is_exl3() && layer.ffn == strata::core::FfnKind::Moe) prefetch_groups(l);
+            if (fast && !artifact.is_exl3() && layer.ffn == strata::core::FfnKind::Moe) {
+                if (early_prefetched_layer == (int)l) early_prefetched_layer = -1;
+                else prefetch_groups(l);
+            }
             auto enqueue_mixer = [&] {
                 hc_read(p, "attn", r.f(), collapsed.f(), c.f());
                 norm(p + "attn_norm.weight", collapsed.f(), x.f(), m.hidden);

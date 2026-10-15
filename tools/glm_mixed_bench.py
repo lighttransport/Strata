@@ -131,7 +131,7 @@ def main():
     env['STRATA_GLM_STEP_PIPELINE']='1'
     env['STRATA_GLM_GPU_RESERVE_MIB']='1024'
     env['STRATA_GLM_BUDGET_RESERVE_MIB']='1024'
-    base['prefill_experts']='f16-batched'
+    base['prefill_experts']=os.environ.get('STRATA_BENCH_PREFILL_EXPERTS','f16-batched')
     base['env']={k:v for k,v in env.items() if k.startswith('STRATA_') or k=='LD_LIBRARY_PATH'}
     builds={'cuda':a.cuda_build.resolve(),'hip':a.hip_build.resolve()}
     identity=dict(config=base, source_commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),

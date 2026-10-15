@@ -203,3 +203,12 @@ Draft cost (in-run nsys, CUDA primary): output head 0.85 ms/step (q4_k, 154880 r
 0.68 ms/step, 3 steps/round. A draft vocabulary subset saves at most ~2 ms/round but token ids < 65536 cover only
 ~95% of prompt tokens, so acceptance drops; MTP_DRAFT_TOP_K is ignored on the GPU draft bank (~1 ms/round at best).
 Remaining lever for 50 at 8K is the CPU+worker wait (~55% of each primary slot).
+
+## Prefill push, 2026-10-15 afternoon (Claude)
+
+Best 8K prefill: **870-875 tok/s** (HIP primary + CUDA worker, `screen-20261015/pm-best.json`, `FRACTION=0.79`
+via `run2.sh`), from 510. Details and the step table are in section 13 of `docs/GLM_TR16_RUNNER_PLAN.md`.
+Key fixes: real memfd for the registered v5 mapping (CUDA refused the tempfile), direct DMA prefetch from model
+pages, ordered per-expert scatter, FP16 worker partial, MLA tile 256, early next-layer prefetch. Lossy parts:
+MLA absorb/index F16, FP16 partial (plus decode's existing lossy settings). Open: orientation conflict (decode best
+is CUDA primary), the last 3% to 900, quality gate.

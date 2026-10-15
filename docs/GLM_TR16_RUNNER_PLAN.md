@@ -423,3 +423,68 @@ quiet, no adaptive refresh, quality gate pending).
 Not yet quality-qualified; the 8K warm-up of the last configuration looped (target-model loop under lossy
 routing; the repeat guard did not trigger). The CUDA primary now waits on the CPU+worker lane for ~55% of
 each slot; the worker body (~0.27 ms/request) and CPU per-slot overhead are the binding costs.
+
+## 13. Prefill push on two GPUs, 2026-10-15 afternoon
+
+Target 900 tok/s at 8K (holdout code). Screens: `build-glm-release/runner-sim/screen-20261015/` (`run2.sh` adds
+`FRACTION`), HIP primary (RX 9070 XT) + CUDA worker, 8 generated tokens, two or three prefill trials per process.
+Quality is not checked; the lossy switches are marked.
+
+Diagnosis, in order found:
+
+- HIP alone, 8K: 611 tok/s. Per-layer experts are 2.3 GB; on KDA layers the 14.3 GB/s link is exposed (FFN 190 ms
+  against 97 ms after an MLA layer, where the long mixer hides the upload).
+- Mixed (fraction 0.6, protocol 4): 506-520 tok/s. The worker waited about 58 ms per layer for its request, because
+  the request was sent only after the primary's own staging joined, and then sat behind its own groups.
+- The CUDA worker never registered the v5 mapping (`invalid argument`): the launcher backed the "memfd" with a
+  disk `tempfile`, and CUDA refuses file-backed shared pages (HIP accepts them). Fixed: `tools/glm_mixed_run.py`
+  uses `memfd_create` when `STRATA_GLM_MIXED_REGISTER=1`; registration also rounds to whole pages.
+- rocprofv3 of the primary: expert F16 GEMMs at about 30 TFLOP/s effective, FP32 tiny-tile GEMMs in the MLA
+  absorb/index products, `scatter_expert_weighted` atomics (about 9 G atomics per prefill at 7.5 G/s; the build
+  already emits hardware `global_atomic_add_f32`), and expert uploads that arrive group by group with 11-14 ms of
+  idle GPU before each: the host staging memcpy runs at about 9.7 GB/s (68 GB, 7.0 s per prefill), below the link.
+  More or node-local staging threads did not raise it; node-0 memory traffic (memcpy write + DMA read) is the wall.
+
+Path (prefill tok/s, later trials of a process; each row adds to the previous):
+
+| change | tok/s |
+|---|---:|
+| mixed v4, fraction 0.6 | 506-520 |
+| protocol 5 + registered mapping + F16 activations (registration fix) | 595 |
+| `STRATA_GLM_PREFETCH_STREAM=1` (existing) | 596-604 |
+| fraction 0.79 (11 of 14 groups on HIP) | 717-719 |
+| `STRATA_GLM_MLA_ABSORB_F16=1` (existing, lossy) | 733 |
+| `STRATA_GLM_MLA_TILE=256` (new; 64 default) + scratch cap 4096 MiB | 748-750 |
+| `STRATA_GLM_PREFILL_ORDERED_SCATTER=1` (new: one launch per expert, plain float4 adds in stream order; the worker partial is added on the main stream afterwards) | 777 |
+| `STRATA_GLM_PREFETCH_DIRECT=1` (new: DMA straight from the registered model pages, no staging) | 811 |
+| fraction 0.86 | 826 |
+| `STRATA_GLM_MLA_INDEX_F16=1` (existing, lossy) | 837 |
+| `STRATA_GLM_MIXED_HALF_PARTIAL=1` (new, lossy: the worker returns its partial as FP16) | 852 |
+| fraction 0.79 | 857-862 |
+| `STRATA_GLM_PREFETCH_EARLY=1` (new: next layer's uploads start when this layer's MoE is queued) | **870-875** |
+
+Best: `pm-best.json` with `FRACTION=0.79`, case hip-cuda: 9392 / 9408 / 9416 ms = **872 / 871 / 870 tok/s**.
+Also new and neutral: `STRATA_GLM_MIXED_EARLY_SUBMIT=1` with `EARLY_ROUTE_SYNC=1` (worker inputs leave before the
+shared expert), `STRATA_GLM_STAGE_NUMA_SPLIT=1` (staging threads on both nodes, each copying its node's half),
+`STRATA_GLM_ROUTER_WHOLE=1` (one router product), HIP direct-upload registration without the CUDA-only attribute
+check. No effect or worse: MMQ experts (578 vs 611 alone), 6/8 staging threads, the tuned hipBLASLt table with
+`HIP_BATCH_SINGLE` (798 vs 826), fused SwiGLU, KDA row parts 8, bucket step 32/128, fraction 0.64-0.71 and 0.86-0.93
+at the end. `MLA_F16_OUT` is CUDA-only.
+
+Caveats:
+- `PREFETCH_DIRECT` pins the uploaded layers' expert pages (page cache) for the process lifetime: up to the
+  primary's share of the 86 GB of experts. Registration costs about 78 ms per 1.7 GB the first time.
+- The first prefill of a process is sometimes 10-25% slower (one-time conversions and registration).
+- This is the HIP-primary orientation. The best decode (46-49 tok/s) is CUDA-primary (cuda-hip); the HIP-primary
+  decode with these settings is about 37 tok/s on 32-token samples. One configuration for both targets is open.
+- Trace of the best config (synced, per KDA layer): mixer 78 ms, routing 20, own experts 65, worker after own 5-8.
+  The mixers are now half of the prefill (4.7 s): MLA layers about 200 ms each, KDA about 75 ms.
+
+Remaining 3% to 900: overlap the worker's activation upload with routing (protocol message before routing), split
+the worker's partial return by token halves so its D2H overlaps compute, or move part of the MLA attention
+(heads) to the CUDA card. Builds pass and `ctest -L glm` passes on both (23 CUDA, 22 HIP).
+
+Fraction calibration for other GPU pairs: `tools/glm_mixed_fraction_calibrate.py --config C --case hip-cuda
+--groups 14 --model M --prior P --prompt 8k.ids --output DIR [--objective prefill|decode]
+[--primary-tok-s X --worker-tok-s Y]` hill-climbs over whole 16-expert groups (one fresh bench process per
+candidate) and writes `DIR/fraction.json` with every measurement and the best `STRATA_GLM_MIXED_PRIMARY_FRACTION`.

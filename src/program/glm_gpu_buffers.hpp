@@ -149,7 +149,16 @@ struct HostMappingRegistration {
     bool registered = false;
     HostMappingRegistration(void *mapping, size_t bytes, const char *role) : mapping(mapping) {
         check(cudaGetDevice(&owner));
-        const auto status=cudaHostRegister(mapping,bytes,cudaHostRegisterPortable);
+        // The mapping covers whole pages; a protocol size that is not a page multiple is refused otherwise.
+        const size_t page=4096;
+        check(cudaSetDevice(owner));
+        auto status=cudaHostRegister(mapping,(bytes+page-1)/page*page,cudaHostRegisterPortable);
+        if (status!=cudaSuccess) {
+            std::cerr << "MIXED_REGISTER_RETRY " << role << " first_error=" << cudaGetErrorString(status)
+                      << " address=" << mapping << " bytes=" << bytes << '\n';
+            cudaGetLastError();
+            status=cudaHostRegister(mapping,(bytes+page-1)/page*page,cudaHostRegisterMapped|cudaHostRegisterPortable);
+        }
         registered=status==cudaSuccess;
         std::cerr << "MIXED_REGISTER " << role << '=' << registered;
         if (!registered) {cudaGetLastError();std::cerr << " error=" << cudaGetErrorString(status);}
