@@ -7,16 +7,15 @@ The model is served in the fork's own Q2/Q3 expert quantization ("Q23"), either 
 useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-50: 144 experts, 63 GB).
 
 <p align="center">
-<a href="docs/media/glm53-tr16-9070xt-live-decode.gif"><img src="docs/media/glm53-tr16-9070xt-live-decode.gif" width="400" align="top" alt="One GPU: about 32 decode tok/s on Threadripper 1950X and RX 9070 XT"></a>
-<a href="docs/media/glm53-tr16-two-gpu-live-decode.gif"><img src="docs/media/glm53-tr16-two-gpu-live-decode.gif" width="400" align="top" alt="Two GPUs: about 38 decode tok/s on Threadripper 1950X with RTX 5060 Ti and RX 9070 XT"></a>
+<a href="docs/media/glm53-tr16-9070xt-live-decode.gif"><img src="docs/media/glm53-tr16-9070xt-live-decode.gif" width="640" alt="About 32 decode tok/s on Threadripper 1950X and RX 9070 XT"></a>
 </p>
 
-**Same desktop, one GPU and two.** Threadripper 1950X with 128 GB DDR4, REAP-224 Q23, writing a C++ function for a
-4K-token prompt; eight seconds of live decoding at original speed, loading and prompt processing omitted. Left:
-**RX 9070 XT 16 GB alone, 31.8 tok/s** over the 512-token answer (the profile measures 34 on the 8K benchmark).
-Right: **RTX 5060 Ti + RX 9070 XT, 37.7 tok/s** (43.6 on the 8K benchmark; this configuration passes the corpus
-gate but not HumanEval). Timing: [one GPU](demos/glm53_chat/tr16_9070xt_measurement.json),
-[two GPUs](demos/glm53_chat/tr16_two_gpu_measurement.json); how they were recorded: [demo](demos/glm53_chat/README.md).
+**One desktop GPU, ~32 tok/s.** Threadripper 1950X, 128 GB DDR4 and an **RX 9070 XT 16 GB**, REAP-224 Q23, writing
+a C++ function for a 4K-token prompt; eight seconds of live decoding at original speed, loading and prompt processing
+omitted. The request decoded at **31.8 tok/s** over 512 tokens (the profile measures 34 on the 8K benchmark). The
+generated function compiles cleanly but fails the C++ oracle: it rejects inputs longer than 20 characters although
+the prompt allows leading zeroes. [Timing](demos/glm53_chat/tr16_9070xt_measurement.json),
+[how it was recorded](demos/glm53_chat/README.md).
 
 **How fast** (single-stream decode and prompt processing, tokens per second; details, trials and the quality
 evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
