@@ -58,6 +58,12 @@ struct Engine::Layer {
   kcpu::NativeFmt fmt;
 };
 
+struct Engine::PrefillHost {
+  std::vector<uint8_t> acts;
+  std::vector<float> results, weights, sums;
+  std::vector<kcpu::ExpertJobMulti> jobs;
+};
+
 Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, const EngineOptions &o)
     : artifact_(artifact), m_(m), options_(o), dev_(o.device, o.budget), pool_(o.threads, true, true) {
   require(m.hidden == H && m.streams == 4 && m.linear_heads * m.linear_dim == KDA_N && m.linear_dim == 128 &&
@@ -78,7 +84,10 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   prefill_gpu_pack_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU_PACK");
   prefill_gpu_vector_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR");
   prefill_reuse_expert_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT");
+  prefill_reuse_host_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_REUSE_HOST");
+  require(!prefill_reuse_host_ || prefill_chunk_ > int(NT), "Vulkan host scratch reuse requires a large prefill chunk");
   prefill_match_gemv_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_MATCH_GEMV");
+  prefill_match_f32_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_MATCH_F32");
   prefill_progress_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_PROGRESS");
   prefill_split_prefix_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX");
   prefill_submit_limit_ms_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_SUBMIT_LIMIT_MS", 500));
@@ -356,7 +365,7 @@ void Engine::allocate() {
 // Quantized single-head products optionally see Q8_1-rounded activations, the
 // strict runner's numerics (diagnostic; the fast engine keeps FP32 by default).
 void Engine::mv(Recorder &r, const Matrix &w, View x, View y, GemvArgs a) {
-  if (a.columns > NT && prefill_match_gemv_) {
+  if (a.columns > NT && (prefill_match_gemv_ || (prefill_match_f32_ && w.layout.type == F32))) {
     const uint32_t xs = a.xs ? a.xs : w.k() * w.heads, ys = a.ys ? a.ys : w.m() * w.heads;
     for (uint32_t first = 0; first < a.columns; first += NT) {
       auto sub = a; sub.columns = std::min(NT, a.columns - first);
@@ -955,15 +964,32 @@ void Engine::release_prefill() {
     for (const auto &segment : segments) dev_.free_command(segment.command);
   prefill_segments_.clear();
   prefill_expert_batch_.reset();
+  prefill_host_.reset();
   prefill_buffers_.clear();
 }
 
 void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
   const auto prepare_started = Clock::now();
   const int top = int(m_.top_k);
-  std::vector<uint8_t> acts(size_t(T) * L.fmt.act_bytes);
-  std::vector<float> results(size_t(T) * top * H, 0.f), weights(size_t(T) * top, 0.f), sums(size_t(T) * H);
-  std::vector<kcpu::ExpertJobMulti> jobs;
+  PrefillHost local;
+  PrefillHost *scratch = &local;
+  if (prefill_reuse_host_) {
+    if (!prefill_host_) prefill_host_ = std::make_unique<PrefillHost>();
+    scratch = prefill_host_.get();
+  }
+  // Retain capacity across layers, but clear every output/weight row just as
+  // the original value-initialized vectors did. All earlier jobs and their
+  // GPU commands have joined before any backing storage is resized here.
+  auto &acts = scratch->acts;
+  auto &results = scratch->results;
+  auto &weights = scratch->weights;
+  auto &sums = scratch->sums;
+  auto &jobs = scratch->jobs;
+  jobs.clear();
+  acts.resize(size_t(T) * L.fmt.act_bytes);
+  results.assign(size_t(T) * top * H, 0.f);
+  weights.assign(size_t(T) * top, 0.f);
+  sums.resize(size_t(T) * H);
   int last_job[144]; std::fill(std::begin(last_job), std::end(last_job), -1);
   const size_t key0 = size_t(L.index) * 144;
   for (uint32_t t = 0; t < T; ++t) {
@@ -1062,6 +1088,7 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
                 << " vector_weights=" << prefill_gpu_vector_
                 << " column_tile=" << prefill_gpu_tile_
                 << " row_tile=" << prefill_gpu_rows_
+                << " host_scratch_reuse=" << prefill_reuse_host_
                 << " scratch_reuse=" << prefill_reuse_expert_ << " scratch_created=" << created
                 << " scratch_capacity=" << gpu.capacity() << " setup_ms=" << setup_ms
                 << " prepare_ms=" << prepare_ms << " cpu_work_ms=" << cpu_work_ms

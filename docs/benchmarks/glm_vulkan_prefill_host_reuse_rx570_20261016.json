@@ -1,0 +1,145 @@
+{
+  "scope": "512 repetitive input tokens, 2 output tokens, one prefill warmup and 3 measured trials each; separate guarded processes in control then candidate order",
+  "control": {
+    "run": "gpu512-reuse-perf-run",
+    "exe_sha256": "899687f8af78c60a8831323287d61dd8b0cb582bd24561202b4818b3d1439479",
+    "config_sha256": "cab0adb8990f924a41bcb41a0c0a75e52cb536c7daa6d72551460c6090efca48",
+    "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+    "passed": true,
+    "performance_qualified": true,
+    "prefill_tok_s": [
+      34.0752,
+      33.9621,
+      33.969
+    ],
+    "median_prefill_tok_s": 33.969,
+    "phase_sums": [
+      {
+        "phase": "warmup",
+        "prepare_ms": 1448.21,
+        "setup_ms": 8.02359,
+        "cpu_work_ms": 9152.008,
+        "upload_ms": 18064.561,
+        "record_ms": 6.575356,
+        "queued_work_ms": 5686.159
+      },
+      {
+        "phase": "prefill",
+        "prepare_ms": 1443.8965,
+        "setup_ms": 2.547564,
+        "cpu_work_ms": 2816.0219,
+        "upload_ms": 2866.1152,
+        "record_ms": 6.665474,
+        "queued_work_ms": 5472.049
+      },
+      {
+        "phase": "prefill",
+        "prepare_ms": 1448.5739,
+        "setup_ms": 2.498844,
+        "cpu_work_ms": 2861.2734,
+        "upload_ms": 2884.4117,
+        "record_ms": 6.743485,
+        "queued_work_ms": 5491.004
+      },
+      {
+        "phase": "prefill",
+        "prepare_ms": 1454.091,
+        "setup_ms": 2.654064,
+        "cpu_work_ms": 2817.2213,
+        "upload_ms": 2872.5768,
+        "record_ms": 6.745645,
+        "queued_work_ms": 5481.21
+      }
+    ],
+    "logits_sha256": "9982a930e0db5e03be1731294cd36b9c90e6c702852adc81116100d27d1f032a",
+    "log_sha256": "156ae765e0f6d42a16c652a4ba132089e15aad6ffd1ef3c36ef5cb3b1b0643eb",
+    "guard_sha256": "b69d4b50e6f3930de44032174824342369a11cd9b3e973990860381358a1066c"
+  },
+  "candidate": {
+    "run": "gpu512-host-v5-run",
+    "exe_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+    "config_sha256": "ad520e14568e9c46851fa9f76c3f7edd2bd226e95b0922c2eecd790d93f7f70c",
+    "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+    "passed": true,
+    "performance_qualified": true,
+    "prefill_tok_s": [
+      37.2301,
+      37.0698,
+      37.0256
+    ],
+    "median_prefill_tok_s": 37.0698,
+    "phase_sums": [
+      {
+        "phase": "warmup",
+        "prepare_ms": 342.21617,
+        "setup_ms": 11.767749,
+        "cpu_work_ms": 9149.059,
+        "upload_ms": 18080.861,
+        "record_ms": 6.506198,
+        "queued_work_ms": 5646.624
+      },
+      {
+        "phase": "prefill",
+        "prepare_ms": 339.84102,
+        "setup_ms": 8.612487,
+        "cpu_work_ms": 2867.9763,
+        "upload_ms": 2875.9883,
+        "record_ms": 6.727229,
+        "queued_work_ms": 5453.253
+      },
+      {
+        "phase": "prefill",
+        "prepare_ms": 340.39256,
+        "setup_ms": 2.618867,
+        "cpu_work_ms": 2797.1373,
+        "upload_ms": 2904.1549,
+        "record_ms": 6.779833,
+        "queued_work_ms": 5479.9130000000005
+      },
+      {
+        "phase": "prefill",
+        "prepare_ms": 341.71741000000003,
+        "setup_ms": 2.535847,
+        "cpu_work_ms": 2808.1195,
+        "upload_ms": 2896.4109,
+        "record_ms": 6.739366,
+        "queued_work_ms": 5481.255
+      }
+    ],
+    "logits_sha256": "9982a930e0db5e03be1731294cd36b9c90e6c702852adc81116100d27d1f032a",
+    "log_sha256": "024d80aa48be2678133de7bdfa0bb2117593109282f6c51439a1f45a96ee5f1a",
+    "guard_sha256": "aa7b0958195127009e30ec8cc4dc54baad2584afc9ded3794e28e8d0f15cfac4"
+  },
+  "prefill_speedup": 1.0912832288262828,
+  "final_vocab_logits_byte_identical": true,
+  "defaults_changed": false,
+  "new_candidate_full_quality_qualified": false,
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "compiled_source_sha256": {
+    "vulkan/fast/engine.cpp": "c0ed833fe006a13bdd65fe160ee9c69d0aff360b19a485d941df50e80b9610f9",
+    "vulkan/fast/engine.hpp": "65dbca87bff323388d9540f144b7036998b38c76ced34040effdc6f68b829b85",
+    "vulkan/fast/expert_batch.cpp": "79039a05e761fbafd99fab7ae7170c7988d42127d2b3513f6cd43bed25bf25fd",
+    "vulkan/fast/expert_batch.hpp": "87dc326a46a792f1d2e9c86494b93bf3a776bc7865a64554b7ebe4067b9b4fcb",
+    "vulkan/fast/expert_batch_check.cpp": "4dae2daf618c5de07b446c69816b1e855d5a65705ee08da5831ac4f57c5e97bd",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "cac8ea2eb406509e01c4501dbe1353a2090ded2fda1027aa44f231675193b8cc",
+    "vulkan/CMakeLists.txt": "8cc5779ba3815982e07af5b255896bd057391ab675808e7b87b513b268244c03",
+    "vulkan/fast/device.cpp": "dea6b1dc648cdcf5b3d5498e528c3953b6982becf3aaa7c453887ba9da713a41",
+    "vulkan/fast/device.hpp": "873f2ec3f7c46525a3d80fb6399ff76c39ed20c5deab23e725499df50862fef1",
+    "vulkan/fast/kernels.cpp": "f974db507479f804cea6992dd34b4dd1e223791cf2e5f003c5e2f7bd9d4db103",
+    "vulkan/fast/kernels.hpp": "41febcc2b7d700bf96573a2dc86df403d4dd20153060e865cc909db0fe8c43c0"
+  },
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016/model-controls",
+  "limitations": [
+    "The fixed prompt is repetitive; this is not coding or long-context throughput.",
+    "Control and candidate ran as separate processes in that order; each had one untimed prefill warmup and three timed trials.",
+    "Final-vocabulary prefill logits match exactly; this does not compare every intermediate token logit.",
+    "New candidate functional training/holdout quality, PPL/KL and combined decode gates remain pending.",
+    "The logit dump contains the final vocabulary vector of the first measured trial; it does not contain every token or every trial."
+  ]
+}

@@ -479,6 +479,15 @@ accepts 256. Software Vulkan checks cover six weight types, one/two heads,
 Bulk MLA indexing matches serial indexing at 12 window boundaries in
 software Vulkan. These software checks do not measure RX570 performance.
 
+On October 16, the original frozen cache-only candidate completed all 164
+HumanEval cases with 145 isolated oracle passes; 143 also stop-terminated.
+Two valid solutions reached the fixed 2048-token generation cap. The same
+executable, configuration, prompts and oracles were retained across both
+boots, and all run identities and fixture hashes were checked after completion.
+This qualifies that immutable candidate's functional gate; it does not qualify
+the later large-prefill binary or its throughput. The aggregate and hashes are
+in `docs/benchmarks/glm_vulkan_humaneval_cache_rx570_20261016.json`.
+
 The prefill prototype also accepts `STRATA_VULKAN_FAST_PREFILL_GPU=1`, with
 a chunk greater than 4 and both canonical expert options enabled. It groups
 frequently routed Q2_K/Q3_K experts into GPU matrix products while CPU workers
@@ -499,7 +508,8 @@ Within this opt-in experiment, `STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS`
 accepts 0–144 (initial value 72) and
 `STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS` accepts 1–2048 (initial value 32).
 Zero GPU experts provides a submission-only control. These values have not
-been tuned on RX570 measurements. `PREFILL_EXPERT_SPLIT` reports route counts
+been qualified for functional quality; later RX570 balance measurements are
+recorded below. `PREFILL_EXPERT_SPLIT` reports route counts
 and packing, upload and queued-work wall times to diagnose the next bottleneck.
 
 Later RX570 checks on Mesa 26.0.8 passed all 72 sampled matrix-product cases
@@ -672,9 +682,14 @@ completed prefix fails the run. This cannot preempt a stuck shader, and does
 not change the driver watchdog. With profiling and prefill progress enabled,
 `PREFILL_SEGMENT` also reports absolute GPU milliseconds for each command,
 separately from the existing per-token aggregate. Native and portable Vulkan
-compilation passed; full-model byte comparisons and physical timing checks
-remain pending. This is an opt-in diagnostic, not a confirmed timeout fix or
-a 100 tok/s result.
+compilation passed. Physical controls at 32, 128, 256, 512 and 1024 tokens
+completed without faults and matched the appropriate frozen runner's final
+vocabulary logits byte for byte. At 1024 tokens the six dense-prefix host
+durations were at most 132.643 ms; the largest GPU segment was 458.216 ms.
+The old failed 2048-token runner was not retried, and wider submissions remain
+untested. This diagnostic does not establish an instruction-level timeout
+cause, full functional quality or 100 tok/s. Hashes and measured limits are in
+`docs/benchmarks/glm_vulkan_prefill_submission_controls_rx570_20261016.json`.
 
 `STRATA_VULKAN_FAST_PREFILL_GPU_NTILE=16|32|64` selects the column tile for
 streamed GPU experts; 64 retains the original kernels. The narrower variants
@@ -716,16 +731,74 @@ command recording and submit/wait time; counters are per-layer differences
 even when scratch is shared. Native and portable compilation passed.
 Twelve software Vulkan expert cases and 24 clamp-change comparisons retain
 the original output bytes using 256-token scratch for 5, 33 and 129 tokens,
-with both CPU and GPU weight packing. Physical model output and timing
-checks are pending; no inference speedup is established by this change.
+with both CPU and GPU weight packing. Physical final-vocabulary controls at
+128 and 256 tokens also match the frozen runner. The native microbenchmark
+below shows no clear gain from command replay alone; full functional quality
+remains unqualified.
+
+`STRATA_VULKAN_FAST_PREFILL_REUSE_HOST=1` retains the host activation, result,
+weight, sum and job buffers across routed layers of a large prefill window.
+It requires a chunk greater than four. Result and routing-weight rows are
+cleared exactly as before; the arithmetic and job order are unchanged.
+Previous CPU jobs and GPU commands complete before buffers can grow, and
+the buffers are released with prefill scratch before decode. On the RX570
+system above, 512 repetitive input tokens and two output tokens measured
+33.969 to 37.0698 prefill tok/s median, using one untimed warmup and three
+trials in each guarded process. Both performance guards passed, and the
+first measured trial's final vocabulary logits are byte-identical. This 9.1%
+gain is a short prompt
+measurement; full-model quality and combined decode qualification remain
+pending. Evidence is in
+`docs/benchmarks/glm_vulkan_prefill_host_reuse_rx570_20261016.json`.
+
+With host reuse, limiting streamed GPU work to the busiest 20 experts per
+layer instead of at most 72 measured 37.0698 to 46.4556 prefill tok/s on the
+same 512-token prompt and three-trial protocol. CPU work and GPU upload/compute
+time became similar. Final logits differ: the top token matches and KL from
+the 72-expert result is 0.00247912. This compares two experimental prefill
+settings, so it does not establish strict-engine or functional quality.
+Defaults remain unchanged. Measurements and limits are in
+`docs/benchmarks/glm_vulkan_prefill_balance_rx570_20261016.json`.
+
+The frozen 512-token, 20-expert candidate passed two of three fixed training
+oracles. The routed-reduction task repeated reasoning until the unchanged
+1536-token cap and failed the complete-code-block check. The original
+candidate passed that task in 452 tokens, and the new binary with the original
+four-token prefill configuration reproduced all 452 tokens exactly. The new
+prefill settings therefore remain unqualified; diagnostic training controls
+are isolating expert offload from batched main projections. No new full
+HumanEval score is claimed for this candidate.
+
+For that training case, keeping CPU experts while restoring the original
+GEMV arithmetic for all main projections reproduced the 452-token baseline
+exactly. Batched GEMM with CPU experts still failed its functional oracle.
+`STRATA_VULKAN_FAST_PREFILL_MATCH_F32=1` is a narrower diagnostic: it retains
+the original four-column GEMV calls for F32 projections, including routing
+and mHC, while quantized products stay batched. Native and portable builds
+pass. F32-only matching with the 20-expert GPU setting still fails this
+training oracle; it passes with CPU experts alone. This remains a diagnostic,
+with no qualified optimized-candidate quality or measured speedup. Fixed caps,
+outcomes and identities are in
+`docs/benchmarks/glm_vulkan_prefill_training_controls_rx570_20261016.json`.
+
+The global zero-affinity variant passed two of the same three training
+oracles; its parser response failed the single-code-block requirement.
+Restoring main GEMV arithmetic while retaining GPU experts passed only one
+of three. These completed failures are preserved with their original caps
+and oracles. Neither setting repairs the optimized candidate's quality.
 
 `STRATA_VULKAN_FAST_PREFILL_GPU_MTILE=32|64` selects the expert row tile.
 The 32-row variant halves each workgroup's row accumulators and weight
 scratch while retaining the dot and scale-operation order. Four software
 configurations (scalar 64 columns, and vector 16/32/64 columns) each pass
 six whole-expert byte comparisons and the existing CPU-error screen.
-All default shader binaries remain byte-identical. Native timing and
-full-model controls for the new row tile are pending; the default remains 64.
+All default shader binaries remain byte-identical. The native paired
+microbenchmark found
+that 32-row tiles take about 18–24% longer in queued work at the tested
+5/33/129-token groups. Command replay alone showed no clear timing gain.
+The default remains 64 rows; the 32-row variant is not selected for further
+full-model tuning. Measurements are in
+`docs/benchmarks/glm_vulkan_expert_row_reuse_rx570_20261016.json`.
 Combined row-tile and command-replay checks also passed six expert cases and
 12 clamp-change byte comparisons in each of the native and portable builds,
 using software Vulkan and 256-token scratch. Commands, source hashes and

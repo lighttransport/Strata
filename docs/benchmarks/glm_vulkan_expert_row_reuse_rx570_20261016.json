@@ -1,0 +1,430 @@
+{
+  "scope": "physical whole-expert microbenchmarks only",
+  "protocol": "3 warmup pairs +5 measured alternating pairs, same vector loads and GPU packing; every call checks full output bytes",
+  "runs": [
+    {
+      "name": "native-replay64",
+      "passed": true,
+      "executable_sha256": "742fb10c8d9c81d4d1ab2f12d7dc7960515c0b3af38652a0533f62733df3eac8",
+      "wall_seconds": 3.5937767699997494,
+      "faults": [],
+      "paired_timings": [
+        {
+          "expert": 5,
+          "tokens": 5,
+          "control": {
+            "run_wall_ms": 3.01082,
+            "upload_ms": 1.31699,
+            "queued_work_ms": 1.68926,
+            "record_ms": 0.010269,
+            "submit_wait_ms": 1.67838
+          },
+          "candidate": {
+            "run_wall_ms": 2.98632,
+            "upload_ms": 1.30756,
+            "queued_work_ms": 1.6712,
+            "record_ms": 0,
+            "submit_wait_ms": 1.67099
+          },
+          "wall_speedup": 1.0082040772589675,
+          "queued_speedup": 1.0108066060315941
+        },
+        {
+          "expert": 5,
+          "tokens": 33,
+          "control": {
+            "run_wall_ms": 3.35455,
+            "upload_ms": 1.32386,
+            "queued_work_ms": 1.99853,
+            "record_ms": 0.00914,
+            "submit_wait_ms": 1.98476
+          },
+          "candidate": {
+            "run_wall_ms": 3.3148,
+            "upload_ms": 1.29682,
+            "queued_work_ms": 1.98192,
+            "record_ms": 0,
+            "submit_wait_ms": 1.98128
+          },
+          "wall_speedup": 1.0119916737058043,
+          "queued_speedup": 1.008380762089287
+        },
+        {
+          "expert": 5,
+          "tokens": 129,
+          "control": {
+            "run_wall_ms": 6.96121,
+            "upload_ms": 1.3979,
+            "queued_work_ms": 5.31682,
+            "record_ms": 0.012309,
+            "submit_wait_ms": 5.30088
+          },
+          "candidate": {
+            "run_wall_ms": 6.96959,
+            "upload_ms": 1.4522,
+            "queued_work_ms": 5.28833,
+            "record_ms": 0,
+            "submit_wait_ms": 5.28775
+          },
+          "wall_speedup": 0.9987976337202045,
+          "queued_speedup": 1.005387333997689
+        },
+        {
+          "expert": 77,
+          "tokens": 5,
+          "control": {
+            "run_wall_ms": 2.92931,
+            "upload_ms": 1.23492,
+            "queued_work_ms": 1.67666,
+            "record_ms": 0.00804,
+            "submit_wait_ms": 1.66795
+          },
+          "candidate": {
+            "run_wall_ms": 2.91126,
+            "upload_ms": 1.23219,
+            "queued_work_ms": 1.67651,
+            "record_ms": 0,
+            "submit_wait_ms": 1.67633
+          },
+          "wall_speedup": 1.0062000645768499,
+          "queued_speedup": 1.0000894715808435
+        },
+        {
+          "expert": 77,
+          "tokens": 33,
+          "control": {
+            "run_wall_ms": 3.28312,
+            "upload_ms": 1.24672,
+            "queued_work_ms": 1.99367,
+            "record_ms": 0.01135,
+            "submit_wait_ms": 1.98507
+          },
+          "candidate": {
+            "run_wall_ms": 3.31651,
+            "upload_ms": 1.28834,
+            "queued_work_ms": 1.97614,
+            "record_ms": 0,
+            "submit_wait_ms": 1.97559
+          },
+          "wall_speedup": 0.9899321877515822,
+          "queued_speedup": 1.008870828989849
+        },
+        {
+          "expert": 77,
+          "tokens": 129,
+          "control": {
+            "run_wall_ms": 6.93751,
+            "upload_ms": 1.42057,
+            "queued_work_ms": 5.29366,
+            "record_ms": 0.0133,
+            "submit_wait_ms": 5.27992
+          },
+          "candidate": {
+            "run_wall_ms": 6.89236,
+            "upload_ms": 1.37436,
+            "queued_work_ms": 5.28539,
+            "record_ms": 0,
+            "submit_wait_ms": 5.285
+          },
+          "wall_speedup": 1.0065507315346267,
+          "queued_speedup": 1.001564690590477
+        }
+      ],
+      "raw_log_sha256": "1b1ef1ed081472eb7688984bbc0ffb1664e43773734bc4b7aef8c5c785220e5f",
+      "raw_guard_sha256": "ec4cdca85f785708ff5944585886c75c9f358a93442272f04e96b7c57aa0c093"
+    },
+    {
+      "name": "native-row32",
+      "passed": true,
+      "executable_sha256": "742fb10c8d9c81d4d1ab2f12d7dc7960515c0b3af38652a0533f62733df3eac8",
+      "wall_seconds": 3.502138953999747,
+      "faults": [],
+      "paired_timings": [
+        {
+          "expert": 5,
+          "tokens": 5,
+          "control": {
+            "run_wall_ms": 2.94804,
+            "upload_ms": 1.27128,
+            "queued_work_ms": 1.616,
+            "record_ms": 0.00736,
+            "submit_wait_ms": 1.60847
+          },
+          "candidate": {
+            "run_wall_ms": 3.23117,
+            "upload_ms": 1.25456,
+            "queued_work_ms": 1.97601,
+            "record_ms": 0.00787,
+            "submit_wait_ms": 1.96862
+          },
+          "wall_speedup": 0.9123753934333384,
+          "queued_speedup": 0.8178096264695017
+        },
+        {
+          "expert": 5,
+          "tokens": 33,
+          "control": {
+            "run_wall_ms": 3.3064,
+            "upload_ms": 1.27816,
+            "queued_work_ms": 1.98833,
+            "record_ms": 0.00889,
+            "submit_wait_ms": 1.97872
+          },
+          "candidate": {
+            "run_wall_ms": 3.71123,
+            "upload_ms": 1.30906,
+            "queued_work_ms": 2.35799,
+            "record_ms": 0.00918,
+            "submit_wait_ms": 2.34768
+          },
+          "wall_speedup": 0.8909175664132916,
+          "queued_speedup": 0.8432308873235255
+        },
+        {
+          "expert": 5,
+          "tokens": 129,
+          "control": {
+            "run_wall_ms": 6.92206,
+            "upload_ms": 1.40547,
+            "queued_work_ms": 5.27479,
+            "record_ms": 0.01196,
+            "submit_wait_ms": 5.26296
+          },
+          "candidate": {
+            "run_wall_ms": 8.24164,
+            "upload_ms": 1.44767,
+            "queued_work_ms": 6.51956,
+            "record_ms": 0.01332,
+            "submit_wait_ms": 6.50711
+          },
+          "wall_speedup": 0.8398886629360176,
+          "queued_speedup": 0.8090714710808705
+        },
+        {
+          "expert": 77,
+          "tokens": 5,
+          "control": {
+            "run_wall_ms": 2.96005,
+            "upload_ms": 1.27019,
+            "queued_work_ms": 1.68106,
+            "record_ms": 0.008489,
+            "submit_wait_ms": 1.66954
+          },
+          "candidate": {
+            "run_wall_ms": 3.26749,
+            "upload_ms": 1.21669,
+            "queued_work_ms": 2.04033,
+            "record_ms": 0.00753,
+            "submit_wait_ms": 2.03195
+          },
+          "wall_speedup": 0.9059094289500503,
+          "queued_speedup": 0.8239157391206324
+        },
+        {
+          "expert": 77,
+          "tokens": 33,
+          "control": {
+            "run_wall_ms": 3.19085,
+            "upload_ms": 1.25849,
+            "queued_work_ms": 1.86167,
+            "record_ms": 0.00933,
+            "submit_wait_ms": 1.85195
+          },
+          "candidate": {
+            "run_wall_ms": 3.5938,
+            "upload_ms": 1.27637,
+            "queued_work_ms": 2.25243,
+            "record_ms": 0.00909,
+            "submit_wait_ms": 2.23978
+          },
+          "wall_speedup": 0.8878763425900162,
+          "queued_speedup": 0.8265162513374444
+        },
+        {
+          "expert": 77,
+          "tokens": 129,
+          "control": {
+            "run_wall_ms": 7.06016,
+            "upload_ms": 1.45036,
+            "queued_work_ms": 5.26159,
+            "record_ms": 0.01339,
+            "submit_wait_ms": 5.24816
+          },
+          "candidate": {
+            "run_wall_ms": 8.16262,
+            "upload_ms": 1.38637,
+            "queued_work_ms": 6.52995,
+            "record_ms": 0.01326,
+            "submit_wait_ms": 6.51566
+          },
+          "wall_speedup": 0.864937973346793,
+          "queued_speedup": 0.8057626781215782
+        }
+      ],
+      "raw_log_sha256": "17fd97fd5981214ce250c6b799fa71c0d537fa9a1ce7c2b06bf057ce5dba9b9b",
+      "raw_guard_sha256": "2cc057eac341944b533c92096087dbdd27d8a310a00dbd843d4c3761e8bfb26f"
+    },
+    {
+      "name": "native-replay-row32",
+      "passed": true,
+      "executable_sha256": "742fb10c8d9c81d4d1ab2f12d7dc7960515c0b3af38652a0533f62733df3eac8",
+      "wall_seconds": 3.52544362000026,
+      "faults": [],
+      "paired_timings": [
+        {
+          "expert": 5,
+          "tokens": 5,
+          "control": {
+            "run_wall_ms": 2.94944,
+            "upload_ms": 1.24849,
+            "queued_work_ms": 1.68926,
+            "record_ms": 0.00799,
+            "submit_wait_ms": 1.6753
+          },
+          "candidate": {
+            "run_wall_ms": 3.2987,
+            "upload_ms": 1.24861,
+            "queued_work_ms": 2.03488,
+            "record_ms": 0,
+            "submit_wait_ms": 2.03437
+          },
+          "wall_speedup": 0.8941219268196562,
+          "queued_speedup": 0.8301521465639252
+        },
+        {
+          "expert": 5,
+          "tokens": 33,
+          "control": {
+            "run_wall_ms": 3.33197,
+            "upload_ms": 1.28606,
+            "queued_work_ms": 1.99332,
+            "record_ms": 0.009549,
+            "submit_wait_ms": 1.97884
+          },
+          "candidate": {
+            "run_wall_ms": 3.65357,
+            "upload_ms": 1.2558,
+            "queued_work_ms": 2.34548,
+            "record_ms": 0,
+            "submit_wait_ms": 2.34506
+          },
+          "wall_speedup": 0.911976505171654,
+          "queued_speedup": 0.8498558930368199
+        },
+        {
+          "expert": 5,
+          "tokens": 129,
+          "control": {
+            "run_wall_ms": 6.99336,
+            "upload_ms": 1.41457,
+            "queued_work_ms": 5.2843,
+            "record_ms": 0.01207,
+            "submit_wait_ms": 5.26981
+          },
+          "candidate": {
+            "run_wall_ms": 8.34053,
+            "upload_ms": 1.40261,
+            "queued_work_ms": 6.50563,
+            "record_ms": 0,
+            "submit_wait_ms": 6.50506
+          },
+          "wall_speedup": 0.8384790894583438,
+          "queued_speedup": 0.8122656837231752
+        },
+        {
+          "expert": 77,
+          "tokens": 5,
+          "control": {
+            "run_wall_ms": 2.91236,
+            "upload_ms": 1.22851,
+            "queued_work_ms": 1.68064,
+            "record_ms": 0.00685,
+            "submit_wait_ms": 1.67191
+          },
+          "candidate": {
+            "run_wall_ms": 3.27001,
+            "upload_ms": 1.21045,
+            "queued_work_ms": 2.03289,
+            "record_ms": 0,
+            "submit_wait_ms": 2.03257
+          },
+          "wall_speedup": 0.8906272457882392,
+          "queued_speedup": 0.8267245153451489
+        },
+        {
+          "expert": 77,
+          "tokens": 33,
+          "control": {
+            "run_wall_ms": 3.15889,
+            "upload_ms": 1.26896,
+            "queued_work_ms": 1.86043,
+            "record_ms": 0.01124,
+            "submit_wait_ms": 1.84833
+          },
+          "candidate": {
+            "run_wall_ms": 3.55289,
+            "upload_ms": 1.25694,
+            "queued_work_ms": 2.24523,
+            "record_ms": 0,
+            "submit_wait_ms": 2.24487
+          },
+          "wall_speedup": 0.8891043629270818,
+          "queued_speedup": 0.8286144403914076
+        },
+        {
+          "expert": 77,
+          "tokens": 129,
+          "control": {
+            "run_wall_ms": 7.04342,
+            "upload_ms": 1.43145,
+            "queued_work_ms": 5.30705,
+            "record_ms": 0.01409,
+            "submit_wait_ms": 5.2909
+          },
+          "candidate": {
+            "run_wall_ms": 8.28566,
+            "upload_ms": 1.53162,
+            "queued_work_ms": 6.48943,
+            "record_ms": 0,
+            "submit_wait_ms": 6.48882
+          },
+          "wall_speedup": 0.8500735004815549,
+          "queued_speedup": 0.8177990979176909
+        }
+      ],
+      "raw_log_sha256": "b8001340e5c4adc7c676b90f5fba44ad9caf6be5d696a89d3c61139cd8cc109f",
+      "raw_guard_sha256": "527b438507941c44c9f563d87111d11bbcfe27bedcc6a661b20da66d9ed2992d"
+    }
+  ],
+  "row32_selected": false,
+  "reason": "row32 has longer queued and wall time in every tested token group",
+  "full_model_qualification": false,
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "compiled_source_sha256": {
+    "vulkan/fast/engine.cpp": "ad011227767366ae6f61cbb0853b8cff728362b777ac0e4fa9c0ffd8cd4d61ce",
+    "vulkan/fast/engine.hpp": "0570496dc6c5ca6974cf40e4b9beff87b57d33aa391f1b528cfee90c18383b4a",
+    "vulkan/fast/expert_batch.cpp": "79039a05e761fbafd99fab7ae7170c7988d42127d2b3513f6cd43bed25bf25fd",
+    "vulkan/fast/expert_batch.hpp": "87dc326a46a792f1d2e9c86494b93bf3a776bc7865a64554b7ebe4067b9b4fcb",
+    "vulkan/fast/expert_batch_check.cpp": "4dae2daf618c5de07b446c69816b1e855d5a65705ee08da5831ac4f57c5e97bd",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "cac8ea2eb406509e01c4501dbe1353a2090ded2fda1027aa44f231675193b8cc",
+    "vulkan/CMakeLists.txt": "8cc5779ba3815982e07af5b255896bd057391ab675808e7b87b513b268244c03",
+    "vulkan/fast/device.cpp": "dea6b1dc648cdcf5b3d5498e528c3953b6982becf3aaa7c453887ba9da713a41",
+    "vulkan/fast/device.hpp": "873f2ec3f7c46525a3d80fb6399ff76c39ed20c5deab23e725499df50862fef1",
+    "vulkan/fast/kernels.cpp": "f974db507479f804cea6992dd34b4dd1e223791cf2e5f003c5e2f7bd9d4db103",
+    "vulkan/fast/kernels.hpp": "41febcc2b7d700bf96573a2dc86df403d4dd20153060e865cc909db0fe8c43c0"
+  },
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "defaults_changed": false,
+  "limitations": [
+    "Only two experts at 5/33/129 input tokens; no end-to-end throughput result.",
+    "Candidate scratch capacity256 versus control129; all active output bytes checked on every warmup/measured call.",
+    "Command-replay candidate performs repeated calls; cross-layer allocation savings are outside this microbenchmark.",
+    "Existing optional 17-column CPU-error discrepancy remains unresolved."
+  ]
+}
