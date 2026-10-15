@@ -28,6 +28,9 @@ offers the same steps as tools.
   `tools/test_setup_amd.py`, `tools/test_setup_choices.py`).
 - Keep the docs' style: plain words, measured numbers with what they were measured on, no claims without a
   measurement.
+- Keep site names, login hosts, account IDs and private filesystem paths out of source, scripts, shared
+  benchmark reports and commit messages. Use generic remote aliases and repository-relative paths; keep
+  actual connection settings in ignored local configuration.
 
 ## Contributing a change or report
 
