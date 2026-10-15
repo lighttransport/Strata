@@ -8,6 +8,22 @@ import time
 import signal
 import csv
 
+def process_cpu_snapshot():
+    """Linux process CPU counters; never read command arguments."""
+    rows = {}
+    for stat in pathlib.Path("/proc").glob("[0-9]*/stat"):
+        try:
+            value = stat.read_text()
+            end = value.rindex(")")
+            fields = value[end + 2:].split()
+            if fields[0] == "Z":
+                continue
+            rows[int(stat.parent.name)] = (value[value.index("(") + 1:end], int(fields[11]) + int(fields[12]))
+        except (FileNotFoundError, PermissionError, ProcessLookupError, ValueError):
+            continue
+    return time.monotonic(), rows
+
+
 def gpu_compute_processes(index, allow_desktop=False):
     """CUDA clients, excluding the desktop's small compute context."""
     value = subprocess.check_output(['nvidia-smi', '--id=' + str(index),
@@ -44,7 +60,6 @@ def descendants(root):
         found = expanded
 
 def main():
-    from glm_q2_coding_bench import process_cpu_snapshot
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--memory-metric", choices=("rss", "pss"), default="rss", help="PSS avoids counting shared model mappings twice; use for mixed-GPU quality checks")
     parser.add_argument("--output", type=pathlib.Path, required=True)

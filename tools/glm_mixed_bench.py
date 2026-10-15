@@ -66,8 +66,7 @@ def wait_mixed_idle(timeout, allow_desktop=False):
     if not allow_desktop:
         wait_idle(timeout)
         return []
-    from glm_q2_run_guard import gpu_compute_processes
-    from glm_q2_coding_bench import process_cpu_snapshot
+    from glm_q2_run_guard import gpu_compute_processes, process_cpu_snapshot
     desktop_names={'chrome','chromium','chromium-browser','gnome-remote-desktop-daemon'}
     deadline=time.monotonic()+timeout
     quiet=None

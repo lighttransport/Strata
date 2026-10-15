@@ -144,8 +144,7 @@ def command(c, prompt, tokens, trials):
 
 def wait_idle(timeout, stable_seconds=10):
     """Wait for a quiet interval without stopping anyone else's process."""
-    from glm_q2_run_guard import gpu_compute_processes
-    from glm_q2_coding_bench import process_cpu_snapshot
+    from glm_q2_run_guard import gpu_compute_processes, process_cpu_snapshot
     deadline = time.monotonic() + timeout
     quiet_since = None
     previous = process_cpu_snapshot()

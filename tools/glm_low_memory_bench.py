@@ -307,7 +307,7 @@ def eval_complete(rows, counts):
 
 
 def worker(args):
-    from glm_q2_coding_bench import process_cpu_snapshot
+    from glm_q2_run_guard import process_cpu_snapshot
     cfg = json.loads(args.config.read_text())
     env = {k: v for k, v in os.environ.items() if not k.startswith(("STRATA_GLM_", "STRATA_Q23_", "STRATA_NATIVE_"))}
     env.update(cfg.get("env", {}))

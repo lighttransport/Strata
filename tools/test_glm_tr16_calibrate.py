@@ -5,6 +5,17 @@ from glm_tr16_calibrate import case_config, summarize, missing_decoder_flags
 
 
 class CalibrationTest(unittest.TestCase):
+    def test_idle_check_does_not_import_coding_fixtures(self):
+        import sys
+        from glm_tr16_calibrate import wait_idle
+
+        with patch.dict(sys.modules, {"glm_q2_coding_bench": None}), \
+             patch("glm_q2_run_guard.gpu_compute_processes", return_value=[]), \
+             patch("glm_q2_run_guard.process_cpu_snapshot", side_effect=[(0, {}), (1, {}), (2, {})]), \
+             patch("glm_tr16_calibrate.time.monotonic", return_value=0), \
+             patch("glm_tr16_calibrate.time.sleep"):
+            wait_idle(timeout=10, stable_seconds=0)
+
     def test_quality_cpu_recording_keeps_gpu_and_memory_guards(self):
         from pathlib import Path
         from glm_tr16_quality import quality_guard
