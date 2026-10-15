@@ -49,6 +49,7 @@ target_link_libraries(glm_vulkan_executor_check PRIVATE strata_kernels_cpu)
 # Opt-in fast engine (--engine fast). Shaders are listed as name|source|defines
 # and embedded into one registry header; the strict path above is unchanged.
 set(_glm_vk_fast_shaders
+  "hw_memory|hw_diag|-DHW_MEMORY" "hw_alu|hw_diag|-DHW_ALU" "hw_gemm|hw_diag|-DHW_GEMM"
   "gemm_q4k|gemm_tiled|-DTYPE_Q4K" "gemm_q6k|gemm_tiled|-DTYPE_Q6K" "gemm_q50|gemm_tiled|-DTYPE_Q50"
   "gemm_q2k|gemm_tiled|-DTYPE_Q2K" "gemm_q3k|gemm_tiled|-DTYPE_Q3K" "gemm_f32|gemm_tiled|-DTYPE_F32"
   "gemm_q4k_wide|gemm_tiled|-DTYPE_Q4K -DNTILE=128" "gemm_q6k_wide|gemm_tiled|-DTYPE_Q6K -DNTILE=128" "gemm_q50_wide|gemm_tiled|-DTYPE_Q50 -DNTILE=128"
@@ -56,10 +57,14 @@ set(_glm_vk_fast_shaders
   "gemm_q4k_wider|gemm_tiled|-DTYPE_Q4K -DNTILE=256" "gemm_q6k_wider|gemm_tiled|-DTYPE_Q6K -DNTILE=256" "gemm_q50_wider|gemm_tiled|-DTYPE_Q50 -DNTILE=256"
   "gemm_q2k_wider|gemm_tiled|-DTYPE_Q2K -DNTILE=256" "gemm_q3k_wider|gemm_tiled|-DTYPE_Q3K -DNTILE=256" "gemm_f32_wider|gemm_tiled|-DTYPE_F32 -DNTILE=256"
   "q8k_round|q8k_round|" "expert_mix_canon|expert_mix|-DCANON_SWIGLU"
+  "q8k_round_portable|q8k_round|-DPORTABLE_REDUCTION"
   "q8k_codes|q8k_round|-DCODES_AND_SUMS" "q8k_codes_portable|q8k_round|-DCODES_AND_SUMS -DPORTABLE_REDUCTION"
   "q8k_unpack|q8k_unpack|"
+  "repack_expert_q2k|repack_expert|-DTYPE_Q2K" "repack_expert_q3k|repack_expert|-DTYPE_Q3K"
   "fma_oracle|fma_oracle|"
   "expert_gemm_q2k_canon|expert_gemm_canon|-DTYPE_Q2K" "expert_gemm_q3k_canon|expert_gemm_canon|-DTYPE_Q3K"
+  "expert_gemm_q2k_canon_vector|expert_gemm_canon|-DTYPE_Q2K -DVECTOR_WEIGHT_LOADS"
+  "expert_gemm_q3k_canon_vector|expert_gemm_canon|-DTYPE_Q3K -DVECTOR_WEIGHT_LOADS"
   "expert_reduce_canon|expert_reduce_canon|"
   "trace_window|trace_window|"
   "route_merge|route_merge|"
@@ -99,12 +104,20 @@ add_dependencies(strata_glm_vulkan_fast glm_vulkan_fast_shaders)
 target_link_libraries(strata-glm-vulkan PRIVATE strata_glm_vulkan_fast)
 add_executable(glm_vulkan_fast_bench fast/bench.cpp)
 target_link_libraries(glm_vulkan_fast_bench PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
+add_executable(glm_vulkan_hw_diag hw_diag.cpp)
+target_link_libraries(glm_vulkan_hw_diag PRIVATE strata_glm_vulkan_fast)
 add_executable(glm_vulkan_fast_gemm_bench fast/gemm_bench.cpp)
 target_link_libraries(glm_vulkan_fast_gemm_bench PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
 add_executable(glm_vulkan_fast_gemm_check fast/gemm_check.cpp)
 target_link_libraries(glm_vulkan_fast_gemm_check PRIVATE strata_glm_vulkan_fast ggml)
 add_executable(glm_vulkan_fast_repack_check fast/repack_check.cpp)
 target_link_libraries(glm_vulkan_fast_repack_check PRIVATE strata_glm_vulkan_fast)
+add_executable(glm_vulkan_fast_repack_gpu_check fast/repack_gpu_check.cpp)
+target_link_libraries(glm_vulkan_fast_repack_gpu_check PRIVATE strata_glm_vulkan_fast)
+add_executable(glm_vulkan_fast_q8_check fast/q8_check.cpp)
+target_link_libraries(glm_vulkan_fast_q8_check PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
+add_executable(glm_vulkan_fast_swiglu_check fast/swiglu_check.cpp)
+target_link_libraries(glm_vulkan_fast_swiglu_check PRIVATE strata_glm_vulkan_fast)
 add_executable(glm_vulkan_fast_expert_quality fast/expert_quality.cpp)
 target_link_libraries(glm_vulkan_fast_expert_quality PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
 add_executable(glm_vulkan_fast_expert_batch_check fast/expert_batch_check.cpp)

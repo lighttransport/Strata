@@ -4,6 +4,9 @@
 // A separate dispatch reduces the eight lane results in the CPU's fixed order.
 layout(local_size_x = 256) in;
 layout(binding = 0, std430) readonly buffer Weights { uint w[]; };
+#ifdef VECTOR_WEIGHT_LOADS
+layout(binding = 0, std430) readonly buffer WeightVectors { uvec4 w4[]; };
+#endif
 layout(binding = 1, std430) readonly buffer Codes { float x[]; };
 layout(binding = 2, std430) readonly buffer Metadata { float meta[]; };
 layout(binding = 3, std430) writeonly buffer Partial { float part[]; };
@@ -34,6 +37,23 @@ float integer_weight(uint b, uint row, uint i) {
   return float(scale * (int(qlo + 4u * qhi) - 4));
 #endif
 }
+#ifdef VECTOR_WEIGHT_LOADS
+float decoded_integer(uint s, uint dot_lane, uvec4 header, uint q0, uint q1, uint mask) {
+  const uint si = 2u * s + dot_lane / 4u;
+  const uint qlo = ((s < 4u ? q0 : q1) >> (2u * (s % 4u))) & 3u;
+#ifdef TYPE_Q2K
+  const uint scale = (header[si / 4u] >> (8u * (si % 4u))) & 15u;
+  return float(scale * qlo);
+#else
+  const uint sh = 8u * (si % 4u);
+  const uint a = si % 8u < 4u ? header.x : header.y;
+  const uint lo = (a >> (sh + (si >= 8u ? 4u : 0u))) & 15u;
+  const uint hi = (header.z >> (sh + 2u * (si / 4u))) & 3u;
+  const int scale = int(lo | (hi << 4u)) - 32;
+  return float(scale * (int(qlo + 4u * ((mask >> s) & 1u)) - 4));
+#endif
+}
+#endif
 shared float wt[32][64], xt[64][33];
 shared float wd[64], wm[64], min0[64], min1[64];
 shared float xd[64], sum0[64], sum1[64];
@@ -44,8 +64,35 @@ void main() {
   precise vec4 acc0 = vec4(0), acc1 = vec4(0), acc2 = vec4(0), acc3 = vec4(0);
   for (uint b = 0; b < blocks; ++b) {
     const uint row = row0 + t % 64u;
+#ifdef VECTOR_WEIGHT_LOADS
+    if (row < p.M) {
+      // All eight K subblocks reuse these metadata and payload words.
+      // Each wave selects one byte of the same four-byte dot-lane group.
+      const uint shift = 8u * (t / 64u), word = lane % 4u;
+      const uint plane = lane / 4u;
+#ifdef TYPE_Q2K
+      const uvec4 header = w4[b * CH * p.Mp + row];
+      const uint q0 = (w[((b * CH + 1u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint q1 = (w[((b * CH + 3u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint mask = 0u;
+#else
+      const uint side = p.side / 4u + b * 4u * p.Mp;
+      const uvec4 header = uvec4(w[side + row], w[side + p.Mp + row], w[side + 2u * p.Mp + row], 0u);
+      const uint q0 = (w[((b * CH + 2u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint q1 = (w[((b * CH + 4u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint mask = (w[((b * CH + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+#endif
+#define PUT_WEIGHT(S) wt[4u * S + t / 64u][t % 64u] = decoded_integer(S, lane, header, q0, q1, mask)
+      PUT_WEIGHT(0u); PUT_WEIGHT(1u); PUT_WEIGHT(2u); PUT_WEIGHT(3u);
+      PUT_WEIGHT(4u); PUT_WEIGHT(5u); PUT_WEIGHT(6u); PUT_WEIGHT(7u);
+#undef PUT_WEIGHT
+    } else {
+      for (uint k = t / 64u; k < 32u; k += 4u) wt[k][t % 64u] = 0;
+    }
+#else
     for (uint k = t / 64u; k < 32u; k += 4u)
       wt[k][t % 64u] = row < p.M ? integer_weight(b, row, (k / 4u) * 32u + 4u * lane + k % 4u) : 0;
+#endif
     for (uint index = t; index < 64u * 32u; index += 256u) {
       const uint k = index % 32u, col = col0 + index / 32u;
       xt[index / 32u][k] = col < p.N ? x[col * p.K + b * 256u + k / 4u * 32u + 4u * lane + k % 4u] : 0;

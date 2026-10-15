@@ -48,9 +48,15 @@ static float scalar_q2(const uint8_t *w, const uint8_t *a, uint32_t n) {
 }
 int main(int argc, char **argv) {
   try {
-    const bool software = argc == 3 && std::string(argv[2]) == "--cpu";
-    if (argc < 2 || argc > 3 || (argc == 3 && !software))
-      throw std::invalid_argument("usage: glm_vulkan_fast_expert_batch_check MODEL [--cpu]");
+    bool software = false, gpu_pack = false, vector_weights = false;
+    const char *usage = "usage: glm_vulkan_fast_expert_batch_check MODEL [--cpu] [--gpu-pack] [--vector-weights]";
+    if (argc < 2) throw std::invalid_argument(usage);
+    for (int i = 2; i < argc; ++i) {
+      if (std::string(argv[i]) == "--cpu" && !software) software = true;
+      else if (std::string(argv[i]) == "--gpu-pack" && !gpu_pack) gpu_pack = true;
+      else if (std::string(argv[i]) == "--vector-weights" && !vector_weights) vector_weights = true;
+      else throw std::invalid_argument(usage);
+    }
     strata::core::ModelArtifact artifact(argv[1]);
     const auto &model = strata::vulkan::checked_model(artifact);
     fast::Device dev(software ? "llvmpipe" : "", 1ULL << 30, software);
@@ -87,7 +93,9 @@ int main(int argc, char **argv) {
     cpu::NativeFmt fmt; std::string error;
     if (!cpu::native_fmt(G.tensor->type, D.tensor->type, 4096, 2048, fmt, error)) throw std::runtime_error(error);
     fmt.canon = true; fmt.swiglu_limit = model.layers[3].swiglu_limit;
-    fast::ExpertBatch batch(dev, 129, software);
+    fast::ExpertBatch batch(dev, 129, software, gpu_pack, vector_weights);
+    std::unique_ptr<fast::ExpertBatch> original;
+    if (vector_weights) original = std::make_unique<fast::ExpertBatch>(dev, 129, software, gpu_pack, false);
     std::mt19937 rng(7741); std::normal_distribution<float> normal(0.f, 0.5f);
     for (int expert : {5, 77}) {
       const auto *gate = G.data() + size_t(expert) * G.bytes / 144;
@@ -127,6 +135,16 @@ int main(int argc, char **argv) {
         const auto raw_result = actual;
         fast::ExpertBatchTrace packed_trace;
         batch.run_quantized(gate, up, down, qinputs, outputs, fmt.swiglu_limit, &packed_trace);
+        if (original) {
+          std::vector<float> scalar(actual.size());
+          std::vector<float *> scalar_outputs;
+          for (uint32_t t = 0; t < T; ++t) scalar_outputs.push_back(scalar.data() + size_t(t) * 4096);
+          original->run_quantized(gate, up, down, qinputs, scalar_outputs, fmt.swiglu_limit);
+          if (std::memcmp(scalar.data(), actual.data(), actual.size() * 4))
+            throw std::runtime_error("vector weight loads changed whole-expert output bytes");
+          std::cout << "{\"expert\":" << expert << ",\"columns\":" << T
+                    << ",\"vector_scalar_byte_identical\":true}\n";
+        }
         const bool matches_raw = !std::memcmp(raw_result.data(), actual.data(), actual.size() * 4) &&
             !std::memcmp(trace.qinput.data(), packed_trace.qinput.data(), trace.qinput.size() * 4);
         if (std::memcmp(qinput.data(), packed_trace.qinput.data(), qinput.size() * 4))

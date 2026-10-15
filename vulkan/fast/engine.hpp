@@ -81,6 +81,8 @@ private:
   bool expert_q8_ = false;
   bool canonical_sum_ = false;
   bool prefill_gpu_ = false;
+  bool prefill_gpu_pack_ = false;
+  bool prefill_gpu_vector_ = false;
   bool prefill_match_gemv_ = false;
   bool prefill_progress_ = false;
   uint32_t prefill_tile_ = 0;

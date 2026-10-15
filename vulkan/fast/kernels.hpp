@@ -30,6 +30,9 @@ void repack_streamed(const Layout &, const uint8_t *src, uint8_t *out);
 // from second, without creating a temporary joined GGUF tensor.
 void repack_pair_streamed(const Layout &, const uint8_t *first, uint32_t first_rows,
                           const uint8_t *second, uint8_t *out);
+// GPU byte conversion for native Q2_K/Q3_K rows. The source binding includes
+// padding through the last four-byte word; source_offset may be unaligned.
+void repack_gpu(Recorder &, const Layout &, View source, View output, uint32_t source_offset = 0);
 
 // A resident weight: one or more GGUF tensors of the same type and K stacked
 // along rows, optionally with heads (3-D tensors).
@@ -58,5 +61,8 @@ size_t gemv_scratch_floats(const Matrix &, uint32_t columns);
 void gemv(Recorder &, const Matrix &, View x, View y, const GemvArgs & = {});
 // Tiled matrix product for larger prefill batches, with the same strides.
 void gemm(Recorder &, const Matrix &, View x, View y, const GemvArgs &, uint32_t tile_columns = 64);
+// Keep dense activation dispatches and bound views within a 1024-token slice.
+// The original shader and single dispatch are retained at smaller widths.
+void swiglu(Recorder &, View gate_up, View hidden, uint32_t units, uint32_t tokens, float limit);
 
 } // namespace strata::vulkan::fast

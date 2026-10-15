@@ -15,17 +15,24 @@ layout(push_constant) uniform P { uint n, uofs, vector_size, tokens; } p;
 #ifdef PORTABLE_REDUCTION
 shared float maximum[256];
 shared uint first_index[256];
+shared uint invalid_input[256];
 #else
 shared float maximum[4];
 shared uint first_index[4];
+shared uint invalid_input[4];
 #endif
 void main() {
   const uint live = p.vector_size == 0 ? p.n : hits[p.uofs] * p.vector_size * p.tokens;
   if (gl_WorkGroupID.x * 256u >= live) return;
   const uint i = gl_GlobalInvocationID.x, t = gl_LocalInvocationID.x;
   const float value = i < live ? x[i] : 0;
-  const float m = subgroupMax(abs(value));
-  if (gl_SubgroupInvocationID == 0) maximum[gl_SubgroupID] = m;
+  const bool invalid = isnan(value) || isinf(value);
+  const uint bad_wave = subgroupMax(invalid ? 1u : 0u);
+  const float m = subgroupMax(invalid ? 0.0 : abs(value));
+  if (gl_SubgroupInvocationID == 0) {
+    maximum[gl_SubgroupID] = m;
+    invalid_input[gl_SubgroupID] = bad_wave;
+  }
   barrier();
 #ifdef PORTABLE_REDUCTION
   float largest = 0;
@@ -33,7 +40,7 @@ void main() {
 #else
   const float largest = max(max(maximum[0], maximum[1]), max(maximum[2], maximum[3]));
 #endif
-  const uint index = subgroupMin(abs(value) == largest ? t : 0xffffffffu);
+  const uint index = subgroupMin(!invalid && abs(value) == largest ? t : 0xffffffffu);
   if (gl_SubgroupInvocationID == 0) first_index[gl_SubgroupID] = index;
   barrier();
 #ifdef PORTABLE_REDUCTION
@@ -42,6 +49,21 @@ void main() {
 #else
   const uint first = min(min(first_index[0], first_index[1]), min(first_index[2], first_index[3]));
 #endif
+  uint bad = 0u;
+  for (uint wave = 0; wave < gl_NumSubgroups; ++wave) bad |= invalid_input[wave];
+  // With no finite maximum, first may be UINT_MAX. Never use that as an
+  // input address. Propagate an invalid scale so callers reject this block.
+  if (bad != 0u || first >= 256u) {
+    const float nan_value = uintBitsToFloat(0x7fc00000u);
+#ifdef CODES_AND_SUMS
+    if (i < live) y[i] = 0.0;
+    if (t == 0u) metadata[gl_WorkGroupID.x * 17u] = nan_value;
+    if (t < 16u) metadata[gl_WorkGroupID.x * 17u + 1u + t] = 0.0;
+#else
+    if (i < live) y[i] = nan_value;
+#endif
+    return;
+  }
   const float signed_max = x[gl_WorkGroupID.x * 256u + first];
   precise float iscale = largest == 0 ? 0 : -127.0 / signed_max;
   precise float scaled = iscale * value;

@@ -1,5 +1,6 @@
 #include "fast/device.hpp"
 #include "fast_shaders.hpp"
+#include "strata/host/glm_env.h"
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -130,6 +131,9 @@ Device::Device(const std::string &filter, size_t budget, bool allow_cpu) : budge
     e2.pNext = &e11;
     e2.features.shaderInt16 = VK_TRUE;
     e2.features.shaderInt64 = f2.features.shaderInt64;
+    const bool robust = strata_env_is_one("STRATA_VULKAN_FAST_ROBUST_BUFFERS");
+    require(!robust || f2.features.robustBufferAccess, "Vulkan robust buffer access unavailable");
+    e2.features.robustBufferAccess = robust ? VK_TRUE : VK_FALSE;
     const char *extensions[] = {VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
     VkDeviceCreateInfo di{};
     di.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -179,7 +183,9 @@ Device::Device(const std::string &filter, size_t budget, bool allow_cpu) : budge
     check(vkCreateFence(device_, &fi, nullptr, &fence_), "fence");
     check(vkCreateFence(device_, &fi, nullptr, &upload_fence_), "fence");
     std::cerr << "VULKAN_FAST device=" << name_ << " family=" << family_ << " queues=" << queue_count
-              << " large_bar=" << shared_large_ << " budget_MiB=" << (budget_ >> 20) << '\n';
+              << " large_bar=" << shared_large_ << " budget_MiB=" << (budget_ >> 20)
+              << " max_groups_x=" << max_groups_x_ << " max_storage_range=" << max_storage_range_
+              << " robust_buffers=" << robust << '\n';
   } catch (...) {
     cleanup();
     throw;

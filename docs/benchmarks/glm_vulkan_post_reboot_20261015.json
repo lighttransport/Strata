@@ -1,0 +1,586 @@
+{
+  "schema": 1,
+  "updated_utc": "2026-10-15T15:04:51.560041+00:00",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB installed; DDR4-2666 from prior qualification"
+  },
+  "boot_id": "9561e5eb-796a-4ff8-a7d2-8b3495732446",
+  "scope": "Fresh-boot opt-in streamed prefill experiments through1024. A new2048-token trial reset the GPU; no100+ or combined quality qualification. Raw evidence is on persistent storage in ignored build directories.",
+  "runs": {
+    "match32": {
+      "passed": true,
+      "performance_qualified": false,
+      "test_kind": "correctness",
+      "executable_sha256": "80015f989c5f667a8a406ab671505f1fcbaa365a095473eb7dc4629025e064a6",
+      "config_sha256": "ec4da5bbfacc0c1e33eadb41b46687f91473f35ace33870438d8f3f44d47c3e1",
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 4.62916,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 6912.7,
+          "tokens_per_second": 4.62916
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "19fe1e24b555af3a15e84055ea47f65f3594dfb399c069522a7efe5770b12b06"
+    },
+    "cpu128": {
+      "passed": true,
+      "performance_qualified": false,
+      "test_kind": "correctness",
+      "executable_sha256": "80015f989c5f667a8a406ab671505f1fcbaa365a095473eb7dc4629025e064a6",
+      "config_sha256": "d33b7eaa3b000399f82809b2c0f402429649df5e61bd213e892e2c32c0a03b7b",
+      "prompt_sha256": "db4202fe6f2d3422d02fbd42b053bf746e87f9dcc594de37033dc12d3e35a85a",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 11.1624,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 128,
+          "batch": 1,
+          "milliseconds": 11467.1,
+          "tokens_per_second": 11.1624
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "eac91584c0335086b39ff7b00aff78e8518eb5732dde95cc4c21bca172066e7f"
+    },
+    "cpu256": {
+      "passed": true,
+      "performance_qualified": false,
+      "test_kind": "correctness",
+      "executable_sha256": "80015f989c5f667a8a406ab671505f1fcbaa365a095473eb7dc4629025e064a6",
+      "config_sha256": "e9ef1d93c2125dbcfce0d6364dfce6251dd32871e42e056d0baa03a5011c1482",
+      "prompt_sha256": "4f468eeb04aab0b33bc68ac7b0e65dad056d188e6b9dfb9d3c2f3ce2e7ceb68d",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 15.6613,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 16346.1,
+          "tokens_per_second": 15.6613
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "a1c92dcd91d9b6a54ab8b5898c971ebf3802ac79c08b2665444c72aa31d99df3"
+    },
+    "cpu256-repeat": {
+      "passed": true,
+      "performance_qualified": true,
+      "test_kind": "performance",
+      "executable_sha256": "80015f989c5f667a8a406ab671505f1fcbaa365a095473eb7dc4629025e064a6",
+      "config_sha256": "4268653c441a582070f84c431802e7fbd4523b46e7b117c2c4744681e2117c36",
+      "prompt_sha256": "4f468eeb04aab0b33bc68ac7b0e65dad056d188e6b9dfb9d3c2f3ce2e7ceb68d",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 28.1536,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 9092.98,
+          "tokens_per_second": 28.1536
+        },
+        {
+          "trial": 1,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 9041.14,
+          "tokens_per_second": 28.315
+        },
+        {
+          "trial": 2,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 9118.93,
+          "tokens_per_second": 28.0735
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "f1346699ca09bad565dd9fdc19f063f7169c88f86a27d53467a7d228578fb44e"
+    },
+    "gpu256": {
+      "passed": true,
+      "performance_qualified": false,
+      "test_kind": "correctness",
+      "executable_sha256": "80015f989c5f667a8a406ab671505f1fcbaa365a095473eb7dc4629025e064a6",
+      "config_sha256": "59a97390563ba6493c27a17f5136e7a5456504dc695eb6ff5512b97948e8134b",
+      "prompt_sha256": "4f468eeb04aab0b33bc68ac7b0e65dad056d188e6b9dfb9d3c2f3ce2e7ceb68d",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 14.0489,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 18222.0,
+          "tokens_per_second": 14.0489
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "c6c34483c54658967d88894271943f898b7577f660c8b990abbb00b3d58b33ae"
+    },
+    "gpu256-repeat": {
+      "passed": true,
+      "performance_qualified": true,
+      "test_kind": "performance",
+      "executable_sha256": "80015f989c5f667a8a406ab671505f1fcbaa365a095473eb7dc4629025e064a6",
+      "config_sha256": "7c1416dc2f0f24326839ef9f96868ce2f702e130aa1dc70856396e2786d3e1b2",
+      "prompt_sha256": "4f468eeb04aab0b33bc68ac7b0e65dad056d188e6b9dfb9d3c2f3ce2e7ceb68d",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 26.437,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 9683.4,
+          "tokens_per_second": 26.437
+        },
+        {
+          "trial": 1,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 9636.76,
+          "tokens_per_second": 26.5649
+        },
+        {
+          "trial": 2,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 9731.41,
+          "tokens_per_second": 26.3066
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "4d52885c37c7d762e5f77d06cb826c6e624bf3be10b9fac59b19db24a007d438"
+    },
+    "gpu-pack-off-control": {
+      "passed": true,
+      "performance_qualified": false,
+      "test_kind": "correctness",
+      "executable_sha256": "f9b77581022931ad5460cb7f565e0f7ed4384a1142f77bfa83e6294e1569946e",
+      "config_sha256": "5c49c14575d6e93b8410d80c6bac05a890a72eb81952b1154d2d6ec6052896d0",
+      "prompt_sha256": "4f468eeb04aab0b33bc68ac7b0e65dad056d188e6b9dfb9d3c2f3ce2e7ceb68d",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 14.0539,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 18215.6,
+          "tokens_per_second": 14.0539
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "71f76581a3618114e194018aee6ce41f4149576d5503009f09cf9e4b22680f8d"
+    },
+    "gpu-pack256-repeat": {
+      "passed": true,
+      "performance_qualified": true,
+      "test_kind": "performance",
+      "executable_sha256": "f9b77581022931ad5460cb7f565e0f7ed4384a1142f77bfa83e6294e1569946e",
+      "config_sha256": "41fa748f39b8a7a133f7e1cf7a02092c3af12b9547862e2377b2bbc0dd7f593b",
+      "prompt_sha256": "4f468eeb04aab0b33bc68ac7b0e65dad056d188e6b9dfb9d3c2f3ce2e7ceb68d",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 34.1901,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 7486.12,
+          "tokens_per_second": 34.1966
+        },
+        {
+          "trial": 1,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 7487.55,
+          "tokens_per_second": 34.1901
+        },
+        {
+          "trial": 2,
+          "tokens": 256,
+          "batch": 1,
+          "milliseconds": 7502.58,
+          "tokens_per_second": 34.1216
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "5d79cacf126996d1ce88ee5ed9b434e1929ecddb8e65c1fbb7fb25f707430bda"
+    },
+    "gpu-pack512-detail": {
+      "passed": true,
+      "performance_qualified": false,
+      "test_kind": "correctness",
+      "executable_sha256": "f9b77581022931ad5460cb7f565e0f7ed4384a1142f77bfa83e6294e1569946e",
+      "config_sha256": "d6cadecd0afab321bfe4460999294a0a5f5cd8c79da6803c34abeadefe39df76",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 15.9563,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 512,
+          "batch": 1,
+          "milliseconds": 32087.7,
+          "tokens_per_second": 15.9563
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "dd18fd82740bc0cefc8760a5b061f81a40e01f1d297f9effe4155f0d87f8acea"
+    },
+    "gpu-pack512-repeat": {
+      "passed": true,
+      "performance_qualified": true,
+      "test_kind": "performance",
+      "executable_sha256": "f9b77581022931ad5460cb7f565e0f7ed4384a1142f77bfa83e6294e1569946e",
+      "config_sha256": "fb7151096b2ae36a4b9ec21e61da4755da9334ee11f12ef9a2fd4749a14c0f16",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 30.0424,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 512,
+          "batch": 1,
+          "milliseconds": 17037.7,
+          "tokens_per_second": 30.0511
+        },
+        {
+          "trial": 1,
+          "tokens": 512,
+          "batch": 1,
+          "milliseconds": 17082.9,
+          "tokens_per_second": 29.9715
+        },
+        {
+          "trial": 2,
+          "tokens": 512,
+          "batch": 1,
+          "milliseconds": 17042.6,
+          "tokens_per_second": 30.0424
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "5494f52176259af400d0a52e90bf4d33c047258973bc38ad18a80fdb84f8bc96"
+    },
+    "vector512-repeat": {
+      "passed": true,
+      "performance_qualified": true,
+      "test_kind": "performance",
+      "executable_sha256": "908760eab6cc90f01edfaf06631182ed265f970a20b505f102acd21c5f36ff59",
+      "config_sha256": "1ab600b6e15a7698ea11c189ca1fb8e8d479a3d095750685dda40097a5b4d4f1",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 33.9919,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 512,
+          "batch": 1,
+          "milliseconds": 15007.8,
+          "tokens_per_second": 34.1156
+        },
+        {
+          "trial": 1,
+          "tokens": 512,
+          "batch": 1,
+          "milliseconds": 15062.4,
+          "tokens_per_second": 33.9919
+        },
+        {
+          "trial": 2,
+          "tokens": 512,
+          "batch": 1,
+          "milliseconds": 15100.6,
+          "tokens_per_second": 33.906
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "6150ed20ff325bf54b77761438ef86424f9443f3ecc581c73bb4da8e5680a95c"
+    },
+    "vector1024-detail": {
+      "passed": true,
+      "performance_qualified": false,
+      "test_kind": "correctness",
+      "executable_sha256": "908760eab6cc90f01edfaf06631182ed265f970a20b505f102acd21c5f36ff59",
+      "config_sha256": "7c14ce764bd8b9efe6cc7901ad0b7180d5e4cd534693c86e2b06828eea9426ce",
+      "prompt_sha256": "a821069bb1b0d5c6420b2620e158867702551381d5dbf61c06448349be5fbcf2",
+      "faults": [],
+      "pci_unchanged": true,
+      "prefill_tok_s": 20.5169,
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 1024,
+          "batch": 1,
+          "milliseconds": 49910.1,
+          "tokens_per_second": 20.5169
+        }
+      ],
+      "output_trials_identical": true,
+      "log_sha256": "6861871e287b5fd3af0a42bd7d5bc32805c7d631a217f8969cef41078a145b59"
+    }
+  },
+  "gpu_packing": {
+    "opt_in_env": "STRATA_VULKAN_FAST_PREFILL_GPU_PACK=1",
+    "requires": "STRATA_VULKAN_FAST_PREFILL_GPU=1",
+    "native_byte_cases": 48,
+    "software_byte_cases": 48,
+    "native_expert_cases": 6,
+    "software_expert_cases": 6,
+    "expert_max_relative_l2_vs_cpu": 0.000163085,
+    "byte_identical_logits_when_disabled": true,
+    "byte_identical_logits_when_enabled_vs_cpu_packing": true,
+    "prefill_256_logit_sha256": "027e185409c9b53e8202068c42cc168253c540c16a8a67cf04b3042f9d87215d",
+    "speedup_vs_previous_streamed_256": 1.2932670121420735,
+    "numeric_scope": "Layout conversion changes no weight or result bytes in measured controls; the pre-existing streamed expert path is not CPU bit-identical.",
+    "kl_gpu_experts_vs_fast_cpu_experts_256": 0.010216864957070715
+  },
+  "vector_expert_weights": {
+    "opt_in_env": "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR=1",
+    "software_expert_byte_comparisons": 6,
+    "native_validation": "6 whole-expert byte comparisons passed; 512-token logits match original loader byte-for-byte",
+    "native_expert_byte_comparisons": 6,
+    "prefill_512_tok_s": 33.9919,
+    "baseline_512_tok_s": 30.0424,
+    "speedup_512": 1.1314641972678614
+  },
+  "functional_baseline": {
+    "humaneval_requested": 164,
+    "humaneval_completed": 119,
+    "humaneval_passed": 107,
+    "humaneval_stop_and_oracle_passed": 106,
+    "full_humaneval_140_gate_passed": false,
+    "complete": false
+  },
+  "quality_candidate_executable_sha256": "53202494900d6ee3615ad4c3e29af5bfa0eb177c0287c37842cc4d4a2d0d24de",
+  "limitations": [
+    "No sustained 100+ prefill result",
+    "No combined large-prefill/decode/HumanEval qualification",
+    "512-token GPU packing is slower per token than 256 in these trials",
+    "Strict KL, PPL and long-context gates remain unresolved",
+    "Post-fault per-layer submission has now executed cleanly through 512 tokens; timeout root cause remains unproven",
+    "The current boot contains another GPU fault; no more hardware tests were launched after it. Complete HumanEval baseline before another large-window probe on a healthy boot."
+  ],
+  "builds": {
+    "native_vulkan": "passed",
+    "portable_vulkan": "passed",
+    "python_tests": 35
+  },
+  "frozen_source_manifests": {
+    "source-v1.json": "84f7e42847f407b1c5a991eb30edfa29c85a1bf64fb2deb814388fa61c23ba5a",
+    "source-gpu-pack-v2.json": "ee8dbae798160e221f807e8c594d4c46d88a2e3f87100583ec5c7455173c1fd8",
+    "source-vector-v3.json": "de52d4627aa44bdab9d694934159415d23ece91dc15b5766fad404cf870fdc58",
+    "source-safety-v4.json": "822d5c144c2904147e2abcc2b27fcc7c1e8b3da8ff6cba99303a6790aba71105"
+  },
+  "failed_2048_followup": {
+    "passed": false,
+    "performance_qualified": false,
+    "exit_code": -9,
+    "termination_reason": "hardware/GPU fault",
+    "faults": [
+      "[ 9798.539598] amdgpu 0000:07:00.0: ring comp_1.2.0 timeout, signaled seq=120641, emitted seq=120643",
+      "[ 9798.539610] amdgpu 0000:07:00.0: GPU reset begin!. Source:  1"
+    ],
+    "wall_seconds": 12.67750741800046,
+    "executable_sha256": "908760eab6cc90f01edfaf06631182ed265f970a20b505f102acd21c5f36ff59",
+    "config_sha256": "6d0363255410f22f3bcbbc9143244a00574912225d558ce46d16e80bdc2322d0",
+    "prompt_sha256": "b5f2351c266015870a769ba43754fc36a831664eaa1b5da65ede32e6f5d3ed0f",
+    "last_progress": "experts layer=3 tokens=2048",
+    "completed_prefill_trials": 0,
+    "root_cause": "unresolved; per-layer submissions alone did not prevent reset",
+    "guard_stopped_owned_test": true
+  },
+  "post_fault_cpu_followup": {
+    "native_build_passed": true,
+    "portable_build_passed": true,
+    "python_tests_passed": 35,
+    "q8_cases_per_mode": 10,
+    "q8_modes": [
+      "default",
+      "robust buffers enabled"
+    ],
+    "q8_finite_cases_per_mode": 4,
+    "q8_nonfinite_cases_per_mode": 6,
+    "expert_byte_comparisons": 6,
+    "expert_max_relative_l2": 0.000163085,
+    "activation_byte_cases": 8,
+    "activation_max_tokens": 2048,
+    "activation_scope": "Sliced original SwiGLU vs per-token shader, full bytes and sentinels plus sampled CPU oracle in LVP; not full-model execution",
+    "gpu_validated": false,
+    "changes": [
+      "Q8 rejects invalid blocks before maximum-index dereference and propagates NaN scale",
+      "Reject nonfinite prefill expert inputs and final logits",
+      "Optional robust buffer access, default off",
+      "Report device dispatch/storage limits",
+      "Slice large shared/dense SwiGLU into at most1024-token views; smaller widths use original dispatch and shader"
+    ],
+    "safety_manifest_sha256": "822d5c144c2904147e2abcc2b27fcc7c1e8b3da8ff6cba99303a6790aba71105"
+  },
+  "failure_investigation": {
+    "date": "2026-10-15",
+    "kernel": "7.0.0-38-generic",
+    "diagnosis": "GPU scheduler timeout; oversized initial prefill submission is the leading explanation, not a confirmed instruction-level root cause",
+    "default_timeout_ms": 2000,
+    "timeout_verification": {
+      "module_metadata_default_ms": 2000,
+      "installed_binary_default_ticks": 2000,
+      "config_hz": 1000,
+      "lockup_timeout_parameter": "",
+      "loaded_and_installed_srcversion": "9BDBC866F55BF296F1B7FA2",
+      "debugfs_runtime_state": "unavailable; root authentication required"
+    },
+    "initial_command_contents": "Three dense layers plus layer-3 attention and router; per-MoE submission changes leave this prefix intact",
+    "first_command_profiles": [
+      {
+        "tokens": 512,
+        "logged_first_segment_ms": 1.05447,
+        "actual_unit_of_logged_field": "ms per token",
+        "command_ms": 539.88864
+      },
+      {
+        "tokens": 1024,
+        "logged_first_segment_ms": 1.19968,
+        "actual_unit_of_logged_field": "ms per token",
+        "command_ms": 1228.47232
+      }
+    ],
+    "profile_protocol": "Single completed detailed profile at each width; includes profiling overhead",
+    "estimated_2048_command_ms_if_linear": 2456.94464,
+    "estimate_is_not_a_2048_measurement": true,
+    "no_recorded_oom_or_aer_error": true,
+    "devcoredump": "Announced in dmesg; no longer available at inspection",
+    "prt_warning": "PRT fault-handling setup; may mask unmapped-access faults, so absence of VM-fault logs does not rule out an access error",
+    "gpu_execution_during_investigation": false,
+    "driver_settings_changed": false,
+    "bounded_dense_prefix_submissions_implemented": false,
+    "next_diagnostic": "Split dense prefix at layer boundaries into separate submissions with completion checks; add timestamped handoffs and absolute command durations; byte-compare controls on a healthy boot before retrying 2048",
+    "evidence_relative_path": "build-vulkan-rx570-native/post-reboot-20261015/gpu-failure-investigation.json",
+    "evidence_sha256": "3eb8b3abeb8dcb7acbe7f2916852a9da139f33c57d9b8978bf5685ea205043f5",
+    "primary_sources": [
+      "https://github.com/torvalds/linux/blob/v7.0/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c",
+      "https://github.com/torvalds/linux/blob/v7.0/drivers/gpu/drm/amd/amdgpu/gmc_v8_0.c"
+    ]
+  },
+  "hardware_diagnostic_preparation": {
+    "target": "glm_vulkan_hw_diag",
+    "launcher": "tools/glm_vulkan_hw_diag.py",
+    "no_model_required": true,
+    "requested_next_boot_only": true,
+    "native_build_passed": true,
+    "portable_build_passed": true,
+    "native_tests_passed": 18,
+    "portable_software_checks_passed": 7,
+    "physical_gpu_tested": false,
+    "software_driver": "LVP with explicit ICD",
+    "checker_fault_injections": "one-bit corruption caught in VRAM, uint32 output and FP32 output",
+    "memory_patterns": {
+      "quick": 9,
+      "full": 73,
+      "full_software_rounds": 2
+    },
+    "memory_coverage": {
+      "software_multiple_allocations_mib": 65,
+      "planned_hardware_payload_mib": 14336,
+      "allocation_payload_max_mib": 64,
+      "default_window_kib": 1024,
+      "sentinels_bytes_per_end": 256,
+      "physical_addresses_known": false
+    },
+    "compute": {
+      "integer_elements_per_dispatch": 65536,
+      "stress_alu_iterations": 256,
+      "matrix_m": 128,
+      "matrix_k": 256,
+      "matrix_n": 128,
+      "oracle": "uint32 exact arithmetic and integer dot scaled by 1/16; FP32 signed zeros equivalent",
+      "stress_seeds": 1000,
+      "checked_repetitions_per_seed": 16
+    },
+    "guard": {
+      "max_completed_submission_ms": 500,
+      "system_ram_limit_gib": 2,
+      "swap_bytes": 0,
+      "gpu_reserve_mib": 1024,
+      "allocation_allowance_mib": 64,
+      "fresh_output_required": true,
+      "faulted_boot_refusal_verified": true,
+      "frozen_manifest_requires_boot_change": true,
+      "kernel_and_pci_monitored": true,
+      "owns_only_uuid_service": true,
+      "gpu_reset_or_driver_settings_changed": false,
+      "coredump_prefix_max_mib": 4,
+      "coredump_read_timeout_seconds": 2
+    },
+    "prepared_bundle": "build-vulkan-rx570-native/hw-diag-prepared-20261015",
+    "executable_sha256": "6c5e3e608ec290ec5419adc69383b134f93f8e355538d69d0f323b411fbf33e0",
+    "validation_sha256": "a8df69870028b0b5cf260232678fc3713d9383c9616daae0e48f6db2f1a6870f",
+    "limitations": [
+      "Software checker validation only; no RX570 hardware diagnosis yet",
+      "Vulkan logical allocation coverage does not identify physical VRAM cells",
+      "Does not qualify inference, FP16 or FP64, or establish a large-prefill timeout fix"
+    ]
+  },
+  "hardware_full_heap_extension": {
+    "protocol": 2,
+    "preset": "vram-full",
+    "target_mib": 16384,
+    "reserve_mib": 0,
+    "patterns": 73,
+    "rounds": 1,
+    "hold_ms_per_pattern": 100,
+    "allocation_limit": "Fresh AMD global free VRAM, rounded down to MiB; includes local auxiliary allocations and padding",
+    "adaptive_payload_min_bytes": 4096,
+    "adaptive_payload_max_mib": 64,
+    "byte_accounting": [
+      "memory_target_bytes",
+      "memory_payload_bytes",
+      "unavailable_target_bytes"
+    ],
+    "physical_range_complete": false,
+    "partial_coverage_explicit": true,
+    "native_tests_passed": 24,
+    "portable_software_checks_passed": 10,
+    "physical_gpu_tested": false,
+    "software_cases": [
+      "Full heap capacity limit with emulated OOM and unequal allocations",
+      "Contiguous logical allocation ranges",
+      "Independent full CPU readback",
+      "Final MiB at exact 16 GiB logical boundary",
+      "Corruption offset near that boundary does not wrap"
+    ],
+    "bundle": "build-vulkan-rx570-native/hw-diag-full-prepared-20261016",
+    "executable_sha256": "b65ac695c95537d3cb0b0f88cb2b3ad377d6b6f3bd308d4e8e7c28b01679c516",
+    "validation_sha256": "826fe6ebf5c645e32d418b1276d20638ab3da4cb351d5e7a4000e91501efed25",
+    "next_boot_sequence": [
+      "smoke with robust buffers",
+      "vram-full, 73 patterns",
+      "compute"
+    ],
+    "old_14_gib_bundle_preserved": true
+  }
+}

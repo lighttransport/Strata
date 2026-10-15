@@ -73,6 +73,8 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   expert_q8_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_Q8");
   canonical_sum_ = strata_env_is_one("STRATA_VULKAN_FAST_CANONICAL_SUM");
   prefill_gpu_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU");
+  prefill_gpu_pack_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU_PACK");
+  prefill_gpu_vector_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR");
   prefill_match_gemv_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_MATCH_GEMV");
   prefill_progress_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_PROGRESS");
   prefill_tile_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_TILE", 0));
@@ -88,6 +90,8 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   require(!canonical_sum_ || expert_q8_, "Vulkan canonical sum requires STRATA_VULKAN_FAST_EXPERT_Q8=1");
   require(!prefill_gpu_ || (canonical_sum_ && prefill_chunk_ > int(NT)),
           "Vulkan prefill GPU experts require canonical expert sums and a prefill chunk greater than 4");
+  require(!prefill_gpu_pack_ || prefill_gpu_, "Vulkan GPU packing requires streamed prefill GPU experts");
+  require(!prefill_gpu_vector_ || prefill_gpu_, "Vulkan vector expert loads require streamed prefill GPU experts");
   if (canonical_sum_) mailbox_stride_ = MB_OUT + 8 * H;
   // Lossy, opt-in: the HIP path's routing affinity and min-share switches.
   auto fraction = [](const char *name, float hi) {
@@ -628,11 +632,7 @@ void Engine::record_shared(Recorder &r, const Layer &L, uint32_t T) {
   cols.columns = T;
   mv(r, L.gu, View(*xn_), View(*gu_), cols);
   const uint32_t n = L.gu.m() / 2;
-  struct {
-    uint32_t n, tokens;
-    float limit;
-  } sp{n, T, L.limit};
-  r.dispatch("swiglu", {View(*gu_), View(*h_)}, sp, (n * T + 255) / 256);
+  swiglu(r, View(*gu_), View(*h_), n, T, L.limit);
   mv(r, L.down, View(*h_), View(*f_), cols);
 }
 
@@ -937,6 +937,10 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
     int ids[16]; float routing[16];
     std::memcpy(ids, mb + MB_IDS, top * 4); std::memcpy(routing, mb + MB_WEIGHTS, top * 4);
     uint8_t *act = acts.data() + size_t(t) * L.fmt.act_bytes;
+    for (uint32_t d = 0; d < H; ++d)
+      if (!std::isfinite(mb[d]))
+        throw std::runtime_error("nonfinite Vulkan prefill expert input: layer=" + std::to_string(L.index) +
+                                 " token=" + std::to_string(t) + " column=" + std::to_string(d));
     kcpu::native_quant_act(L.fmt, mb, act);
     for (int k = 0; k < top; ++k) {
       require(ids[k] >= 0 && ids[k] < 144, "Vulkan prefill router produced an invalid expert");
@@ -971,7 +975,7 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
     if (capacity) {
       std::vector<kcpu::ExpertJobMulti> cpu_jobs;
       for (const auto &job : jobs) if (!on_gpu[size_t(job.expert_id)]) cpu_jobs.push_back(job);
-      ExpertBatch gpu(dev_, capacity);
+      ExpertBatch gpu(dev_, capacity, false, prefill_gpu_pack_, prefill_gpu_vector_);
       // The pool writes only the non-GPU result rows. Keep its future inside
       // this scope so exceptions still join before any referenced storage dies.
       std::future<void> cpu;
@@ -996,6 +1000,8 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
       const auto &stats = gpu.stats();
       std::cerr << "PREFILL_EXPERT_SPLIT layer=" << L.index << " tokens=" << T
                 << " gpu_experts=" << gpu_experts << " gpu_routes=" << gpu_routes
+                << " gpu_pack=" << prefill_gpu_pack_
+                << " vector_weights=" << prefill_gpu_vector_
                 << " pack_ms=" << stats.pack_ms << " upload_ms=" << stats.upload_ms
                 << " input_bytes=" << stats.input_bytes
                 << " queued_work_ms=" << stats.queued_work_ms << '\n';
@@ -1082,6 +1088,9 @@ std::vector<float> Engine::forward_prefill(std::span<const int> tokens) {
   timeline_base_ += 2 * moe_layers_.size() + 64;
   if (profile_ && T == profile_t_) collect_profile(T);
   if (trace_ && trace_position_ >= position_ && trace_position_ < position_ + int(T)) write_trace();
+  for (int i = 0; i < m_.vocab; ++i)
+    if (!std::isfinite(logits_->as<float>()[i]))
+      throw std::runtime_error("nonfinite Vulkan prefill logit at index=" + std::to_string(i));
   position_ += int(T); steps_ += T; step_ms_ += ms_since(started);
   return {logits_->as<float>(), logits_->as<float>() + m_.vocab};
 }

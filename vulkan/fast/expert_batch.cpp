@@ -6,8 +6,8 @@
 #include <ggml.h>
 #include <stdexcept>
 namespace strata::vulkan::fast {
-ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable)
-    : device_(device), capacity_(capacity), portable_rounding_(portable) {
+ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool gpu_pack, bool vector_weights)
+    : device_(device), capacity_(capacity), portable_rounding_(portable), gpu_pack_(gpu_pack), vector_weights_(vector_weights) {
   if (!capacity || capacity > 2048) throw std::invalid_argument("expert batch capacity must be 1..2048");
   quantized_row_bytes_ = ggml_row_size(GGML_TYPE_Q8_K, 4096);
   if (ggml_row_size(GGML_TYPE_Q8_K, 256) != 292)
@@ -17,7 +17,10 @@ ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable)
   down_weights_.layout = down_layout_;
   gu_weights_.data = device.buffer(gu_weights_.bytes(), Memory::Device);
   down_weights_.data = device.buffer(down_weights_.bytes(), Memory::Device);
-  packed_.resize(std::max(gu_weights_.bytes(), down_weights_.bytes()));
+  if (gpu_pack_) {
+    raw_gu_ = device.buffer(row_bytes(Q2_K, 4096) * 4096, Memory::Device);
+    raw_down_ = device.buffer(row_bytes(Q3_K, 2048) * 4096, Memory::Device);
+  } else packed_.resize(std::max(gu_weights_.bytes(), down_weights_.bytes()));
   input_ = device.buffer(size_t(capacity) * 4096 * 4, Memory::Host);
   output_ = device.buffer(size_t(capacity) * 4096 * 4, Memory::Host);
   qinput_ = device.buffer(size_t(capacity) * 4096 * 4, Memory::Device);
@@ -59,19 +62,33 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
   auto elapsed = [&] { return std::chrono::duration<double, std::milli>(Clock::now() - started).count(); };
   // Read the separate GGUF row ranges directly into their combined block
   // planes. Concatenating already-repacked matrices would order them wrongly.
-  repack_pair_streamed(gu_weights_.layout, gate, gu_weights_.m() / 2, up, packed_.data());
-  stats_.pack_ms += elapsed(); started = Clock::now();
-  device_.upload(*gu_weights_.data, packed_.data(), gu_weights_.bytes());
-  stats_.upload_ms += elapsed(); started = Clock::now();
-  repack_streamed(down_layout_, down, packed_.data());
-  stats_.pack_ms += elapsed(); started = Clock::now();
-  device_.upload(*down_weights_.data, packed_.data(), down_weights_.bytes());
+  if (gpu_pack_) {
+    const size_t gate_bytes = row_bytes(Q2_K, 4096) * 2048;
+    device_.upload(*raw_gu_, gate, gate_bytes);
+    device_.upload(*raw_gu_, up, gate_bytes, gate_bytes);
+    device_.upload(*raw_down_, down, row_bytes(Q3_K, 2048) * 4096);
+  } else {
+    repack_pair_streamed(gu_weights_.layout, gate, gu_weights_.m() / 2, up, packed_.data());
+    stats_.pack_ms += elapsed(); started = Clock::now();
+    device_.upload(*gu_weights_.data, packed_.data(), gu_weights_.bytes());
+    stats_.upload_ms += elapsed(); started = Clock::now();
+    repack_streamed(down_layout_, down, packed_.data());
+    stats_.pack_ms += elapsed(); started = Clock::now();
+    device_.upload(*down_weights_.data, packed_.data(), down_weights_.bytes());
+  }
   stats_.upload_ms += elapsed(); started = Clock::now();
   const char *round_kernel = portable_rounding_ ? "q8k_codes_portable" : "q8k_codes";
   struct {uint32_t mode, n, uofs, tokens; float limit;} swiglu{0, 2048, 0, count, limit};
   device_.run([&](Recorder &r) {
+    if (gpu_pack_) {
+      r.begin_concurrent();
+      repack_gpu(r, gu_weights_.layout, View(*raw_gu_), View(*gu_weights_.data));
+      repack_gpu(r, down_layout_, View(*raw_down_), View(*down_weights_.data));
+      r.end_concurrent();
+    }
     auto product = [&](const Matrix &w, const Buffer &codes, const Buffer &metadata, const Buffer &out) {
-      const char *kernel = w.layout.type == Q2_K ? "expert_gemm_q2k_canon" : "expert_gemm_q3k_canon";
+      const std::string kernel = std::string(w.layout.type == Q2_K ? "expert_gemm_q2k_canon" : "expert_gemm_q3k_canon") +
+                                 (vector_weights_ ? "_vector" : "");
       r.dispatch(kernel, {View(*w.data), View(codes), View(metadata), View(*partial_)},
                  std::array<uint32_t, 5>{w.k(), w.m(), w.layout.mp, count, uint32_t(w.layout.chunk_bytes())},
                  (w.m() + 63) / 64, (count + 63) / 64, 8);

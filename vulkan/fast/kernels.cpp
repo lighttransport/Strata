@@ -123,6 +123,26 @@ void repack_pair_streamed(const Layout &l, const uint8_t *first, uint32_t first_
   repack_impl(l, first, out, true, second, first_rows);
 }
 
+void repack_gpu(Recorder &r, const Layout &l, View source, View output, uint32_t source_offset) {
+  require(l.type == Q2_K || l.type == Q3_K, "Vulkan GPU repack requires Q2_K/Q3_K rows");
+  const auto expected = layout_for(l.type, l.k, l.m);
+  require(l.mp == expected.mp && l.chunks == expected.chunks && l.side_words == expected.side_words,
+          "Vulkan GPU repack layout invalid");
+  auto available = [](View v) {
+    require(v.buffer && v.offset <= v.buffer->size, "Vulkan GPU repack binding invalid");
+    const size_t remaining = v.buffer->size - v.offset;
+    require(!v.range || v.range <= remaining, "Vulkan GPU repack range invalid");
+    return v.range ? v.range : remaining;
+  };
+  const size_t input_bytes = size_t(source_offset) + row_bytes(l.type, l.k) * l.m;
+  require((input_bytes + 3) / 4 * 4 <= available(source) && l.head_bytes() <= available(output),
+          "Vulkan GPU repack buffer too small");
+  require(input_bytes <= UINT32_MAX && l.head_bytes() <= UINT32_MAX,
+          "Vulkan GPU repack exceeds shader address range");
+  r.dispatch(l.type == Q2_K ? "repack_expert_q2k" : "repack_expert_q3k", {source, output},
+             std::array<uint32_t, 4>{l.k / 256, l.m, l.mp, source_offset}, l.mp / 64, l.k / 256);
+}
+
 Matrix upload_matrix(Device &d, int type, uint32_t k, uint32_t m, uint32_t heads, const void *data) {
   require(heads > 0, "Vulkan fast matrix heads");
   Matrix out;
@@ -259,6 +279,30 @@ void gemm(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a, uint3
     struct {uint32_t M, N, ys, yofs, parts, accumulate;} reduce{w.m(), a.columns, ys, a.yofs, kparts, a.accumulate ? 1u : 0u};
     r.barrier();
     r.dispatch("reduce_parts", {part, y}, reduce, (w.m() * a.columns + 255) / 256);
+  }
+}
+
+void swiglu(Recorder &r, View gu, View hidden, uint32_t units, uint32_t tokens, float limit) {
+  require(units > 0 && units <= 12288 && units % 64 == 0 && tokens > 0 && tokens <= 2048,
+          "Vulkan fast SwiGLU geometry invalid");
+  auto available = [](View v) {
+    require(v.buffer && v.offset <= v.buffer->size, "Vulkan fast SwiGLU binding invalid");
+    const size_t remaining = v.buffer->size - v.offset;
+    require(!v.range || v.range <= remaining, "Vulkan fast SwiGLU range invalid");
+    return v.range ? v.range : remaining;
+  };
+  const size_t row_bytes = size_t(units) * 4;
+  require(size_t(tokens) * 2 * row_bytes <= available(gu) && size_t(tokens) * row_bytes <= available(hidden),
+          "Vulkan fast SwiGLU buffer too small");
+  for (uint32_t first = 0; first < tokens; first += 1024) {
+    const uint32_t count = std::min(1024u, tokens - first);
+    View x = gu, y = hidden;
+    if (tokens > 1024) {
+      x = View(*gu.buffer, gu.offset + size_t(first) * 2 * row_bytes, size_t(count) * 2 * row_bytes);
+      y = View(*hidden.buffer, hidden.offset + size_t(first) * row_bytes, size_t(count) * row_bytes);
+    }
+    struct {uint32_t n, tokens; float limit;} push{units, count, limit};
+    r.dispatch("swiglu", {x, y}, push, (units * count + 255) / 256);
   }
 }
 
