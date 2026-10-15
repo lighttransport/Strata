@@ -1,0 +1,130 @@
+{
+  "date": "2026-10-16",
+  "scope": "Explicitly bounded two-byte Q3_K tail-scale reads in opt-in GPU expert packing; CPU byte oracle, checked source indices and protected legacy negative control",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "matrix": {
+    "types": [
+      "Q2_K",
+      "Q3_K"
+    ],
+    "K": [
+      256,
+      768,
+      2048,
+      4096
+    ],
+    "rows": [
+      67,
+      4096
+    ],
+    "source_offsets_bytes": [
+      0,
+      3,
+      5
+    ],
+    "extra_source_padding_bytes": [
+      0,
+      4
+    ],
+    "source_descriptor_range": "Declared source size rounded to four bytes, independent of larger VkBuffer alignment",
+    "positive_cases_per_run": 96,
+    "positive_dispatches_per_run": 192,
+    "destination_sentinels_checked": true
+  },
+  "runs": [
+    {
+      "device": "lavapipe software Vulkan",
+      "build": "build-vulkan-rx570-native",
+      "exit_code": 0,
+      "positive_cases_passed": 96,
+      "protected_negative_control": {
+        "legacy_tail_read_detected": true,
+        "invalid_read_attempts": 1,
+        "unsafe_load_executed": false
+      },
+      "log_sha256": "64ecce5d197388f646ee69fde6d210e477f3b28d338742ddb76084d67da7e65d",
+      "executable_sha256": "75af74b78e9cc40fb522d9074ec6f3530819011cdf941d86445c79630029f83f"
+    },
+    {
+      "device": "lavapipe software Vulkan",
+      "build": "build-vulkan",
+      "exit_code": 0,
+      "positive_cases_passed": 96,
+      "protected_negative_control": {
+        "legacy_tail_read_detected": true,
+        "invalid_read_attempts": 1,
+        "unsafe_load_executed": false
+      },
+      "log_sha256": "64ecce5d197388f646ee69fde6d210e477f3b28d338742ddb76084d67da7e65d",
+      "executable_sha256": "75af74b78e9cc40fb522d9074ec6f3530819011cdf941d86445c79630029f83f"
+    },
+    {
+      "device": "physical RX570",
+      "robust_buffer_access": false,
+      "exit_code": 0,
+      "positive_cases_passed": 96,
+      "protected_negative_control": {
+        "legacy_tail_read_detected": true,
+        "invalid_read_attempts": 1,
+        "unsafe_load_executed": false
+      },
+      "guard_passed": true,
+      "faults": [],
+      "pci_identity_unchanged": true,
+      "wall_seconds": 2.5523524780001026,
+      "executable_sha256": "75af74b78e9cc40fb522d9074ec6f3530819011cdf941d86445c79630029f83f",
+      "log_sha256": "874d8f9d7ec6d6618af12f0d796624b3bec612cd5abcb77690bc9dc6bb1f8eda",
+      "guard_sha256": "0c51abf9b4bcca0497becdf1465360e57d9d1c3f73dbb757f30eee083d7ab3bc",
+      "kernel_log_sha256": "66fd7e746f87978bc73c829bd5f2aa093bbaebecdbef3e62b447dcf14a7d0d5a"
+    }
+  ],
+  "compiled_source_sha256": {
+    "vulkan/fast/engine.cpp": "f64577cab2cf08f7cc1ff53b948b2c73c26e2dbfd616f85fa253aa999f3b56a8",
+    "vulkan/fast/engine.hpp": "65c09b2efb5a1e78b8ab8e9a702ac695dc71d47cb2a340afb53fbe34d8f0d07c",
+    "vulkan/fast/expert_batch.cpp": "79039a05e761fbafd99fab7ae7170c7988d42127d2b3513f6cd43bed25bf25fd",
+    "vulkan/fast/expert_batch.hpp": "87dc326a46a792f1d2e9c86494b93bf3a776bc7865a64554b7ebe4067b9b4fcb",
+    "vulkan/fast/expert_batch_check.cpp": "4dae2daf618c5de07b446c69816b1e855d5a65705ee08da5831ac4f57c5e97bd",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "cac8ea2eb406509e01c4501dbe1353a2090ded2fda1027aa44f231675193b8cc",
+    "vulkan/CMakeLists.txt": "9f687d15caed6249c1f4acf2c1b869dee464812696cc7df5a7a19d03fdc17028",
+    "vulkan/fast/device.cpp": "dea6b1dc648cdcf5b3d5498e528c3953b6982becf3aaa7c453887ba9da713a41",
+    "vulkan/fast/device.hpp": "873f2ec3f7c46525a3d80fb6399ff76c39ed20c5deab23e725499df50862fef1",
+    "vulkan/fast/kernels.cpp": "f974db507479f804cea6992dd34b4dd1e223791cf2e5f003c5e2f7bd9d4db103",
+    "vulkan/fast/kernels.hpp": "41febcc2b7d700bf96573a2dc86df403d4dd20153060e865cc909db0fe8c43c0",
+    "vulkan/fast/shaders/repack_expert.comp": "92c9438c45c478d7a42fcb9515fdfaf6ae31e33d1021c44757686536aa5fbfb6",
+    "vulkan/fast/repack_gpu_check.cpp": "5e5cde20fe69e56064c8b3a286498d5de547196342153b0acaaa8e822b07fdce"
+  },
+  "source_manifest_sha256": "a1d7bd43c8bb4fc896e718212de6c6586f60c869ffaa3597028d5f5b1506cfb2",
+  "frozen_fixed_model_executable_sha256": "054a31a584dd7e80959a4bbbda67358dbefc97fa24668be759d3ad0496993e65",
+  "post_fix_expert_screen": {
+    "cases": 6,
+    "maximum_relative_l2_cpu_canonical": 0.000163085,
+    "existing_limit": 0.0002,
+    "guard_passed": true,
+    "guard_sha256": "a0889e1238cf49ab0b60525431d0818cb156e516107dbe364030a775f20e2293",
+    "log_sha256": "a293ccd33a40c735ddf39d66a8d29698241b5a4d9b5ff4a3453d69d419a47c40",
+    "kernel_log_sha256": "60e210697084f50491f91b40661586355baa24e07872bdb61527004e6b326594",
+    "executable_sha256": "42230eab303941d85fd618a12eb26cb328b34efecff1f137e0ea6ea5f2bb8761",
+    "cpu_byte_identical": false,
+    "per_process_exact_fma_control": {
+      "numerical_json_rows_identical": true,
+      "setting": "radv_force_exact_glsl_fma=true",
+      "guard_sha256": "28810207c36824aa37aa8ce7170db5fd6f59908901e9c2e5c96c9f2cf274b9b2",
+      "log_sha256": "e26957cbc5fdb97b73796fc1d22aa984ddb7fbdb61399b80a93798923191ea86",
+      "kernel_log_sha256": "1432a6941855cf58e9f6ea9eb655eae3079d4faa9b2c5f1d45d9195ebbd37dcb"
+    }
+  },
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "default_inference_path_changed": false,
+  "limitations": [
+    "The old source expression could request a word beyond an exact-size source and then discard its high bytes. This does not prove the old compiled shader executed an invalid access or caused the earlier GPU timeout.",
+    "The legacy negative control records and suppresses the attempted invalid read before loading; it deliberately performs no out-of-bounds access.",
+    "Both checked and normal fixed kernels match all CPU oracle bytes and sentinels; the negative control also matches bytes, showing why byte-only checks could miss the indexing defect.",
+    "The existing whole-expert numeric differences remain. The process-local exact-FMA setting changed none of the reported numeric rows; no persistent driver setting was changed.",
+    "No new full-model quality, throughput, physical VRAM-cell coverage or timeout-fix qualification is established by this packing check."
+  ]
+}

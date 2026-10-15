@@ -805,6 +805,21 @@ using software Vulkan and 256-token scratch. Commands, source hashes and
 scope are recorded in
 `docs/benchmarks/glm_vulkan_expert_reuse_20261016.json`.
 
+The optional GPU packer now reads the final Q3_K scale as two bytes. The old
+source expression requested four bytes and masked the high half, which could
+request a word beyond an exact-size source. This source-level defect does
+not establish that the compiled shader performed the access or caused the
+earlier GPU timeout. The checker now exposes the declared descriptor range
+rounded to four bytes, including cases with no extra source padding.
+Both checked-index and normal kernels match the CPU packing bytes and
+destination sentinels in 96 cases on RX570 and in each software Vulkan build.
+A protected negative control detects the old tail-index request and returns
+before loading; it performs no invalid access. The existing whole-expert
+numeric differences remain, and a process-local exact-FMA driver setting
+changed none of the reported numeric rows. No persistent setting was changed.
+Counts, source hashes and evidence hashes are in
+`docs/benchmarks/glm_vulkan_repack_bounds_rx570_20261016.json`.
+
 ### Standalone hardware diagnostics
 
 `glm_vulkan_hw_diag` checks memory and arithmetic without model weights. Build
