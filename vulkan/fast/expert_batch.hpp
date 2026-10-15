@@ -1,6 +1,8 @@
 #pragma once
 #include "fast/kernels.hpp"
+#include <map>
 #include <span>
+#include <tuple>
 namespace strata::vulkan::fast {
 
 struct ExpertBatchTrace {
@@ -8,7 +10,9 @@ struct ExpertBatchTrace {
 };
 struct ExpertBatchStats {
   double pack_ms = 0, upload_ms = 0, queued_work_ms = 0;
+  double record_ms = 0, submit_wait_ms = 0;
   uint64_t input_bytes = 0;
+  uint64_t command_records = 0, command_replays = 0;
 };
 
 // Scratch for one Q2_K gate/up (4096 -> 2048), Q3_K down (2048 -> 4096)
@@ -19,7 +23,8 @@ struct ExpertBatchStats {
 class ExpertBatch {
 public:
   ExpertBatch(Device &, uint32_t capacity, bool portable_rounding = false, bool gpu_pack = false,
-              bool vector_weights = false);
+              bool vector_weights = false, uint32_t tile_columns = 64, bool replay = false, uint32_t tile_rows = 64);
+  ~ExpertBatch();
   void run(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
            std::span<const float *const> inputs, std::span<float *const> outputs,
            float swiglu_limit, ExpertBatchTrace *trace = nullptr);
@@ -29,10 +34,14 @@ public:
                      std::span<const uint8_t *const> inputs, std::span<float *const> outputs,
                      float swiglu_limit, ExpertBatchTrace *trace = nullptr);
   const ExpertBatchStats &stats() const { return stats_; }
+  uint32_t capacity() const { return capacity_; }
 private:
   Device &device_;
   uint32_t capacity_;
-  bool portable_rounding_, gpu_pack_, vector_weights_;
+  uint32_t tile_columns_, tile_rows_;
+  bool portable_rounding_, gpu_pack_, vector_weights_, replay_;
+  using CommandKey = std::tuple<uint32_t, uint32_t, bool>;
+  std::map<CommandKey, VkCommandBuffer> commands_;
   ExpertBatchStats stats_;
   size_t quantized_row_bytes_ = 0;
   Layout down_layout_;

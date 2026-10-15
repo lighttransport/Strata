@@ -11,6 +11,36 @@ layout(binding = 1, std430) readonly buffer Codes { float x[]; };
 layout(binding = 2, std430) readonly buffer Metadata { float meta[]; };
 layout(binding = 3, std430) writeonly buffer Partial { float part[]; };
 layout(push_constant) uniform P {uint K, M, Mp, N, side;} p;
+#ifndef NTILE
+#define NTILE 64
+#endif
+#ifndef MTILE
+#define MTILE 64
+#endif
+#if MTILE == 64
+#define ROW_STEP 64u
+#define ROW_GROUPS 4u
+#elif MTILE == 32
+#define ROW_STEP 32u
+#define ROW_GROUPS 2u
+#else
+#error Unsupported expert row tile
+#endif
+#if NTILE == 16
+#define Panel float
+#define X_PANEL(K) xt[ci][K]
+#define META_PANEL(A) A[ci]
+#elif NTILE == 32
+#define Panel vec2
+#define X_PANEL(K) vec2(xt[ci][K], xt[ci + 16u][K])
+#define META_PANEL(A) vec2(A[ci], A[ci + 16u])
+#elif NTILE == 64
+#define Panel vec4
+#define X_PANEL(K) vec4(xt[ci][K], xt[ci + 16u][K], xt[ci + 32u][K], xt[ci + 48u][K])
+#define META_PANEL(A) vec4(A[ci], A[ci + 16u], A[ci + 32u], A[ci + 48u])
+#else
+#error Unsupported expert column tile
+#endif
 #ifdef TYPE_Q2K
 #define CH 5u
 #else
@@ -54,21 +84,32 @@ float decoded_integer(uint s, uint dot_lane, uvec4 header, uint q0, uint q1, uin
 #endif
 }
 #endif
-shared float wt[32][64], xt[64][33];
-shared float wd[64], wm[64], min0[64], min1[64];
+shared float wt[32][MTILE], xt[NTILE][33];
+shared float wd[MTILE], wm[MTILE], min0[MTILE], min1[MTILE];
 shared float xd[64], sum0[64], sum1[64];
 void main() {
   const uint t = gl_LocalInvocationID.x, lane = gl_WorkGroupID.z;
-  const uint row0 = gl_WorkGroupID.x * 64u, col0 = gl_WorkGroupID.y * 64u;
+#if NTILE == 64
+  const uint row0 = gl_WorkGroupID.x * ROW_STEP, col0 = gl_WorkGroupID.y * 64u;
+#else
+  const uint row0 = gl_WorkGroupID.x * ROW_STEP, col0 = gl_WorkGroupID.y * uint(NTILE);
+#endif
   const uint ri = t % 16u, ci = t / 16u, blocks = p.K / 256u;
-  precise vec4 acc0 = vec4(0), acc1 = vec4(0), acc2 = vec4(0), acc3 = vec4(0);
+#if MTILE == 64
+  precise Panel acc0 = Panel(0), acc1 = Panel(0), acc2 = Panel(0), acc3 = Panel(0);
+#else
+  precise Panel acc0 = Panel(0), acc1 = Panel(0);
+#endif
   for (uint b = 0; b < blocks; ++b) {
-    const uint row = row0 + t % 64u;
+#if MTILE == 32
+    if (t < 128u) {
+#endif
+    const uint row = row0 + t % ROW_STEP;
 #ifdef VECTOR_WEIGHT_LOADS
     if (row < p.M) {
       // All eight K subblocks reuse these metadata and payload words.
       // Each wave selects one byte of the same four-byte dot-lane group.
-      const uint shift = 8u * (t / 64u), word = lane % 4u;
+      const uint shift = 8u * (t / ROW_STEP), word = lane % 4u;
       const uint plane = lane / 4u;
 #ifdef TYPE_Q2K
       const uvec4 header = w4[b * CH * p.Mp + row];
@@ -82,23 +123,34 @@ void main() {
       const uint q1 = (w[((b * CH + 4u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
       const uint mask = (w[((b * CH + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
 #endif
-#define PUT_WEIGHT(S) wt[4u * S + t / 64u][t % 64u] = decoded_integer(S, lane, header, q0, q1, mask)
+#define PUT_WEIGHT(S) wt[4u * S + t / ROW_STEP][t % ROW_STEP] = decoded_integer(S, lane, header, q0, q1, mask)
       PUT_WEIGHT(0u); PUT_WEIGHT(1u); PUT_WEIGHT(2u); PUT_WEIGHT(3u);
       PUT_WEIGHT(4u); PUT_WEIGHT(5u); PUT_WEIGHT(6u); PUT_WEIGHT(7u);
 #undef PUT_WEIGHT
     } else {
-      for (uint k = t / 64u; k < 32u; k += 4u) wt[k][t % 64u] = 0;
+      for (uint k = t / ROW_STEP; k < 32u; k += 4u) wt[k][t % ROW_STEP] = 0;
     }
 #else
-    for (uint k = t / 64u; k < 32u; k += 4u)
-      wt[k][t % 64u] = row < p.M ? integer_weight(b, row, (k / 4u) * 32u + 4u * lane + k % 4u) : 0;
+    for (uint k = t / ROW_STEP; k < 32u; k += 4u)
+      wt[k][t % ROW_STEP] = row < p.M ? integer_weight(b, row, (k / 4u) * 32u + 4u * lane + k % 4u) : 0;
 #endif
+#if MTILE == 32
+    }
+#endif
+#if NTILE == 64
     for (uint index = t; index < 64u * 32u; index += 256u) {
+#else
+    for (uint index = t; index < uint(NTILE) * 32u; index += 256u) {
+#endif
       const uint k = index % 32u, col = col0 + index / 32u;
       xt[index / 32u][k] = col < p.N ? x[col * p.K + b * 256u + k / 4u * 32u + 4u * lane + k % 4u] : 0;
     }
-    if (t < 64u) {
+    if (t < ROW_STEP) {
+#if NTILE == 64 && MTILE == 64
       const uint row = row0 + t, col = col0 + t;
+#else
+      const uint row = row0 + t;
+#endif
 #ifdef TYPE_Q2K
       const vec2 dm = row < p.M ? unpackHalf2x16(w[p.side / 4u + b * p.Mp + row]) : vec2(0);
       wd[t] = dm.x; wm[t] = dm.y;
@@ -107,41 +159,72 @@ void main() {
 #else
       wd[t] = row < p.M ? unpackHalf2x16(w[p.side / 4u + (b * 4u + 3u) * p.Mp + row]).x : 0;
 #endif
+#if NTILE != 64 || MTILE != 64
+    }
+    if (t < uint(NTILE)) {
+      const uint col = col0 + t;
+#endif
       xd[t] = col < p.N ? meta[(col * blocks + b) * 17u] : 0;
       sum0[t] = col < p.N ? meta[(col * blocks + b) * 17u + 1u + 2u * lane] : 0;
       sum1[t] = col < p.N ? meta[(col * blocks + b) * 17u + 2u + 2u * lane] : 0;
     }
     barrier();
-    vec4 l0 = vec4(0), l1 = vec4(0), l2 = vec4(0), l3 = vec4(0);
+#if MTILE == 64
+    Panel l0 = Panel(0), l1 = Panel(0), l2 = Panel(0), l3 = Panel(0);
+#else
+    Panel l0 = Panel(0), l1 = Panel(0);
+#endif
     for (uint k = 0; k < 32u; ++k) {
-      const vec4 xv = vec4(xt[ci][k], xt[ci + 16u][k], xt[ci + 32u][k], xt[ci + 48u][k]);
-      l0 = fma(vec4(wt[k][ri]), xv, l0);
-      l1 = fma(vec4(wt[k][ri + 16u]), xv, l1);
-      l2 = fma(vec4(wt[k][ri + 32u]), xv, l2);
-      l3 = fma(vec4(wt[k][ri + 48u]), xv, l3);
+      const Panel xv = X_PANEL(k);
+      l0 = fma(Panel(wt[k][ri]), xv, l0);
+      l1 = fma(Panel(wt[k][ri + 16u]), xv, l1);
+#if MTILE == 64
+      l2 = fma(Panel(wt[k][ri + 32u]), xv, l2);
+      l3 = fma(Panel(wt[k][ri + 48u]), xv, l3);
+#endif
     }
-    const vec4 yd = vec4(xd[ci], xd[ci + 16u], xd[ci + 32u], xd[ci + 48u]);
+    const Panel yd = META_PANEL(xd);
 #ifdef TYPE_Q2K
-    const vec4 s0 = vec4(sum0[ci], sum0[ci + 16u], sum0[ci + 32u], sum0[ci + 48u]);
-    const vec4 s1 = vec4(sum1[ci], sum1[ci + 16u], sum1[ci + 32u], sum1[ci + 48u]);
-    precise vec4 dm0 = -wm[ri] * yd, dm1 = -wm[ri + 16u] * yd;
-    precise vec4 dm2 = -wm[ri + 32u] * yd, dm3 = -wm[ri + 48u] * yd;
+    const Panel s0 = META_PANEL(sum0);
+    const Panel s1 = META_PANEL(sum1);
+    precise Panel dm0 = -wm[ri] * yd, dm1 = -wm[ri + 16u] * yd;
+#if MTILE == 64
+    precise Panel dm2 = -wm[ri + 32u] * yd, dm3 = -wm[ri + 48u] * yd;
+#endif
     acc0 = fma(dm0, min0[ri] * s0 + min1[ri] * s1, acc0);
     acc1 = fma(dm1, min0[ri + 16u] * s0 + min1[ri + 16u] * s1, acc1);
+#if MTILE == 64
     acc2 = fma(dm2, min0[ri + 32u] * s0 + min1[ri + 32u] * s1, acc2);
     acc3 = fma(dm3, min0[ri + 48u] * s0 + min1[ri + 48u] * s1, acc3);
 #endif
-    precise vec4 d0 = wd[ri] * yd, d1 = wd[ri + 16u] * yd;
-    precise vec4 d2 = wd[ri + 32u] * yd, d3 = wd[ri + 48u] * yd;
+#endif
+    precise Panel d0 = wd[ri] * yd, d1 = wd[ri + 16u] * yd;
+#if MTILE == 64
+    precise Panel d2 = wd[ri + 32u] * yd, d3 = wd[ri + 48u] * yd;
+#endif
     acc0 = fma(d0, l0, acc0); acc1 = fma(d1, l1, acc1);
+#if MTILE == 64
     acc2 = fma(d2, l2, acc2); acc3 = fma(d3, l3, acc3);
+#endif
     barrier();
   }
-  for (uint r = 0; r < 4u; ++r) for (uint c = 0; c < 4u; ++c) {
+#if NTILE == 64
+  for (uint r = 0; r < ROW_GROUPS; ++r) for (uint c = 0; c < 4u; ++c) {
+#else
+  for (uint r = 0; r < ROW_GROUPS; ++r) for (uint c = 0; c < uint(NTILE) / 16u; ++c) {
+#endif
     const uint row = row0 + ri + 16u * r, col = col0 + ci + 16u * c;
     if (row < p.M && col < p.N) {
-      const vec4 a = r == 0u ? acc0 : r == 1u ? acc1 : r == 2u ? acc2 : acc3;
+#if MTILE == 64
+      const Panel a = r == 0u ? acc0 : r == 1u ? acc1 : r == 2u ? acc2 : acc3;
+#else
+      const Panel a = r == 0u ? acc0 : acc1;
+#endif
+#if NTILE == 16
+      part[(lane * p.N + col) * p.M + row] = a;
+#else
       part[(lane * p.N + col) * p.M + row] = a[c];
+#endif
     }
   }
 }

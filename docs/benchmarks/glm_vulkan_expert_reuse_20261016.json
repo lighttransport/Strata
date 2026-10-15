@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-16",
+  "scope": "CPU software Vulkan checks of combined opt-in expert scratch/command reuse and 32-row expert tiles; no physical GPU timing or inference qualification",
+  "icd": "Mesa lavapipe, explicitly selected in VK_ICD_FILENAMES and VK_DRIVER_FILES",
+  "lp_num_threads": 4,
+  "compiled_source_sha256": {
+    "vulkan/fast/engine.cpp": "ad011227767366ae6f61cbb0853b8cff728362b777ac0e4fa9c0ffd8cd4d61ce",
+    "vulkan/fast/engine.hpp": "0570496dc6c5ca6974cf40e4b9beff87b57d33aa391f1b528cfee90c18383b4a",
+    "vulkan/fast/expert_batch.cpp": "79039a05e761fbafd99fab7ae7170c7988d42127d2b3513f6cd43bed25bf25fd",
+    "vulkan/fast/expert_batch.hpp": "87dc326a46a792f1d2e9c86494b93bf3a776bc7865a64554b7ebe4067b9b4fcb",
+    "vulkan/fast/expert_batch_check.cpp": "4dae2daf618c5de07b446c69816b1e855d5a65705ee08da5831ac4f57c5e97bd",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "cac8ea2eb406509e01c4501dbe1353a2090ded2fda1027aa44f231675193b8cc",
+    "vulkan/CMakeLists.txt": "8cc5779ba3815982e07af5b255896bd057391ab675808e7b87b513b268244c03",
+    "vulkan/fast/device.cpp": "dea6b1dc648cdcf5b3d5498e528c3953b6982becf3aaa7c453887ba9da713a41",
+    "vulkan/fast/device.hpp": "873f2ec3f7c46525a3d80fb6399ff76c39ed20c5deab23e725499df50862fef1",
+    "vulkan/fast/kernels.cpp": "f974db507479f804cea6992dd34b4dd1e223791cf2e5f003c5e2f7bd9d4db103",
+    "vulkan/fast/kernels.hpp": "41febcc2b7d700bf96573a2dc86df403d4dd20153060e865cc909db0fe8c43c0"
+  },
+  "frozen_executable_sha256": {
+    "strata-glm-vulkan-rows-v4": "899687f8af78c60a8831323287d61dd8b0cb582bd24561202b4818b3d1439479",
+    "expert-check-rows-v4": "742fb10c8d9c81d4d1ab2f12d7dc7960515c0b3af38652a0533f62733df3eac8"
+  },
+  "default_spirv_byte_identical": {
+    "expert_gemm_q2k_canon": true,
+    "expert_gemm_q2k_canon_vector": true,
+    "expert_gemm_q3k_canon": true,
+    "expert_gemm_q3k_canon_vector": true
+  },
+  "runs": [
+    {
+      "name": "combined-reuse-rows32-native",
+      "exit_code": 0,
+      "wall_seconds": 27.31160131500019,
+      "command": [
+        "build-vulkan-rx570-native/vulkan/glm_vulkan_fast_expert_batch_check",
+        "models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+        "--cpu",
+        "--gpu-pack",
+        "--vector-weights",
+        "--tile-rows",
+        "32",
+        "--tile-columns",
+        "64",
+        "--capacity",
+        "256",
+        "--replay"
+      ],
+      "expert_cases": 6,
+      "full_output_byte_controls": 6,
+      "clamp_change_byte_controls": 12,
+      "max_relative_l2_cpu": 0.000163085,
+      "command_records": 9,
+      "command_replays": 15,
+      "raw_log": "build-vulkan-rx570-native/prefix-split-20261016/combined-reuse-rows32-native.log",
+      "raw_log_sha256": "b4af77a155f161f432dbe148b3b3656ca5f2fba203ba4de4fd086c654b0373ae"
+    },
+    {
+      "name": "combined-reuse-rows32-portable",
+      "exit_code": 0,
+      "wall_seconds": 35.691434368000046,
+      "command": [
+        "build-vulkan/vulkan/glm_vulkan_fast_expert_batch_check",
+        "models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+        "--cpu",
+        "--gpu-pack",
+        "--vector-weights",
+        "--tile-rows",
+        "32",
+        "--tile-columns",
+        "32",
+        "--capacity",
+        "256",
+        "--replay"
+      ],
+      "expert_cases": 6,
+      "full_output_byte_controls": 6,
+      "clamp_change_byte_controls": 12,
+      "max_relative_l2_cpu": 0.000163085,
+      "command_records": 9,
+      "command_replays": 15,
+      "raw_log": "build-vulkan-rx570-native/prefix-split-20261016/combined-reuse-rows32-portable.log",
+      "raw_log_sha256": "20e3a5c48c6aa441ea529068892ed2d6ad919e4bbdf66596518206aa22f20e27"
+    }
+  ],
+  "defaults_changed": false,
+  "limitations": [
+    "Software execution does not establish physical RX570 timing, hardware correctness or full-model output equivalence.",
+    "Tests cover two selected experts and 5, 33 and 129 input tokens; they do not cover all model experts or routing.",
+    "Expanded 17-column CPU-error screen fails equally for original and narrowed column tiles; its 2e-4 limit is unchanged. See glm_vulkan_expert_tiles_rx570_20261016.json.",
+    "Prefix-split model controls, 100+ token/s prefill and the combined full quality/decode gates remain unqualified."
+  ]
+}

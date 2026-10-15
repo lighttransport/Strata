@@ -73,6 +73,27 @@ set(_glm_vk_fast_shaders
   "kda_step|kda_step|" "swiglu|swiglu|" "router|router|" "index_key|index_key|"
   "index_scores_step|index_scores_step|" "select_pools|select_pools|" "mla_step|mla_step|" "argmax|argmax|" "q8_round|q8_round|" "mhc_read|mhc_read|" "mhc_write|mhc_write|"
   "gemv_expert_q2k|gemv_expert|-DTYPE_Q2K" "gemv_expert_q3k|gemv_expert|-DTYPE_Q3K" "expert_mix|expert_mix|" "xsum16|xsum16|" "hits_union|hits_union|" "residual_add|residual_add|" "hidden_store|hidden_store|")
+foreach(_type IN ITEMS q2k q3k)
+  string(TOUPPER "${_type}" _type_define)
+  foreach(_columns IN ITEMS 16 32)
+    list(APPEND _glm_vk_fast_shaders
+      "expert_gemm_${_type}_canon_${_columns}|expert_gemm_canon|-DTYPE_${_type_define} -DNTILE=${_columns}"
+      "expert_gemm_${_type}_canon_vector_${_columns}|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DNTILE=${_columns}")
+  endforeach()
+endforeach()
+foreach(_type IN ITEMS q2k q3k)
+  string(TOUPPER "${_type}" _type_define)
+  foreach(_columns IN ITEMS 16 32 64)
+    if(_columns EQUAL 64)
+      set(_column_suffix "")
+    else()
+      set(_column_suffix "_${_columns}")
+    endif()
+    list(APPEND _glm_vk_fast_shaders
+      "expert_gemm_${_type}_canon${_column_suffix}_m32|expert_gemm_canon|-DTYPE_${_type_define} -DNTILE=${_columns} -DMTILE=32"
+      "expert_gemm_${_type}_canon_vector${_column_suffix}_m32|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DNTILE=${_columns} -DMTILE=32")
+  endforeach()
+endforeach()
 set(_fast_outputs)
 set(_fast_registry "#pragma once\n#include <span>\n#include <string>\n")
 set(_fast_lookup "inline std::span<const unsigned char> fast_shader(const std::string &name) {\n")

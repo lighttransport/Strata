@@ -4,6 +4,7 @@
 #include "strata/host/glm_env.h"
 #include "strata/artifact/json.hpp"
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -12,6 +13,7 @@
 #include <future>
 #include <ggml.h>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 namespace kcpu = strata::kernels::cpu;
 namespace strata::vulkan::fast {
@@ -75,12 +77,25 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   prefill_gpu_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU");
   prefill_gpu_pack_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU_PACK");
   prefill_gpu_vector_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR");
+  prefill_reuse_expert_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT");
   prefill_match_gemv_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_MATCH_GEMV");
   prefill_progress_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_PROGRESS");
+  prefill_split_prefix_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX");
+  prefill_submit_limit_ms_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_SUBMIT_LIMIT_MS", 500));
+  require(prefill_submit_limit_ms_ >= 1 && prefill_submit_limit_ms_ <= 1500,
+          "Vulkan prefill submission limit must be 1..1500 ms");
+  require(!prefill_split_prefix_ || prefill_chunk_ > int(NT), "Vulkan prefix splitting requires a large prefill chunk");
+  require(!strata_env_is_set("STRATA_VULKAN_FAST_PREFILL_SUBMIT_LIMIT_MS") || prefill_split_prefix_,
+          "Vulkan prefill submission limit requires prefix splitting");
   prefill_tile_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_TILE", 0));
   require(prefill_tile_ == 0 || prefill_tile_ == 64 || prefill_tile_ == 128 || prefill_tile_ == 256,
           "Vulkan prefill tile must be 0 (automatic), 64, 128 or 256");
   if (prefill_gpu_) {
+    prefill_gpu_rows_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_GPU_MTILE", 64));
+    require(prefill_gpu_rows_ == 32 || prefill_gpu_rows_ == 64, "Vulkan GPU expert row tile must be 32 or 64");
+    prefill_gpu_tile_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_GPU_NTILE", 64));
+    require(prefill_gpu_tile_ == 16 || prefill_gpu_tile_ == 32 || prefill_gpu_tile_ == 64,
+            "Vulkan GPU expert column tile must be 16, 32 or 64");
     prefill_gpu_max_experts_ = strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS", 72);
     prefill_gpu_min_tokens_ = strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS", 32);
     require(prefill_gpu_max_experts_ >= 0 && prefill_gpu_max_experts_ <= 144 &&
@@ -92,6 +107,7 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
           "Vulkan prefill GPU experts require canonical expert sums and a prefill chunk greater than 4");
   require(!prefill_gpu_pack_ || prefill_gpu_, "Vulkan GPU packing requires streamed prefill GPU experts");
   require(!prefill_gpu_vector_ || prefill_gpu_, "Vulkan vector expert loads require streamed prefill GPU experts");
+  require(!prefill_reuse_expert_ || prefill_gpu_, "Vulkan expert scratch reuse requires streamed prefill GPU experts");
   if (canonical_sum_) mailbox_stride_ = MB_OUT + 8 * H;
   // Lossy, opt-in: the HIP path's routing affinity and min-share switches.
   auto fraction = [](const char *name, float hi) {
@@ -843,14 +859,30 @@ void Engine::record_window(uint32_t T, std::vector<Submission> &segments) {
       rec->copy(View(*embed_, size_t(t) * H * 4), View(*r_, (size_t(t) * 4 + s) * H * 4), H * 4);
   rec->end_concurrent();
   const bool trace = bool(trace_);
+  // Large windows otherwise put every dense layer in the first router
+  // submission. Keep decode and the original prefill geometry unchanged
+  // unless this diagnostic is selected. Each prefix command ends with a
+  // device memory dependency before the next command reads its outputs.
+  const bool split_prefix = recording_prefill_ && prefill_split_prefix_;
+  auto prefix_boundary = [&](const std::string &name) {
+    rec->barrier();
+    close(c, *rec, name);
+    segments.push_back({c, {}, {}});
+    c = open();
+    rec = std::make_unique<Recorder>(dev_, c);
+    attach(*rec);
+  };
   Wait wait{};
   for (size_t l = 0; l < layers_.size(); ++l) {
     const auto &L = *layers_[l];
     record_attention(*rec, int(l), T);
     if (trace) record_trace_attention(*rec, int(l));
+    const bool dense_prefix = split_prefix && l < size_t(moe_layers_.front());
+    if (dense_prefix) prefix_boundary("dense_attn" + std::to_string(l));
     record_ffn_head(*rec, int(l), T);
     if (!L.moe) {
       if (trace) record_trace(*rec, int(l));
+      if (dense_prefix) prefix_boundary("dense_ffn" + std::to_string(l));
       continue;
     }
     const uint64_t ready = 2 * uint64_t(L.moe_index) + 1, done = ready + 1;
@@ -922,10 +954,12 @@ void Engine::release_prefill() {
   for (auto &[width, segments] : prefill_segments_)
     for (const auto &segment : segments) dev_.free_command(segment.command);
   prefill_segments_.clear();
+  prefill_expert_batch_.reset();
   prefill_buffers_.clear();
 }
 
 void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
+  const auto prepare_started = Clock::now();
   const int top = int(m_.top_k);
   std::vector<uint8_t> acts(size_t(T) * L.fmt.act_bytes);
   std::vector<float> results(size_t(T) * top * H, 0.f), weights(size_t(T) * top, 0.f), sums(size_t(T) * H);
@@ -960,6 +994,7 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
     }
   }
   std::stable_sort(jobs.begin(), jobs.end(), [](const auto &a, const auto &b) { return a.expert_id < b.expert_id; });
+  const double prepare_ms = ms_since(prepare_started);
   if (prefill_gpu_ && L.resident_eligible) {
     std::array<int, 144> counts{};
     std::array<bool, 144> on_gpu{};
@@ -975,12 +1010,35 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
     if (capacity) {
       std::vector<kcpu::ExpertJobMulti> cpu_jobs;
       for (const auto &job : jobs) if (!on_gpu[size_t(job.expert_id)]) cpu_jobs.push_back(job);
-      ExpertBatch gpu(dev_, capacity, false, prefill_gpu_pack_, prefill_gpu_vector_);
+      const auto setup_started = Clock::now();
+      std::optional<ExpertBatch> one_layer;
+      ExpertBatch *scratch;
+      bool created = true;
+      if (prefill_reuse_expert_) {
+        created = !prefill_expert_batch_ || prefill_expert_batch_->capacity() < capacity;
+        if (created) {
+          // The previous expert command completed before returning. Release
+          // its scratch before growing, so growth never holds both sets.
+          prefill_expert_batch_.reset();
+          prefill_expert_batch_ = std::make_unique<ExpertBatch>(dev_, std::bit_ceil(std::max(32u, capacity)),
+              false, prefill_gpu_pack_, prefill_gpu_vector_, prefill_gpu_tile_, true, prefill_gpu_rows_);
+        }
+        scratch = prefill_expert_batch_.get();
+      } else {
+        one_layer.emplace(dev_, capacity, false, prefill_gpu_pack_, prefill_gpu_vector_, prefill_gpu_tile_, false, prefill_gpu_rows_);
+        scratch = &*one_layer;
+      }
+      auto &gpu = *scratch;
+      const double setup_ms = ms_since(setup_started);
+      const auto before = gpu.stats();
       // The pool writes only the non-GPU result rows. Keep its future inside
       // this scope so exceptions still join before any referenced storage dies.
+      double cpu_work_ms = 0;
       std::future<void> cpu;
       if (!cpu_jobs.empty()) cpu = std::async(std::launch::async, [&] {
+        const auto began = Clock::now();
         pool_.run_split_multi_native(L.fmt, cpu_jobs.data(), int(cpu_jobs.size()));
+        cpu_work_ms = ms_since(began);
       });
       uint32_t gpu_routes = 0, gpu_experts = 0;
       for (int expert : order) {
@@ -1002,9 +1060,18 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
                 << " gpu_experts=" << gpu_experts << " gpu_routes=" << gpu_routes
                 << " gpu_pack=" << prefill_gpu_pack_
                 << " vector_weights=" << prefill_gpu_vector_
-                << " pack_ms=" << stats.pack_ms << " upload_ms=" << stats.upload_ms
-                << " input_bytes=" << stats.input_bytes
-                << " queued_work_ms=" << stats.queued_work_ms << '\n';
+                << " column_tile=" << prefill_gpu_tile_
+                << " row_tile=" << prefill_gpu_rows_
+                << " scratch_reuse=" << prefill_reuse_expert_ << " scratch_created=" << created
+                << " scratch_capacity=" << gpu.capacity() << " setup_ms=" << setup_ms
+                << " prepare_ms=" << prepare_ms << " cpu_work_ms=" << cpu_work_ms
+                << " pack_ms=" << stats.pack_ms - before.pack_ms << " upload_ms=" << stats.upload_ms - before.upload_ms
+                << " input_bytes=" << stats.input_bytes - before.input_bytes
+                << " record_ms=" << stats.record_ms - before.record_ms
+                << " submit_wait_ms=" << stats.submit_wait_ms - before.submit_wait_ms
+                << " command_records=" << stats.command_records - before.command_records
+                << " command_replays=" << stats.command_replays - before.command_replays
+                << " queued_work_ms=" << stats.queued_work_ms - before.queued_work_ms << '\n';
     } else pool_.run_split_multi_native(L.fmt, jobs.data(), int(jobs.size()));
   } else pool_.run_split_multi_native(L.fmt, jobs.data(), int(jobs.size()));
   if (canonical_sum_ && L.fmt.canon) {
@@ -1062,12 +1129,28 @@ std::vector<float> Engine::forward_prefill(std::span<const int> tokens) {
   // unqueued until the CPU work finishes. Large windows can make that host
   // work long; keeping future waits out of the submitted GPU work also
   // avoids a long queue job stalled on the host during CPU-only prefill.
-  require(batch.size() == 2 * moe_layers_.size() + 1, "Vulkan prefill segment geometry invalid");
+  const size_t prefix = prefill_split_prefix_ ? 2 * size_t(moe_layers_.front()) : 0;
+  require(batch.size() == prefix + 2 * moe_layers_.size() + 1, "Vulkan prefill segment geometry invalid");
   if (profile_ && T == profile_t_) dev_.host_reset_queries(0, queries_used_);
+  for (size_t i = 0; i < prefix; ++i) {
+    require(!batch[i].wait.semaphore && !batch[i].signal.semaphore, "Vulkan dense prefix must not wait on the host");
+    const char *part = i % 2 ? "ffn" : "attention";
+    if (prefill_progress_)
+      std::cerr << "PREFILL_PROGRESS stage=prefix_submit layer=" << i / 2 << " part=" << part << " tokens=" << T << std::endl;
+    const auto submitted = Clock::now();
+    dev_.submit_wait(batch[i].command);
+    const double wall_ms = ms_since(submitted);
+    std::cerr << "PREFILL_SUBMISSION layer=" << i / 2 << " part=" << part << " tokens=" << T
+              << " completed=1 host_wall_ms=" << wall_ms << " limit_ms=" << prefill_submit_limit_ms_ << '\n';
+    // This rejects a completed slow command; it cannot preempt a stuck one.
+    // Keep the driver watchdog and the external fault guard unchanged.
+    if (!(wall_ms >= 0 && wall_ms <= prefill_submit_limit_ms_))
+      throw std::runtime_error("Vulkan dense-prefix submission exceeded its completed-time limit");
+  }
   for (size_t i = 0; i < moe_layers_.size(); ++i) {
     if (prefill_progress_)
       std::cerr << "PREFILL_PROGRESS stage=submit layer=" << moe_layers_[i] << " tokens=" << T << std::endl;
-    dev_.submit_batch(std::span<const Submission>(batch.data() + 2 * i, 2));
+    dev_.submit_batch(std::span<const Submission>(batch.data() + prefix + 2 * i, 2));
     const auto wait = Clock::now();
     if (!dev_.wait(timeline_, timeline_base_ + 2 * i + 1)) fatal("timed out waiting for prefill router");
     wait_ms_ += ms_since(wait);
@@ -1081,7 +1164,7 @@ std::vector<float> Engine::forward_prefill(std::span<const int> tokens) {
     if (prefill_progress_)
       std::cerr << "PREFILL_PROGRESS stage=ready layer=" << moe_layers_[i] << " tokens=" << T << std::endl;
   }
-  dev_.submit_batch(std::span<const Submission>(batch.data() + 2 * moe_layers_.size(), 1));
+  dev_.submit_batch(std::span<const Submission>(batch.data() + prefix + 2 * moe_layers_.size(), 1));
   const auto wait = Clock::now();
   if (!dev_.wait(timeline_, timeline_base_ + 2 * moe_layers_.size() + 1)) fatal("timed out waiting for prefill logits");
   wait_ms_ += ms_since(wait);
@@ -1222,7 +1305,10 @@ void Engine::collect_profile(uint32_t T) {
       begin = ts[q];
       if (segment) segment_gap_ms_[segment] += (ts[q] - previous_end) / 1e6;
     } else if (n == "@end") {
-      segment_gpu_ms_[segment] += (ts[q] - begin) / 1e6;
+      const double gpu_ms = (ts[q] - begin) / 1e6;
+      segment_gpu_ms_[segment] += gpu_ms;
+      if (running_prefill_ && prefill_progress_)
+        std::cerr << "PREFILL_SEGMENT name=" << segment_names_[segment] << " tokens=" << T << " gpu_ms=" << gpu_ms << '\n';
       previous_end = ts[q];
     } else kernel_ms_[n] += (ts[q] - ts[q - 1]) / 1e6;
   }
@@ -1378,15 +1464,17 @@ void Engine::report(const char *phase, int trial) {
   draft_ms_ = 0;
   rounds_ = proposed_ = accepted_ = 0;
   if (profile_ && profiled_tokens_) {
-    double attn = 0, shared = 0, head = 0, gap = 0;
+    double attn = 0, shared = 0, head = 0, gap = 0, prefix = 0;
     for (size_t i = 0; i < segment_names_.size(); ++i) {
       const auto &n = segment_names_[i];
-      (n.starts_with("attn") ? attn : n.starts_with("shared") ? shared : head) += segment_gpu_ms_[i] / profiled_tokens_;
+      (n.starts_with("dense_") ? prefix : n.starts_with("attn") ? attn : n.starts_with("shared") ? shared : head) += segment_gpu_ms_[i] / profiled_tokens_;
       gap += segment_gap_ms_[i] / profiled_tokens_;
     }
     std::cerr << "VULKAN_FAST_GPU phase=" << phase << " attn_segments_ms=" << attn << " shared_segments_ms=" << shared
               << " head_ms=" << head << " gaps_ms=" << gap << " profiled_tokens=" << profiled_tokens_
               << " window=" << profile_t_ << " first_segment_ms=" << segment_gpu_ms_[0] / profiled_tokens_ << '\n';
+    if (prefill_split_prefix_)
+      std::cerr << "VULKAN_FAST_PREFIX phase=" << phase << " ms_per_token=" << prefix << '\n';
     for (auto &[name, ms] : kernel_ms_) std::cerr << "VULKAN_FAST_KERNEL " << name << " ms_per_token=" << ms / profiled_tokens_ << '\n';
     kernel_ms_.clear();
     std::fill(segment_gpu_ms_.begin(), segment_gpu_ms_.end(), 0);

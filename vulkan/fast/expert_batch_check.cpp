@@ -6,6 +6,7 @@
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/kernels/cpu/q23_avx2.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -48,13 +49,35 @@ static float scalar_q2(const uint8_t *w, const uint8_t *a, uint32_t n) {
 }
 int main(int argc, char **argv) {
   try {
-    bool software = false, gpu_pack = false, vector_weights = false;
-    const char *usage = "usage: glm_vulkan_fast_expert_batch_check MODEL [--cpu] [--gpu-pack] [--vector-weights]";
+    bool software = false, gpu_pack = false, vector_weights = false, boundaries = false, benchmark = false, replay = false;
+    uint32_t tile_columns = 64;
+    uint32_t tile_rows = 64;
+    uint32_t reserve_capacity = 129;
+    const char *usage = "usage: glm_vulkan_fast_expert_batch_check MODEL [--cpu] [--gpu-pack] [--vector-weights] [--tile-columns 16|32|64] [--tile-rows 32|64] [--capacity 129..2048] [--boundary-checks] [--benchmark] [--replay]";
     if (argc < 2) throw std::invalid_argument(usage);
     for (int i = 2; i < argc; ++i) {
       if (std::string(argv[i]) == "--cpu" && !software) software = true;
       else if (std::string(argv[i]) == "--gpu-pack" && !gpu_pack) gpu_pack = true;
       else if (std::string(argv[i]) == "--vector-weights" && !vector_weights) vector_weights = true;
+      else if (std::string(argv[i]) == "--boundary-checks" && !boundaries) boundaries = true;
+      else if (std::string(argv[i]) == "--benchmark" && !benchmark) benchmark = true;
+      else if (std::string(argv[i]) == "--replay" && !replay) replay = true;
+      else if (std::string(argv[i]) == "--tile-columns" && i + 1 < argc) {
+        const std::string value = argv[++i];
+        if (value != "16" && value != "32" && value != "64") throw std::invalid_argument(usage);
+        tile_columns = uint32_t(std::stoul(value));
+      }
+      else if (std::string(argv[i]) == "--capacity" && i + 1 < argc) {
+        const std::string value = argv[++i]; size_t used = 0;
+        const auto count = std::stoul(value, &used);
+        if (used != value.size() || count < 129 || count > 2048) throw std::invalid_argument(usage);
+        reserve_capacity = uint32_t(count);
+      }
+      else if (std::string(argv[i]) == "--tile-rows" && i + 1 < argc) {
+        const std::string value = argv[++i];
+        if (value != "32" && value != "64") throw std::invalid_argument(usage);
+        tile_rows = uint32_t(std::stoul(value));
+      }
       else throw std::invalid_argument(usage);
     }
     strata::core::ModelArtifact artifact(argv[1]);
@@ -93,15 +116,21 @@ int main(int argc, char **argv) {
     cpu::NativeFmt fmt; std::string error;
     if (!cpu::native_fmt(G.tensor->type, D.tensor->type, 4096, 2048, fmt, error)) throw std::runtime_error(error);
     fmt.canon = true; fmt.swiglu_limit = model.layers[3].swiglu_limit;
-    fast::ExpertBatch batch(dev, 129, software, gpu_pack, vector_weights);
+    fast::ExpertBatch batch(dev, reserve_capacity, software, gpu_pack, vector_weights, tile_columns, replay, tile_rows);
     std::unique_ptr<fast::ExpertBatch> original;
-    if (vector_weights) original = std::make_unique<fast::ExpertBatch>(dev, 129, software, gpu_pack, false);
+    if (vector_weights || tile_columns != 64 || tile_rows != 64 || benchmark || reserve_capacity != 129 || replay)
+      original = std::make_unique<fast::ExpertBatch>(dev, 129, software, gpu_pack, false);
+    std::unique_ptr<fast::ExpertBatch> benchmark_control;
+    if (benchmark && vector_weights)
+      benchmark_control = std::make_unique<fast::ExpertBatch>(dev, 129, software, gpu_pack, true);
+    const std::vector<uint32_t> columns = boundaries ? std::vector<uint32_t>{1, 5, 17, 33, 65, 129}
+                                                     : std::vector<uint32_t>{5, 33, 129};
     std::mt19937 rng(7741); std::normal_distribution<float> normal(0.f, 0.5f);
     for (int expert : {5, 77}) {
       const auto *gate = G.data() + size_t(expert) * G.bytes / 144;
       const auto *up = U.data() + size_t(expert) * U.bytes / 144;
       const auto *down = D.data() + size_t(expert) * D.bytes / 144;
-      for (uint32_t T : {5u, 33u, 129u}) {
+      for (uint32_t T : columns) {
         std::vector<float> input(T * 4096), expected(T * 4096), actual(T * 4096), hidden(2048);
         std::vector<float> qinput(T * 4096), expected_hidden(T * 2048), qhidden(T * 2048);
         std::vector<float> gate_up(T * 4096);
@@ -141,9 +170,11 @@ int main(int argc, char **argv) {
           for (uint32_t t = 0; t < T; ++t) scalar_outputs.push_back(scalar.data() + size_t(t) * 4096);
           original->run_quantized(gate, up, down, qinputs, scalar_outputs, fmt.swiglu_limit);
           if (std::memcmp(scalar.data(), actual.data(), actual.size() * 4))
-            throw std::runtime_error("vector weight loads changed whole-expert output bytes");
+            throw std::runtime_error("expert column tile or vector loads changed whole-expert output bytes");
           std::cout << "{\"expert\":" << expert << ",\"columns\":" << T
-                    << ",\"vector_scalar_byte_identical\":true}\n";
+                    << ",\"column_tile\":" << tile_columns
+                    << ",\"row_tile\":" << tile_rows
+                    << ",\"tile64_scalar_byte_identical\":true,\"vector_scalar_byte_identical\":true}\n";
         }
         const bool matches_raw = !std::memcmp(raw_result.data(), actual.data(), actual.size() * 4) &&
             !std::memcmp(trace.qinput.data(), packed_trace.qinput.data(), trace.qinput.size() * 4);
@@ -185,8 +216,58 @@ int main(int argc, char **argv) {
         std::cout << "{\"expert\":" << expert << ",\"columns\":" << T
                   << ",\"software\":" << software << ",\"rel_l2_cpu_canonical\":" << rel << "}\n" << std::flush;
         if (!(rel < 2e-4)) throw std::runtime_error("streamed expert canonical parity failed");
+        if (replay) {
+          const auto fixed = actual;
+          std::vector<float> control(actual.size());
+          std::vector<float *> control_outputs;
+          for (uint32_t t = 0; t < T; ++t) control_outputs.push_back(control.data() + size_t(t) * 4096);
+          for (float limit : {0.001f, fmt.swiglu_limit}) {
+            batch.run_quantized(gate, up, down, qinputs, outputs, limit);
+            original->run_quantized(gate, up, down, qinputs, control_outputs, limit);
+            if (std::memcmp(actual.data(), control.data(), actual.size() * 4))
+              throw std::runtime_error("replayed expert clamp changed output bytes");
+            std::cout << "{\"expert\":" << expert << ",\"columns\":" << T
+                      << ",\"limit\":" << limit << ",\"replay_limit_byte_identical\":true}\n";
+          }
+          if (std::memcmp(actual.data(), fixed.data(), actual.size() * 4))
+            throw std::runtime_error("expert replay failed to restore the original clamp");
+        }
+        if (benchmark) {
+          const auto fixed_output = actual;
+          std::vector<float> baseline(actual.size());
+          std::vector<float *> baseline_outputs;
+          for (uint32_t t = 0; t < T; ++t) baseline_outputs.push_back(baseline.data() + size_t(t) * 4096);
+          // Three warmup pairs, then five alternating pairs. Every invocation
+          // checks bytes; the 64-column control uses the same weight loader.
+          for (int trial = -3; trial < 5; ++trial) {
+            auto run = [&](bool control) {
+              auto &selected = control ? (benchmark_control ? *benchmark_control : *original) : batch;
+              const auto before = selected.stats();
+              const auto started = std::chrono::steady_clock::now();
+              selected.run_quantized(gate, up, down, qinputs, control ? baseline_outputs : outputs, fmt.swiglu_limit);
+              const double wall = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+              const auto &result = control ? baseline : actual;
+              if (std::memcmp(result.data(), fixed_output.data(), result.size() * 4))
+                throw std::runtime_error("expert benchmark changed output bytes");
+              if (trial >= 0)
+                std::cout << "{\"expert\":" << expert << ",\"columns\":" << T << ",\"trial\":" << trial
+                          << ",\"control\":" << (control ? "true" : "false") << ",\"column_tile\":" << (control ? 64 : tile_columns)
+                          << ",\"row_tile\":" << (control ? 64 : tile_rows)
+                          << ",\"vector_weights\":" << (vector_weights ? "true" : "false")
+                          << ",\"run_wall_ms\":" << wall << ",\"upload_ms\":" << selected.stats().upload_ms - before.upload_ms
+                          << ",\"queued_work_ms\":" << selected.stats().queued_work_ms - before.queued_work_ms
+                          << ",\"record_ms\":" << selected.stats().record_ms - before.record_ms
+                          << ",\"submit_wait_ms\":" << selected.stats().submit_wait_ms - before.submit_wait_ms
+                          << ",\"output_byte_identical\":true}\n";
+            };
+            run(trial % 2 == 0); run(trial % 2 != 0);
+          }
+        }
       }
     }
+    if (replay && !batch.stats().command_replays) throw std::runtime_error("expert replay check did not replay a command");
+    std::cout << "{\"command_records\":" << batch.stats().command_records
+              << ",\"command_replays\":" << batch.stats().command_replays << "}\n";
     return 0;
   } catch (const std::exception &e) {std::cerr << e.what() << '\n'; return 1;}
 }

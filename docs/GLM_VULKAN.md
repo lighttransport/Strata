@@ -658,6 +658,80 @@ masks some unmapped-access faults when PRT is enabled, so absent VM-fault logs
 cannot rule out an access error. This investigation submitted no GPU work and
 changed no driver settings. The compact evidence records its limits.
 
+`STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX=1` prepares that submission check for
+large-window prefill. It records the initial dense attention and FFN work into
+separate commands, adds a device memory dependency at each boundary, and waits
+for each command's fence before submitting the next. Decode and the disabled
+prefill path retain their original command geometry and shaders.
+
+The default completed-command limit is 500 ms. An explicit
+`STRATA_VULKAN_FAST_PREFILL_SUBMIT_LIMIT_MS` accepts 1 through 1500 ms and
+requires prefix splitting. `PREFILL_SUBMISSION` reports host wall time from
+submission through fence completion; it is not a GPU timestamp. A slow
+completed prefix fails the run. This cannot preempt a stuck shader, and does
+not change the driver watchdog. With profiling and prefill progress enabled,
+`PREFILL_SEGMENT` also reports absolute GPU milliseconds for each command,
+separately from the existing per-token aggregate. Native and portable Vulkan
+compilation passed; full-model byte comparisons and physical timing checks
+remain pending. This is an opt-in diagnostic, not a confirmed timeout fix or
+a 100 tok/s result.
+
+`STRATA_VULKAN_FAST_PREFILL_GPU_NTILE=16|32|64` selects the column tile for
+streamed GPU experts; 64 retains the original kernels. The narrower variants
+reduce padding for small expert token groups and retain the same eight dot
+lanes, block-scale operations and reduction order. The four default scalar
+and vector Q2_K/Q3_K shader binaries remain byte-identical after compilation.
+Full-model checks and inference throughput for the new tiles are pending.
+
+On RX570, two experts at 5, 33 and 129 tokens each passed full output-byte
+comparisons for both new tile sizes. Paired timings used three warmup pairs
+and five measured pairs with alternating order, identical GPU packing and
+the same vector loader. At 129 tokens, tile 32 reduced queued expert work by
+about 6.8% and total call time by about 5.2%; at 33 tokens it was slightly
+slower. Tile 16 was about 14% slower in queued work at both 33 and 129 tokens.
+It improved only the five-token case. These whole-expert microbenchmarks do
+not establish an end-to-end prefill win; the default remains 64. Counts,
+medians and hashes are in
+`docs/benchmarks/glm_vulkan_expert_tiles_rx570_20261016.json`.
+
+The checker accepts `--tile-columns` and optional `--boundary-checks`. The
+expanded software test exposes a CPU-reference relative L2 error of
+2.24746e-4 at 17 columns with the unchanged 64-column kernel. Both narrower
+tiles match its output bytes and hit the same existing error limit. That
+limit remains unchanged; the extra boundary screen fails and is retained as
+an unresolved numeric check. Tile equivalence does not establish strict CPU
+parity or complete inference quality.
+
+`STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT=1` optionally retains one GPU expert
+scratch set across routed layers and prefill windows of a prompt. It requires
+streamed GPU experts. The set grows to a power-of-two capacity as needed;
+the previous set is freed before growth, and all retained scratch is freed
+before allocating the decode expert tier. Each call still uploads its own
+weights and inputs. Up to 128 commands are retained, keyed by token count,
+input encoding and exact SwiGLU clamp bits. Each replay completes on a fence
+before those inputs or buffers can be reused.
+
+Layer diagnostics separate scratch setup, input/job preparation, CPU work,
+command recording and submit/wait time; counters are per-layer differences
+even when scratch is shared. Native and portable compilation passed.
+Twelve software Vulkan expert cases and 24 clamp-change comparisons retain
+the original output bytes using 256-token scratch for 5, 33 and 129 tokens,
+with both CPU and GPU weight packing. Physical model output and timing
+checks are pending; no inference speedup is established by this change.
+
+`STRATA_VULKAN_FAST_PREFILL_GPU_MTILE=32|64` selects the expert row tile.
+The 32-row variant halves each workgroup's row accumulators and weight
+scratch while retaining the dot and scale-operation order. Four software
+configurations (scalar 64 columns, and vector 16/32/64 columns) each pass
+six whole-expert byte comparisons and the existing CPU-error screen.
+All default shader binaries remain byte-identical. Native timing and
+full-model controls for the new row tile are pending; the default remains 64.
+Combined row-tile and command-replay checks also passed six expert cases and
+12 clamp-change byte comparisons in each of the native and portable builds,
+using software Vulkan and 256-token scratch. Commands, source hashes and
+scope are recorded in
+`docs/benchmarks/glm_vulkan_expert_reuse_20261016.json`.
+
 ### Standalone hardware diagnostics
 
 `glm_vulkan_hw_diag` checks memory and arithmetic without model weights. Build
@@ -758,3 +832,24 @@ it does not claim a 16 GiB physical memory test. These are checker
 validation results; RX570 execution awaits a healthy boot. Passing this suite
 narrows the failure investigation but does not qualify inference or fix the
 large-prefill submission timeout.
+
+### October 16 hardware execution
+
+On the RX570 16 GiB, RADV/Mesa 26.0.8 and kernel `7.0.0-38-generic`, the
+prepared smoke, full-heap and compute presets all passed after a new boot.
+The full-heap sweep retained 256 allocations and checked 17172393984 payload
+bytes with all 73 patterns in 1148.85 seconds. It reports 7475200 target
+bytes as unavailable. All 3638335 submissions completed; the largest GPU
+timestamp interval was 4.27392 ms. No new guard-matched kernel fault or PCI
+identity change was recorded.
+
+Global telemetry sampled a maximum of 17081454592 bytes in VRAM and
+167579648 bytes in GTT during that sweep. The highest sampled GPU temperature
+was 54 C. These counters do not identify which allocations were resident;
+the driver may migrate buffers, so this is not a physical-cell coverage map.
+Compute stress checked 1000 seeds, each with 16 individually verified integer
+and FP32 results, in 42.12 seconds. Its largest GPU submission was 0.19152 ms.
+These passes did not reproduce a memory or arithmetic error in the tested
+workloads. The earlier model timeout's cause and inference quality remain
+unresolved. Compact counts and hashes are in
+`docs/benchmarks/glm_vulkan_hw_diag_rx570_20261016.json`.

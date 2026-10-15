@@ -14,6 +14,8 @@
 #include <vector>
 namespace strata::vulkan::fast {
 
+class ExpertBatch;
+
 struct EngineOptions {
   int threads = 12;
   int capacity = 4096;
@@ -83,10 +85,15 @@ private:
   bool prefill_gpu_ = false;
   bool prefill_gpu_pack_ = false;
   bool prefill_gpu_vector_ = false;
+  bool prefill_reuse_expert_ = false;
   bool prefill_match_gemv_ = false;
   bool prefill_progress_ = false;
+  bool prefill_split_prefix_ = false;
+  uint32_t prefill_submit_limit_ms_ = 500;
   uint32_t prefill_tile_ = 0;
   int prefill_gpu_max_experts_ = 72, prefill_gpu_min_tokens_ = 32;
+  uint32_t prefill_gpu_tile_ = 64;
+  uint32_t prefill_gpu_rows_ = 64;
   uint32_t mailbox_stride_ = 8448;
   std::unique_ptr<Buffer> expert_x_, expert_h_;
   uint32_t q8_slot_ = 0;
@@ -95,6 +102,7 @@ private:
   bool recording_prefill_ = false, running_prefill_ = false;
   std::vector<std::pair<std::unique_ptr<Buffer> *, std::unique_ptr<Buffer>>> prefill_buffers_;
   std::map<uint32_t, std::vector<Submission>> prefill_segments_;
+  std::unique_ptr<ExpertBatch> prefill_expert_batch_;
   uint64_t profiled_tokens_ = 0;
   std::vector<double> segment_gpu_ms_, segment_gap_ms_;
   std::vector<std::string> segment_names_, query_names_;

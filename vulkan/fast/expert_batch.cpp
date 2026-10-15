@@ -1,14 +1,19 @@
 #include "fast/expert_batch.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cstring>
 #include <ggml.h>
 #include <stdexcept>
 namespace strata::vulkan::fast {
-ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool gpu_pack, bool vector_weights)
-    : device_(device), capacity_(capacity), portable_rounding_(portable), gpu_pack_(gpu_pack), vector_weights_(vector_weights) {
+ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool gpu_pack, bool vector_weights, uint32_t tile_columns, bool replay, uint32_t tile_rows)
+    : device_(device), capacity_(capacity), tile_columns_(tile_columns), tile_rows_(tile_rows), portable_rounding_(portable), gpu_pack_(gpu_pack), vector_weights_(vector_weights), replay_(replay) {
   if (!capacity || capacity > 2048) throw std::invalid_argument("expert batch capacity must be 1..2048");
+  if (tile_columns != 16 && tile_columns != 32 && tile_columns != 64)
+    throw std::invalid_argument("expert batch column tile must be 16, 32 or 64");
+  if (tile_rows != 32 && tile_rows != 64)
+    throw std::invalid_argument("expert batch row tile must be 32 or 64");
   quantized_row_bytes_ = ggml_row_size(GGML_TYPE_Q8_K, 4096);
   if (ggml_row_size(GGML_TYPE_Q8_K, 256) != 292)
     throw std::invalid_argument("streamed expert shader requires 292-byte Q8_K blocks");
@@ -32,6 +37,12 @@ ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool 
   partial_ = device.buffer(size_t(capacity) * 4096 * 8 * 4, Memory::Device);
   hits_ = device.buffer(256, Memory::Host);
   hits_->as<uint32_t>()[0] = 1;
+}
+
+ExpertBatch::~ExpertBatch() {
+  // run_impl waits on each command's fence before returning. Drop commands
+  // before their descriptor buffers are destroyed.
+  for (const auto &[key, command] : commands_) device_.free_command(command);
 }
 
 void ExpertBatch::run(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
@@ -79,7 +90,7 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
   stats_.upload_ms += elapsed(); started = Clock::now();
   const char *round_kernel = portable_rounding_ ? "q8k_codes_portable" : "q8k_codes";
   struct {uint32_t mode, n, uofs, tokens; float limit;} swiglu{0, 2048, 0, count, limit};
-  device_.run([&](Recorder &r) {
+  auto record = [&](Recorder &r) {
     if (gpu_pack_) {
       r.begin_concurrent();
       repack_gpu(r, gu_weights_.layout, View(*raw_gu_), View(*gu_weights_.data));
@@ -88,10 +99,12 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
     }
     auto product = [&](const Matrix &w, const Buffer &codes, const Buffer &metadata, const Buffer &out) {
       const std::string kernel = std::string(w.layout.type == Q2_K ? "expert_gemm_q2k_canon" : "expert_gemm_q3k_canon") +
-                                 (vector_weights_ ? "_vector" : "");
+                                 (vector_weights_ ? "_vector" : "") +
+                                 (tile_columns_ == 64 ? "" : "_" + std::to_string(tile_columns_)) +
+                                 (tile_rows_ == 64 ? "" : "_m32");
       r.dispatch(kernel, {View(*w.data), View(codes), View(metadata), View(*partial_)},
                  std::array<uint32_t, 5>{w.k(), w.m(), w.layout.mp, count, uint32_t(w.layout.chunk_bytes())},
-                 (w.m() + 63) / 64, (count + 63) / 64, 8);
+                 (w.m() + tile_rows_ - 1) / tile_rows_, (count + tile_columns_ - 1) / tile_columns_, 8);
       r.dispatch("expert_reduce_canon", {View(*partial_), View(out)},
                  std::array<uint32_t, 1>{count * w.m()}, (count * w.m() + 255) / 256);
     };
@@ -107,7 +120,35 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
                std::array<uint32_t, 4>{count * 2048, 0, 0, count}, count * 2048 / 256);
     product(down_weights_, *qhidden_, *hidden_meta_, *output_);
     r.host_visible();
-  });
+  };
+  // Buffer bindings, geometry, input encoding and clamp are fixed in a
+  // recorded command. Weight/input bytes are uploaded afresh before replay.
+  // Bound the number of retained commands even for many distinct counts.
+  const CommandKey key{count, std::bit_cast<uint32_t>(limit), packed_input};
+  auto found = commands_.find(key);
+  VkCommandBuffer command = VK_NULL_HANDLE;
+  bool retained = false;
+  if (replay_ && found != commands_.end()) {
+    command = found->second; retained = true; ++stats_.command_replays;
+  } else {
+    const auto began = Clock::now();
+    const bool keep = replay_ && commands_.size() < 128;
+    command = device_.allocate_command();
+    try {
+      device_.begin(command, !keep);
+      Recorder r(device_, command);
+      record(r);
+      device_.end(command);
+      if (keep) {commands_.emplace(key, command); retained = true;}
+    } catch (...) {device_.free_command(command); throw;}
+    ++stats_.command_records;
+    stats_.record_ms += std::chrono::duration<double, std::milli>(Clock::now() - began).count();
+  }
+  const auto submitted = Clock::now();
+  try {device_.submit_wait(command);}
+  catch (...) {if (!retained) device_.free_command(command); throw;}
+  stats_.submit_wait_ms += std::chrono::duration<double, std::milli>(Clock::now() - submitted).count();
+  if (!retained) device_.free_command(command);
   stats_.queued_work_ms += elapsed();
   if (trace) {
     auto capture = [&](const Buffer &buffer, std::vector<float> &values, size_t size) {
