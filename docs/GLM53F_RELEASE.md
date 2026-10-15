@@ -11,6 +11,7 @@ only the ones that were measured; "not gated" means no quality run exists for th
 |---|---|---|---|
 | TR16 | Threadripper 1950X (16 cores, two NUMA nodes), 128 GB DDR4-3200 | RTX 5060 Ti 16 GB (PCIe 3 x8) and RX 9070 XT 16 GB (PCIe 3 x16) | [TR16 runner plan](GLM_TR16_RUNNER_PLAN.md), [single GPU](GLM_TR16_OPTIMIZATION.md), [two GPUs](MULTI_GPU.md) |
 | B550 | Ryzen 9 3950X (16 cores, one node), 64 GB DDR4-2133 | RX 9070 XT 16 GB (ROCm) | [B550 REAP-50](GLM_B550_REAP50.md), [B550 simulator](GLM_B550_SIM.md) |
+| zen5 | Ryzen 9 3950X, 64 GB DDR4-2666 (ASUS TUF B550-PLUS) | RTX 3070 8 GB (CUDA 12.4, SM86) | measurement records `docs/benchmarks/glm_rtx3070_*_20261011.json`; presets and engine switches live on the `glm53f` branch of that machine (checkpoint `6e63bc20`), not yet merged here |
 | V100 server | 2x Xeon Gold 6240, 160 GiB | 2x Tesla V100 PCIe 32 GB | [V100](GLM53_V100.md), [V100 decode](GLM53_V100_DECODE_20261003.md) |
 
 ## Measured speed and quality
@@ -29,9 +30,17 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 | TR16, RTX 5060 Ti, full model | full Q23 (288 experts), affinity 0.08, MTP depth 1 | 23.1 (2K), 23.0 (8K) | 131 (2K), 428 (8K) | HumanEval 153/164 |
 | B550, RX 9070 XT, 16 GB VRAM | REAP-50 Q23, default service, 60 GiB RAM cap | 10.2 (2K) | 230 (2K) | vs UD-Q2_K_XL: perplexity 11.12 vs 8.57, KL 0.587, top-1 69.8%; no HumanEval |
 | B550, RX 9070 XT, 16 GB VRAM | REAP-50 Q23, affinity 0.06 | 16.5 (2K and a 7.4K document) | 229-250 | passes the fork's C++ coding review task; higher affinity did not |
-| B550 class, 8 GB VRAM | full experts with an 8 GB GPU budget and 32 GB RAM ([GLM_32G_8G.md](GLM_32G_8G.md)) | 0.3 | 0.6 | not usable; no 8 GB card has been measured with the pruned models |
+| zen5, RTX 3070 8 GB, 64 GB | REAP-50 Q23, strict routing, bounded dense prefill cache (`STRATA_GLM_PREFILL_DENSE_MIB=4096`), 2K prefix | 10.2 | 207 (2K) | bit-exact against the reference logits on the frozen prefix; HumanEval 0-29 subset 30/30 |
+| zen5, RTX 3070 8 GB, 64 GB | REAP-50 Q23, approximate decode preset (route share < 0.07 dropped, device combine, deferred cold routes) | 15.6 (2K) | 206 | matched perplexity +4.5%, KL 0.058 vs strict; HumanEval 0-29 subset 30/30 |
+| zen5, RTX 3070 8 GB, 64 GB (DDR4-2666) | REAP-50 Q23, shared-prefill presets with registered expert uploads, ordered KDA, coalesced dequantization | 19.5 (2K), 16.9 (4K), 17.6 (8K) | 464 (2K), 506 (4K), 488 (8K) | matched perplexity +5.7 / +8.9 / +7.6% (gate: at most +10%), HumanEval 0-29 subset passed at each context; full HumanEval not run |
+| 32 GB RAM, 8 GB VRAM budget | full experts ([GLM_32G_8G.md](GLM_32G_8G.md)) | 0.3 | 0.6 | not usable |
 | V100 server, two V100s | full UD-Q2_K_XL, 4K prompt | 28.9 greedy, 29.1 MTP depth 1 | 790 (16K) | logit parity, memcheck, 400,532 C++ oracle cases; no HumanEval |
 | V100 server, 16 GiB per card cap | same | 18.1 (one GPU), 21.9 (two) | | |
+
+The RTX 3070 rows come from the four `docs/benchmarks/glm_rtx3070_*_20261011.json` records (medians of three
+trials, 128 generated tokens, 56 GiB cgroup, no swap, 512 MiB VRAM reserve); the presets they name
+(`configs/glm53f-reap50-q23-64g-rtx3070-*.json`) and their engine switches are on that machine's branch and are
+not in this tree yet, so they are evidence, not something this build can run.
 
 Notes on the two-GPU rows. The decode and prefill configurations have opposite primaries and cannot run in one
 process at these speeds; a server picks one. The decode row's quality gate is the one agreed for this work

@@ -1,0 +1,262 @@
+{
+  "date": "2026-10-11",
+  "status": "selected preset qualified on the recorded fixture; prefill target not reached",
+  "hardware": {
+    "cpu": "Ryzen 9 3950X",
+    "installed_ram_gib": 64,
+    "os_memtotal_kib": 63628076,
+    "dimm_mts": 2400,
+    "gpu": "RTX 3070 8 GiB",
+    "driver": "580.178.04",
+    "cuda": "12.4",
+    "compiler": "GCC 13.4",
+    "cuda_arch": "86"
+  },
+  "protocol": {
+    "prompt_tokens": 2048,
+    "generated_tokens": 128,
+    "timed_decode_steps": 127,
+    "context": 4096,
+    "trials_per_round": 3,
+    "rounds": 2,
+    "order": "baseline/candidate/baseline/candidate",
+    "ram_limit_gib": 56,
+    "inference_swap_limit_bytes": 0,
+    "baseline_batch": 128,
+    "candidate_batch": 2048,
+    "candidate_projection_rows": 128,
+    "threads": 12,
+    "gpu_budget_mib": 7680,
+    "physical_gpu_reserve_mib": 512,
+    "allocator_runtime_allowance_mib": 1024,
+    "decode_warmup_steps": 127,
+    "load_and_warmup_excluded": true
+  },
+  "model": {
+    "name": "GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "bytes": 63205406688,
+    "weights_modified": false,
+    "quantization": "original mixed Q2_K/Q3_K REAP50 experts"
+  },
+  "results": {
+    "baseline": [
+      {
+        "round": 1,
+        "clean": true,
+        "prefill_tok_s": [
+          26.3362,
+          26.3729,
+          26.3603
+        ],
+        "decode_tok_s": [
+          10.2054,
+          10.2096,
+          10.2223
+        ],
+        "median_prefill_tok_s": 26.3603,
+        "median_decode_tok_s": 10.2096,
+        "prefill_major_faults": [
+          0,
+          0,
+          0
+        ],
+        "decode_major_faults": [
+          0,
+          0,
+          0
+        ],
+        "peak_ram_gib": 52.95979690551758,
+        "inference_swap_bytes": 0,
+        "min_free_vram_mib": 754,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 107,
+            "MiB": 929.562,
+            "fingerprint": 5833901307863335397
+          }
+        ],
+        "greedy_repetitions_identical": true,
+        "binary_sha256": "c25fe0fe148232a9a0a5a16d84d9d0c70478970f5d854ea537258572102b33d2"
+      },
+      {
+        "round": 2,
+        "clean": true,
+        "prefill_tok_s": [
+          26.3794,
+          26.3475,
+          26.3921
+        ],
+        "decode_tok_s": [
+          10.2066,
+          10.212,
+          10.2266
+        ],
+        "median_prefill_tok_s": 26.3794,
+        "median_decode_tok_s": 10.212,
+        "prefill_major_faults": [
+          0,
+          0,
+          0
+        ],
+        "decode_major_faults": [
+          0,
+          0,
+          0
+        ],
+        "peak_ram_gib": 52.978065490722656,
+        "inference_swap_bytes": 0,
+        "min_free_vram_mib": 754,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 107,
+            "MiB": 929.562,
+            "fingerprint": 5833901307863335397
+          }
+        ],
+        "greedy_repetitions_identical": true,
+        "binary_sha256": "c25fe0fe148232a9a0a5a16d84d9d0c70478970f5d854ea537258572102b33d2"
+      }
+    ],
+    "candidate": [
+      {
+        "round": 1,
+        "clean": true,
+        "prefill_tok_s": [
+          206.483,
+          207.097,
+          206.762
+        ],
+        "decode_tok_s": [
+          10.217,
+          10.2285,
+          10.2042
+        ],
+        "median_prefill_tok_s": 206.762,
+        "median_decode_tok_s": 10.217,
+        "prefill_major_faults": [
+          0,
+          0,
+          0
+        ],
+        "decode_major_faults": [
+          0,
+          0,
+          0
+        ],
+        "peak_ram_gib": 55.169921875,
+        "inference_swap_bytes": 0,
+        "min_free_vram_mib": 746,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 108,
+            "MiB": 938.25,
+            "fingerprint": 8351424816675358413
+          }
+        ],
+        "greedy_repetitions_identical": true,
+        "binary_sha256": "c25fe0fe148232a9a0a5a16d84d9d0c70478970f5d854ea537258572102b33d2"
+      },
+      {
+        "round": 2,
+        "clean": true,
+        "prefill_tok_s": [
+          206.392,
+          206.569,
+          206.43
+        ],
+        "decode_tok_s": [
+          10.2027,
+          10.2157,
+          10.2191
+        ],
+        "median_prefill_tok_s": 206.43,
+        "median_decode_tok_s": 10.2157,
+        "prefill_major_faults": [
+          1,
+          0,
+          0
+        ],
+        "decode_major_faults": [
+          0,
+          0,
+          0
+        ],
+        "peak_ram_gib": 55.17400360107422,
+        "inference_swap_bytes": 0,
+        "min_free_vram_mib": 746,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 108,
+            "MiB": 938.25,
+            "fingerprint": 8351424816675358413
+          }
+        ],
+        "greedy_repetitions_identical": true,
+        "binary_sha256": "c25fe0fe148232a9a0a5a16d84d9d0c70478970f5d854ea537258572102b33d2"
+      }
+    ]
+  },
+  "quality": {
+    "teacher_forced_targets": {
+      "sequence": 1,
+      "tokens": 1024,
+      "nll": 1.04159338272,
+      "perplexity": 2.83372863325,
+      "kl": -2.07497486206e-21,
+      "top1_agreement": 1,
+      "different_logits": 0
+    },
+    "legacy_old_new_tokens_identical": true,
+    "baseline_candidate_tokens_identical": true,
+    "graph_check": "eight sequential logits and rollback identical",
+    "coding30": {
+      "tasks": 30,
+      "subset": "HumanEval/0 through HumanEval/29; not the full 164-task suite",
+      "baseline_passed": 30,
+      "candidate_passed": 30,
+      "new_failures": [],
+      "identical_token_hashes": 30,
+      "dataset_revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "dataset_sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef",
+      "generation_limit": 1024
+    }
+  },
+  "targets": {
+    "decode_10_tok_s": "passed both candidate rounds",
+    "prefill_300_tok_s": "not reached"
+  },
+  "validation": {
+    "cuda_build": "passed",
+    "hip_build": "unavailable: HIP toolchain not installed",
+    "sycl": "GLM runner is not a SYCL target",
+    "ordered_kda": "existing SM86 bitwise parity failure; opt-in path disabled",
+    "python": "11 memory harness tests, 5 server tests and 3 generation tests passed",
+    "cuda_glm_tests": {
+      "passed": 9,
+      "skipped": [
+        "q23_pool_test",
+        "flow_pool_test",
+        "numa_pool_test"
+      ],
+      "failed": {
+        "glm_prefill_parity": "existing optional ordered-KDA FP32 bitwise mismatch on SM86; path disabled"
+      }
+    }
+  },
+  "source_hashes": {
+    "src/program/glm_decode.cpp": "b604c95124205f33c737d3584a4f5a99f9086967bb54c360531f37a4ae1ab64b",
+    "tools/glm_low_memory_bench.py": "06711c1baf0425192abc113f7c5c243f172855ede027b4fb31982a226012e9fb",
+    "tools/glm_q2_humaneval.py": "7498398ad417452660ee56aab4bf1d5364845128255843bad72424dc1647a44c"
+  },
+  "evidence_directory": "build-glm-3070-cuda12 (local, ignored)",
+  "limitations": [
+    "One frozen coding prefix; throughput is not a general chat benchmark.",
+    "Profiling runs are separate and not used as qualified timing.",
+    "No longer-context or multi-GPU qualification."
+  ],
+  "config_sha256": "efd89d3209e490591048cea848bf3c4e0e6ad8e412be89dc62f1876618d6355a"
+}

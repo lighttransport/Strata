@@ -1,0 +1,601 @@
+{
+  "date": "2026-10-11",
+  "status": "optimization in progress; decode 20 tok/s and full quality gates not achieved",
+  "hardware": {
+    "cpu": "Ryzen 9 3950X",
+    "installed_ram_gib": 64,
+    "os_ram_gib": 60.68,
+    "dimm_mts": 2400,
+    "gpu": "RTX 3070 8 GiB",
+    "cuda": "12.4",
+    "compiler": "GCC 13.4"
+  },
+  "model": {
+    "name": "GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "bytes": 63205406688,
+    "weight_files_modified": false
+  },
+  "targets": {
+    "decode_tok_s": 20,
+    "prefill_tok_s": 350,
+    "prompt_tokens": [
+      2048,
+      4096,
+      8192
+    ]
+  },
+  "quality_limits": {
+    "matched_perplexity_increase_percent": 10,
+    "new_coding_failures": 0
+  },
+  "base_preset": "configs/glm53f-reap50-q23-64g-rtx3070-decode-approx-experimental.json",
+  "protocol": {
+    "timed_transitions": 127,
+    "trials": 3,
+    "untimed_decode_warmup": 127,
+    "ram_limit_gib": 56,
+    "swap_limit_bytes": 0,
+    "loading_and_response_preparation_excluded": true
+  },
+  "experiments": [
+    {
+      "name": "registered-prefill-2k-boundaryfix",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        359.426,
+        377.832,
+        377.421
+      ],
+      "decode_tok_s": [
+        14.8136,
+        14.8539,
+        14.8424
+      ],
+      "median_prefill_tok_s": 377.421,
+      "median_decode_tok_s": 14.8424,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "3e3eafc18d5600befb34b3a802bf8948c8ffc4b1bc96afa13fd5003df599af03",
+      "configuration_delta": {
+        "env_set": {
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_CUDA_CHECK_TRACE": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "registered-b4096-4k",
+      "prompt_tokens": 4096,
+      "context_capacity": 8192,
+      "prefill_tok_s": [
+        447.641,
+        456.925,
+        455.582
+      ],
+      "decode_tok_s": [
+        13.3608,
+        13.3411,
+        13.3742
+      ],
+      "median_prefill_tok_s": 455.582,
+      "median_decode_tok_s": 13.3608,
+      "clean": false,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prompt_sha256": "0ece8b433ccdccf16e7fe50753a6b0cd06c8381000fb1938f1f93e848496929f",
+      "executable_sha256": "3e3eafc18d5600befb34b3a802bf8948c8ffc4b1bc96afa13fd5003df599af03",
+      "configuration_delta": {
+        "context": 8192,
+        "prefill_batch": 4096,
+        "env_set": {
+          "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1536",
+          "STRATA_GLM_PREFILL_DENSE_MIB": "3072",
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "registered-b4096-8k",
+      "prompt_tokens": 8192,
+      "context_capacity": 12288,
+      "prefill_tok_s": [
+        450.196,
+        447.055,
+        448.639
+      ],
+      "decode_tok_s": [
+        14.0623,
+        14.0922,
+        14.0763
+      ],
+      "median_prefill_tok_s": 448.639,
+      "median_decode_tok_s": 14.0763,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        1,
+        0,
+        0
+      ],
+      "prompt_sha256": "73e2451f7420ffe3437240509fa6b81d2d7f870fc5412d7df7d1dd333c398ef4",
+      "executable_sha256": "3e3eafc18d5600befb34b3a802bf8948c8ffc4b1bc96afa13fd5003df599af03",
+      "configuration_delta": {
+        "context": 12288,
+        "prefill_batch": 4096,
+        "env_set": {
+          "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "1536",
+          "STRATA_GLM_PREFILL_DENSE_MIB": "3072",
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "t10-prune010-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        357.478,
+        375.519,
+        374.93
+      ],
+      "decode_tok_s": [
+        18.2606,
+        18.252,
+        18.2569
+      ],
+      "median_prefill_tok_s": 374.93,
+      "median_decode_tok_s": 18.2569,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "20d14654587e6c2d8e293d49ce7341593f6b72b8edc07a280df724495e1f1329",
+      "configuration_delta": {
+        "threads": 10,
+        "env_set": {
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_ROUTE_MIN_SHARE": "0.10",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_MLA_F16_DECODE": "1",
+          "STRATA_GLM_MHC_SAVE_FUSED": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "t10-task2-prune0085-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        358.857,
+        378.435,
+        377.936
+      ],
+      "decode_tok_s": [
+        16.9177,
+        16.9204,
+        16.8697
+      ],
+      "median_prefill_tok_s": 377.936,
+      "median_decode_tok_s": 16.9177,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "b97715acba8855361fd5fb56d5226e8c771f58cb403ad42db008a8d62f015f42",
+      "configuration_delta": {
+        "threads": 10,
+        "env_set": {
+          "STRATA_NATIVE_TASKS_PER_THREAD": "2",
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_ROUTE_MIN_SHARE": "0.085",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_MLA_F16_DECODE": "1",
+          "STRATA_GLM_MHC_SAVE_FUSED": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "t10-prune010-defer3-f32mla-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        358.993,
+        377.653,
+        376.722
+      ],
+      "decode_tok_s": [
+        17.794,
+        17.8099,
+        17.8304
+      ],
+      "median_prefill_tok_s": 376.722,
+      "median_decode_tok_s": 17.8099,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "b97715acba8855361fd5fb56d5226e8c771f58cb403ad42db008a8d62f015f42",
+      "configuration_delta": {
+        "threads": 10,
+        "env_set": {
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_DEFER_MIN_LAYER": "3",
+          "STRATA_GLM_ROUTE_MIN_SHARE": "0.10",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_MHC_SAVE_FUSED": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "t10-task2-probe64-prune0085-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        358.554,
+        377.461,
+        376.952
+      ],
+      "decode_tok_s": [
+        17.3876,
+        17.3339,
+        17.3298
+      ],
+      "median_prefill_tok_s": 376.952,
+      "median_decode_tok_s": 17.3339,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "558c90238deeb097f8bea05953cada0c5fbc649b976d58a1269dddda57cf664e",
+      "configuration_delta": {
+        "threads": 10,
+        "env_set": {
+          "STRATA_NATIVE_TASKS_PER_THREAD": "2",
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_ROUTE_MIN_SHARE": "0.085",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_MLA_F16_DECODE": "1",
+          "STRATA_GLM_MHC_SAVE_FUSED": "1",
+          "STRATA_GLM_CACHE_PROBE": "64",
+          "STRATA_GLM_CACHE_PROBE_WEIGHT": "8192",
+          "STRATA_GLM_CHECK_CACHE_PROBE": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "t10-task2-recent128-active-prune0085-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        357.626,
+        376.532,
+        376.133
+      ],
+      "decode_tok_s": [
+        16.6293,
+        16.6268,
+        16.6282
+      ],
+      "median_prefill_tok_s": 376.133,
+      "median_decode_tok_s": 16.6282,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "ab81c771fac04af2f73027a14262e1f6e2e1ed8a47baa18cf155d692d9da5194",
+      "configuration_delta": {
+        "threads": 10,
+        "decode_cache_window": 128,
+        "env_set": {
+          "STRATA_NATIVE_TASKS_PER_THREAD": "2",
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_ROUTE_MIN_SHARE": "0.085",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_MLA_F16_DECODE": "1",
+          "STRATA_GLM_MHC_SAVE_FUSED": "1",
+          "STRATA_GLM_DECODE_CACHE_RECENT": "1",
+          "STRATA_GLM_CACHE_ACTIVE_ROUTES": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "t10-directadapt-prune0085-2k-reuse",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        356.905,
+        375.657,
+        375.35
+      ],
+      "decode_tok_s": [
+        16.616,
+        17.5481,
+        18.103
+      ],
+      "median_prefill_tok_s": 375.35,
+      "median_decode_tok_s": 17.5481,
+      "clean": false,
+      "greedy_trials_identical": false,
+      "timed_decode_major_faults": [
+        0,
+        3,
+        5
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "b97715acba8855361fd5fb56d5226e8c771f58cb403ad42db008a8d62f015f42",
+      "configuration_delta": {
+        "threads": 10,
+        "env_set": {
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_ROUTE_MIN_SHARE": "0.085",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_MLA_F16_DECODE": "1",
+          "STRATA_GLM_MHC_SAVE_FUSED": "1",
+          "STRATA_GLM_TIER_ADAPT": "1",
+          "STRATA_GLM_TIER_DIRECT": "1",
+          "STRATA_GLM_TIER_INFLIGHT": "4"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    },
+    {
+      "name": "t10-task2-active-prune0085-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "prefill_tok_s": [
+        358.693,
+        375.684,
+        375.772
+      ],
+      "decode_tok_s": [
+        16.5217,
+        16.5167,
+        16.4981
+      ],
+      "median_prefill_tok_s": 375.684,
+      "median_decode_tok_s": 16.5167,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prefill_major_faults": [
+        141,
+        56,
+        31
+      ],
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "c59fffbaf32cb051a61c1ff05e636edf5ce4e95d5e57bb58a8cfca498cc85d65",
+      "configuration_delta": {
+        "threads": 10,
+        "env_set": {
+          "STRATA_NATIVE_TASKS_PER_THREAD": "2",
+          "STRATA_GLM_STAGE_PREFETCH": "0",
+          "STRATA_GLM_PREFETCH_REUSE_DEVICE": "0",
+          "STRATA_GLM_PREFILL_PROJECTION_ROWS": "2048",
+          "STRATA_GLM_ROUTE_MIN_SHARE": "0.085",
+          "STRATA_GLM_PREFILL_TF32": "1",
+          "STRATA_GLM_KDA_PREPARE": "1",
+          "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+          "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+          "STRATA_GLM_PREFILL_KDA_COLUMNS": "128",
+          "STRATA_GLM_PREFILL_KDA_MIN_TOKENS": "2048",
+          "STRATA_GLM_MLA_F16": "1",
+          "STRATA_GLM_PREFILL_REGISTERED_UPLOAD": "1",
+          "STRATA_GLM_MLA_F16_DECODE": "1",
+          "STRATA_GLM_MHC_SAVE_FUSED": "1",
+          "STRATA_GLM_CACHE_ACTIVE_ROUTES": "1"
+        },
+        "env_unset": [
+          "STRATA_GLM_PREFETCH_GROUPS"
+        ]
+      },
+      "selected": false
+    }
+  ],
+  "quality_prune010": {
+    "prefix_tokens": 128,
+    "scored_targets": 1024,
+    "matched_strict_perplexity": 2.82667542741,
+    "candidate_perplexity": 3.04874855406,
+    "increase_percent": 7.85633626332114,
+    "coding_tasks": 30,
+    "baseline_passed": 30,
+    "candidate_passed": 29,
+    "new_failures": [
+      "HumanEval/10"
+    ],
+    "selected": false
+  },
+  "probe64": {
+    "preparation_ms": 5178.25,
+    "state_restore": "identical",
+    "next_logits_after_restore": "identical",
+    "selected": false
+  },
+  "limitations": [
+    "Registered 4K run had snapd interference and is provisional.",
+    "Adaptive residency with deferral changed greedy outputs across trials and is rejected.",
+    "Lower-pruning candidates have pending perplexity and coding gates.",
+    "Existing optional ordered-KDA bitwise test fails on SM86; arithmetic approximation requires measured quality checks.",
+    "HIP toolchain unavailable; GLM runner has no SYCL target.",
+    "Raw logs, logits, weights and downloaded datasets are excluded."
+  ],
+  "decode_only_scoring_validation": {
+    "nll": 0.793409679422,
+    "expected_nll": 0.7934096794212324,
+    "absolute_error": 7.676081992258332e-13,
+    "targets": 896,
+    "numerical_parity": true,
+    "harness_initially_incomplete": true,
+    "harness_counting_fixed": true,
+    "harness_tests_passed": 12
+  },
+  "long_context_quality_corpora": {
+    "construction": "2K: contiguous frozen fixture; 8K: frozen benchmark prefix and contiguous continuation of CPU pool source",
+    "targets_after_prefix": 1024,
+    "source_sha256": "e72d07143273845d1fbe4954957b5f50d32eb05216299f8cb4f45531211ca977",
+    "corpora": {
+      "2048": {
+        "tokens": 3073,
+        "sha256": "003d1f6b4097c85c577d43fa610c582e2b4ac903e9d552f1f2fb0c5b5f6fd591"
+      },
+      "8192": {
+        "tokens": 9217,
+        "sha256": "54e1a81b54d9d3360b225084a41dd1ab279e75c237410b254312cacefa996f38"
+      }
+    }
+  }
+}
