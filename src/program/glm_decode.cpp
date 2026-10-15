@@ -5400,6 +5400,8 @@ class Decoder {
     // Tier changes follow step counts, not completion times, so a run's residency sequence is reproducible: a
     // promotion selected in step s uploads after step s + 1 and joins the lookup at the start of step s + 3.
     uint64_t tier_step = 0;
+    // STRATA_GLM_TIER_EARLY_SUBMIT=1 (opt-in): staged tier uploads start at the step start instead of the tail.
+    const bool tier_early_submit = strata_env_truthy_one("STRATA_GLM_TIER_EARLY_SUBMIT");
     static constexpr size_t kTierStagingBytes = 16 * MiB;
     static float tier_setting(const char *name, float fallback) {
         const char *value = std::getenv(name);
@@ -5563,9 +5565,12 @@ class Decoder {
         }
     }
     // After the step's final synchronization: every freed slot is idle, so staged copies may upload.
-    void tier_submit() {
+    // staged_only (step start): upload the copies whose staging already finished, so they overlap the layer slots,
+    // which issue no host-to-device copies; the tail submits the rest. Order and residency timing are unchanged.
+    void tier_submit(bool staged_only = false) {
         for (auto &copy : tier_copies) {
             if (copy.uploading || copy.selected_step >= tier_step) continue;
+            if (staged_only && !copy.staged.load(std::memory_order_acquire)) continue;
             while (!copy.staged.load(std::memory_order_acquire)) std::this_thread::yield();
             copy.uploaded_step = tier_step;
             if (tier_direct) {
@@ -7216,6 +7221,7 @@ class Decoder {
         pipeline_residents = false;
         if (pipelining) {
             tier_begin_step();
+            if (tier_early_submit) tier_submit(true);
             if (!check_cpu_residency)
                 for (const auto &layer : decode_resident) pipeline_residents = pipeline_residents || !layer.empty();
             if (pipeline_residents) {
@@ -7819,6 +7825,7 @@ class Decoder {
         if (ram_tier || decode_cache_adapt) throw std::invalid_argument("GLM: batch MTP requires a stable RAM tier and no legacy adaptive cache");
         pipelining = true;
         try { tier_begin_step(); } catch (...) { pipelining = false; throw; }
+        if (tier_early_submit) tier_submit(true);
         pipelining = false; sequence_speculating = true;
     }
     void end_sequence_window() {
@@ -10864,7 +10871,7 @@ static int serve(int argc, char **argv) {
         throw std::invalid_argument("GLM: prefill experts must be mmq, f16, f16-batched or bf16-batched");
     // A decode cache keeps the draft experts on the CPU: no device reserve for them, only the draft state,
     // which must exist before the cache allowance is measured.
-    const bool mtp_device_experts = use_mtp && !(argc > 20 && std::string(argv[20]) != "0");
+    const bool mtp_device_experts = use_mtp && (!(argc > 20 && std::string(argv[20]) != "0") || strata_env_truthy_one("STRATA_GLM_MTP_GPU_CACHE"));
     if (use_mtp) decoder.enable_mtp_capture();
     decoder.configure_prefill(devices, gpu_budget, prefill_cache_bytes, prefill_cache_auto, mtp_device_experts, tensor_experts, tensor_batches, tensor_bf16);
     decoder.set_gpu_decode_experts(stream_decode);
@@ -10879,7 +10886,9 @@ static int serve(int argc, char **argv) {
         (stream_decode || lookup_depth || experts || cpu_prepack_mib)))
         throw std::invalid_argument("GLM: serve decode cache requires single-token unpacked CPU target experts");
     // With a decode cache the draft block's experts stay on the CPU; the cache owns the spare device memory.
-    if (use_mtp && (decode_cache_bytes || decode_cache_auto)) decoder.set_mtp_cpu_experts(true);
+    // STRATA_GLM_MTP_GPU_CACHE=1 keeps the GPU draft bank beside the cache, as in the one-shot decoder.
+    if (use_mtp && (decode_cache_bytes || decode_cache_auto) && !strata_env_truthy_one("STRATA_GLM_MTP_GPU_CACHE"))
+        decoder.set_mtp_cpu_experts(true);
     decoder.set_decode_cache_budget(decode_cache_bytes);
     decoder.set_decode_cache_auto(decode_cache_auto, decode_cache_extend);
     decoder.set_decode_graphs(argc > 21 && std::string(argv[21]) == "1");

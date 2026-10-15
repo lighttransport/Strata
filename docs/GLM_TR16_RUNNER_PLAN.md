@@ -423,3 +423,159 @@ quiet, no adaptive refresh, quality gate pending).
 Not yet quality-qualified; the 8K warm-up of the last configuration looped (target-model loop under lossy
 routing; the repeat guard did not trigger). The CUDA primary now waits on the CPU+worker lane for ~55% of
 each slot; the worker body (~0.27 ms/request) and CPU per-slot overhead are the binding costs.
+
+## 13. Prefill push on two GPUs, 2026-10-15 afternoon
+
+Target 900 tok/s at 8K (holdout code). Screens: `build-glm-release/runner-sim/screen-20261015/` (`run2.sh` adds
+`FRACTION`), HIP primary (RX 9070 XT) + CUDA worker, 8 generated tokens, two or three prefill trials per process.
+Quality is not checked; the lossy switches are marked.
+
+Diagnosis, in order found:
+
+- HIP alone, 8K: 611 tok/s. Per-layer experts are 2.3 GB; on KDA layers the 14.3 GB/s link is exposed (FFN 190 ms
+  against 97 ms after an MLA layer, where the long mixer hides the upload).
+- Mixed (fraction 0.6, protocol 4): 506-520 tok/s. The worker waited about 58 ms per layer for its request, because
+  the request was sent only after the primary's own staging joined, and then sat behind its own groups.
+- The CUDA worker never registered the v5 mapping (`invalid argument`): the launcher backed the "memfd" with a
+  disk `tempfile`, and CUDA refuses file-backed shared pages (HIP accepts them). Fixed: `tools/glm_mixed_run.py`
+  uses `memfd_create` when `STRATA_GLM_MIXED_REGISTER=1`; registration also rounds to whole pages.
+- rocprofv3 of the primary: expert F16 GEMMs at about 30 TFLOP/s effective, FP32 tiny-tile GEMMs in the MLA
+  absorb/index products, `scatter_expert_weighted` atomics (about 9 G atomics per prefill at 7.5 G/s; the build
+  already emits hardware `global_atomic_add_f32`), and expert uploads that arrive group by group with 11-14 ms of
+  idle GPU before each: the host staging memcpy runs at about 9.7 GB/s (68 GB, 7.0 s per prefill), below the link.
+  More or node-local staging threads did not raise it; node-0 memory traffic (memcpy write + DMA read) is the wall.
+
+Path (prefill tok/s, later trials of a process; each row adds to the previous):
+
+| change | tok/s |
+|---|---:|
+| mixed v4, fraction 0.6 | 506-520 |
+| protocol 5 + registered mapping + F16 activations (registration fix) | 595 |
+| `STRATA_GLM_PREFETCH_STREAM=1` (existing) | 596-604 |
+| fraction 0.79 (11 of 14 groups on HIP) | 717-719 |
+| `STRATA_GLM_MLA_ABSORB_F16=1` (existing, lossy) | 733 |
+| `STRATA_GLM_MLA_TILE=256` (new; 64 default) + scratch cap 4096 MiB | 748-750 |
+| `STRATA_GLM_PREFILL_ORDERED_SCATTER=1` (new: one launch per expert, plain float4 adds in stream order; the worker partial is added on the main stream afterwards) | 777 |
+| `STRATA_GLM_PREFETCH_DIRECT=1` (new: DMA straight from the registered model pages, no staging) | 811 |
+| fraction 0.86 | 826 |
+| `STRATA_GLM_MLA_INDEX_F16=1` (existing, lossy) | 837 |
+| `STRATA_GLM_MIXED_HALF_PARTIAL=1` (new, lossy: the worker returns its partial as FP16) | 852 |
+| fraction 0.79 | 857-862 |
+| `STRATA_GLM_PREFETCH_EARLY=1` (new: next layer's uploads start when this layer's MoE is queued) | **870-875** |
+
+Best: `pm-best.json` with `FRACTION=0.79`, case hip-cuda: 9392 / 9408 / 9416 ms = **872 / 871 / 870 tok/s**.
+Also new and neutral: `STRATA_GLM_MIXED_EARLY_SUBMIT=1` with `EARLY_ROUTE_SYNC=1` (worker inputs leave before the
+shared expert), `STRATA_GLM_STAGE_NUMA_SPLIT=1` (staging threads on both nodes, each copying its node's half),
+`STRATA_GLM_ROUTER_WHOLE=1` (one router product), HIP direct-upload registration without the CUDA-only attribute
+check. No effect or worse: MMQ experts (578 vs 611 alone), 6/8 staging threads, the tuned hipBLASLt table with
+`HIP_BATCH_SINGLE` (798 vs 826), fused SwiGLU, KDA row parts 8, bucket step 32/128, fraction 0.64-0.71 and 0.86-0.93
+at the end. `MLA_F16_OUT` is CUDA-only.
+
+Caveats:
+- `PREFETCH_DIRECT` pins the uploaded layers' expert pages (page cache) for the process lifetime: up to the
+  primary's share of the 86 GB of experts. Registration costs about 78 ms per 1.7 GB the first time.
+- The first prefill of a process is sometimes 10-25% slower (one-time conversions and registration).
+- This is the HIP-primary orientation. The best decode (46-49 tok/s) is CUDA-primary (cuda-hip); the HIP-primary
+  decode with these settings is about 37 tok/s on 32-token samples. One configuration for both targets is open.
+- Trace of the best config (synced, per KDA layer): mixer 78 ms, routing 20, own experts 65, worker after own 5-8.
+  The mixers are now half of the prefill (4.7 s): MLA layers about 200 ms each, KDA about 75 ms.
+
+Remaining 3% to 900: overlap the worker's activation upload with routing (protocol message before routing), split
+the worker's partial return by token halves so its D2H overlaps compute, or move part of the MLA attention
+(heads) to the CUDA card. Builds pass and `ctest -L glm` passes on both (23 CUDA, 22 HIP).
+
+Fraction calibration for other GPU pairs: `tools/glm_mixed_fraction_calibrate.py --config C --case hip-cuda
+--groups 14 --model M --prior P --prompt 8k.ids --output DIR [--objective prefill|decode]
+[--primary-tok-s X --worker-tok-s Y]` hill-climbs over whole 16-expert groups (one fresh bench process per
+candidate) and writes `DIR/fraction.json` with every measurement and the best `STRATA_GLM_MIXED_PRIMARY_FRACTION`.
+
+## 14. Release phase: decode under the quality gate, 2026-10-15 evening
+
+Rule for the release (user): no experimental code, no quality degradation beyond the agreed gate (HumanEval
+>= 152/164, the 35-track corpus gate `tr16-35`, no loops at 8K). Measured first: with every lossy setting
+removed from the 49 tok/s stack (strict acceptance, affinity 0, adaptive refresh on, no fused return) decode
+is 20 tok/s at 1K, so a bit-exact release cannot reach 50; the release keeps the lossy settings that pass the
+gate.
+
+Corpus gate (`tools/glm_tr16_quality.py --quality-gate tr16-35`, CUDA primary + HIP worker, p4-both settings,
+baseline = single CUDA unbiased strict on the same REAP-224 weights; receipts
+`build-glm-release/release-decode/corpus-aff*/result.json`):
+
+| routing affinity | KL (limit 0.253) | top-1 (limit 0.839) | perplexity (limit 5.213) | gate |
+|---|---:|---:|---:|---|
+| 0.30 (the 49 tok/s profile) | 0.310 | 0.817 | 5.488 | fail |
+| 0.20 | 0.244 | 0.8386 | 5.245 | fail (top-1, perplexity, both just outside) |
+| 0.14 | 0.210 | 0.853 | 5.111 | pass |
+| 0.08 | 0.197 | 0.857 | 5.056 | pass |
+
+Soft acceptance (top-k 8, margin 6, max soft 3), no adaptive refresh and the fused return stay in all rows.
+The release value is affinity 0.14: it passes with margin and nothing is tuned to the edge of the gate.
+
+Speed at affinity 0.14 (`screen-20261015/rel-aff0.14*.json`, cuda-hip, 3 timed trials): **42.0 tok/s at 1K/256**
+(40.7 / 42.5 / 42.3) and **40.0 at 8K/512** (39.5 / 41.5 / 38.8), 8K prefill 465 in that orientation. The 8K
+streams are clean (distinct 4-grams 0.97-0.98, no cycles, repeat guard idle). Against the targets: 50 is not
+reached under the gate; the gate costs about 7 tok/s of the 49.
+
+HumanEval 164 on the same binaries and settings: `build-glm-release/release-decode/humaneval-aff0.14.sh`
+(result pending at the time of writing; see the end of this section).
+
+Code removed for the release (defaults were already byte-identical; the removed paths measured no gain or were
+dead ends, see sections 9-11): the layer split (`STRATA_GLM_LAYER_RANGE`, the stage protocol and process,
+`tools/glm_stage_run.py`), `STRATA_GLM_RESIDENT_STREAM`, `STRATA_GLM_MIXED_DEVICE_DISPATCH`,
+`STRATA_GLM_FUSE_ROUTE_BATCH` (the batched router kernel and its parity test stay),
+`STRATA_GLM_PREFILL_FUSED_SWIGLU` (the kernel and its precision test stay), `STRATA_GLM_HIP_BATCH_SINGLE`,
+`STRATA_GLM_MIXED_FIXED_GRAPH_GEOMETRY`, `STRATA_GLM_MIXED_SPIN_US`, `STRATA_GLM_ROUTER_WHOLE`,
+`STRATA_GLM_STAGE_NUMA_SPLIT`. One serve-path fix: `STRATA_GLM_MTP_GPU_CACHE=1` now keeps the GPU draft bank
+beside the decode cache in the server too, so HumanEval runs the configuration that was timed.
+
+Release configurations: decode `screen-20261015/rel-aff0.14.json` (CUDA primary, HIP worker, decode cache
+10240, GPU draft bank); prefill `screen-20261015/pm-best.json` with fraction 0.79 (HIP primary, 870 tok/s,
+section 13). They are different orientations; one process cannot run both at these speeds.
+
+## 15. Decode levers under the gate, 2026-10-15 night
+
+Simulator re-anchored on the affinity-0.14 traces (`build-glm-release/release-decode/sweep-aff014-*.json`): base
+39.9 / 43.9 predicted against 40.0 / 42.0 measured (8K / 1K); with every remaining lossless lever 46.3 / 49.9. The
+first two levers by forecast were tried, plus what a corrected profile pointed at.
+
+Steady-state 8K profile of the CUDA primary (nsys with `--cuda-graph-trace=node`; the earlier traces recorded only
+the graph-capture steps): per step 65 ms of layer slots (49.7 ms kernels, 5.6 ms mailbox waits, ~10 ms launch gaps)
+plus 22.6 ms between steps (12.5 ms kernels: output head 4.3, draft chain ~6; 6.0 ms copies; 3.9 ms idle). In the
+slots the dense projections (`native_mmvq_multi`) are 23.4 ms, which is the 5.08 GB of Q4 dense weights read once
+per verify group at the card's 448 GB/s; residents 10.6, MLA absorb GEMVs 3.3, MLA index/attention 3.3. Between
+steps, four 9.1 MB host-to-device copies per step are GPU-tier expert promotions (tier swaps, about 12 per step,
+105 MB) queued in the tail on the same copy engine as the draft chain's small uploads.
+
+| lever (on the release config, cuda-hip, 3 trials) | 1K/256 | 8K/512 |
+|---|---:|---:|
+| release config, cleaned binaries | 43.1 / 43.4 / 43.6 | 39.5 / 41.5 / 38.8 |
+| `STRATA_GLM_FUSE_ROUTE_BATCH=1` (restored; fused router+publish at width 2) | 43.3 / 47.1 / 44.6 | 39.4 / 40.0 / 41.0 |
+| + `STRATA_GLM_SPLIT_PROJECTIONS=1` (shared projection reads; serializes the groups) | - | 33.2 / 36.3 / 34.4 |
+| + `STRATA_GLM_TIER_DIRECT=1` | refused: CUDA cannot register file-backed model pages | |
+| + `STRATA_GLM_TIER_EARLY_SUBMIT=1` (new: staged uploads at step start) | 41.6 / 41.6 / 40.5 | 42.0 / 40.3 / 40.2 |
+| + `STRATA_GLM_TIER_INFLIGHT=4` (existing; at most 4 promotions in flight, ~5.5 swaps/step instead of 12) | 44.1 / 41.3 / 40.2 | **43.6 / 41.9 / 43.8** |
+
+Findings: the fused publish is a possible +1.5 at 1K and nothing at 8K (the simulator's +2 did not hold). The
+MLA KV lever is small in the profile: the context-dependent kernels (`selection` 1.3 ms/step, index dots ~1) are
+about 2% of the step, so it was not built. Sharing the dense weight read between the two groups is the one large
+GPU-side term (23 ms/step) but every way of doing it serializes the groups and loses more than it saves. The tier
+uploads cost about 5 ms/step wherever they are issued: at the tail they delay the draft chain, in the slot phase
+they contend with the mailbox reads over PCIe; the volume (12 x 9.1 MB per step) is the problem.
+
+Capping the tier's in-flight promotions is the one change that moved 8K: +3 tok/s with every trial above the
+baseline's best, at a small cost on the 256-token run where residency has less time to settle. Residency changes
+are gate-coupled under affinity, so the candidate (fused publish + inflight 4) was re-run through the corpus gate
+(`release-decode/corpus-frb-if4`): passes, KL 0.210 / top-1 0.853 / perplexity 5.077, the same as affinity 0.14 alone.
+
+Release decode configuration: `screen-20261015/release-decode.json` (= rel-aff0.14 + `STRATA_GLM_FUSE_ROUTE_BATCH=1` +
+`STRATA_GLM_TIER_INFLIGHT=4`), measured 43.6 / 41.9 / 43.8 tok/s at 8K/512 and 44.1 / 41.3 / 40.2 at 1K/256, corpus gate
+passed; HumanEval 164 (`release-decode/humaneval-release.sh`): **146/164**, below the 152 floor (18 test failures, no
+timeouts). The configuration fails the agreed gate on HumanEval.
+
+Status: 45+ is reached at 1K only with the fused publish (mean 45.0, within the noise band); 8K stays at 40. The
+46-50 ceiling the simulator forecast is not supported by the measurements; the levers it ranked first were worth
+0 to +1.5 at 8K.
+
+Note, 2026-10-16: the merge of the zen5 branch restored the layer split and the other switches listed as removed in
+section 14 (its NUMA-aware layer pipelines and dual-CUDA workers for the two-socket V100 server build on the stage
+code). They are opt-in and off by default; the TR16 release configurations do not use them.

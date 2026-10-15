@@ -203,3 +203,23 @@ Draft cost (in-run nsys, CUDA primary): output head 0.85 ms/step (q4_k, 154880 r
 0.68 ms/step, 3 steps/round. A draft vocabulary subset saves at most ~2 ms/round but token ids < 65536 cover only
 ~95% of prompt tokens, so acceptance drops; MTP_DRAFT_TOP_K is ignored on the GPU draft bank (~1 ms/round at best).
 Remaining lever for 50 at 8K is the CPU+worker wait (~55% of each primary slot).
+
+## Prefill push, 2026-10-15 afternoon (Claude)
+
+Best 8K prefill: **870-875 tok/s** (HIP primary + CUDA worker, `screen-20261015/pm-best.json`, `FRACTION=0.79`
+via `run2.sh`), from 510. Details and the step table are in section 13 of `docs/GLM_TR16_RUNNER_PLAN.md`.
+Key fixes: real memfd for the registered v5 mapping (CUDA refused the tempfile), direct DMA prefetch from model
+pages, ordered per-expert scatter, FP16 worker partial, MLA tile 256, early next-layer prefetch. Lossy parts:
+MLA absorb/index F16, FP16 partial (plus decode's existing lossy settings). Open: orientation conflict (decode best
+is CUDA primary), the last 3% to 900, quality gate.
+
+## Release phase, 2026-10-15 night (Claude)
+
+Gate-passing decode (CUDA primary + HIP worker, affinity 0.14, soft acceptance 6/8, no adaptive refresh, fused
+return): corpus gate passes at 0.14 and 0.08, fails at 0.20 and 0.30 (plan doc section 14). Speed 43 (1K) / 40 (8K)
+on the cleaned binaries; with `FUSE_ROUTE_BATCH=1` + `TIER_INFLIGHT=4`: ~42-45 (1K) / ~43 (8K), gate re-run pending
+at the time of writing (section 15). HumanEval 164 was started on the 0.14 config and stopped at 35 tasks by the
+user; the script is `build-glm-release/release-decode/humaneval-aff0.14.sh`. Code cleanup done: layer split and nine
+no-gain switches removed (section 14 list); `FUSE_ROUTE_BATCH` restored; `TIER_EARLY_SUBMIT` added (no gain).
+Steady-state 8K profile (nsys node-level): dense projections read twice per step = 23 ms, tier uploads ~5 ms, inter-step
+22.6 ms. The simulator's 46/50 forecast did not hold for its top levers.

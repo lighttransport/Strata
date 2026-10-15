@@ -1,26 +1,55 @@
 # Strata-GLM53F: GLM-5.3-Flash on desktops and budget servers
 
-This fork adds an experimental native GGUF backend for **GLM-5.3-Flash**, running the mixed **Q2_K_XL** model on a **budget server with two Xeon Gold 6240 CPUs, 160 GiB RAM and two Tesla V100 32 GB GPUs**, or a **Threadripper 1950X desktop with 160 GB DDR4 and RTX 5060 Ti 16 GB**. Fixed layers and batched prefill run on the GPU; routed decode experts run directly from RAM on the CPU, with optional GPU MTP drafting.
+This fork runs **GLM-5.3-Flash** (a mixture-of-experts model, about 321B parameters with about 18B active per
+token) from ordinary RAM with one or two consumer GPUs. Fixed layers, attention and batched prompt processing run on the GPU; the routed experts
+run from RAM on the CPU, with a GPU-resident tier for the hottest ones and GPU-drafted speculative decoding.
+The model is served in the fork's own Q2/Q3 expert quantization ("Q23"), either complete or with the least
+useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-50: 144 experts, 63 GB).
 
 <p align="center">
-<a href="docs/media/glm53-v100-live-decode.gif"><img src="docs/media/glm53-v100-live-decode.gif" width="400" align="top" alt="Old server: approximately 29 decode tok/s on Xeon Gold and two Tesla V100 GPUs"></a>
-<a href="docs/media/glm53-live-decode.gif"><img src="docs/media/glm53-live-decode.gif" width="400" align="top" alt="Desktop: approximately 7 decode tok/s on Threadripper 1950X and RTX 5060 Ti"></a>
+<a href="docs/media/glm53-tr16-9070xt-live-decode.gif"><img src="docs/media/glm53-tr16-9070xt-live-decode.gif" width="640" alt="About 32 decode tok/s on Threadripper 1950X and RX 9070 XT"></a>
 </p>
 
-**Old server. New model. ~29 tok/s.** Server on the left, Threadripper desktop on the right; on narrow screens, server above desktop. Click either animation to view it at full size. Both eight-second clips play at original speed with loading and prefill omitted.
+**One desktop GPU, ~32 tok/s.** Threadripper 1950X, 128 GB DDR4 and an **RX 9070 XT 16 GB**, REAP-224 Q23, writing
+a C++ function for a 4K-token prompt; eight seconds of live decoding at original speed, loading and prompt processing
+omitted. The request decoded at **31.8 tok/s** over 512 tokens (the profile measures 34 on the 8K benchmark). The
+generated function compiles cleanly but fails the C++ oracle: it rejects inputs longer than 20 characters although
+the prompt allows leading zeroes. [Timing](demos/glm53_chat/tr16_9070xt_measurement.json),
+[how it was recorded](demos/glm53_chat/README.md).
 
-- **Server — ~29 decode tok/s:** 2017-era Volta architecture, 2019 Xeon Gold 6240 CPUs, 160 GiB RAM and 2× Tesla V100 PCIe 32 GB. The 4K C++ benchmark measured **29.06 tok/s median**; the live capture measured **28.17 tok/s** over 512 tokens with MTP depth 1 and 35 CPU workers. Warmup is omitted from playback. [Hardware measurements](docs/GLM53_V100.md) · [Demo timing](demos/glm53_chat/v100_measurement.json).
-- **Threadripper desktop — ~7 decode tok/s:** Threadripper 1950X (16 cores), 160 GB DDR4 and RTX 5060 Ti 16 GB; 15 CPU workers, single decode, 12 GiB GPU budget. This short C++ demo measured **7.51 tok/s**. [Desktop measurements](docs/README_GLM53_FLASH.md) · [Demo timing](demos/glm53_chat/measurement.json).
+**How fast** (single-stream decode and prompt processing, tokens per second; details, trials and the quality
+evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
 
-- **Initial short-chat decode: 7.33 tok/s median** (7.324, 7.334, 7.327), with identical outputs across three single-decode trials. The earlier source-prefix benchmark reached 7.54 tok/s with GPU MTP depth 1.
-- **C++ output validation:** a 4,096-token chat prompt and 512-token generation cap produced two complete, coherent answers. Each generated C++17 function compiled and passed **400,532 test cases** under ASan/UBSan.
-- **Initial 4K C++ decode: 7.26 tok/s single, 8.35 tok/s GPU MTP**, medians of three trials each. Outputs matched across all six runs, ending at 393 tokens including stop.
-- **Initial warm 4K prefill: 98.29 tok/s at batch 2048; 158.25 tok/s at batch 4096**, medians of three trials after an untimed warmup.
-- **Desktop memory budget:** 12 GiB total GPU budget, with a physical free-memory guard to leave room for the display and other apps.
+| machine | weights | decode | prompt | quality evidence |
+| --- | --- | ---: | ---: | --- |
+| Threadripper 1950X, 128 GB, **RTX 5060 Ti 16 GB** (one GPU) | REAP-224 Q23 | 29-32 | 170-500 | HumanEval 152/164, corpus gate passed |
+| Threadripper 1950X, 128 GB, **RX 9070 XT 16 GB** (one GPU) | REAP-224 Q23 | 34 | 560 | same profile family, not separately gated |
+| Threadripper 1950X, 128 GB, **RTX 5060 Ti + RX 9070 XT** (two GPUs) | REAP-224 Q23 | **40-44** | 465 (decode orientation), **870** (prefill orientation) | corpus gate passed; HumanEval 146/164, below the 152 floor |
+| Ryzen 9 3950X, 64 GB, **RX 9070 XT 16 GB** | REAP-50 Q23 | 10-16 | 230-250 | coding-task review only; perplexity +30% vs the 2-bit original |
+| Ryzen 9 3950X, 64 GB, **RTX 3070 8 GB** | REAP-50 Q23 | 10-20 | 210-510 | matched perplexity within +10% and a 30-task HumanEval subset |
+| 2x Xeon Gold 6240, 160 GB, **2x Tesla V100 32 GB** | full UD-Q2_K_XL | 29 | 790 (16K) | logit parity and 400k C++ oracle cases |
+| Ryzen 9 3950X, 64 GB, **RX 570 16 GB**, experimental Vulkan runner | REAP-50 Q23 | 3.6 strict, 15.8 fast engine (short prompt) | 34 | not gated: the fast engine fails the numerical gate against strict |
 
-Read the **[GLM5.3Flash guide: setup, measurements and hardware upgrade scenarios](docs/README_GLM53_FLASH.md)**, the **[C++ validation report and generated code](docs/fixtures/glm53_cpp_quality/README.md)**, and the **[full performance record](docs/GLM53_FLASH_PERFORMANCE.md)**. Earlier Q3 prefill reached 112.4 tok/s on a different benchmark; rates vary with the prompt, quantization and configuration.
+Decode numbers are at 1K-8K context with 256-512 generated tokens; prompt numbers at 2K-16K prompts. The
+two-GPU decode and prompt rates come from two different primary cards and are not available in one process. The
+Vulkan row is a separate experimental runner ([GLM_VULKAN.md](docs/GLM_VULKAN.md)) that needs no CUDA or ROCm.
+With the fastest (ungated) two-GPU settings the desktop reaches 49 tok/s at 1K; that configuration fails the
+quality gate and is not shipped. Removing every approximation leaves 20 tok/s.
 
-For a live terminal demonstration, use the [simple ASCII chat with a decode-speed counter](demos/glm53_chat/README.md).
+- **[Release notes: measurements, weights on Hugging Face, setup for one and two GPUs](docs/GLM53F_RELEASE.md)**
+- **[Running and benchmarking it on your own hardware](docs/GLM53F_NEW_HARDWARE.md)**
+- **Weights:** [`lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts`](https://huggingface.co/lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts)
+  (full Q23 120.9 GB, REAP-224 95.5 GB, REAP-50 63.2 GB, expert sidecars)
+- **Two-GPU runner and the simulator that planned it:** [GLM_TR16_RUNNER_PLAN.md](docs/GLM_TR16_RUNNER_PLAN.md),
+  [GLM_RUNNER_SIM.md](docs/GLM_RUNNER_SIM.md), [MULTI_GPU.md](docs/MULTI_GPU.md)
+- **Terminal demo:** [simple ASCII chat with a decode-speed counter](demos/glm53_chat/README.md)
+
+**Acknowledgement.** Several ideas in this work were studied in
+**[Project Maya](https://github.com/mw00/project-maya)** by peasantsmith (MIT License), an independent Strata
+derivative for GLM-5.3-Flash with its own engine and quantizations: its layer-range split across GPUs, aged
+route-count admission for GPU-resident experts, CPU-versus-transfer lane pricing and its measurement practice
+informed our designs. No Maya code or weights are used here; how the two projects differ is described in the
+[release notes](docs/GLM53F_RELEASE.md#how-this-differs-from-project-maya).
 
 ## Original Strata README: Qwen3.8-Flash-Next
 
@@ -43,8 +72,8 @@ Strata runs **[Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Nex
 large, smart AI model that usually needs a server. It chats, writes code, reads pictures and works with your apps
 and coding agents. Nothing leaves your PC.
 
-An experimental native GGUF backend for **GLM-5.3-Flash** is available for CUDA builds.
-See [build instructions and measurements](docs/README_GLM53_FLASH.md).
+An experimental native GGUF backend for **GLM-5.3-Flash** is available for CUDA and HIP builds.
+See [the GLM-5.3-Flash release notes](docs/GLM53F_RELEASE.md).
 
 ## How fast is it?
 
