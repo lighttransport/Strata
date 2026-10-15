@@ -1,0 +1,71 @@
+#version 450
+// mHC read (mode 0): coefficients from the 24 projected values, then
+// x = sum_i c[i] * r_i. mHC write (mode 1): y = ya (+ yb + yc); r_j <- c[4+j]*y + sum_i c[8+4i+j]*r_i.
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) buffer R { float r[]; };
+layout(binding = 1, std430) readonly buffer Proj { float proj[]; };
+layout(binding = 2, std430) readonly buffer Par { float par[]; };  // base[24], scale[3]
+layout(binding = 3, std430) buffer C { float coefficients[]; };
+layout(binding = 4, std430) buffer X { float x[]; };
+layout(binding = 5, std430) readonly buffer YB { float yb[]; };
+layout(binding = 6, std430) readonly buffer YC { float yc[]; };
+layout(push_constant) uniform P { uint width, iterations, mode, inputs, pofs; float eps; uint ybofs, ycofs; } p;
+shared float c[24];
+void main() {
+  const uint t = gl_LocalInvocationID.x;
+  if (p.mode == 0) {
+    if (t == 0) {
+      const uint o = p.pofs;
+      for (uint i = 0; i < 4; i++) {
+        c[i] = sigmoid(proj[i] * par[o + 24] + par[o + i]) + p.eps;
+        c[4 + i] = 2 * sigmoid(proj[4 + i] * par[o + 25] + par[o + 4 + i]);
+      }
+      for (uint i = 0; i < 4; i++) {
+        float mx = -3.402823e38, total = 0;
+        for (uint j = 0; j < 4; j++) mx = max(mx, proj[8 + i * 4 + j] * par[o + 26] + par[o + 8 + i * 4 + j]);
+        for (uint j = 0; j < 4; j++) {
+          c[8 + i * 4 + j] = exp(proj[8 + i * 4 + j] * par[o + 26] + par[o + 8 + i * 4 + j] - mx);
+          total += c[8 + i * 4 + j];
+        }
+        for (uint j = 0; j < 4; j++) c[8 + i * 4 + j] = c[8 + i * 4 + j] / total + p.eps;
+      }
+      for (uint n = 0; n < p.iterations; n++) {
+        if (n > 0)
+          for (uint i = 0; i < 4; i++) {
+            float total = p.eps;
+            for (uint j = 0; j < 4; j++) total += c[8 + i * 4 + j];
+            for (uint j = 0; j < 4; j++) c[8 + i * 4 + j] /= total;
+          }
+        for (uint j = 0; j < 4; j++) {
+          float total = p.eps;
+          for (uint i = 0; i < 4; i++) total += c[8 + i * 4 + j];
+          for (uint i = 0; i < 4; i++) c[8 + i * 4 + j] /= total;
+        }
+      }
+      for (uint i = 0; i < 24; i++) coefficients[i] = c[i];
+    }
+    barrier();
+    for (uint d = t; d < p.width; d += 256) {
+      float v = 0;
+      for (uint i = 0; i < 4; i++) v += c[i] * r[i * p.width + d];
+      x[d] = v;
+    }
+  } else {
+    if (t < 24) c[t] = coefficients[t];
+    barrier();
+    for (uint d = t; d < p.width; d += 256) {
+      float y = x[d];
+      if (p.inputs > 1) y += yb[p.ybofs + d];
+      if (p.inputs > 2) y += yc[p.ycofs + d];
+      float ri[4];
+      for (uint i = 0; i < 4; i++) ri[i] = r[i * p.width + d];
+      for (uint j = 0; j < 4; j++) {
+        float v = c[4 + j] * y;
+        for (uint i = 0; i < 4; i++) v += c[8 + i * 4 + j] * ri[i];
+        r[j * p.width + d] = v;
+      }
+    }
+  }
+}

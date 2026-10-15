@@ -1,0 +1,41 @@
+#version 450
+// out = x / sqrt(mean(x^2) + eps) * w. Optional: collapse four streams first
+// (x[d] = (r0+r1+r2+r3)/4), and/or offset the output by step.pos * n (cache append).
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer In { float x[]; };
+layout(binding = 1, std430) readonly buffer W { float w[]; };
+layout(binding = 2, std430) buffer Out { float y[]; };
+layout(binding = 3, std430) readonly buffer Step { uint pos, chain; } step;
+layout(push_constant) uniform P { uint n, xofs, wofs, yofs, flags; float eps; uint xstride, ystride; } p;
+// token t = workgroup y reads at xofs + t*xstride and writes at yofs + t*ystride (+ (pos+t)*n with flag 4).
+// flag 8: read the hidden-state ring slot of position pos+t-1 (xofs + slot*n, xstride = slots); zero at pos+t == 0.
+// flags: 1 weight, 2 collapse four streams, 4 output at yofs + pos*n
+shared float red[4];
+uint xbase;
+float value(uint i) {
+  if ((p.flags & 2u) != 0)
+    return (x[xbase + i] + x[xbase + p.n + i] + x[xbase + 2 * p.n + i] + x[xbase + 3 * p.n + i]) * 0.25;
+  return x[xbase + i];
+}
+void main() {
+  const uint t = gl_LocalInvocationID.x, tok = gl_WorkGroupID.y;
+  xbase = p.xofs + tok * p.xstride;
+  bool zero = false;
+  if ((p.flags & 8u) != 0) {
+    const uint at = step.pos + tok;
+    zero = at == 0;
+    xbase = p.xofs + ((at + p.xstride - 1) % p.xstride) * p.n;
+    if ((p.flags & 16u) != 0 && step.chain != 0) { xbase = p.xofs + p.xstride * p.n; zero = false; }
+  }
+  float s = 0;
+  for (uint i = t; i < p.n; i += 256) { const float v = value(i); s += v * v; }
+  s = subgroupAdd(s);
+  if (gl_SubgroupInvocationID == 0) red[gl_SubgroupID] = s;
+  barrier();
+  const float inv = zero ? 0.0 : 1.0 / sqrt(((red[0] + red[1]) + (red[2] + red[3])) / float(p.n) + p.eps);
+  const uint yo = (p.flags & 4u) != 0 ? p.yofs + (step.pos + tok) * p.n : p.yofs + tok * p.ystride;
+  for (uint i = t; i < p.n; i += 256)
+    y[yo + i] = value(i) * inv * ((p.flags & 1u) != 0 ? w[p.wofs + i] : 1.0);
+}

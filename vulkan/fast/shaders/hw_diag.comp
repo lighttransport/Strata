@@ -1,0 +1,85 @@
+#version 450
+// Standalone hardware diagnostics. No model kernels or floating point
+// tolerances: GEMM inputs and sums are exactly representable in FP32.
+#ifdef HW_GEMM
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(binding = 0, std430) readonly buffer A { float a[]; };
+layout(binding = 1, std430) readonly buffer B { float b[]; };
+layout(binding = 2, std430) writeonly buffer C { float c[]; };
+layout(push_constant) uniform P { uint n, k, output_offset; } p;
+shared float atile[16][16];
+shared float btile[16][16];
+void main() {
+  uint x = gl_LocalInvocationID.x, y = gl_LocalInvocationID.y;
+  uint row = gl_WorkGroupID.y * 16u + y, col = gl_WorkGroupID.x * 16u + x;
+  precise float sum = 0.0;
+  for (uint base = 0; base < p.k; base += 16u) {
+    atile[y][x] = a[row * p.k + base + x];
+    btile[y][x] = b[(base + y) * p.n + col];
+    barrier();
+    for (uint j = 0; j < 16u; ++j) sum += atile[y][j] * btile[j][x];
+    barrier();
+  }
+  c[p.output_offset + row * p.n + col] = sum;
+}
+#else
+layout(local_size_x = 256) in;
+uint mix32(uint x) {
+  x ^= x >> 16u; x *= 0x7feb352du;
+  x ^= x >> 15u; x *= 0x846ca68bu;
+  return x ^ (x >> 16u);
+}
+#ifdef HW_MEMORY
+layout(binding = 0, std430) buffer Data { uint data[]; };
+layout(binding = 1, std430) buffer Status { uint errors, first_index, expected, actual; } result;
+layout(push_constant) uniform P {
+  uint mode, count, offset, global_base, pattern, seed, inverted;
+} p;
+uint pattern(uint address) {
+  if (p.pattern == 0u) return 0u;
+  if (p.pattern == 1u) return 0xffffffffu;
+  if (p.pattern == 2u) return 0xaaaaaaaau;
+  if (p.pattern == 3u) return 0x55555555u;
+  if (p.pattern == 4u) return address ^ p.seed;
+  if (p.pattern == 5u) return ~(address ^ p.seed);
+  if (p.pattern == 6u) return mix32(address ^ p.seed);
+  if (p.pattern == 7u) return 1u << ((address + p.seed) & 31u);
+  if (p.pattern == 8u) return ~(1u << ((address + p.seed) & 31u));
+  if (p.pattern < 41u) return 1u << (p.pattern - 9u);
+  return ~(1u << (p.pattern - 41u));
+}
+void main() {
+  uint i = gl_GlobalInvocationID.x;
+  if (i >= p.count) return;
+  // Verify in a different, bijective access order. Power-of-two windows
+  // permute the entire range; other windows permute each 4 KiB page.
+  // Host bounds require counts divisible by 1024 words.
+  if (p.mode != 0u) {
+    if ((p.count & (p.count - 1u)) == 0u) i = (i * 65537u + p.seed) & (p.count - 1u);
+    else i = (i & ~1023u) + ((i * 509u + p.seed) & 1023u);
+  }
+  uint want = pattern(p.global_base + i) ^ (p.inverted != 0u ? 0xffffffffu : 0u);
+  if (p.mode == 0u) { data[p.offset + i] = want; return; }
+  uint got = data[p.offset + i];
+  if (got != want && atomicAdd(result.errors, 1u) == 0u) {
+    result.first_index = i; result.expected = want; result.actual = got;
+  }
+  if (p.mode == 2u) data[p.offset + i] = ~got;
+}
+#else
+layout(binding = 0, std430) readonly buffer Input { uint input_data[]; };
+layout(binding = 1, std430) writeonly buffer Output { uint output_data[]; };
+layout(push_constant) uniform P { uint count, iterations, seed, output_offset; } p;
+void main() {
+  uint i = gl_GlobalInvocationID.x;
+  if (i >= p.count) return;
+  uint x = input_data[i];
+  for (uint j = 0; j < p.iterations; ++j) {
+    x = ((x << 11u) | (x >> 21u)) ^ (p.seed + j * 0x9e3779b9u);
+    x = x * 1664525u + 1013904223u;
+    x ^= x >> 13u;
+  }
+  output_data[p.output_offset + i] = x;
+}
+#endif
+#endif

@@ -1,0 +1,44 @@
+#version 450
+// Native GGUF rows to the streamed expert block/plane layout. No arithmetic
+// or quantization: every payload byte is retained and padded rows are zero.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Source { uint raw[]; };
+layout(binding = 1, std430) writeonly buffer Output { uvec4 chunks[]; };
+layout(binding = 1, std430) writeonly buffer SideOutput { uint side[]; };
+layout(push_constant) uniform P { uint blocks, rows, padded_rows, source_offset; } p;
+#ifdef TYPE_Q2K
+const uint CH = 5u, SW = 1u, BB = 84u;
+#else
+const uint CH = 6u, SW = 4u, BB = 110u;
+#endif
+uint word_at(uint byte_offset) {
+  const uint shift = 8u * (byte_offset % 4u), i = byte_offset / 4u;
+  if (shift == 0u) return raw[i];
+  return (raw[i] >> shift) | (raw[i + 1u] << (32u - shift));
+}
+void main() {
+  const uint t = gl_LocalInvocationID.x, row = gl_WorkGroupID.x * 64u + t % 64u;
+  const uint block = gl_WorkGroupID.y;
+  const uint source = p.source_offset + (row * p.blocks + block) * BB;
+  for (uint c = t / 64u; c < CH; c += 4u) {
+    uvec4 value = uvec4(0);
+    if (row < p.rows) {
+      const uint at = source + 16u * c;
+      value = uvec4(word_at(at), word_at(at + 4u), word_at(at + 8u), word_at(at + 12u));
+    }
+    chunks[(block * CH + c) * p.padded_rows + row] = value;
+  }
+  if (t < 64u) {
+    const uint side_base = p.blocks * CH * p.padded_rows * 4u;
+    for (uint w = 0u; w < SW; ++w) {
+      uint value = 0u;
+      if (row < p.rows) {
+        value = word_at(source + CH * 16u + w * 4u);
+#ifndef TYPE_Q2K
+        if (w == 3u) value &= 65535u;
+#endif
+      }
+      side[side_base + (block * SW + w) * p.padded_rows + row] = value;
+    }
+  }
+}

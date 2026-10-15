@@ -1,0 +1,37 @@
+#version 450
+// Diagnostic: rounds activations onto the Q8_1 grid exactly as the strict
+// runner's decode_activations (fp16-stored scale, half away from zero).
+layout(local_size_x = 32) in;
+layout(binding = 0, std430) readonly buffer In { float x[]; };
+layout(binding = 1, std430) writeonly buffer Out { float y[]; };
+layout(push_constant) uniform P { uint n, xofs, xstride, ystride; } p;
+shared float mx[32];
+// Polaris packHalf2x16 can truncate; the strict CPU uses nearest-even.
+// Scale is nonnegative and bounded by the largest finite half.
+float half_nearest(float scale) {
+  const uint bits = floatBitsToUint(scale), exponent = bits >> 23;
+  uint half_bits = 0;
+  if (exponent >= 113u) {
+    const uint adjusted = bits - 0x38000000u;
+    half_bits = (adjusted + 4095u + ((adjusted >> 13) & 1u)) >> 13;
+  } else if (exponent >= 102u) {
+    const uint mantissa = (bits & 0x7fffffu) | 0x800000u, shift = 126u - exponent;
+    half_bits = (mantissa + ((1u << (shift - 1u)) - 1u) + ((mantissa >> shift) & 1u)) >> shift;
+  }
+  return unpackHalf2x16(half_bits).x;
+}
+void main() {
+  const uint b = gl_WorkGroupID.x, t = gl_LocalInvocationID.x, i = b * 32 + t;
+  const uint column = gl_WorkGroupID.y;
+  const float v = i < p.n ? x[p.xofs + column * p.xstride + i] : 0.0;
+  mx[t] = abs(v);
+  barrier();
+  if (t == 0) { float m = 0; for (uint k = 0; k < 32; k++) m = max(m, mx[k]); mx[0] = m; }
+  barrier();
+  const float maximum = mx[0];
+  const float scale = min(maximum / 127.0, 65504.0);
+  const float stored = half_nearest(scale);
+  float q = scale == 0 ? 0.0 : v / scale;
+  q = sign(q) * floor(abs(q) + 0.5);
+  if (i < p.n) y[column * p.ystride + i] = (maximum == 0 || stored == 0) ? 0.0 : clamp(q, -127.0, 127.0) * stored;
+}

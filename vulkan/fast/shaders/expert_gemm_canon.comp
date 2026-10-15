@@ -1,0 +1,147 @@
+#version 450
+// One of the canonical CPU's eight dot lanes per z workgroup. Integer-valued
+// codes/scales accumulate exactly in FP32; only the per-block scale FMAs round.
+// A separate dispatch reduces the eight lane results in the CPU's fixed order.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Weights { uint w[]; };
+#ifdef VECTOR_WEIGHT_LOADS
+layout(binding = 0, std430) readonly buffer WeightVectors { uvec4 w4[]; };
+#endif
+layout(binding = 1, std430) readonly buffer Codes { float x[]; };
+layout(binding = 2, std430) readonly buffer Metadata { float meta[]; };
+layout(binding = 3, std430) writeonly buffer Partial { float part[]; };
+layout(push_constant) uniform P {uint K, M, Mp, N, side;} p;
+#ifdef TYPE_Q2K
+#define CH 5u
+#else
+#define CH 6u
+#endif
+uint byte_at(uint b, uint i, uint row) {
+  const uint word = w[((b * CH + i / 16u) * p.Mp + row) * 4u + (i % 16u) / 4u];
+  return (word >> (8u * (i % 4u))) & 255u;
+}
+float integer_weight(uint b, uint row, uint i) {
+#ifdef TYPE_Q2K
+  const uint scale = byte_at(b, i / 16u, row) & 15u;
+  const uint q = (byte_at(b, 16u + i / 128u * 32u + i % 32u, row) >> (2u * ((i % 128u) / 32u))) & 3u;
+  return float(scale * q);
+#else
+  const uint side = p.side / 4u + b * 4u * p.Mp;
+  const uint a0 = w[side + row], a1 = w[side + p.Mp + row], h = w[side + 2u * p.Mp + row];
+  const uint s = i / 16u, sh = 8u * (s % 4u);
+  const uint lo = ((s % 8u < 4u ? a0 : a1) >> (sh + (s >= 8u ? 4u : 0u))) & 15u;
+  const uint hi = (h >> (sh + 2u * (s / 4u))) & 3u;
+  const int scale = int(lo | (hi << 4u)) - 32;
+  const uint qlo = (byte_at(b, 32u + i / 128u * 32u + i % 32u, row) >> (2u * ((i % 128u) / 32u))) & 3u;
+  const uint qhi = (byte_at(b, i % 32u, row) >> (i / 32u)) & 1u;
+  return float(scale * (int(qlo + 4u * qhi) - 4));
+#endif
+}
+#ifdef VECTOR_WEIGHT_LOADS
+float decoded_integer(uint s, uint dot_lane, uvec4 header, uint q0, uint q1, uint mask) {
+  const uint si = 2u * s + dot_lane / 4u;
+  const uint qlo = ((s < 4u ? q0 : q1) >> (2u * (s % 4u))) & 3u;
+#ifdef TYPE_Q2K
+  const uint scale = (header[si / 4u] >> (8u * (si % 4u))) & 15u;
+  return float(scale * qlo);
+#else
+  const uint sh = 8u * (si % 4u);
+  const uint a = si % 8u < 4u ? header.x : header.y;
+  const uint lo = (a >> (sh + (si >= 8u ? 4u : 0u))) & 15u;
+  const uint hi = (header.z >> (sh + 2u * (si / 4u))) & 3u;
+  const int scale = int(lo | (hi << 4u)) - 32;
+  return float(scale * (int(qlo + 4u * ((mask >> s) & 1u)) - 4));
+#endif
+}
+#endif
+shared float wt[32][64], xt[64][33];
+shared float wd[64], wm[64], min0[64], min1[64];
+shared float xd[64], sum0[64], sum1[64];
+void main() {
+  const uint t = gl_LocalInvocationID.x, lane = gl_WorkGroupID.z;
+  const uint row0 = gl_WorkGroupID.x * 64u, col0 = gl_WorkGroupID.y * 64u;
+  const uint ri = t % 16u, ci = t / 16u, blocks = p.K / 256u;
+  precise vec4 acc0 = vec4(0), acc1 = vec4(0), acc2 = vec4(0), acc3 = vec4(0);
+  for (uint b = 0; b < blocks; ++b) {
+    const uint row = row0 + t % 64u;
+#ifdef VECTOR_WEIGHT_LOADS
+    if (row < p.M) {
+      // All eight K subblocks reuse these metadata and payload words.
+      // Each wave selects one byte of the same four-byte dot-lane group.
+      const uint shift = 8u * (t / 64u), word = lane % 4u;
+      const uint plane = lane / 4u;
+#ifdef TYPE_Q2K
+      const uvec4 header = w4[b * CH * p.Mp + row];
+      const uint q0 = (w[((b * CH + 1u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint q1 = (w[((b * CH + 3u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint mask = 0u;
+#else
+      const uint side = p.side / 4u + b * 4u * p.Mp;
+      const uvec4 header = uvec4(w[side + row], w[side + p.Mp + row], w[side + 2u * p.Mp + row], 0u);
+      const uint q0 = (w[((b * CH + 2u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint q1 = (w[((b * CH + 4u + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+      const uint mask = (w[((b * CH + plane) * p.Mp + row) * 4u + word] >> shift) & 255u;
+#endif
+#define PUT_WEIGHT(S) wt[4u * S + t / 64u][t % 64u] = decoded_integer(S, lane, header, q0, q1, mask)
+      PUT_WEIGHT(0u); PUT_WEIGHT(1u); PUT_WEIGHT(2u); PUT_WEIGHT(3u);
+      PUT_WEIGHT(4u); PUT_WEIGHT(5u); PUT_WEIGHT(6u); PUT_WEIGHT(7u);
+#undef PUT_WEIGHT
+    } else {
+      for (uint k = t / 64u; k < 32u; k += 4u) wt[k][t % 64u] = 0;
+    }
+#else
+    for (uint k = t / 64u; k < 32u; k += 4u)
+      wt[k][t % 64u] = row < p.M ? integer_weight(b, row, (k / 4u) * 32u + 4u * lane + k % 4u) : 0;
+#endif
+    for (uint index = t; index < 64u * 32u; index += 256u) {
+      const uint k = index % 32u, col = col0 + index / 32u;
+      xt[index / 32u][k] = col < p.N ? x[col * p.K + b * 256u + k / 4u * 32u + 4u * lane + k % 4u] : 0;
+    }
+    if (t < 64u) {
+      const uint row = row0 + t, col = col0 + t;
+#ifdef TYPE_Q2K
+      const vec2 dm = row < p.M ? unpackHalf2x16(w[p.side / 4u + b * p.Mp + row]) : vec2(0);
+      wd[t] = dm.x; wm[t] = dm.y;
+      min0[t] = row < p.M ? float(byte_at(b, 2u * lane, row) >> 4u) : 0;
+      min1[t] = row < p.M ? float(byte_at(b, 2u * lane + 1u, row) >> 4u) : 0;
+#else
+      wd[t] = row < p.M ? unpackHalf2x16(w[p.side / 4u + (b * 4u + 3u) * p.Mp + row]).x : 0;
+#endif
+      xd[t] = col < p.N ? meta[(col * blocks + b) * 17u] : 0;
+      sum0[t] = col < p.N ? meta[(col * blocks + b) * 17u + 1u + 2u * lane] : 0;
+      sum1[t] = col < p.N ? meta[(col * blocks + b) * 17u + 2u + 2u * lane] : 0;
+    }
+    barrier();
+    vec4 l0 = vec4(0), l1 = vec4(0), l2 = vec4(0), l3 = vec4(0);
+    for (uint k = 0; k < 32u; ++k) {
+      const vec4 xv = vec4(xt[ci][k], xt[ci + 16u][k], xt[ci + 32u][k], xt[ci + 48u][k]);
+      l0 = fma(vec4(wt[k][ri]), xv, l0);
+      l1 = fma(vec4(wt[k][ri + 16u]), xv, l1);
+      l2 = fma(vec4(wt[k][ri + 32u]), xv, l2);
+      l3 = fma(vec4(wt[k][ri + 48u]), xv, l3);
+    }
+    const vec4 yd = vec4(xd[ci], xd[ci + 16u], xd[ci + 32u], xd[ci + 48u]);
+#ifdef TYPE_Q2K
+    const vec4 s0 = vec4(sum0[ci], sum0[ci + 16u], sum0[ci + 32u], sum0[ci + 48u]);
+    const vec4 s1 = vec4(sum1[ci], sum1[ci + 16u], sum1[ci + 32u], sum1[ci + 48u]);
+    precise vec4 dm0 = -wm[ri] * yd, dm1 = -wm[ri + 16u] * yd;
+    precise vec4 dm2 = -wm[ri + 32u] * yd, dm3 = -wm[ri + 48u] * yd;
+    acc0 = fma(dm0, min0[ri] * s0 + min1[ri] * s1, acc0);
+    acc1 = fma(dm1, min0[ri + 16u] * s0 + min1[ri + 16u] * s1, acc1);
+    acc2 = fma(dm2, min0[ri + 32u] * s0 + min1[ri + 32u] * s1, acc2);
+    acc3 = fma(dm3, min0[ri + 48u] * s0 + min1[ri + 48u] * s1, acc3);
+#endif
+    precise vec4 d0 = wd[ri] * yd, d1 = wd[ri + 16u] * yd;
+    precise vec4 d2 = wd[ri + 32u] * yd, d3 = wd[ri + 48u] * yd;
+    acc0 = fma(d0, l0, acc0); acc1 = fma(d1, l1, acc1);
+    acc2 = fma(d2, l2, acc2); acc3 = fma(d3, l3, acc3);
+    barrier();
+  }
+  for (uint r = 0; r < 4u; ++r) for (uint c = 0; c < 4u; ++c) {
+    const uint row = row0 + ri + 16u * r, col = col0 + ci + 16u * c;
+    if (row < p.M && col < p.N) {
+      const vec4 a = r == 0u ? acc0 : r == 1u ? acc1 : r == 2u ? acc2 : acc3;
+      part[(lane * p.N + col) * p.M + row] = a[c];
+    }
+  }
+}

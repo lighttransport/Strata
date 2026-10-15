@@ -1,0 +1,16 @@
+#version 450
+// cur[t][d] += ya[t][d] (+ yb[ybofs + t*ybstride + d]) (+ yc[t][d]); workgroup y = token.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) buffer Cur { float cur[]; };
+layout(binding = 1, std430) readonly buffer YA { float ya[]; };
+layout(binding = 2, std430) readonly buffer YB { float yb[]; };
+layout(binding = 3, std430) readonly buffer YC { float yc[]; };
+layout(push_constant) uniform P { uint width, inputs, ybofs, ybstride; } p;
+void main() {
+  const uint d = gl_GlobalInvocationID.x, t = gl_WorkGroupID.y;
+  if (d >= p.width) return;
+  float v = ya[t * p.width + d];
+  if (p.inputs > 1) v += yb[p.ybofs + t * p.ybstride + d];
+  if (p.inputs > 2) v += yc[t * p.width + d];
+  cur[t * p.width + d] += v;
+}

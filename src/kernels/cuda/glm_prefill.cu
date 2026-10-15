@@ -653,8 +653,7 @@ __global__ void __launch_bounds__(cols *parts, 1)
             }
         }
         __syncthreads();
-        if (threadIdx.x < dim) {
-            const int d = threadIdx.x;
+        for (int d = threadIdx.x; d < dim; d += cols * parts) {
             qr[d] = q[offset + d];
             if constexpr (prepared) {
                 kn[d] = k[offset + d];
@@ -677,7 +676,9 @@ __global__ void __launch_bounds__(cols *parts, 1)
         if constexpr (ordered) {
             // Carry the original sequential FMA accumulator between row
             // partitions, rather than adding independently rounded partials.
-            // Each thread keeps 32 state values with four parts.
+            // Each thread keeps 32 state values with four parts. Under nvcc
+            // this dot contracts to fma(round(values*decay), kn, total),
+            // matching kda_chunk's bit pattern.
             if (!part) partial[lane] = 0.f;
             __syncthreads();
 #pragma unroll
@@ -707,6 +708,9 @@ __global__ void __launch_bounds__(cols *parts, 1)
 #pragma unroll
         for (int i = 0; i < rows; ++i) {
             const int row = part * rows + i;
+            // The original column kernel contracts the old-state decay with
+            // the rounded key*delta update. Keep the undecayed state until here;
+            // contracting key*delta with an already rounded decay changes bits.
             if constexpr (nvcc_update) values[i] = __fmaf_rn(kept[i], decay[row], __fmul_rn(kn[row], delta[lane]));
             else values[i] = values[i] + kn[row] * delta[lane];
             if constexpr (!ordered) sum += values[i] * qr[row] * qi;
@@ -812,6 +816,24 @@ __global__ void index_reduce(const float *dots, const float *w, float *scores, i
     for (int h = 0; h < heads; ++h)
         sum += w[q * heads + h] * fmaxf(dots[(q * heads + h) * pools + p] * rsqrtf((float)dim), 0.f);
     scores[i] = sum * rsqrtf((float)heads);
+}
+__global__ void index_reduce_block(const float *dots, const float *w, float *scores, int heads, int ld, int first,
+                                   int count, int pools_total, int queries, int pos, int pool, int dim,
+                                   const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
+    int i = blockIdx.x * 256 + threadIdx.x;
+    if (i >= count * queries)
+        return;
+    int q = i / count, j = i % count, p = first + j;
+    float *out = scores + (size_t)q * pools_total + p;
+    if (p >= (pos + q + 1) / pool) {
+        *out = -INFINITY;
+        return;
+    }
+    float sum = 0;
+    for (int h = 0; h < heads; ++h)
+        sum += w[q * heads + h] * fmaxf(dots[(size_t)(q * heads + h) * ld + j] * rsqrtf((float)dim), 0.f);
+    *out = sum * rsqrtf((float)heads);
 }
 __device__ unsigned long long score_key(float score, int index) {
     unsigned bits = __float_as_uint(score == 0 ? 0.f : score),
@@ -960,7 +982,9 @@ __global__ void softmax(float *scores, const int *counts, int heads, int stride,
         __syncthreads();
     }
     mx = reduce[0];
-    __syncthreads(); // Every warp must read the maximum before reduce[0] is reused for sums.
+    // Every warp must read the maximum before warp 0 can replace reduce[0]
+    // with its partial sum. Short attention rows expose this shared-memory race.
+    __syncthreads();
     float sum = 0;
     for (int i = tid; i < stride; i += 256) {
         float p = i < n ? expf(row[i] * scale - mx) : 0;
@@ -1334,19 +1358,28 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
     if (snapshots && (row_parts != 1 || prepared_qi))
         throw std::invalid_argument("GLM: KDA snapshots need the column kernel");
     if (row_parts != 1) {
-        if (columns != 128 || (row_parts != 4 && row_parts != 8))
-            throw std::invalid_argument("GLM: parallel KDA needs 128 columns and 4 or 8 row parts");
+        if (columns != 128 || (row_parts != 2 && row_parts != 4 && row_parts != 8))
+            throw std::invalid_argument("GLM: parallel KDA needs 128 columns and 2, 4 or 8 row parts");
         const char *ordered = std::getenv("STRATA_GLM_KDA_ORDERED_ROWS");
         if (ordered && std::string(ordered) != "0") {
-            if (std::string(ordered) != "1" || row_parts != 4)
-                throw std::invalid_argument("GLM: ordered KDA rows require value 1 and four row parts");
+            if (std::string(ordered) != "1" || (row_parts != 2 && row_parts != 4))
+                throw std::invalid_argument("GLM: ordered KDA rows require value 1 and two or four row parts");
             const dim3 grid(heads, 4);
+            if (row_parts == 2) {
+                if (prepared_qi)
+                    kda_rows_columns<2, true, 32, true><<<grid, 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, prepared_qi);
+                else
+                    kda_rows_columns<2, false, 32, true><<<grid, 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+                check(); return;
+            }
             if (prepared_qi)
                 kda_rows_columns<4, true, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, prepared_qi);
             else
                 kda_rows_columns<4, false, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
             check(); return;
         }
+        if (row_parts == 2)
+            throw std::invalid_argument("GLM: two KDA row parts require ordered rows");
         if (strata_env_is_set("STRATA_GLM_KDA_COLUMN_TILES") && glm_prefill_lossy_allowed) {
             const dim3 grid(heads, 4);
             if (prepared_qi) {
@@ -1507,6 +1540,17 @@ void glm_index_reduce(const float *d, const float *w, float *out, int h, int poo
     if (pools)
         index_reduce<<<(pools * q + 255) / 256, 256, 0, (cudaStream_t)s>>>(d, w, out, h, pools, q, pos, pool,
                                                                            dim, device_pos, offset);
+    check();
+}
+void glm_index_reduce_block(const float *d, const float *w, float *out, int h, int ld, int first, int count,
+                            int pools_total, int q, int pos, int pool, int dim, void *s, const int *device_pos,
+                            int offset) {
+    if (count < 0 || ld < count || first < 0 || first + count > pools_total)
+        throw std::invalid_argument("GLM: invalid index reduce block");
+    if (count && q)
+        index_reduce_block<<<(count * q + 255) / 256, 256, 0, (cudaStream_t)s>>>(d, w, out, h, ld, first, count,
+                                                                                pools_total, q, pos, pool, dim,
+                                                                                device_pos, offset);
     check();
 }
 void glm_index_select_batch(const float *scores, int *ids, int *counts, int pools, int pos, int queries,

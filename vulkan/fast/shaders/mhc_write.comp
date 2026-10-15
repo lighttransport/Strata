@@ -1,0 +1,23 @@
+#version 450
+// mHC write: y = ya (+ yb + yc); r_j <- c[4+j]*y + sum_i c[8+4i+j]*r_i. Many workgroups.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) buffer R { float r[]; };
+layout(binding = 1, std430) readonly buffer C { float cc[]; };
+layout(binding = 2, std430) readonly buffer YA { float ya[]; };
+layout(binding = 3, std430) readonly buffer YB { float yb[]; };
+layout(binding = 4, std430) readonly buffer YC { float yc[]; };
+layout(push_constant) uniform P { uint width, inputs, ybofs, ycofs, ybstride; } p;  // token = workgroup y
+void main() {
+  const uint d = gl_GlobalInvocationID.x, t = gl_WorkGroupID.y, rb = t * 4 * p.width;
+  if (d >= p.width) return;
+  float y = ya[t * p.width + d];
+  if (p.inputs > 1) y += yb[p.ybofs + t * p.ybstride + d];
+  if (p.inputs > 2) y += yc[p.ycofs + t * p.width + d];
+  float ri[4];
+  for (uint i = 0; i < 4; i++) ri[i] = r[rb + i * p.width + d];
+  for (uint j = 0; j < 4; j++) {
+    float v = cc[t * 32 + 4 + j] * y;
+    for (uint i = 0; i < 4; i++) v += cc[t * 32 + 8 + i * 4 + j] * ri[i];
+    r[rb + j * p.width + d] = v;
+  }
+}

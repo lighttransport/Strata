@@ -36,6 +36,9 @@ def main():
     parser.add_argument('--context', type=int, default=8192)
     parser.add_argument('--prefill-batch', choices=('8','2048','4096','8192','16384','auto'), default='2048')
     parser.add_argument('--speculative', choices=('none','mtp'), default='none')
+    parser.add_argument('--draft-depth', type=int, default=1, help='MTP draft depth (1..7)')
+    parser.add_argument('--cpu-affinity', choices=('auto','numa','none'), default='auto')
+    parser.add_argument('--config', type=pathlib.Path, help='profile JSON whose "env" block is added to the engine environment')
     parser.add_argument('--prompt-file', type=pathlib.Path, help='UTF-8 prompt; overrides --prompt')
     parser.add_argument('--raw-prompt', action='store_true', help='use an already templated prompt')
     parser.add_argument('--gpu-devices', default='0')
@@ -182,10 +185,13 @@ def main():
         print('Loading GLM with display-memory guards enabled...',flush=True)
         engine_args=[str(args.model.resolve()),str(args.context),'4096',str(args.threads),'0',
                      args.prefill_batch,'-1' if args.ignore_stop else ','.join(map(str,sorted(stops))),str(args.gpu_budget_mib),'0','0',
-                     args.speculative,'1','auto','0',args.gpu_devices,args.prefill_expert_cache_mib,str(int(args.lock_weights)),
+                     args.speculative,str(args.draft_depth),args.cpu_affinity,'0',args.gpu_devices,args.prefill_expert_cache_mib,str(int(args.lock_weights)),
                      str(int(args.decode_prefill_cache)),args.decode_cache_mib,str(int(args.decode_graphs)),'256',
                      str(int(args.decode_cache_adapt)),args.prefill_experts]
         env=dict(os.environ,STRATA_NATIVE_NUMA_LOCAL='0')
+        if args.config:
+            profile_env=json.loads(args.config.read_text()).get('env',{})
+            env.update({k:str(v) for k,v in profile_env.items() if k.startswith('STRATA_') or k=='LD_LIBRARY_PATH'})
         engine=GlmEngine(str(args.decoder.resolve()),engine_args,log=str(runtime/'engine.log'),env=env)
         if args.warmup_tokens:
             prompt = args.prompt if args.raw_prompt else template.render([{'role':'user','content':args.prompt}], reasoning_effort='low')

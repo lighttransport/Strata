@@ -1,0 +1,5142 @@
+{
+  "date": "2026-10-11",
+  "status": "User accepted current performance; cleaned implementation passes final quality gates at 2K, 4K and 8K.",
+  "hardware": {
+    "recorded_utc": "2026-10-11T10:32:35.672283+00:00",
+    "board_vendor": "ASUSTeK COMPUTER INC.",
+    "board": "TUF GAMING B550-PLUS",
+    "bios": "3645",
+    "cpu": "AMD Ryzen 9 3950X",
+    "gpu": "RTX 3070 8 GiB",
+    "ram_speed_mts": 2666,
+    "ram_speed_source": "user reported; not independently read from DIMM firmware",
+    "os_ram_gib": 60.69222640991211,
+    "governor": "powersave",
+    "executable_sha256": "c59fffbaf32cb051a61c1ff05e636edf5ce4e95d5e57bb58a8cfca498cc85d65",
+    "weights_modified": false,
+    "cppc_highest_perf_cpu0_to15": [
+      221,
+      216,
+      211,
+      206,
+      236,
+      231,
+      226,
+      236,
+      201,
+      196,
+      191,
+      186,
+      181,
+      171,
+      176,
+      166
+    ],
+    "cppc_note": "Read from sysfs; first ten physical cores already have the ten highest firmware performance rankings. No CPU settings changed."
+  },
+  "protocol": {
+    "generated_tokens": 128,
+    "timed_decode_transitions": 127,
+    "trials": 3,
+    "untimed_decode_warmup_transitions": 127,
+    "ram_limit_gib": 56,
+    "swap_limit_bytes": 0,
+    "loading_and_preparation_excluded": true,
+    "settings_changed_for_benchmark": false
+  },
+  "gpu_load_sample": {
+    "pcie_generation": 4,
+    "pcie_width": 16,
+    "temperature_c": 65,
+    "power_w": 134.92,
+    "sm_mhz": 1485,
+    "memory_mhz": 6801
+  },
+  "runs": [
+    {
+      "label": "qualified-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "threads": 12,
+      "prefill_batch": 2048,
+      "config_path": "configs/glm53f-reap50-q23-64g-rtx3070-decode-approx-experimental.json",
+      "config_sha256": "e8bc17617ffa5d86f0d272a7ab4dd34cdb988998cb3dfaa0b08c19fb4b10c763",
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "c59fffbaf32cb051a61c1ff05e636edf5ce4e95d5e57bb58a8cfca498cc85d65",
+      "prefill_tok_s": [
+        213.284,
+        213.154,
+        212.953
+      ],
+      "decode_tok_s": [
+        16.0489,
+        16.0539,
+        16.0619
+      ],
+      "median_prefill_tok_s": 213.154,
+      "median_decode_tok_s": 16.0539,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prefill_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "peak_ram_gib": 54.87662887573242,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 747,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 113,
+          "MiB": 981.688,
+          "fingerprint": 13824347961303993934
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 6454.54,
+          "bytes": 232884469760
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 6451.41,
+          "bytes": 232884469760
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 6448.34,
+          "bytes": 232884469760
+        }
+      ],
+      "previous_2400_mts": {
+        "clean": true,
+        "median_prefill_tok_s": 205.76,
+        "median_decode_tok_s": 15.576
+      },
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-1791714723-qualified-2k",
+      "change_percent": {
+        "prefill": 3.5935069984447843,
+        "decode": 3.0681818181818032
+      }
+    },
+    {
+      "label": "experimental-2k",
+      "prompt_tokens": 2048,
+      "context_capacity": 4096,
+      "threads": 10,
+      "prefill_batch": 2048,
+      "config_path": "build-glm-3070-cuda12/goal20-t10-task2-prune0085-2k.json",
+      "config_sha256": "87c0e75087b524cc568474dcd3d4f430cb4b5dad0ec565edfc553463bd426642",
+      "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+      "executable_sha256": "c59fffbaf32cb051a61c1ff05e636edf5ce4e95d5e57bb58a8cfca498cc85d65",
+      "prefill_tok_s": [
+        361.553,
+        381.471,
+        379.968
+      ],
+      "decode_tok_s": [
+        17.7137,
+        17.7161,
+        17.7307
+      ],
+      "median_prefill_tok_s": 379.968,
+      "median_decode_tok_s": 17.7161,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prefill_major_faults": [
+        145,
+        0,
+        0
+      ],
+      "peak_ram_gib": 55.191959381103516,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 751,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 101,
+          "MiB": 877.438,
+          "fingerprint": 14801119763586689442
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 5468.62,
+          "bytes": 197803769856
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 5478.18,
+          "bytes": 197803769856
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 5472.68,
+          "bytes": 197803769856
+        }
+      ],
+      "previous_2400_mts": {
+        "clean": true,
+        "median_prefill_tok_s": 377.936,
+        "median_decode_tok_s": 16.9177
+      },
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-1791714723-experimental-2k",
+      "change_percent": {
+        "prefill": 0.5376571694678534,
+        "decode": 4.719317637740361
+      }
+    },
+    {
+      "label": "experimental-4k",
+      "prompt_tokens": 4096,
+      "context_capacity": 8192,
+      "threads": 12,
+      "prefill_batch": 4096,
+      "config_path": "build-glm-3070-cuda12/goal20-registered-b4096-4k.json",
+      "config_sha256": "0bd4b354987e214b2b8b16fca1100b5fa2c10dd85d6732361f081fe8a76e92be",
+      "prompt_sha256": "0ece8b433ccdccf16e7fe50753a6b0cd06c8381000fb1938f1f93e848496929f",
+      "executable_sha256": "c59fffbaf32cb051a61c1ff05e636edf5ce4e95d5e57bb58a8cfca498cc85d65",
+      "prefill_tok_s": [
+        450.887,
+        463.783,
+        462.691
+      ],
+      "decode_tok_s": [
+        14.9676,
+        14.9708,
+        14.9592
+      ],
+      "median_prefill_tok_s": 462.691,
+      "median_decode_tok_s": 14.9676,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prefill_major_faults": [
+        279,
+        0,
+        0
+      ],
+      "peak_ram_gib": 55.685604095458984,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 747,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 93,
+          "MiB": 807.938,
+          "fingerprint": 18373142042549649482
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 7111.82,
+          "bytes": 257161297920
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 7109.28,
+          "bytes": 257161297920
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 7113.08,
+          "bytes": 257161297920
+        }
+      ],
+      "previous_2400_mts": {
+        "clean": false,
+        "median_prefill_tok_s": 455.582,
+        "median_decode_tok_s": 13.3608
+      },
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-1791714723-experimental-4k"
+    },
+    {
+      "label": "experimental-8k",
+      "prompt_tokens": 8192,
+      "context_capacity": 12288,
+      "threads": 12,
+      "prefill_batch": 4096,
+      "config_path": "build-glm-3070-cuda12/goal20-registered-b4096-8k.json",
+      "config_sha256": "94b18d73d2240f03638306fe7b0288fa5823e3f81ce1a337b3fbc8558c96f692",
+      "prompt_sha256": "73e2451f7420ffe3437240509fa6b81d2d7f870fc5412d7df7d1dd333c398ef4",
+      "executable_sha256": "c59fffbaf32cb051a61c1ff05e636edf5ce4e95d5e57bb58a8cfca498cc85d65",
+      "prefill_tok_s": [
+        457.594,
+        456.305,
+        455.743
+      ],
+      "decode_tok_s": [
+        15.2813,
+        15.2686,
+        15.2796
+      ],
+      "median_prefill_tok_s": 456.305,
+      "median_decode_tok_s": 15.2796,
+      "clean": true,
+      "greedy_trials_identical": true,
+      "timed_decode_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "prefill_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "peak_ram_gib": 55.995365142822266,
+      "peak_swap_bytes": 0,
+      "minimum_gpu_free_mib": 753,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 83,
+          "MiB": 721.062,
+          "fingerprint": 6609278557102092783
+        }
+      ],
+      "cpu_expert": [
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 6940.94,
+          "bytes": 251130806272
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 6948.68,
+          "bytes": 251130806272
+        },
+        {
+          "gu_ms": 0,
+          "quant_ms": 0,
+          "down_ms": 0,
+          "layer_flow_ms": 6943.08,
+          "bytes": 251130806272
+        }
+      ],
+      "previous_2400_mts": {
+        "clean": true,
+        "median_prefill_tok_s": 448.639,
+        "median_decode_tok_s": 14.0763
+      },
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-1791714723-experimental-8k",
+      "change_percent": {
+        "prefill": 1.7087234948365948,
+        "decode": 8.548411159182457
+      }
+    }
+  ],
+  "limitations": [
+    "RAM speed2666MT/s is user reported; DIMM firmware speed was not independently read.",
+    "Comparison is against stored pre-reboot2400MT/s runs, not a same-day RAM-only controlled experiment; motherboard, BIOS, CPU boost and GPU residency may also affect results.",
+    "The unchanged configurations run on the checkpoint binary; executable hashes are recorded.",
+    "Per-context experimental configurations differ, so table rows are not an isolated context-scaling comparison.",
+    "The older4K measurement had snapd interference and is not used for a clean percentage comparison.",
+    "Model weights unchanged. Subsequent tuning uses distinct opt-in configurations and rebuilt executables; consult individual manifests.",
+    "Quality gates cover frozen 1024-target perplexity sequences and HumanEval tasks 0..29 only, not all 164 tasks."
+  ],
+  "quality_context2048": {
+    "strict": [
+      {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 0.951458119897,
+        "perplexity": 2.58948268411,
+        "prefix_tokens": 2048,
+        "decode_only": true
+      }
+    ],
+    "candidate": [
+      {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 0.996167104582,
+        "perplexity": 2.70788288026,
+        "prefix_tokens": 2048,
+        "decode_only": true
+      }
+    ],
+    "perplexity_increase_percent": 4.572349406950904,
+    "perplexity_gate_passed": true,
+    "both_complete_clean": true,
+    "candidate_config": "build-glm-3070-cuda12/hardware2666-quality-candidate-2048.json",
+    "coding_gate": "passed 30/30",
+    "scope": "1024 decode targets after 2048-token prefix; not full qualification"
+  },
+  "quality_context8192": {
+    "strict": [
+      {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 0.744641603826,
+        "perplexity": 2.1056866297,
+        "prefix_tokens": 8192,
+        "decode_only": true
+      }
+    ],
+    "strict_complete_clean": true,
+    "candidate_gate": "finished",
+    "coding_gate": "queued",
+    "scope": "1024 decode targets after an 8192-token prefix",
+    "candidate": [
+      {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 0.791699674435,
+        "perplexity": 2.20714466733,
+        "prefix_tokens": 8192,
+        "decode_only": true
+      }
+    ],
+    "candidate_complete_clean": true,
+    "perplexity_increase_percent": 4.818287593175952,
+    "perplexity_gate_passed": true
+  },
+  "coding_context2048": {
+    "tasks": 30,
+    "passed": 30,
+    "new_failures": [],
+    "config": "goal20-t10-task2-prune0085-2k.json",
+    "scope": "HumanEval tasks 0..29 only; does not qualify the distinct 8K preset",
+    "raw_complete_note": "Evaluator complete flag requires all 164 tasks; this run intentionally used limit 30"
+  },
+  "tuning": {
+    "kda256_context2048": {
+      "complete": true,
+      "clean": true,
+      "median_prefill_tok_s": 379.179,
+      "median_decode_tok_s": 17.7464,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "selected": false,
+      "reason": "No meaningful improvement versus current 64-token chunk"
+    },
+    "kda256_context8192": {
+      "median_prefill_tok_s": 456.441,
+      "median_decode_tok_s": 15.2722,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 151
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Chunk-size experiment"
+    },
+    "defer4_context2048": {
+      "median_prefill_tok_s": 379.423,
+      "median_decode_tok_s": 15.4754,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Decode regressed versus 17.7161 tok/s two-route baseline; no quality qualification pursued"
+    },
+    "prefetch2048_context2048": {
+      "median_prefill_tok_s": 379.469,
+      "median_decode_tok_s": 17.6594,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "No improvement over prefetch distance 512"
+    },
+    "dense4608_scratch512_fit": {
+      "complete": true,
+      "clean": true,
+      "context": 2048,
+      "prefill_mla_tile": 8,
+      "cold_prefill_tok_s": 294.955,
+      "selected": false,
+      "note": "Memory-fit only, one cold prefill and one decode transition; warmed throughput pending. Source opt-in prefill dense budget maximum expanded from 4096 to 8192 MiB; CUDA rebuild passed, HIP not built."
+    },
+    "dense4608_scratch512_context2048": {
+      "median_prefill_tok_s": 332.643,
+      "median_decode_tok_s": 17.6693,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Warmed prefill regression; smaller MLA tile outweighs residency gain",
+      "logit_sha256": {
+        "hardware2666-1791714723-experimental-2k.logits.bin": "c5544cb54c798c464b1057d07370ceafb5e1ef6cac1f279b8ada057531dbc448",
+        "hardware2666-dense4608-scratch512-2k.logits.bin": "31ad9a481814d909617a829924e3e52421259c2436c7feecb64b4d344656b36d"
+      }
+    },
+    "dense4352_scratch768_tile32_context2048": {
+      "median_prefill_tok_s": 373.78,
+      "median_decode_tok_s": 17.6723,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "No gain versus original dense4096/scratch1024/tile64 baseline"
+    },
+    "mmq_opt64_context2048": {
+      "median_prefill_tok_s": 380.281,
+      "median_decode_tok_s": 17.7226,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "logits_identical_to_baseline": true,
+      "reason": "No meaningful throughput gain"
+    },
+    "mmq_opt32_context2048": {
+      "median_prefill_tok_s": 373.697,
+      "median_decode_tok_s": 17.72,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Prefill regression",
+      "logits_identical_to_baseline": true
+    },
+    "registered_prefetch1_context2048": {
+      "median_prefill_tok_s": 396.071,
+      "median_decode_tok_s": 17.7179,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 4
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "prefill_gain_percent": 4.237988462186282,
+      "logits_identical_to_baseline": true,
+      "quality_gate": "passed measured 2K PPL and 30-task coding subset",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 0.996167104582,
+          "perplexity": 2.70788288026,
+          "prefix_tokens": 2048,
+          "decode_only": true
+        },
+        "increase_percent": 4.572349406950904,
+        "passed": true,
+        "clean": true,
+        "complete": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": [],
+          "same_token_hashes_vs_previous_candidate": 30
+        }
+      }
+    },
+    "registered_prefetch2_reuse_context2048": {
+      "median_prefill_tok_s": 386.05,
+      "median_decode_tok_s": 17.7339,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Slower than one-group direct prefetch",
+      "logits_identical_to_baseline": true
+    },
+    "registered_prefetch1_context8192": {
+      "median_prefill_tok_s": 465.436,
+      "median_decode_tok_s": 15.2483,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 151
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "prefill_gain_percent": 2.001073843153156,
+      "quality_gate": "pending for this 8K configuration",
+      "logits_identical_to_baseline": true
+    },
+    "prefetch1_threads8_context2048": {
+      "median_prefill_tok_s": 395.736,
+      "median_decode_tok_s": 17.2908,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Eight CPU threads slower than ten",
+      "logits_identical_to_baseline": true
+    },
+    "prefetch1_threads12_context2048": {
+      "median_prefill_tok_s": 395.664,
+      "median_decode_tok_s": 17.6694,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "No gain versus ten threads",
+      "logits_identical_to_baseline": true
+    },
+    "unified0085_prefetch1_context8192": {
+      "median_prefill_tok_s": 465.448,
+      "median_decode_tok_s": 17.0277,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "decode_gain_percent": 11.66949758333715,
+      "quality_gate": "passed matched 8K PPL and 30-task coding subset",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 0.806625507415,
+          "perplexity": 2.24033522215,
+          "prefix_tokens": 8192,
+          "decode_only": true
+        },
+        "increase_percent": 6.394521889004134,
+        "passed": true,
+        "clean": true,
+        "complete": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": [],
+          "scope": "Standard coding prompts using 8K benchmark configuration; not 8K-length coding prompts"
+        }
+      }
+    },
+    "prefetch8_reuse_dense3328_context2048": {
+      "median_prefill_tok_s": 355.792,
+      "median_decode_tok_s": 17.7401,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Prefill regression with reduced dense cache",
+      "logits_identical_to_baseline": true
+    },
+    "prefetch1_prune0095_context2048": {
+      "median_prefill_tok_s": 395.97,
+      "median_decode_tok_s": 18.7891,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "decode_gain_percent": 6.045863223068193,
+      "quality_gate": "passed matched 2K PPL and 30-task coding subset",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 1.00865294595,
+          "perplexity": 2.74190503194,
+          "prefix_tokens": 2048,
+          "decode_only": true
+        },
+        "increase_percent": 5.886208421678907,
+        "passed": true,
+        "clean": true,
+        "complete": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": []
+        }
+      }
+    },
+    "prefetch3_reuse_context2048": {
+      "median_prefill_tok_s": 399.819,
+      "median_decode_tok_s": 17.6898,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "prefill_gain_vs_qualified_prefetch1_percent": 0.9462949824652567,
+      "quality_gate": "not qualified; less than 1 percent improvement over qualified one-group candidate",
+      "logits_identical_to_baseline": true
+    },
+    "unified0095_prefetch1_context8192": {
+      "median_prefill_tok_s": 465.683,
+      "median_decode_tok_s": 18.1227,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "decode_gain_percent": 6.43069821526101,
+      "quality_gate": "rejected: new coding failure in 30-task subset",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 0.826478249979,
+          "perplexity": 2.28525644996,
+          "prefix_tokens": 8192,
+          "decode_only": true
+        },
+        "increase_percent": 8.527851092713789,
+        "passed": true,
+        "clean": true,
+        "complete": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 29,
+          "new_failures": [
+            "HumanEval/10"
+          ],
+          "scope": "HumanEval 0..29, standard prompts with 8K configuration"
+        }
+      }
+    },
+    "prefetch5_reuse_scratch768_context2048": {
+      "median_prefill_tok_s": 393.703,
+      "median_decode_tok_s": 17.7416,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "No gain versus one-group prefetch",
+      "logits_identical_to_baseline": true
+    },
+    "compact128_dense4096_context2048": {
+      "median_prefill_tok_s": 398.148,
+      "median_decode_tok_s": 17.6956,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 139,
+          "minor": 35342
+        },
+        {
+          "trial": 1,
+          "major": 13,
+          "minor": 32924
+        },
+        {
+          "trial": 2,
+          "major": 1,
+          "minor": 32920
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Less than 1 percent prefill improvement; qualification not yet run",
+      "logits_identical_to_baseline": true
+    },
+    "compact64_dense4352_context2048": {
+      "median_prefill_tok_s": 397.405,
+      "median_decode_tok_s": 17.7158,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 184,
+          "minor": 37773
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 32921
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Less than 1 percent prefill improvement; not selected",
+      "logits_identical_to_baseline": true
+    },
+    "prune0095_tight64_context2048": {
+      "median_prefill_tok_s": 396.309,
+      "median_decode_tok_s": 19.0234,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 4861042293560712362
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "quality_gate": "passed matched 2K PPL and 30-task coding subset",
+      "minimum_gpu_free_mib": 562,
+      "decode_gain_percent": 1.246999590187925,
+      "logits_identical_to_baseline": false,
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 1.00764714721,
+          "perplexity": 2.73914861377,
+          "prefix_tokens": 2048,
+          "decode_only": true
+        },
+        "increase_percent": 5.779761748491463,
+        "passed": true,
+        "clean": true,
+        "complete": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": [],
+          "scope": "HumanEval tasks0..29 only"
+        }
+      }
+    },
+    "prune0095_spread_context2048": {
+      "median_prefill_tok_s": 395.911,
+      "median_decode_tok_s": 18.6916,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "No improvement from spreading cores across L3 groups",
+      "logits_identical_to_baseline": true
+    },
+    "split_registered_copy_context2048": {
+      "median_prefill_tok_s": 395.287,
+      "median_decode_tok_s": 17.7237,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 1
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 150,
+          "minor": 36794
+        },
+        {
+          "trial": 1,
+          "major": 10,
+          "minor": 32925
+        },
+        {
+          "trial": 2,
+          "major": 2,
+          "minor": 33566
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "No throughput gain from split registered copies",
+      "logits_identical_to_baseline": true
+    },
+    "unified0085_prefetch1_context4096": {
+      "median_prefill_tok_s": 472.876,
+      "median_decode_tok_s": 16.6247,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 92,
+          "MiB": 799.25,
+          "fingerprint": 7137059423401387103
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "quality_gate": "rejected: coding29/30 with new HumanEval/10 failure",
+      "scope": "4096-token benchmark prompt, context capacity8192; source differs from 8K benchmark",
+      "quality": {
+        "perplexity_increase_percent": 8.13496568996066,
+        "perplexity_gate_passed": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 29,
+          "new_failures": [
+            "HumanEval/10"
+          ],
+          "scope": "HumanEval tasks0..29, standard prompts with context8192/B4096 configuration"
+        }
+      }
+    },
+    "dense_mla_prefix_context2048": {
+      "median_prefill_tok_s": 416.86,
+      "median_decode_tok_s": 17.6466,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 101,
+          "MiB": 877.438,
+          "fingerprint": 11399363454854429716
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "quality_gate": "rejected: new coding failures in completed 30-task subset",
+      "prefill_gain_percent": 5.248806400872574,
+      "scratch_peak_mib": 492.429,
+      "logits_identical_to_baseline": false,
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 0.993689985135,
+          "perplexity": 2.70118343202,
+          "prefix_tokens": 2048,
+          "decode_only": true
+        },
+        "increase_percent": 4.313631776548887,
+        "passed": true,
+        "clean": true,
+        "complete": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 28,
+          "new_failures": [
+            "HumanEval/10",
+            "HumanEval/24"
+          ],
+          "scope": "HumanEval tasks 0..29 only; not full 164-task suite"
+        }
+      }
+    },
+    "tight64_lazy_context2048": {
+      "median_prefill_tok_s": 397.37,
+      "median_decode_tok_s": 18.9875,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 144,
+          "minor": 37668
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 32923
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 4861042293560712362
+        }
+      ],
+      "clean": true,
+      "complete": true,
+      "selected": false,
+      "logits_identical_to_baseline": true,
+      "baseline": "hardware2666-prune0095-tight64-2k",
+      "prefill_gain_percent": 0.26772038989777425,
+      "skipped_transfer_bytes": 2550979200,
+      "transferred_bytes": 54463405920,
+      "reason": "Reduced transfer volume but no material throughput improvement; no new approximation",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-tight64-lazy-2k"
+    },
+    "defer018_context2048": {
+      "median_decode_tok_s": 18.8916,
+      "median_prefill_tok_s": 396.436,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "clean": true,
+      "complete": true,
+      "selected": false,
+      "reason": "Slower than qualified .15 deferred share; no quality gate run for this rejected timing candidate"
+    },
+    "huge_experts_context2048": {
+      "median_decode_tok_s": 19.0459,
+      "median_prefill_tok_s": 395.71,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 121,
+          "MiB": 1051.19,
+          "fingerprint": 8603544152426318226
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 98,
+          "minor": 38825
+        },
+        {
+          "trial": 1,
+          "major": 106,
+          "minor": 33205
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "No material throughput gain; cache grew from120 to121, isolating output parity in fixed120-slot run",
+      "byte_identical_expert_copy": true,
+      "copied_bytes": 55094280192,
+      "process_anon_huge_kib": 48941056,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-huge-experts-2k"
+    },
+    "huge_experts_slots120_context2048": {
+      "median_decode_tok_s": 19.0738,
+      "median_prefill_tok_s": 397.384,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 4861042293560712362
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 5
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 88,
+          "minor": 41591
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 33273
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "logits_identical_to_baseline": true,
+      "reason": "Fixed120slot cache, no material throughput gain over qualified baseline",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-huge-experts-slots120-2k"
+    },
+    "kda_corrected_context2048": {
+      "median_decode_tok_s": 19.4141,
+      "median_prefill_tok_s": 382.072,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 235,
+          "minor": 37725
+        },
+        {
+          "trial": 1,
+          "major": 2,
+          "minor": 32929
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "clean": true,
+      "complete": true,
+      "selected": false,
+      "quality_gate": "passed matched2K PPL and30-task coding subset",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-corrected-2k",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 1.00825191491,
+          "perplexity": 2.74080566337,
+          "prefix_tokens": 2048,
+          "decode_only": true
+        },
+        "increase_percent": 5.843753278929897,
+        "perplexity_gate_passed": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": [],
+          "scope": "Frozen HumanEval tasks0..29, standard short prompts; not full164 tasks or long-context coding. Short prompts do not activate the >=2048-token ordered KDA prefill path; strict GPU parity and 2K-prefix PPL cover that path."
+        }
+      }
+    },
+    "copy2d_context2048": {
+      "median_decode_tok_s": 19.423,
+      "median_prefill_tok_s": 386.627,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "clean": true,
+      "complete": true,
+      "selected": false,
+      "logits_identical_to_corrected_baseline": true,
+      "prefill_gain_percent": 1.1921836721874524,
+      "reason": "Small prefill gain; retain as experiment pending broader context measurements",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-copy2d-2k"
+    },
+    "kda_corrected_prune010_context2048": {
+      "median_decode_tok_s": 20.1004,
+      "median_prefill_tok_s": 384.335,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 167,
+          "minor": 37583
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 32923
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "quality_gate": "rejected: new coding failure in completed30-task subset",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-corrected-prune010-2k",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 1.01590753111,
+          "perplexity": 2.76186874216,
+          "prefix_tokens": 2048,
+          "decode_only": true
+        },
+        "increase_percent": 6.657162031158692,
+        "perplexity_gate_passed": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 29,
+          "new_failures": [
+            "HumanEval/10"
+          ],
+          "scope": "Frozen HumanEval tasks0..29, standard short prompts only"
+        }
+      }
+    },
+    "kda_parts2_context2048": {
+      "median_decode_tok_s": 19.4522,
+      "median_prefill_tok_s": 394.906,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 148,
+          "minor": 37670
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 32922
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "logits_identical_to_corrected_baseline": true,
+      "prefill_gain_percent": 3.3590527439854245,
+      "quality_scope": "Strict GPU parity passed; saved model logits identical to qualified corrected baseline. No independent PPL/coding rerun for parts2 yet.",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-2k"
+    },
+    "kda_parts2_tight64_context8192": {
+      "median_decode_tok_s": 17.2132,
+      "median_prefill_tok_s": 465.822,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 101,
+          "MiB": 877.438,
+          "fingerprint": 17524137781667616616
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 30,
+          "minor": 131230
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 131253
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 131074
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "quality_gate": "not yet qualified for this8K configuration; changed KDA arithmetic/cache residency from historical8K gate",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-tight64-8k"
+    },
+    "kda_corrected_prefetch0_context2048": {
+      "median_decode_tok_s": 19.4112,
+      "median_prefill_tok_s": 383.456,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "logits_identical_to_corrected_baseline": true,
+      "reason": "No material gain from disabling CPU software prefetch",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-corrected-prefetch0-2k"
+    },
+    "kda_parts2_mmq96_context2048": {
+      "median_decode_tok_s": 19.451,
+      "median_prefill_tok_s": 395.896,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "saved_logits_identical_to_parts2": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-mmq96-2k",
+      "reason": "Only 0.25% prefill gain; no meaningful improvement"
+    },
+    "kda_parts2_route_lookup_context2048": {
+      "median_decode_tok_s": 19.463,
+      "median_prefill_tok_s": 395.421,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "saved_logits_identical_to_parts2": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-route-lookup-2k",
+      "reason": "No material gain from fused publication/stable lookup reuse"
+    },
+    "kda_parts2_fusions_context2048": {
+      "median_decode_tok_s": 18.9782,
+      "median_prefill_tok_s": 394.861,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "saved_logits_identical_to_parts2": false,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-fusions-2k",
+      "reason": "Decode regressed; extra fusion options change numerical output; no quality qualification"
+    },
+    "kda_parts2_task1_context2048": {
+      "median_decode_tok_s": 19.2158,
+      "median_prefill_tok_s": 395.294,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 1
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "saved_logits_identical_to_parts2": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-task1-2k",
+      "reason": "Decode regressed at one task per worker"
+    },
+    "kda_parts2_coalesced_context2048": {
+      "median_decode_tok_s": 19.4593,
+      "median_prefill_tok_s": 411.69,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "saved_logits_identical_to_parts2": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-coalesced-2k",
+      "prefill_gain_percent": 4.2501253462849276,
+      "quality_scope": "2K frozen1024-target PPL and 30-task coding subset passed",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 1.00825191491,
+          "perplexity": 2.74080566337,
+          "prefix_tokens": 2048,
+          "decode_only": true
+        },
+        "baseline_perplexity": 2.58948268411,
+        "increase_percent": 5.843753278929897,
+        "identical_to_corrected_baseline_evaluation": true,
+        "perplexity_gate_passed": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": [],
+          "scope": "Frozen HumanEval tasks0..29, standard short prompts; not full164 or long-context coding",
+          "evidence": "build-glm-3070-cuda12/hardware2666-coding30-coalesced/measurement.json"
+        },
+        "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-parts2-coalesced-quality-2k"
+      },
+      "quality_gate": "passed",
+      "reproduction": {
+        "prompt_tokens": 2048,
+        "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+        "executable_sha256": "a1700826ee1510625fb2645983ddc4b5128a706e77523acbb5695261c6accaca",
+        "guard_source_sha256": "6ff93f0ff34cadb2a40fcfdfbf76e5c21077a3363568bd304eb6f1c81b5521a4",
+        "config_sha256": "f90866b31d43eb0edbb0465c5e3927cfa307c3af8156aca69478cb3c323c5137"
+      }
+    },
+    "coalesced_context4096": {
+      "median_decode_tok_s": 16.9208,
+      "median_prefill_tok_s": 484.022,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 111,
+          "MiB": 964.312,
+          "fingerprint": 14875880044821576685
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 1
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 146,
+          "minor": 71457
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 65707
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 65688
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-4k",
+      "quality_gate": "passed",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 1.24973765641,
+          "perplexity": 3.48942740845,
+          "prefix_tokens": 4096,
+          "decode_only": true
+        },
+        "baseline_perplexity": 3.23394307077,
+        "increase_percent": 7.900087666638145,
+        "perplexity_gate_passed": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": [],
+          "scope": "Frozen HumanEval tasks0..29, standard short prompts; not full164 or long-context coding",
+          "evidence": "build-glm-3070-cuda12/hardware2666-coding30-coalesced-4k/measurement.json"
+        },
+        "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-quality-4k"
+      },
+      "reproduction": {
+        "prompt_tokens": 4096,
+        "prompt_sha256": "0ece8b433ccdccf16e7fe50753a6b0cd06c8381000fb1938f1f93e848496929f",
+        "executable_sha256": "d0ade8e608fe0a56c49c4218fa1802c741896bf4b6e1913115b9d0af177d4dcf",
+        "guard_source_sha256": "6ff93f0ff34cadb2a40fcfdfbf76e5c21077a3363568bd304eb6f1c81b5521a4",
+        "config_sha256": "613a30977b3bc6447c4cd9dc2c84aa5947de3ebbe434d40e36389e373bf68277"
+      }
+    },
+    "coalesced_context8192": {
+      "median_decode_tok_s": 17.2223,
+      "median_prefill_tok_s": 478.215,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 101,
+          "MiB": 877.438,
+          "fingerprint": 17524137781667616616
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 131074
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 131377
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 131074
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-8k",
+      "saved_logits_identical_to_parts2_tight64": true,
+      "quality_gate": "passed",
+      "quality": {
+        "evaluation": {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 0.809757970771,
+          "perplexity": 2.24736399307,
+          "prefix_tokens": 8192,
+          "decode_only": true
+        },
+        "baseline_perplexity": 2.1056866297,
+        "increase_percent": 6.728321364237599,
+        "perplexity_gate_passed": true,
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "new_failures": [],
+          "scope": "Frozen HumanEval tasks0..29, standard short prompts; not full164 or long-context coding",
+          "evidence": "build-glm-3070-cuda12/hardware2666-coding30-coalesced-8k/measurement.json"
+        },
+        "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-quality-8k"
+      },
+      "reproduction": {
+        "prompt_tokens": 8192,
+        "prompt_sha256": "73e2451f7420ffe3437240509fa6b81d2d7f870fc5412d7df7d1dd333c398ef4",
+        "executable_sha256": "d0ade8e608fe0a56c49c4218fa1802c741896bf4b6e1913115b9d0af177d4dcf",
+        "guard_source_sha256": "6ff93f0ff34cadb2a40fcfdfbf76e5c21077a3363568bd304eb6f1c81b5521a4",
+        "config_sha256": "b673cb55db4644d306265abce4e4f823d6956efd37310619f7241b6facdbaae8"
+      }
+    },
+    "coalesced_early_route_context2048": {
+      "median_decode_tok_s": 19.4644,
+      "median_prefill_tok_s": 418.033,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-early-route-2k",
+      "saved_logits_identical_to_coalesced": true,
+      "prefill_gain_percent": 1.5407223882047294,
+      "quality_scope": "Saved logits comparison only; independent PPL/coding not yet rerun",
+      "reproduction": {
+        "prompt_tokens": 2048,
+        "prompt_sha256": "99bdee13d7180bd4a6990f0f05a05e2ecc1af60a6d2cc79979f9dd13715fd3ba",
+        "executable_sha256": "d0ade8e608fe0a56c49c4218fa1802c741896bf4b6e1913115b9d0af177d4dcf",
+        "guard_source_sha256": "6ff93f0ff34cadb2a40fcfdfbf76e5c21077a3363568bd304eb6f1c81b5521a4",
+        "config_sha256": "60e650926b38cce234237e34e6dc4419988a4785620f7a2bf52b4a4437e2db5f"
+      }
+    },
+    "coalesced_threads16_context2048": {
+      "median_prefill_tok_s": 413.104,
+      "median_decode_tok_s": 19.2572,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-t16-2k",
+      "saved_logits_identical_to_coalesced": true,
+      "reason": "16 workers slower than 10"
+    },
+    "coalesced_task3_context2048": {
+      "median_prefill_tok_s": 412.423,
+      "median_decode_tok_s": 19.4987,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-task3-2k",
+      "saved_logits_identical_to_coalesced": true,
+      "reason": "Only0.20%decodegain; not a meaningful improvement"
+    },
+    "coalesced_task4_context2048": {
+      "median_prefill_tok_s": 412.721,
+      "median_decode_tok_s": 19.4676,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-task4-2k",
+      "saved_logits_identical_to_coalesced": true,
+      "reason": "No meaningful gain from four work items per worker"
+    }
+  },
+  "prefill_layer_diagnostic": {
+    "layers": [
+      {
+        "layer": 0,
+        "mixer_ms": 156.927,
+        "ffn_ms": 27.0639
+      },
+      {
+        "layer": 1,
+        "mixer_ms": 34.8617,
+        "ffn_ms": 27.224
+      },
+      {
+        "layer": 2,
+        "mixer_ms": 34.8731,
+        "ffn_ms": 27.2011
+      },
+      {
+        "layer": 3,
+        "mixer_ms": 129.923,
+        "ffn_ms": 101.677
+      },
+      {
+        "layer": 4,
+        "mixer_ms": 34.2031,
+        "ffn_ms": 64.557
+      },
+      {
+        "layer": 5,
+        "mixer_ms": 35.1486,
+        "ffn_ms": 64.7117
+      },
+      {
+        "layer": 6,
+        "mixer_ms": 34.7932,
+        "ffn_ms": 64.2798
+      },
+      {
+        "layer": 7,
+        "mixer_ms": 86.8727,
+        "ffn_ms": 64.4476
+      },
+      {
+        "layer": 8,
+        "mixer_ms": 35.6385,
+        "ffn_ms": 63.7909
+      },
+      {
+        "layer": 9,
+        "mixer_ms": 35.1409,
+        "ffn_ms": 65.0279
+      },
+      {
+        "layer": 10,
+        "mixer_ms": 35.4579,
+        "ffn_ms": 65.1727
+      },
+      {
+        "layer": 11,
+        "mixer_ms": 87.9489,
+        "ffn_ms": 64.9926
+      },
+      {
+        "layer": 12,
+        "mixer_ms": 36.1393,
+        "ffn_ms": 65.659
+      },
+      {
+        "layer": 13,
+        "mixer_ms": 35.4092,
+        "ffn_ms": 63.7594
+      },
+      {
+        "layer": 14,
+        "mixer_ms": 35.8868,
+        "ffn_ms": 65.3308
+      },
+      {
+        "layer": 15,
+        "mixer_ms": 86.9596,
+        "ffn_ms": 65.5001
+      },
+      {
+        "layer": 16,
+        "mixer_ms": 35.8704,
+        "ffn_ms": 64.5852
+      },
+      {
+        "layer": 17,
+        "mixer_ms": 35.4958,
+        "ffn_ms": 64.785
+      },
+      {
+        "layer": 18,
+        "mixer_ms": 36.0982,
+        "ffn_ms": 65.1536
+      },
+      {
+        "layer": 19,
+        "mixer_ms": 87.3182,
+        "ffn_ms": 63.8508
+      },
+      {
+        "layer": 20,
+        "mixer_ms": 36.2635,
+        "ffn_ms": 65.649
+      },
+      {
+        "layer": 21,
+        "mixer_ms": 36.5263,
+        "ffn_ms": 65.794
+      },
+      {
+        "layer": 22,
+        "mixer_ms": 35.8498,
+        "ffn_ms": 64.5566
+      },
+      {
+        "layer": 23,
+        "mixer_ms": 87.365,
+        "ffn_ms": 65.7647
+      },
+      {
+        "layer": 24,
+        "mixer_ms": 36.398,
+        "ffn_ms": 66.5135
+      },
+      {
+        "layer": 25,
+        "mixer_ms": 36.6073,
+        "ffn_ms": 65.2349
+      },
+      {
+        "layer": 26,
+        "mixer_ms": 35.9982,
+        "ffn_ms": 64.8473
+      },
+      {
+        "layer": 27,
+        "mixer_ms": 86.8962,
+        "ffn_ms": 64.9917
+      },
+      {
+        "layer": 28,
+        "mixer_ms": 91.3971,
+        "ffn_ms": 73.4139
+      },
+      {
+        "layer": 29,
+        "mixer_ms": 81.7141,
+        "ffn_ms": 74.995
+      },
+      {
+        "layer": 30,
+        "mixer_ms": 81.6906,
+        "ffn_ms": 74.2547
+      },
+      {
+        "layer": 31,
+        "mixer_ms": 127.893,
+        "ffn_ms": 78.0163
+      },
+      {
+        "layer": 32,
+        "mixer_ms": 87.429,
+        "ffn_ms": 78.245
+      },
+      {
+        "layer": 33,
+        "mixer_ms": 84.9298,
+        "ffn_ms": 87.5835
+      },
+      {
+        "layer": 34,
+        "mixer_ms": 85.291,
+        "ffn_ms": 78.0834
+      },
+      {
+        "layer": 35,
+        "mixer_ms": 127.659,
+        "ffn_ms": 75.8188
+      },
+      {
+        "layer": 36,
+        "mixer_ms": 89.5508,
+        "ffn_ms": 76.242
+      },
+      {
+        "layer": 37,
+        "mixer_ms": 87.0489,
+        "ffn_ms": 78.577
+      },
+      {
+        "layer": 38,
+        "mixer_ms": 89.4411,
+        "ffn_ms": 76.7668
+      },
+      {
+        "layer": 39,
+        "mixer_ms": 128.248,
+        "ffn_ms": 74.7125
+      },
+      {
+        "layer": 40,
+        "mixer_ms": 91.389,
+        "ffn_ms": 78.6227
+      },
+      {
+        "layer": 41,
+        "mixer_ms": 89.0585,
+        "ffn_ms": 77.3902
+      },
+      {
+        "layer": 42,
+        "mixer_ms": 90.1842,
+        "ffn_ms": 91.499
+      },
+      {
+        "layer": 43,
+        "mixer_ms": 133.501,
+        "ffn_ms": 78.7813
+      },
+      {
+        "layer": 44,
+        "mixer_ms": 92.3846,
+        "ffn_ms": 80.6451
+      }
+    ],
+    "mixer_ms": 3181.6801,
+    "ffn_ms": 3075.769,
+    "caveat": "Single cold profiled prefill, per-layer synchronization; not a throughput qualification, includes page faults."
+  },
+  "nsight_prefill": {
+    "kernel_total_ms": 4043.811751,
+    "expert_mmq_ms": 1346.82403,
+    "kda_recurrence_ms": 187.274006,
+    "h2d_ms": 2956.019346,
+    "scope": "One cold 2K prefill captured with cudaProfilerApi; overlapping kernel/copy durations must not be added as wall time; zero swap, 55.8G peak service memory",
+    "next_experiment": "Cap MMQ heuristic ncols_opt at 64 while retaining full ncols_max coverage",
+    "overlap_ms": 1235.05241
+  },
+  "latest_source_snapshot": {
+    "path": "build-glm-3070-cuda12/cleanup-final-source.patch",
+    "sha256": "a7a540ddf803274267a43061bef57cb6e8e4dde4462ac3c1b8d3caffa680fdaf",
+    "decoder_sha256": "7742851cff2c84e0cea92eeaec5db9d2756f784832a4f70b81b9dbad0e5782e8",
+    "note": "Cleaned CUDA implementation; unused experimental branches removed. Snapshot predates final documentation edits."
+  },
+  "quality_context4096": {
+    "strict": [
+      {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 1.17370215765,
+        "perplexity": 3.23394307077,
+        "prefix_tokens": 4096,
+        "decode_only": true
+      }
+    ],
+    "strict_complete_clean": true,
+    "corpus_metadata": {
+      "construction": "First 5121 tokens of the frozen 8192-prefix quality sequence; 4096 prefix and 1024 decode targets",
+      "source": "goal20-quality-context8192.ids",
+      "source_sha256": "54e1a81b54d9d3360b225084a41dd1ab279e75c237410b254312cacefa996f38",
+      "tokens": 5121,
+      "sha256": "6367560383fc91a84b29c19b36a747c7de7b37c59b03f3e29464a1e7f229ebdb"
+    },
+    "candidate_gate": "finished",
+    "coding_gate": "failed",
+    "candidate": [
+      {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 1.2519121009,
+        "perplexity": 3.49702323001,
+        "prefix_tokens": 4096,
+        "decode_only": true
+      }
+    ],
+    "candidate_complete_clean": true,
+    "perplexity_increase_percent": 8.13496568996066,
+    "perplexity_gate_passed": true,
+    "coding": {
+      "tasks": 30,
+      "passed": 29,
+      "new_failures": [
+        "HumanEval/10"
+      ],
+      "scope": "HumanEval tasks0..29, standard prompts with context8192/B4096 configuration"
+    }
+  },
+  "huge_page_probe": {
+    "collapse": [
+      {
+        "kind": "file_readonly",
+        "advice": 0,
+        "collapse_rc": -1,
+        "errno": 22,
+        "anon_huge_kib": 0
+      },
+      {
+        "kind": "file_private_cow",
+        "advice": 0,
+        "collapse_rc": -1,
+        "errno": 22,
+        "anon_huge_kib": 0
+      },
+      {
+        "kind": "anonymous",
+        "advice": 0,
+        "collapse_rc": 0,
+        "errno": 0,
+        "anon_huge_kib": 16384
+      }
+    ],
+    "cuda_registration": {
+      "anonymous_huge": true,
+      "huge_kib_before": 16384,
+      "register_mib": 16,
+      "gpu_mib": 8,
+      "register_seconds": 0.0004518059995461954,
+      "huge_kib_registered": 16384,
+      "copy_seconds": 0.0003480260002106661,
+      "registered_copy_identical": true,
+      "unregistered_copy_identical": true,
+      "huge_kib_after_unregister": 16384
+    },
+    "scope": "16MiB probe only; no model-scale huge-page implementation or throughput measurement yet"
+  },
+  "latest_regression_tests": {
+    "passed": 10,
+    "failed": [],
+    "skipped": [
+      "q23_pool_test",
+      "flow_pool_test",
+      "numa_pool_test"
+    ],
+    "python_harness_tests_passed": 13,
+    "cuda_build": "passed",
+    "hip_build": "not run: toolchain unavailable",
+    "sycl_build": "not applicable: GLM runner not wired to SYCL target",
+    "evidence": "build-glm-3070-cuda12/cleanup-final-ctest.log"
+  },
+  "kda_rounding_fix": {
+    "root_cause": "Original column kernel contracts old_state*decay + rounded(key*delta); ordered path instead rounded old_state*decay then contracted key*delta + rounded_decay.",
+    "fix": "Preserve undecayed ordered state; explicit rounded decay for memory dot, explicit FMA(old_state,decay,rounded(key*delta)) for update.",
+    "default_column_kernel_changed": false,
+    "strict_bitwise_test": "passed",
+    "full_model_gate": "passed matched2K PPL and30-task coding subset"
+  },
+  "nsight_prefill_corrected": {
+    "kernel_union_ms": 4290.511661,
+    "copy_union_ms": 2554.901336,
+    "kernel_copy_union_ms": 5334.294964,
+    "overlap_ms": 1511.1180329999997,
+    "span_ms": 5586.011728,
+    "kda_ms": 359.15041,
+    "kda_registers_per_thread": 94,
+    "kda_grid": [
+      64,
+      4
+    ],
+    "kda_block_threads": 128,
+    "older_kda_ms": 187.274006,
+    "older_kda_registers_per_thread": 78,
+    "scope": "Diagnostic capture after one untimed prefill. Profiled timing has instrumentation overhead; not throughput qualification. Wrapper PID does not account child GPU/RSS directly, but global GPU512MiB reserve and cgroup56GiB/swap0 limits remained enforced. Benchmark wrapper marked incomplete/unclean due child process accounting; underlying profiler/engine exited0 and trace exported successfully.",
+    "evidence_stem": "build-glm-3070-cuda12/hardware2666-kda-corrected-prefill-nsys",
+    "next_experiment": "Two ordered KDA row partitions to improve residency while retaining exact contraction and FP32 order"
+  },
+  "kda_parts2": {
+    "parity": "passed strict original-reference bits for2and4parts, prepared/unprepared, tokens1/9/64/129/8192",
+    "registers_per_thread": 128,
+    "threads_per_block": 64,
+    "local_memory_bytes": 0,
+    "four_part_registers_per_thread": 96,
+    "four_part_threads_per_block": 128,
+    "measurement": "clean2K benchmark394.906prefill/19.4522decode,saved logits identical",
+    "column_tile_regression": "rebuilt glm_kda_column_tiles_parity passed; evidence hardware2666-kda-parts2-column-parity.log"
+  },
+  "updated_utc": "2026-10-11T20:39:14.938935+00:00",
+  "route_mass_restoration": {
+    "env": "STRATA_GLM_ROUTE_RESTORE_MASS",
+    "range": "0..1, default0",
+    "semantics": "Restore selected fraction of pruned total weight across survivors, preserve zero mask; no-op when none/all pruned or pruningdisabled",
+    "unit_tests": "CPU reference weights, sum conservation/blending, ids/zero masks, serial/warp/batched/mailbox cases passed",
+    "model_gate": "rejected: completed 30-task coding subset has new failures",
+    "default_off_parity": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-restore-off-parity-2k",
+      "complete": true,
+      "clean": true,
+      "median_decode_tok_s": 19.4485,
+      "median_prefill_tok_s": 392.966,
+      "saved_logits_identical_to": "hardware2666-kda-parts2-2k",
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "minimum_gpu_free_mib": 562,
+      "swap_bytes": 0
+    },
+    "quality": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-restore1-prune010-quality-2k",
+      "evaluation": {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 0.995832714243,
+        "perplexity": 2.70697754177,
+        "prefix_tokens": 2048,
+        "decode_only": true
+      },
+      "baseline_perplexity": 2.58948268411,
+      "increase_percent": 4.537387269704141,
+      "perplexity_gate_passed": true,
+      "coding": {
+        "tasks": 30,
+        "passed": 29,
+        "new_failures": [
+          "HumanEval/10"
+        ],
+        "scope": "Frozen HumanEval tasks0..29, unchanged evaluator, standard short prompts; not full164",
+        "evidence": "build-glm-3070-cuda12/hardware2666-coding30-restore1-prune010/measurement.json"
+      }
+    },
+    "performance": {
+      "median_decode_tok_s": 19.1537,
+      "median_prefill_tok_s": 394.208,
+      "decode": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 6636.17,
+          "tokens_per_second": 19.1376
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 6628.43,
+          "tokens_per_second": 19.1599
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 6630.56,
+          "tokens_per_second": 19.1537
+        }
+      ],
+      "prefill": [
+        {
+          "trial": 0,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 5473.7,
+          "tokens_per_second": 374.153
+        },
+        {
+          "trial": 1,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 5182.47,
+          "tokens_per_second": 395.178
+        },
+        {
+          "trial": 2,
+          "tokens": 2048,
+          "batch": 2048,
+          "milliseconds": 5195.23,
+          "tokens_per_second": 394.208
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 154,
+          "minor": 37962
+        },
+        {
+          "trial": 1,
+          "major": 1,
+          "minor": 33024
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32958
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-restore1-prune010-2k",
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "reason": "Below20 tok/s and failed coding gate"
+    }
+  },
+  "half_vector_gather": {
+    "env": "STRATA_GLM_MLA_HALF_VECTOR_GATHER",
+    "default": 0,
+    "semantics": "Float4 loads, four identical scalar FP16 roundings, uint2 stores, 128-thread CTA; fallback for unaligned or non-multiple-of-four latent geometry",
+    "tests": "Bitwise independent gather/reference conversion, signed zero, subnormal, rounding boundary, infinity/NaN, empty/partial/full rows, invalid masked ids, 7/32/512/520 latent sizes, aligned/unaligned fallback and output guards passed",
+    "benchmark": {
+      "median_decode_tok_s": 19.4342,
+      "median_prefill_tok_s": 411.732,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "saved_logits_identical_to_coalesced": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-half4-2k",
+      "reason": "No material gain from packed half gather; retain coalesced-only candidate"
+    },
+    "hip": "not tested: toolchain unavailable"
+  },
+  "prefill_route_pruning": {
+    "env": "STRATA_GLM_PREFILL_ROUTE_MIN_SHARE",
+    "range": "0..0.125, default0",
+    "status": "PPL passed; coding and skip-unused upload test pending",
+    "scope": "single GPU, GGUF including Q23 assembly, top-k8 prefill; independent of decode pruning",
+    "semantics": "Zero low-weight routes without renormalization, keep original IDs for cache learning, separate masked grouping IDs, initialize omitted result slots before unchanged ordered sum",
+    "quality": "not tested; prepared .085 candidate is unrun",
+    "pending_source_snapshot": {
+      "path": "build-glm-3070-cuda12/hardware2666-source-unbuilt-20261011-161351.patch",
+      "sha256": "f02d381e59e58be4dd58fec3ccc425043d75a50793eea7c50218dd4335c793da",
+      "built": false
+    },
+    "default_off_parity": {
+      "median_decode_tok_s": 19.4458,
+      "median_prefill_tok_s": 417.668,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "saved_logits_identical": true,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-prefill-prune-off-parity-2k"
+    },
+    "first_attempt": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-prefill-prune0085-2k",
+      "complete": false,
+      "clean": false,
+      "exit_code": 1,
+      "reason": "Validation incorrectly rejected supported assembled GGUF because has_expert_pack includes assemblies; no timings recorded",
+      "fix": "Allow GGUF assemblies; initialize full destination/source index arrays before masked grouping to retain safe padding"
+    },
+    "performance0085": {
+      "median_decode_tok_s": 19.1122,
+      "median_prefill_tok_s": 427.779,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 12716177367021883619
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-prefill-prune0085-2k-r2",
+      "prefill_gain_percent": 2.4208222798969503,
+      "quality_gate": "pending; decode regressed",
+      "route_stats": [
+        {
+          "min_share": 0.085,
+          "total": 1376256,
+          "pruned": 620736,
+          "pruned_fraction": 0.45103236607142855
+        },
+        {
+          "min_share": 0.085,
+          "total": 2064384,
+          "pruned": 931104,
+          "pruned_fraction": 0.45103236607142855
+        },
+        {
+          "min_share": 0.085,
+          "total": 2752512,
+          "pruned": 1241472,
+          "pruned_fraction": 0.45103236607142855
+        }
+      ]
+    },
+    "quality0085": {
+      "evaluation": {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 1.03270108396,
+        "perplexity": 2.80864197597,
+        "prefix_tokens": 2048,
+        "decode_only": true
+      },
+      "baseline_perplexity": 2.58948268411,
+      "increase_percent": 8.46343917280623,
+      "perplexity_gate_passed": true,
+      "coding": "not run",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-prefill-prune0085-quality-2k"
+    },
+    "skip_unused_performance": {
+      "median_decode_tok_s": 19.1277,
+      "median_prefill_tok_s": 433.525,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 12716177367021883619
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 4
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-prefill-prune0085-skip-2k",
+      "saved_logits_identical_to_prune0085": true,
+      "prefill_gain_over_qualified_coalesced_percent": 5.303747965702343,
+      "quality_scope": "REJECTED: new coding failures despite base pruning PPL+8.46344% and identical saved logits with skipped uploads."
+    },
+    "skip_unused_coding": {
+      "tasks_completed": 30,
+      "passed": 28,
+      "new_failures": [
+        "HumanEval/1",
+        "HumanEval/10"
+      ],
+      "status": "complete frozen 30-task subset; REJECTED",
+      "evidence": "build-glm-3070-cuda12/hardware2666-coding30-prefill-prune0085-skip/measurement.json"
+    }
+  },
+  "coalesced_presets": [
+    {
+      "path": "configs/glm53f-reap50-q23-64g-rtx3070-coalesced-2k-experimental.json",
+      "sha256": "f90866b31d43eb0edbb0465c5e3927cfa307c3af8156aca69478cb3c323c5137",
+      "identical_to_measured_config": "build-glm-3070-cuda12/hardware2666-kda-parts2-coalesced-2k.json"
+    },
+    {
+      "path": "configs/glm53f-reap50-q23-64g-rtx3070-coalesced-4k-experimental.json",
+      "sha256": "613a30977b3bc6447c4cd9dc2c84aa5947de3ebbe434d40e36389e373bf68277",
+      "identical_to_measured_config": "build-glm-3070-cuda12/hardware2666-coalesced-4k.json"
+    },
+    {
+      "path": "configs/glm53f-reap50-q23-64g-rtx3070-coalesced-8k-experimental.json",
+      "sha256": "b673cb55db4644d306265abce4e4f823d6956efd37310619f7241b6facdbaae8",
+      "identical_to_measured_config": "build-glm-3070-cuda12/hardware2666-coalesced-8k.json"
+    }
+  ],
+  "q8_scratch_release": {
+    "status": "Unselected: extra cache regressed decode. Fixed120-slot saved-logit parity and repeated request resets passed; retains memory saving but no throughput gain.",
+    "env": "STRATA_GLM_RELEASE_Q8_SCRATCH=1",
+    "rationale": "Release FP32 expansions after prefill for Q8-all decode; restore before next prefill. Original weights and arithmetic unchanged; cache changes still need quality validation.",
+    "performance": {
+      "median_prefill_tok_s": 417.755,
+      "median_decode_tok_s": 19.1237,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 127,
+          "MiB": 1103.31,
+          "fingerprint": 6984388874500316253
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-release-q8-2k",
+      "released_bytes": 68681728,
+      "quality_gate": "not run: no gain",
+      "saved_logits_identical_to_early_route": false
+    },
+    "fixed120_parity": {
+      "median_prefill_tok_s": 417.929,
+      "median_decode_tok_s": 19.4445,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-release-q8-fixed120-2k",
+      "saved_logits_identical_to_early_route": true
+    }
+  },
+  "active_mla_stride": {
+    "status": "Qualified 2K prefill/decode tradeoff on frozen scope; target20/500 unmet. Larger-context qualification pending.",
+    "env": "STRATA_GLM_MLA_ACTIVE_STRIDE=1",
+    "scope": "FP16 prefill only, no sequence multiplexing or device-position decode. Preserve selection order; reduced padded GEMM dimensions may change rounding.",
+    "test_evidence": "build-glm-3070-cuda12/hardware2666-active-mla-stride-ctest.log",
+    "profile_rationale": "Prior corrected Nsight capture: half gather205.28ms, attention FP16 batched products156.16+140.50ms, softmax46.62ms. Active stride may reduce padded work; these are historical diagnostic kernel sums, not a prediction or new timing.",
+    "performance": {
+      "median_prefill_tok_s": 435.918,
+      "median_decode_tok_s": 19.0303,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 1999080624101407259
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-mla-stride-2k",
+      "prefill_gain_over_qualified_coalesced_percent": 5.88501056620272,
+      "saved_logits_identical_to_early_route": false,
+      "quality_gate_passed": true
+    },
+    "quality": {
+      "evaluation": {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 1.00921398428,
+        "perplexity": 2.74344377738,
+        "prefix_tokens": 2048,
+        "decode_only": true
+      },
+      "baseline_perplexity": 2.58948268411,
+      "increase_percent": 5.945631311410615,
+      "perplexity_gate_passed": true,
+      "coding": "30/30 frozen short prompts",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-mla-stride-quality-2k"
+    },
+    "coding": {
+      "tasks_completed": 30,
+      "passed": 30,
+      "new_failures": [],
+      "status": "complete frozen30 subset",
+      "evidence": "build-glm-3070-cuda12/hardware2666-coding30-active-mla-stride/measurement.json"
+    },
+    "reproducibility": "Observed30/30 andPPLpass remain recorded, but repeated prefill changed cache fingerprint1999080624101407259->13634525096588072487. Existing harness only compares decode replay, not independent prefill. Investigatingstablegrouping; keep experimental."
+  },
+  "prefill_dense_pin": {
+    "status": "PPL passed, coding pending. Prefill direct parity differs(relativeL2.0595); repeated baseline cache differs from previousrun. Stable route grouping hypothesis being tested before promotion.",
+    "env": "STRATA_GLM_PREFILL_PIN_PERCENT=90",
+    "rationale": "Increase fixed dense subset from original two-thirds threshold; allocator and active-layer protection remain enforced. Header-only estimate for2K:3746.95MiB pinned/349.05MiB free, maxdense layer176.94MiB; actual residency not yet measured.",
+    "performance": {
+      "median_prefill_tok_s": 448.942,
+      "median_decode_tok_s": 18.6695,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 13634525096588072487
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 32774
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 32920
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32921
+        }
+      ],
+      "complete": true,
+      "clean": true,
+      "selected": false,
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-stride-pin90-2k",
+      "pinned_mib": 3746.95,
+      "saved_logits_identical_to_active_stride": false,
+      "prefill_gain_percent": 2.987717873545015
+    },
+    "quality": {
+      "evaluation": {
+        "sequence": 1,
+        "tokens": 1024,
+        "nll": 1.00789374178,
+        "perplexity": 2.73982415622,
+        "prefix_tokens": 2048,
+        "decode_only": true
+      },
+      "baseline_perplexity": 2.58948268411,
+      "increase_percent": 5.805849679264097,
+      "perplexity_gate_passed": true,
+      "coding": "pending",
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-stride-pin90-quality-2k"
+    },
+    "prefill_parity": {
+      "comparison": {
+        "identical": false,
+        "max_abs": 0.687910795211792,
+        "relative_l2": 0.0595055236693653,
+        "top1": [
+          11,
+          11
+        ]
+      },
+      "evidence_stems": [
+        "build-glm-3070-cuda12/hardware2666-active-mla-stride-prefill-parity-2k",
+        "build-glm-3070-cuda12/hardware2666-active-stride-pin90-prefill-parity-2k"
+      ],
+      "scope": "Prefill logits before generation,3prefill trials then2generatedtokens. Not a decode throughput qualification."
+    },
+    "stable_grouping_diagnostic": {
+      "comparison": {
+        "identical": false,
+        "max_abs": 0.4823188781738281,
+        "relative_l2": 0.04283622793884031,
+        "top1": [
+          11,
+          11
+        ]
+      },
+      "runs": [
+        {
+          "median_decode_tok_s": 18.6755,
+          "median_prefill_tok_s": 437.501,
+          "decode_cache": [
+            {
+              "prefix_trained": 1,
+              "slots": 120,
+              "MiB": 1042.5,
+              "fingerprint": 15649196710087483901
+            }
+          ],
+          "decode_page_faults": [
+            {
+              "trial": 0,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 0
+            }
+          ],
+          "complete": true,
+          "clean": true,
+          "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-stride-stable-2k"
+        },
+        {
+          "median_decode_tok_s": 18.9499,
+          "median_prefill_tok_s": 448.993,
+          "decode_cache": [
+            {
+              "prefix_trained": 1,
+              "slots": 120,
+              "MiB": 1042.5,
+              "fingerprint": 9496028311145540735
+            }
+          ],
+          "decode_page_faults": [
+            {
+              "trial": 0,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 0
+            }
+          ],
+          "complete": true,
+          "clean": true,
+          "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-stride-pin90-stable-2k"
+        }
+      ],
+      "conclusion": "Stable grouping did not remove the prefill difference; root cause unresolved. Not selected."
+    },
+    "workspace_diagnostic": {
+      "status": "complete",
+      "setting": "CUBLAS_WORKSPACE_CONFIG=:4096:8 plus STABLE_ROUTES1",
+      "hypothesis": "NVIDIA documents that active concurrent streams can change internal workspace selection and implementation; fixed workspace is a diagnostic, not an established cause.",
+      "source": "https://docs.nvidia.com/cuda/archive/12.4.1/cublas/index.html#results-reproducibility",
+      "runs": [
+        {
+          "median_decode_tok_s": 18.5381,
+          "median_prefill_tok_s": 437.309,
+          "decode_cache": [
+            {
+              "prefix_trained": 1,
+              "slots": 116,
+              "MiB": 1007.75,
+              "fingerprint": 10617114914865242490
+            }
+          ],
+          "decode_page_faults": [
+            {
+              "trial": 0,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 0
+            }
+          ],
+          "complete": true,
+          "clean": true,
+          "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-stable-ws4m-2k"
+        },
+        {
+          "median_decode_tok_s": 18.1664,
+          "median_prefill_tok_s": 450.311,
+          "decode_cache": [
+            {
+              "prefix_trained": 1,
+              "slots": 116,
+              "MiB": 1007.75,
+              "fingerprint": 18230821051133670001
+            }
+          ],
+          "decode_page_faults": [
+            {
+              "trial": 0,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 0
+            }
+          ],
+          "complete": true,
+          "clean": true,
+          "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-pin90-stable-ws4m-2k"
+        }
+      ],
+      "prefill_logits_identical": false,
+      "prefill_logits_max_abs": 0.7163505554199219,
+      "prefill_logits_relative_l2": 0.054456256330013275,
+      "conclusion": "Fixed cuBLAS workspace plus stable grouping did not remove the cross-configuration prefill difference. Root cause unresolved; not selected."
+    }
+  },
+  "prefill_repeat_validation": {
+    "status": "Softmax race fixed and validated. Corrected active+pin90 passed all independent prefill repeats, matched PPL+5.95%, and30/30coding; qualified2K prefill/decode tradeoff. Coalesced control logits unchanged.",
+    "cli": "--check-prefill-repeats",
+    "config": "check_prefill_repeats=true",
+    "scope": "Compare independent repeated prefill logits bitwise and full route-count vectors to untimed warmup, outside timing/fault accounting. Reject missing/incomplete/mismatched records. Opt-in; existing behavior unchanged.",
+    "source_snapshot": {
+      "path": "build-glm-3070-cuda12/hardware2666-source-20261011-173724.patch",
+      "sha256": "82640c534e5410d943383dfb9658425a002cb555faef7630ab00d1c9ce3591e1"
+    },
+    "control": {
+      "median_decode_tok_s": 19.4755,
+      "median_prefill_tok_s": 411.796,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 1,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 2,
+          "logits_identical": 1,
+          "routes_identical": 1
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 147,
+          "minor": 38495
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 32925
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-repeatcheck-2k",
+      "clean": true,
+      "complete": true,
+      "prefill_trials_identical": true
+    },
+    "active_stride": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-repeatcheck-2k",
+      "clean": false,
+      "complete": false,
+      "prefill_trials_identical": false,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 0,
+          "routes_identical": 0
+        }
+      ],
+      "conclusion": "Failed first independent repeat against warmup with stable route grouping and fixed cuBLAS workspace; no qualified throughput from this aborted diagnostic."
+    },
+    "no_early_sync": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-repeatcheck-noearly-2k",
+      "clean": false,
+      "complete": false,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 0,
+          "routes_identical": 0
+        }
+      ],
+      "conclusion": "Removing early route synchronization did not resolve the independent prefill mismatch."
+    },
+    "serialized_cuda": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-active-repeatcheck-blocking-2k",
+      "clean": false,
+      "complete": false,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 0,
+          "routes_identical": 0
+        }
+      ],
+      "conclusion": "CUDA_LAUNCH_BLOCKING=1 did not resolve the mismatch. Diagnostic only; no throughput qualification."
+    },
+    "softmax_race_hypothesis": "Source inspection found missing block barrier between reading shared maximum and reusing reduction storage for sums. New short/full-row CPU-oracle and bitwise-repeat test added but unbuilt while benchmark queue runs; kernel not yet changed.",
+    "softmax_race": {
+      "before": "Focused independent CPU-oracle test failed; CUDA Racecheck exit3 reported shared read/write hazards in softmax. Evidence hardware2666-softmax-before-full-racecheck.log.",
+      "change": "Add block barrier after every warp reads shared maximum and before partial sums overwrite shared reduction storage. Arithmetic order unchanged.",
+      "after": "Focused test passed over12 strides (1..2052),20repeats,masked NaNs and guards. Racecheck reported0hazards/0errors/0warnings. Model repeatability pending.",
+      "evidence": "build-glm-3070-cuda12/hardware2666-softmax-fixed-racecheck.log",
+      "full_suite": "15 passed,3skipped; hardware2666-softmax-fixed-ctest.log. HIP unavailable."
+    },
+    "fixed_control": {
+      "median_decode_tok_s": 19.4601,
+      "median_prefill_tok_s": 412.894,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 1,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 2,
+          "logits_identical": 1,
+          "routes_identical": 1
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 8948226557245781560
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 145,
+          "minor": 38400
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 33415
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 33318
+        }
+      ],
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-softmax-fixed-coalesced-2k",
+      "clean": true,
+      "complete": true,
+      "bitwise_same_as_before_fix": {
+        ".logits.bin": true,
+        ".prefill.logits.bin": true
+      }
+    },
+    "fixed_active_pin90": {
+      "median_decode_tok_s": 18.6593,
+      "median_prefill_tok_s": 448.373,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 1,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 2,
+          "logits_identical": 1,
+          "routes_identical": 1
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 13634525096588072487
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 38,
+          "minor": 33019
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 32921
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 32920
+        }
+      ],
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-softmax-fixed-active-pin90-2k",
+      "clean": true,
+      "complete": true,
+      "quality": {
+        "ppl_evidence_stem": "build-glm-3070-cuda12/hardware2666-softmax-fixed-active-pin90-quality-2k",
+        "perplexity": 2.74344377738,
+        "matched_strict_perplexity": 2.58948268411,
+        "increase_percent": 5.945631311410615,
+        "clean": true,
+        "complete": true,
+        "scored_tokens": 1024,
+        "prefix_tokens": 2048,
+        "coding": {
+          "path": "build-glm-3070-cuda12/hardware2666-coding30-softmax-fixed-active-pin90/measurement.json",
+          "tasks": 30,
+          "passed": 30,
+          "pass_at_1": 1.0,
+          "full_164_complete": false,
+          "scope": "Unchanged HumanEval0..29 short prompts; not long-prefix or full164 evaluation."
+        }
+      }
+    }
+  },
+  "decode_candidate_sweep": {
+    "hardware2666-coalesced-defer3-l10-2k": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-defer3-l10-2k",
+      "clean": true,
+      "complete": true,
+      "decode_tok_s": 19.5363,
+      "prefill_tok_s": 411.812,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "conclusion": "Small timing gain below target and gate threshold; not selected."
+    },
+    "hardware2666-coalesced-heads-blocks-2k": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-heads-blocks-2k",
+      "clean": true,
+      "complete": true,
+      "decode_tok_s": 19.2918,
+      "prefill_tok_s": 413.479,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 1
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "conclusion": "Slower than coalesced control; not selected."
+    },
+    "hardware2666-coalesced-norm-q8-2k": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-norm-q8-2k",
+      "clean": true,
+      "complete": true,
+      "decode_tok_s": 19.1013,
+      "prefill_tok_s": 413.034,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "conclusion": "Slower than coalesced control; not selected."
+    },
+    "hardware2666-coalesced-prune0099-2k": {
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-coalesced-prune0099-2k",
+      "clean": true,
+      "complete": true,
+      "decode_tok_s": 19.5294,
+      "prefill_tok_s": 412.11,
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "conclusion": "Tiny gain below target; higher approximation not selected and no new quality claim."
+    }
+  },
+  "shared_active_prefix_experiment": {
+    "status": "2K performance/repeatability/PPL and30case coding passed; qualified2Ktradeoff",
+    "change": "When existing shared causal-prefix and active-stride flags are combined, limit both attention GEMMs to the active prefix width. Existing default and shared-only path unchanged.",
+    "validation": "Requires fresh benchmark/repeatability/PPL/coding; do not reuse old rejected dense-prefix results.",
+    "benchmark": {
+      "median_decode_tok_s": 19.1376,
+      "median_prefill_tok_s": 469.63,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 1,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 2,
+          "logits_identical": 1,
+          "routes_identical": 1
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 10413857841456050511
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 34003
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 33129
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 33212
+        }
+      ],
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-shared-active-pin90-2k",
+      "clean": true,
+      "complete": true
+    },
+    "quality": {
+      "ppl_evidence_stem": "build-glm-3070-cuda12/hardware2666-shared-active-pin90-quality-2k",
+      "perplexity": 2.74054598392,
+      "matched_strict_perplexity": 2.58948268411,
+      "increase_percent": 5.833725042340654,
+      "clean": true,
+      "complete": true,
+      "scored_tokens": 1024,
+      "prefix_tokens": 2048,
+      "coding": {
+        "path": "build-glm-3070-cuda12/hardware2666-coding30-shared-active-pin90/measurement.json",
+        "tasks": 30,
+        "passed": 30,
+        "pass_at_1": 1.0,
+        "full_164_complete": false,
+        "scope": "Unchanged HumanEval0..29 short prompts; not long-prefix/full164."
+      }
+    },
+    "next_memory_trial": {
+      "status": "prepared,unrun",
+      "scratch_peak_mib": 492.429,
+      "scratch_cap_mib": 512,
+      "dedicated_prefetch_groups": 4,
+      "guard": "56GiBcgroup/swap0/physicalGPUreserve512MiB",
+      "hypothesis": "Reuse unused scratch allocation for dedicated prefetch buffers; no measured gain yet."
+    },
+    "prefetch4": {
+      "median_decode_tok_s": 19.119,
+      "median_prefill_tok_s": 474.135,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 1,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 2,
+          "logits_identical": 1,
+          "routes_identical": 1
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 10413857841456050511
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-shared-active-pin90-pf4-2k",
+      "clean": true,
+      "complete": true,
+      "bitwise_same_as_shared_baseline": {
+        ".logits.bin": true,
+        ".prefill.logits.bin": true
+      },
+      "selected": false,
+      "conclusion": "About0.96%prefill gain, not enough to select; no new quality claim."
+    }
+  },
+  "activation_gate_experiment": {
+    "status": "Neither 25% nor 35% target skip fraction improved decode; unselected, no quality claim.",
+    "calibration_evidence_stem": "build-glm-3070-cuda12/hardware2666-shared-gate-activation-calibration",
+    "calibration_scope": "32generated tokens, one trial, CPU near-zero gate histogram. Instrumented/unwarmed timings are not throughput qualification. Original weights unchanged.",
+    "layers": 42,
+    "mean_calibrated_skip_fraction": 0.2285500546423779,
+    "threshold_sha256": "477e212c20ae1aebbe7b7f707d579ec3e5b06dc1a1280c8b20b07d8e6946f2dc",
+    "threshold_path": "build-glm-3070-cuda12/hardware2666-shared-gate25-thresholds.json",
+    "min_tau": 0.03716272234383503,
+    "max_tau": 0.125,
+    "first_benchmark": {
+      "median_decode_tok_s": 19.0644,
+      "median_prefill_tok_s": 469.896,
+      "prefill_repeat": [
+        {
+          "trial": 0,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 1,
+          "logits_identical": 1,
+          "routes_identical": 1
+        },
+        {
+          "trial": 2,
+          "logits_identical": 1,
+          "routes_identical": 1
+        }
+      ],
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 10413857841456050511
+        }
+      ],
+      "decode_page_faults": [
+        {
+          "trial": 0,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 1,
+          "major": 0,
+          "minor": 0
+        },
+        {
+          "trial": 2,
+          "major": 0,
+          "minor": 0
+        }
+      ],
+      "evidence_stem": "build-glm-3070-cuda12/hardware2666-shared-gate25-2k",
+      "clean": true,
+      "complete": true,
+      "selected": false,
+      "conclusion": "No speedup versus sharedbaseline; no quality claim."
+    },
+    "silu_reuse": {
+      "change": "For CPU Q23 gate skipping only, compute canonical SiLU once and reuse it for the up-row predicate and SwiGLU output. Helpers remain in the ffp-contract=off translation unit. Skip0 retains the original path.",
+      "validation": "CPU random/boundary/signedzero/equal-or-adjacent-threshold bit tests and GPU Q23 parity passed. FullGLM suite15passed/3skipped; hardware2666-silu-reuse-ctest.log. HIP unavailable.",
+      "status": "Passed model output-bit comparison; no throughput improvement measured",
+      "benchmark": {
+        "median_decode_tok_s": 19.0489,
+        "median_prefill_tok_s": 469.814,
+        "prefill_repeat": [
+          {
+            "trial": 0,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 1,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 2,
+            "logits_identical": 1,
+            "routes_identical": 1
+          }
+        ],
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 120,
+            "MiB": 1042.5,
+            "fingerprint": 10413857841456050511
+          }
+        ],
+        "decode_page_faults": [
+          {
+            "trial": 0,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 1,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 2,
+            "major": 0,
+            "minor": 0
+          }
+        ],
+        "evidence_stem": "build-glm-3070-cuda12/hardware2666-shared-gate25-silu-reuse-2k",
+        "clean": true,
+        "complete": true,
+        "bitwise_same_as_before": {
+          ".logits.bin": true,
+          ".prefill.logits.bin": true
+        },
+        "selected": false
+      }
+    },
+    "fraction35": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-gate35-2k.result.json",
+      "clean": true,
+      "median_decode_tok_s": 19.1278,
+      "median_prefill_tok_s": 469.669,
+      "prefill_trials_identical": true,
+      "selected": false
+    }
+  },
+  "shared_compact_prefetch4": {
+    "status": "4K and 8K qualified under matched PPL and frozen 30-case coding gates",
+    "runs": {
+      "4k": {
+        "started_utc": "2026-10-11T18:58:33.829949+00:00",
+        "complete": true,
+        "clean": true,
+        "measurements": {
+          "prefill": [
+            {
+              "trial": 0,
+              "tokens": 4096,
+              "batch": 4096,
+              "milliseconds": 8086.35,
+              "tokens_per_second": 506.533
+            },
+            {
+              "trial": 1,
+              "tokens": 4096,
+              "batch": 4096,
+              "milliseconds": 8087.03,
+              "tokens_per_second": 506.49
+            },
+            {
+              "trial": 2,
+              "tokens": 4096,
+              "batch": 4096,
+              "milliseconds": 8091.18,
+              "tokens_per_second": 506.23
+            }
+          ],
+          "decode": [
+            {
+              "kind": "single",
+              "tokens": 127,
+              "milliseconds": 7503.59,
+              "tokens_per_second": 16.9252
+            },
+            {
+              "kind": "single",
+              "tokens": 127,
+              "milliseconds": 7514.87,
+              "tokens_per_second": 16.8998
+            },
+            {
+              "kind": "single",
+              "tokens": 127,
+              "milliseconds": 7539.82,
+              "tokens_per_second": 16.8439
+            }
+          ],
+          "cpu_expert": [
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 5905.2,
+              "bytes": 213918482432
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 5915.08,
+              "bytes": 213918482432
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 5940.24,
+              "bytes": 213918482432
+            }
+          ],
+          "mtp_timing": [],
+          "mtp_positions": [],
+          "step_trace": [],
+          "decode_cache": [
+            {
+              "prefix_trained": 1,
+              "slots": 111,
+              "MiB": 964.312,
+              "fingerprint": 3012733430303614985
+            }
+          ],
+          "decode_page_faults": [
+            {
+              "trial": 0,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 1
+            }
+          ],
+          "speculation": [],
+          "affinity_quality": [],
+          "lookup_parity": [],
+          "prefill_repeat": [
+            {
+              "trial": 0,
+              "logits_identical": 1,
+              "routes_identical": 1
+            },
+            {
+              "trial": 1,
+              "logits_identical": 1,
+              "routes_identical": 1
+            },
+            {
+              "trial": 2,
+              "logits_identical": 1,
+              "routes_identical": 1
+            }
+          ],
+          "median_prefill_tok_s": 506.49,
+          "median_decode_tok_s": 16.8998,
+          "peak_allocated_gpu_mib": 6436.17,
+          "gpu_live": [
+            {
+              "device": 0,
+              "tags": {
+                "dense": 3069.56,
+                "other": 518.602,
+                "prefill": 2148.13,
+                "state": 332.605
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 3069.56,
+                "other": 518.602,
+                "prefill": 2148.13,
+                "state": 332.605
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 3069.56,
+                "other": 518.602,
+                "prefill": 2148.13,
+                "state": 332.605
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 1039.42,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 332.605
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 1039.42,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 332.605
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 1039.42,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 332.605
+              }
+            }
+          ],
+          "page_faults": [
+            {
+              "trial": 0,
+              "major": 33,
+              "minor": 66938
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 66203
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 65969
+            }
+          ]
+        },
+        "peak_process_gpu_mib": 7146,
+        "minimum_gpu_free_mib": 556,
+        "prefill_trials_identical": true,
+        "evidence": "build-glm-3070-cuda12/hardware2666-shared-compact-pf4-4k.result.json"
+      },
+      "8k": {
+        "started_utc": "2026-10-11T19:00:59.322300+00:00",
+        "complete": true,
+        "clean": true,
+        "measurements": {
+          "prefill": [
+            {
+              "trial": 0,
+              "tokens": 8192,
+              "batch": 4096,
+              "milliseconds": 16747.1,
+              "tokens_per_second": 489.158
+            },
+            {
+              "trial": 1,
+              "tokens": 8192,
+              "batch": 4096,
+              "milliseconds": 16768.3,
+              "tokens_per_second": 488.541
+            },
+            {
+              "trial": 2,
+              "tokens": 8192,
+              "batch": 4096,
+              "milliseconds": 16796.2,
+              "tokens_per_second": 487.729
+            }
+          ],
+          "decode": [
+            {
+              "kind": "single",
+              "tokens": 127,
+              "milliseconds": 7207.7,
+              "tokens_per_second": 17.62
+            },
+            {
+              "kind": "single",
+              "tokens": 127,
+              "milliseconds": 7210.54,
+              "tokens_per_second": 17.6131
+            },
+            {
+              "kind": "single",
+              "tokens": 127,
+              "milliseconds": 7199.31,
+              "tokens_per_second": 17.6406
+            }
+          ],
+          "cpu_expert": [
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 0,
+              "bytes": 0
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 5508.16,
+              "bytes": 198887800832
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 5509.68,
+              "bytes": 198887800832
+            },
+            {
+              "gu_ms": 0,
+              "quant_ms": 0,
+              "down_ms": 0,
+              "layer_flow_ms": 5497.19,
+              "bytes": 198887800832
+            }
+          ],
+          "mtp_timing": [],
+          "mtp_positions": [],
+          "step_trace": [],
+          "decode_cache": [
+            {
+              "prefix_trained": 1,
+              "slots": 101,
+              "MiB": 877.438,
+              "fingerprint": 5428304675781926690
+            }
+          ],
+          "decode_page_faults": [
+            {
+              "trial": 0,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 0
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 0
+            }
+          ],
+          "speculation": [],
+          "affinity_quality": [],
+          "lookup_parity": [],
+          "prefill_repeat": [
+            {
+              "trial": 0,
+              "logits_identical": 1,
+              "routes_identical": 1
+            },
+            {
+              "trial": 1,
+              "logits_identical": 1,
+              "routes_identical": 1
+            },
+            {
+              "trial": 2,
+              "logits_identical": 1,
+              "routes_identical": 1
+            }
+          ],
+          "median_prefill_tok_s": 488.541,
+          "median_decode_tok_s": 17.62,
+          "peak_allocated_gpu_mib": 6442.8,
+          "gpu_live": [
+            {
+              "device": 0,
+              "tags": {
+                "dense": 3069.56,
+                "other": 518.602,
+                "prefill": 2148.13,
+                "state": 426.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 3069.56,
+                "other": 518.602,
+                "prefill": 2148.13,
+                "state": 426.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 3069.56,
+                "other": 518.602,
+                "prefill": 2148.13,
+                "state": 426.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 952.541,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 426.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 952.541,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 426.105
+              }
+            },
+            {
+              "device": 0,
+              "tags": {
+                "dense": 5029.21,
+                "other": 952.541,
+                "prefill": 32.0,
+                "resident_exec": 2.94288,
+                "state": 426.105
+              }
+            }
+          ],
+          "page_faults": [
+            {
+              "trial": 0,
+              "major": 6,
+              "minor": 131722
+            },
+            {
+              "trial": 1,
+              "major": 0,
+              "minor": 131226
+            },
+            {
+              "trial": 2,
+              "major": 0,
+              "minor": 131074
+            }
+          ]
+        },
+        "peak_process_gpu_mib": 7140,
+        "minimum_gpu_free_mib": 562,
+        "prefill_trials_identical": true,
+        "evidence": "build-glm-3070-cuda12/hardware2666-shared-compact-pf4-8k.result.json"
+      }
+    },
+    "quality_4k": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-compact-pf4-quality-4k.result.json",
+      "clean": true,
+      "evaluation": [
+        {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 1.2591790919,
+          "perplexity": 3.52252862785,
+          "prefix_tokens": 4096,
+          "decode_only": true
+        }
+      ],
+      "relative_ppl_increase": 0.08923643699494299,
+      "coding": {
+        "tasks": 30,
+        "passed": 30,
+        "scope": "Frozen HumanEval 0..29 short prompts, not full suite or long-prefix coding",
+        "evidence": "build-glm-3070-cuda12/hardware2666-coding30-shared-compact-pf4-4k/measurement.json"
+      }
+    },
+    "public_preset_4k": "configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-4k-experimental.json",
+    "quality_8k": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-compact-pf4-quality-8k.result.json",
+      "clean": true,
+      "evaluation": [
+        {
+          "sequence": 1,
+          "tokens": 1024,
+          "nll": 0.817616901095,
+          "perplexity": 2.265095454,
+          "prefix_tokens": 8192,
+          "decode_only": true
+        }
+      ],
+      "relative_ppl_increase": 0.0757039637577559,
+      "coding": {
+        "tasks": 30,
+        "passed": 30,
+        "scope": "Frozen HumanEval0..29 short prompts, not full suite or long-prefix coding",
+        "evidence": "build-glm-3070-cuda12/hardware2666-coding30-shared-compact-pf4-8k/measurement.json"
+      }
+    },
+    "public_preset_8k": "configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-8k-experimental.json"
+  },
+  "shared_tuning": {
+    "prefetch8_dense3584": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-active-pin90-pf8-dense3584-2k.result.json",
+      "clean": true,
+      "median_decode_tok_s": 19.1269,
+      "median_prefill_tok_s": 475.408,
+      "logits_equal_shared_baseline": true,
+      "selected": false,
+      "reason": "1.23% prefill gain; no decode improvement"
+    },
+    "parts4": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-active-pin90-parts4-2k.result.json",
+      "clean": true,
+      "complete": true,
+      "median_decode_tok_s": 19.1239,
+      "median_prefill_tok_s": 453.654,
+      "selected": false,
+      "logits_equal_shared_baseline": {
+        ".logits.bin": true,
+        ".prefill.logits.bin": true
+      }
+    },
+    "tile128": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-active-pin90-tile128-2k.result.json",
+      "clean": true,
+      "complete": true,
+      "median_decode_tok_s": 18.2162,
+      "median_prefill_tok_s": 475.218,
+      "selected": false,
+      "logits_equal_shared_baseline": {
+        ".logits.bin": false,
+        ".prefill.logits.bin": false
+      }
+    },
+    "tile256": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-active-pin90-tile256-2k.result.json",
+      "clean": false,
+      "complete": false,
+      "median_decode_tok_s": null,
+      "median_prefill_tok_s": null,
+      "selected": false,
+      "engine_error": "GLM: prefill MLA tile must be 8, 16, 32, 64 or 128"
+    },
+    "tile32_prefetch4_dense4096": {
+      "evidence": "build-glm-3070-cuda12/hardware2666-shared-tile32-pf4-dense4096-2k.result.json",
+      "clean": true,
+      "median_decode_tok_s": 19.528,
+      "median_prefill_tok_s": 466.35,
+      "decode_cache": [
+        {
+          "prefix_trained": 1,
+          "slots": 120,
+          "MiB": 1042.5,
+          "fingerprint": 13730631336044050962
+        }
+      ],
+      "prefill_trials_identical": true,
+      "logits_equal_shared_baseline": {
+        ".logits.bin": false,
+        ".prefill.logits.bin": false
+      },
+      "quality": {
+        "clean": true,
+        "evaluation": [
+          {
+            "sequence": 1,
+            "tokens": 1024,
+            "nll": 1.00680741532,
+            "perplexity": 2.73684942879,
+            "prefix_tokens": 2048,
+            "decode_only": true
+          }
+        ],
+        "relative_ppl_increase": 0.05690972393223381,
+        "evidence": "build-glm-3070-cuda12/hardware2666-shared-tile32-pf4-dense4096-quality-2k.result.json",
+        "coding": {
+          "tasks": 30,
+          "passed": 30,
+          "evidence": "build-glm-3070-cuda12/hardware2666-coding30-shared-tile32-pf4-dense4096/measurement.json",
+          "scope": "Frozen short HumanEval0..29, not full suite or long-prefix coding"
+        }
+      },
+      "selected": true,
+      "public_preset": "configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-tile32-2k-experimental.json"
+    }
+  },
+  "balanced_ccx": {
+    "status": "No throughput gain at2K/4K/8K; unselected",
+    "mask": "0-2,4-5,8-10,12-14",
+    "provenance": "build-glm-3070-cuda12/hardware2666-balanced-ccx-provenance.json",
+    "runs": {
+      "2k": {
+        "clean": true,
+        "evidence": "build-glm-3070-cuda12/hardware2666-coalesced-balanced-ccx-2k.result.json",
+        "median_decode_tok_s": 19.292,
+        "median_prefill_tok_s": 413.157,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 120,
+            "MiB": 1042.5,
+            "fingerprint": 8948226557245781560
+          }
+        ],
+        "output_bits_vs_reference": {
+          ".logits.bin": true,
+          ".prefill.logits.bin": true
+        }
+      },
+      "4k": {
+        "clean": true,
+        "evidence": "build-glm-3070-cuda12/hardware2666-coalesced-balanced-ccx-4k.result.json",
+        "median_decode_tok_s": 16.8362,
+        "median_prefill_tok_s": 484.384,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 111,
+            "MiB": 964.312,
+            "fingerprint": 14875880044821576685
+          }
+        ],
+        "output_bits_vs_reference": {
+          ".logits.bin": true,
+          ".prefill.logits.bin": "reference not saved"
+        }
+      },
+      "8k": {
+        "evidence": "build-glm-3070-cuda12/hardware2666-coalesced-balanced-ccx-8k.result.json",
+        "clean": true,
+        "median_decode_tok_s": 17.0768,
+        "median_prefill_tok_s": 478.744,
+        "final_logits_equal_reference": true,
+        "prefill_trials_identical": true
+      }
+    }
+  },
+  "tight_context": {
+    "status": "No material speed improvement; all three capacities unselected",
+    "runs": {
+      "2k": {
+        "capacity": 3328,
+        "evidence": "build-glm-3070-cuda12/hardware2666-coalesced-context3328-2k.result.json",
+        "clean": true,
+        "median_decode_tok_s": 19.4807,
+        "median_prefill_tok_s": 412.883,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 120,
+            "MiB": 1042.5,
+            "fingerprint": 8948226557245781560
+          }
+        ],
+        "prefill_and_final_logits_equal_reference": true,
+        "selected": false
+      },
+      "4k": {
+        "capacity": 5376,
+        "evidence": "build-glm-3070-cuda12/hardware2666-coalesced-context5376-4k.result.json",
+        "clean": true,
+        "median_decode_tok_s": 16.9679,
+        "median_prefill_tok_s": 487.607,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 116,
+            "MiB": 1007.75,
+            "fingerprint": 1764191975756267958
+          }
+        ],
+        "final_logits_equal_reference": false,
+        "selected": false,
+        "reason": "Only0.28% decode improvement; changed output, no new quality qualification"
+      },
+      "8k": {
+        "capacity": 9472,
+        "evidence": "build-glm-3070-cuda12/hardware2666-coalesced-context9472-8k.result.json",
+        "clean": true,
+        "median_decode_tok_s": 17.3264,
+        "median_prefill_tok_s": 480.75,
+        "decode_cache": [
+          {
+            "prefix_trained": 1,
+            "slots": 106,
+            "MiB": 920.875,
+            "fingerprint": 13797891916137314560
+          }
+        ],
+        "final_logits_equal_reference": false,
+        "selected": false
+      }
+    }
+  },
+  "completion_audit": {
+    "decode_target_tok_s": 20,
+    "prefill_target_tok_s": 500,
+    "contexts": [
+      2048,
+      4096,
+      8192
+    ],
+    "goal_achieved": false,
+    "qualified_balanced_results": [
+      {
+        "context": 2048,
+        "decode_tok_s": 19.528,
+        "prefill_tok_s": 466.35,
+        "ppl_increase_percent": 5.690972393223381,
+        "coding_passed": 30
+      },
+      {
+        "context": 4096,
+        "decode_tok_s": 16.8998,
+        "prefill_tok_s": 506.49,
+        "ppl_increase_percent": 8.9236436994943,
+        "coding_passed": 30
+      },
+      {
+        "context": 8192,
+        "decode_tok_s": 17.62,
+        "prefill_tok_s": 488.541,
+        "ppl_increase_percent": 7.57039637577559,
+        "coding_passed": 30
+      }
+    ],
+    "weights_modified": false,
+    "new_coding_failures_in_selected_presets": 0,
+    "quality_scope": "Matched frozen1024-target perplexity plus unchanged30 short coding cases; not general or long-prefix coding proof",
+    "runtime_scope": "Three-trial warmed CLI medians,128generated/127timeddecode; startup excluded;56GiBcgroup and zero permitted swap;512MiBphysicalGPUreserve",
+    "missing_targets": [
+      "20+ decode at2K/4K/8K",
+      "500+prefill at2K/8K"
+    ],
+    "validation_limits": [
+      "HIP unavailable",
+      "three hardware-dependentGLM tests skipped",
+      "performance and quality are prompt-specific"
+    ],
+    "no_more_experiments_queued": true
+  },
+  "precleanup_source_snapshot": {
+    "path": "build-glm-3070-cuda12/hardware2666-source-20261011-185142.patch",
+    "sha256": "b0d03c0cdf01aba57c08f7cf940baf8cc25487c2ab69fa1ba9d27f6ec3838271",
+    "note": "CUDA decoder and GLM targets rebuilt with CPU SiLU reuse for opt-in gate skipping;15GLMtests passed/3skipped. Gate25 model output bits matched before/after; no measured throughput gain. HIP unavailable."
+  },
+  "precleanup_regression_tests": {
+    "passed": 15,
+    "failed": [],
+    "skipped": [
+      "q23_pool_test",
+      "flow_pool_test",
+      "numa_pool_test"
+    ],
+    "cuda_build": "passed",
+    "hip_build": "not run: toolchain unavailable",
+    "evidence": "build-glm-3070-cuda12/hardware2666-silu-reuse-ctest.log"
+  },
+  "cleanup_validation": {
+    "status": "passed",
+    "build": {
+      "recorded_utc": "2026-10-11T20:02:14.071284+00:00",
+      "decoder_sha256": "7742851cff2c84e0cea92eeaec5db9d2756f784832a4f70b81b9dbad0e5782e8",
+      "source_patch_sha256": "a7a540ddf803274267a43061bef57cb6e8e4dde4462ac3c1b8d3caffa680fdaf",
+      "source_patch": "build-glm-3070-cuda12/cleanup-final-source.patch",
+      "removed_experiments": [
+        "route mass restoration",
+        "prefill route pruning and unused upload skipping",
+        "huge-page expert copies and model ownership extension",
+        "registered copy2D/split upload",
+        "direct prefetch slot reuse",
+        "128-row MLA tile",
+        "Q8 scratch release",
+        "packed half gather",
+        "MMQ opt-row tuning",
+        "CPU SiLU reuse"
+      ]
+    },
+    "historical_experiments_note": "Measurements above preserve historical experiments. Removed experiments listed here are not supported by this cleaned implementation. Original patch archived locally under build-glm-3070-cuda12/cleanup-before-commit/worktree.patch.",
+    "acceptance": "User accepted current performance and requested cleanup, quality gate and local commit. Original numerical target remains unmet.",
+    "gate": {
+      "maximum_matched_perplexity_increase_percent": 10,
+      "coding": "No new failures on frozen HumanEval 0..29; full 164-task suite and long-prefix coding not tested."
+    },
+    "results": [
+      {
+        "context": "2k",
+        "preset": "configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-tile32-2k-experimental.json",
+        "strict_ppl": 2.58948268411,
+        "benchmark": "build-glm-3070-cuda12/cleanup-final-2k.result.json",
+        "median_decode_tok_s": 19.4945,
+        "median_prefill_tok_s": 464.256,
+        "output_bits_equal_precleanup": {
+          ".logits.bin": true,
+          ".prefill.logits.bin": true
+        },
+        "perplexity": 2.73684942879,
+        "coding_evidence": "build-glm-3070-cuda12/cleanup-final-coding30-2k/measurement.json",
+        "coding_tasks": 30,
+        "coding_passed": 30,
+        "qualified": true,
+        "ppl_increase_percent": 5.690972393223381,
+        "peak_process_gpu_mib": 7140,
+        "minimum_gpu_free_mib": 562,
+        "decode_page_faults": [
+          {
+            "trial": 0,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 1,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 2,
+            "major": 0,
+            "minor": 0
+          }
+        ],
+        "prefill_repeat": [
+          {
+            "trial": 0,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 1,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 2,
+            "logits_identical": 1,
+            "routes_identical": 1
+          }
+        ],
+        "config_sha256": "be92dd8a56f5bbd9b59da3c436193de6587f5e55d8ba4aee649c4f14116c26cd",
+        "evidence_sha256": {
+          "benchmark": "bf7265e65983816459b7378eb33731bab6f3c0b04217fb6e4bc90925dec4dcf9",
+          "coding_evidence": "be1bb5f9712a21bb6da26751dce397be174c367aa5ca55a370cb339a50bd9faf"
+        },
+        "quality_evidence": "build-glm-3070-cuda12/cleanup-final-quality-2k.result.json",
+        "quality_evidence_sha256": "ad9785c7b6dc3e2a02a5beafa1fc229b774e8a9376892c0e4fa5e0184f4148c2"
+      },
+      {
+        "context": "4k",
+        "preset": "configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-4k-experimental.json",
+        "strict_ppl": 3.23394307077,
+        "benchmark": "build-glm-3070-cuda12/cleanup-final-4k.result.json",
+        "median_decode_tok_s": 16.9196,
+        "median_prefill_tok_s": 505.75,
+        "output_bits_equal_precleanup": {
+          ".logits.bin": true,
+          ".prefill.logits.bin": true
+        },
+        "perplexity": 3.52252862785,
+        "coding_evidence": "build-glm-3070-cuda12/cleanup-final-coding30-4k/measurement.json",
+        "coding_tasks": 30,
+        "coding_passed": 30,
+        "qualified": true,
+        "ppl_increase_percent": 8.9236436994943,
+        "peak_process_gpu_mib": 7146,
+        "minimum_gpu_free_mib": 556,
+        "decode_page_faults": [
+          {
+            "trial": 0,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 1,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 2,
+            "major": 0,
+            "minor": 0
+          }
+        ],
+        "prefill_repeat": [
+          {
+            "trial": 0,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 1,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 2,
+            "logits_identical": 1,
+            "routes_identical": 1
+          }
+        ],
+        "config_sha256": "2ae0a6cb6d78371f9aaa98bcb655f08de3edaa03e295f0a5bf8bc1005a07d950",
+        "evidence_sha256": {
+          "benchmark": "c6a8eb8789cbcd84f5b23640dbc0dca63e63613ba8323b9076437ac2166510dc",
+          "coding_evidence": "3f1728f460f077e9cdcca6a01254a963f9cd93bd929d9b0d80e8849e738e3c01"
+        },
+        "quality_evidence": "build-glm-3070-cuda12/cleanup-final-quality-4k.result.json",
+        "quality_evidence_sha256": "a83b5d0a1a78a59189a5b561eb889d05e1703d70aa1a9f694cc4efa537bc72c6"
+      },
+      {
+        "context": "8k",
+        "preset": "configs/glm53f-reap50-q23-64g-rtx3070-shared-prefill-8k-experimental.json",
+        "strict_ppl": 2.1056866297,
+        "benchmark": "build-glm-3070-cuda12/cleanup-final-8k.result.json",
+        "median_decode_tok_s": 17.6306,
+        "median_prefill_tok_s": 487.604,
+        "output_bits_equal_precleanup": {
+          ".logits.bin": true,
+          ".prefill.logits.bin": true
+        },
+        "perplexity": 2.265095454,
+        "coding_evidence": "build-glm-3070-cuda12/cleanup-final-coding30-8k/measurement.json",
+        "coding_tasks": 30,
+        "coding_passed": 30,
+        "qualified": true,
+        "ppl_increase_percent": 7.57039637577559,
+        "peak_process_gpu_mib": 7140,
+        "minimum_gpu_free_mib": 562,
+        "decode_page_faults": [
+          {
+            "trial": 0,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 1,
+            "major": 0,
+            "minor": 0
+          },
+          {
+            "trial": 2,
+            "major": 0,
+            "minor": 0
+          }
+        ],
+        "prefill_repeat": [
+          {
+            "trial": 0,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 1,
+            "logits_identical": 1,
+            "routes_identical": 1
+          },
+          {
+            "trial": 2,
+            "logits_identical": 1,
+            "routes_identical": 1
+          }
+        ],
+        "config_sha256": "77f789ffec857fb689b3548495fc2708d957b2e208983c52dc2328f0586ca0e0",
+        "evidence_sha256": {
+          "benchmark": "f6562b43155ba7e9a54e832f718fc6169d3683f058e889c9b0164c3b66fd6191",
+          "coding_evidence": "567208801b4dffa4ff59ebef44d2d91969eff594cd6078c0941a1510b4a291ca"
+        },
+        "quality_evidence": "build-glm-3070-cuda12/cleanup-final-quality-8k.result.json",
+        "quality_evidence_sha256": "41d1e3f097a9caeab9116a56bfe99c39a6bad97f6e8ff26214210f6d0e78db68"
+      }
+    ],
+    "output_bits": "All three prefill and final benchmark logit files byte-identical to accepted pre-cleanup results.",
+    "scope": "Three selected presets freshly tested. Four earlier alternatives retain their historical qualification; not rerun in final cleanup gate.",
+    "softmax_racecheck": {
+      "hazards": 0,
+      "errors": 0,
+      "warnings": 0,
+      "evidence": "build-glm-3070-cuda12/cleanup-final-softmax-racecheck.log"
+    }
+  }
+}

@@ -3,8 +3,9 @@
 `STRATA_ENABLE_VULKAN=ON` builds `strata-glm-vulkan` without CUDA, HIP or ROCm.
 The first runner targets the GLM-5.3f NoPE, four-stream REAP50 GGUF model on one
 Vulkan GPU plus system RAM. Validation hardware is an RX 9070 XT, Ryzen 3950X
-in ECO mode, X570S AERO G and 64 GiB DDR4-2666. Other AMD cards and Windows
-execution have not been tested. Vulkan avoids ROCm's architecture selection;
+in ECO mode, X570S AERO G and 64 GiB DDR4-2666. An RX 570 with 16 GiB VRAM
+also passed the short correctness check below. Windows execution has not been tested.
+Vulkan avoids ROCm's architecture selection;
 it still requires a working Vulkan driver and the compute/memory features
 checked at startup.
 
@@ -15,9 +16,9 @@ SwiGLU, index pooling and selection currently run on the CPU. Inputs and
 outputs cross a host boundary between projection and mixer calls.
 
 This is a standalone experimental runner. Setup and the API server do not yet
-select it. Prefill is sequential, with no resident GPU expert tier, speculative
-decoding, CUDA graphs or multi-GPU execution. The benchmark rejects unsupported
-settings. It is not a claim that the optimized HIP runner has been fully ported.
+select it. Sequential prefill remains the default. Opt-in paths provide batched
+prefill, a resident GPU expert tier and verified speculative decoding as
+described below. CUDA graphs and multi-GPU execution are unsupported.
 
 ## Build
 
@@ -80,6 +81,49 @@ with a 60-second bound; a failed fence exits without freeing in-flight buffers.
 
 ## Fault evidence and comparisons
 
+### RX 570 16 GiB correctness check, October 14
+
+The [RX 570 config](../configs/experimental/glm53f-reap50-vulkan-rx570-64g-16g.json)
+uses the strict Vulkan path, 12 CPU workers, a 4096-token context and a
+15360 MiB GPU allocation budget. It points to the REAP50 Q23 assembled model
+under `models/glm53f-reap/`. It enables no performance options.
+
+On a Ryzen 3950X with 64 GB installed RAM (60 GiB reported by Linux), an
+RX 570 reporting 16 GiB VRAM and Mesa RADV 26.0.8, primitive and model-group
+parity passed the existing gates. Two guarded runs of a 23-token arithmetic
+prompt produced identical 58-token outputs, answered `4` and stopped at the
+end-of-turn token. Peak service memory was 40.3 GiB with zero swap; sampled
+global VRAM peaked at 5297 MiB. No new GPU fault or PCI identity change was
+recorded. RAM speed was not measured.
+
+Run with a Python environment containing Strata's tokenizer dependencies:
+
+```sh
+.venv-glm/bin/python tools/glm_guarded_run.py \
+  configs/experimental/glm53f-reap50-vulkan-rx570-64g-16g.json \
+  bench/fixtures/glm53_vulkan_prefix32.ids \
+  --output /tmp/rx570-reap50 --tokens 64 --trials 2 --timeout 1200
+```
+
+The guard preserves that Python interpreter in its service. The
+[validation record](benchmarks/glm_vulkan_rx570_20261014.json) describes the
+arithmetic prompt and evidence. This is a short correctness smoke test;
+long-context, coding and perplexity qualification remain open. The 15 GiB
+budget permits allocations but does not force them: this run used about
+5.2 GiB VRAM, so allocation near the full 16 GiB was not tested.
+
+The same day's untuned performance baseline used the frozen 32-token prompt
+above, 64 generated tokens per trial, five trials and one untimed prefill
+warmup. Median sequential prefill was 3.679 tok/s; median decode was
+3.601 tok/s. Decode trials were 3.155, 3.601, 3.617, 3.617 and 3.596 tok/s,
+with the first decode retained in the median. Each decode timing covers
+63 model steps; the first generated token comes from prefill logits.
+All five 64-token outputs matched. Peak RAM was 41.22 GiB, sampled global
+VRAM was 5298 MiB and swap remained zero. No new GPU fault was recorded.
+The [baseline record](benchmarks/glm_vulkan_rx570_baseline_20261014.json)
+includes individual timings and source/build hashes. This is a short-prompt
+baseline, with no same-day comparison against another backend.
+
 The [guarded diagnostic workflow](GLM_GPU_DIAGNOSTICS.md) also accepts benchmark
 configs with `backend: "vulkan"`. It retains the 60 GiB RAM/zero-swap limit,
 physical GPU headroom, owned-service cleanup, PCI identity checks and timestamped
@@ -121,7 +165,7 @@ than performance measurements. They do not replace the full held-out suite.
 The corrected 32-token prefill still had KL 0.0624 from HIP to Vulkan, above the
 0.01 numerical gate. The remaining discrepancy is unresolved. Keep the runner
 experimental; these measurements do not qualify it as the default coding path.
-No GPU/PCI hardware fault was recorded during this campaign. Older AMD cards,
+No GPU/PCI hardware fault was recorded during this campaign. At that time, older AMD cards,
 batched prefill, long-context quality and speculative decoding remain untested.
 
 Vulkan engine traces also bracket each named projection and custom shader with
@@ -223,5 +267,494 @@ The final prefill KL is still 0.058, above the unchanged 0.01 gate. Matching
 greedy IDs does not establish distribution equivalence, and the short coding
 oracle does not replace held-out coding or perplexity tests. Keep the profile
 experimental. No GPU/PCI hardware fault was recorded during the optimization
-campaign. Older AMD GPUs, CUDA execution, SYCL builds, batched prefill and
+campaign. At that time, older AMD GPUs, CUDA execution, SYCL builds, batched prefill and
 speculative decoding were not tested.
+
+## RX570 optimization candidates
+
+The RX570 campaign uses the modified 16 GiB card, a Ryzen 3950X and 64 GiB
+system RAM. Defaults remain sequential prefill, CPU routed experts and no
+speculation. These new paths are experimental:
+
+- `--prefill-batch N` (2–1024) batches independent projections and expert inputs
+  while retaining ordered KDA recurrence and causal MLA selection.
+- `--prefill-experts gpu` streams canonical Q2_K/Q3_K experts into device memory
+  during batched prefill. IQ experts retain their CPU path.
+- `--decode-cache-mib N` reserves up to 8192 MiB for canonical experts ranked by
+  prompt route counts. Actual Vulkan allocation sizes determine admission.
+  Missing experts run on the CPU; reduction retains the original order.
+- `--speculative lookup|mtp --draft-depth N` enables draft proposals (depth 1–3).
+  Target argmax verifies every proposal. `--verify-batch` uses a GPU checkpoint
+  and restores/replays the accepted prefix after a rejection. The MTP path
+  requires the model's single next-token MLA block.
+- `STRATA_VULKAN_DEVICE_STATE=1` places persistent custom state and caches in
+  unmapped device memory. Transfers and zeroing use fenced Vulkan commands.
+- `STRATA_VULKAN_RELEASE_DENSE_HOST=1` discards original mapped dense pages after
+  their first upload. `STRATA_VULKAN_GPU_INDEXER=1` batches index scoring on the
+  GPU; causal pool counts and stable host selection retain their ordering.
+  Canonical expert dots and GPU index scoring require `shaderFloat64`; the
+  RX570 reports this feature. The strict path does not require it.
+- `STRATA_VULKAN_BATCH_GEMV=1` is a diagnostic fallback that uses individual
+  projection products within a prefill chunk.
+- `STRATA_VULKAN_BATCH_MMV=1` limits dense products to eight-column vector
+  tiles and retains individual per-head products. Real Q4_K, Q6_K and FP32
+  2/3/8-column primitive results matched individual products bit for bit on
+  RX570. General GEMM batching changed the parser training output; this path
+  avoids that reduction change while retaining weight reuse within each tile.
+
+The expanded model primitive check covers all 21 distinct two-dimensional
+block tensor geometries, including Q5_0's 128-input KDA products and small router
+and mHC outputs. All 147 comparisons (2–8 columns per geometry) were
+bit-identical to individual products in portable and native-host RX570 builds.
+
+The primitive suite additionally checks canonical GPU experts with 1, 2 and 8
+inputs, causal batched MLA, index scores and checkpoint restoration. Short
+32-input/64-output checks matched the strict RX570 greedy IDs for CPU batched
+prefill, streamed GPU experts and serial MTP. These checks do not qualify
+8K/16K prefill or coding quality. No 10–15 decode or 200 prefill target has been
+qualified. Final timings are deferred at the user's request while other builds
+are active.
+
+Separate [decode](../configs/experimental/glm53f-reap50-vulkan-rx570-decode-candidate.json)
+and [prefill](../configs/experimental/glm53f-reap50-vulkan-rx570-prefill-candidate.json)
+candidate configs expose these switches without changing the strict preset.
+They are starting points for qualification, not selected performance presets.
+The combined fast path failed the complete `parse_u64` training output gate:
+both runs stopped, but the strict control generated 503 tokens and the candidate
+330, with the first difference at token 6. Short-prefix matches do not supersede
+that failure. The subsequent multi-vector candidate passed the coding holdouts
+described below; its first long-context comparison failed as described below.
+Removing fused KDA and CPU mHC while retaining general GEMM still changed the
+parser output (first difference at token 9). The eight-column vector candidate
+matched all three complete strict training outputs (503, 931 and 462 tokens),
+including 33 rejected speculative windows and replay in the parser case.
+The strict parser response itself violated the requested
+single-code-block format; matching it establishes no acceleration regression,
+not a passing coding oracle.
+The slice and routed-reduction training responses passed their compiled C++
+oracles as well as the strict token comparison.
+
+An 8192 MiB expert budget admitted 942 experts (8183.62 MiB of actual expert
+allocations). Two 32-input/64-output trials matched strict IDs. Sampled total
+device VRAM use reached 13721 MiB and the service's RAM peak was 38.24 GiB,
+with zero swap and no guard fault rejection. This tests the modified card beyond
+8 GiB; it is an allocation/correctness result, not a throughput qualification.
+Both portable and native-host primitive suites passed, including device state,
+all 2–8 column vector tiles and actual 32-head/128-dimension index scores.
+The latest corrected build matched two default 64-token trials and produced byte-identical
+32-token prefill logits against the frozen original Vulkan executable.
+All 30 pinned HumanEval holdouts matched complete strict outputs and passed
+their independent Python tests. Their longest prompt plus response was 783
+tokens, so these cases did not exercise sparse pool pruning beyond 2048 tokens.
+The first 8K comparison failed at token 15:
+the strict control generated 138 tokens and the candidate 157, both
+stop-terminated and within the resource guards. Both generated C++ responses
+passed the independent prime oracle (400538 checks each). This is an output
+mismatch without an observed functional failure on that case; the strict
+token gate remains failed. The remaining three long
+holdouts were not run. Short coding success does not qualify long-context
+execution or throughput.
+Oversized MLA/index dispatches use a two-axis grid: 1024 tokens times the
+model's 64 attention heads exceed Polaris's 65535-group X limit. Boundary tests
+passed on RX570 and software Vulkan. The dispatch extension retained byte-identical
+one-axis shader binaries; the later index-score rounding fix changes that
+shader separately. The held-out campaign uses its frozen executable; this boundary
+extension was checked separately, with the owned reference process briefly
+paused and resumed. Its timings remain unqualified.
+The near-limit working-buffer test also covers a 32K cache capacity, a
+1024-token/64-head/512-latent batch and a subsequent 20 MiB expert upload.
+It exposed simultaneous charging of old and replacement scratch allocations.
+Releasing fenced scratch before growing, and discarding large attention
+temporaries after readback, passed at 1013.06 MiB on RX570 within a 1024 MiB
+working budget. Native-host software Vulkan passed at 1015.06 MiB with device
+state enabled.
+
+Long runs can print milliseconds in scientific notation. The harness now parses
+that format. `glm_vulkan_quality.py recheck-timing` can separately revalidate a
+saved correctness run rejected solely by that completion-parser error. It
+checks the original resource/fault evidence, input/executable/output hashes,
+token counts and stop termination; it preserves raw failed records and never
+qualifies timings. The first 8K control used this recovery.
+
+A stricter primitive check subsequently reproduced index-score rounding
+differences at the actual 32-head/128-dimension geometry. Passing CPU-rounded
+normalization roots and using FP64 division made 257-pool, three-query scores
+bit-identical on RX570 and native-host software Vulkan. Larger projection
+outputs (up to 8192 rows), joined projections, and batched attention at 64 heads,
+512 latent dimensions and 2049–2051 selected rows also matched their individual
+RX570 products bit for bit. This fixes a demonstrated numerical difference; it
+does not establish the cause of the failed 8K comparison. A separate 3072-token
+parser training case passed all 402 strict output IDs and its compiled C++
+oracle. The corrected 8K regression then matched all 138 strict IDs, stopped
+normally and passed the same 400538-check C++ oracle. Peak service memory was
+53.14 GiB with zero swap and no reported GPU fault. The original failed evidence
+remains unchanged; this rerun is a known-failure regression, not an unseen
+holdout. The other 8K case and two 16K cases remain untested.
+The final streamed-expert candidate also matched two strict 32-input/64-output
+trials with a 24576-token cache capacity and clean resource guards. This is a
+short execution check, not long-prompt or throughput qualification for that
+prefill configuration.
+
+`tools/glm_vulkan_qualify.py --correctness-only` records output/resource checks
+without qualifying timings. `tools/glm_vulkan_quality.py` freezes and resumes
+three training cases, 30 pinned HumanEval holdouts and four 8K/16K cases; it
+requires complete stop-terminated output matching the strict Vulkan control.
+Keep failed evidence and use training cases to diagnose changes before running
+holdouts. `tools/sim/vulkan.py` uses separate RX570 phase measurements; its cache
+and speculative estimates are hypotheses, and long-context estimates remain
+unqualified. The 224 GB/s specification is a ceiling, not a fitted bandwidth.
+
+### Opt-in fast engine: October 14 diagnostic checkpoint
+
+`--engine fast` uses one Vulkan device and recorded token windows. It remains
+experimental: the numerical gate against strict has not passed. The guarded
+runner accepts `"engine": "fast"`, a resident expert tier up to 12288 MiB,
+and the fast routing affinity/min-share options. Strict remains the default.
+
+On RX570 16 GiB and Ryzen 9 3950X, the frozen 32-token prompt followed by
+64 generated tokens produced identical fast greedy and MTP1 IDs with a
+9216 MiB tier. All 31 draft proposals were accepted on this repetitive prompt.
+The same-day strict control matched the saved strict prefill logits byte for
+byte and its 32 generated IDs. These are single short correctness runs,
+not throughput or quality qualification.
+
+The current fast prefill KL against strict is 0.204947, above the 0.01 limit.
+Diagnostic `STRATA_VULKAN_FAST_Q8_EMULATE=1` with CPU-style nearest-even half
+scales reduced KL to about 0.11932; it also fails the limit. This option now
+rounds every column of a window and honors input strides. Activation rounding
+matched the CPU exactly on sampled offset/strided widths 1–4. Resident Q2_K
+gate/up and Q3_K down products at those widths had relative L2 below 2.8e-7
+against sampled dequantized CPU products; shared hit-union slots and weights
+also passed. These primitive checks do not establish end-to-end quality.
+
+`STRATA_VULKAN_FAST_PROFILE=2` with `STRATA_VULKAN_FAST_PROFILE_T=2` profiles
+two-token target windows. Reports divide by the tokens actually profiled,
+and omit GPU timing when a phase has no matching window. Native and portable
+Vulkan targets built; GPU checks used the native build. The 33 relevant Python
+tests and three host rule tests passed. Seven CUDA tests could not execute
+without a CUDA device; three other GLM tests skipped. Perplexity, training
+oracles, HumanEval and long-context gates remain untested. Compact evidence is
+in `docs/benchmarks/glm_vulkan_fast_resume_20261014.json`.
+
+### Opt-in fast engine: October 15 progress
+
+On the same RX570 16 GiB and Ryzen 9 3950X with 64 GiB DDR4-2666,
+five guarded trials of 32 input tokens and 128 generated tokens measured
+15.8224 decode tok/s median. This uses MTP depth 3, a 9216 MiB resident tier,
+routing affinity 0.08, the REAP50 coverage prior, and the two options below.
+The runner performed one untimed prefill warmup; each trial includes its
+first decode work. The resource and GPU guards passed. This is a short,
+repetitive prompt measurement; it does not establish coding throughput.
+
+- `STRATA_VULKAN_FAST_EXPERT_Q8=1` rounds resident expert activations to the
+  CPU Q8_K grid and uses the CPU SwiGLU approximation. Two sampled experts
+  at widths 1 and 4 had whole-expert relative L2 error at most 4.41e-7.
+- `STRATA_VULKAN_FAST_CANONICAL_SUM=1` requires that option and combines
+  CPU and resident expert rows in router order. Mixed CPU/GPU cancellation
+  checks at widths 1, 2 and 4 matched the CPU FMA reduction byte for byte.
+
+MTP depths 2 and 3 now retain per-prefix MLA index-ring snapshots for
+rollback. Eighteen position/keep checks passed. On a parser training case,
+greedy and MTP3 produced the same 161 token IDs and passed the compiled
+oracle. Skipping discarded draft attention/FFN work preserved all three
+training outputs byte for byte; all three oracles passed. The frozen
+164-case HumanEval run stopped after a later GPU fault, with 111 cases
+completed and 100 isolated oracle passes. No full HumanEval score is available.
+
+Large prefill windows up to 2048 and tiled quantized GEMM are experimental.
+Early RX570 Q4_K 4096-by-8192 products with 256 columns measured about
+1.27 TFLOPS; later vector-decode measurements are below. An initial
+32-token prefill window changed logits (KL about 0.199 against the earlier
+width-4 run). Prefill has not reached 100 tok/s, and
+the strict numerical, perplexity and long-context gates remain unresolved.
+Defaults remain unchanged. Compact measurements and frozen executable/source
+hashes are in `docs/benchmarks/glm_vulkan_fast_progress_20261015.json`.
+
+`configs/experimental/glm53f-reap50-vulkan-rx570-fast-decode.json` records
+the decode candidate options with the native build executable path. Its
+HumanEval qualification is pending. Automatic GEMM selection still uses
+64- or 128-column tiles; the optional tile override described below also
+accepts 256. Software Vulkan checks cover six weight types, one/two heads,
+256/768 K dimensions, row/column tails, strides and offsets (216 cases).
+Bulk MLA indexing matches serial indexing at 12 window boundaries in
+software Vulkan. These software checks do not measure RX570 performance.
+
+The prefill prototype also accepts `STRATA_VULKAN_FAST_PREFILL_GPU=1`, with
+a chunk greater than 4 and both canonical expert options enabled. It groups
+frequently routed Q2_K/Q3_K experts into GPU matrix products while CPU workers
+process the remaining experts. Uploads and expert products run before the
+host-waiting layer tail is submitted. Routing rows are combined in the same
+CPU order after both groups finish. Decode and the strict engine do not use
+this path.
+
+This is unqualified work toward the 100 tok/s target. The initial FP32 expert
+GEMM failed a whole-expert numeric check (relative L2 3.8182e-4). A replacement
+keeps integer-valued partial dots and the CPU's eight-lane scale/reduction
+order. Six software Vulkan checks of two real experts, at 5, 33 and 129 token
+columns, pass the 2e-4 error limit; the largest relative L2 is 1.63085e-4.
+They are not byte-identical CPU results. Later native numeric checks are
+below; RX570 timings and end-to-end prefill quality remain unqualified.
+
+Within this opt-in experiment, `STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS`
+accepts 0–144 (initial value 72) and
+`STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS` accepts 1–2048 (initial value 32).
+Zero GPU experts provides a submission-only control. These values have not
+been tuned on RX570 measurements. `PREFILL_EXPERT_SPLIT` reports route counts
+and packing, upload and queued-work wall times to diagnose the next bottleneck.
+
+Later RX570 checks on Mesa 26.0.8 passed all 72 sampled matrix-product cases
+(maximum relative L2 1.40939e-6). With direct vector unpacking, the Q4_K
+4096-by-8192 product at 256 columns measured 6.264 ms / 2.74264 TFLOPS for
+64-column tiles; Q6_K measured 6.77664 ms / 2.53516 TFLOPS. Each value is a
+five-submission median after one discarded submission. The 128- and
+256-column tiles were slower on those two shapes. These are primitive GPU
+timings, not inference qualification. `STRATA_VULKAN_FAST_PREFILL_TILE` can
+select 64, 128 or 256 explicitly; 0 retains the prior automatic selection.
+
+Streamed experts now accept the CPU's existing Q8_K activation blocks: 4672
+bytes per 4096-value token instead of 16384 FP32 bytes. The unpacked input
+grid matches the CPU byte for byte on RX570. Six native whole-expert checks
+pass the same 2e-4 limit (maximum relative L2 1.63085e-4). They do not match
+CPU outputs byte for byte. Tiled weight packing matches the original bytes
+in 48 CPU shape/type cases, including row tails and an unaligned source; it
+is used only for streamed experts.
+
+The large-window numeric diagnosis found that changing routed reduction
+from GPU to CPU changes rounding. A 512-case cancellation probe on this
+driver did not match CPU `std::fma`, even with a GLSL `precise` local.
+Ordinary GLSL Fma does not guarantee a fused operation; see
+[Khronos' FMA extension rationale](https://docs.vulkan.org/features/latest/features/proposals/VK_KHR_shader_fma.html).
+Large canonical windows now use the same GPU router-order reduction as
+small windows. With `STRATA_VULKAN_FAST_PREFILL_MATCH_GEMV=1` retaining the
+existing four-token product arithmetic, the 32-token control matches all
+45 attention traces, all 45 layer-output traces and final logits byte for
+byte. This is a diagnostic control, not a prefill speed qualification.
+The tiled-GEMM path still changes arithmetic: its sampled width-32 logit
+KL against width 4 was 0.126279 before this reduction fix. Its end-to-end
+quality remains unqualified.
+
+The first 2048-token repeated throughput attempt triggered an amdgpu compute
+queue timeout and driver reset before completing a trial. The resource/fault
+guard stopped the owned test. There is no valid throughput result from that
+attempt. GPU execution is stopped for this boot. The HumanEval scheduler was
+stopped at a safe boundary with 111 completed cases preserved: 100 isolated
+oracle passes, including 99 stop-terminated passes. This is not a full score.
+
+CPU-side follow-up changed large prefill to submit each layer's segments
+after the preceding CPU handoff, keeping future host-waiting tails out of
+the submitted queue. Storage-buffer bindings now reject out-of-bounds ranges
+and ranges above the device limit before submission. Neither change has been
+GPU-validated after the fault, and the timeout's root cause is unresolved.
+A healthy boot and guarded smaller-window checks are needed before another
+2048-token trial. The 100+ tok/s target, strict KL, perplexity and large-window
+functional quality gates remain incomplete.
+
+For the next diagnosis, `STRATA_VULKAN_FAST_PROFILE_T` accepts a width up to
+the configured prefill chunk. Large-window query layouts reset when scratch
+commands are recreated, and timestamp-capacity checks reject oversized
+detail traces before submission. `STRATA_VULKAN_FAST_PREFILL_PROGRESS=1`
+prints allocation and per-layer submission/expert/completion milestones.
+These optional diagnostics build but await GPU validation after a healthy boot.
+
+A CPU-only follow-up removes the temporary joined gate/up tensor from streamed
+expert packing. The direct two-source packer matches the concatenated-source
+format in 48 shape/type cases, including unequal row counts and unaligned
+inputs. For the Q2_K 4096-by-4096 gate/up matrix on the Ryzen 9 3950X, nine
+interleaved CPU timing pairs measured 1.653 ms median for joining then packing
+and 1.486 ms for direct packing, after one warmup per path. The helper also
+uses 5.25 MiB less temporary memory. Six software Vulkan whole-expert checks
+retain the previous numeric errors (maximum relative L2 1.63085e-4).
+This changes only opt-in streamed prefill and awaits RX570 inference testing;
+these packing timings do not establish 100 tok/s prefill.
+
+### October 15 checks after reboot
+
+The fresh boot passed all 33 small Vulkan window checks without a GPU fault.
+The committed prefill submission changes then completed guarded 32-, 128-,
+256- and 512-token windows. The width-32 arithmetic-matching control retained
+the previous prefill logits byte for byte. These runs do not establish the
+cause of the earlier 2048-token timeout.
+
+On the same RX570 16 GiB, Mesa 26.0.8, Ryzen 9 3950X and DDR4-2666 system,
+three warmed 256-token trials measured 28.1536 prefill tok/s with CPU experts
+and 26.437 with the previous streamed CPU/GPU expert path. The prompts repeat
+the frozen 32-token prefix; each trial generated only two tokens, without MTP
+or a decode expert tier. These measurements do not qualify coding throughput.
+
+`STRATA_VULKAN_FAST_PREFILL_GPU_PACK=1` adds opt-in GPU conversion of native
+Q2_K/Q3_K expert rows into the existing streamed layout. It requires
+`STRATA_VULKAN_FAST_PREFILL_GPU=1`. The CPU uploads contiguous native gate,
+up and down rows; the product command converts their layout before use.
+This removes CPU packing and its host temporary, adds about 8.69 MiB of raw
+device weight scratch, and leaves the quantization and dot arithmetic alone.
+GPU conversion time is included in `queued_work_ms`; `pack_ms` measures
+CPU packing only.
+
+The GPU packer matches every byte and destination sentinel in 48 shape/type
+cases on both RX570 and software Vulkan. Six native whole-expert checks
+retain the prior maximum relative L2 error of 1.63085e-4 against the CPU.
+Both the disabled control and enabled 256-token path preserve the prior
+streamed prefill logits byte for byte. Three warmed trials with GPU packing
+measured 34.1901 prefill tok/s, about 29% above 26.437. The 512-token path
+completed cleanly but was slower per token; increasing the window alone
+does not reach 100 tok/s. Native and portable Vulkan builds and the 35
+Python checks passed. Compact evidence is in
+`docs/benchmarks/glm_vulkan_post_reboot_20261015.json`.
+
+`STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR=1` optionally reuses decoded integer
+weight metadata in the canonical expert matrix products. It requires the
+streamed GPU path. Six whole-expert cases match the original loader byte for
+byte on both RX570 and software Vulkan. Three warmed 512-token trials measured
+33.9919 tok/s versus about 30 tok/s with GPU packing alone; the final prefill
+logits match byte for byte. The 1024-token execution check also completed
+without a fault. These results apply to the frozen pre-safety builds recorded
+in the compact evidence.
+
+The subsequent 2048-token check triggered another amdgpu compute-queue timeout.
+The last progress marker was the first routed-expert handoff (layer 3), and
+the guard killed its owned test before any prefill trial completed. The
+per-layer submission change did not prevent this failure. Its cause remains
+unconfirmed. GPU testing stopped for that boot. The unchanged frozen HumanEval
+candidate has 107 isolated oracle passes from 119 completed cases; its
+remaining 45 cases and the full 140-pass gate are incomplete.
+
+A CPU-side follow-up guards the Q8 maximum-index lookup for non-finite blocks
+and rejects non-finite prefill expert inputs and final logits. Large dense and
+shared SwiGLU work uses at most 1024-token slices of the original shader;
+smaller widths retain their original dispatch. Eight software Vulkan cases
+through 2048 tokens match per-token shader bytes and sentinels. Ten Q8 cases
+(four finite, six non-finite) pass with and without diagnostic robust buffers,
+and six whole-expert cases retain the earlier errors and loader byte matches.
+`STRATA_VULKAN_FAST_ROBUST_BUFFERS=1` enables Vulkan robust buffer access for
+diagnosis; it remains off by default. Device logs now include dispatch and
+storage-range limits. These follow-ups build in both host configurations but
+have not run on RX570 after the reset. They do not establish a timeout fix.
+
+The October 15 postmortem found a two-second scheduler timeout in the installed
+`7.0.0-38-generic` amdgpu module. Its module metadata says 2000 ms, its compiled
+timeout initializer sets all four queues to 2000 ticks with `CONFIG_HZ=1000`,
+and the `lockup_timeout` parameter is empty. The loaded and installed module
+source versions match. This agrees with the
+[Linux 7.0 timeout initializer](https://github.com/torvalds/linux/blob/v7.0/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c).
+
+The first prefill command still contains all three dense layers and layer-3
+attention/router. In the successful 1024-token detailed run it took 1228.47 ms;
+the 512-token detailed run took 539.89 ms. The log field `first_segment_ms` is
+divided by `profiled_tokens`, so its logged 1024-token value of 1.19968 means
+milliseconds per token. Linear doubling would put that command at 2456.94 ms
+for 2048 tokens. That is an estimate, not a completed 2048-token measurement.
+An oversized initial submission is therefore the leading timeout explanation.
+Splitting SwiGLU dispatches inside the same command does not bound the total
+submission time. A future diagnostic should split the dense prefix at layer
+boundaries with separate submissions and completion checks, then measure each
+submission before attempting 2048 tokens again.
+
+No OOM event or PCIe error was recorded around the reset. The driver announced
+a coredump, but it was no longer present at inspection. The exact overdue
+command and shader remain unknown. The earlier PRT warning reports a change
+to fault handling; the
+[Polaris memory-controller code](https://github.com/torvalds/linux/blob/v7.0/drivers/gpu/drm/amd/amdgpu/gmc_v8_0.c)
+masks some unmapped-access faults when PRT is enabled, so absent VM-fault logs
+cannot rule out an access error. This investigation submitted no GPU work and
+changed no driver settings. The compact evidence records its limits.
+
+### Standalone hardware diagnostics
+
+`glm_vulkan_hw_diag` checks memory and arithmetic without model weights. Build
+with `cmake --build build-vulkan-rx570-native --target glm_vulkan_hw_diag -j8`.
+For physical hardware use `tools/glm_vulkan_hw_diag.py`; without `--run` it only
+prints a plan and does not open a Vulkan device. Example from the repository
+root, after a healthy boot:
+
+```bash
+.venv-glm/bin/python tools/glm_vulkan_hw_diag.py --preset smoke --robust --output build-vulkan-rx570-native/hw-results/smoke --run
+.venv-glm/bin/python tools/glm_vulkan_hw_diag.py --preset vram-full --output build-vulkan-rx570-native/hw-results/vram-full --run
+.venv-glm/bin/python tools/glm_vulkan_hw_diag.py --preset compute --output build-vulkan-rx570-native/hw-results/compute --run
+```
+
+Run each stage only after the previous stage passes. Use fresh output
+directories. `--pci` defaults to `0000:07:00.0` and `--device` to `RX 570`;
+they must identify the same card when testing another machine.
+
+| Preset | Memory payload | Memory patterns | Compute checks |
+| --- | --- | --- | --- |
+| `smoke` | 64 MiB | 9, one round | 2 seeds, one integer and FP32 result per seed |
+| `vram` | Up to 14 GiB | 9, one round; 100 ms hold per pattern | None |
+| `vram-full` | Entire detected heap as target, up to 16 GiB; tests all memory it can allocate | 73, one round; 100 ms hold per pattern | None |
+| `compute` | Small compute buffers | None | 1000 seeds, 16 integer and FP32 results per seed |
+| `extended` | Up to 14 GiB | 73, two rounds; 1 s hold per pattern | 256 seeds, 16 integer and FP32 results per seed |
+
+For the original presets, the launcher reduces the payload to retain a 1 GiB VRAM
+reserve plus a 64 MiB allowance for staging and other allocations. An explicit
+`--memory-mib` request must fit that limit. It caps system RAM at 2 GiB with
+zero swap and uses one UUID-owned service. It rejects an existing kernel
+fault, another Strata GPU workload, changed PCI identity or concurrent hardware
+diagnostic. It never resets a device or changes driver timeouts.
+
+`vram-full` removes the 14 GiB cap and the 1 GiB reserve. On the 16 GiB RX570
+its target is 17179869184 bytes. It rechecks free VRAM before launch, rounds
+the free capacity down to MiB, and passes that allocation limit to the executable.
+The limit includes the diagnostic's
+own device-local staging buffers, guards and padding. Near that limit it uses
+smaller blocks down to 4 KiB payloads; allocation OOM reduces the probe size.
+Other Vulkan errors fail the test. All successful allocations remain held
+while their contents are checked, so the payload is no longer capped at
+14 GiB. Each allocation records its logical begin/end and allocation size.
+`vram` remains available as the conservative scan.
+
+The full-heap result distinguishes `memory_target_bytes`,
+`memory_payload_bytes` and `unavailable_target_bytes`. Their accounting is
+validated by the launcher; a target of 16 GiB is not reported as 16 GiB tested
+when allocations fall short. Driver-owned memory, auxiliary allocations,
+planning granularity and allocation padding are included in that remainder.
+`physical_range_complete`
+remains false: buffer offsets do not identify physical VRAM cells, and the
+driver can migrate allocations. Vulkan's
+[heap size](https://docs.vulkan.org/refpages/latest/refpages/source/VkMemoryHeap.html)
+and [memory budget](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceMemoryBudgetPropertiesEXT.html)
+are distinct; budgets can change with other activity. A successful result
+means the allocated payload passed the requested checks, with the untested
+remainder explicitly reported.
+
+Memory is held in device-local allocations of at most 64 MiB with 256-byte
+sentinels at both ends. All allocations are filled before verification to
+exercise aliasing between them. Patterns cover zero, ones, alternating bits,
+logical addresses, inverted addresses, seeded random data and rotating bits;
+the full sweep adds each walking-one and walking-zero bit at every word.
+GPU verification uses permuted access order and in-place inversion. Every
+word is also checked by a CPU oracle after a device-to-device copy and staged
+readback. A CPU-generated random upload tests the opposite transfer direction.
+The reported word offsets are logical; Vulkan does not expose physical VRAM
+addresses, and a pass does not establish coverage of every physical cell.
+
+Compute checks compare unsigned 32-bit rotate/multiply/add/XOR results and
+128-by-256-by-128 FP32 matrix products against CPU oracles. Matrix inputs are
+multiples of one quarter; their products and bounded sums are exactly
+representable. Both signs of zero are accepted. Each repetition is read back
+and checked before the next one; CPU oracles are reused within a seed to
+reduce idle time. The compute and extended presets use 256 ALU iterations
+per element. FP16, FP64 and inference kernels are outside this check's scope.
+
+Submissions process at most 1 MiB per memory window by default, or one small
+compute kernel. They have separate completion checks and GPU timestamps.
+A completed submission above 500 ms fails the protocol. This check happens
+after completion; it cannot preempt a stalled shader. The driver watchdog
+remains enabled. Logs retain mismatch stage, logical word, expected and actual
+bits, XOR, seeds, progress, submission counts and the largest submission time.
+The launcher also saves kernel logs and sensor counters. After a new fault it
+attempts a two-second, 4 MiB coredump-prefix read, recording unavailable access
+without requesting elevated privileges. Raw dumps stay in the result directory
+with mode 0600 and should remain outside Git.
+
+Validation used only LVP software Vulkan: native build 24 tests
+and portable build 10 checks passed. Cases include all 73 patterns over two
+rounds, 65 MiB across two allocations, a non-power-of-two window, robust access,
+and deliberate one-bit errors in each of the three checkers. The full-heap
+extension also checks allocation OOM recovery with unequal block sizes,
+accurate unavailable-byte reporting, the final MiB ending exactly at the
+16 GiB logical boundary, and a one-bit error near that boundary without
+offset wraparound. The logical-boundary test allocates only 1 MiB in LVP;
+it does not claim a 16 GiB physical memory test. These are checker
+validation results; RX570 execution awaits a healthy boot. Passing this suite
+narrows the failure investigation but does not qualify inference or fix the
+large-prefill submission timeout.

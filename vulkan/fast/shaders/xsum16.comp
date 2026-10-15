@@ -1,0 +1,14 @@
+#version 450
+// Sums of consecutive 16-element groups of x (the Q2_K min term), so the expert
+// products read them as wave-uniform values instead of re-adding per lane.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer X4 { vec4 x4[]; };
+layout(binding = 1, std430) writeonly buffer S { float s[]; };
+layout(push_constant) uniform P { uint groups, xofs; } p;
+void main() {
+  const uint g = gl_GlobalInvocationID.x;
+  if (g >= p.groups) return;
+  const uint b = (p.xofs / 4) + 4 * g;
+  const vec4 a = x4[b] + x4[b + 1] + x4[b + 2] + x4[b + 3];
+  s[g] = (a.x + a.y) + (a.z + a.w);
+}

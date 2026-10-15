@@ -1,0 +1,735 @@
+{
+ "benchmark": "EffiBench-X",
+ "dataset": "EffiBench/effibench-x",
+ "dataset_files": [
+  "test-00000-of-00020.parquet",
+  "test-00001-of-00020.parquet",
+  "test-00002-of-00020.parquet",
+  "test-00003-of-00020.parquet",
+  "test-00004-of-00020.parquet",
+  "test-00005-of-00020.parquet",
+  "test-00006-of-00020.parquet",
+  "test-00007-of-00020.parquet",
+  "test-00008-of-00020.parquet",
+  "test-00009-of-00020.parquet",
+  "test-00010-of-00020.parquet",
+  "test-00011-of-00020.parquet",
+  "test-00012-of-00020.parquet",
+  "test-00013-of-00020.parquet",
+  "test-00014-of-00020.parquet",
+  "test-00015-of-00020.parquet",
+  "test-00016-of-00020.parquet",
+  "test-00017-of-00020.parquet",
+  "test-00018-of-00020.parquet",
+  "test-00019-of-00020.parquet"
+ ],
+ "selection": "per (source, difficulty level) stratum, round(100 * stratum/623) problems, at least 1, ordered by sha256(\"effibench-x-subset-v1:source:id\")",
+ "levels": "LeetCode Easy/Medium/Hard; AtCoder points <=200 easy, <=400 medium, else hard; CodeChef/Codeforces/Aizu rating <1200 easy, <1900 medium, else hard; missing -> medium",
+ "languages": [
+  "python3",
+  "cpp"
+ ],
+ "count": 100,
+ "problems": [
+  {
+   "source": "aizu",
+   "id": "1673",
+   "title_slug": "overtaking",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "aizu",
+   "id": "3614",
+   "title_slug": "camp-room-assignment",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "aizu",
+   "id": "3616",
+   "title_slug": "gacha-101",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "aizu",
+   "id": "3619",
+   "title_slug": "lcp-queries",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "aizu",
+   "id": "3638",
+   "title_slug": "renovation",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc380f",
+   "title_slug": "exchange-game",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc383a",
+   "title_slug": "humidifier-1",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc388c",
+   "title_slug": "various-kagamimochi",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc389a",
+   "title_slug": "9x9",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc389e",
+   "title_slug": "square-price",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc392f",
+   "title_slug": "insert",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc396b",
+   "title_slug": "card-pile",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc397c",
+   "title_slug": "variety-split-easy",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc398a",
+   "title_slug": "doors-in-the-center",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc400b",
+   "title_slug": "sum-of-geometric-series",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc400g",
+   "title_slug": "patisserie-abc-3",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc401a",
+   "title_slug": "status-code",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc402c",
+   "title_slug": "dislike-foods",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "abc403b",
+   "title_slug": "four-hidden",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc168a",
+   "title_slug": "<inversion>",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc170d",
+   "title_slug": "triangle-card-game",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc171a",
+   "title_slug": "no-attacking",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc171b",
+   "title_slug": "chmax",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc172c",
+   "title_slug": "election",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc181d",
+   "title_slug": "prefix-bubble-sort",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc185b",
+   "title_slug": "+1-and--1",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc188b",
+   "title_slug": "symmetric-painting",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc192a",
+   "title_slug": "arc-arc",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "atcoder",
+   "id": "arc195b",
+   "title_slug": "uniform-sum",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "codechef",
+   "id": "ADJSUMLOST",
+   "title_slug": "adjacent-sum-array",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "codechef",
+   "id": "DONUTSELL",
+   "title_slug": "selling-donuts",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codechef",
+   "id": "FOODBAL",
+   "title_slug": "food-balance",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codechef",
+   "id": "HJJ",
+   "title_slug": "can-you-bench",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codechef",
+   "id": "ICECONE",
+   "title_slug": "icecream-and-cone",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codechef",
+   "id": "LOTTERYTICK",
+   "title_slug": "lottery-tickets",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "codechef",
+   "id": "MINA2B",
+   "title_slug": "a-to-b",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "codechef",
+   "id": "ORANGES",
+   "title_slug": "too-many-oranges",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codechef",
+   "id": "P1169",
+   "title_slug": "entry-check",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codechef",
+   "id": "P5169",
+   "title_slug": "constant-subsequence",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "codechef",
+   "id": "PERMMODK",
+   "title_slug": "permutation-mod-k",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "codechef",
+   "id": "SMOOTHINC",
+   "title_slug": "smoothly-increasing",
+   "type": "io",
+   "level": "hard"
+  },
+  {
+   "source": "codechef",
+   "id": "SPC2025Q5",
+   "title_slug": "halloween-array",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "codechef",
+   "id": "STKSTR",
+   "title_slug": "streak-star",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codechef",
+   "id": "USELEC",
+   "title_slug": "elections",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codeforces",
+   "id": "2093A",
+   "title_slug": "ideal-generator",
+   "type": "io",
+   "level": "easy"
+  },
+  {
+   "source": "codeforces",
+   "id": "2098A",
+   "title_slug": "vadim's-collection",
+   "type": "io",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3190",
+   "title_slug": "minimum-operations-to-maximize-last-elements-in-arrays",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3192",
+   "title_slug": "maximum-xor-product",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3207",
+   "title_slug": "make-three-strings-equal",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3211",
+   "title_slug": "find-maximum-non-decreasing-array-length",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3233",
+   "title_slug": "maximize-the-number-of-partitions-after-operations",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3235",
+   "title_slug": "minimum-cost-to-convert-string-i",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3239",
+   "title_slug": "minimum-number-of-operations-to-make-x-and-y-equal",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3241",
+   "title_slug": "divide-array-into-arrays-with-max-difference",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3246",
+   "title_slug": "check-if-bitwise-or-has-trailing-zeros",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3265",
+   "title_slug": "maximum-good-subarray-sum",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3271",
+   "title_slug": "count-the-number-of-houses-at-a-certain-distance-i",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3292",
+   "title_slug": "earliest-second-to-mark-indices-i",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3303",
+   "title_slug": "find-beautiful-indices-in-the-given-array-ii",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3316",
+   "title_slug": "find-the-sum-of-subsequence-powers",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3330",
+   "title_slug": "modify-the-matrix",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3344",
+   "title_slug": "minimize-manhattan-distances",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3350",
+   "title_slug": "distribute-elements-into-two-arrays-ii",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3355",
+   "title_slug": "minimum-levels-to-gain-more-points",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3362",
+   "title_slug": "find-the-median-of-the-uniqueness-array",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3389",
+   "title_slug": "minimum-time-to-visit-disappearing-nodes",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3395",
+   "title_slug": "minimum-length-of-anagram-concatenation",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3406",
+   "title_slug": "find-all-possible-stable-binary-arrays-i",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3408",
+   "title_slug": "count-the-number-of-special-characters-i",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3411",
+   "title_slug": "find-products-of-elements-of-big-array",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3413",
+   "title_slug": "find-the-first-player-to-win-k-games-in-a-row",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3415",
+   "title_slug": "check-if-grid-satisfies-conditions",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3423",
+   "title_slug": "maximum-sum-of-subsequence-with-non-adjacent-elements",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3434",
+   "title_slug": "find-the-number-of-distinct-colors-among-the-balls",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3444",
+   "title_slug": "find-the-number-of-good-pairs-ii",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3451",
+   "title_slug": "string-compression-iii",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3455",
+   "title_slug": "minimum-length-of-string-after-operations",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3461",
+   "title_slug": "find-the-minimum-area-to-cover-all-ones-i",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3466",
+   "title_slug": "number-of-subarrays-with-and-value-of-k",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3484",
+   "title_slug": "lexicographically-smallest-string-after-a-swap",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3485",
+   "title_slug": "maximize-score-of-numbers-in-ranges",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3496",
+   "title_slug": "minimum-number-of-seconds-to-make-mountain-height-zero",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3518",
+   "title_slug": "maximum-multiplication-score",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3522",
+   "title_slug": "find-the-power-of-k-size-subarrays-i",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3533",
+   "title_slug": "snake-in-matrix",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3568",
+   "title_slug": "find-the-key-of-the-numbers",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3571",
+   "title_slug": "length-of-the-longest-increasing-path",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3582",
+   "title_slug": "find-indices-of-stable-mountains",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3584",
+   "title_slug": "find-the-lexicographically-smallest-valid-sequence",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3612",
+   "title_slug": "adjacent-increasing-subarrays-detection-i",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3613",
+   "title_slug": "maximize-amount-after-two-days-of-conversions",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3625",
+   "title_slug": "stone-removal-game",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3632",
+   "title_slug": "button-with-longest-push-time",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3647",
+   "title_slug": "zero-array-transformation-iii",
+   "type": "functional",
+   "level": "medium"
+  },
+  {
+   "source": "leetcode",
+   "id": "3676",
+   "title_slug": "smallest-number-with-all-set-bits",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3687",
+   "title_slug": "longest-special-path",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3690",
+   "title_slug": "smallest-substring-with-identical-characters-i",
+   "type": "functional",
+   "level": "hard"
+  },
+  {
+   "source": "leetcode",
+   "id": "3723",
+   "title_slug": "sum-of-good-numbers",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3731",
+   "title_slug": "sum-of-variable-length-subarrays",
+   "type": "functional",
+   "level": "easy"
+  },
+  {
+   "source": "leetcode",
+   "id": "3748",
+   "title_slug": "sort-matrix-by-diagonals",
+   "type": "functional",
+   "level": "medium"
+  }
+ ]
+}

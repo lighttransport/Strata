@@ -1,0 +1,52 @@
+#version 450
+// Indexer key for the current token: layer norm into the ring slot pos%pool,
+// compressor gate alongside; when the pool completes, softmax-pool it into pooled.
+layout(local_size_x = 128) in;
+layout(binding = 0, std430) readonly buffer Stack { float stack[]; };   // key at kofs
+layout(binding = 1, std430) readonly buffer GateIn { float gate_in[]; };
+layout(binding = 2, std430) readonly buffer Par { float par[]; };       // norm w[dim], b[dim], ape[pool*dim]
+layout(binding = 3, std430) buffer Ring { float ring[]; };               // keys[pool*dim], gates[pool*dim]
+layout(binding = 4, std430) buffer Pooled { float pooled[]; };
+layout(binding = 5, std430) readonly buffer Step { uint pos; } step;
+layout(binding = 6, std430) writeonly buffer History { float history[]; };
+layout(push_constant) uniform P { uint dim, pool, kofs, pofs, tokens, kstride, snapshot; } p;  // tokens in order
+shared float red[128];
+shared float mean_value, inv_value;
+void main() {
+  const uint d = gl_LocalInvocationID.x;
+  for (uint tok = 0; tok < p.tokens; tok++) {
+    const uint pos = step.pos + tok, tail = pos % p.pool, tokens = pos + 1;
+    const float v = d < p.dim ? stack[p.kofs + tok * p.kstride + d] : 0.0;
+    red[d] = v;
+    barrier();
+    if (d == 0) { float s = 0; for (uint i = 0; i < p.dim; i++) s += red[i]; mean_value = s / float(p.dim); }
+    barrier();
+    red[d] = d < p.dim ? (v - mean_value) * (v - mean_value) : 0.0;
+    barrier();
+    if (d == 0) { float s = 0; for (uint i = 0; i < p.dim; i++) s += red[i]; inv_value = 1.0 / sqrt(s / float(p.dim) + 1e-6); }
+    barrier();
+    if (d < p.dim) {
+      ring[tail * p.dim + d] = (v - mean_value) * inv_value * par[p.pofs + d] + par[p.pofs + p.dim + d];
+      ring[p.pool * p.dim + tail * p.dim + d] = gate_in[tok * p.dim + d];
+    }
+    barrier();
+    if (tokens % p.pool == 0 && d < p.dim) {
+      const uint ape = p.pofs + 2 * p.dim;
+      float mx = -3.402823e38;
+      for (uint i = 0; i < p.pool; i++) mx = max(mx, ring[p.pool * p.dim + i * p.dim + d] + par[ape + i * p.dim + d]);
+      float sum = 0, value = 0;
+      for (uint i = 0; i < p.pool; i++) {
+        const float w = exp(ring[p.pool * p.dim + i * p.dim + d] + par[ape + i * p.dim + d] - mx);
+        sum += w;
+        value += w * ring[i * p.dim + d];
+      }
+      pooled[(tokens / p.pool - 1) * p.dim + d] = value / sum;
+    }
+    barrier();
+    if (p.snapshot != 0 && tok + 1u < p.tokens && d < p.dim) {
+      const uint stride = 2u * p.pool * p.dim, destination = (tok + 1u) * stride;
+      for (uint i = 0; i < 2u * p.pool; ++i) history[destination + i * p.dim + d] = ring[i * p.dim + d];
+    }
+    barrier();
+  }
+}

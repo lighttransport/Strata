@@ -80,3 +80,46 @@ Prefill/prime took 14.034 seconds. The separate three-trial MTP benchmark
 median is **29.06 tok/s**; the caption keeps these figures distinct. The
 generated C++17 parser compiled with `-Wall -Wextra -Werror` and passed
 400,532 oracle cases. See the [demo measurement](v100_measurement.json).
+
+## Threadripper 1950X with one and two GPUs (October 2026)
+
+The README animations were recorded on TR16 (Threadripper 1950X, 128 GB DDR4-3200) with REAP-224 Q23, the 4K C++
+prompt, three untimed 128-token warmups and a fixed 512-token cap (stop tokens ignored, as in the decode
+benchmark). `tools/glm_chat_tui.py` takes the measured profile's environment with `--config`, plus
+`--draft-depth` and `--cpu-affinity`. The two-GPU run uses `tools/glm_mixed_decode.py` as the decoder, which
+starts the primary and the expert worker; the profile's `STRATA_GLM_MIXED_PRIMARY` / `STRATA_GLM_MIXED_WORKER`
+name the two binaries.
+
+```sh
+# one GPU: RX 9070 XT, HIP decoder, the 34 tok/s 8K profile (affinity 0.14, MTP depth 3)
+asciinema rec --cols 110 --rows 36 -c 'numactl --interleave=all python3 tools/glm_chat_tui.py "$MODEL" \
+  --decoder build-hip/strata-glm-decode --config <profile.json> --context 12288 --cpu-affinity numa \
+  --gpu-budget-mib 15360 --prefill-batch 8192 --prefill-experts f16-batched --decode-cache-mib 12288 \
+  --decode-graphs --speculative mtp --draft-depth 3 --warmup-tokens 128 --warmup-repetitions 3 \
+  --ignore-stop --tokens 512 --prompt-file docs/fixtures/glm53_cpp_quality/chat_prompt.txt --raw-prompt \
+  --demo --save recordings/glm53-9070xt-chat' recordings/glm53-9070xt-chat.cast
+# two GPUs: same, with --decoder tools/glm_mixed_decode.py, the two-GPU decode profile,
+# --gpu-budget-mib 14336 and --decode-cache-mib 10240
+python3 tools/glm_chat_render.py recordings/glm53-9070xt-chat.cast docs/media/glm53-tr16-9070xt-live-decode.gif \
+  --start <seconds> --duration 8 --title '...'
+```
+
+The README animation was later replaced by an affinity-0.08 run of the same profile (`STRATA_GLM_ROUTE_AFFINITY=0.08`,
+clip from 182.9 s), whose answer passes the C++ oracle. Every answer of the 4K C++ request on the RX 9070 XT was
+compiled with `-Wall -Wextra -Werror` under ASan/UBSan and run against
+`docs/fixtures/glm53_cpp_quality/test_generated.cpp` (400,532 `std::from_chars` cases):
+
+| affinity | decode tok/s | oracle |
+|---|---:|---|
+| 0.08 | 28.4 / **32.5** (README clip) / 27.3 | pass / pass / pass |
+| 0.14 | 31.8 (first clip) / 33.5 / 35.6 | fail (rejects inputs longer than 20 characters, although leading zeroes are allowed) / pass / pass |
+
+HumanEval for the affinity-0.08 setting: 145/164, below the 152 floor.
+
+Measured in the recorded requests: one GPU 31.79 tok/s decode (511 steps in 16.07 s), 305 tok/s prompt; two GPUs
+37.74 tok/s decode (511 steps in 13.54 s), 301 tok/s prompt. Both are below the profiles' 8K benchmark medians
+(34.1 and 43.6) on this shorter, differently-accepting prompt. The clips start 0.8 and 1.3 seconds after the
+first live token and show the start of the answer; the text past the 512-token cap, where the model is forced
+past its end-of-turn, is not shown. Records: [one GPU](tr16_9070xt_measurement.json),
+[two GPUs](tr16_two_gpu_measurement.json). The earlier V100 and 7 tok/s desktop animations remain in
+`docs/media/` and are described above.

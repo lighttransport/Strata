@@ -30,6 +30,7 @@
 #define cudaDeviceSynchronize hipDeviceSynchronize
 #define cudaDriverGetVersion hipDriverGetVersion
 #define cudaErrorNotReady hipErrorNotReady
+#define cudaErrorInvalidValue hipErrorInvalidValue
 #define cudaErrorMemoryAllocation hipErrorOutOfMemory
 #define cudaErrorPeerAccessAlreadyEnabled hipErrorPeerAccessAlreadyEnabled
 #define cudaErrorStreamCaptureUnsupported hipErrorStreamCaptureUnsupported

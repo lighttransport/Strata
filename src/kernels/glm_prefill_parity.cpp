@@ -253,6 +253,48 @@ void check_device_positions() {
     }
     std::cout << "device-position graph replay: bitwise parity\n";
 }
+// Short active attention rows leave different amounts of work in each warp.
+// Check the shared maximum/sum reduction against an independent CPU oracle,
+// including masked NaNs, row guards and bitwise repeatability.
+void check_mla_softmax() {
+    constexpr int queries = 9, heads = 8;
+    constexpr float scale = 1.f / 16;
+    for (int stride : {1, 4, 16, 31, 64, 127, 128, 255, 256, 512, 1024, 2052}) {
+        std::vector<int> counts(queries);
+        std::vector<float> input(queries * heads * stride + 2, -99.f), expected = input;
+        for (int q = 0; q < queries; ++q) {
+            counts[q] = q == 0 ? stride : 1 + (q * 71) % stride;
+            for (int h = 0; h < heads; ++h) {
+                const int base = 1 + (q * heads + h) * stride;
+                double maximum = -INFINITY, sum = 0;
+                for (int i = 0; i < stride; ++i) {
+                    input[base + i] = i < counts[q] ? float((i * 37 + h * 13 + q * 11) % 257 - 128)
+                                                   : NAN;
+                    if (i < counts[q]) maximum = std::max(maximum, double(input[base + i] * scale));
+                }
+                for (int i = 0; i < counts[q]; ++i) sum += std::exp(double(input[base + i] * scale) - maximum);
+                for (int i = 0; i < stride; ++i)
+                    expected[base + i] = i < counts[q]
+                        ? float(std::exp(double(input[base + i] * scale) - maximum) / sum) : 0.f;
+            }
+        }
+        Buffer<int> dc(counts);
+        Buffer<float> ds(input);
+        std::vector<float> first;
+        for (int repeat = 0; repeat < 20; ++repeat) {
+            ds.put(input);
+            k::glm_mla_softmax(ds.p + 1, dc.p, heads, stride, queries, scale, nullptr);
+            const auto actual = ds.get();
+            near(actual, expected, 2e-6f);
+            if (actual.front() != -99.f || actual.back() != -99.f)
+                throw std::runtime_error("MLA softmax overwrote a guard");
+            if (repeat && std::memcmp(first.data(), actual.data(), actual.size() * sizeof(float)))
+                throw std::runtime_error("MLA softmax repeated output changed at stride=" + std::to_string(stride));
+            first = actual;
+        }
+    }
+    std::cout << "MLA softmax short/full rows, masked NaNs, guards and repeated bits passed\n";
+}
 void check_half_attention_reference() {
     constexpr int B=3,C=7,L=512,H=2;
     std::vector<float> cache(4*L),wanted(B*C*L,0),scores(B*H*C);
@@ -338,8 +380,11 @@ void check_mixed_partial_rows() {
 }
 int main(int argc, char** argv) {
     const bool benchmark = argc == 2 && std::string(argv[1]) == "--benchmark";
-    if (argc > 1 && !benchmark) return 2;
+    const bool softmax_only = argc == 2 && std::string(argv[1]) == "--softmax-only";
+    if (argc > 1 && !benchmark && !softmax_only) return 2;
     try {
+        check_mla_softmax();
+        if (softmax_only) return 0;
         check_selected_rows_sum();
         check_mixed_partial_rows();
         check_half_attention_reference();
@@ -566,7 +611,7 @@ int main(int argc, char** argv) {
             near(state.get(), seq.get(), 1e-6);
             near(out.get(), ref.get(), 1e-6);
             const auto expected_state = state.get(), expected_out = out.get();
-            for (bool prepare : {false, true}) for (int chunk : {64, 256, 2048}) {
+            for (int ordered_parts : {2, 4}) for (bool prepare : {false, true}) for (int chunk : {64, 256, 2048}) {
                 Buffer<float> ordered_state(initial), ordered_out(B * N), pk(key.get()),
                     pg(decay.get()), pb(beta.get()), qi(B * H);
                 if (prepare) k::glm_kda_prepare(q.p, pk.p, pg.p, pb.p, qi.p, H, B, nullptr);
@@ -574,11 +619,27 @@ int main(int argc, char** argv) {
                 for (int t = 0; t < B; t += chunk)
                     k::glm_kda_chunk(ordered_state.p, q.p + t * N, pk.p + t * N, v.p + t * N,
                         pg.p + t * N, pb.p + t * H, ordered_out.p + t * N, H, D, std::min(chunk, B - t),
-                        nullptr, 128, 4, prepare ? qi.p + t * H : nullptr);
+                        nullptr, 128, ordered_parts, prepare ? qi.p + t * H : nullptr);
                 const auto actual_state = ordered_state.get(), actual_out = ordered_out.get();
                 if (std::memcmp(actual_state.data(), expected_state.data(), expected_state.size() * 4) ||
-                    std::memcmp(actual_out.data(), expected_out.data(), expected_out.size() * 4))
-                    throw std::runtime_error("ordered KDA rows changed original FP32 output/state bits");
+                    std::memcmp(actual_out.data(), expected_out.data(), expected_out.size() * 4)) {
+                    auto report_bits = [](const char *label, const auto &actual, const auto &expected) {
+                        size_t different = 0, first = actual.size();
+                        for (size_t i = 0; i < actual.size(); ++i)
+                            if (std::bit_cast<uint32_t>(actual[i]) != std::bit_cast<uint32_t>(expected[i])) {
+                                ++different; first = std::min(first, i);
+                            }
+                        std::cerr << "KDA_BIT_MISMATCH " << label << " count=" << different;
+                        if (different) std::cerr << " first=" << first << " actual=" << std::bit_cast<uint32_t>(actual[first])
+                                                 << " expected=" << std::bit_cast<uint32_t>(expected[first]);
+                        std::cerr << '\n';
+                    };
+                    report_bits("state", actual_state, expected_state);
+                    report_bits("output", actual_out, expected_out);
+                    throw std::runtime_error("ordered KDA rows changed original FP32 output/state bits: tokens=" +
+                        std::to_string(B) + " prepared=" + std::to_string(prepare) + " chunk=" + std::to_string(chunk) +
+                        " parts=" + std::to_string(ordered_parts));
+                }
                 if (B == 64 && chunk == 64 && benchmark) {
                     cudaEvent_t begin, end;
                     ck(cudaEventCreate(&begin)); ck(cudaEventCreate(&end));
@@ -592,11 +653,11 @@ int main(int argc, char** argv) {
                         ck(cudaEventRecord(begin));
                         if (prepare) k::glm_kda_prepare(q.p, pk.p, pg.p, pb.p, qi.p, H, B, nullptr);
                         k::glm_kda_chunk(ordered_state.p, q.p, pk.p, v.p, pg.p, pb.p, ordered_out.p,
-                            H, D, B, nullptr, 128, 4, prepare ? qi.p : nullptr);
+                            H, D, B, nullptr, 128, ordered_parts, prepare ? qi.p : nullptr);
                         ck(cudaEventRecord(end)); ck(cudaEventSynchronize(end));
                         float ms; ck(cudaEventElapsedTime(&ms, begin, end)); total_ms += ms;
                     }
-                    std::cout << "KDA_ORDERED_TIME prepared=" << prepare << " heads=" << H
+                    std::cout << "KDA_ORDERED_TIME prepared=" << prepare << " parts=" << ordered_parts << " heads=" << H
                               << " tokens=" << B << " ms=" << total_ms / 50
                               << " bits=identical includes_prepare=" << prepare << '\n';
                     ck(cudaEventDestroy(begin)); ck(cudaEventDestroy(end));
@@ -744,22 +805,30 @@ int main(int argc, char** argv) {
             near(pg.get(), sg.get(), 0);
             near(pooled.get(), expected.get(), 0);
         }
-        for (bool ties : {false, true}) {
-            int B = 9, pos = 4093, pools = (pos + B) / 4, stride = 2052;
+        for (bool ties : {false, true})
+        for (int pos : {0, 3, 55, 1015, 2039, 2047, 4093}) {
+            int B = 9, pools = (pos + B) / 4, stride = std::min(2052, ((pos + B + 3) / 4) * 4);
             auto hs = ties ? std::vector<float>(B * pools, 0) : random(B * pools);
             Buffer<float> scores(hs);
-            Buffer<int> ids(B * stride), counts(B), ref(B * stride), rc(B);
+            constexpr int guard = 16, sentinel = -9999;
+            Buffer<int> ids(std::vector<int>(B * stride + guard, sentinel)), counts(B), ref(B * 2052), rc(B);
             k::glm_index_select_batch(scores.p, ids.p, counts.p, pools, pos, B, 4, 2048, stride, nullptr);
             for (int t = 0; t < B; ++t)
-                k::glm_index_select(scores.p + t * pools, ref.p + t * stride, rc.p + t, pos + t + 1, 4, 2048,
+                k::glm_index_select(scores.p + t * pools, ref.p + t * 2052, rc.p + t, pos + t + 1, 4, 2048,
                                     nullptr);
             auto a = ids.get(), b = ref.get(), ns = counts.get();
             if (ns != rc.get())
                 throw std::runtime_error("selection counts");
-            for (int t = 0; t < B; ++t)
+            for (int t = 0; t < B; ++t) {
+                if (ns[t] > stride) throw std::runtime_error("selection active stride overflow");
                 for (int i = 0; i < ns[t]; ++i)
-                    if (a[t * stride + i] != b[t * stride + i])
+                    if (a[t * stride + i] != b[t * 2052 + i])
                         throw std::runtime_error("selection order");
+                for (int i = ns[t]; i < stride; ++i)
+                    if (a[t * stride + i] != sentinel) throw std::runtime_error("selection row guard");
+            }
+            for (int i = B * stride; i < B * stride + guard; ++i)
+                if (a[i] != sentinel) throw std::runtime_error("selection allocation guard");
         }
         {
             int B = 9, E = 288, K = 8;

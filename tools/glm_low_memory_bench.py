@@ -76,14 +76,15 @@ def clear_model_cache(config):
 
 
 def parse_log(log):
+    number=r"(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
     prefill = [dict(trial=int(i), tokens=int(n), batch=int(b), milliseconds=float(ms),
                     tokens_per_second=float(rate)) for i, n, b, ms, rate in re.findall(
-        r"PREFILL trial=(\d+) tokens=(\d+) batch=(\d+) ms=([\d.]+) tok_s=([\d.]+)", log)]
+        rf"PREFILL trial=(\d+) tokens=(\d+) batch=(\d+) ms=({number}) tok_s=({number})(?:\s|$)", log)]
     decode = [dict(kind="single", tokens=int(n), milliseconds=float(ms), tokens_per_second=float(rate))
-              for n, ms, rate in re.findall(r"DECODE steps=(\d+) ms=([\d.]+) tok_s=([\d.]+)", log)]
+              for n, ms, rate in re.findall(rf"DECODE steps=(\d+) ms=({number}) tok_s=({number})(?:\s|$)", log)]
     decode += [dict(kind=kind, tokens=int(n), milliseconds=float(ms), tokens_per_second=float(rate))
                for kind, n, ms, rate in re.findall(
-        r"SPECULATIVE source=(\w+) generated=(\d+).*? ms=([\d.]+) tok_s=([\d.]+)", log)]
+        rf"SPECULATIVE source=(\w+) generated=(\d+).*? ms=({number}) tok_s=({number})(?:\s|$)", log)]
     def records(tag):
         return [{k: int(v) if v.isdigit() else float(v) for k, v in re.findall(r"(\w+)=([0-9.eE+-]+)(?:\s|$)", line)}
                 for line in log.splitlines() if line.startswith(tag + " ")]
@@ -96,8 +97,9 @@ def parse_log(log):
         mtp_approx=records("MTP_APPROX"), mtp_first_margin=records("MTP_FIRST_MARGIN"),
         mtp_reuse=records("MTP_REUSE"), mtp_sync_state=records("MTP_SYNC_STATE_ONLY"),
         mtp_repeat_guard=records("MTP_REPEAT_GUARD"), step_trace=records("STEP_TRACE"),
-        decode_cache=records("DECODE_CACHE"), speculation=records("SPECULATIVE"),
+        decode_cache=records("DECODE_CACHE"), decode_page_faults=records("DECODE_FAULTS"), speculation=records("SPECULATIVE"),
         affinity_quality=records("AFFINITY_QUALITY"), lookup_parity=records("LOOKUP_PARITY"),
+        prefill_repeat=records("PREFILL_REPEAT"),
         median_prefill_tok_s=statistics.median(r["tokens_per_second"] for r in prefill) if prefill else None,
         median_decode_tok_s=statistics.median(r["tokens_per_second"] for r in decode) if decode else None,
         peak_allocated_gpu_mib=max(map(float, re.findall(
@@ -105,7 +107,12 @@ def parse_log(log):
         gpu_live=[dict(device=int(d), tags=dict((k, float(v)) for k, v in re.findall(r"(\w+)_MiB=([\d.]+)", tags)))
                   for d, tags in re.findall(r"GPU_LIVE device=(\d+) (.*)", log)],
         page_faults=[dict(trial=int(i), major=int(a), minor=int(b)) for i, a, b in re.findall(
-            r"FAULTS trial=(\d+) major=(\d+) minor=(\d+)", log)])
+            r"^FAULTS trial=(\d+) major=(\d+) minor=(\d+)", log, re.MULTILINE)])
+
+
+def prefill_repeats_passed(rows, trials):
+    return (trials > 1 and [row.get("trial") for row in rows] == list(range(trials)) and
+            all(row.get("logits_identical") == 1 and row.get("routes_identical") == 1 for row in rows))
 
 
 def decode_complete(ids, rows, maximum, trials, stops=()):
@@ -124,6 +131,20 @@ def decode_complete(ids, rows, maximum, trials, stops=()):
             return False
         cursor += count
     return cursor == len(ids)
+
+
+
+def decode_trials_identical(ids, rows):
+    """Compare complete trial outputs, including an early stop token."""
+    cursor = 0
+    outputs = []
+    for row in rows:
+        count = row['tokens'] + (row['kind'] == 'single')
+        if count < 1 or cursor + count > len(ids):
+            return False
+        outputs.append(ids[cursor:cursor + count])
+        cursor += count
+    return bool(outputs) and cursor == len(ids) and all(row == outputs[0] for row in outputs)
 
 
 def group_stats(group):
@@ -258,7 +279,9 @@ def read_gpu(config, pid=None):
     return process, snapshot
 
 
-def eval_counts(path):
+def eval_counts(path, skip_prefix=0):
+    if skip_prefix < 0:
+        raise ValueError("evaluation prefix must be nonnegative")
     total = 0
     counts = []
     for line in path.read_text().splitlines():
@@ -266,7 +289,9 @@ def eval_counts(path):
             ids = [int(i) for i in line.split(",")]
             if len(ids) < 2:
                 raise ValueError("evaluation sequence needs at least two tokens")
-            total += len(ids) - 1
+            if skip_prefix >= len(ids) - 1:
+                raise ValueError("evaluation prefix must leave at least one target")
+            total += len(ids) - 1 - skip_prefix
             counts.append(total)
     if not counts:
         raise ValueError("empty evaluation corpus")
@@ -275,16 +300,27 @@ def eval_counts(path):
 
 def vulkan_command(cfg, args):
     """Keep unsupported Vulkan features explicit instead of silently ignoring them."""
-    if (args.single or args.eval_corpus or cfg.get('speculative', 'none') != 'none' or
-            cfg.get('decode_graphs') or cfg.get('decode_cache_mib') or
+    engine = cfg.get('engine', 'strict')
+    if engine not in ('strict', 'fast'):
+        raise ValueError('Vulkan engine must be strict or fast')
+    if (args.single or args.eval_corpus or cfg.get('speculative', 'none') not in ('none','lookup','mtp') or
+            cfg.get('decode_graphs') or
             cfg.get('decode_cache_slots') or cfg.get('decode_checks') or cfg.get('mtp_greedy_control')):
-        raise ValueError('initial Vulkan runner supports greedy generation without a resident expert tier')
-    if cfg.get('prefill_batch', 1) != 1:
-        raise ValueError('initial Vulkan runner requires sequential prefill_batch=1')
-    if cfg.get('prefill_experts', 'cpu') != 'cpu':
-        raise ValueError('initial Vulkan prefill uses CPU experts')
+        raise ValueError('unsupported Vulkan generation or CUDA graph control')
+    batch = cfg.get('prefill_batch', 1)
+    if type(batch) is not int or not 1 <= batch <= 1024:
+        raise ValueError('Vulkan prefill_batch must be 1..1024')
+    experts = cfg.get('prefill_experts', 'cpu')
+    if experts not in ('cpu','gpu') or (experts=='gpu' and batch==1):
+        raise ValueError('Vulkan GPU prefill experts require prefill_batch > 1')
+    if engine == 'fast' and (batch != 1 or experts != 'cpu' or
+                             cfg.get('speculative', 'none') not in ('none', 'mtp') or
+                             cfg.get('verify_batch')):
+        raise ValueError('Vulkan fast engine requires CPU prefill and batch=1')
     supported = {'STRATA_GLM_MAPPED_LAZY', 'STRATA_GLM_MAPPED_OWNED', 'STRATA_GLM_GPU_RESERVE_MIB',
                  'STRATA_GLM_TASK_TRACE', 'STRATA_GLM_STATE_TRACE_DIR'}
+    if engine == 'fast':
+        supported.update(('STRATA_GLM_ROUTE_AFFINITY', 'STRATA_GLM_ROUTE_MIN_SHARE', 'STRATA_GLM_EXPERT_PRIOR'))
     unsupported = [name for name in cfg.get('env', {}) if name.startswith('STRATA_GLM_') and name not in supported]
     if unsupported:
         raise ValueError('unsupported Vulkan settings: ' + ', '.join(sorted(unsupported)))
@@ -294,6 +330,25 @@ def vulkan_command(cfg, args):
                '--context', str(cfg['context']), '--generate', str(args.tokens),
                '--trials', str(args.trials), '--threads', str(cfg.get('threads', 12)),
                '--gpu-budget-mib', str(cfg['gpu_budget_mib'])]
+    if engine == 'fast':
+        command += ['--engine', 'fast']
+    if batch != 1:
+        command += ['--prefill-batch', str(batch)]
+    if experts != 'cpu':
+        command += ['--prefill-experts', experts]
+    if cfg.get('speculative', 'none') != 'none':
+        depth=cfg.get('draft_depth',1)
+        if type(depth) is not int or not 1 <= depth <= 3:
+            raise ValueError('Vulkan draft_depth must be 1..3')
+        command += ['--speculative',cfg['speculative'],'--draft-depth',str(depth)]
+        if cfg.get('verify_batch'):
+            command += ['--verify-batch']
+    if cfg.get('decode_cache_mib'):
+        cache = cfg['decode_cache_mib']
+        cache_limit = 12288 if engine == 'fast' else 8192
+        if type(cache) is not int or not 0 <= cache <= cache_limit:
+            raise ValueError(f'Vulkan decode_cache_mib must be 0..{cache_limit}')
+        command += ['--decode-cache-mib', str(cache)]
     if cfg.get('record_prefill_logits'):
         command += ['--dump-prefill', str(args.output.with_suffix('.prefill.logits.bin').resolve())]
     if cfg.get('stop_ids'):
@@ -301,16 +356,25 @@ def vulkan_command(cfg, args):
     return command
 
 
-def eval_complete(rows, counts):
+def eval_complete(rows, counts, decode_prefix=None):
     return ([row.get("sequence") for row in rows] == list(range(1, len(counts) + 1)) and
-            [row.get("tokens") for row in rows] == counts)
+            [row.get("tokens") for row in rows] == counts and
+            (decode_prefix is None or all(row.get("decode_only") is True and
+                                         row.get("prefix_tokens") == decode_prefix for row in rows)))
+
+
+def benchmark_environment(cfg):
+    prefixes=("STRATA_GLM_", "STRATA_Q23_", "STRATA_NATIVE_")
+    if cfg.get('backend')=='vulkan':prefixes+=("STRATA_VULKAN_", "GGML_VK_")
+    env={k:v for k,v in os.environ.items() if not k.startswith(prefixes)}
+    env.update(cfg.get("env", {}))
+    return env
 
 
 def worker(args):
     from glm_q2_run_guard import process_cpu_snapshot
     cfg = json.loads(args.config.read_text())
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("STRATA_GLM_", "STRATA_Q23_", "STRATA_NATIVE_"))}
-    env.update(cfg.get("env", {}))
+    env = benchmark_environment(cfg)
     command = ["numactl", "--interleave=all", str(Path(cfg["exe"]).resolve()), cfg["model"],
         "@" + str(args.prompt.resolve()), str(args.tokens), str(cfg.get("dense_cache_mib", 4096)),
         str(cfg.get("threads", 15)), "--context=" + str(cfg["context"]),
@@ -332,8 +396,16 @@ def worker(args):
         command.append("--routing-trace=" + str(Path(cfg["routing_trace"]).resolve()))
     if cfg.get("profile_layers"):
         command.append("--profile")
+    if cfg.get("benchmark_decode_warmup") and not args.eval_corpus and args.trials > 1:
+        command.append("--decode-warmup")
+    if env.get("STRATA_GLM_WARM_ACTIVE_ONLY") == "1":
+        command.append("--warm-weights")
     if cfg.get("record_prefill_logits"):
         command.append("--dump-prefill-logits=" + str(args.output.with_suffix(".prefill.logits.bin").resolve()))
+    if cfg.get("check_prefill_repeats") and not args.eval_corpus:
+        if args.trials < 2:
+            raise ValueError("prefill repeat checking requires at least two trials")
+        command.append("--check-prefill-repeats")
     if cfg.get("expert_pack"):
         command.append("--expert-pack=" + cfg["expert_pack"])
     if cfg.get("stop_ids"):
@@ -498,23 +570,39 @@ def worker(args):
     record["output_sha256"] = hashlib.sha256(args.output.with_suffix(".stdout").read_bytes()).hexdigest()
     if args.eval_corpus:
         rows = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
-        counts = eval_counts(args.eval_corpus)
+        decode_prefix = (int(env.get("STRATA_GLM_EVAL_DECODE_PREFIX", "0"))
+                         if env.get("STRATA_GLM_EVAL_DECODE_ONLY") == "1" else None)
+        counts = eval_counts(args.eval_corpus, skip_prefix=decode_prefix or 0)
         record["evaluation"] = rows
         record["evaluated_targets"] = rows[-1].get("tokens", 0) if rows else 0
-        complete = eval_complete(rows, counts)
+        complete = eval_complete(rows, counts, decode_prefix=decode_prefix)
     else:
-        ids = list(map(int, output.split()))
+        try:
+            ids = list(map(int, output.split()))
+        except ValueError:
+            ids = []
+            record["output_parse_error"] = "decoder stdout contains non-token output"
         record["output_token_count"] = len(ids)
+        record["greedy_trials_identical"] = decode_trials_identical(ids, record["measurements"]["decode"])
         complete = (len(record["measurements"]["prefill"]) == args.trials and
                     decode_complete(ids, record['measurements']['decode'], args.tokens,
                                     args.trials, cfg.get('stop_ids', [])))
     record["complete"] = complete
     record["clean"] = not (args.fit_only or code or rejection or record["interference"] or
         record["cgroup_after"]["memory.events"].get("oom_kill", 0)) and complete
+    if cfg.get("require_deterministic") and not record.get("greedy_trials_identical", True):
+        record["clean"] = False
+        record["determinism_failure"] = True
+    if cfg.get("check_prefill_repeats") and not args.eval_corpus:
+        record["prefill_trials_identical"] = prefill_repeats_passed(record["measurements"]["prefill_repeat"], args.trials)
+        if not record["prefill_trials_identical"]:
+            record["clean"] = False
+            record["determinism_failure"] = True
+            record["prefill_determinism_failure"] = True
     args.output.with_suffix(".result.json").write_text(json.dumps(record, indent=2)+"\n")
     print(json.dumps({k: record[k] for k in ("exit_code", "wall_seconds", "complete", "clean", "rejected")}
         | {"measurements":record["measurements"]}), flush=True)
-    return code or (2 if rejection or not complete else 0)
+    return code or (2 if rejection or not complete or record.get("determinism_failure") else 0)
 
 
 def main():
