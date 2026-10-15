@@ -175,31 +175,3 @@ struct HostMappingRegistration {
     }
     HostMappingRegistration(const HostMappingRegistration &)=delete;
 };
-struct ResidentSideStream {
-    cudaStream_t stream=nullptr;
-    cudaEvent_t fork[2]{}, done[2]{}, consumed[2]{};
-    bool consumed_valid[2]{};
-    ResidentSideStream() {
-        try {
-            check(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));
-            for (int g=0;g<2;++g) {
-                check(cudaEventCreateWithFlags(&fork[g],cudaEventDisableTiming));
-                check(cudaEventCreateWithFlags(&done[g],cudaEventDisableTiming));
-                check(cudaEventCreateWithFlags(&consumed[g],cudaEventDisableTiming));
-            }
-        } catch (...) {release();throw;}
-    }
-    void release() noexcept {
-        if (stream) cudaStreamSynchronize(stream);
-        for (int g=0;g<2;++g) {
-            if (fork[g]) cudaEventDestroy(fork[g]);
-            if (done[g]) cudaEventDestroy(done[g]);
-            if (consumed[g]) cudaEventDestroy(consumed[g]);
-            fork[g]=done[g]=consumed[g]=nullptr;
-        }
-        if (stream) cudaStreamDestroy(stream);
-        stream=nullptr;
-    }
-    ~ResidentSideStream() {release();}
-    ResidentSideStream(const ResidentSideStream &)=delete;
-};

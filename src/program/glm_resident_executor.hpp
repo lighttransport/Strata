@@ -133,7 +133,7 @@ struct ResidentExecutor {
     void run(const k::NativeExpertLayout &layout, const std::map<int, std::vector<int>> &hits,
              const std::function<void *(int)> &address, const float *x, int nt, cudaStream_t stream,
              bool use_graphs = false, bool canon = false, bool batched_graphs = false, bool readback = true,
-             bool fixed_geometry = false, const float *reduction_weights = nullptr) {
+             const float *reduction_weights = nullptr) {
         if (reduction_weights) {
             if (!partial_weights) {
                 DeviceTag tag("resident_exec");
@@ -162,10 +162,6 @@ struct ResidentExecutor {
         if (!groups || groups > entries || rows > entries || nt > cpu::MAXT)
             throw std::runtime_error("GLM: resident decode workspace geometry exceeded");
         *count = groups;
-        // Counts remain request data. Kernel capacities can stay fixed so a
-        // long worker session does not capture every groups/rows combination.
-        const size_t launch_groups=use_graphs && batched_graphs && fixed_geometry ? size_t(nt)*8 : groups;
-        const size_t launch_rows=use_graphs && batched_graphs && fixed_geometry ? size_t(nt)*8 : rows;
         std::memcpy(host_activation->p, x, (size_t)nt * 4096 * 4);
         const auto offset = [&](const void *p) { return (const char *)p - (const char *)host_metadata->p; };
         auto *base = (char *)metadata->p;
@@ -177,7 +173,7 @@ struct ResidentExecutor {
             expert_rows(layout, canon, (const unsigned long long *)base,
                 (const int *)(base + offset(starts)), (const int *)(base + offset(count)),
                 (const int *)(base + offset(dest)), (const int *)(base + offset(tokens)),
-                launch_groups, launch_rows, activation->f(), nt, stream);
+                groups, rows, activation->f(), nt, stream);
             if (readback) check(cudaMemcpyAsync(host_output->p, output->p, (size_t)nt * 8 * 4096 * 4,
                                                  cudaMemcpyDeviceToHost, stream));
             if (reduction_weights) {
@@ -189,7 +185,7 @@ struct ResidentExecutor {
         if (!use_graphs || (!batched_graphs && (nt != 1 || rows != groups))) {
             enqueue(); return;
         }
-        auto &graph = graphs[{layout.gu_type + (canon ? 1000 : 0), layout.d_type, layout.swiglu_limit, layout.gate_skip, nt, launch_groups, launch_rows, readback, reduction_weights != nullptr}];
+        auto &graph = graphs[{layout.gu_type + (canon ? 1000 : 0), layout.d_type, layout.swiglu_limit, layout.gate_skip, nt, groups, rows, readback, reduction_weights != nullptr}];
         if (!graph) {
             auto captured = std::make_unique<Graph>();
             check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
