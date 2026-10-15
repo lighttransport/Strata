@@ -851,15 +851,6 @@ static bool f16_accum_batched() {
 #endif
 void Gemm::f16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches) {
     if (T <= 0 || N <= 0 || batches <= 0) return;
-#if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
-    // An explicitly supplied, version-scoped tuning table can select each
-    // expert's ordinary GEMM instead of the strided-batch implementation.
-    if (hipblaslt_state_ && strata_env_truthy_one("STRATA_GLM_HIP_BATCH_SINGLE")) {
-        for (int b=0;b<batches;++b)
-            f16(X+size_t(b)*T*K,W+size_t(b)*N*K,Y+size_t(b)*T*N,T,N,K);
-        return;
-    }
-#endif
 #if !defined(__HIPCC__)
     if (f16_accum_batched() && lossy_allowed) {
         const __half one_h = __float2half(1.0f), zero_h = __float2half(0.0f);

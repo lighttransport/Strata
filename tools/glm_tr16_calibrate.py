@@ -32,8 +32,7 @@ def digest(path):
 
 def missing_decoder_flags(configs, binary):
     """Catch silent no-ops in both explicit cases and saved experimental profiles."""
-    flags = ('STRATA_GLM_FUSE_ROUTE_BATCH', 'STRATA_GLM_PREFILL_FUSED_SWIGLU',
-             'STRATA_GLM_PREFETCH_NEXT_LAYER', 'STRATA_GLM_PREFETCH_STREAM',
+    flags = ('STRATA_GLM_PREFETCH_NEXT_LAYER', 'STRATA_GLM_PREFETCH_STREAM',
              'STRATA_GLM_MTP_ACCEPT_MARGIN', 'STRATA_GLM_MTP_ACCEPT_TOP_K',
              'STRATA_GLM_MTP_ACCEPT_MAX_SOFT', 'STRATA_GLM_MMVQ_IL', 'STRATA_GLM_MTP_FIRST_MARGIN',
              'STRATA_GLM_MTP_REUSE_DRAFT', 'STRATA_GLM_ROUTE_RENORMALIZE', 'STRATA_GLM_MTP_SYNC_STATE_ONLY',

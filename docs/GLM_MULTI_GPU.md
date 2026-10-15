@@ -85,14 +85,13 @@ bytes; it is not copied into the legacy two-node expert arenas.
 
 ## Coexistence with the TR16 runner
 
-The TR16 state imported at `71fecf19` also has a mixed CUDA/HIP worker and a
-process-based layer-range experiment. Their controls and measurements are in
-[GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md). `tools/glm_stage_run.py` uses
-`STRATA_GLM_LAYER_RANGE` and the stage protocol, with the output head on its
-primary process. The `gpu_layout=layer` path described here uses shared model
-mappings and a tail-owned head within one backend. Each path retains its own
-transport and ownership rules. Mixing stage/mixed protocol descriptors with
-`gpu_layout=layer` is rejected before model loading.
+The TR16 mixed CUDA/HIP worker's controls and measurements are in
+[GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md). The release cleanup after
+`3e01337d` removes its process-based layer-range prototype, stage protocol and
+`tools/glm_stage_run.py`. The native `gpu_layout=layer` path described here
+retains its shared model mappings, tail-owned head and independent transport
+within one backend. Mixed-worker descriptors and retired stage descriptors
+cannot be combined with `gpu_layout=layer`.
 
 The imported decode levers remain opt-in. The fastest TR16 settings include
 lossy routing and soft acceptance and have deferred quality checks; their rates
