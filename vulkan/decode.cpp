@@ -1,6 +1,7 @@
 // Experimental Vulkan GLM-5.3f runner: GPU projections/mHC/KDA/MLA, existing
 // CPU routed experts.
 #include "cpu_executor.hpp"
+#include "fast/engine.hpp"
 #include "model_checks.hpp"
 #include "projections.hpp"
 #include "runtime.hpp"
@@ -1046,9 +1047,78 @@ public:
               << '\n';
   }
 };
+// --engine fast: sequential prefill and greedy decode on the opt-in fast engine.
+static int run_fast(const std::string &model, const std::vector<int> &tokens, const std::string &output,
+                    const std::string &dump, const std::vector<int> &stops, int threads, int capacity,
+                    int generate, int trials, size_t budget, size_t tier, bool mtp, int draft_depth) {
+  strata::core::ModelArtifact artifact(model);
+  const auto &m = strata::vulkan::checked_model(artifact);
+  strata::vulkan::fast::EngineOptions options;
+  options.threads = threads;
+  options.capacity = capacity;
+  options.budget = budget;
+  options.tier_bytes = tier;
+  options.mtp = mtp;
+  strata::vulkan::fast::Engine engine(artifact, m, options);
+  std::vector<double> prefill_rates, decode_rates;
+  std::vector<std::vector<int>> outputs;
+  Vec logits;
+  if (trials > 1) {
+    engine.reset();
+    logits = engine.prefill(tokens);
+    engine.report("warmup", -1);
+  }
+  for (int trial = 0; trial < trials; ++trial) {
+    engine.reset();
+    auto start = Clock::now();
+    logits = engine.prefill(tokens);
+    double ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    prefill_rates.push_back(tokens.size() * 1000 / ms);
+    std::cerr << "PREFILL trial=" << trial << " tokens=" << tokens.size() << " batch=1 ms=" << ms
+              << " tok_s=" << prefill_rates.back() << '\n';
+    engine.report("prefill", trial);
+    engine.prepare_tier();
+    if (trial == 0 && !dump.empty()) {
+      std::ofstream f(dump, std::ios::binary);
+      f.write(reinterpret_cast<const char *>(logits.data()), logits.size() * 4);
+      if (!f) throw std::runtime_error("prefill dump failed");
+    }
+    std::vector<int> ids;
+    start = Clock::now();
+    if (mtp) ids = engine.generate_mtp(logits, generate, stops, draft_depth);
+    else
+      for (int i = 0; i < generate; ++i) {
+        const int id = std::max_element(logits.begin(), logits.end()) - logits.begin();
+        ids.push_back(id);
+        std::cout << id << '\n' << std::flush;
+        if (std::find(stops.begin(), stops.end(), id) != stops.end()) break;
+        if (i + 1 < generate) logits = engine.step(id);
+      }
+    ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    decode_rates.push_back((ids.size() - 1) * 1000 / ms);
+    outputs.push_back(ids);
+    std::cerr << "DECODE steps=" << ids.size() - 1 << " ms=" << ms << " tok_s=" << decode_rates.back() << '\n';
+    engine.report("decode", trial);
+  }
+  auto median = [](std::vector<double> x) {
+    std::sort(x.begin(), x.end());
+    return x[x.size() / 2];
+  };
+  std::ofstream f(output);
+  f << "{\"backend\":\"vulkan\",\"engine\":\"fast\",\"prefill_mode\":\"sequential\",\"expert_cache_slots\":" << engine.tier_slots() << ","
+    << "\"prefill_tok_s\":" << median(prefill_rates) << ",\"decode_tok_s\":" << median(decode_rates) << ",\"output_ids\":[";
+  for (size_t t = 0; t < outputs.size(); t++) {
+    f << (t ? ",[" : "[");
+    for (size_t i = 0; i < outputs[t].size(); i++) f << (i ? "," : "") << outputs[t][i];
+    f << ']';
+  }
+  f << "]}\n";
+  if (!f) throw std::runtime_error("result write failed");
+  return 0;
+}
 int main(int argc, char **argv) {
   try {
-    std::string model, prompt, output, dump, speculative = "none", prefill_experts = "cpu";
+    std::string model, prompt, output, dump, speculative = "none", prefill_experts = "cpu", engine = "strict";
     int draft_depth = 1;
     bool verify_batch = false;
     std::vector<int> stops;
@@ -1110,6 +1180,8 @@ int main(int argc, char **argv) {
         expert_budget = mib(value());
       else if (a == "--gpu-budget-mib")
         budget = mib(value());
+      else if (a == "--engine")
+        engine = value();
       else
         throw std::invalid_argument("unknown argument: " + a);
     }
@@ -1119,7 +1191,7 @@ int main(int argc, char **argv) {
         threads > 32 || capacity < 2 || capacity > 32768 || generate < 2 ||
         generate > 4096 || trials < 1 || trials > 5 ||
         budget < 2048ULL * 1024 * 1024 || budget > 15360ULL * 1024 * 1024 ||
-        expert_budget > 8192ULL * 1024 * 1024 || expert_budget > budget - 2048ULL*1024*1024)
+        expert_budget > (engine == "fast" ? 12288ULL : 8192ULL) * 1024 * 1024 || expert_budget > budget - 2048ULL*1024*1024)
       throw std::invalid_argument(
           "usage: strata-glm-vulkan --model MODEL --prompt-file IDS --output "
           "JSON [--generate 32 --trials 1 --context 4096 --threads 12 "
@@ -1140,6 +1212,15 @@ int main(int argc, char **argv) {
     if (std::filesystem::exists(output) ||
         (!dump.empty() && std::filesystem::exists(dump)))
       throw std::invalid_argument("refusing to overwrite Vulkan evidence");
+    if (engine != "strict" && engine != "fast")
+      throw std::invalid_argument("--engine must be strict or fast");
+    if (engine == "fast") {
+      if (speculative == "lookup" || verify_batch || prefill_batch != 1 || prefill_experts != "cpu")
+        throw std::invalid_argument("--engine fast supports --speculative mtp with depth 1..3; prefill windows come from "
+                                    "STRATA_VULKAN_FAST_PREFILL_CHUNK");
+      return run_fast(model, tokens, output, dump, stops, threads, capacity, generate, trials, budget, expert_budget,
+                      speculative == "mtp", draft_depth);
+    }
     trace("model_load_begin", 0);
     Decoder decoder(model, device, threads, capacity, budget, expert_budget, speculative=="mtp", prefill_experts=="gpu");
     trace("model_load_complete", 0);

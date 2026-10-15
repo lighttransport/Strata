@@ -1,0 +1,85 @@
+#version 450
+// Selects the top `limit` pools by score (ties: lower index first, as a stable
+// descending sort), lists their tokens in ascending order, then the tail tokens.
+// ids[0] = count, ids[1..] = token positions.
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Scores { float scores[]; };
+layout(binding = 1, std430) writeonly buffer Ids { int ids[]; };
+layout(binding = 2, std430) readonly buffer Step { uint pos; } step;
+layout(push_constant) uniform P { uint pool, limit, sstride, istride; } p;  // token = workgroup x
+shared uint red[4];
+shared uint scan[256];
+uint key_of(float s) { const uint u = floatBitsToUint(s); return (u & 0x80000000u) != 0 ? ~u : (u | 0x80000000u); }
+uint block_sum(uint v) {
+  v = subgroupAdd(v);
+  if (gl_SubgroupInvocationID == 0) red[gl_SubgroupID] = v;
+  barrier();
+  const uint total = (red[0] + red[1]) + (red[2] + red[3]);
+  barrier();
+  return total;
+}
+uint exclusive_scan(uint v) {  // in thread order
+  const uint t = gl_LocalInvocationID.x;
+  scan[t] = v;
+  barrier();
+  for (uint off = 1; off < 256; off <<= 1) {
+    const uint add = t >= off ? scan[t - off] : 0u;
+    barrier();
+    scan[t] += add;
+    barrier();
+  }
+  const uint r = scan[t] - v;
+  barrier();
+  return r;
+}
+void main() {
+  const uint t = gl_LocalInvocationID.x, tok = gl_WorkGroupID.x, tokens = step.pos + tok + 1, pools = tokens / p.pool;
+  const uint so = tok * p.sstride, io = tok * p.istride;
+  const uint per = (pools + 255) / 256, b0 = t * per, b1 = min(pools, b0 + per);
+  uint threshold = 0;
+  uint need_equal = 0xffffffffu;  // all pools selected
+  if (pools > p.limit) {
+    for (int bit = 31; bit >= 0; bit--) {
+      const uint cand = threshold | (1u << uint(bit));
+      uint c = 0;
+      for (uint b = b0; b < b1; b++) c += key_of(scores[so + b]) >= cand ? 1u : 0u;
+      if (block_sum(c) >= p.limit) threshold = cand;
+    }
+    uint gt = 0;
+    for (uint b = b0; b < b1; b++) gt += key_of(scores[so + b]) > threshold ? 1u : 0u;
+    need_equal = p.limit - block_sum(gt);
+  }
+  // Rank of equal keys in index order, then selection positions in index order.
+  uint eq = 0;
+  if (need_equal != 0xffffffffu)
+    for (uint b = b0; b < b1; b++) eq += key_of(scores[so + b]) == threshold ? 1u : 0u;
+  uint eq_rank = exclusive_scan(eq);
+  uint sel = 0;
+  for (uint b = b0; b < b1; b++) {
+    bool s = true;
+    if (need_equal != 0xffffffffu) {
+      const uint k = key_of(scores[so + b]);
+      s = k > threshold || (k == threshold && eq_rank++ < need_equal);
+    }
+    sel += s ? 1u : 0u;
+  }
+  uint out_pos = exclusive_scan(sel);
+  const uint selected = block_sum(sel);
+  eq_rank = exclusive_scan(eq);
+  for (uint b = b0; b < b1; b++) {
+    bool s = true;
+    if (need_equal != 0xffffffffu) {
+      const uint k = key_of(scores[so + b]);
+      s = k > threshold || (k == threshold && eq_rank++ < need_equal);
+    }
+    if (s) {
+      for (uint i = 0; i < p.pool; i++) ids[io + 1 + out_pos * p.pool + i] = int(b * p.pool + i);
+      out_pos++;
+    }
+  }
+  const uint tail0 = pools * p.pool, base = 1 + selected * p.pool;
+  for (uint i = tail0 + t; i < tokens; i += 256) ids[io + base + i - tail0] = int(i);
+  if (t == 0) ids[io] = int(selected * p.pool + tokens - tail0);
+}

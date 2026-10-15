@@ -1,0 +1,92 @@
+#version 450
+// Fused mHC read: inv = rsqrt(mean(r^2)+eps) scales the raw hc projection (W.r),
+// coefficients with a 16-thread parallel Sinkhorn, x = sum_i c[i] r_i, then the
+// layer RMS norm with weight: xn = x * rsqrt(mean(x^2)+eps) * w. One workgroup per token
+// (token t: r at t*4*width, proj/coefficients at t*32, xn at t*width).
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer R { vec4 r4[]; };
+layout(binding = 1, std430) readonly buffer Proj { float proj[]; };
+layout(binding = 2, std430) readonly buffer Par { float par[]; };   // hc base[24], scale[3] at pofs; norm w at wofs
+layout(binding = 3, std430) writeonly buffer C { float coefficients[]; };
+layout(binding = 4, std430) writeonly buffer XN { vec4 xn4[]; };
+layout(push_constant) uniform P { uint width, iterations, pofs, wofs; float hc_eps, rms_eps; } p;
+shared float red[4];
+shared float c[24];
+shared float inv_r;
+float block_sum(float v) {
+  v = subgroupAdd(v);
+  if (gl_SubgroupInvocationID == 0) red[gl_SubgroupID] = v;
+  barrier();
+  const float total = (red[0] + red[1]) + (red[2] + red[3]);
+  barrier();
+  return total;
+}
+void main() {
+  const uint t = gl_LocalInvocationID.x, w4 = p.width / 4, tok = gl_WorkGroupID.x;
+  const uint rb = tok * 4 * w4, pb = tok * 32, xb = tok * w4;
+  float s = 0;
+  for (uint i = t; i < 4 * w4; i += 256) { const vec4 v = r4[rb + i]; s += dot(v, v); }
+  const float ir = 1.0 / sqrt(block_sum(s) / float(4 * p.width) + p.rms_eps);
+  const uint o = p.pofs;
+  if (t < 4) {
+    c[t] = sigmoid(proj[pb + t] * ir * par[o + 24] + par[o + t]) + p.hc_eps;
+    c[4 + t] = 2 * sigmoid(proj[pb + 4 + t] * ir * par[o + 25] + par[o + 4 + t]);
+  }
+  // Thread e < 16 owns matrix entry (row e/4, column e%4).
+  const uint e = t, row = e / 4, col = e % 4;
+  float a = e < 16 ? proj[pb + 8 + e] * ir * par[o + 26] + par[o + 8 + e] : 0.0;
+  if (e < 16) c[8 + e] = a;
+  barrier();
+  if (e < 16) {
+    float mx = -3.402823e38;
+    for (uint j = 0; j < 4; j++) mx = max(mx, c[8 + row * 4 + j]);
+    a = exp(a - mx);
+  }
+  barrier();
+  if (e < 16) c[8 + e] = a;
+  barrier();
+  if (e < 16) {
+    float total = 0;
+    for (uint j = 0; j < 4; j++) total += c[8 + row * 4 + j];
+    a = a / total + p.hc_eps;
+  }
+  barrier();
+  if (e < 16) c[8 + e] = a;
+  barrier();
+  for (uint n = 0; n < p.iterations; n++) {
+    if (n > 0) {
+      float total = p.hc_eps;
+      if (e < 16) for (uint j = 0; j < 4; j++) total += c[8 + row * 4 + j];
+      barrier();
+      if (e < 16) c[8 + e] /= total;
+      barrier();
+    }
+    float total = p.hc_eps;
+    if (e < 16) for (uint i = 0; i < 4; i++) total += c[8 + i * 4 + col];
+    barrier();
+    if (e < 16) c[8 + e] /= total;
+    barrier();
+  }
+  if (t < 24) coefficients[pb + t] = c[t];
+  // x = sum_i c[i] r_i, then RMS norm with weight.
+  vec4 x[4];
+  float sx = 0;
+  for (uint k = 0; k < 4; k++) {
+    const uint i = t + 256 * k;
+    x[k] = vec4(0);
+    if (i < w4) {
+      x[k] = c[0] * r4[rb + i] + c[1] * r4[rb + w4 + i] + c[2] * r4[rb + 2 * w4 + i] + c[3] * r4[rb + 3 * w4 + i];
+      sx += dot(x[k], x[k]);
+    }
+  }
+  const float ix = 1.0 / sqrt(block_sum(sx) / float(p.width) + p.rms_eps);
+  for (uint k = 0; k < 4; k++) {
+    const uint i = t + 256 * k;
+    if (i < w4) {
+      const uint wb = p.wofs + 4 * i;
+      xn4[xb + i] = x[k] * ix * vec4(par[wb], par[wb + 1], par[wb + 2], par[wb + 3]);
+    }
+  }
+}

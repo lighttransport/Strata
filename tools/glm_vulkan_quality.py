@@ -1,4 +1,4 @@
-"""Freeze and resume strict-Vulkan output comparisons; timings are unqualified.
+"""Freeze and resume Vulkan comparisons and functional scores; timings are unqualified.
 
 Training and holdout prompts stay separate. A gate needs complete stop-terminated
 outputs, identical token IDs and passing resource/fault checks, not just a prefix.
@@ -22,7 +22,11 @@ from jinja2.sandbox import SandboxedEnvironment
 def digest(path):return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def freeze(config, output, dataset):
+def freeze(config, output, dataset, human_count=30, human_tokens=1024):
+    if type(human_count) is not int or not 1 <= human_count <= 164:
+        raise ValueError('HumanEval count must be 1..164')
+    if type(human_tokens) is not int or not 2 <= human_tokens <= 4096:
+        raise ValueError('HumanEval maximum generated tokens must be 2..4096')
     output.mkdir(parents=True,exist_ok=True)
     manifest=output/'manifest.json'
     if manifest.exists():raise FileExistsError('quality fixtures are already frozen')
@@ -45,7 +49,9 @@ def freeze(config, output, dataset):
     env=SandboxedEnvironment(extensions=['jinja2.ext.loopcontrols'])
     env.globals['raise_exception']=lambda message:(_ for _ in ()).throw(ValueError(message))
     chat_template=env.from_string(template)
-    for task in human[:30]:
+    if len(human) != 164 or len({task['task_id'] for task in human}) != 164:
+        raise ValueError('expected the complete 164-task HumanEval dataset')
+    for task in human[:human_count]:
         key=task['task_id'].replace('/','_')
         prompt='Complete this Python function. Return the complete function in one Python code block with any required imports. Keep reasoning very brief.\n\n'+task['prompt']
         chat=chat_template.render(messages=[dict(role='user',content=prompt)],tools=None,
@@ -54,7 +60,7 @@ def freeze(config, output, dataset):
         path.write_text(','.join(map(str,ids))+'\n');(output/(key+'.prompt.txt')).write_text(chat)
         oracle=output/(key+'.case.json');oracle.write_text(json.dumps(task)+'\n')
         rows.append({'name':key,'task':task['task_id'],'split':'holdout','prompt':path.name,
-                     'sha256':digest(path),'prompt_tokens':len(ids),'generate':1024,
+                     'sha256':digest(path),'prompt_tokens':len(ids),'generate':human_tokens,
                      'oracle':oracle.name,'oracle_sha256':digest(oracle)})
     manifest.write_text(json.dumps({'schema':2,'dataset_revision':REVISION,'dataset_sha256':DATA_SHA256,
                        'model_header_reference':cfg['model'],
@@ -188,19 +194,101 @@ def evaluate(reference, candidate, inputs, output, splits, names, timeout, contr
     if not rows:raise ValueError('no requested fixtures')
 
 
+def functional_summary(selected, rows):
+    human=[r for r in rows if r['split']=='holdout']
+    requested_human=sum(t['split']=='holdout' for t in selected)
+    # Match the chat HumanEval protocol's isolated-oracle score. Also retain
+    # the stricter stop-and-oracle count used by the original comparison gate.
+    return {'requested_cases':len(selected),'completed_cases':len(rows),'rows':rows,
+            'complete':len(rows)==len(selected),'passed_cases':sum(r['passed'] for r in rows),
+            'humaneval_requested':requested_human,'humaneval_completed':len(human),
+            'humaneval_passed':sum(r['oracle']['passed'] for r in human),
+            'humaneval_stop_and_oracle_passed':sum(r['passed'] for r in human),
+            'full_humaneval_140_gate_passed':requested_human==164 and len(human)==164 and sum(r['oracle']['passed'] for r in human)>=140,
+            'timings_qualified':False}
+
+
+def score(candidate, inputs, output, splits, names, timeout):
+    """Score functional correctness without requiring lossy output to equal strict.
+
+    Freeze one candidate before using holdouts. Resume only the same executable,
+    config, fixtures and oracle hashes. Every selected case stays in the denominator.
+    """
+    cfg=json.loads(candidate.read_text())
+    fixture=json.loads((inputs/'manifest.json').read_text())
+    available={task['name'] for task in fixture['tasks'] if task['split'] in splits}
+    if names and set(names)-available:raise ValueError('unknown or unselected quality tasks')
+    selected=[task for task in fixture['tasks'] if task['split'] in splits and (not names or task['name'] in names)]
+    if not selected:raise ValueError('no requested fixtures')
+    output.mkdir(parents=True,exist_ok=True)
+    frozen={'config':cfg,'executable_sha256':digest(cfg['exe']),
+            'fixtures_sha256':digest(inputs/'manifest.json'),
+            'selected':[task['name'] for task in selected],
+            'protocol':'one greedy chat sample, low reasoning, independent oracles',
+            'timings_qualified':False}
+    manifest=output/'score-manifest.json'
+    serialized=json.dumps(frozen,indent=2)+'\n'
+    if manifest.exists() and manifest.read_text()!=serialized:
+        raise ValueError('resumed functional evaluation changed')
+    if not manifest.exists():manifest.write_text(serialized)
+    tokenizer=Tokenizer.from_gguf(Path(cfg['model']))
+    rows=[]
+    for task in selected:
+        prompt=inputs/task['prompt']
+        if digest(prompt)!=task['sha256']:raise ValueError('frozen prompt changed')
+        oracle_path=inputs/task['oracle'] if task.get('oracle') else None
+        if oracle_path and digest(oracle_path)!=task['oracle_sha256']:raise ValueError('frozen oracle changed')
+        if digest(cfg['exe'])!=frozen['executable_sha256']:raise ValueError('candidate executable changed during evaluation')
+        work=output/(task['name']+'-candidate');path=output/(task['name']+'-candidate.config.json')
+        case_cfg=cfg|{'context':max(cfg['context'],(task['prompt_tokens']+task['generate']+3)//4*4),
+                      'stop_ids':fixture['stop_ids']}
+        if case_cfg['context']>32768:raise ValueError('quality fixture exceeds Vulkan context bound')
+        text=json.dumps(case_cfg,indent=2)+'\n'
+        if path.exists() and path.read_text()!=text:raise ValueError('resumed case config changed')
+        if not path.exists():path.write_text(text)
+        if not work.with_suffix('.guard.json').exists():
+            run(path,prompt,work,tokens=task['generate'],trials=1,timeout=timeout,correctness_only=True)
+        ids,guard=load_completed(work)
+        if (guard['executable_sha256']!=frozen['executable_sha256'] or
+            guard['config_sha256']!=digest(path) or guard['prompt_sha256']!=digest(prompt)):
+            raise ValueError('resumed run identity changed')
+        terminated=ids[-1] in fixture['stop_ids']
+        answer=tokenizer.decode([t for t in ids if t not in fixture['stop_ids']])
+        if oracle_path:
+            task_case=json.loads(oracle_path.read_text())
+            code=solution(answer,task_case['prompt'],task_case['entry_point'])
+            result=isolated_test(code,task_case['test'],task_case['entry_point'])
+        else:
+            try:result={'passed':True,'checks':check_output(answer,task['task'])}
+            except (ValueError,RuntimeError) as error:result={'passed':False,'reason':str(error)}
+        row={'name':task['name'],'split':task['split'],'generated':len(ids),
+             'stop_terminated':terminated,'oracle':result,'passed':terminated and result['passed']}
+        rows.append(row)
+        summary=functional_summary(selected, rows)
+        (output/'score-summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+        print(json.dumps(row),flush=True)
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__);s=p.add_subparsers(dest='command',required=True)
     f=s.add_parser('freeze');f.add_argument('config',type=Path);f.add_argument('--output',type=Path,required=True)
     f.add_argument('--dataset',type=Path,default=Path('build-glm-3070-cuda12/HumanEval.jsonl.gz'))
+    f.add_argument('--human-count',type=int,default=30)
+    f.add_argument('--human-tokens',type=int,default=1024)
     r=s.add_parser('run');r.add_argument('--control',type=Path,required=True);r.add_argument('--candidate',type=Path,required=True)
     r.add_argument('--inputs',type=Path,required=True);r.add_argument('--output',type=Path,required=True)
     r.add_argument('--splits',nargs='+',choices=['training','holdout','long_holdout'],default=['training'])
     r.add_argument('--tasks',nargs='+');r.add_argument('--timeout',type=int,default=10800)
     r.add_argument('--control-results',type=Path,help='reuse completed strict controls with identical config and executable')
+    e=s.add_parser('score');e.add_argument('--candidate',type=Path,required=True)
+    e.add_argument('--inputs',type=Path,required=True);e.add_argument('--output',type=Path,required=True)
+    e.add_argument('--splits',nargs='+',choices=['training','holdout','long_holdout'],default=['training'])
+    e.add_argument('--tasks',nargs='+');e.add_argument('--timeout',type=int,default=10800)
     c=s.add_parser('recheck-timing');c.add_argument('prefix',type=Path)
     c.add_argument('--config',type=Path,required=True);c.add_argument('--prompt',type=Path,required=True)
     a=p.parse_args()
-    if a.command=='freeze':freeze(a.config,a.output,a.dataset)
+    if a.command=='freeze':freeze(a.config,a.output,a.dataset,a.human_count,a.human_tokens)
+    elif a.command=='score':score(a.candidate,a.inputs,a.output,a.splits,a.tasks,a.timeout)
     elif a.command=='recheck-timing':recheck_scientific_timing(a.prefix,a.config,a.prompt)
     else:evaluate(a.control,a.candidate,a.inputs,a.output,a.splits,a.tasks,a.timeout,a.control_results)
 

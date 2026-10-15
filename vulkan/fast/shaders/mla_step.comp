@@ -1,0 +1,52 @@
+#version 450
+// Sparse MLA for one query token: per head (workgroup of four waves), each wave
+// scores selected rows with a 64-lane dot product; softmax with workgroup
+// reductions; each thread then sums the probability-weighted latent dims.
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Cache { float cache[]; };
+layout(binding = 1, std430) readonly buffer Q { float q[]; };
+layout(binding = 2, std430) readonly buffer Ids { int ids[]; };
+layout(binding = 3, std430) writeonly buffer Y { float y[]; };
+layout(push_constant) uniform P { uint heads, latent; float scale; uint istride; } p;  // token = workgroup y
+shared float probability[2112];
+shared float red[4];
+void main() {
+  const uint h = gl_WorkGroupID.x, t = gl_LocalInvocationID.x, lane = gl_SubgroupInvocationID, wave = gl_SubgroupID;
+  const uint tok = gl_WorkGroupID.y, io = tok * p.istride, qo = tok * p.heads * p.latent;
+  const uint count = uint(ids[io]), per = p.latent / 64;
+  float qv[8];
+  for (uint k = 0; k < 8; k++) qv[k] = k < per ? q[qo + h * p.latent + lane + 64 * k] : 0.0;
+  for (uint s = wave; s < count; s += 4) {
+    const uint row = uint(ids[io + 1 + s]) * p.latent;
+    float d = 0;
+    for (uint k = 0; k < 8; k++)
+      if (k < per) d += qv[k] * cache[row + lane + 64 * k];
+    d = subgroupAdd(d);
+    if (lane == 0) probability[s] = d * p.scale;
+  }
+  barrier();
+  float mx = -3.402823e38;
+  for (uint s = t; s < count; s += 256) mx = max(mx, probability[s]);
+  mx = subgroupMax(mx);
+  if (lane == 0) red[wave] = mx;
+  barrier();
+  mx = max(max(red[0], red[1]), max(red[2], red[3]));
+  barrier();
+  float total = 0;
+  for (uint s = t; s < count; s += 256) {
+    const float e = exp(probability[s] - mx);
+    probability[s] = e;
+    total += e;
+  }
+  total = subgroupAdd(total);
+  if (lane == 0) red[wave] = total;
+  barrier();
+  const float inv = 1.0 / ((red[0] + red[1]) + (red[2] + red[3]));
+  for (uint i = t; i < p.latent; i += 256) {
+    float sum = 0;
+    for (uint s = 0; s < count; s++) sum += probability[s] * cache[uint(ids[io + 1 + s]) * p.latent + i];
+    y[qo + h * p.latent + i] = sum * inv;
+  }
+}

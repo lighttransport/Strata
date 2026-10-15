@@ -11,6 +11,48 @@ from sim.vulkan import calibrate, estimate, median
 import glm_vulkan_quality as quality
 
 class VulkanOptimizationTest(unittest.TestCase):
+    def test_full_humaneval_gate_requires_164_completed_and_140_oracles(self):
+        selected=[{'split':'holdout'} for _ in range(164)]
+        rows=[dict(split='holdout',passed=i<139,oracle={'passed':i<139}) for i in range(164)]
+        self.assertFalse(quality.functional_summary(selected,rows)['full_humaneval_140_gate_passed'])
+        rows[139]['oracle']['passed']=True # Valid code at the generation cap counts as an oracle pass.
+        result=quality.functional_summary(selected,rows)
+        self.assertTrue(result['full_humaneval_140_gate_passed'])
+        self.assertEqual(result['humaneval_passed'],140)
+        self.assertEqual(result['humaneval_stop_and_oracle_passed'],139)
+        self.assertFalse(quality.functional_summary(selected,rows[:-1])['full_humaneval_140_gate_passed'])
+        self.assertFalse(quality.functional_summary(selected[:-1],rows[:-1])['full_humaneval_140_gate_passed'])
+
+    def test_functional_score_counts_failures_and_freezes_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);exe=root/'exe';exe.write_bytes(b'frozen')
+            config=root/'cfg.json';config.write_text(json.dumps({'exe':str(exe),'model':'model', 'context':4096}))
+            inputs=root/'inputs';inputs.mkdir();tasks=[]
+            for name in ('a','b'):
+                prompt=inputs/(name+'.ids');prompt.write_text('1,2')
+                oracle=inputs/(name+'.json')
+                oracle.write_text(json.dumps({'prompt':'def f():','test':'assert True','entry_point':'f'}))
+                tasks.append(dict(name=name,split='holdout',prompt=prompt.name,sha256=quality.digest(prompt),
+                                  prompt_tokens=2,generate=16,oracle=oracle.name,oracle_sha256=quality.digest(oracle)))
+            (inputs/'manifest.json').write_text(json.dumps({'tasks':tasks,'stop_ids':[9]}))
+            def fake_run(path,prompt,work,**kwargs):
+                work.with_suffix('.guard.json').write_text(json.dumps(dict(passed=True,test_kind='correctness',
+                    executable_sha256=quality.digest(exe),config_sha256=quality.digest(path),prompt_sha256=quality.digest(prompt))))
+                work.with_suffix('.vulkan.json').write_text(json.dumps({'output_ids':[[1,9]]}))
+            output=root/'out'
+            with patch.object(quality,'run',side_effect=fake_run) as run, \
+                 patch.object(quality,'Tokenizer') as tokenizer, \
+                 patch.object(quality,'isolated_test',side_effect=[{'passed':True},{'passed':False}]):
+                tokenizer.from_gguf.return_value.decode.return_value='def f(): pass'
+                quality.score(config,inputs,output,['holdout'],None,60)
+                self.assertEqual(run.call_count,2)
+            result=json.loads((output/'score-summary.json').read_text())
+            self.assertTrue(result['complete']);self.assertEqual(result['humaneval_requested'],2)
+            self.assertEqual(result['humaneval_passed'],1)
+            self.assertFalse(result['full_humaneval_140_gate_passed'])
+            exe.write_bytes(b'changed')
+            with self.assertRaises(ValueError):quality.score(config,inputs,output,['holdout'],None,60)
+
     def test_calibration_preserves_scientific_rates(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)

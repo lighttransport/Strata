@@ -1,0 +1,57 @@
+#version 450
+// Sigmoid router with selection bias: stable top-k by (score + bias), weights
+// scale * score / sum(score). Writes ids/weights to the host mailbox and the
+// GPU-resident hits (slot, weight) for the grouped expert kernel.
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+#extension GL_KHR_shader_subgroup_ballot : require
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Logits { float logits[]; };
+layout(binding = 1, std430) readonly buffer Bias { float bias[]; };
+layout(binding = 2, std430) buffer Mail { float mail[]; };       // [mofs+4096..]: ids, weights
+layout(binding = 3, std430) readonly buffer Resident { int slot_of[]; };
+layout(binding = 4, std430) writeonly buffer Hits { uint hits[]; };  // count, then (slot, weight bits)
+// affinity: selection bonus for GPU-resident experts (weights keep the true
+// scores); min_share: weights below min_share*scale become zero (no renormalization).
+layout(push_constant) uniform P {
+  uint experts, topk, mofs, bofs, rofs, hofs; float scale, affinity, min_share; uint lstride, mstride;
+} p;  // token t = workgroup x: logits at t*lstride, mailbox at mofs + t*mstride, hits at hofs + 32t
+shared float score[256], key[256];
+shared int chosen[16];
+void main() {
+  const uint e = gl_LocalInvocationID.x, tok = gl_WorkGroupID.x;
+  const uint mo = p.mofs + tok * p.mstride, ho = p.hofs + 32 * tok;
+  if (e < p.experts) {
+    score[e] = sigmoid(logits[tok * p.lstride + e]);
+    key[e] = score[e] + bias[p.bofs + e] + (slot_of[p.rofs + e] >= 0 ? p.affinity : 0.0);
+  }
+  barrier();
+  if (e < p.experts) {
+    uint rank = 0;
+    for (uint f = 0; f < p.experts; f++) rank += (key[f] > key[e] || (key[f] == key[e] && f < e)) ? 1u : 0u;
+    if (rank < p.topk) chosen[rank] = int(e);
+  }
+  barrier();
+  if (gl_SubgroupID == 0) {  // lanes k < topk
+    const uint k = gl_SubgroupInvocationID;
+    const bool live = k < p.topk;
+    const int id = live ? chosen[k] : 0;
+    const float sum = subgroupAdd(live ? score[id] : 0.0);
+    float w = p.scale * score[id] / (sum + 1e-20);
+    if (w < p.min_share * p.scale) w = 0.0;
+    const int slot = live ? slot_of[p.rofs + id] : -1;
+    const bool hit = slot >= 0 && w != 0.0;
+    const uvec4 ballot = subgroupBallot(hit);
+    const uint index = subgroupBallotExclusiveBitCount(ballot);
+    if (live) {
+      hits[ho + 17u + k] = hit ? index : 0xffffffffu;
+      mail[mo + 4096 + k] = intBitsToFloat(id);
+      mail[mo + 4096 + 16 + k] = w;
+      if (hit) {
+        hits[ho + 1 + 2 * index] = uint(slot);
+        hits[ho + 2 + 2 * index] = floatBitsToUint(w);
+      }
+    }
+    if (k == 0) hits[ho] = subgroupBallotBitCount(ballot);
+  }
+}

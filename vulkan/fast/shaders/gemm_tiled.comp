@@ -1,0 +1,231 @@
+#version 450
+// 64 rows x 64/128/256 tokens; each thread accumulates 4x4/8x4/8x8.
+// The 256-column prototype is selected explicitly by the benchmark.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Weights { uint w[]; };
+layout(binding = 0, std430) readonly buffer WeightVectors { uvec4 w4[]; };
+layout(binding = 1, std430) readonly buffer Input { float x[]; };
+layout(binding = 2, std430) buffer Output { float y[]; };
+layout(binding = 3, std430) writeonly buffer Partial { float partial[]; };
+layout(push_constant) uniform P {
+  uint K, M, Mp, N, xs, ys, xofs, yofs, accumulate, hb, hx, hy, side, kparts;
+} p;
+#ifndef NTILE
+#define NTILE 64
+#endif
+#if NTILE >= 128
+#define RLANES 8u
+#define CLANES 32u
+#define RPER 8u
+#else
+#define RLANES 16u
+#define CLANES 16u
+#define RPER 4u
+#endif
+#if defined(TYPE_Q4K)
+#define CH 9u
+#define QK 256u
+#elif defined(TYPE_Q6K)
+#define CH 13u
+#define QK 256u
+#elif defined(TYPE_Q50)
+#define CH 1u
+#define QK 32u
+#elif defined(TYPE_Q2K)
+#define CH 5u
+#define QK 256u
+#elif defined(TYPE_Q3K)
+#define CH 6u
+#define QK 256u
+#endif
+uint base;
+#ifdef TYPE_Q4K
+uint scale_byte(uvec4 h, uint i) { return (h[1u + i / 4u] >> (8u * (i % 4u))) & 255u; }
+#endif
+#ifndef TYPE_F32
+uint word_at(uint b, uint byte_index, uint row) {
+  return w[base + ((b * CH + byte_index / 16u) * p.Mp + row) * 4u + (byte_index % 16u) / 4u];
+}
+uint byte_at(uint b, uint byte_index, uint row) {
+  return (word_at(b, byte_index, row) >> (8u * (byte_index % 4u))) & 255u;
+}
+#endif
+float weight(uint row, uint k0, uint kk) {
+#ifdef TYPE_F32
+  return uintBitsToFloat(w[base + row * p.K + k0 + kk]);
+#else
+  // k0 is a multiple of 32. Keep the subblock metadata wave-uniform;
+  // deriving it from k0+kk makes the compiler treat it as lane-varying.
+  const uint b = k0 / QK, i0 = k0 % QK, i = i0 + kk;
+#if defined(TYPE_Q4K)
+  const vec2 dm = unpackHalf2x16(word_at(b, 0u, row));
+  const uint s = i0 / 32u;
+  uint sc, mn;
+  if (s < 4u) {
+    sc = byte_at(b, 4u + s, row) & 63u;
+    mn = byte_at(b, 8u + s, row) & 63u;
+  } else {
+    const uint v = byte_at(b, 8u + s, row);
+    sc = (v & 15u) | ((byte_at(b, s, row) >> 6u) << 4u);
+    mn = (v >> 4u) | ((byte_at(b, 4u + s, row) >> 6u) << 4u);
+  }
+  const uint q = (byte_at(b, 16u + (i0 / 64u) * 32u + kk, row) >> ((s % 2u) * 4u)) & 15u;
+  return (dm.x * float(sc)) * float(q) - dm.y * float(mn);
+#elif defined(TYPE_Q6K)
+  const uint half_index = i0 / 128u, quadrant = (i0 % 128u) / 32u, l = kk;
+  const uint ql = byte_at(b, half_index * 64u + (quadrant % 2u) * 32u + l, row);
+  const uint qh = byte_at(b, 128u + half_index * 32u + l, row);
+  const int q = int(((ql >> (quadrant >= 2u ? 4u : 0u)) & 15u) | (((qh >> (2u * quadrant)) & 3u) << 4u)) - 32;
+  const int sc = int(byte_at(b, 192u + i / 16u, row) << 24u) >> 24;
+  const float d = unpackHalf2x16(w[base + p.side / 4u + b * p.Mp + row]).x;
+  return (d * float(sc)) * float(q);
+#elif defined(TYPE_Q50)
+  const uint side = base + p.side / 4u;
+  const uint high = w[side + b * 2u * p.Mp + row];
+  const uint low = byte_at(b, i % 16u, row);
+  const int q = int(((low >> (i >= 16u ? 4u : 0u)) & 15u) | (((high >> i) & 1u) << 4u)) - 16;
+  return unpackHalf2x16(w[side + (b * 2u + 1u) * p.Mp + row]).x * float(q);
+#elif defined(TYPE_Q2K)
+  const uint sc = byte_at(b, i / 16u, row);
+  const uint q = (byte_at(b, 16u + (i0 / 128u) * 32u + kk, row) >> (2u * ((i0 % 128u) / 32u))) & 3u;
+  const vec2 dm = unpackHalf2x16(w[base + p.side / 4u + b * p.Mp + row]);
+  return (dm.x * float(sc & 15u)) * float(q) - dm.y * float(sc >> 4u);
+#elif defined(TYPE_Q3K)
+  const uint side = base + p.side / 4u + b * 4u * p.Mp;
+  const uint a0 = w[side + row], a1 = w[side + p.Mp + row], h = w[side + 2u * p.Mp + row];
+  const uint s = i / 16u, sh = 8u * (s % 4u);
+  const uint lo = ((s % 8u < 4u ? a0 : a1) >> (sh + (s >= 8u ? 4u : 0u))) & 15u;
+  const uint hi = (h >> (sh + 2u * (s / 4u))) & 3u;
+  const int sc = int(lo | (hi << 4u)) - 32;
+  const uint qlo = (byte_at(b, 32u + (i0 / 128u) * 32u + kk, row) >> (2u * ((i0 % 128u) / 32u))) & 3u;
+  const uint qhi = (byte_at(b, kk, row) >> (i0 / 32u)) & 1u;
+  const int q = int(qlo + 4u * qhi) - 4;
+  return (unpackHalf2x16(w[side + 3u * p.Mp + row]).x * float(sc)) * float(q);
+#endif
+#endif
+}
+shared float wt[32][64];
+// Load contiguous K values from each token. Padding avoids bank conflicts
+// when the compute lanes read one K value from several token rows.
+shared float xt[NTILE][33];
+void main() {
+  const uint t = gl_LocalInvocationID.x, row0 = gl_WorkGroupID.x * 64u, col0 = gl_WorkGroupID.y * NTILE;
+  const uint head = gl_WorkGroupID.z / p.kparts, split = gl_WorkGroupID.z % p.kparts;
+  const uint ri = t % RLANES, ci = t / RLANES;
+  base = head * p.hb / 4u;
+  vec4 acc0 = vec4(0), acc1 = vec4(0), acc2 = vec4(0), acc3 = vec4(0);
+#if NTILE >= 128
+  vec4 acc4 = vec4(0), acc5 = vec4(0), acc6 = vec4(0), acc7 = vec4(0);
+#endif
+#if NTILE == 256
+  vec4 acc8 = vec4(0), acc9 = vec4(0), acc10 = vec4(0), acc11 = vec4(0);
+  vec4 acc12 = vec4(0), acc13 = vec4(0), acc14 = vec4(0), acc15 = vec4(0);
+#endif
+  for (uint k0 = split * 32u; k0 < p.K; k0 += 32u * p.kparts) {
+    const uint rr = t % 64u;
+#ifdef TYPE_Q4K
+    // A wave owns eight adjacent K values of each row. Decode shared scale
+    // metadata once and unpack two words, instead of loading it per weight.
+    const uint wave = t / 64u, row = row0 + rr, b = k0 / 256u, sub = (k0 % 256u) / 32u;
+    if (row < p.M) {
+      const uvec4 header = w4[base / 4u + b * 9u * p.Mp + row];
+      const vec2 dm = unpackHalf2x16(header.x);
+      uint sc, mn;
+      if (sub < 4u) { sc = scale_byte(header, sub) & 63u; mn = scale_byte(header, sub + 4u) & 63u; }
+      else {
+        const uint v = scale_byte(header, sub + 4u);
+        sc = (v & 15u) | ((scale_byte(header, sub - 4u) >> 6u) << 4u);
+        mn = (v >> 4u) | ((scale_byte(header, sub) >> 6u) << 4u);
+      }
+      const float d = dm.x * float(sc), minimum = dm.y * float(mn);
+      const uint plane = 1u + 2u * (sub / 2u) + wave / 2u;
+      const uvec4 bytes = w4[base / 4u + (b * 9u + plane) * p.Mp + row];
+      const uint lo = (bytes[(wave % 2u) * 2u] >> ((sub % 2u) * 4u)) & 0x0f0f0f0fu;
+      const uint hi = (bytes[(wave % 2u) * 2u + 1u] >> ((sub % 2u) * 4u)) & 0x0f0f0f0fu;
+      for (uint j = 0; j < 4u; ++j) {
+        wt[wave * 8u + j][rr] = d * float((lo >> (j * 8u)) & 15u) - minimum;
+        wt[wave * 8u + j + 4u][rr] = d * float((hi >> (j * 8u)) & 15u) - minimum;
+      }
+    } else {
+      for (uint j = 0; j < 8u; ++j) wt[wave * 8u + j][rr] = 0;
+    }
+#elif defined(TYPE_Q6K)
+    const uint wave = t / 64u, row = row0 + rr, b = k0 / 256u, i0 = k0 % 256u;
+    if (row < p.M) {
+      const uint half_index = i0 / 128u, quadrant = (i0 % 128u) / 32u;
+      const uint ql_plane = 4u * half_index + 2u * (quadrant % 2u) + wave / 2u;
+      const uint qh_plane = 8u + 2u * half_index + wave / 2u;
+      const uvec4 ql = w4[base / 4u + (b * 13u + ql_plane) * p.Mp + row];
+      const uvec4 qh = w4[base / 4u + (b * 13u + qh_plane) * p.Mp + row];
+      const uvec4 scales = w4[base / 4u + (b * 13u + 12u) * p.Mp + row];
+      const uint si = i0 / 16u + wave / 2u;
+      const int scale = int(((scales[si / 4u] >> (8u * (si % 4u))) & 255u) << 24u) >> 24;
+      const float d = unpackHalf2x16(w[base + p.side / 4u + b * p.Mp + row]).x * float(scale);
+      const uint word0 = (wave % 2u) * 2u, word1 = word0 + 1u;
+      const uint low_shift = quadrant >= 2u ? 4u : 0u, high_shift = 2u * quadrant;
+      for (uint j = 0; j < 4u; ++j) {
+        const uint shift = 8u * j;
+        const int a = int(((ql[word0] >> (shift + low_shift)) & 15u) | (((qh[word0] >> (shift + high_shift)) & 3u) << 4u)) - 32;
+        const int bq = int(((ql[word1] >> (shift + low_shift)) & 15u) | (((qh[word1] >> (shift + high_shift)) & 3u) << 4u)) - 32;
+        wt[wave * 8u + j][rr] = d * float(a);
+        wt[wave * 8u + j + 4u][rr] = d * float(bq);
+      }
+    } else {
+      for (uint j = 0; j < 8u; ++j) wt[wave * 8u + j][rr] = 0;
+    }
+#else
+    for (uint kk = t / 64u; kk < 32u; kk += 4u) {
+      wt[kk][rr] = row0 + rr < p.M && k0 + kk < p.K ? weight(row0 + rr, k0, kk) : 0;
+    }
+#endif
+    for (uint load_index = t; load_index < 32u * NTILE; load_index += 256u) {
+      const uint kk = load_index % 32u, cc = load_index / 32u;
+      xt[cc][kk] = col0 + cc < p.N && k0 + kk < p.K ? x[p.xofs + (col0 + cc) * p.xs + head * p.hx + k0 + kk] : 0;
+    }
+    barrier();
+    for (uint kk = 0; kk < 32u; ++kk) {
+      vec4 xv = vec4(xt[ci][kk], xt[ci + CLANES][kk], xt[ci + 2u * CLANES][kk], xt[ci + 3u * CLANES][kk]);
+      acc0 = fma(vec4(wt[kk][ri]), xv, acc0);
+      acc1 = fma(vec4(wt[kk][ri + RLANES]), xv, acc1);
+      acc2 = fma(vec4(wt[kk][ri + 2u * RLANES]), xv, acc2);
+      acc3 = fma(vec4(wt[kk][ri + 3u * RLANES]), xv, acc3);
+#if NTILE >= 128
+      acc4 = fma(vec4(wt[kk][ri + 4u * RLANES]), xv, acc4);
+      acc5 = fma(vec4(wt[kk][ri + 5u * RLANES]), xv, acc5);
+      acc6 = fma(vec4(wt[kk][ri + 6u * RLANES]), xv, acc6);
+      acc7 = fma(vec4(wt[kk][ri + 7u * RLANES]), xv, acc7);
+#endif
+#if NTILE == 256
+      vec4 xv2 = vec4(xt[ci + 4u * CLANES][kk], xt[ci + 5u * CLANES][kk],
+                     xt[ci + 6u * CLANES][kk], xt[ci + 7u * CLANES][kk]);
+      acc8 = fma(vec4(wt[kk][ri]), xv2, acc8);
+      acc9 = fma(vec4(wt[kk][ri + RLANES]), xv2, acc9);
+      acc10 = fma(vec4(wt[kk][ri + 2u * RLANES]), xv2, acc10);
+      acc11 = fma(vec4(wt[kk][ri + 3u * RLANES]), xv2, acc11);
+      acc12 = fma(vec4(wt[kk][ri + 4u * RLANES]), xv2, acc12);
+      acc13 = fma(vec4(wt[kk][ri + 5u * RLANES]), xv2, acc13);
+      acc14 = fma(vec4(wt[kk][ri + 6u * RLANES]), xv2, acc14);
+      acc15 = fma(vec4(wt[kk][ri + 7u * RLANES]), xv2, acc15);
+#endif
+    }
+    barrier();
+  }
+  for (uint r = 0; r < RPER; ++r) for (uint c = 0; c < NTILE / CLANES; ++c) {
+    const uint row = row0 + ri + RLANES * r, col = col0 + ci + CLANES * c;
+    if (row < p.M && col < p.N) {
+      const uint o = p.yofs + col * p.ys + head * p.hy + row;
+      vec4 acc = r == 0u ? acc0 : r == 1u ? acc1 : r == 2u ? acc2 : acc3;
+#if NTILE >= 128
+      if (r >= 4u) acc = r == 4u ? acc4 : r == 5u ? acc5 : r == 6u ? acc6 : acc7;
+#endif
+#if NTILE == 256
+      if (c >= 4u) {
+        acc = r == 0u ? acc8 : r == 1u ? acc9 : r == 2u ? acc10 : acc11;
+        if (r >= 4u) acc = r == 4u ? acc12 : r == 5u ? acc13 : r == 6u ? acc14 : acc15;
+      }
+#endif
+      if (p.kparts > 1u) partial[(split * p.N + col) * p.M + row] = acc[c % 4u];
+      else y[o] = acc[c % 4u] + (p.accumulate != 0u ? y[o] : 0);
+    }
+  }
+}

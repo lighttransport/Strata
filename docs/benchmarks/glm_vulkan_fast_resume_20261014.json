@@ -1,0 +1,230 @@
+{
+  "hardware": {
+    "gpu": "RX570 16 GiB (RADV POLARIS10)",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB DDR4-2666 (per resume; not rechecked)"
+  },
+  "protocol": {
+    "prompt": "bench/fixtures/glm53_vulkan_prefix32.ids",
+    "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+    "prompt_tokens": 32,
+    "generated_tokens": 64,
+    "trials": 1,
+    "performance_qualified": false,
+    "resource_limit_gib": 60,
+    "swap_limit_bytes": 0
+  },
+  "checks": {
+    "greedy_mtp_64_ids_identical": true,
+    "strict_frozen_logits_byte_identical": true,
+    "fast_prefill_kl_against_strict": 0.20494697990370425,
+    "kl_limit": 0.01,
+    "kl_passed": false,
+    "q8_nearest_even_prefill_kl_against_strict": 0.1193204307572872
+  },
+  "runs": {
+    "profile2": {
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "config_sha256": "0cf1187be8623d84cd3e9fc538354788df9fa14fc5310069f4ac4c1dd41b3418",
+      "executable_sha256": "3bd10b9b147196cccc1acf88e4e634396c6f2ae16a8a23f5cebf58d7e987cd56",
+      "source_sha256": {
+        "tools/glm_low_memory_bench.py": "cae4c7209ab562ae9f7f56a596ed85e664b64842236c2f5d34edd2a95c4e624f",
+        "vulkan/decode.cpp": "be911972dc9aaee71bfd8eaf0f84eaeaa1aacf593363bac8b2101214faf7a2bb",
+        "vulkan/fast/engine.cpp": "87c99c1e8a3087f354a7c87ee4c77318130a8bf10d90f168cf5e8b21b5fccea3",
+        "vulkan/fast/engine.hpp": "ba9b515d7ff23df40744bfb9753128d64048d236961b6743f5666000a337c3bd",
+        "vulkan/fast/shaders/q8_round.comp": "53c42959da08b933d8f41a4238cd45131e7e2533ec16bd0c4140f342e41ae45d"
+      },
+      "performance_qualified": false,
+      "phase_lines": [
+        "VULKAN_FAST_PHASE phase=prefill trial=0 steps=32 step_ms=231.114 cpu_expert_ms=205.298 wait_ms=25.45 routes=11008 gpu_hits=0 draft_ms=389.414 rounds=0 proposed=0 accepted=0",
+        "VULKAN_FAST_PHASE phase=decode trial=0 steps=63 step_ms=118.152 cpu_expert_ms=76.4541 wait_ms=41.4333 routes=21672 gpu_hits=10612 draft_ms=388.975 rounds=32 proposed=31 accepted=31",
+        "VULKAN_FAST_GPU phase=decode attn_segments_ms=21.8623 shared_segments_ms=15.1189 head_ms=1.91009 gaps_ms=79.2491 profiled_tokens=62 window=2 first_segment_ms=2.90453"
+      ]
+    },
+    "greedy": {
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "config_sha256": "2719a4c00c0d48210a107b3322dc9f4a800dc067e777284c95fe4c81020379a8",
+      "executable_sha256": "3bd10b9b147196cccc1acf88e4e634396c6f2ae16a8a23f5cebf58d7e987cd56",
+      "source_sha256": {
+        "tools/glm_low_memory_bench.py": "cae4c7209ab562ae9f7f56a596ed85e664b64842236c2f5d34edd2a95c4e624f",
+        "vulkan/decode.cpp": "be911972dc9aaee71bfd8eaf0f84eaeaa1aacf593363bac8b2101214faf7a2bb",
+        "vulkan/fast/engine.cpp": "87c99c1e8a3087f354a7c87ee4c77318130a8bf10d90f168cf5e8b21b5fccea3",
+        "vulkan/fast/engine.hpp": "ba9b515d7ff23df40744bfb9753128d64048d236961b6743f5666000a337c3bd",
+        "vulkan/fast/shaders/q8_round.comp": "53c42959da08b933d8f41a4238cd45131e7e2533ec16bd0c4140f342e41ae45d"
+      },
+      "performance_qualified": false,
+      "phase_lines": [
+        "VULKAN_FAST_PHASE phase=prefill trial=0 steps=32 step_ms=237.507 cpu_expert_ms=211.332 wait_ms=25.8112 routes=10752 gpu_hits=0 draft_ms=0 rounds=0 proposed=0 accepted=0",
+        "VULKAN_FAST_PHASE phase=decode trial=0 steps=63 step_ms=144.981 cpu_expert_ms=88.8702 wait_ms=55.7614 routes=21168 gpu_hits=10687 draft_ms=0 rounds=0 proposed=0 accepted=0"
+      ]
+    },
+    "strict": {
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "config_sha256": "4d9790bc49a19553c3797899ddf504ca221bfab146036f4c4c2dcc26452c99fb",
+      "executable_sha256": "3bd10b9b147196cccc1acf88e4e634396c6f2ae16a8a23f5cebf58d7e987cd56",
+      "source_sha256": {
+        "tools/glm_low_memory_bench.py": "cae4c7209ab562ae9f7f56a596ed85e664b64842236c2f5d34edd2a95c4e624f",
+        "vulkan/decode.cpp": "be911972dc9aaee71bfd8eaf0f84eaeaa1aacf593363bac8b2101214faf7a2bb",
+        "vulkan/fast/engine.cpp": "87c99c1e8a3087f354a7c87ee4c77318130a8bf10d90f168cf5e8b21b5fccea3",
+        "vulkan/fast/engine.hpp": "ba9b515d7ff23df40744bfb9753128d64048d236961b6743f5666000a337c3bd",
+        "vulkan/fast/shaders/q8_round.comp": "53c42959da08b933d8f41a4238cd45131e7e2533ec16bd0c4140f342e41ae45d"
+      },
+      "performance_qualified": false,
+      "phase_lines": []
+    },
+    "q8": {
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "config_sha256": "23baad06c3aebaa1398d29ce3076dd74abd913b2b58d1953063c19c6a208bf28",
+      "executable_sha256": "38efec4f625bfd3019a816a09d1fa7259817943463c42a9b521808de4330790d",
+      "source_sha256": {
+        "tools/glm_low_memory_bench.py": "cae4c7209ab562ae9f7f56a596ed85e664b64842236c2f5d34edd2a95c4e624f",
+        "vulkan/decode.cpp": "be911972dc9aaee71bfd8eaf0f84eaeaa1aacf593363bac8b2101214faf7a2bb",
+        "vulkan/fast/engine.cpp": "c58367ed852182b0af7462c1465159e0bffb61b5297c83fef3927913117e557d",
+        "vulkan/fast/engine.hpp": "0dfbbef57de64898821f9764f7e01fac579a55dbeff4bd43fda6e82de62b7352",
+        "vulkan/fast/shaders/q8_round.comp": "b75f3a8cdee5aca5129c0eca229f5d8b2770cd5c5d3274bf578e1167b1d8f2ce"
+      },
+      "performance_qualified": false,
+      "phase_lines": [
+        "VULKAN_FAST_PHASE phase=prefill trial=0 steps=32 step_ms=230.461 cpu_expert_ms=204.979 wait_ms=25.1323 routes=10752 gpu_hits=0 draft_ms=0 rounds=0 proposed=0 accepted=0",
+        "VULKAN_FAST_PHASE phase=decode trial=0 steps=1 step_ms=234.487 cpu_expert_ms=174.672 wait_ms=58.9536 routes=336 gpu_hits=0 draft_ms=0 rounds=0 proposed=0 accepted=0"
+      ],
+      "generated_tokens": 2
+    },
+    "q8-rne": {
+      "passed": true,
+      "exit_code": 0,
+      "faults": [],
+      "config_sha256": "23baad06c3aebaa1398d29ce3076dd74abd913b2b58d1953063c19c6a208bf28",
+      "executable_sha256": "05f80047a0320cd97d8679ea2d7f9817ffd38b78bbd89619b227eb8483e094a6",
+      "source_sha256": {
+        "tools/glm_low_memory_bench.py": "cae4c7209ab562ae9f7f56a596ed85e664b64842236c2f5d34edd2a95c4e624f",
+        "vulkan/decode.cpp": "be911972dc9aaee71bfd8eaf0f84eaeaa1aacf593363bac8b2101214faf7a2bb",
+        "vulkan/fast/engine.cpp": "c58367ed852182b0af7462c1465159e0bffb61b5297c83fef3927913117e557d",
+        "vulkan/fast/engine.hpp": "0dfbbef57de64898821f9764f7e01fac579a55dbeff4bd43fda6e82de62b7352",
+        "vulkan/fast/shaders/q8_round.comp": "0aaf143ed62a78393ae5c911c0cf929f996caa5d10c3b5bddfb1ce2e5a98bc76"
+      },
+      "performance_qualified": false,
+      "generated_tokens": 2
+    }
+  },
+  "primitive_checks": [
+    {
+      "kind": "q8_round",
+      "columns": 1,
+      "max_abs": 0
+    },
+    {
+      "kind": "q8_round",
+      "columns": 2,
+      "max_abs": 0
+    },
+    {
+      "kind": "q8_round",
+      "columns": 3,
+      "max_abs": 0
+    },
+    {
+      "kind": "q8_round",
+      "columns": 4,
+      "max_abs": 0
+    },
+    {
+      "kind": "expert",
+      "part": "gate_up_q2k",
+      "hits": 2,
+      "columns": 1,
+      "median_us": 85.12,
+      "gbps": 129.347,
+      "rel_l2": 2.44019e-07
+    },
+    {
+      "kind": "expert",
+      "part": "down_q3k",
+      "hits": 2,
+      "columns": 1,
+      "median_us": 60.8,
+      "gbps": 120.724,
+      "rel_l2": 2.18256e-07
+    },
+    {
+      "kind": "expert",
+      "part": "gate_up_q2k",
+      "hits": 2,
+      "columns": 2,
+      "median_us": 110.88,
+      "gbps": 99.297,
+      "rel_l2": 2.55923e-07
+    },
+    {
+      "kind": "expert",
+      "part": "down_q3k",
+      "hits": 2,
+      "columns": 2,
+      "median_us": 78.24,
+      "gbps": 93.8143,
+      "rel_l2": 1.98218e-07
+    },
+    {
+      "kind": "expert",
+      "part": "gate_up_q2k",
+      "hits": 2,
+      "columns": 3,
+      "median_us": 136.16,
+      "gbps": 80.8611,
+      "rel_l2": 2.44813e-07
+    },
+    {
+      "kind": "expert",
+      "part": "down_q3k",
+      "hits": 2,
+      "columns": 3,
+      "median_us": 94.24,
+      "gbps": 77.8866,
+      "rel_l2": 1.95882e-07
+    },
+    {
+      "kind": "expert",
+      "part": "gate_up_q2k",
+      "hits": 2,
+      "columns": 4,
+      "median_us": 169.28,
+      "gbps": 65.0405,
+      "rel_l2": 2.42565e-07
+    },
+    {
+      "kind": "expert",
+      "part": "down_q3k",
+      "hits": 2,
+      "columns": 4,
+      "median_us": 112,
+      "gbps": 65.536,
+      "rel_l2": 2.00743e-07
+    }
+  ],
+  "limitations": [
+    "Single short synthetic repetitive prompt; no throughput qualification",
+    "PPL, training oracles, HumanEval and long-context gates not run",
+    "Native Vulkan tree has no CTest registrations",
+    "Broader CUDA-tree GLM CTest: 7 passed, 3 skipped, 7 failed because no CUDA device; host rule tests 3/3 passed",
+    "Initial Q8 primitive test failed (max abs 0.00193787); nearest-even correction passed widths 1..4",
+    "Raw diagnostic logs and failed evidence retained locally under /tmp/strata-fast-resume-20261014"
+  ],
+  "build_checks": [
+    "Native host: strata-glm-vulkan and glm_vulkan_fast_bench built and executed on RX570",
+    "Portable host: same targets built; compile-only"
+  ],
+  "python_tests_passed": 33,
+  "primitive_source_sha256": {
+    "vulkan/fast/bench.cpp": "683bd5470fba7fd65cd70c442cf3a89b602aad69ea32bda114ab066a6b13de3f",
+    "vulkan/fast/shaders/q8_round.comp": "0aaf143ed62a78393ae5c911c0cf929f996caa5d10c3b5bddfb1ce2e5a98bc76"
+  },
+  "primitive_executable_sha256": "0fd2214881358d1c76d22e76bcf0cfe81f9c5914ebbf57eecc577673127bc06a"
+}

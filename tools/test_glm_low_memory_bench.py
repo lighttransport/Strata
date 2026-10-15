@@ -1,15 +1,39 @@
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 from glm_low_memory_bench import (
     cache_bytes, eval_counts, eval_complete, gpu_capacity_passed, gpu_used_limit,
     gpu_snapshot, gpu_usage, group_stats, hip_gpu_snapshot, model_files, parse_log,
     prefill_repeats_passed, validate_hip_link, decode_complete, decode_trials_identical,
+    vulkan_command,
 )
 
 
 class LowMemoryBenchTest(unittest.TestCase):
+    def test_vulkan_fast_engine_is_explicit_and_validated(self):
+        cfg = dict(exe='runner', model='model.gguf', context=4096,
+                   gpu_budget_mib=15360)
+        args = SimpleNamespace(single=False, eval_corpus=None, prompt=Path('prompt.ids'),
+                               output=Path('result'), tokens=64, trials=1)
+        strict = vulkan_command(cfg, args)
+        self.assertNotIn('--engine', strict)
+        fast = dict(cfg, engine='fast', decode_cache_mib=9216,
+                    env={'STRATA_GLM_ROUTE_AFFINITY': '0.06'})
+        command = vulkan_command(fast, args)
+        self.assertEqual(command[command.index('--engine') + 1], 'fast')
+        self.assertEqual(command[command.index('--decode-cache-mib') + 1], '9216')
+        for change in (dict(engine='unknown'), dict(prefill_batch=2),
+                       dict(speculative='lookup'), dict(speculative='mtp',draft_depth=4),
+                       dict(verify_batch=True), dict(decode_cache_mib=12289)):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                vulkan_command(dict(fast, **change), args)
+        with self.assertRaises(ValueError):
+            vulkan_command(dict(cfg, decode_cache_mib=9216), args)
+        with self.assertRaises(ValueError):
+            vulkan_command(dict(cfg, env=fast['env']), args)
+
     def test_scientific_notation_from_long_vulkan_runs(self):
         value=parse_log('PREFILL trial=0 tokens=8192 batch=1 ms=3.91337e+06 tok_s=2.09333\n'
                         'DECODE steps=137 ms=7.23801E4 tok_s=1.89279\n'

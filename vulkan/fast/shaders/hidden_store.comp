@@ -1,0 +1,13 @@
+#version 450
+// Keeps the verified hidden states (output-normed) in a ring by position:
+// ring[((pos + t) % slots) * width + d] = x[t * width + d]; workgroup y = token.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer X { float x[]; };
+layout(binding = 1, std430) writeonly buffer Ring { float ring[]; };
+layout(binding = 2, std430) readonly buffer Step { uint pos; } step;
+layout(push_constant) uniform P { uint width, slots; } p;
+void main() {
+  const uint d = gl_GlobalInvocationID.x, t = gl_WorkGroupID.y;
+  if (d >= p.width) return;
+  ring[((step.pos + t) % p.slots) * p.width + d] = x[t * p.width + d];
+}

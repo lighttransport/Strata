@@ -300,6 +300,9 @@ def eval_counts(path, skip_prefix=0):
 
 def vulkan_command(cfg, args):
     """Keep unsupported Vulkan features explicit instead of silently ignoring them."""
+    engine = cfg.get('engine', 'strict')
+    if engine not in ('strict', 'fast'):
+        raise ValueError('Vulkan engine must be strict or fast')
     if (args.single or args.eval_corpus or cfg.get('speculative', 'none') not in ('none','lookup','mtp') or
             cfg.get('decode_graphs') or
             cfg.get('decode_cache_slots') or cfg.get('decode_checks') or cfg.get('mtp_greedy_control')):
@@ -310,8 +313,14 @@ def vulkan_command(cfg, args):
     experts = cfg.get('prefill_experts', 'cpu')
     if experts not in ('cpu','gpu') or (experts=='gpu' and batch==1):
         raise ValueError('Vulkan GPU prefill experts require prefill_batch > 1')
+    if engine == 'fast' and (batch != 1 or experts != 'cpu' or
+                             cfg.get('speculative', 'none') not in ('none', 'mtp') or
+                             cfg.get('verify_batch')):
+        raise ValueError('Vulkan fast engine requires CPU prefill and batch=1')
     supported = {'STRATA_GLM_MAPPED_LAZY', 'STRATA_GLM_MAPPED_OWNED', 'STRATA_GLM_GPU_RESERVE_MIB',
                  'STRATA_GLM_TASK_TRACE', 'STRATA_GLM_STATE_TRACE_DIR'}
+    if engine == 'fast':
+        supported.update(('STRATA_GLM_ROUTE_AFFINITY', 'STRATA_GLM_ROUTE_MIN_SHARE', 'STRATA_GLM_EXPERT_PRIOR'))
     unsupported = [name for name in cfg.get('env', {}) if name.startswith('STRATA_GLM_') and name not in supported]
     if unsupported:
         raise ValueError('unsupported Vulkan settings: ' + ', '.join(sorted(unsupported)))
@@ -321,6 +330,8 @@ def vulkan_command(cfg, args):
                '--context', str(cfg['context']), '--generate', str(args.tokens),
                '--trials', str(args.trials), '--threads', str(cfg.get('threads', 12)),
                '--gpu-budget-mib', str(cfg['gpu_budget_mib'])]
+    if engine == 'fast':
+        command += ['--engine', 'fast']
     if batch != 1:
         command += ['--prefill-batch', str(batch)]
     if experts != 'cpu':
@@ -334,8 +345,9 @@ def vulkan_command(cfg, args):
             command += ['--verify-batch']
     if cfg.get('decode_cache_mib'):
         cache = cfg['decode_cache_mib']
-        if type(cache) is not int or not 0 <= cache <= 8192:
-            raise ValueError('Vulkan decode_cache_mib must be 0..8192')
+        cache_limit = 12288 if engine == 'fast' else 8192
+        if type(cache) is not int or not 0 <= cache <= cache_limit:
+            raise ValueError(f'Vulkan decode_cache_mib must be 0..{cache_limit}')
         command += ['--decode-cache-mib', str(cache)]
     if cfg.get('record_prefill_logits'):
         command += ['--dump-prefill', str(args.output.with_suffix('.prefill.logits.bin').resolve())]

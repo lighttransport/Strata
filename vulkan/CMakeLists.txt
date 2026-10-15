@@ -45,3 +45,72 @@ endif()
 # This check submits no GPU work and is safe before a device precheck.
 add_executable(glm_vulkan_executor_check executor_check.cpp)
 target_link_libraries(glm_vulkan_executor_check PRIVATE strata_kernels_cpu)
+
+# Opt-in fast engine (--engine fast). Shaders are listed as name|source|defines
+# and embedded into one registry header; the strict path above is unchanged.
+set(_glm_vk_fast_shaders
+  "gemm_q4k|gemm_tiled|-DTYPE_Q4K" "gemm_q6k|gemm_tiled|-DTYPE_Q6K" "gemm_q50|gemm_tiled|-DTYPE_Q50"
+  "gemm_q2k|gemm_tiled|-DTYPE_Q2K" "gemm_q3k|gemm_tiled|-DTYPE_Q3K" "gemm_f32|gemm_tiled|-DTYPE_F32"
+  "gemm_q4k_wide|gemm_tiled|-DTYPE_Q4K -DNTILE=128" "gemm_q6k_wide|gemm_tiled|-DTYPE_Q6K -DNTILE=128" "gemm_q50_wide|gemm_tiled|-DTYPE_Q50 -DNTILE=128"
+  "gemm_q2k_wide|gemm_tiled|-DTYPE_Q2K -DNTILE=128" "gemm_q3k_wide|gemm_tiled|-DTYPE_Q3K -DNTILE=128" "gemm_f32_wide|gemm_tiled|-DTYPE_F32 -DNTILE=128"
+  "gemm_q4k_wider|gemm_tiled|-DTYPE_Q4K -DNTILE=256" "gemm_q6k_wider|gemm_tiled|-DTYPE_Q6K -DNTILE=256" "gemm_q50_wider|gemm_tiled|-DTYPE_Q50 -DNTILE=256"
+  "gemm_q2k_wider|gemm_tiled|-DTYPE_Q2K -DNTILE=256" "gemm_q3k_wider|gemm_tiled|-DTYPE_Q3K -DNTILE=256" "gemm_f32_wider|gemm_tiled|-DTYPE_F32 -DNTILE=256"
+  "q8k_round|q8k_round|" "expert_mix_canon|expert_mix|-DCANON_SWIGLU"
+  "q8k_codes|q8k_round|-DCODES_AND_SUMS" "q8k_codes_portable|q8k_round|-DCODES_AND_SUMS -DPORTABLE_REDUCTION"
+  "q8k_unpack|q8k_unpack|"
+  "fma_oracle|fma_oracle|"
+  "expert_gemm_q2k_canon|expert_gemm_canon|-DTYPE_Q2K" "expert_gemm_q3k_canon|expert_gemm_canon|-DTYPE_Q3K"
+  "expert_reduce_canon|expert_reduce_canon|"
+  "trace_window|trace_window|"
+  "route_merge|route_merge|"
+  "gemv_rows_q4k|gemv_rows|-DTYPE_Q4K" "gemv_rows_q6k|gemv_rows|-DTYPE_Q6K" "gemv_rows_q50|gemv_rows|-DTYPE_Q50"
+  "gemv_f32|gemv_f32|" "reduce_parts|reduce_parts|" "touch|touch|" "rmsnorm|rmsnorm|" "mhc|mhc|"
+  "kda_step|kda_step|" "swiglu|swiglu|" "router|router|" "index_key|index_key|"
+  "index_scores_step|index_scores_step|" "select_pools|select_pools|" "mla_step|mla_step|" "argmax|argmax|" "q8_round|q8_round|" "mhc_read|mhc_read|" "mhc_write|mhc_write|"
+  "gemv_expert_q2k|gemv_expert|-DTYPE_Q2K" "gemv_expert_q3k|gemv_expert|-DTYPE_Q3K" "expert_mix|expert_mix|" "xsum16|xsum16|" "hits_union|hits_union|" "residual_add|residual_add|" "hidden_store|hidden_store|")
+set(_fast_outputs)
+set(_fast_registry "#pragma once\n#include <span>\n#include <string>\n")
+set(_fast_lookup "inline std::span<const unsigned char> fast_shader(const std::string &name) {\n")
+foreach(_entry IN LISTS _glm_vk_fast_shaders)
+  string(REPLACE "|" ";" _parts "${_entry}")
+  list(GET _parts 0 _name)
+  list(GET _parts 1 _source)
+  list(GET _parts 2 _defines)
+  separate_arguments(_defines UNIX_COMMAND "${_defines}")
+  set(_spv ${CMAKE_CURRENT_BINARY_DIR}/fast_${_name}.spv)
+  set(_hdr ${CMAKE_CURRENT_BINARY_DIR}/fast_${_name}_spv.hpp)
+  add_custom_command(OUTPUT ${_spv} ${_hdr}
+    COMMAND Vulkan::glslc --target-env=vulkan1.2 -O ${_defines} ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/${_source}.comp -o ${_spv}
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${_spv} -DOUTPUT=${_hdr} -DNAME=fast_${_name} -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/${_source}.comp ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/common.glsl
+            ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake VERBATIM)
+  list(APPEND _fast_outputs ${_hdr})
+  string(APPEND _fast_registry "#include \"fast_${_name}_spv.hpp\"\n")
+  string(APPEND _fast_lookup "  if (name == \"${_name}\") return fast_${_name}_spv;\n")
+endforeach()
+string(APPEND _fast_lookup "  return {};\n}\n")
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/fast_shaders.hpp.tmp "${_fast_registry}${_fast_lookup}")
+configure_file(${CMAKE_CURRENT_BINARY_DIR}/fast_shaders.hpp.tmp ${CMAKE_CURRENT_BINARY_DIR}/fast_shaders.hpp COPYONLY)
+add_custom_target(glm_vulkan_fast_shaders DEPENDS ${_fast_outputs})
+add_library(strata_glm_vulkan_fast fast/device.cpp fast/kernels.cpp fast/expert_batch.cpp fast/engine.cpp)
+target_include_directories(strata_glm_vulkan_fast PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(strata_glm_vulkan_fast PUBLIC Vulkan::Vulkan strata_artifact ggml strata_kernels_cpu)
+add_dependencies(strata_glm_vulkan_fast glm_vulkan_fast_shaders)
+target_link_libraries(strata-glm-vulkan PRIVATE strata_glm_vulkan_fast)
+add_executable(glm_vulkan_fast_bench fast/bench.cpp)
+target_link_libraries(glm_vulkan_fast_bench PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
+add_executable(glm_vulkan_fast_gemm_bench fast/gemm_bench.cpp)
+target_link_libraries(glm_vulkan_fast_gemm_bench PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
+add_executable(glm_vulkan_fast_gemm_check fast/gemm_check.cpp)
+target_link_libraries(glm_vulkan_fast_gemm_check PRIVATE strata_glm_vulkan_fast ggml)
+add_executable(glm_vulkan_fast_repack_check fast/repack_check.cpp)
+target_link_libraries(glm_vulkan_fast_repack_check PRIVATE strata_glm_vulkan_fast)
+add_executable(glm_vulkan_fast_expert_quality fast/expert_quality.cpp)
+target_link_libraries(glm_vulkan_fast_expert_quality PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
+add_executable(glm_vulkan_fast_expert_batch_check fast/expert_batch_check.cpp)
+target_link_libraries(glm_vulkan_fast_expert_batch_check PRIVATE strata_glm_vulkan_fast ggml strata_kernels_cpu)
+add_executable(glm_vulkan_fast_window_check fast/window_check.cpp)
+target_link_libraries(glm_vulkan_fast_window_check PRIVATE strata_glm_vulkan_fast)
+add_executable(glm_vulkan_fast_ref fast/reference.cpp)
+target_link_libraries(glm_vulkan_fast_ref PRIVATE strata_artifact ggml strata_kernels_cpu)
+target_include_directories(glm_vulkan_fast_ref PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

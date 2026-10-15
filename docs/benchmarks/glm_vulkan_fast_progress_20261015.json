@@ -1,0 +1,1037 @@
+{
+  "hardware": {
+    "gpu": "RX570 16 GiB (RADV POLARIS10)",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 per prior qualification"
+  },
+  "scope": "Fast opt-in Vulkan work, October 14\u201315. Short decode measurements only; full HumanEval stopped after a GPU fault at 111 completed / 100 oracle passes; 100+ prefill not achieved.",
+  "runs": {
+    "speed-candidate": {
+      "passed": true,
+      "test_kind": "performance",
+      "performance_qualified": true,
+      "executable_sha256": "dfb66368b71c82156ba5f6e6d33fd4fd137a5aec7ca98498b98aeb43567e7d0d",
+      "config_sha256": "5d8167fdd7bb2029fcf655029acf27de4aa9ce00e244f2afa6500ad8a2737d6c",
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "faults": [],
+      "pci_before": {
+        "0000:07:00.0": "0210df67"
+      },
+      "pci_after": {
+        "0000:07:00.0": "0210df67"
+      },
+      "trials": 5,
+      "prompt_tokens": 32,
+      "generated_tokens": 128,
+      "median_decode_tok_s": 14.6822,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 10740.0,
+          "tokens_per_second": 11.825
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8649.9,
+          "tokens_per_second": 14.6822
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8648.66,
+          "tokens_per_second": 14.6844
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8648.11,
+          "tokens_per_second": 14.6853
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8650.97,
+          "tokens_per_second": 14.6804
+        }
+      ],
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2666.78,
+          "tokens_per_second": 11.9995
+        },
+        {
+          "trial": 1,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2660.63,
+          "tokens_per_second": 12.0272
+        },
+        {
+          "trial": 2,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2663.6,
+          "tokens_per_second": 12.0138
+        },
+        {
+          "trial": 3,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2660.65,
+          "tokens_per_second": 12.0271
+        },
+        {
+          "trial": 4,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2672.34,
+          "tokens_per_second": 11.9745
+        }
+      ]
+    },
+    "speed-aff08": {
+      "passed": true,
+      "test_kind": "performance",
+      "performance_qualified": true,
+      "executable_sha256": "dfb66368b71c82156ba5f6e6d33fd4fd137a5aec7ca98498b98aeb43567e7d0d",
+      "config_sha256": "1f5e4a503b80eaaed079b651a42a5aca3b04bd861dce72b0a689c35900bfc20d",
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "faults": [],
+      "pci_before": {
+        "0000:07:00.0": "0210df67"
+      },
+      "pci_after": {
+        "0000:07:00.0": "0210df67"
+      },
+      "trials": 5,
+      "prompt_tokens": 32,
+      "generated_tokens": 128,
+      "median_decode_tok_s": 15.2642,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 10386.8,
+          "tokens_per_second": 12.227
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8319.6,
+          "tokens_per_second": 15.2652
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8319.93,
+          "tokens_per_second": 15.2646
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8320.15,
+          "tokens_per_second": 15.2642
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8323.63,
+          "tokens_per_second": 15.2578
+        }
+      ],
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2667.55,
+          "tokens_per_second": 11.996
+        },
+        {
+          "trial": 1,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2661.28,
+          "tokens_per_second": 12.0243
+        },
+        {
+          "trial": 2,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2659.05,
+          "tokens_per_second": 12.0344
+        },
+        {
+          "trial": 3,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2661.02,
+          "tokens_per_second": 12.0255
+        },
+        {
+          "trial": 4,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2662.63,
+          "tokens_per_second": 12.0182
+        }
+      ]
+    },
+    "cache-only-perf": {
+      "passed": true,
+      "test_kind": "performance",
+      "performance_qualified": true,
+      "executable_sha256": "53202494900d6ee3615ad4c3e29af5bfa0eb177c0287c37842cc4d4a2d0d24de",
+      "config_sha256": "0f4ef456380026af1424d8b3b48f3f6d2140938a05c11bb2573d8e44cf4e3bd2",
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "faults": [],
+      "pci_before": {
+        "0000:07:00.0": "0210df67"
+      },
+      "pci_after": {
+        "0000:07:00.0": "0210df67"
+      },
+      "trials": 5,
+      "prompt_tokens": 32,
+      "generated_tokens": 128,
+      "median_decode_tok_s": 15.8224,
+      "decode_trials": [
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 10233.2,
+          "tokens_per_second": 12.4106
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8026.54,
+          "tokens_per_second": 15.8225
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8026.94,
+          "tokens_per_second": 15.8217
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8024.03,
+          "tokens_per_second": 15.8275
+        },
+        {
+          "kind": "single",
+          "tokens": 127,
+          "milliseconds": 8026.61,
+          "tokens_per_second": 15.8224
+        }
+      ],
+      "prefill_trials": [
+        {
+          "trial": 0,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2593.06,
+          "tokens_per_second": 12.3406
+        },
+        {
+          "trial": 1,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2592.51,
+          "tokens_per_second": 12.3432
+        },
+        {
+          "trial": 2,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2587.64,
+          "tokens_per_second": 12.3665
+        },
+        {
+          "trial": 3,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2582.47,
+          "tokens_per_second": 12.3912
+        },
+        {
+          "trial": 4,
+          "tokens": 32,
+          "batch": 1,
+          "milliseconds": 2587.6,
+          "tokens_per_second": 12.3667
+        }
+      ]
+    }
+  },
+  "frozen_candidate_provenance": {
+    "executable_sha256": "53202494900d6ee3615ad4c3e29af5bfa0eb177c0287c37842cc4d4a2d0d24de",
+    "source_sha256": {
+      "vulkan/CMakeLists.txt": "7a1072f1ce2aaa5a4b6ba6585a1a2696f7495b1affe1e53756981529dcaf9e27",
+      "vulkan/decode.cpp": "db9b5a53aebf4c60fafad6accd1d445b19a6e3d2beae98fc88dd9df6c1236d30",
+      "vulkan/fast/reference.cpp": "8d70ef42c531a682edbfa8ee1b203c91c4b6ed0b61cd269ac9528efe6ede6f0e",
+      "vulkan/fast/engine.cpp": "d759138effe5497676fda90542e2b85e5f97d3e1f3cdf57d9fd4d65de86461f6",
+      "vulkan/fast/device.hpp": "2bf6428a295e1b8718cc4a6ed3a1e046dfb6d95c1041fd1b6ad9824d9c9c9476",
+      "vulkan/fast/kernels.cpp": "26caeb8da5bfd2c3cc4dbf279b1297168d1d78308b36d26ddc7ba7816e4353fc",
+      "vulkan/fast/engine.hpp": "f6064fbffc55f391c5dd24bdbc703b9b383b330e6708cbbfac2150f3d37acdbc",
+      "vulkan/fast/bench.cpp": "2a2ef59097347adf380dd80431afd7585135399399e89db4bdda266c688196ed",
+      "vulkan/fast/gemm_bench.cpp": "ee54b2e05f55f2519251f7e87c705dc7c073851f7d5512b45e6a0e24263bf9b4",
+      "vulkan/fast/device.cpp": "c28ba9575952f7e734e4dabee3abef39bc6f611d1a444ad2f7aec67cdad15f73",
+      "vulkan/fast/expert_quality.cpp": "a699bb234209100eecdb1214bf5afc95a2b186efb5771b215069ee20bc1de009",
+      "vulkan/fast/window_check.cpp": "47504118ceb9215156415228fc1b648933928620c2e7f54b7a85cbb77e402a4b",
+      "vulkan/fast/kernels.hpp": "549596fa6c39e1308cc0bfce4ce9ef288bc4263696dd56bec6fcef1b00f6dd8a",
+      "vulkan/fast/shaders/router.comp": "c1d7d89ebcec6fbcbd2698ce5da47c5264e54fc61e892e13067df69eb120ef7e",
+      "vulkan/fast/shaders/expert_mix.comp": "71340a609ef972dfcbda56f6ee34ad9f3a92843ba949831437a8d928a4ce7533",
+      "vulkan/fast/shaders/mhc_write.comp": "03c9f5d4e051489536dc54678910f6be38de2e6cecdfe923aa931f515c5f9340",
+      "vulkan/fast/shaders/hits_union.comp": "bf06dec58cfc0e0352fc62b74ccae14f958482977ed304cad35c1b16f67f2a47",
+      "vulkan/fast/shaders/swiglu.comp": "c8aae3aab2b947b45af26689f79c73ce96e44a75fb47fc1f3140e2cd4ae96f9d",
+      "vulkan/fast/shaders/q8k_round.comp": "e803dd1b1a3bad5e7137a39e4bedb487f3759ed811bb453b7fbf5d89ea162b08",
+      "vulkan/fast/shaders/kda_step.comp": "8fb7704e3d74b5c911054602fd979db7514a2f874962816a69e7a0028e312904",
+      "vulkan/fast/shaders/touch.comp": "575f8d81e7d508fd5a1486c25305cf40c4bc71e3bbf33018c43fee0f266f333d",
+      "vulkan/fast/shaders/mhc_read.comp": "ffe49a01216e8d8b3d733c2299231e63c5e478db5dc917a735b576d526c56345",
+      "vulkan/fast/shaders/mhc.comp": "e734b41362d69e0f58b1a348e8cc32402fddb966e11a807dc9d409517ae949c4",
+      "vulkan/fast/shaders/residual_add.comp": "165480db737c618e6690a54eec22d7310f09bf62762e6cfdd0d658786d788e53",
+      "vulkan/fast/shaders/argmax.comp": "d9c90dec33f35094a88c4dadeb0b6a8fa7a5b607aae6087da06415eff4b22365",
+      "vulkan/fast/shaders/index_scores_step.comp": "604f524ab3c364fb487df84bc36ab886d86eec49a51c582375669e62ef59f6a4",
+      "vulkan/fast/shaders/reduce_parts.comp": "f08bf457acbf1e271bb966a5d565466e047ddaf339795a64eeb63e269252f2a8",
+      "vulkan/fast/shaders/hidden_store.comp": "f896499d0129cdacccb174003385ac236ef693981081fe73bbfd6b2503cef93b",
+      "vulkan/fast/shaders/gemv_f32.comp": "7762e849adbec09f22e482875fe48332270f8d09125a10f83521829a055f4849",
+      "vulkan/fast/shaders/rmsnorm.comp": "388951a129cff8f646aeed1a6651e7309b928f0c1241dfa9d884b042c915161b",
+      "vulkan/fast/shaders/gemm_tiled.comp": "1004a7d25ff80393a17588f0bdc259ded587a699e62c923ce0b58f72ba46ad22",
+      "vulkan/fast/shaders/mla_step.comp": "e8d27b3e4ac0d2dd809674f1e61b4e78e6b727455fa0bb315e519729da33c399",
+      "vulkan/fast/shaders/select_pools.comp": "de089c4c955c24aa457dcdcbfa0f3f7fbf36bd8a7b890de4fde565750015cd5d",
+      "vulkan/fast/shaders/gemv_rows.comp": "9c11d6db51dbfac90cef0b85828e3fb9701662529da2796fe61150323947bed2",
+      "vulkan/fast/shaders/common.glsl": "37beb731fe358a8561ac7f852450098f5eb3520a6a998d2ba3344a76dad3c4eb",
+      "vulkan/fast/shaders/index_key.comp": "512286621e832513fcad015f2f40b5b72bed2150df82dcbb3e4b3d2f89a2f8ee",
+      "vulkan/fast/shaders/trace_window.comp": "7dfa5b243190cd1238b54d20705aca628ef886fc5e09f54598160f1424f0b619",
+      "vulkan/fast/shaders/route_merge.comp": "89191b8a863915f3f3401544c561e619398589db78e5b92348f68a4214f9289d",
+      "vulkan/fast/shaders/q8_round.comp": "0aaf143ed62a78393ae5c911c0cf929f996caa5d10c3b5bddfb1ce2e5a98bc76",
+      "vulkan/fast/shaders/gemv_expert.comp": "2afcc613e1e0e3143346eddcedc8dd7058cdb2de355965b30e99fc0ff4d0e609",
+      "vulkan/fast/shaders/xsum16.comp": "0974d59233cb1dd6d7a12fdd46204340397a8694f9e99e32a032972b1f2c9511"
+    }
+  },
+  "frozen_candidate_config": {
+    "exe": "<frozen-candidate>",
+    "model": "./models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+    "backend": "vulkan",
+    "context": 4096,
+    "threads": 12,
+    "cpu_affinity": "auto",
+    "dense_cache_mib": 8192,
+    "gpu_budget_mib": 15360,
+    "prefill_batch": 1,
+    "prefill_experts": "cpu",
+    "speculative": "mtp",
+    "decode_cache_mib": 9216,
+    "stop_ids": [
+      154820,
+      154827,
+      154829
+    ],
+    "gpu_telemetry": true,
+    "gpu_pci_preflight": true,
+    "env": {
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "512",
+      "STRATA_VULKAN_ASYNC_STAGING": "1",
+      "STRATA_VULKAN_OVERLAP_EXPERTS": "1",
+      "STRATA_VULKAN_CPU_MHC": "1",
+      "STRATA_VULKAN_JOINED_PROJECTIONS": "1",
+      "STRATA_VULKAN_CPU_PLACEMENT": "split",
+      "STRATA_VULKAN_FUSED_KDA": "1",
+      "STRATA_VULKAN_AVX2_ACTIVATIONS": "1",
+      "GGML_VK_ALLOW_GRAPHICS_QUEUE": "1",
+      "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT": "1",
+      "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+      "STRATA_GLM_EXPERT_PRIOR": "models/glm53f-reap/reap50-coverage.json",
+      "STRATA_VULKAN_FAST_CANONICAL_SUM": "1"
+    },
+    "engine": "fast",
+    "record_prefill_logits": false,
+    "draft_depth": 3
+  },
+  "training": {
+    "requested_cases": 3,
+    "completed_cases": 3,
+    "rows": [
+      {
+        "name": "parse_u64",
+        "split": "training",
+        "generated": 161,
+        "stop_terminated": true,
+        "oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "passed": true
+      },
+      {
+        "name": "checked_slice",
+        "split": "training",
+        "generated": 425,
+        "stop_terminated": true,
+        "oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "passed": true
+      },
+      {
+        "name": "reduce_routed",
+        "split": "training",
+        "generated": 452,
+        "stop_terminated": true,
+        "oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "passed": true
+      }
+    ],
+    "complete": true,
+    "passed_cases": 3,
+    "humaneval_requested": 0,
+    "humaneval_completed": 0,
+    "humaneval_passed": 0,
+    "humaneval_stop_and_oracle_passed": 0,
+    "full_humaneval_140_gate_passed": false,
+    "timings_qualified": false
+  },
+  "training_outputs_unchanged_after_pruning": {
+    "parse_u64": true,
+    "checked_slice": true,
+    "reduce_routed": true
+  },
+  "parser_greedy_mtp_ids_identical": true,
+  "expert_numeric_checks": [
+    {
+      "expert": 5,
+      "columns": 1,
+      "q8_grid": 0,
+      "rel_l2_cpu_canonical": 0.0187009
+    },
+    {
+      "expert": 5,
+      "columns": 1,
+      "q8_grid": 1,
+      "rel_l2_cpu_canonical": 4.3545e-07
+    },
+    {
+      "expert": 5,
+      "columns": 4,
+      "q8_grid": 0,
+      "rel_l2_cpu_canonical": 0.0184798
+    },
+    {
+      "expert": 5,
+      "columns": 4,
+      "q8_grid": 1,
+      "rel_l2_cpu_canonical": 4.16713e-07
+    },
+    {
+      "expert": 77,
+      "columns": 1,
+      "q8_grid": 0,
+      "rel_l2_cpu_canonical": 0.0184595
+    },
+    {
+      "expert": 77,
+      "columns": 1,
+      "q8_grid": 1,
+      "rel_l2_cpu_canonical": 4.40256e-07
+    },
+    {
+      "expert": 77,
+      "columns": 4,
+      "q8_grid": 0,
+      "rel_l2_cpu_canonical": 0.0176553
+    },
+    {
+      "expert": 77,
+      "columns": 4,
+      "q8_grid": 1,
+      "rel_l2_cpu_canonical": 3.97642e-07
+    }
+  ],
+  "ring_and_sum_checks": [
+    {
+      "position": 1,
+      "keep": 1,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 1,
+      "keep": 2,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 1,
+      "keep": 3,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 2,
+      "keep": 1,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 2,
+      "keep": 2,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 2,
+      "keep": 3,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 3,
+      "keep": 1,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 3,
+      "keep": 2,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 3,
+      "keep": 3,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 5,
+      "keep": 1,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 5,
+      "keep": 2,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 5,
+      "keep": 3,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 6,
+      "keep": 1,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 6,
+      "keep": 2,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 6,
+      "keep": 3,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 7,
+      "keep": 1,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 7,
+      "keep": 2,
+      "ring_byte_identical": true
+    },
+    {
+      "position": 7,
+      "keep": 3,
+      "ring_byte_identical": true
+    },
+    {
+      "tokens": 1,
+      "mixed_route_sum_byte_identical": true
+    },
+    {
+      "tokens": 2,
+      "mixed_route_sum_byte_identical": true
+    },
+    {
+      "tokens": 4,
+      "mixed_route_sum_byte_identical": true
+    }
+  ],
+  "not_qualified": [
+    "Full HumanEval still running; requested 164 tasks with 2048 output-token cap",
+    "Perplexity and strict KL gate",
+    "Long-context and coding throughput",
+    "100+ tok/s prefill; prototype only",
+    "Latest prefill shader changes need RX570 execution after HumanEval completes"
+  ],
+  "software_vulkan_checks": {
+    "device": "llvmpipe; LVP-only ICD; four CPU worker threads",
+    "scope": "Numerics only; no physical GPU throughput measurement",
+    "checks": {
+      "gemm-synthetic-cpu-q6-vector.log": {
+        "sha256": "0d2f09f686e1a1dff0d65e0327821280122de0f4da916f04a3b86636e90ca2a2",
+        "cases": 72,
+        "max_rel_l2": 3.21812e-07,
+        "relative_l2_limit": 2e-05,
+        "passed": true
+      },
+      "gemm-synthetic-cpu-multiblock.log": {
+        "sha256": "26047256e08441b10a5271c8c31a951f91f240df2b7c8c4e32e151588723a10a",
+        "cases": 144,
+        "max_rel_l2": 5.38137e-07,
+        "relative_l2_limit": 2e-05,
+        "passed": true
+      },
+      "gemm-synthetic-cpu-tile256.log": {
+        "sha256": "5fffe42340e253318c0af6ed2552d3a6fc2e496f2c14bee4f2c0bd585a8a671e",
+        "cases": 216,
+        "max_rel_l2": 5.9873e-07,
+        "relative_l2_limit": 2e-05,
+        "passed": true
+      },
+      "window-synthetic-cpu-bulk.log": {
+        "sha256": "d343cf437d59451ff99eec79768b91ae182d5e20e476120771b3475a604d08be",
+        "cases": 33,
+        "all_byte_checks_passed": true
+      }
+    }
+  },
+  "prefill_streaming_prototype": {
+    "status": "software numeric checks only; RX570 timing and end-to-end prefill quality pending",
+    "flag": "STRATA_VULKAN_FAST_PREFILL_GPU=1",
+    "initial_fp32_check": {
+      "rel_l2": 0.00038182,
+      "passed": false
+    },
+    "software_cases": [
+      {
+        "expert": 5,
+        "columns": 5,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.21123e-07
+      },
+      {
+        "expert": 5,
+        "columns": 33,
+        "software": 1,
+        "rel_l2_cpu_canonical": 0.000163085
+      },
+      {
+        "expert": 5,
+        "columns": 129,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.63252e-07
+      },
+      {
+        "expert": 77,
+        "columns": 5,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.62384e-07
+      },
+      {
+        "expert": 77,
+        "columns": 33,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.64355e-07
+      },
+      {
+        "expert": 77,
+        "columns": 129,
+        "software": 1,
+        "rel_l2_cpu_canonical": 9.00368e-05
+      }
+    ],
+    "relative_l2_limit": 0.0002,
+    "max_relative_l2": 0.000163085,
+    "raw_log_sha256": "802cbd155db48452bca80615883bf396b799211a3099963b6131cc4c20a6c873",
+    "frozen_executable_sha256": "352b621e37d1226b04e3d9c8edfb49e9a051339f8489aa6b60ee6c21e1d2162c",
+    "source_manifest_sha256": "bf382a1effd71e3da69ebff4f067ba024b8e8989061212832adbd3eaad53094a",
+    "training_prompt_tokens": 2048,
+    "training_prompt_sha256": "38781def68fbf91aead86da80e5f05174ba316a89436c222fc69f1cad1e2ed37",
+    "cpu_byte_identical": false
+  },
+  "native_prefill_followup": {
+    "driver": "Mesa 26.0.8-1ubuntu0.3 RADV POLARIS10",
+    "gemm": {
+      "case_count": 72,
+      "max_sampled_rel_l2": 1.40939e-06,
+      "selected": [
+        {
+          "tensor": "blk.4.attn_q.weight",
+          "type": 12,
+          "k": 4096,
+          "m": 8192,
+          "heads": 1,
+          "columns": 256,
+          "tile_columns": 64,
+          "median_ms": 6.264,
+          "tflops": 2.74264,
+          "rel_l2": 1.0398e-06
+        },
+        {
+          "tensor": "blk.4.attn_q.weight",
+          "type": 12,
+          "k": 4096,
+          "m": 8192,
+          "heads": 1,
+          "columns": 256,
+          "tile_columns": 128,
+          "median_ms": 8.48816,
+          "tflops": 2.02398,
+          "rel_l2": 1.17378e-06
+        },
+        {
+          "tensor": "blk.4.attn_q.weight",
+          "type": 12,
+          "k": 4096,
+          "m": 8192,
+          "heads": 1,
+          "columns": 256,
+          "tile_columns": 256,
+          "median_ms": 17.9794,
+          "tflops": 0.955533,
+          "rel_l2": 1.08807e-06
+        },
+        {
+          "tensor": "blk.4.attn_v.weight",
+          "type": 14,
+          "k": 4096,
+          "m": 8192,
+          "heads": 1,
+          "columns": 256,
+          "tile_columns": 64,
+          "median_ms": 6.77664,
+          "tflops": 2.53516,
+          "rel_l2": 9.37307e-07
+        },
+        {
+          "tensor": "blk.4.attn_v.weight",
+          "type": 14,
+          "k": 4096,
+          "m": 8192,
+          "heads": 1,
+          "columns": 256,
+          "tile_columns": 128,
+          "median_ms": 8.25152,
+          "tflops": 2.08202,
+          "rel_l2": 1.06685e-06
+        },
+        {
+          "tensor": "blk.4.attn_v.weight",
+          "type": 14,
+          "k": 4096,
+          "m": 8192,
+          "heads": 1,
+          "columns": 256,
+          "tile_columns": 256,
+          "median_ms": 18.2283,
+          "tflops": 0.942482,
+          "rel_l2": 1.03837e-06
+        }
+      ],
+      "log_sha256": "6074bd8f36fb1bd87d1868dd61ca19ef42a4bc1af2ab33b896eeea3b5c00743b",
+      "end_to_end_qualified": false
+    },
+    "expert": {
+      "cases": [
+        {
+          "expert": 5,
+          "columns": 5,
+          "software": 0,
+          "rel_l2_cpu_canonical": 2.20991e-07
+        },
+        {
+          "expert": 5,
+          "columns": 33,
+          "software": 0,
+          "rel_l2_cpu_canonical": 0.000163085
+        },
+        {
+          "expert": 5,
+          "columns": 129,
+          "software": 0,
+          "rel_l2_cpu_canonical": 2.65997e-07
+        },
+        {
+          "expert": 77,
+          "columns": 5,
+          "software": 0,
+          "rel_l2_cpu_canonical": 2.83806e-07
+        },
+        {
+          "expert": 77,
+          "columns": 33,
+          "software": 0,
+          "rel_l2_cpu_canonical": 2.65773e-07
+        },
+        {
+          "expert": 77,
+          "columns": 129,
+          "software": 0,
+          "rel_l2_cpu_canonical": 9.00367e-05
+        }
+      ],
+      "packed_input_cases": [
+        {
+          "expert": 5,
+          "columns": 5,
+          "packed_input_output_byte_identical": false,
+          "packed_input_cpu_grid_byte_identical": true,
+          "fp32_input_bytes": 81920,
+          "q8k_input_bytes": 23360
+        },
+        {
+          "expert": 5,
+          "columns": 33,
+          "packed_input_output_byte_identical": false,
+          "packed_input_cpu_grid_byte_identical": true,
+          "fp32_input_bytes": 540672,
+          "q8k_input_bytes": 154176
+        },
+        {
+          "expert": 5,
+          "columns": 129,
+          "packed_input_output_byte_identical": false,
+          "packed_input_cpu_grid_byte_identical": true,
+          "fp32_input_bytes": 2113536,
+          "q8k_input_bytes": 602688
+        },
+        {
+          "expert": 77,
+          "columns": 5,
+          "packed_input_output_byte_identical": false,
+          "packed_input_cpu_grid_byte_identical": true,
+          "fp32_input_bytes": 81920,
+          "q8k_input_bytes": 23360
+        },
+        {
+          "expert": 77,
+          "columns": 33,
+          "packed_input_output_byte_identical": false,
+          "packed_input_cpu_grid_byte_identical": true,
+          "fp32_input_bytes": 540672,
+          "q8k_input_bytes": 154176
+        },
+        {
+          "expert": 77,
+          "columns": 129,
+          "packed_input_output_byte_identical": false,
+          "packed_input_cpu_grid_byte_identical": true,
+          "fp32_input_bytes": 2113536,
+          "q8k_input_bytes": 602688
+        }
+      ],
+      "limit": 0.0002,
+      "log_sha256": "ca64a37bca06a50f48ba4b2783b08705e5e0731b460c45d9521f69b5c3c610c5"
+    },
+    "repack": {
+      "byte_cases": 48,
+      "all_bytes_identical": true,
+      "diagnostic_interleaved_medians": [
+        {
+          "type": 10,
+          "K": 4096,
+          "M": 4096,
+          "byte_identical": true,
+          "original_median_ms": 2.61496,
+          "streamed_median_ms": 0.998178
+        },
+        {
+          "type": 11,
+          "K": 2048,
+          "M": 4096,
+          "byte_identical": true,
+          "original_median_ms": 0.697418,
+          "streamed_median_ms": 0.381349
+        },
+        {
+          "type": 11,
+          "K": 4096,
+          "M": 4096,
+          "byte_identical": true,
+          "original_median_ms": 1.89554,
+          "streamed_median_ms": 1.71466
+        }
+      ],
+      "performance_qualified": false
+    },
+    "fma_probe": {
+      "fma_probe_cases": 512,
+      "ordinary_mismatches": 512,
+      "precise_mismatches": 512,
+      "separate_mismatches": 512
+    },
+    "match_gemv_gpu_reduction_control": {
+      "prompt_tokens": 32,
+      "small_window": 4,
+      "large_window": 32,
+      "attention_traces_byte_identical": 45,
+      "layer_traces_byte_identical": 45,
+      "logits_byte_identical": true,
+      "logits_sha256": "7a833aeef95f0993a83fc0de9ffa6e1159a6f0122302959801296ed000118a1f",
+      "gemm_qualified": false
+    },
+    "width32_gemm_before_reduction_fix": {
+      "kl_against_width4": 0.12627874801036182,
+      "argmax_width4": 860,
+      "argmax_width32": 819
+    },
+    "faulted_2048_attempt": {
+      "boot_id": "f4bee857-d8d4-4ff0-8a2d-a2a906553373",
+      "executable_sha256": "b1534f2756aceb3d75525f565bc8fbea0c2d29038a66ddf35b386e5a87b3bc13",
+      "config_sha256": "b8afbf2357d2563dcb3804a32b658d29ac9d9917bf71523c202fedc6acfc01b4",
+      "prompt_sha256": "38781def68fbf91aead86da80e5f05174ba316a89436c222fc69f1cad1e2ed37",
+      "passed": false,
+      "termination_reason": "hardware/GPU fault",
+      "exit_code": -9,
+      "wall_seconds": 12.830207085993607,
+      "faults": [
+        "[145618.788624] amdgpu 0000:07:00.0: ring comp_1.3.0 timeout, signaled seq=18697093, emitted seq=18697094",
+        "[145618.788638] amdgpu 0000:07:00.0: GPU reset begin!. Source:  1",
+        "[145618.954875] amdgpu 0000:07:00.0: GPU reset succeeded, trying to resume",
+        "[145618.958270] amdgpu 0000:07:00.0: VRAM is lost due to GPU reset!"
+      ],
+      "pci_before": {
+        "0000:07:00.0": "0210df67"
+      },
+      "pci_after": {
+        "0000:07:00.0": "0210df67"
+      },
+      "performance_qualified": false
+    },
+    "post_fault_state": {
+      "gpu_execution_allowed_this_boot": false,
+      "valid_2048_throughput_samples": 0,
+      "humaneval_completed": 111,
+      "humaneval_oracle_passes": 100,
+      "humaneval_stop_and_oracle_passes": 99,
+      "full_humaneval_gate_passed": false,
+      "scheduler_stopped_between_cases": true,
+      "cpu_fixes_pending_gpu_validation": [
+        "per-layer large prefill submission",
+        "storage descriptor range validation",
+        "large-window profile query layout reset and capacity checks",
+        "optional per-layer progress milestones"
+      ],
+      "native_build_passed": true,
+      "portable_build_passed": true,
+      "python_tests_passed": 35,
+      "software_expert_cases_passed": 6,
+      "software_expert_max_relative_l2": 0.000163085,
+      "source_diff_check_passed": true
+    },
+    "local_reboot_evidence": {
+      "location": "ignored native build tree",
+      "primary_archive_sha256": "32836afe5f77ae75e24fbc79696d2dc961c076ead63c58dcd87094499fc0d8bf",
+      "primary_archive_bytes": 628613120,
+      "frozen_humaneval_executable_verified": true
+    }
+  },
+  "cpu_direct_pair_followup": {
+    "scope": "CPU-only work on the same faulted boot; no physical GPU execution",
+    "byte_cases": 48,
+    "all_pair_bytes_identical": true,
+    "timing_protocol": "one warmup per path, nine interleaved pairs, one CPU thread, unaligned input pointers, native build",
+    "diagnostic_timings": [
+      {
+        "type": 10,
+        "K": 4096,
+        "M": 4096,
+        "byte_identical": true,
+        "pair_byte_identical": true,
+        "original_median_ms": 1.0905,
+        "streamed_median_ms": 1.02037,
+        "join_then_pack_median_ms": 1.65297,
+        "direct_pair_median_ms": 1.48589
+      },
+      {
+        "type": 11,
+        "K": 2048,
+        "M": 4096,
+        "byte_identical": true,
+        "pair_byte_identical": true,
+        "original_median_ms": 0.889001,
+        "streamed_median_ms": 0.600551,
+        "join_then_pack_median_ms": 0.865981,
+        "direct_pair_median_ms": 0.800361
+      },
+      {
+        "type": 11,
+        "K": 4096,
+        "M": 4096,
+        "byte_identical": true,
+        "pair_byte_identical": true,
+        "original_median_ms": 1.93632,
+        "streamed_median_ms": 2.15608,
+        "join_then_pack_median_ms": 2.98292,
+        "direct_pair_median_ms": 2.66262
+      }
+    ],
+    "runtime_usage": "paired Q2_K gate/up packing only inside opt-in streamed prefill; removes 5505024-byte join buffer",
+    "software_expert_cases": [
+      {
+        "expert": 5,
+        "columns": 5,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.21123e-07
+      },
+      {
+        "expert": 5,
+        "columns": 33,
+        "software": 1,
+        "rel_l2_cpu_canonical": 0.000163085
+      },
+      {
+        "expert": 5,
+        "columns": 129,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.63252e-07
+      },
+      {
+        "expert": 77,
+        "columns": 5,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.62384e-07
+      },
+      {
+        "expert": 77,
+        "columns": 33,
+        "software": 1,
+        "rel_l2_cpu_canonical": 2.64355e-07
+      },
+      {
+        "expert": 77,
+        "columns": 129,
+        "software": 1,
+        "rel_l2_cpu_canonical": 9.00368e-05
+      }
+    ],
+    "raw_repack_log_sha256": "635f44f7895f6d2c45861f3cba409dcb7562d77c475de385ea86393cdcaa6bd2",
+    "raw_expert_log_sha256": "d0ff4ce9a6f4c7ca92b09b7c61cd9aeb90684fade1f28b52bd065d9349df90f2",
+    "compiled_source_manifest_sha256": "c7ac25d40a60c356cca17a6862a0fd983c55947435e005ece0253f5c1fabd87a",
+    "gpu_validated": false,
+    "end_to_end_100_gate_passed": false
+  },
+  "commit_preparation": {
+    "physical_gpu_execution": false,
+    "native_build_passed": true,
+    "portable_build_passed": true,
+    "python_tests_passed": 35,
+    "env_helper_cleanup": "Existing exact-one flags and unset/empty integer fallbacks preserved through glm_env.h helpers",
+    "logs_sha256": {
+      "native-build.log": "43ca84834c90c70568582d5f50912f0d09cde27dbf1286bbe3d3286608aae7df",
+      "portable-build.log": "5bb899227cc3653dc75f976c13d3ebc9bef8a95caa949ed13f6985addb9aaf47",
+      "python-tests.log": "1493f4b3f6eb6d0227dae97d7be02b5363e102240886065ee849d55ebde4f93e"
+    },
+    "gpu_qualification": "Post-fault scheduling/range/profiling changes remain untested on RX570. No GPU work performed during commit preparation."
+  }
+}
