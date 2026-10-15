@@ -1,0 +1,55 @@
+{
+  "scope": "Storage component holdout: fit QD1 latency and retain independent 8 MiB shared-bandwidth measurement; predict QD4 small reads",
+  "records": [
+    {
+      "disk": "model",
+      "block_bytes": 4096,
+      "predicted_QD4_GB_s": 0.18732859142374467,
+      "measured_QD4_GB_s": 0.17907795538796,
+      "error_fraction": 0.046072873782315726,
+      "within_15_percent": true
+    },
+    {
+      "disk": "model",
+      "block_bytes": 65536,
+      "predicted_QD4_GB_s": 0.9335732007508429,
+      "measured_QD4_GB_s": 0.8807181624164173,
+      "error_fraction": 0.06001356687070891,
+      "within_15_percent": true
+    },
+    {
+      "disk": "model",
+      "block_bytes": 1048576,
+      "predicted_QD4_GB_s": 0.9335732007508429,
+      "measured_QD4_GB_s": 0.9337251709038377,
+      "error_fraction": -0.00016275683437727562,
+      "within_15_percent": true
+    },
+    {
+      "disk": "work",
+      "block_bytes": 4096,
+      "predicted_QD4_GB_s": 0.19771870728354232,
+      "measured_QD4_GB_s": 0.1862434254027709,
+      "error_fraction": 0.061614426688914925,
+      "within_15_percent": true
+    },
+    {
+      "disk": "work",
+      "block_bytes": 65536,
+      "predicted_QD4_GB_s": 1.2449128708426833,
+      "measured_QD4_GB_s": 1.150683692473469,
+      "error_fraction": 0.08188973128372279,
+      "within_15_percent": true
+    },
+    {
+      "disk": "work",
+      "block_bytes": 1048576,
+      "predicted_QD4_GB_s": 3.684988556327611,
+      "measured_QD4_GB_s": 3.572915804306753,
+      "error_fraction": 0.031367308427969975,
+      "within_15_percent": true
+    }
+  ],
+  "qualified_component": true,
+  "quality_qualified": false
+}

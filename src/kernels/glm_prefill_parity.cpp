@@ -59,6 +59,33 @@ void near(const std::vector<float> &a, const std::vector<float> &b, float tolera
                 " actual_bits=" + std::to_string(std::bit_cast<uint32_t>(a[i])) +
                 " expected_bits=" + std::to_string(std::bit_cast<uint32_t>(b[i])));
 }
+// Small and partial rows expose shared reduction-storage reuse between warps.
+void check_softmax_precision() {
+    for (int stride : {1, 7, 31, 33, 255, 257, 2052}) {
+        constexpr int heads = 3, queries = 3;
+        std::vector<int> counts{1, std::max(1, stride / 2), stride};
+        std::vector<float> input(heads * queries * stride), expected(input.size());
+        for (size_t i = 0; i < input.size(); ++i) input[i] = (int(i % 79) - 39) * .125f;
+        for (int row = 0; row < heads * queries; ++row) {
+            const int n = counts[row / heads];
+            double sum = 0;
+            for (int i = 0; i < n; ++i) sum += std::exp(double(input[row * stride + i]) * .25);
+            for (int i = 0; i < n; ++i) expected[row * stride + i] = std::exp(double(input[row * stride + i]) * .25) / sum;
+        }
+        Buffer<int> dc(counts);
+        Buffer<float> scores(input), fused(input);
+        Buffer<uint16_t> expected_half(input.size()), actual_half(input.size());
+        for (int repeat = 0; repeat < 8; ++repeat) {
+            scores.put(input); fused.put(input);
+            k::glm_mla_softmax(scores.p, dc.p, heads, stride, queries, .25f, nullptr);
+            near(scores.get(), expected, 2e-6f);
+            k::glm_f16(scores.p, expected_half.p, input.size(), nullptr);
+            k::glm_mla_softmax_f16(fused.p, dc.p, actual_half.p, heads, stride, queries, .25f, nullptr);
+            if (expected_half.get() != actual_half.get())
+                throw std::runtime_error("fused FP16 softmax differs from FP32 softmax plus cast");
+        }
+    }
+}
 void check_vector_gather(bool benchmark) {
     const char* original = std::getenv("STRATA_GLM_MLA_VECTOR_GATHER");
     struct Restore {
@@ -317,6 +344,40 @@ void check_transcode_reference() {
     }
     std::cout<<"Q8 transcode GGML reference and guards passed\n";
 }
+void check_selected_rows_sum() {
+    constexpr int width=33,top=8,tokens=2;
+    std::vector<float> rows(tokens*top*width,NAN),weights(tokens*top,0.f),expected(tokens*width,0.f);
+    for (int route: {1,3,8,14}) {
+        weights[route]=0.125f*(route%3+1);
+        for (int c=0;c<width;++c) rows[route*width+c]=float(route-c)*0.0625f;
+    }
+    for (int t=0;t<tokens;++t) for (int c=0;c<width;++c)
+        for (int r=top-1;r>=0;--r) if (weights[t*top+r]!=0)
+            expected[t*width+c]=std::fma(weights[t*top+r],rows[(t*top+r)*width+c],expected[t*width+c]);
+    Buffer<float> input(rows),w(weights),sum(expected.size());
+    k::glm_sum_selected_rows(input.p,w.p,sum.p,width,top,tokens,nullptr);near(sum.get(),expected,0.f);
+}
+void check_mixed_partial_rows() {
+    constexpr int width=33,rows=3,groups=2,top=8;
+    // Uneven expert lengths, padding, repeated token destinations, and an
+    // existing shared-expert sum. No model is needed.
+    std::vector<int> bounds{0,2,5},dest{0,8,1,9,17};
+    std::vector<float> weights(24,0.f),input(groups*rows*width),expected(3*width,0.25f);
+    for (int route:dest) weights[route]=0.125f*(route%3+1);
+    for (size_t i=0;i<input.size();++i) input[i]=float(int(i%23)-11)*0.0625f;
+    for (int group=0;group<groups;++group) for (int row=0;row<bounds[group+1]-bounds[group];++row) {
+        int route=dest[bounds[group]+row];
+        for (int c=0;c<width;++c) expected[(route/top)*width+c]+=weights[route]*input[(group*rows+row)*width+c];
+    }
+    Buffer<int> b(bounds),d(dest);Buffer<float> x(input),w(weights),out(std::vector<float>(3*width,0.25f));
+    k::glm_scatter_expert_weighted(x.p,out.p,w.p,b.p,d.p,0,groups,0,rows,width,top,nullptr);
+    near(out.get(),expected,1e-6);
+    std::vector<int> tokens{2,0};std::vector<float> additions(2*width,0.5f);
+    Buffer<int> t(tokens);Buffer<float> a(additions);
+    k::glm_accumulate_token_rows(a.p,out.p,t.p,2,width,nullptr);
+    for (int token:tokens) for (int c=0;c<width;++c) expected[token*width+c]+=0.5f;
+    near(out.get(),expected,1e-6);
+}
 int main(int argc, char** argv) {
     const bool benchmark = argc == 2 && std::string(argv[1]) == "--benchmark";
     const bool softmax_only = argc == 2 && std::string(argv[1]) == "--softmax-only";
@@ -324,9 +385,12 @@ int main(int argc, char** argv) {
     try {
         check_mla_softmax();
         if (softmax_only) return 0;
+        check_selected_rows_sum();
+        check_mixed_partial_rows();
         check_half_attention_reference();
         check_transcode_reference();
         check_device_positions();
+        check_softmax_precision();
         check_vector_gather(benchmark);
         check_batched_resident();
         for (int primary = 1; primary < 18; ++primary) {

@@ -8,6 +8,23 @@ The weights are experimental conversions: the expert sidecars change weight
 values (they are not lossless repacks), and the REAP-50 model removes half the
 experts. See the quality tables before relying on either.
 
+**For output quality, prefer the full, unpruned `GLM-5.3-Flash-Q23-assembled.gguf`
+(288 experts, 120.9 GB) when RAM permits.** Full Q23 is still quantized. REAP-224
+(224 experts, 95.5 GB) is an experimental alternative for lower memory use.
+Its latest tuned release candidate scored 150/164 HumanEval, below its 152-pass
+floor; see the [2026-10-13 validation report](GLM_RELEASE_20261013.md).
+
+On TR1950X / 128 GB DDR4-3200 / RTX 5060 Ti 16 GB, full Q23 with unchanged routing
+scored 156/164 with strict MTP depth 2 on October 7 and 154/164 with depth 1 on
+October 9. These are different builds/settings, not a controlled depth comparison.
+Keep routing unchanged and use strict acceptance for quality priority. The later
+matched timing check favored depth 1 (20.28 versus 18.63 tok/s at 2K, identical
+output on that prompt). The measured speed/quality compromise below uses affinity
+0.08 and depth 1: about 23 tok/s and 153/164. All scores use the pinned greedy chat
+protocol, low reasoning and a 2,048-token cap. See the
+[depth-two result](GLM_Q2_DECODE_REDESIGN.md#humaneval) and
+[later qualification](GLM_TR16_OPTIMIZATION.md#quality-and-promotion).
+
 | Configuration | Host RAM | GPU | Weights | Measured decode / prefill |
 |---|---:|---|---|---|
 | A: full model, 288 experts | 128 GB | 16 GB NVIDIA (RTX 5060 Ti, PCIe 3.0 x8) | Unsloth UD-Q2_K_XL shards + `experts-q23.gguf` | 23.1 tok/s decode, 131 tok/s prefill at 2K (qualified); research candidates up to 36–38 |
@@ -18,6 +35,9 @@ experts. See the quality tables before relying on either.
 | Path | Size | What it is | Needs |
 |---|---:|---|---|
 | `GLM-5.3-Flash-Q23-assembled.gguf` | 120.9 GB | Single-file full model: Unsloth UD-Q2_K_XL shards + `experts-q23.gguf`, assembled with `strata-glm-assemble <shard 1> experts-q23.gguf <out>` (split base and retained original projections supported since this release). Token-identical to the sidecar setup (256 tokens, qualified profile). SHA-256 `8e280fd8…a50e7`. | a Strata build with the assembled-file loader change |
+| `reap224/GLM-5.3-Flash-Q23-REAP224-assembled.gguf` | 95.5 GB | Single-file REAP-224 model, sliced from full Q23 without further requantization. SHA-256 `3ef5726ae4a9768fa8311453927674401f3958a8c3884effddac92fc41262003`. See [quality and pruning details](GLM_PRUNE_224.md). | a Strata build with the pruned-model loader |
+| `reap224/plan-keep224.txt`, `reap224/plan-keep224.report.json` | 35 KB / 32 KB | Kept expert IDs and per-layer saliency report. | — |
+| `reap224/coverage-keep224.json` | 103 KB | Expert prior re-indexed to the 224 kept experts. | the REAP-224 model |
 | `experts-q23.gguf` | 105.5 GB | Expert sidecar for the full model: routed gate/up weights requantized IQ2_XS→Q2_K, down IQ3_XXS→Q3_K (layer 11 unchanged). SHA-256 `d358456c…68aff`. | the four Unsloth UD-Q2_K_XL shards |
 | `experts-q22.gguf` | 95.9 GB | Same, but 39 down projections also in Q2_K (9.1% fewer expert bytes; used by the faster research profiles). | the four Unsloth shards |
 | `experts-q2{2,3}.gguf.quality.json` | small | Per-projection reconstruction error and the source fingerprint the sidecar was built against. | — |

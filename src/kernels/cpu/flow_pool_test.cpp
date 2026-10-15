@@ -72,7 +72,7 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
         for (int e = 0; e < w.count; ++e) pool_ids[e] = e;
         std::shuffle(pool_ids.begin(), pool_ids.end(), rng);
         for (int k = 0; k < K; ++k) selected[t * K + k] = pool_ids[k];
-        if (grouped && ((resident_tokens & 1) && t < nt / 2 || (resident_tokens & 2) && t >= nt / 2))
+        if (grouped && (((resident_tokens & 1) && t < nt / 2) || ((resident_tokens & 2) && t >= nt / 2)))
             for (int k = 0; k < K; ++k) selected[t * K + k] = skip_expert;
     }
     std::vector<std::vector<uint8_t>> act(nt, std::vector<uint8_t>(w.f.act_bytes));
@@ -172,9 +172,15 @@ int main() {
         for (int nt : {1, 3}) checks += run(pool, q23, true, true, nt, -1, rng);
         q23.f.canon = true;
         for (bool owned : {false, true})
-            for (int nt : {2, 3, 4, 8})
+            for (int nt : {2, 3, 4, 5, 6, 7, 8})
                 for (int resident : {0, 1, 2, 3})
-                    checks += run(pool, q23, owned, owned, nt, 5, rng, true, resident);
+                    checks += run(pool, q23, owned, false, nt, 5, rng, true, resident);
+        for (int nt : {2, 3, 4, 8})
+            for (int resident : {0, 1, 2, 3}) checks += run(pool, q23, true, true, nt, 5, rng, true, resident);
+        auto uneven = make(10, 11, 768, 1792, 20, true, rng, pool);
+        uneven.f.canon = true;
+        for (bool owned : {false, true})
+            for (int nt : {1, 2, 8}) checks += run(pool, uneven, owned, false, nt, -1, rng);
         restore_thread_affinity(previous);
         std::cout << "Layer dataflow PASS " << checks << " runs bitwise equal to phased execution\n";
     } catch (const std::exception &e) {

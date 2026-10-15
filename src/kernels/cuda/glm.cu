@@ -12,6 +12,49 @@
 
 namespace strata::kernels {
 namespace {
+struct GreedyPartial { uint32_t rank; int token; int nonfinite; };
+constexpr int greedy_slice = 4096;
+__device__ GreedyPartial greedy_merge(GreedyPartial a, GreedyPartial b) {
+    const int bad = a.nonfinite | b.nonfinite;
+    if (b.rank > a.rank || (b.rank == a.rank && b.token < a.token)) a = b;
+    a.nonfinite = bad;
+    return a;
+}
+__device__ GreedyPartial greedy_reduce(GreedyPartial value, GreedyPartial *shared) {
+    const int t = threadIdx.x;
+    shared[t] = value;
+    __syncthreads();
+    for (int stride = 128; stride; stride /= 2) {
+        if (t < stride) shared[t] = greedy_merge(shared[t], shared[t + stride]);
+        __syncthreads();
+    }
+    return shared[0];
+}
+__global__ void greedy_partials(const float *logits, int n, GreedyPartial *partials) {
+    __shared__ GreedyPartial shared[256];
+    const int first = int(blockIdx.x) * greedy_slice;
+    const int count = n - first < greedy_slice ? n - first : greedy_slice;
+    GreedyPartial best{0, INT32_MAX, 0};
+    for (int offset = threadIdx.x; offset < count; offset += 256) {
+        const int token = first + offset;
+        uint32_t bits = __float_as_uint(logits[token]);
+        const int bad = (bits & 0x7f800000u) == 0x7f800000u;
+        // Integer ordering retains subnormals even on backends that flush FP32 arithmetic.
+        // Both signs of zero have the same rank, matching std::max_element's first tie.
+        if ((bits & 0x7fffffffu) == 0) bits = 0;
+        const uint32_t rank = bits & 0x80000000u ? ~bits : bits ^ 0x80000000u;
+        best = greedy_merge(best, GreedyPartial{rank, token, bad});
+    }
+    best = greedy_reduce(best, shared);
+    if (!threadIdx.x) partials[blockIdx.x] = best;
+}
+__global__ void greedy_finish(const GreedyPartial *partials, int count, GlmGreedyPick *result) {
+    __shared__ GreedyPartial shared[256];
+    GreedyPartial best{0, INT32_MAX, 0};
+    for (int i = threadIdx.x; i < count; i += 256) best = greedy_merge(best, partials[i]);
+    best = greedy_reduce(best, shared);
+    if (!threadIdx.x) *result = GlmGreedyPick{best.token, best.nonfinite};
+}
 __device__ float sig(float x) {
     return 1.f / (1.f + expf(-x));
 }
@@ -272,6 +315,36 @@ __global__ void route_publish(const float *logits, const float *bias, int *ids, 
     if (threadIdx.x == 0) {
         __threadfence_system();
         *(volatile unsigned *)(v.flags + (size_t)slot * 32) = *generation;
+    }
+}
+__global__ void route_publish_tokens(const float *logits, const float *bias, int *ids, float *weights,
+                                     int ne, int k, float scale, float min_share, const float *bonus,
+                                     GlmMailboxView v, int slot, const float *x, int tokens,
+                                     const unsigned *generation, int *wanted) {
+    __shared__ float unbiased_weights[8 * 8];
+    const int warp=threadIdx.x/32,lane=threadIdx.x%32;
+    if (warp<tokens)
+        route_warp_body(logits+size_t(warp)*ne,bias,ids+size_t(warp)*k,weights+size_t(warp)*k,
+                        ne,k,scale,min_share,bonus,lane);
+    if (wanted && warp>=8 && warp<8+tokens) {
+        const int t=warp-8;
+        route_warp_body(logits+size_t(t)*ne,bias,wanted+size_t(t)*k,unbiased_weights+t*8,
+                        ne,k,scale,min_share,nullptr,lane);
+    }
+    __syncthreads();
+    const size_t routes=size_t(slot)*v.max_tokens*v.top_k;
+    for (int j=threadIdx.x;j<tokens*k;j+=blockDim.x) {
+        v.ids[routes+j]=ids[j];v.weights[routes+j]=weights[j];
+        if (v.wanted) v.wanted[routes+j]=wanted ? wanted[j] : ids[j];
+    }
+    const float4 *src=reinterpret_cast<const float4 *>(x);
+    float4 *dst=reinterpret_cast<float4 *>(v.act+size_t(slot)*v.max_tokens*v.hidden);
+    for (int j=threadIdx.x;j<tokens*v.hidden/4;j+=blockDim.x) dst[j]=src[j];
+    __threadfence_system();
+    __syncthreads();
+    if (threadIdx.x==0) {
+        __threadfence_system();
+        *(volatile unsigned *)(v.flags+size_t(slot)*32)=*generation;
     }
 }
 // Opt-in lossy pruning (STRATA_GLM_ROUTE_MIN_SHARE): selected experts below this share of the routed weight get
@@ -615,6 +688,20 @@ void width(int n) {
 }
 } // namespace
 
+uint64_t glm_greedy_pick_scratch_bytes(int vocabulary) {
+    width(vocabulary);
+    return ((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice) * sizeof(GreedyPartial);
+}
+void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
+                     GlmGreedyPick *result, void *s) {
+    width(vocabulary);
+    if (!logits || !scratch || !result) throw std::invalid_argument("GLM: null greedy buffer");
+    const int blocks = int((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice);
+    greedy_partials<<<blocks, 256, 0, (cudaStream_t)s>>>(logits, vocabulary, (GreedyPartial *)scratch);
+    check();
+    greedy_finish<<<1, 256, 0, (cudaStream_t)s>>>((const GreedyPartial *)scratch, blocks, result);
+    check();
+}
 void glm_rms_norm(const float *x, const float *w, float *y, int n, int tokens, float eps, void *s) {
     width(n);
     width(tokens);
@@ -675,6 +762,16 @@ void glm_router_publish(const float *l, const float *b, int *ids, float *w, int 
     if (ne < 1 || k < 1 || k > ne || ne > 512 || k != v.top_k || slot < 0 || slot >= v.slots || v.hidden % 4)
         throw std::invalid_argument("GLM: invalid fused routing geometry");
     route_publish<<<1, 512, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, k, scale, route_min_share(), bonus, v, slot, x, generation);
+    check();
+}
+void glm_router_publish_tokens(const float *l, const float *b, int *ids, float *w, int ne, int k, float scale,
+                               const float *bonus, GlmMailboxView v, int slot, const float *x, int tokens,
+                               const unsigned *generation, void *s, int *wanted) {
+    if (ne<1 || ne>512 || k<1 || k>8 || k>ne || k!=v.top_k || tokens<1 || tokens>8 ||
+        tokens>v.max_tokens || slot<0 || slot>=v.slots || v.hidden<=0 || v.hidden%4 ||
+        (wanted && !v.wanted) || (tokens>1 && route_window_margin()!=0.f))
+        throw std::invalid_argument("GLM: invalid batched fused routing geometry or window margin");
+    route_publish_tokens<<<1,512,0,(cudaStream_t)s>>>(l,b,ids,w,ne,k,scale,route_min_share(),bonus,v,slot,x,tokens,generation,wanted);
     check();
 }
 void glm_hc_project(const float *x, const float *w, float *out, float *scratch, int width, void *s) {

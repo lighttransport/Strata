@@ -1,0 +1,1428 @@
+{
+ "schema": "strata.glm.runner.records.v1",
+ "provenance": {
+  "note": "Measured rows for calibration (fit) and validation (holdout). Decode shares are derived from CPU_EXPERT bytes and MIXED_CLIENT rows where traced; otherwise from cpu_bytes_per_output in measurements.json with the worker share of the traced run.",
+  "sources": [
+   "build-glm-release/mixed-redesign-trace-v2",
+   "build-glm-release/mixed-validation/redesign-prefill-sim-v2.json",
+   "build-glm-release/tr16-redesign-20261014/after-reap224",
+   "build-glm-release/runner-sim/traces-v1",
+   "build-glm-release/runner-sim/traces-v2-hip",
+   "build-glm-release/runner-sim/traces-v2-cuda"
+  ],
+  "fit_rule": "Fitted: the instrumented 8K traces (STEP_TRACE scopes + acceptance) and the three 8K prefill timelines. Held out: every 2K trace and all rows of the 2026-10-14 matrix (ingested from its logs with their own acceptance per round). Mixed 2K prefill rows are outside the gate (unmodelled per-layer cost)."
+ },
+ "records": [
+  {
+   "name": "trace-cuda-hip-8k-holdout-code",
+   "kind": "decode",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 32.403,
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "hip",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 15,
+    "worker_slots": 33,
+    "experts_per_layer": 224
+   },
+   "shares": {
+    "cpu": 0.22,
+    "worker": 0.46,
+    "primary": 0.32
+   },
+   "accepted_per_round": 3.2,
+   "scopes": {
+    "head": 3.432,
+    "cpu_service": 55.47,
+    "between": 20.835,
+    "tail": 3.711,
+    "draft": 8.76
+   },
+   "note": "Timed trial (DECODE_TRIAL index=1): 160 verify steps, 98.76 ms/step, 3.20 accepted/step; CPU 375.6 GB / 512 outputs; scopes from its own STEP_TRACE=2"
+  },
+  {
+   "name": "timeline-hip-8k",
+   "kind": "prefill",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 562.90799147942,
+   "plan": {
+    "tokens": 8192,
+    "primary": "hip",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "note": "redesign-prefill-sim-v2 hip profile, wall 14553 ms"
+  },
+  {
+   "name": "timeline-cuda-8k",
+   "kind": "prefill",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 421.63775799063256,
+   "plan": {
+    "tokens": 8192,
+    "primary": "cuda",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "note": "cuda profile, wall 19429 ms"
+  },
+  {
+   "name": "timeline-cuda-hip-8k",
+   "kind": "prefill",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 487.21303675508506,
+   "plan": {
+    "tokens": 8192,
+    "primary": "cuda",
+    "worker": "hip",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "note": "cuda primary, hip worker, fraction 0.5, wall 16814 ms"
+  },
+  {
+   "name": "bench-8k-train-code-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 31.193454248585024,
+   "scopes": {},
+   "accepted_per_round": 3.710144927536232,
+   "shares": {
+    "cpu": 0.4497,
+    "worker": 0.0,
+    "primary": 0.5503
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-train-code-cuda-1-0.log",
+    "sha256": "efce6d6a81fe76173f3dbb20e3161be856b58e563abdcfc54983eb9024a5c993",
+    "speculative_tok_s": 31.1324,
+    "other_ms": null,
+    "resync_ms": 1.3008115942028986
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 401.169,
+   "plan": {
+    "tokens": 8192,
+    "primary": "cuda",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-train-code-cuda-1-0.log",
+    "sha256": "efce6d6a81fe76173f3dbb20e3161be856b58e563abdcfc54983eb9024a5c993",
+    "trials": [
+     389.175,
+     394.997,
+     401.169
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 31.487733928648307,
+   "scopes": {},
+   "accepted_per_round": 3.506849315068493,
+   "shares": {
+    "cpu": 0.38,
+    "worker": 0.0,
+    "primary": 0.62
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-train-code-hip-1-0.log",
+    "sha256": "5e34a44472a9f447d0c1cb904727a6fcebb6df2fb10c88fc74938e2307325192",
+    "speculative_tok_s": 31.4263,
+    "other_ms": null,
+    "resync_ms": 1.985082191780822
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 552.705,
+   "plan": {
+    "tokens": 8192,
+    "primary": "hip",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-train-code-hip-1-0.log",
+    "sha256": "5e34a44472a9f447d0c1cb904727a6fcebb6df2fb10c88fc74938e2307325192",
+    "trials": [
+     552.247,
+     552.37,
+     552.705
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 33.36874417513377,
+   "scopes": {},
+   "accepted_per_round": 3.7372262773722627,
+   "shares": {
+    "cpu": 0.1962,
+    "worker": 0.3963,
+    "primary": 0.4075
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "cuda",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-train-code-hip-cuda-0.5-0.log",
+    "sha256": "28e732370d94139d7f43c44b1a2dc8f7612a3668b3e17e352bb6bdb032628d96",
+    "speculative_tok_s": 33.3035,
+    "other_ms": null,
+    "resync_ms": 1.734941605839416
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 525.573,
+   "plan": {
+    "tokens": 8192,
+    "primary": "hip",
+    "worker": "cuda",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-train-code-hip-cuda-0.5-0.log",
+    "sha256": "28e732370d94139d7f43c44b1a2dc8f7612a3668b3e17e352bb6bdb032628d96",
+    "trials": [
+     531.258,
+     525.165,
+     525.573
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 29.88105937693323,
+   "scopes": {},
+   "accepted_per_round": 3.6056338028169015,
+   "shares": {
+    "cpu": 0.4656,
+    "worker": 0.0,
+    "primary": 0.5344
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-holdout-chat-cuda-1-0.log",
+    "sha256": "23c7d2ca0da6e43b49510613514e8a198f67c7ebef49a4130d5456fff33f9e4e",
+    "speculative_tok_s": 29.8227,
+    "other_ms": null,
+    "resync_ms": 1.5244154929577465
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 390.898,
+   "plan": {
+    "tokens": 8192,
+    "primary": "cuda",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-holdout-chat-cuda-1-0.log",
+    "sha256": "23c7d2ca0da6e43b49510613514e8a198f67c7ebef49a4130d5456fff33f9e4e",
+    "trials": [
+     393.052,
+     392.512,
+     390.898
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 35.08339157724513,
+   "scopes": {},
+   "accepted_per_round": 3.7372262773722627,
+   "shares": {
+    "cpu": 0.3871,
+    "worker": 0.0,
+    "primary": 0.6129
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-holdout-chat-hip-1-0.log",
+    "sha256": "c2551bea91163d9776da38abb45cbe0b57845dba3832fe3ae8750361a055df67",
+    "speculative_tok_s": 35.0148,
+    "other_ms": null,
+    "resync_ms": 2.0253430656934306
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 554.016,
+   "plan": {
+    "tokens": 8192,
+    "primary": "hip",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-holdout-chat-hip-1-0.log",
+    "sha256": "c2551bea91163d9776da38abb45cbe0b57845dba3832fe3ae8750361a055df67",
+    "trials": [
+     554.291,
+     553.371,
+     554.016
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 32.99436775831626,
+   "scopes": {},
+   "accepted_per_round": 3.7372262773722627,
+   "shares": {
+    "cpu": 0.2169,
+    "worker": 0.3906,
+    "primary": 0.3925
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "cuda",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-holdout-chat-hip-cuda-0.5-0.log",
+    "sha256": "26d846bb359325a2bf1d3dbcaf7ec62d684096e8c17980f7c05475772c3ce6d1",
+    "speculative_tok_s": 32.93,
+    "other_ms": null,
+    "resync_ms": 2.0212700729927007
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 523.197,
+   "plan": {
+    "tokens": 8192,
+    "primary": "hip",
+    "worker": "cuda",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/8k-holdout-chat-hip-cuda-0.5-0.log",
+    "sha256": "26d846bb359325a2bf1d3dbcaf7ec62d684096e8c17980f7c05475772c3ce6d1",
+    "trials": [
+     523.012,
+     515.4,
+     523.197
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 31.71142602318898,
+   "scopes": {},
+   "accepted_per_round": 3.436241610738255,
+   "shares": {
+    "cpu": 0.4412,
+    "worker": 0.0,
+    "primary": 0.5588
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-train-code-cuda-1-0.log",
+    "sha256": "7c8ff7e41c772f4d7b00d5562046e76bbd73dab734f5f00d54fa876dc885238c",
+    "speculative_tok_s": 31.6495,
+    "other_ms": null,
+    "resync_ms": 1.3359999999999999
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 163.309,
+   "plan": {
+    "tokens": 2048,
+    "primary": "cuda",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-train-code-cuda-1-0.log",
+    "sha256": "7c8ff7e41c772f4d7b00d5562046e76bbd73dab734f5f00d54fa876dc885238c",
+    "trials": [
+     163.458,
+     163.28,
+     163.309
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 31.573949025339328,
+   "scopes": {},
+   "accepted_per_round": 3.436241610738255,
+   "shares": {
+    "cpu": 0.3653,
+    "worker": 0.0,
+    "primary": 0.6347
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-train-code-hip-1-0.log",
+    "sha256": "e2ce318878047493e6dd8f530ab34bd9d20bd861b68339e17b160df13e7f169d",
+    "speculative_tok_s": 31.5122,
+    "other_ms": null,
+    "resync_ms": 1.7609798657718123
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 239.825,
+   "plan": {
+    "tokens": 2048,
+    "primary": "hip",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-train-code-hip-1-0.log",
+    "sha256": "e2ce318878047493e6dd8f530ab34bd9d20bd861b68339e17b160df13e7f169d",
+    "trials": [
+     241.297,
+     240.626,
+     239.825
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 29.19757979436236,
+   "scopes": {},
+   "accepted_per_round": 3.4133333333333336,
+   "shares": {
+    "cpu": 0.1915,
+    "worker": 0.4035,
+    "primary": 0.405
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "cuda",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-train-code-hip-cuda-0.5-0.log",
+    "sha256": "ebbd7ed2ddeb6828c40aa3a306077b400a567af102f3d21dc4618f0bbe849d63",
+    "speculative_tok_s": 29.1405,
+    "other_ms": null,
+    "resync_ms": 2.3931733333333334
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 133.757,
+   "plan": {
+    "tokens": 2048,
+    "primary": "hip",
+    "worker": "cuda",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-train-code-hip-cuda-0.5-0.log",
+    "sha256": "ebbd7ed2ddeb6828c40aa3a306077b400a567af102f3d21dc4618f0bbe849d63",
+    "trials": [
+     132.032,
+     133.577,
+     133.757
+    ]
+   },
+   "gate": false,
+   "note": "outside the gate: mixed 2K prefill carries an unmodelled per-layer cost"
+  },
+  {
+   "name": "bench-2k-holdout-chat-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 31.81013326706222,
+   "scopes": {},
+   "accepted_per_round": 3.657142857142857,
+   "shares": {
+    "cpu": 0.5028,
+    "worker": 0.0,
+    "primary": 0.4972
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-holdout-chat-cuda-1-0.log",
+    "sha256": "1ab00353f743d5fae148c8d77dedacd15c355d1ac0edb95e051db7b7ffac13e3",
+    "speculative_tok_s": 31.7479,
+    "other_ms": null,
+    "resync_ms": 1.4587642857142857
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 162.72,
+   "plan": {
+    "tokens": 2048,
+    "primary": "cuda",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-holdout-chat-cuda-1-0.log",
+    "sha256": "1ab00353f743d5fae148c8d77dedacd15c355d1ac0edb95e051db7b7ffac13e3",
+    "trials": [
+     163.043,
+     162.731,
+     162.72
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 37.82897167260207,
+   "scopes": {},
+   "accepted_per_round": 4.129032258064516,
+   "shares": {
+    "cpu": 0.4038,
+    "worker": 0.0,
+    "primary": 0.5962
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-holdout-chat-hip-1-0.log",
+    "sha256": "7d6163fe2faa9d6449a3fea0ca7b0fb66e00b0a5d194f0295df20517f4c78dd3",
+    "speculative_tok_s": 37.7551,
+    "other_ms": null,
+    "resync_ms": 2.057483870967742
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 240.528,
+   "plan": {
+    "tokens": 2048,
+    "primary": "hip",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-holdout-chat-hip-1-0.log",
+    "sha256": "7d6163fe2faa9d6449a3fea0ca7b0fb66e00b0a5d194f0295df20517f4c78dd3",
+    "trials": [
+     240.187,
+     240.431,
+     240.528
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 35.405328778585314,
+   "scopes": {},
+   "accepted_per_round": 4.19672131147541,
+   "shares": {
+    "cpu": 0.2036,
+    "worker": 0.4194,
+    "primary": 0.3769
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "cuda",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-holdout-chat-hip-cuda-0.5-0.log",
+    "sha256": "6fcbf203c1462f5e4fd52e68a55f6bb58d6c4a8bb52946f7b1425e3ac1761e8d",
+    "speculative_tok_s": 35.3363,
+    "other_ms": null,
+    "resync_ms": 2.3186557377049177
+   },
+   "note": "Per SPECULATIVE round (no STEP_TRACE); last timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 133.946,
+   "plan": {
+    "tokens": 2048,
+    "primary": "hip",
+    "worker": "cuda",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/tr16-redesign-20261014/after-reap224/2k-holdout-chat-hip-cuda-0.5-0.log",
+    "sha256": "6fcbf203c1462f5e4fd52e68a55f6bb58d6c4a8bb52946f7b1425e3ac1761e8d",
+    "trials": [
+     134.909,
+     133.441,
+     133.946
+    ]
+   },
+   "gate": false,
+   "note": "outside the gate: mixed 2K prefill carries an unmodelled per-layer cost"
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 27.513420853238475,
+   "scopes": {
+    "head": 3.5057077922077924,
+    "cpu_service": 68.33051948051948,
+    "between": 26.071363636363635,
+    "tail": 3.5446753246753246,
+    "draft": 10.357727272727272
+   },
+   "accepted_per_round": 3.324675324675325,
+   "shares": {
+    "cpu": 0.2089,
+    "worker": 0.3727,
+    "primary": 0.4184
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "cuda",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v1/8k-holdout-code-hip-cuda-0.5-0.log",
+    "sha256": "87e55379c4fcfe4ef4f52ee720d10abf47bf21e469bd51c444019569e2424726",
+    "speculative_tok_s": 27.4597,
+    "other_ms": 7.424077922077913,
+    "resync_ms": 1.6042402597402596
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 526.237,
+   "plan": {
+    "tokens": 8192,
+    "primary": "hip",
+    "worker": "cuda",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v1/8k-holdout-code-hip-cuda-0.5-0.log",
+    "sha256": "87e55379c4fcfe4ef4f52ee720d10abf47bf21e469bd51c444019569e2424726",
+    "trials": [
+     520.136,
+     526.237
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-1-0",
+   "kind": "decode",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 28.89602510342181,
+   "scopes": {
+    "head": 3.2948917197452228,
+    "cpu_service": 79.17770700636943,
+    "between": 11.272675159235668,
+    "tail": 4.209573248407644,
+    "draft": 9.077388535031847
+   },
+   "accepted_per_round": 3.261146496815287,
+   "shares": {
+    "cpu": 0.4569,
+    "worker": 0.0,
+    "primary": 0.5431
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 28.1,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/8k-holdout-code-cuda-1-0.log",
+    "sha256": "d48762ec37635ef4111b140fa746a1bcb4e0ed818edb03d10f07e4639fadd691",
+    "speculative_tok_s": 28.8395,
+    "other_ms": 4.436394904458595,
+    "resync_ms": 1.3893312101910829
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 429.253,
+   "plan": {
+    "tokens": 8192,
+    "primary": "cuda",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/8k-holdout-code-cuda-1-0.log",
+    "sha256": "d48762ec37635ef4111b140fa746a1bcb4e0ed818edb03d10f07e4639fadd691",
+    "trials": [
+     430.206,
+     429.253
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-hip-0.5-0",
+   "kind": "decode",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 31.143173440712403,
+   "scopes": {
+    "head": 3.2160066225165562,
+    "cpu_service": 70.28278145695364,
+    "between": 15.031456953642385,
+    "tail": 3.973132450331126,
+    "draft": 8.675562913907285
+   },
+   "accepted_per_round": 3.390728476821192,
+   "shares": {
+    "cpu": 0.2191,
+    "worker": 0.4413,
+    "primary": 0.3396
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "hip",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 28.1,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/8k-holdout-code-cuda-hip-0.5-0.log",
+    "sha256": "3286bd98117a963ec1155c5f53845ebc99c04a4494b5e63d1f5d1bb3f24a966b",
+    "speculative_tok_s": 31.0823,
+    "other_ms": 6.30098013245032,
+    "resync_ms": 1.3955761589403974
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-hip-0.5-0",
+   "kind": "prefill",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 498.735,
+   "plan": {
+    "tokens": 8192,
+    "primary": "cuda",
+    "worker": "hip",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/8k-holdout-code-cuda-hip-0.5-0.log",
+    "sha256": "3286bd98117a963ec1155c5f53845ebc99c04a4494b5e63d1f5d1bb3f24a966b",
+    "trials": [
+     505.028,
+     498.735
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 31.301774786175862,
+   "scopes": {
+    "head": 3.237625850340136,
+    "cpu_service": 79.34693877551021,
+    "between": 10.76204081632653,
+    "tail": 3.9685850340136053,
+    "draft": 8.743469387755102
+   },
+   "accepted_per_round": 3.4829931972789114,
+   "shares": {
+    "cpu": 0.4703,
+    "worker": 0.0,
+    "primary": 0.5297
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 28.1,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/2k-holdout-code-cuda-1-0.log",
+    "sha256": "0b83c5d6f96a575b09fb46d9dbe0612c2062fcd40b3e59073e90580c49e75bc1",
+    "speculative_tok_s": 31.2405,
+    "other_ms": 4.082646258503402,
+    "resync_ms": 1.1301224489795918
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 156.934,
+   "plan": {
+    "tokens": 2048,
+    "primary": "cuda",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/2k-holdout-code-cuda-1-0.log",
+    "sha256": "0b83c5d6f96a575b09fb46d9dbe0612c2062fcd40b3e59073e90580c49e75bc1",
+    "trials": [
+     157.012,
+     156.934
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-hip-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 29.91300689985569,
+   "scopes": {
+    "head": 3.23526582278481,
+    "cpu_service": 69.53544303797469,
+    "between": 14.41620253164557,
+    "tail": 4.032930379746835,
+    "draft": 9.068481012658227
+   },
+   "accepted_per_round": 3.240506329113924,
+   "shares": {
+    "cpu": 0.2224,
+    "worker": 0.4561,
+    "primary": 0.3215
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "cuda",
+    "worker": "hip",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 28.1,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/2k-holdout-code-cuda-hip-0.5-0.log",
+    "sha256": "1b33c9033f5eefb3936aca1ec1bd6e77d7b2844e81cb8c4d9574b8cef96d1dbe",
+    "speculative_tok_s": 29.8545,
+    "other_ms": 6.762518987341764,
+    "resync_ms": 1.2801708860759493
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-hip-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 186.539,
+   "plan": {
+    "tokens": 2048,
+    "primary": "cuda",
+    "worker": "hip",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-cuda/2k-holdout-code-cuda-hip-0.5-0.log",
+    "sha256": "1b33c9033f5eefb3936aca1ec1bd6e77d7b2844e81cb8c4d9574b8cef96d1dbe",
+    "trials": [
+     189.543,
+     186.539
+    ]
+   },
+   "gate": false,
+   "note": "outside the gate: mixed 2K prefill carries an unmodelled per-layer cost"
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-1-0",
+   "kind": "decode",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 30.341999371825793,
+   "scopes": {
+    "head": 3.17178064516129,
+    "cpu_service": 66.8316129032258,
+    "between": 19.998387096774195,
+    "tail": 3.9562645161290324,
+    "draft": 9.294451612903227
+   },
+   "accepted_per_round": 3.303225806451613,
+   "shares": {
+    "cpu": 0.3581,
+    "worker": 0.0,
+    "primary": 0.6419
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 8192
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-hip/8k-holdout-code-hip-1-0.log",
+    "sha256": "86be11c9436c2bb924e9ba96bf351ef0256dfbcce3c10887326e7f2b2514bd7f",
+    "speculative_tok_s": 30.2827,
+    "other_ms": 3.9817354838709633,
+    "resync_ms": 1.6322193548387096
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-1-0",
+   "kind": "prefill",
+   "split": "fit",
+   "fit": true,
+   "measured_tok_s": 628.102,
+   "plan": {
+    "tokens": 8192,
+    "primary": "hip",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-hip/8k-holdout-code-hip-1-0.log",
+    "sha256": "86be11c9436c2bb924e9ba96bf351ef0256dfbcce3c10887326e7f2b2514bd7f",
+    "trials": [
+     629.012,
+     628.102
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 31.503814915087375,
+   "scopes": {
+    "head": 3.156880794701987,
+    "cpu_service": 69.60860927152318,
+    "between": 16.091721854304634,
+    "tail": 3.3204503311258278,
+    "draft": 10.389735099337747
+   },
+   "accepted_per_round": 3.390728476821192,
+   "shares": {
+    "cpu": 0.4041,
+    "worker": 0.0,
+    "primary": 0.5959
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 0.0,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-hip/2k-holdout-code-hip-1-0.log",
+    "sha256": "9cb29b9b48593c2b55fa175a584d1ffcf7d4dd9236f4994b07feea3c7c1cfcb0",
+    "speculative_tok_s": 31.4423,
+    "other_ms": 3.164821192052983,
+    "resync_ms": 1.8969205298013245
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 226.755,
+   "plan": {
+    "tokens": 2048,
+    "primary": "hip",
+    "worker": "",
+    "primary_fraction": 1.0,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-hip/2k-holdout-code-hip-1-0.log",
+    "sha256": "9cb29b9b48593c2b55fa175a584d1ffcf7d4dd9236f4994b07feea3c7c1cfcb0",
+    "trials": [
+     226.866,
+     226.755
+    ]
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 30.83984363235533,
+   "scopes": {
+    "head": 3.217879746835443,
+    "cpu_service": 61.232531645569615,
+    "between": 18.113354430379747,
+    "tail": 3.494126582278481,
+    "draft": 9.256645569620252
+   },
+   "accepted_per_round": 3.240506329113924,
+   "shares": {
+    "cpu": 0.2229,
+    "worker": 0.3858,
+    "primary": 0.3913
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "hip",
+    "worker": "cuda",
+    "groups": [
+     2,
+     2
+    ],
+    "context_tokens": 2048
+   },
+   "placement": {
+    "primary_slots": 33.7,
+    "worker_slots": 39.3,
+    "experts_per_layer": 224
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-hip/2k-holdout-code-hip-cuda-0.5-0.log",
+    "sha256": "1098297895a0c763ff680d1dcaaf7970feba7dae2684c7bce6a3c4bf7aace8de",
+    "speculative_tok_s": 30.7796,
+    "other_ms": 7.690012658227857,
+    "resync_ms": 2.07076582278481
+   },
+   "note": "Per verify step from STEP_TRACE=2; one timed trial",
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "fit": false,
+   "measured_tok_s": 134.423,
+   "plan": {
+    "tokens": 2048,
+    "primary": "hip",
+    "worker": "cuda",
+    "primary_fraction": 0.5,
+    "exchange": "f32",
+    "return_mode": "chunks",
+    "stream_overlap": "mixer"
+   },
+   "source": {
+    "log": "build-glm-release/runner-sim/traces-v2-hip/2k-holdout-code-hip-cuda-0.5-0.log",
+    "sha256": "1098297895a0c763ff680d1dcaaf7970feba7dae2684c7bce6a3c4bf7aace8de",
+    "trials": [
+     135.075,
+     134.423
+    ]
+   },
+   "gate": false,
+   "note": "outside the gate: mixed 2K prefill carries an unmodelled per-layer cost"
+  }
+ ]
+}

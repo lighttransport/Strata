@@ -372,7 +372,7 @@ def benchmark_environment(cfg):
 
 
 def worker(args):
-    from glm_q2_coding_bench import process_cpu_snapshot
+    from glm_q2_run_guard import process_cpu_snapshot
     cfg = json.loads(args.config.read_text())
     env = benchmark_environment(cfg)
     command = ["numactl", "--interleave=all", str(Path(cfg["exe"]).resolve()), cfg["model"],

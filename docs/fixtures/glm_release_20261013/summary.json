@@ -1,0 +1,611 @@
+{
+  "date": "2026-10-13",
+  "scope": "local GLM REAP-224 release preparation; optimization stopped",
+  "workspace_base_commit": "889136c3511e69697b07d80b45ba3bdd03baaff3",
+  "profile": "configs/experimental/glm53f-q23-reap224-tr16-tuned.json",
+  "profile_sha256": "e575d649d993630679dc0c39e19df2a260c0a4d2542f664e01ddf5d8e4bcf27b",
+  "profile_settings": {
+    "exe": "build-glm-release/strata-glm-decode",
+    "model": "models/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "context": 12288,
+    "dense_cache_mib": 4096,
+    "gpu_budget_mib": 14336,
+    "gpu_devices": "0",
+    "threads": 15,
+    "cpu_affinity": "numa",
+    "prefill_batch": 8192,
+    "decode_experts": "cpu",
+    "speculative": "mtp",
+    "draft_depth": 3,
+    "decode_graphs": true,
+    "decode_cache_mib": 6656,
+    "env": {
+      "STRATA_GLM_QUANT_ONCE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_POOL_SPIN_US": "20000",
+      "STRATA_IQ2_TABLE_SIGNS": "1",
+      "STRATA_GLM_LAYER_GRAPHS": "1",
+      "STRATA_GLM_VERIFY_GRAPHS": "1",
+      "STRATA_NATIVE_TASKS_PER_THREAD": "12",
+      "STRATA_GLM_STEP_PIPELINE": "1",
+      "STRATA_GLM_Q8_DECODE": "1",
+      "STRATA_GLM_LAYER_FLOW": "1",
+      "STRATA_GLM_MAPPED_OWNED": "1",
+      "STRATA_GLM_EXPERT_PRIOR": "models/coverage-keep224.json",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_SPLIT_VERIFY": "1",
+      "STRATA_GLM_CANON": "1",
+      "STRATA_GLM_TIER_ADAPT": "1",
+      "STRATA_GLM_GPU_RESERVE_MIB": "512",
+      "STRATA_GLM_TIER_OWNED_RESERVE": "1",
+      "STRATA_GLM_Q23_WIDE": "1",
+      "STRATA_GLM_ROUTE_AFFINITY": "0.10",
+      "STRATA_GLM_MLA_GRAPHS": "1",
+      "STRATA_GLM_STAGE_WORKERS": "4",
+      "STRATA_GLM_DEFER_COPY_WAIT": "1",
+      "STRATA_GLM_DEQUANT_ONCE": "1",
+      "STRATA_GLM_MLA_VECTOR_GATHER": "1",
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_GLM_KDA_COLUMNS": "128",
+      "STRATA_GLM_PREFILL_SCRATCH_CAP_MIB": "3072",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_MAPPED_LAZY": "1",
+      "STRATA_GLM_COMPACT_STAGING": "1",
+      "STRATA_GLM_RELEASE_GPU_DENSE_HOST": "1",
+      "STRATA_GLM_NUMA_AFTER_PREFILL": "1",
+      "STRATA_GLM_TIER_PREALLOCATE": "1",
+      "STRATA_GLM_COMPACT_VERIFY_HISTORY": "1",
+      "STRATA_GLM_MAILBOX_PREALLOCATE": "1",
+      "STRATA_Q23_PREFETCH": "512",
+      "STRATA_GLM_REAP_PREFETCH": "1",
+      "STRATA_GLM_STAGE_PREFETCH": "1",
+      "STRATA_GLM_PREFETCH_REUSE_DEVICE": "1",
+      "STRATA_GLM_PREFETCH_GROUPS": "14",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "4",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "6",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_DENSE_Q4": "all",
+      "STRATA_GLM_MTP_SYNC_STATE_ONLY": "1",
+      "STRATA_GLM_MTP_DRAFT_TOP_K": "4",
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+      "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "4",
+      "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+      "STRATA_Q23_AVX2": "1",
+      "STRATA_PREFILL_F16_ACCUM": "1",
+      "STRATA_PREFILL_Q8_TRANSCODE": "1",
+      "STRATA_GLM_MLA_ABSORB_F16": "1",
+      "STRATA_GLM_MLA_F16_OUT": "1",
+      "STRATA_GLM_KDA_COLUMN_TILES": "1",
+      "STRATA_GLM_DEQUANT_COALESCED": "1",
+      "STRATA_GLM_MLA_INDEX_F16": "1",
+      "STRATA_GLM_PREFETCH_STREAM": "1"
+    },
+    "prefill_experts": "mmq",
+    "stop_token_ids": [
+      154820,
+      154827,
+      154829
+    ],
+    "model_name": "glm53f-q23-reap224-tr16-tuned",
+    "experimental_role": "REAP-224 Q23 tuned profile, TR16 2026-10-13. Prefill 615 tok/s (8K), 604 (16K in 8K passes); decode 32.3 (8K) / 30.6 (2K) tok/s. 35-track gate: corpus perplexity +4.90%, KL +0.0636, top-1 -1.90 pp vs 288-expert Q23; HumanEval 152/164 (short prompts are bit-identical to that measured profile; lossy prefill paths apply only from 4096 tokens, prefill-path KL +0.0015)."
+  },
+  "decoder_sha256": "8bf9bd664d32dadf38e27d009803ec0e91f87594ebcbd28263a0203e90c05938",
+  "compiled_source_sha256": {
+    "CMakeLists.txt": "d0a000588015dd099b008fd71c7d237e27c0bf3564fe1973f246543141d7ee30",
+    "include/strata/host/glm_expert_replay.h": "89ff9ed5806baa882244cd2a11481561c41b99b1588fa8fcbdcff3042bca669d",
+    "src/kernels/cpu/flow_pool_test.cpp": "1ca78dc2214a48de86c429bad9d37ff832d723773bec2d34bbe1ce22ce276202",
+    "src/kernels/cpu/q23_avx2.cpp": "6616f2ad3ca9a18442485ff43eaee858be25484bb2f4e3cdca09d2d70ccbedd3",
+    "src/kernels/cuda/glm_prefill.cu": "231a173d7917857a3176925e1f7bb5db0529915c997459e4385e1f2c64e68c57",
+    "src/kernels/glm_prefill_parity.cpp": "0bbfadc043620a77220f31260a0b8e420004052594359b0118f82ff67dbc01bb",
+    "src/prefill/gemm.cu": "f3c288198a3abe8810556b8c35e3e1388627d41e586f55b675037929e9c63a48",
+    "src/prefill/glm_f16_precision_test.cu": "06ef277b6e892055bded81db376716e002b96d9ace69c1f6c326208d1e97db53",
+    "src/program/glm_decode.cpp": "54465881e02559ed9934067382c9ec90dad1b150cb10b0b817d81b73cd7aae5b",
+    "sycl/CMakeLists.txt": "8c2a809ffa69fa36812515ad24527b4160c9128a8306484356d26d23e5d6c08c",
+    "tests/cuda/prefill_mmq_kquant_test.cpp": "bed404c744adce1e972572a39287e01286b8627000b1cc665b66586361dc1c10",
+    "tests/host/glm_bounded_accept_test.cpp": "248e2ed2eb47201b3061be71ec6d8daaba2f3d0a7a2a47315be8da887048a797",
+    "tests/host/glm_expert_replay_test.c": "94619a33bce9892aab528ba70130e9c88c9e8d1beee902f5c3f405c1675dccf4"
+  },
+  "hardware": {
+    "cpu": "AMD Ryzen Threadripper 1950X, 16 cores",
+    "ram_gib": 128,
+    "ram": "DDR4-3200",
+    "gpu": "NVIDIA RTX 5060 Ti 16 GB",
+    "gpu_power_limit_w": 150,
+    "pcie": "3.0 x8"
+  },
+  "model": {
+    "name": "GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "bytes": 95538419872,
+    "identity_check": "size and mtime held fixed; full model SHA-256 not recomputed in this preparation",
+    "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2"
+  },
+  "builds": {
+    "cuda": "CUDA 13.2.86 / GCC 13.3, sm_120: decoder and tests passed",
+    "hip": "HIP / Clang 23, gfx1201: decoder and GPU tests compiled; no AMD GPU execution",
+    "sycl": "oneAPI 2026.1: shared CPU library and flow test compiled and ran; no full SYCL GPU engine or Intel GPU execution"
+  },
+  "tests": {
+    "cuda_host_glm_ctest": {
+      "passed": 19,
+      "failed": 0
+    },
+    "hip_build_cpu_ctest": {
+      "passed": 4,
+      "failed": 0
+    },
+    "flow_bitwise_cases": 588,
+    "q2_lookup_cases": 5952,
+    "softmax_racecheck": {
+      "hazards": 0,
+      "errors": 0
+    },
+    "python_glm": {
+      "passed": 162,
+      "note": "unique tests after NumPy and host-namespace reruns"
+    },
+    "python_setup": {
+      "passed": 462,
+      "skipped": 1,
+      "skip": "Windows-only CPUID test"
+    },
+    "packaging": {
+      "passed": 2,
+      "scope": "archive membership, checksums, exclusions in archive and patch, overwrite refusal, broken symlink rejection"
+    }
+  },
+  "token_parity": {
+    "2048": {
+      "tokens_identical": true,
+      "expected": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "actual": [
+        "d32b946e34ed10ccb3801c4b0b733d77f354fcc8ebdda23e5a1840a70a9dc714",
+        "cf1ba9be02bc6c514c616d796bf0a80adc6e53ff50bb280bd37b764e15c17191"
+      ],
+      "clean": true,
+      "quiet": true,
+      "prompt_sha256": "598af4f39225dfde82a0d6208559319b7103b35953f7a9a5ec2c3a80cd12af10",
+      "warmup_tokens": 512,
+      "timed_tokens": 512,
+      "fresh_processes": 1,
+      "guard": {
+        "exit_code": 0,
+        "rejected": null,
+        "peak_swap_kib": 0,
+        "minimum_gpu_free_mib": 865,
+        "required_gpu_free_mib": 512
+      }
+    },
+    "8192": {
+      "tokens_identical": true,
+      "expected": [
+        "e3483f04282f08116392d149b9e93e9f1e1a678cf71c7788f941ba24e9878809",
+        "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415"
+      ],
+      "actual": [
+        "e3483f04282f08116392d149b9e93e9f1e1a678cf71c7788f941ba24e9878809",
+        "3da51a066a019caae9c67491bffe9c18d807a6946e888b258b7c63ce51302415"
+      ],
+      "clean": true,
+      "quiet": true,
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "warmup_tokens": 512,
+      "timed_tokens": 512,
+      "fresh_processes": 1,
+      "guard": {
+        "exit_code": 0,
+        "rejected": null,
+        "peak_swap_kib": 0,
+        "minimum_gpu_free_mib": 825,
+        "required_gpu_free_mib": 512
+      }
+    }
+  },
+  "corpus": {
+    "passed": true,
+    "metrics": {
+      "sequence": 16,
+      "tokens": 8192,
+      "nll": 1.62587539786,
+      "perplexity": 5.08286662076,
+      "kl": 0.201526887948,
+      "top1_agreement": 0.855346679688,
+      "different_logits": 1268776839
+    },
+    "gates": {
+      "perplexity": true,
+      "kl": true,
+      "top1": true
+    },
+    "limits": {
+      "perplexity_max": 5.1149742087444,
+      "kl_max": 0.216671986559,
+      "top1_min": 0.846831054688
+    },
+    "corpus_sha256": "c08b80a8dc5f15dd7fad58046fda20aa1a4464e2335d3dbdfebe1c922b1bea72",
+    "prefill_batch": 256,
+    "evaluation_width": 4,
+    "guard": {
+      "exit_code": 1,
+      "rejected": null,
+      "peak_swap_kib": 0,
+      "minimum_gpu_free_mib": 1459,
+      "required_gpu_free_mib": 512
+    },
+    "exit_note": "Exit 1 is the expected trailing evaluation baseline records notice after all 16 sequences and 8192 targets; reference holds additional sequences.",
+    "performance_comparable": false
+  },
+  "humaneval": {
+    "complete": true,
+    "tasks": 164,
+    "passes": 150,
+    "baseline_passes": 152,
+    "baseline_cap_tasks": [
+      "HumanEval/32",
+      "HumanEval/81",
+      "HumanEval/116",
+      "HumanEval/129",
+      "HumanEval/130",
+      "HumanEval/145"
+    ],
+    "pass_at_1": 0.9146341463414634,
+    "baseline_pass_at_1": 0.926829268292683,
+    "cap_tasks": [
+      "HumanEval/32",
+      "HumanEval/130"
+    ],
+    "new_cap_tasks": [],
+    "baseline_sha256": "afc83b721845e06821ee3da83822f5c01e4488046c45d8fbc3ed1cf379d2d2f8",
+    "guard_passed": true,
+    "passed": false,
+    "guard": {
+      "exit_code": 0,
+      "rejected": null,
+      "peak_swap_kib": 909776,
+      "minimum_gpu_free_mib": 858,
+      "required_gpu_free_mib": 0
+    },
+    "protocol": "greedy chat, low reasoning, one sample per task, isolated tests",
+    "dataset_sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef",
+    "maximum_generated_tokens": 2048,
+    "failed_tasks": [
+      "HumanEval/32",
+      "HumanEval/38",
+      "HumanEval/93",
+      "HumanEval/101",
+      "HumanEval/113",
+      "HumanEval/118",
+      "HumanEval/130",
+      "HumanEval/132",
+      "HumanEval/140",
+      "HumanEval/145",
+      "HumanEval/147",
+      "HumanEval/155",
+      "HumanEval/158",
+      "HumanEval/163"
+    ],
+    "token_sequences_equal_baseline": 52,
+    "changed_pass_outcomes": [
+      {
+        "task_id": "HumanEval/113",
+        "baseline_passed": true,
+        "candidate_passed": false
+      },
+      {
+        "task_id": "HumanEval/118",
+        "baseline_passed": true,
+        "candidate_passed": false
+      },
+      {
+        "task_id": "HumanEval/129",
+        "baseline_passed": false,
+        "candidate_passed": true
+      },
+      {
+        "task_id": "HumanEval/139",
+        "baseline_passed": false,
+        "candidate_passed": true
+      },
+      {
+        "task_id": "HumanEval/147",
+        "baseline_passed": true,
+        "candidate_passed": false
+      },
+      {
+        "task_id": "HumanEval/154",
+        "baseline_passed": false,
+        "candidate_passed": true
+      },
+      {
+        "task_id": "HumanEval/155",
+        "baseline_passed": true,
+        "candidate_passed": false
+      },
+      {
+        "task_id": "HumanEval/158",
+        "baseline_passed": true,
+        "candidate_passed": false
+      }
+    ],
+    "shared_activity_policy": {
+      "scope": "full output-quality evaluation; shared CPU/GPU compute permitted by user",
+      "performance_comparable": false,
+      "require_gpu_idle": false,
+      "record_cpu_interference": true,
+      "max_swap_mib": 1024,
+      "min_gpu_free_mib": 0,
+      "host_memory_limits": "RSS <= 118 GiB; available RAM >= 4 GiB",
+      "decoder_sha256": "8bf9bd664d32dadf38e27d009803ec0e91f87594ebcbd28263a0203e90c05938",
+      "profile_sha256": "e575d649d993630679dc0c39e19df2a260c0a4d2542f664e01ddf5d8e4bcf27b",
+      "inputs_unchanged_before": true,
+      "inputs_unchanged_after": true,
+      "guard_exit_code": 0
+    },
+    "output_review": {
+      "findings": [
+        {
+          "task_id": "HumanEval/113",
+          "entry_point": "odd_count",
+          "baseline_passed": true,
+          "candidate_passed": false,
+          "test_reason": "assertion failure, exit code 1; not a wall-time timeout",
+          "finding": "The generated return string omits the letter n after the final interpolated count: 4put rather than the required 4nput.",
+          "classification": "generated output formatting error",
+          "generation_retried": false
+        },
+        {
+          "task_id": "HumanEval/118",
+          "entry_point": "get_closest_vowel",
+          "baseline_passed": true,
+          "candidate_passed": false,
+          "test_reason": "assertion failure, exit code 1; not a wall-time timeout",
+          "finding": "The reverse scan uses range(len(word)-2, 1, -1), excluding index 1. It returns an empty string for full and bad instead of u and a.",
+          "classification": "generated loop-bound off-by-one error",
+          "generation_retried": false
+        },
+        {
+          "task_id": "HumanEval/147",
+          "entry_point": "get_max_triples",
+          "baseline_passed": true,
+          "candidate_passed": false,
+          "test_reason": "assertion failure, exit code 1; not a wall-time timeout",
+          "finding": "The residue counts for i*i-i+1 modulo 3 are wrong: the solution assigns a nonzero count to residue 2, which never occurs. It returns 4 for n=5 instead of 1.",
+          "classification": "generated modular-counting logic error",
+          "generation_retried": false
+        },
+        {
+          "task_id": "HumanEval/155",
+          "entry_point": "even_odd_count",
+          "baseline_passed": true,
+          "candidate_passed": false,
+          "test_reason": "assertion failure, exit code 1; not a wall-time timeout",
+          "finding": "The solution skips every zero digit, although zero is even. For input 0 it returns (0, 0) instead of (1, 0).",
+          "classification": "generated zero-digit edge-case error",
+          "generation_retried": false
+        },
+        {
+          "task_id": "HumanEval/158",
+          "entry_point": "find_max",
+          "baseline_passed": true,
+          "candidate_passed": false,
+          "test_reason": "assertion failure, exit code 1; not a wall-time timeout",
+          "finding": "The solution minimizes the number of unique characters instead of maximizing it. It selects of from [name, of, string] instead of string.",
+          "classification": "generated reversed-selection logic error",
+          "generation_retried": false
+        }
+      ]
+    },
+    "recorded_cpu_interference_samples": 950,
+    "performance_comparable": false
+  },
+  "previous_humaneval_attempts": [
+    {
+      "complete": false,
+      "tasks": 72,
+      "passes": 70,
+      "rejection": "external GPU work",
+      "included_in_final_score": false
+    },
+    {
+      "complete": false,
+      "tasks": 0,
+      "rejection": "zero-swap timing guard during startup; 10616 KiB process swap",
+      "included_in_final_score": false
+    }
+  ],
+  "rejected_prefill_screen": {
+    "sequences": 16,
+    "scored_tokens": 8192,
+    "prefill_batch": 512,
+    "lossy_min_tokens": 512,
+    "control_kl": 0.172604355502,
+    "nine_groups_topk6_kl": 0.654511690874,
+    "incremental_kl": 0.481907335372,
+    "incremental_kl_limit": 0.01,
+    "decision": "removed both new prefill group/top-k budgets; not an 8K quality qualification"
+  },
+  "limitations": [
+    "35 tok/s decode target not met; no qualified 700 tok/s prefill claim",
+    "2K/8K token parity uses the frozen tuned-profile baseline, not every default setting or model",
+    "Corpus and HumanEval are short-prefill checks; no new long-prefill quality claim",
+    "Existing compiler warnings remain; no warning-free build claim",
+    "Quality runs record CPU interference and are not timing comparisons",
+    "The full HumanEval rerun permits shared CPU/GPU activity at the user's request"
+  ],
+  "publication_audit": {
+    "branch": "glm53f",
+    "remote": "origin",
+    "destination": "refs/heads/glm53f",
+    "remote_tip": "4894c9967f5754a2052d7b05f10a01b6071bb6e4",
+    "head": "889136c3511e69697b07d80b45ba3bdd03baaff3",
+    "outgoing_commits": [
+      {
+        "commit": "889136c3511e69697b07d80b45ba3bdd03baaff3",
+        "subject": "GLM REAP-224 on TR16: prefill to 615 tok/s at 8K, decode levers, tuned profile"
+      }
+    ],
+    "fast_forward": true,
+    "push_authorized": false,
+    "history_scan": "gitleaks: one commit, zero findings",
+    "working_tree_scan": "38 generic matches reviewed as output SHA-256 hashes",
+    "full_source_preflight_scan": {
+      "findings": 1980,
+      "sha256_context": 1939,
+      "remaining_sha256": 21,
+      "sha1": 2,
+      "tensor_names": 3,
+      "excluded_authentication_literal": 1,
+      "excluded_bearer_credential_files": 14
+    },
+    "history_notes": [
+      "The existing outgoing commit contains two machine-specific model/prior paths and an assistant session URL in its message. The source candidate uses relative paths; Git history has not been rewritten."
+    ],
+    "source_notes": [
+      "Excluded 33 tracked raw logit dumps, one historical benchmark script and 14 community environment snapshots; original evidence preserved in checkout. Exclusions also apply to the accompanying patch.",
+      "Normalized profile is included in the archive; its diff is omitted from the sidecar patch to avoid reproducing old machine-specific paths."
+    ],
+    "issue_threads": [
+      "https://github.com/Niko1221/Strata/issues/2067",
+      "https://github.com/Niko1221/Strata/pull/1420",
+      "https://github.com/Niko1221/Strata/pull/1476"
+    ],
+    "local_only": true,
+    "curated_binary_note": "Existing 483,520-byte optional control vector under data/experimental-speed-projection is retained; unchanged and outside the outgoing commit. No new model weights or raw logits added.",
+    "new_optimization_evidence_bytes": {
+      "decode35": 28472,
+      "architecture": 106175,
+      "incremental": 36267
+    },
+    "publication_ready": false,
+    "publication_blockers": [
+      "Possible bearer credential in 14 already-published community environment snapshots; owner/status and rotation unresolved. Affected files are excluded from the local source archive; originals preserved.",
+      "Existing outgoing commit needs machine-path and assistant-session metadata cleanup before Git publication.",
+      "Full HumanEval completed 150/164, below the 152/164 release floor; five new failures and three recovered tasks, no new capped tasks."
+    ],
+    "credential_report": "credential-findings.json",
+    "source_archive_checks": {
+      "membership_and_all_checksums": "passed on source draft",
+      "known_authentication_value_copies_included": 0,
+      "compiled_source_hashes": "all 13 matched frozen candidate",
+      "extracted_source_host_tests_passed": 5,
+      "gitleaks_scan": "1,965 matches reviewed: SHA-256/SHA-1 hashes and tensor names; no unresolved scanner match after 15 credential-bearing files were excluded."
+    }
+  },
+  "credential_findings": [
+    {
+      "file": "bench/results/2026-10-04-community-rtx4090-iq3xxs-200k-code/config.json",
+      "line": 79,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-04-community-rtx4090-iq3xxs-200k-code/env.json",
+      "line": 156,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-04-community-rtx4090-iq3xxs-200k-code/runs.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-04-community-rtx4090-iq3xxs-200k-ru/config.json",
+      "line": 79,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-04-community-rtx4090-iq3xxs-200k-ru/env.json",
+      "line": 156,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-04-community-rtx4090-iq3xxs-200k-ru/runs.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-code/env.json",
+      "line": 156,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-code/runs-0.1.40-baseline.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-code/runs.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-code/runs-0.1.40.2-previous.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-ru/env.json",
+      "line": 156,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-ru/runs-0.1.40-baseline.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-ru/runs-0.1.40.2-previous.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    },
+    {
+      "file": "bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-ru/runs.json",
+      "line": 159,
+      "type": "possible exposed bearer token in archived environment",
+      "already_tracked": true
+    }
+  ],
+  "source_package_check": {
+    "host_tests_passed": 5,
+    "scope": "configure and build the five host GLM tests from the extracted source draft; runtime source hashes also checked against the final archive",
+    "tracked_files_excluded": 48,
+    "known_authentication_value_copies_included": 0
+  },
+  "evidence_sha256": {
+    "ctest-cuda.log": "b368dcc7f9ccbe5e342cee041b3689ec306d8038fb6377ff2994fc1bf8f238e1",
+    "ctest-hip-cpu.log": "ede19e011df89c51536c3f14f94a7b2c53f4cfe573ce9a1ae0f3ac5b953a5c56",
+    "sycl-build-test-force.log": "c5c8b04d627eadf5787d28e11c782eb7d789b1be45d1c177f6df0f6f144d16cb",
+    "q2-lut-test.log": "9a4cc7fc355018a1634d1ec4ac2c0c2996122ef76d4e30119e86f5a714bcc30c",
+    "softmax-racecheck.log": "e9c720b4ed6f6937ed0b5d34ed5b78e1324e999238f3d7b5850e7b1ebf77d30f",
+    "cuda-build-freeze.log": "61ed5857d902f5c704755e27c76d9fd4782b98b07be98d3e8ace045558eb5d8a",
+    "hip-build-freeze.log": "8dcabc0b4f69d362b5e3bf2b99ecb33c80777f60e79d9cf08b4841998d954359",
+    "source-host-configure.log": "4553fe7c929beaef15dcc68dbd2bcae8df7472075f438af19da0b2bad36b02c2",
+    "source-host-build.log": "2890aef11d547469a90db6b044ad7a87abfd3e0a8c0d8ac5217d9c200bdb6ffa",
+    "source-host-test.log": "6b0f028899960a0cbb129c52f7d4e8f38b8a57dbcc3fe5674be1665d10ff9d6b",
+    "python-glm.log": "d43df123a6fa4688cf88f44d1df211253f6f1c4708965b6b1b72a39b1eba15b3",
+    "python-glm-numpy.log": "4df46471607b1cce244a95dee73eb4ecd2946d44fafb18fad9ff7fc8fbed8df4",
+    "python-glm-worker-host.log": "54ee0cdb3be9ff04b4f916d2437b653d82f05408ad0c7d1e74a8997441e690c0",
+    "python-setup.log": "60067ad501cdc65d0ee1b0e7293fd10ba0f7245397d8e1f9a930b002862a1325",
+    "python-setup-modelscope-host.log": "81f64793f9378fd53de6f2bfaec7fa23846048087abc56373a9730af1916ee81",
+    "qualification/parity.json": "5464cf3f3eb5ff646800f48b04dac514a1ece0034ee1b6f5880e7d37f35927a6",
+    "qualification/corpus/result.json": "609cf99245f0f8f321b5c020dcbdb7e51a969d10142129091f19176c014034ca",
+    "qualification/humaneval-shared-v2/measurement.json": "974072a3abe7320a88a679c2dee80e91ba0a922c3b9cc347d35e8e4300a60c4a",
+    "qualification/he-shared-v2.memory.json": "276a70c1f7639c28ccb16b6f6d7416f4c83fe9cd4bb3527ae93914ee64b5650a"
+  }
+}

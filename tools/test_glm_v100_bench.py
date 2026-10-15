@@ -15,6 +15,23 @@ import glm_v100_sweep
 
 
 class RequestDiagnostics(unittest.TestCase):
+    def test_trace_presence_marks_instrumentation_and_stage_cpu_work_is_separate(self):
+        with mock.patch.dict(os.environ,STRATA_GLM_STEP_TRACE='0'):
+            self.assertIn('STRATA_GLM_STEP_TRACE',glm_v100_bench.diagnostic_environment())
+        text='''RESPONSE_PREPARE kind=decode_cache ms=10
+LAYER_WORK stage=0 device=0 decode_rows=10 decode_wall_ms=100 draft_wall_ms=0
+CPU_EXPERT gu_ms=10 quant_ms=1 down_ms=5 layer_flow_ms=2 bytes=1000
+resident expert entries=4/8
+LAYER_WORK stage=1 device=1 decode_rows=10 decode_wall_ms=95 draft_wall_ms=5
+CPU_EXPERT gu_ms=8 quant_ms=2 down_ms=4 layer_flow_ms=0 bytes=800
+resident expert entries=5/8
+'''
+        row=glm_v100_bench.request_diagnostics(text)[0]
+        self.assertEqual(row['cpu_expert_bytes'],1800)
+        self.assertEqual(row['cpu_expert_ms']['gate_up'],18)
+        self.assertEqual(row['layer_stages'][0]['cpu_expert_ms']['gate_up'],10)
+        self.assertEqual(row['layer_stages'][1]['cpu_expert_bytes'],800)
+
     def test_upstream_kernel_choices_are_recorded(self):
         with mock.patch.dict(os.environ, STRATA_OLD_IQ_MMVQ="1", STRATA_GROUPED_V1="1"):
             recorded = glm_v100_bench.experiment_environment()
@@ -44,6 +61,20 @@ resident expert entries=800/1000
         self.assertEqual(second["cpu_expert_ms"]["quantize"], 2)
         self.assertEqual(second["gpu_expert_hit_fraction"], .8)
         self.assertNotIn("free_mib", second["gpu_devices"][0])
+
+    def test_layer_work_and_hits_include_both_stages(self):
+        row, = request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=1\n"
+            "LAYER_MTP proposed=5 accepted=3 depth=1\n"
+            "LAYER_WORK stage=0 device=0 decode_rows=7 decode_wall_ms=14 draft_wall_ms=0 scope=host_submission_through_completion\n"
+            "resident expert entries=20/40\n"
+            "LAYER_WORK stage=1 device=1 decode_rows=5 decode_wall_ms=15 draft_wall_ms=3 scope=host_submission_through_completion\n"
+            "resident expert entries=30/60\n")
+        self.assertEqual(row["layer_mtp"]["rejected"], 2)
+        self.assertEqual(row["layer_mtp"]["acceptance_fraction"], .6)
+        self.assertEqual(row["gpu_expert_hits"], 50)
+        self.assertEqual(row["expert_entries"], 100)
+        self.assertEqual(row["layer_stages"][0]["decode_rows"], 7)
+        self.assertEqual(row["layer_stages"][1]["draft_wall_ms"], 3)
 
     def test_empty_generation_has_no_hit_fraction(self):
         row, = request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=0\nresident expert entries=0/0\n")
@@ -89,7 +120,7 @@ resident expert entries=800/1000
 
 
 class ResidentProgress(unittest.TestCase):
-    def run_fake(self, module, *, fail=False, cases=None, boundary=False, sanitizer=None, validate_all=False, prefill_batch=None):
+    def run_fake(self, module, *, fail=False, cases=None, boundary=False, sanitizer=None, validate_all=False, prefill_batch=None, extra_args=()):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = pathlib.Path(temporary.name)
@@ -121,6 +152,7 @@ for line in sys.stdin:
         argv = ["bench", str(root / "model.gguf"), str(text), "--decoder", str(decoder),
                 "--prompt-tokens", "4", "--generated-tokens", "2", "--repetitions", "2",
                 "--validation-tokens", "3", "--threads", "5", "--output", str(output)]
+        argv.extend(extra_args)
         if prefill_batch is not None:
             argv.extend(("--prefill-batch", str(prefill_batch)))
         if cases:
@@ -167,6 +199,16 @@ sys.exit(97 if MODE == 'failure' else rc)
         result = json.loads(output.read_text())
         self.assertEqual(result["decoder_sha256"], hashlib.sha256(decoder.read_bytes()).hexdigest())
         return result
+
+    def test_layer_options_and_full_warmups(self):
+        result = self.run_fake(glm_v100_bench, extra_args=(
+            "--gpu-layout", "layer", "--layer-split", "24", "--layer-pipeline", "mtp",
+            "--speculative", "mtp", "--prefill-expert-cache-mib", "0", "--full-warmups", "2"))
+        self.assertTrue(result["complete"])
+        self.assertEqual(len(result["trials"]), 2)
+        self.assertEqual(len(result["full_warmup_trials"]), 2)
+        self.assertEqual(result["command"][25:29], ["4k", "", "", "auto"])
+        self.assertEqual(result["command"][29:], ["--gpu-layout=layer", "--layer-split=24", "--layer-pipeline=mtp"])
 
     def test_sanitizer_wraps_decoder_and_retains_actual_binary_identity(self):
         result = self.run_fake(glm_v100_bench, sanitizer="success")

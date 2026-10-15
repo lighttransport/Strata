@@ -1,0 +1,3932 @@
+{
+  "scope": "Whole process including startup/warmup; system fault/swap counters include other host activity; not decode-only profiling",
+  "results": [
+    {
+      "name": "q2-base-a",
+      "raw_sha256": "02c684aec27e2c69ecbd1c9eecc0031912df277b772974ddf852ca0533c80db2",
+      "samples": 274,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.5
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.93,
+            "max": 235.91,
+            "median": 41.47
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 44.0,
+            "max": 73.0,
+            "median": 49.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 49.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.72,
+            "max": 189.35,
+            "median": 40.25
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 39.0,
+            "max": 55.0,
+            "median": 41.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79507996,
+      "peak_gpu_client_rss_kib": 104491260,
+      "system_major_fault_delta": 519,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-base-b",
+      "raw_sha256": "9558e67ad7a25062138d83678dbc908c20ff98d901218d277613306577b39d95",
+      "samples": 275,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 1.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 269.6,
+            "median": 45.74
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 75.0,
+            "median": 58.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.1,
+            "max": 189.42,
+            "median": 42.04
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 55.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79903588,
+      "peak_gpu_client_rss_kib": 104407824,
+      "system_major_fault_delta": 491,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-greedy-off-a",
+      "raw_sha256": "c75871ea4663149e075d36e7890f63cec370e4f46233c148290720a6887c6e31",
+      "samples": 274,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 52.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.63,
+            "max": 211.92,
+            "median": 39.93
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 72.0,
+            "median": 44.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.73,
+            "max": 193.0,
+            "median": 40.1
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 56.0,
+            "median": 40.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79745780,
+      "peak_gpu_client_rss_kib": 104229412,
+      "system_major_fault_delta": 620,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-greedy-off-b",
+      "raw_sha256": "5a818784ecf192c8321620b507769f3c42dc9dfc11311ad6801141e860dfa39a",
+      "samples": 273,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 275.32,
+            "median": 45.74
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 75.0,
+            "median": 58.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.01,
+            "max": 186.15,
+            "median": 41.94
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 56.0,
+            "median": 45.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 80000320,
+      "peak_gpu_client_rss_kib": 104406912,
+      "system_major_fault_delta": 495,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-greedy-on-a",
+      "raw_sha256": "58432c2972e50326394ef59c1a120f8a03ee6c1b3e9e67733f21acb95409d0c1",
+      "samples": 272,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 1.5
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.51,
+            "max": 241.48,
+            "median": 45.06
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 46.0,
+            "max": 74.0,
+            "median": 56.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 49.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.91,
+            "max": 197.11,
+            "median": 41.94
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 55.0,
+            "median": 45.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79289764,
+      "peak_gpu_client_rss_kib": 104481256,
+      "system_major_fault_delta": 515,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-greedy-on-b",
+      "raw_sha256": "1184f122bbcc727c04625b6613c99f01c16d73e2b157e74524ba55840c15213b",
+      "samples": 272,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 53.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.28,
+            "max": 279.4,
+            "median": 45.93
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 77.0,
+            "median": 59.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 49.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.3,
+            "max": 186.04,
+            "median": 42.19
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 56.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79822648,
+      "peak_gpu_client_rss_kib": 104309664,
+      "system_major_fault_delta": 499,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-long16384-greedy-off",
+      "raw_sha256": "09846c7ab0518b9fb1b7355d34c349c9c5dbc0eeed2910e5f26e0d00786b027c",
+      "samples": 296,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31716.0,
+            "median": 17577.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 6.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 68.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.85,
+            "max": 286.04,
+            "median": 45.78
+          },
+          "sm_clock_mhz": {
+            "min": 1192.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 44.0,
+            "max": 79.0,
+            "median": 56.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 383.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.35,
+            "max": 215.22,
+            "median": 47.480000000000004
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 38.0,
+            "max": 60.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79449820,
+      "peak_gpu_client_rss_kib": 104768244,
+      "system_major_fault_delta": 499,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-long16384-greedy-on",
+      "raw_sha256": "e501a11e7f115e7c68a03d5651f918ed330252f0f36ab2f576c6f2a0dac34bba",
+      "samples": 294,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17604.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 6.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 66.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.99,
+            "max": 308.84,
+            "median": 46.945
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 79.0,
+            "median": 61.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 400.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.1,
+            "max": 217.26,
+            "median": 47.975
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 60.0,
+            "median": 47.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79252192,
+      "peak_gpu_client_rss_kib": 104727932,
+      "system_major_fault_delta": 491,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-long8192-greedy-off",
+      "raw_sha256": "c52579231d0b8d8cb7e55ef25f074b92e772e197419a756cbec19637c1044785",
+      "samples": 250,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 61.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.6,
+            "max": 282.93,
+            "median": 44.620000000000005
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 72.0,
+            "median": 57.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.74,
+            "max": 215.4,
+            "median": 41.36
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 39.0,
+            "max": 55.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79090120,
+      "peak_gpu_client_rss_kib": 104786228,
+      "system_major_fault_delta": 475,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-long8192-greedy-on",
+      "raw_sha256": "30027e113d25d6f9b34fcfe181e2d2768280864b041a0f2f69189255b1c04e48",
+      "samples": 249,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 61.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.76,
+            "max": 290.91,
+            "median": 44.96
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 51.0,
+            "max": 76.0,
+            "median": 59.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 99.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.69,
+            "max": 211.78,
+            "median": 41.94
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 58.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79460776,
+      "peak_gpu_client_rss_kib": 104760704,
+      "system_major_fault_delta": 479,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-prefill-qual-f16-a",
+      "raw_sha256": "a26d782cc2c3a474af262ce1ae2c006f742939835570ff849ba87dfe2dbebbc5",
+      "samples": 273,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.33,
+            "max": 289.0,
+            "median": 44.96
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 46.0,
+            "max": 76.0,
+            "median": 56.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.74,
+            "max": 186.31,
+            "median": 41.94
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 39.0,
+            "max": 57.0,
+            "median": 45.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79643968,
+      "peak_gpu_client_rss_kib": 104391580,
+      "system_major_fault_delta": 528,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-prefill-qual-f16-b",
+      "raw_sha256": "953df5a08c82ceab454ea8bfad617eccefa00d5d283d4c65dc5f608433b56531",
+      "samples": 271,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 57.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.5,
+            "max": 246.45,
+            "median": 45.54
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 76.0,
+            "median": 58.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.1,
+            "max": 188.72,
+            "median": 41.94
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 56.0,
+            "median": 45.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79788668,
+      "peak_gpu_client_rss_kib": 104229476,
+      "system_major_fault_delta": 499,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-prefill-qual-mmq-a",
+      "raw_sha256": "79d0e1e8f9970f4fd60f78d970036812e24abd4b9f78e5724b2822498cf026f9",
+      "samples": 266,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31690.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 1.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.28,
+            "max": 248.12,
+            "median": 46.315
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 75.0,
+            "median": 59.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31914.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 42.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.3,
+            "max": 224.91,
+            "median": 42.33
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 57.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79335272,
+      "peak_gpu_client_rss_kib": 104318916,
+      "system_major_fault_delta": 482,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-prefill-qual-mmq-b",
+      "raw_sha256": "c5d30e4f2579422efe977ae162d79856d6f60edcf1e2382b5efed0a134765d34",
+      "samples": 267,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31690.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 44.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.7,
+            "max": 246.37,
+            "median": 45.54
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 73.0,
+            "median": 58.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31914.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 42.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.01,
+            "max": 224.06,
+            "median": 41.94
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 56.0,
+            "median": 45.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79711972,
+      "peak_gpu_client_rss_kib": 104311956,
+      "system_major_fault_delta": 519,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-reference-a",
+      "raw_sha256": "5786a94dd126ee192c9cb1db969699eab2dddd71f1e8d6fa8986c59703b2a112",
+      "samples": 267,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31710.0,
+            "median": 17518.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 1.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.63,
+            "max": 241.61,
+            "median": 39.92
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 73.0,
+            "median": 44.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 46.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.62,
+            "max": 209.31,
+            "median": 40.01
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 55.0,
+            "median": 40.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79737232,
+      "peak_gpu_client_rss_kib": 104453088,
+      "system_major_fault_delta": 530,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-reference-b",
+      "raw_sha256": "d7e29c42a333619c9bb03ab41f3218a86a970ab31009e99a51aef8f99bfd83f4",
+      "samples": 263,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31710.0,
+            "median": 17518.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.08,
+            "max": 253.24,
+            "median": 45.83
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 75.0,
+            "median": 59.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 45.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.1,
+            "max": 217.96,
+            "median": 42.13
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 55.0,
+            "median": 45.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79457612,
+      "peak_gpu_client_rss_kib": 104453336,
+      "system_major_fault_delta": 507,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-active-pipeline-plain",
+      "raw_sha256": "4873b976c3b77054d3b5aaecac27232b8dbd8f35f397271fec352ac047ed679b",
+      "samples": 15,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 10074.0,
+            "median": 6670.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 6.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 41.37,
+            "median": 41.08
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1230.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 49.0,
+            "median": 48.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 28.51,
+            "max": 40.78,
+            "median": 40.59
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 42.0,
+            "median": 42.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 186908224,
+      "peak_gpu_client_rss_kib": 4281756,
+      "system_major_fault_delta": 492,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-active-pipeline12-fused",
+      "raw_sha256": "8bf64dd2a410e9d74b6b68071166214fc70c256f5f7e77b87be40e5e958aaff4",
+      "samples": 179,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 16170.0,
+            "median": 16170.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 59.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.9,
+            "max": 249.71,
+            "median": 41.77
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 64.0,
+            "median": 51.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 27.03,
+            "max": 39.43,
+            "median": 27.25
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 35.0,
+            "max": 38.0,
+            "median": 36.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 82327036,
+      "peak_gpu_client_rss_kib": 104678028,
+      "system_major_fault_delta": 506,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-active-pipeline12-plain",
+      "raw_sha256": "da40b1abf15cae8ddf0575df1e72b25ee21a4f4fafe2d636d1b62f4cc192332d",
+      "samples": 179,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 16170.0,
+            "median": 16170.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.21,
+            "max": 235.2,
+            "median": 40.41
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 45.0,
+            "max": 61.0,
+            "median": 46.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 27.23,
+            "max": 40.21,
+            "median": 27.63
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 36.0,
+            "max": 41.0,
+            "median": 38.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 82804008,
+      "peak_gpu_client_rss_kib": 104679540,
+      "system_major_fault_delta": 470,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-active-pipeline12-stream",
+      "raw_sha256": "c8d9fca0e024de0258442ccc94d017cb3744d0cc1eaa29f490d853366d6f3bb6",
+      "samples": 188,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 19194.0,
+            "median": 19194.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 56.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.18,
+            "max": 254.8,
+            "median": 42.25
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 64.0,
+            "median": 52.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 26.93,
+            "max": 39.15,
+            "median": 27.05
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 35.0,
+            "max": 37.0,
+            "median": 35.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 82522444,
+      "peak_gpu_client_rss_kib": 104677172,
+      "system_major_fault_delta": 494,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-admit1",
+      "raw_sha256": "b3ec3be4ecfaeb0559e9bddac4c79d4e2627a9e9e5dcf43ddf16b0fd432e07eb",
+      "samples": 174,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 46.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 269.44,
+            "median": 41.47
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 59.0,
+            "median": 50.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.78,
+            "max": 176.38,
+            "median": 41.17
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 51.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 80052368,
+      "peak_gpu_client_rss_kib": 104229312,
+      "system_major_fault_delta": 507,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-admit6",
+      "raw_sha256": "5eb5430df36a4a1d827a816364ae78bae8e95f985df6d1d74ba053c138b2f42e",
+      "samples": 173,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 233.49,
+            "median": 41.37
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 60.0,
+            "median": 50.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 49.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.78,
+            "max": 190.78,
+            "median": 41.17
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 52.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79607672,
+      "peak_gpu_client_rss_kib": 104490944,
+      "system_major_fault_delta": 494,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-kda-ordered4",
+      "raw_sha256": "f5c3018c8a367d4092a6af1a425ad99ae9f156d667a04bf7ffaad698086cbe7c",
+      "samples": 174,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 46.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.6,
+            "max": 198.93,
+            "median": 41.28
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 59.0,
+            "median": 49.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.59,
+            "max": 179.46,
+            "median": 40.98
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 51.0,
+            "median": 43.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79959056,
+      "peak_gpu_client_rss_kib": 104241756,
+      "system_major_fault_delta": 511,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-kda-ordered8",
+      "raw_sha256": "64acc9677c736b43c6e67691891048e234d23e2808454796afbcf8fa26fbbb30",
+      "samples": 152,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 18098.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 6.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.79,
+            "max": 47.28,
+            "median": 41.28
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 52.0,
+            "median": 49.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 6240.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.69,
+            "max": 41.65,
+            "median": 41.07
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1230.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 46.0,
+            "median": 43.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79758888,
+      "peak_gpu_client_rss_kib": 104143968,
+      "system_major_fault_delta": 498,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-kda-serial",
+      "raw_sha256": "d8f16a74a527730d6da53d7e3e4f64b457ca4e4a666524bb9bfc82ab30f945d9",
+      "samples": 177,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.5,
+            "max": 221.35,
+            "median": 40.99
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 46.0,
+            "max": 58.0,
+            "median": 48.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.1,
+            "max": 186.76,
+            "median": 40.49
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 50.0,
+            "median": 42.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 80046172,
+      "peak_gpu_client_rss_kib": 104242468,
+      "system_major_fault_delta": 517,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-mmq",
+      "raw_sha256": "c0cde792ac097bd173d459594570168936875d6db4416fab24b2e59966b439bd",
+      "samples": 171,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31690.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 36.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 233.8,
+            "median": 41.47
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 58.0,
+            "median": 50.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31914.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 39.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.69,
+            "max": 219.27,
+            "median": 41.27
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 51.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79683124,
+      "peak_gpu_client_rss_kib": 104423060,
+      "system_major_fault_delta": 494,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-mtp1",
+      "raw_sha256": "31346bdc31e8dd2690bb1db3ca4cf31f92b7af24596764591bd3582ed895c5eb",
+      "samples": 211,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31860.0,
+            "median": 17796.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 43.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 233.03,
+            "median": 41.37
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 58.0,
+            "median": 50.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31872.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.69,
+            "max": 188.93,
+            "median": 41.17
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 51.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79644044,
+      "peak_gpu_client_rss_kib": 106894216,
+      "system_major_fault_delta": 429364,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-mtp2",
+      "raw_sha256": "60525d880af38afc8c468b8bdd6b2b3d2a90821722fed78dd8199d10907b925b",
+      "samples": 218,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31902.0,
+            "median": 17796.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 42.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.21,
+            "max": 232.93,
+            "median": 41.18
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 58.0,
+            "median": 49.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 49.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.2,
+            "max": 192.54,
+            "median": 40.78
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 49.0,
+            "median": 43.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79531640,
+      "peak_gpu_client_rss_kib": 106922296,
+      "system_major_fault_delta": 515830,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-mtp3",
+      "raw_sha256": "7c188cdada695dc3dedc5c8c7bed225533b70edb1d166c39b23198f7a6c4dc36",
+      "samples": 218,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31906.0,
+            "median": 17796.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 54.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.7,
+            "max": 210.7,
+            "median": 41.18
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 58.0,
+            "median": 49.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 99.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 45.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.3,
+            "max": 180.87,
+            "median": 40.69
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 49.0,
+            "median": 43.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79641804,
+      "peak_gpu_client_rss_kib": 106922884,
+      "system_major_fault_delta": 517942,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-new-iq",
+      "raw_sha256": "939a59b6d887c914eea8bd977011930c7ddda57d0510deec6c47779d28c8aee0",
+      "samples": 174,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31718.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 44.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.6,
+            "max": 227.47,
+            "median": 41.129999999999995
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 58.0,
+            "median": 49.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 36.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.49,
+            "max": 178.16,
+            "median": 40.88
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 50.0,
+            "median": 43.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 80035648,
+      "peak_gpu_client_rss_kib": 104229464,
+      "system_major_fault_delta": 487,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-pipeline-fused",
+      "raw_sha256": "1ca27797477ff4610b291f82fb40c52a42c071b7a5e503b490f46bc263c55877",
+      "samples": 193,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31572.0,
+            "median": 16172.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 64.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.28,
+            "max": 215.51,
+            "median": 42.54
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 64.0,
+            "median": 53.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 27.05,
+            "max": 39.23,
+            "median": 27.15
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 35.0,
+            "max": 37.0,
+            "median": 35.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 82708640,
+      "peak_gpu_client_rss_kib": 104359272,
+      "system_major_fault_delta": 498,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-pipeline",
+      "raw_sha256": "2439ed6106586cf7e69252cac34cd696e818bcfaca44fdbbc0134879055b6658",
+      "samples": 187,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31568.0,
+            "median": 16172.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.19,
+            "max": 271.37,
+            "median": 42.25
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 64.0,
+            "median": 52.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 27.01,
+            "max": 39.33,
+            "median": 27.15
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 35.0,
+            "max": 37.0,
+            "median": 36.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 83027100,
+      "peak_gpu_client_rss_kib": 104361444,
+      "system_major_fault_delta": 490,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-single17",
+      "raw_sha256": "9823b134509eb3e5d3dcb89ec6ff5edae606b3cac00e1250d0c94be099bc481f",
+      "samples": 182,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31698.0,
+            "median": 16348.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 60.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.9,
+            "max": 237.32,
+            "median": 41.72
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 63.0,
+            "median": 51.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 27.13,
+            "max": 39.53,
+            "median": 27.34
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 36.0,
+            "max": 38.0,
+            "median": 36.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 81120704,
+      "peak_gpu_client_rss_kib": 104065016,
+      "system_major_fault_delta": 502,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-single35",
+      "raw_sha256": "bfa10102942c3f810b1679400919e7db50b91e98061edef61b0d1f9faa3ec992",
+      "samples": 179,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31692.0,
+            "median": 16348.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 61.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.41,
+            "max": 264.14,
+            "median": 40.51
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 46.0,
+            "max": 61.0,
+            "median": 47.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 27.32,
+            "max": 40.78,
+            "median": 27.73
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 37.0,
+            "max": 42.0,
+            "median": 38.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 80882084,
+      "peak_gpu_client_rss_kib": 104055740,
+      "system_major_fault_delta": 494,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-sm70-new-iq",
+      "raw_sha256": "08d6d0fca8f23efab38b3f8b83ea3bfd245b19542012a5f2905f422016bc1a10",
+      "samples": 172,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31718.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.7,
+            "max": 203.15,
+            "median": 41.37
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 59.0,
+            "median": 49.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 49.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.69,
+            "max": 191.65,
+            "median": 41.120000000000005
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 51.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 80062696,
+      "peak_gpu_client_rss_kib": 104229284,
+      "system_major_fault_delta": 491,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-sm70",
+      "raw_sha256": "3f9547d8ee37c5d74c3a8392d0c6fc886e0de8840fdec1d8f68a2a813dd84383",
+      "samples": 172,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 47.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.41,
+            "max": 215.99,
+            "median": 40.79
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 46.0,
+            "max": 57.0,
+            "median": 47.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 99.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 47.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.1,
+            "max": 176.95,
+            "median": 40.3
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 49.0,
+            "median": 41.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79543148,
+      "peak_gpu_client_rss_kib": 104229192,
+      "system_major_fault_delta": 476,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-stage4",
+      "raw_sha256": "bc067d63b3c180ac7070b633487037bdd48ff40a9d141903a0ad40149c596821",
+      "samples": 171,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31716.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 44.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.89,
+            "max": 223.43,
+            "median": 41.37
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 59.0,
+            "median": 50.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31874.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 44.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.69,
+            "max": 185.17,
+            "median": 41.17
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 51.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 79806024,
+      "peak_gpu_client_rss_kib": 104230448,
+      "system_major_fault_delta": 478,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q2-screen-stream",
+      "raw_sha256": "50333bf1e100f8ce951c49cde3dc67dc614c83495d399cc0afda2785c963d46d",
+      "samples": 194,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31568.0,
+            "median": 19196.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 57.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.28,
+            "max": 251.22,
+            "median": 42.68
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 65.0,
+            "median": 54.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 4.0,
+            "median": 4.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 1.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 26.83,
+            "max": 39.13,
+            "median": 27.05
+          },
+          "sm_clock_mhz": {
+            "min": 135.0,
+            "max": 1230.0,
+            "median": 135.0
+          },
+          "temperature_c": {
+            "min": 35.0,
+            "max": 36.0,
+            "median": 35.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 82761368,
+      "peak_gpu_client_rss_kib": 104429384,
+      "system_major_fault_delta": 497,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-base-a",
+      "raw_sha256": "4c5fed9888975f7b0278a7a2e7ec7de8971fd43aeb9f656fb652c36fce15a55e",
+      "samples": 164,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 17708.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 93.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 7.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.02,
+            "max": 48.34,
+            "median": 40.03
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 44.0,
+            "max": 45.0,
+            "median": 45.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 506.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 88.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 11.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.91,
+            "max": 45.23,
+            "median": 40.2
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1357.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 41.0,
+            "median": 41.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 68034764,
+      "peak_gpu_client_rss_kib": 115777828,
+      "system_major_fault_delta": 512,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-greedy-off-a",
+      "raw_sha256": "05f34b3fa20cfafdabdd963090816d4a28bf4c75b26b1d7da9221911136f7cfb",
+      "samples": 297,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 48.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.93,
+            "max": 231.95,
+            "median": 43.99
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 44.0,
+            "max": 77.0,
+            "median": 54.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 47.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.54,
+            "max": 207.35,
+            "median": 41.75
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 39.0,
+            "max": 61.0,
+            "median": 44.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67134152,
+      "peak_gpu_client_rss_kib": 116352324,
+      "system_major_fault_delta": 512,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-greedy-off-b",
+      "raw_sha256": "139df752e70022dcfad00cd0346013355e0b327061cfca2f563ebf73e75cd616",
+      "samples": 296,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31740.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 1.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.61,
+            "max": 243.01,
+            "median": 44.815
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 78.0,
+            "median": 56.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 46.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.1,
+            "max": 211.38,
+            "median": 42.33
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 61.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67147016,
+      "peak_gpu_client_rss_kib": 116351920,
+      "system_major_fault_delta": 504,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-greedy-on-a",
+      "raw_sha256": "10989d7c3dc7f01ea305cab54670c6624982e37efd2010e22b65aeb552aec3a8",
+      "samples": 297,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 1.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 41.28,
+            "max": 282.44,
+            "median": 45.15
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 79.0,
+            "median": 58.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 46.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.69,
+            "max": 219.45,
+            "median": 42.62
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 61.0,
+            "median": 48.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67555496,
+      "peak_gpu_client_rss_kib": 116090108,
+      "system_major_fault_delta": 512,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-greedy-on-b",
+      "raw_sha256": "21357d8fd77bd6a17562d9ddba623c9a1d05ed0be94bf45b610a464abd9ac6da",
+      "samples": 296,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 56.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.7,
+            "max": 249.48,
+            "median": 45.055
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 47.0,
+            "max": 78.0,
+            "median": 57.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 46.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.2,
+            "max": 207.6,
+            "median": 42.285
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 41.0,
+            "max": 61.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67760904,
+      "peak_gpu_client_rss_kib": 116236164,
+      "system_major_fault_delta": 496,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-long16384-greedy-off",
+      "raw_sha256": "2ce3b3319eda268fe4acaa26a06ed574d4191ac7fbec69a4bda9f9b89ae2454b",
+      "samples": 312,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 67.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.51,
+            "max": 298.94,
+            "median": 44.815
+          },
+          "sm_clock_mhz": {
+            "min": 1222.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 46.0,
+            "max": 77.0,
+            "median": 57.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 318.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 52.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.02,
+            "max": 243.87,
+            "median": 42.14
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 61.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67052036,
+      "peak_gpu_client_rss_kib": 116561116,
+      "system_major_fault_delta": 512,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-long16384-greedy-on",
+      "raw_sha256": "74782f9a5d05aca5c9ab9e8dc3bc04bc09386a85c2975e8ac8aabed21712921d",
+      "samples": 311,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 3.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 64.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.99,
+            "max": 310.81,
+            "median": 45.73
+          },
+          "sm_clock_mhz": {
+            "min": 1185.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 79.0,
+            "median": 59.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 318.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.49,
+            "max": 248.79,
+            "median": 42.91
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 63.0,
+            "median": 48.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67283180,
+      "peak_gpu_client_rss_kib": 116511988,
+      "system_major_fault_delta": 504,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-long8192-greedy-off",
+      "raw_sha256": "42fc33bd4bb033c87554f173359510312a907eeb2d643789d5d8a09994049ae7",
+      "samples": 277,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 55.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.4,
+            "max": 274.12,
+            "median": 40.99
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 46.0,
+            "max": 77.0,
+            "median": 48.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 51.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.44,
+            "max": 239.41,
+            "median": 39.91
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 39.0,
+            "max": 61.0,
+            "median": 40.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67002408,
+      "peak_gpu_client_rss_kib": 116646864,
+      "system_major_fault_delta": 533,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-long8192-greedy-on",
+      "raw_sha256": "bf8346e5c23e94f1e4a3aedcc4b6dce62ed7563b7fe178b3dfb67f1c19d341d9",
+      "samples": 271,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 67.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.99,
+            "max": 275.16,
+            "median": 44.09
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 48.0,
+            "max": 79.0,
+            "median": 57.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 50.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.49,
+            "max": 242.61,
+            "median": 41.94
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 62.0,
+            "median": 46.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67148176,
+      "peak_gpu_client_rss_kib": 116647148,
+      "system_major_fault_delta": 496,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-mapped-base-a",
+      "raw_sha256": "bddee9fcb20b2591ced3bbf024f05d2526a6f1973bdfc635816a3cf273666927",
+      "samples": 297,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 2.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 47.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.02,
+            "max": 240.84,
+            "median": 40.12
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 45.0,
+            "max": 77.0,
+            "median": 45.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 47.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.91,
+            "max": 207.05,
+            "median": 40.2
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 61.0,
+            "median": 41.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67307448,
+      "peak_gpu_client_rss_kib": 116352212,
+      "system_major_fault_delta": 516,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-mapped-base-b",
+      "raw_sha256": "5876e92128f16df72bfda3bb066e8542c94eb50df445dc4029d2f5dc0613a31e",
+      "samples": 296,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 1.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 49.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.99,
+            "max": 246.34,
+            "median": 45.489999999999995
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 49.0,
+            "max": 78.0,
+            "median": 58.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31892.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 46.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.59,
+            "max": 213.45,
+            "median": 42.91
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 42.0,
+            "max": 61.0,
+            "median": 48.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67376772,
+      "peak_gpu_client_rss_kib": 116352256,
+      "system_major_fault_delta": 508,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-reference-a",
+      "raw_sha256": "29ce0569bad542b27f5c0ea89d4ee0bb8d8912806ccb602f6ad3e71355060801",
+      "samples": 1,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 2.0,
+            "median": 2.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 40.03,
+            "max": 40.03,
+            "median": 40.03
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1230.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 45.0,
+            "max": 45.0,
+            "median": 45.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "utilization_percent": {
+            "min": 1.0,
+            "max": 1.0,
+            "median": 1.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 0.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.81,
+            "max": 39.81,
+            "median": 39.81
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1230.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 40.0,
+            "max": 40.0,
+            "median": 40.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 189315512,
+      "peak_gpu_client_rss_kib": 165200,
+      "system_major_fault_delta": 0,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    },
+    {
+      "name": "q23-screen-canon",
+      "raw_sha256": "4520a1cf28e6332d017e2aaa73562db6fb6fb51f22a821294dae91160a36a4ca",
+      "samples": 179,
+      "includes_startup_and_warmup": true,
+      "gpu": {
+        "0": {
+          "memory_used_mib": {
+            "min": 2.0,
+            "max": 31694.0,
+            "median": 17524.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 36.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.56,
+            "max": 233.3,
+            "median": 40.24
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 43.0,
+            "max": 58.0,
+            "median": 45.0
+          }
+        },
+        "1": {
+          "memory_used_mib": {
+            "min": 0.0,
+            "max": 31890.0,
+            "median": 312.0
+          },
+          "utilization_percent": {
+            "min": 0.0,
+            "max": 100.0,
+            "median": 0.0
+          },
+          "memory_utilization_percent": {
+            "min": 0.0,
+            "max": 44.0,
+            "median": 0.0
+          },
+          "power_w": {
+            "min": 39.25,
+            "max": 209.83,
+            "median": 39.44
+          },
+          "sm_clock_mhz": {
+            "min": 1230.0,
+            "max": 1380.0,
+            "median": 1230.0
+          },
+          "temperature_c": {
+            "min": 37.0,
+            "max": 44.0,
+            "median": 38.0
+          }
+        }
+      },
+      "minimum_system_memavailable_kib": 67642100,
+      "peak_gpu_client_rss_kib": 115954312,
+      "system_major_fault_delta": 516,
+      "system_swap_in_pages_delta": 0,
+      "system_swap_out_pages_delta": 0
+    }
+  ]
+}

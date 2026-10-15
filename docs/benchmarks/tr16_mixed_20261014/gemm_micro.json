@@ -1,0 +1,128 @@
+{
+  "scope": "Four-batch FP16 GEMM component probe: N=K=4096; constant input, first-element relative reference check. Not full expert execution or whole-model throughput.",
+  "source_sha256": "2558924e535283fe772a12c18842a3cdd7a35f25adf900831a7309e07c4b357b",
+  "worker_binaries": {
+    "cuda/strata-glm-decode": "5855225d944c4ff76afe1864e36a71ca5b24493cdd7d785e14079972459e54e1",
+    "cuda/strata-glm-gpu-worker": "2e0ce9271d4e549e6abe0dac37f87951dbd9985c234de5c08343ceb5481902eb",
+    "hip/strata-glm-decode": "5356dd151fcfe23049dacd13a4de1f99e5b8ef01ef0ffd6d1080719d875f0997",
+    "hip/strata-glm-gpu-worker": "28b4eb9bf028e05170066d2ef50e400be79e7754dd7906dba9da2ba64783b2d1"
+  },
+  "records": {
+    "cuda": [
+      {
+        "rows": 64,
+        "single": false,
+        "gpu_ms": 0.344582,
+        "TFLOP_s": 24.9285,
+        "relative_error": 2.99587e-05
+      },
+      {
+        "rows": 64,
+        "single": true,
+        "gpu_ms": 0.339904,
+        "TFLOP_s": 25.2716,
+        "relative_error": 2.99587e-05
+      },
+      {
+        "rows": 128,
+        "single": false,
+        "gpu_ms": 0.42049,
+        "TFLOP_s": 40.8568,
+        "relative_error": 2.99587e-05
+      },
+      {
+        "rows": 128,
+        "single": true,
+        "gpu_ms": 0.395888,
+        "TFLOP_s": 43.3958,
+        "relative_error": 3.52015e-06
+      },
+      {
+        "rows": 256,
+        "single": false,
+        "gpu_ms": 0.866822,
+        "TFLOP_s": 39.6387,
+        "relative_error": 2.99587e-05
+      },
+      {
+        "rows": 256,
+        "single": true,
+        "gpu_ms": 0.738394,
+        "TFLOP_s": 46.5331,
+        "relative_error": 3.52015e-06
+      },
+      {
+        "rows": 512,
+        "single": false,
+        "gpu_ms": 1.97254,
+        "TFLOP_s": 34.838,
+        "relative_error": 2.99587e-05
+      },
+      {
+        "rows": 512,
+        "single": true,
+        "gpu_ms": 1.83162,
+        "TFLOP_s": 37.5184,
+        "relative_error": 2.99587e-05
+      }
+    ],
+    "hip": [
+      {
+        "rows": 64,
+        "single": false,
+        "gpu_ms": 0.29,
+        "TFLOP_s": 29.94,
+        "relative_error": 0.0
+      },
+      {
+        "rows": 64,
+        "single": true,
+        "gpu_ms": 0.25,
+        "TFLOP_s": 34.51,
+        "relative_error": 0.0
+      },
+      {
+        "rows": 128,
+        "single": false,
+        "gpu_ms": 0.31,
+        "TFLOP_s": 55.27,
+        "relative_error": 0.0
+      },
+      {
+        "rows": 128,
+        "single": true,
+        "gpu_ms": 0.33,
+        "TFLOP_s": 51.77,
+        "relative_error": 0.0
+      },
+      {
+        "rows": 256,
+        "single": false,
+        "gpu_ms": 0.36,
+        "TFLOP_s": 94.71,
+        "relative_error": 0.0
+      },
+      {
+        "rows": 256,
+        "single": true,
+        "gpu_ms": 0.41,
+        "TFLOP_s": 83.0,
+        "relative_error": 0.0
+      },
+      {
+        "rows": 512,
+        "single": false,
+        "gpu_ms": 0.5,
+        "TFLOP_s": 137.83,
+        "relative_error": 0.0
+      },
+      {
+        "rows": 512,
+        "single": true,
+        "gpu_ms": 0.63,
+        "TFLOP_s": 108.95,
+        "relative_error": 0.0
+      }
+    ]
+  }
+}

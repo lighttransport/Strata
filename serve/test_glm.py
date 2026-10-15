@@ -116,10 +116,14 @@ class GlmConfigChecks(unittest.TestCase):
             config.write_text(json.dumps({"exe": "unused", "model": str(model), **cfg}))
             metadata = {"general.architecture": "glm5next", "tokenizer.ggml.eos_token_id": 1,
                         "tokenizer.ggml.tokens": ["a", "b"], "tokenizer.chat_template": "{{ messages }}"}
+            def engine_start(*args, **kwargs):
+                self.launch_args = args
+                raise RuntimeError("engine would start")
             with mock.patch.object(sys, "argv", ["server", "--engine", "glm", "--config", str(config), "--port", "0"]), \
                  mock.patch.object(gguf_reader, "GGUFFile", return_value=mock.Mock(metadata=metadata)), \
                  mock.patch.object(strata_tokenizer.Tokenizer, "from_gguf", return_value=ByteTokenizer()), \
-                 mock.patch.object(server, "GlmEngine", side_effect=RuntimeError("engine would start")), \
+                 mock.patch.object(server, "Server"), \
+                 mock.patch.object(server, "GlmEngine", side_effect=engine_start), \
                  mock.patch("sys.stderr"):
                 with self.assertRaises((SystemExit, RuntimeError)) as caught:
                     server.main()
@@ -144,6 +148,45 @@ class GlmConfigChecks(unittest.TestCase):
         self.assertRefused({"parallel": 9})
         self.assertRefused({"parallel": 2, "speculative": "lookup"})
         self.assertRefused({"reasoning_loop_recovery": "recover"})
+
+    def test_layer_layout(self):
+        self.assertAccepted({"gpu_layout": "layer", "gpu_devices": [0, 1],
+                             "layer_split": [24], "layer_pipeline": "mtp", "speculative": "mtp"})
+        args = self.launch_args[1]
+        self.assertEqual(args[11], "1")
+        self.assertEqual(args[12], "numa")
+        self.assertEqual(args[14], "0,1")
+        self.assertEqual(args[22:27], ["mmq", "4k", "", "", "auto"])
+        self.assertEqual(args[27:], ["--gpu-layout=layer", "--layer-split=24", "--layer-pipeline=mtp"])
+        self.assertAccepted({"gpu_layout": "layer", "gpu_devices": [0, 1], "gpu_budget_mib": 32768,
+                             "decode_cache_mib": 22528})
+        self.assertRefused({"decode_cache_mib": 22528})
+        self.assertAccepted({"gpu_layout": "layer", "gpu_devices": [0, 1], "decode_cache_mib": 4096,
+                             "decode_cache_adapt": True, "decode_cache_window": 64})
+        for cfg in ({"gpu_layout": "wrong"},
+                    {"gpu_layout": "layer", "gpu_devices": [0]},
+                    {"gpu_layout": "layer", "gpu_devices": [0, 1], "layer_pipeline": "mtp"},
+                    {"gpu_layout": "layer", "gpu_devices": [0, 1], "speculative": "mtp", "draft_depth": 3},
+                    {"gpu_layout": "layer", "gpu_devices": [0, 1], "decode_cache_adapt": True}):
+            self.assertRefused(cfg)
+
+    def test_legacy_ignores_generic_layer_split(self):
+        self.assertAccepted({"layer_split": "auto"})
+        self.assertEqual(len(self.launch_args[1]), 23)
+        self.assertNotIn("--gpu-layout=layer", self.launch_args[1])
+
+    def test_layer_stage_budgets(self):
+        cfg=dict(gpu_layout='layer',gpu_devices=[0,1],threads=32,gpu_budget_mib=32768,
+                 layer_workers=[16,15],layer_cache_mib=[24576,22528],layer_pin_coordinator=True)
+        self.assertAccepted(cfg)
+        self.assertIn('--layer-workers=16,15',self.launch_args[1])
+        self.assertIn('--layer-cache-mib=24576,22528',self.launch_args[1])
+        self.assertIn('--layer-pin-coordinator',self.launch_args[1])
+        self.assertAccepted(dict(cfg,decode_cache_adapt=True))
+        for changes in (dict(layer_workers=[17,17]),dict(layer_workers=[16,0]),dict(layer_workers=[True,16]),
+                        dict(layer_cache_mib=[32769,0]),dict(layer_cache_mib=[1]),dict(layer_cache_mib=10),
+                        dict(layer_pin_coordinator='yes'),dict(cpu_affinity='none')):
+            self.assertRefused(dict(cfg,**changes))
 
     def test_accepted(self):
         self.assertAccepted({})

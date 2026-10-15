@@ -1,6 +1,7 @@
-#include "strata/host/glm_env.h"
 // src/prefill/gemm.cu - see include/strata/prefill/gemm.hpp.
 #include "strata/prefill/gemm.hpp"
+#include "strata/host/glm_env.h"
+#include "strata/host/glm_env.h"
 #include "strata/kernels/dequant_bf16.hpp"
 #if defined(STRATA_PREFILL_MMQ) && defined(__HIPCC__)
 #include "strata/prefill/moe_mmq.hpp"
@@ -541,7 +542,60 @@ bool grow(uint16_t*& p, int64_t& have, int64_t want) {   // `have`, `want`: 2-by
     return true;
 }
 constexpr int64_t kXSliceElems = 16ll << 20;   // 32 MiB of FP16 activations per slice (64 MiB as fp32)
+
+#if defined(STRATA_EXPERIMENTAL_SM60)
+// ---- Pascal, opt-in (STRATA_DENSE_F32=1): the dense projections' FP16-operand GEMMs as cublasSgemm ----------------
+// Measured on a Tesla P40 (sm_61) with cuBLAS 12.4.5.8 (bench/results/2026-10-12-p40-sm61-kernels).  For FP16
+// operands with FP32 sums cuBLAS has two Maxwell kernels there, maxwell_sgemm_fp16_64x64 and _32x128, and picks the
+// slow one for most chunk sizes: the 10240 x 2560 qkv projection runs at 7.6 TFLOPS for T 7030-7040 and at 4.3 from
+// T 7041 (49 -> 85 ms), and at 4.3-4.6 for two thirds of the T between 256 and 8192; the 12288-row query projection
+// likewise.  A 7K-token prompt reads in 16.3 or 19.5 s by its token count.  cublasSgemm on FP32 copies
+// (maxwell_sgemm_128x64) runs at 8.4-9.8 TFLOPS for every T from 512 (6.7+ from 256).  The copies are exact
+// (FP16 -> FP32), and for the shapes and sizes taken here the two kernels add every output's products in the same
+// order: the result is bitwise the cuBLAS FP16 call's (gemm_f32_parity: 5,201 chunk sizes on a P40 with cuBLAS 12.4, a
+// measurement of this library, not a guarantee of cuBLAS's; below the sizes taken here - T under
+// ~144 at 6144+ rows, under ~408 at 2560 rows - cuBLAS switches one of them to another kernel family and the bits
+// differ, so those keep the FP16 call).  The weight goes through the BF16 path's conversion buffer (126 MiB for the
+// largest, 21 MiB more than that path's own), the activations through its slices.
+// Opt-in, and on Pascal (compute capability 6.x) only: the equality belongs to the cuBLAS build, so run
+// gemm_f32_parity with yours before turning it on; newer cards have tensor cores for the FP16 call.
+__global__ void f16_to_f32_kernel(const uint16_t* __restrict__ in, float* __restrict__ out, int64_t n) {
+    const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) out[i] = __half2float(__ushort_as_half(in[i]));
+}
+void f16_to_f32(const uint16_t* in, float* out, int64_t n, cudaStream_t st) {
+    if (n <= 0) return;
+    f16_to_f32_kernel<<<(unsigned) ((n + 255) / 256), 256, 0, st>>>(in, out, n);
+}
+int g_dense_f32 = -1;   // gemm_set_dense_f32 (the parity test: 0 / 1 on any card); -1 = STRATA_DENSE_F32
+bool dense_f32_on() {
+    static const bool env = [] {
+        const char* v = std::getenv("STRATA_DENSE_F32");
+        return v != nullptr && std::atoi(v) != 0;
+    }();
+    if (g_dense_f32 >= 0) return g_dense_f32 != 0;
+    if (!env) return false;
+    const int cc = current_cc();
+    return cc >= 60 && cc < 70;
+}
+// The smallest T taken for a weight of N rows and K columns (0: never): the measured shapes only - the 2560-column
+// qkv (10240 rows), query (12288) and gate (6144) projections and the 2560-row output projections (6144 and 4096
+// columns), each from a T where the FP32 route (its conversions included) is the faster one or within ~7% of the FP16
+// call (the gate projection below ~1300 tokens, the 4096-column output projection near 4096) and well above the T
+// where the two stop agreeing bitwise.  Every other shape (a row slice of a weight too) keeps the FP16 call.
+int64_t dense_f32_min_t(int64_t N, int64_t K) {
+    if (K == 2560 && (N == 10240 || N == 12288)) return 256;
+    if (K == 2560 && N == 6144) return 512;
+    if (N == 2560 && (K == 6144 || K == 4096)) return 4096;
+    return 0;
+}
+#endif
 }  // namespace
+#endif
+#if !defined(__HIPCC__) && defined(STRATA_EXPERIMENTAL_SM60)
+void gemm_set_dense_f32(int mode) { g_dense_f32 = mode; }
+#else
+void gemm_set_dense_f32(int) {}
 #endif
 bool Gemm::bf16_hcd_exact(const uint16_t* X, int64_t ldx, const uint16_t* W, float* Y, int64_t T, int64_t N, int64_t K) {
 #if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
@@ -716,10 +770,39 @@ void Gemm::f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_
         return;
     }
 #endif
+#if !defined(__HIPCC__) && defined(STRATA_EXPERIMENTAL_SM60)
+    // Pascal, STRATA_DENSE_F32=1: cublasSgemm on FP32 copies (dense_f32_on above: where it is bitwise the FP16 call)
+    if (const int64_t min_t = beta == 0.0f ? dense_f32_min_t(N, K) : 0; min_t > 0 && T >= min_t && dense_f32_on()) {
+        const int64_t n_sl = (T * K + kXSliceElems - 1) / kXSliceElems;   // even slices of at most 64 MiB as fp32
+        const int64_t x_rows = (T + n_sl - 1) / n_sl;
+        // grow() frees a buffer an earlier GEMM on this stream may still read
+        if (tc_w_elems_ < 2 * N * K || tc_x_elems_ < 2 * x_rows * K) cudaStreamSynchronize((cudaStream_t) stream_);
+        if (grow(tc_w_, tc_w_elems_, 2 * N * K) && grow(tc_x_, tc_x_elems_, 2 * x_rows * K)) {
+            static bool said = false;
+            if (!said) {
+                said = true;
+                std::fprintf(stderr, "prefill gemm: the dense projections' FP16 GEMMs run as cublasSgemm on FP32 copies "
+                                     "(STRATA_DENSE_F32=1; gemm_f32_parity checks the bits against this cuBLAS)\n");
+            }
+            float* const wf = reinterpret_cast<float*>(tc_w_);
+            float* const xf = reinterpret_cast<float*>(tc_x_);
+            f16_to_f32(W, wf, N * K, (cudaStream_t) stream_);
+            for (int64_t t0 = 0; t0 < T; t0 += x_rows) {
+                const int64_t n = std::min<int64_t>(x_rows, T - t0);
+                f16_to_f32(X + t0 * K, xf, n * K, (cudaStream_t) stream_);
+                ck(cublasSgemm((cublasHandle_t) handle_, CUBLAS_OP_T, CUBLAS_OP_N, (int) N, (int) n, (int) K, &alpha, wf, (int) K,
+                               xf, (int) K, &beta, Y + t0 * ldy, (int) ldy),
+                   "cublasSgemm (FP16 operands, STRATA_DENSE_F32)");
+            }
+            return;
+        }
+        cudaGetLastError();   // no room for the copies: the FP16 call below
+    }
+#endif
 #if !defined(__HIPCC__)
     // STRATA_PREFILL_F16_ACCUM=1 (opt-in, lossy): FP16 accumulation, which GeForce tensor cores run at twice the
     // FP32-accumulate rate; the FP16 result is widened in place. Only beta = 0 products; others keep FP32 accumulation.
-    static const bool f16_accum = [] { return strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM"); }();
+    static const bool f16_accum = strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM");
     if (f16_accum && lossy_allowed && beta == 0.0f) {
         const int64_t ld = ldy > 0 ? ldy : N;
         const __half one_h = __float2half(1.0f), zero_h = __float2half(0.0f);
@@ -762,12 +845,21 @@ void Gemm::f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_
 // STRATA_PREFILL_F16_ACCUM_BATCHED=1 (CUDA, opt-in, lossy): the batched FP16 products (MLA attention) accumulate in
 // FP16 into the FP32 output's own rows (ldc doubled) and are widened in place, as Gemm::f16 does with F16_ACCUM.
 static bool f16_accum_batched() {
-    static const bool on = [] { return strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM_BATCHED"); }();
+    static const bool on = strata_env_truthy_one("STRATA_PREFILL_F16_ACCUM_BATCHED");
     return on;
 }
 #endif
 void Gemm::f16_batched(const uint16_t* X, const uint16_t* W, float* Y, int T, int N, int K, int batches) {
     if (T <= 0 || N <= 0 || batches <= 0) return;
+#if defined(__HIPCC__) && defined(STRATA_HIPBLASLT_AVAILABLE)
+    // An explicitly supplied, version-scoped tuning table can select each
+    // expert's ordinary GEMM instead of the strided-batch implementation.
+    if (hipblaslt_state_ && strata_env_truthy_one("STRATA_GLM_HIP_BATCH_SINGLE")) {
+        for (int b=0;b<batches;++b)
+            f16(X+size_t(b)*T*K,W+size_t(b)*N*K,Y+size_t(b)*T*N,T,N,K);
+        return;
+    }
+#endif
 #if !defined(__HIPCC__)
     if (f16_accum_batched() && lossy_allowed) {
         const __half one_h = __float2half(1.0f), zero_h = __float2half(0.0f);

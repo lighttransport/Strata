@@ -54,6 +54,23 @@ void glm_route_sum(const float *results, const float *weights, float *out, int w
 void glm_route_sum_owned(const float *results, const float *weights, const int *ids, const float *partial,
                          float *out, int width, int top_k, int tokens, int primary_groups, int participant,
                          void *stream);
+// Opt-in partial prefill: atomically add weighted expert products into one
+// vector per token. Floating-point order differs from the route-row reduction.
+void glm_scatter_expert_weighted(const float *x, float *out, const float *weights,
+                                const int *bounds, const int *dest, int first, int groups,
+                                int offset, int rows, int width, int top_k, void *stream,
+                                unsigned expert_mask = 0);
+// Same products without atomics: one launch per expert, so each token is updated once per launch and the
+// launches add in stream order (deterministic). Requires width % 4 == 0 and no concurrent writer of `out`.
+void glm_scatter_expert_weighted_ordered(const float *x, float *out, const float *weights,
+                                         const int *bounds, const int *dest, int first, int groups,
+                                         int offset, int rows, int width, int top_k, void *stream,
+                                         unsigned expert_mask = 0);
+void glm_sum_selected_rows(const float *rows, const float *weights, float *sum, int width, int top_k, int tokens, void *stream);
+// Plain (non-atomic) add of FP16 rows, one row per token: the caller orders it after every other writer of `out`.
+void glm_accumulate_token_rows_half(const uint16_t *source, float *out, const int *tokens, int rows, int width, void *stream);
+void glm_accumulate_token_rows(const float *source, float *out, const int *tokens,
+                               int rows, int width, void *stream);
 // Copy route rows without arithmetic, preserving their individual FP32 bits.
 // gather: route order -> contiguous grouped order; scatter reverses the copy.
 void glm_copy_route_rows(const float *source, float *dest, const int *routes, int begin, int rows,

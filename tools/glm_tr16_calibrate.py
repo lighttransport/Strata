@@ -32,12 +32,17 @@ def digest(path):
 
 def missing_decoder_flags(configs, binary):
     """Catch silent no-ops in both explicit cases and saved experimental profiles."""
-    flags = ('STRATA_GLM_PREFETCH_NEXT_LAYER', 'STRATA_GLM_PREFETCH_STREAM',
+    flags = ('STRATA_GLM_FUSE_ROUTE_BATCH', 'STRATA_GLM_PREFILL_FUSED_SWIGLU',
+             'STRATA_GLM_PREFETCH_NEXT_LAYER', 'STRATA_GLM_PREFETCH_STREAM',
              'STRATA_GLM_MTP_ACCEPT_MARGIN', 'STRATA_GLM_MTP_ACCEPT_TOP_K',
              'STRATA_GLM_MTP_ACCEPT_MAX_SOFT', 'STRATA_GLM_MMVQ_IL', 'STRATA_GLM_MTP_FIRST_MARGIN',
              'STRATA_GLM_MTP_REUSE_DRAFT', 'STRATA_GLM_ROUTE_RENORMALIZE', 'STRATA_GLM_MTP_SYNC_STATE_ONLY',
              'STRATA_GLM_MTP_UNPRUNED', 'STRATA_GLM_MTP_RECURSIVE_BLEND', 'STRATA_GLM_MTP_REPEAT_GUARD',
-             'STRATA_GLM_DENSE_Q3', 'STRATA_GLM_TIER_LEARN_UNBIASED', 'STRATA_GLM_MTP_GPU_CACHE', 'STRATA_GLM_CACHE_PROBE')
+             'STRATA_GLM_DENSE_Q3', 'STRATA_GLM_TIER_LEARN_UNBIASED', 'STRATA_GLM_MTP_GPU_CACHE', 'STRATA_GLM_CACHE_PROBE',
+             'STRATA_NATIVE_FLOW_SCHEDULE', 'STRATA_NATIVE_FLOW_PARTS', 'STRATA_GLM_VERIFY_FUSE_KDA',
+             'STRATA_GLM_PREFILL_GROUP_BUDGET', 'STRATA_GLM_MOE_MERGE_GROUPS', 'STRATA_GLM_MERGE_FRONT_EXPERTS', 'STRATA_GLM_MTP_DEVICE_HIDDEN',
+             'STRATA_PREFILL_MMQ_COLUMNS', 'STRATA_GLM_VERIFY_SPLIT_FIRST', 'STRATA_GLM_MTP_EXTENSION_MARGIN',
+             'STRATA_GLM_PREFILL_TOP_K', 'STRATA_GLM_VERIFY_ROUTE_FIRST')
     defaults = {'STRATA_GLM_MTP_RECURSIVE_BLEND': '1'}
     return [flag for flag in flags
             if any(c.get('env', {}).get(flag, defaults.get(flag, '0')) != defaults.get(flag, '0')
@@ -139,8 +144,7 @@ def command(c, prompt, tokens, trials):
 
 def wait_idle(timeout, stable_seconds=10):
     """Wait for a quiet interval without stopping anyone else's process."""
-    from glm_q2_run_guard import gpu_compute_processes
-    from glm_q2_coding_bench import process_cpu_snapshot
+    from glm_q2_run_guard import gpu_compute_processes, process_cpu_snapshot
     deadline = time.monotonic() + timeout
     quiet_since = None
     previous = process_cpu_snapshot()
@@ -198,7 +202,7 @@ def main():
     ap.add_argument('--cases', nargs='+', default=['baseline'])
     ap.add_argument('--tokens', type=int, default=512)
     ap.add_argument('--trials', type=int, default=3)
-    ap.add_argument('--prefill-batch', type=int, choices=[2048, 4096, 8192])
+    ap.add_argument('--prefill-batch', type=int, choices=[2048, 4096, 8192, 16384])
     ap.add_argument('--interleave', action='store_true')
     ap.add_argument('--allow-interference', action='store_true', help='diagnostics only; such runs are not quiet calibration')
     ap.add_argument('--require-repeat-equal', action='store_true')
@@ -214,13 +218,16 @@ def main():
         base['exe'] = str(args.decoder.resolve())
     if args.prefill_batch:
         base['prefill_batch'] = args.prefill_batch
-        base['env']['STRATA_GLM_PREFILL_SCRATCH_CAP_MIB'] = '2048' if args.prefill_batch == 8192 else '1024'
+        default = {8192: 2048, 16384: 4096}.get(args.prefill_batch, 1024)
+        configured = int(base['env'].get('STRATA_GLM_PREFILL_SCRATCH_CAP_MIB', '0'))
+        base['env']['STRATA_GLM_PREFILL_SCRATCH_CAP_MIB'] = str(max(default, configured))
     configs = [base, *(case_config(base, name) for name in args.cases)]
     missing = missing_decoder_flags(configs, Path(base['exe']).read_bytes())
     if missing:
         ap.error(', '.join(missing) + ' requires the isolated patched decoder via --decoder')
     for key in base.get('env', {}):
-        if key.startswith('STRATA_GLM_CHECK_') or key in ('STRATA_GLM_STEP_TRACE', 'STRATA_GLM_ACTIVATION_TRACE'):
+        if key.startswith('STRATA_GLM_CHECK_') or key in ('STRATA_GLM_STEP_TRACE', 'STRATA_GLM_ACTIVATION_TRACE',
+                                                        'STRATA_GLM_EXPERT_REPLAY'):
             ap.error('diagnostic instrumentation cannot be used for throughput')
     prompt_tokens = len([x for x in re.split(r'[\s,]+', args.prompt.read_text().strip()) if x])
     if prompt_tokens + args.tokens > base['context']:

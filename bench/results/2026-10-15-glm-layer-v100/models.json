@@ -1,0 +1,47 @@
+{
+  "complete": true,
+  "source_record_sha256": "7a5de9f60af0b9c2a0c3ebfa0a0c4733e1f0173665c3eae09c02d30347ff7e59",
+  "models": [
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "file_bytes": 9429859,
+      "sha256": "b2aaab111a0f93f04b0627270691fe430b6bb14b17c0d62f9c0f1ac75e7efef4",
+      "expected_sha256": "b2aaab111a0f93f04b0627270691fe430b6bb14b17c0d62f9c0f1ac75e7efef4",
+      "matches_prior_verification": true,
+      "verified_at_utc": "2026-10-14T20:10:24.905982+00:00"
+    },
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+      "file_bytes": 49294975936,
+      "sha256": "f4a9e1ab13d5d9620f5590c9a4aba4c169e6707a1554f3be3fe3112f80a66825",
+      "expected_sha256": "f4a9e1ab13d5d9620f5590c9a4aba4c169e6707a1554f3be3fe3112f80a66825",
+      "matches_prior_verification": true,
+      "verified_at_utc": "2026-10-14T20:12:46.379315+00:00"
+    },
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+      "file_bytes": 49949266048,
+      "sha256": "330a8ad76c787b3ab6df062dd30abea7aafe6a0e3d5860e8720dfa4abb2434a5",
+      "expected_sha256": "330a8ad76c787b3ab6df062dd30abea7aafe6a0e3d5860e8720dfa4abb2434a5",
+      "matches_prior_verification": true,
+      "verified_at_utc": "2026-10-14T20:15:10.086741+00:00"
+    },
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+      "file_bytes": 9466399584,
+      "sha256": "5c294f42edc5d69cf00a79ab444e61f0742e9933105fc5c85f97da54dab8946f",
+      "expected_sha256": "5c294f42edc5d69cf00a79ab444e61f0742e9933105fc5c85f97da54dab8946f",
+      "matches_prior_verification": true,
+      "verified_at_utc": "2026-10-14T20:15:37.424882+00:00"
+    },
+    {
+      "filename": "GLM-5.3-Flash-Q23-assembled.gguf",
+      "file_bytes": 120875172704,
+      "sha256": "8e280fd86714b606211c285552e77cde7b8c31ac0e9483df85c72ab1174a50e7",
+      "expected_sha256": "8e280fd86714b606211c285552e77cde7b8c31ac0e9483df85c72ab1174a50e7",
+      "matches_prior_verification": true,
+      "verified_at_utc": "2026-10-14T20:21:25.269386+00:00"
+    }
+  ],
+  "reference": "SHA-256 values from the earlier local verification recorded in the 2026-10-14 V100 report; no publisher-provided checksum was available."
+}

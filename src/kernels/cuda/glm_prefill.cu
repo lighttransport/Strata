@@ -1,5 +1,5 @@
-#include "strata/host/glm_env.h"
 #include "strata/kernels/glm_prefill.hpp"
+#include "strata/host/glm_env.h"
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <cmath>
@@ -151,6 +151,50 @@ __global__ void scatter_expert_rows(const float *x, float *y, const int *bounds,
     const int expert = masked_expert(first, mask, blockIdx.y), row = i / width + offset;
     if (row < bounds[expert + 1] - bounds[expert])
         y[(int64_t)dest[bounds[expert] + row] * width + i % width] = x[(int64_t)blockIdx.y * rows * width + i];
+}
+__global__ void scatter_expert_weighted(const float *x, float *out, const float *weights,
+                                        const int *bounds, const int *dest, int first,
+                                        int offset, int rows, int width, int top, unsigned mask) {
+    const int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if (i>=int64_t(rows)*width) return;
+    const int expert=masked_expert(first,mask,blockIdx.y),row=int(i/width)+offset;
+    if (row>=bounds[expert+1]-bounds[expert]) return;
+    const int route=dest[bounds[expert]+row];
+    atomicAdd(out+int64_t(route/top)*width+i%width,
+              weights[route]*x[int64_t(blockIdx.y)*rows*width+i]);
+}
+__global__ void scatter_expert_weighted_one(const float4 *x, float *out, const float *weights,
+                                            const int *bounds, const int *dest, int expert,
+                                            int offset, int rows, int width, int top) {
+    const int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x, quads=width/4;
+    if (i>=int64_t(rows)*quads) return;
+    const int row=int(i/quads)+offset;
+    if (row>=bounds[expert+1]-bounds[expert]) return;
+    const int route=dest[bounds[expert]+row];
+    const float w=weights[route];
+    const float4 v=x[i];
+    float4 *o=reinterpret_cast<float4 *>(out+int64_t(route/top)*width)+i%quads;
+    float4 a=*o;
+    a.x=fmaf(w,v.x,a.x);a.y=fmaf(w,v.y,a.y);a.z=fmaf(w,v.z,a.z);a.w=fmaf(w,v.w,a.w);
+    *o=a;
+}
+__global__ void sum_selected_rows(const float *rows,const float *weights,float *sum,int width,int top,int tokens) {
+    const int i=blockIdx.x*blockDim.x+threadIdx.x;
+    if (i>=width*tokens) return;
+    const int token=i/width,column=i%width;float value=0.f;
+    for (int route=top-1;route>=0;--route) {
+        const float weight=weights[token*top+route];
+        if (weight!=0.f) value=fmaf(weight,rows[(int64_t(token)*top+route)*width+column],value);
+    }
+    sum[i]=value;
+}
+__global__ void accumulate_token_rows(const float *x,float *out,const int *tokens,int rows,int width) {
+    const int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if (i<int64_t(rows)*width) atomicAdd(out+int64_t(tokens[i/width])*width+i%width,x[i]);
+}
+__global__ void accumulate_token_rows_half(const __half *x,float *out,const int *tokens,int rows,int width) {
+    const int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if (i<int64_t(rows)*width) out[int64_t(tokens[i/width])*width+i%width]+=__half2float(x[i]);
 }
 __global__ void copy_route_rows(const float *source, float *dest, const int *routes, int begin,
                                int rows, int width, bool gather_rows) {
@@ -703,12 +747,6 @@ __global__ void __launch_bounds__(cols *parts, 1)
         state[(part * rows + i) * dim + j] = values[i];
 }
 __global__ void kda_output(const float *x, const float *g, const float *w, float *out, int dim, float eps) {
-    int h = blockIdx.x, j = threadIdx.x;
-    float sum = 0;
-    for (int i = 0; i < dim; ++i) sum += x[h * dim + i] * x[h * dim + i];
-    out[h * dim + j] = x[h * dim + j] * rsqrtf(sum / dim + eps) * w[j] * sigmoid(g[h * dim + j]);
-}
-__global__ void kda_output_shared(const float *x, const float *g, const float *w, float *out, int dim, float eps) {
     // Thread 0 forms the sum of squares in the same sequential order every thread used to repeat.
     int h = blockIdx.x, j = threadIdx.x;
     __shared__ float shared_sum;
@@ -965,7 +1003,7 @@ __global__ void softmax_f16(float *scores, const int *counts, uint16_t *out, int
         __syncthreads();
     }
     mx = reduce[0];
-    __syncthreads();
+    __syncthreads(); // Every warp must read the maximum before reduce[0] is reused for sums.
     float sum = 0;
     for (int i = tid; i < stride; i += 256) {
         float p = i < n ? expf(row[i] * scale - mx) : 0;
@@ -1155,6 +1193,49 @@ void glm_scatter_expert_rows(const float *x, float *y, const int *bounds, const 
         (cudaStream_t)s>>>(x, y, bounds, dest, first, offset, rows, width, mask);
     check();
 }
+void glm_scatter_expert_weighted(const float *x,float *out,const float *weights,const int *bounds,
+                                 const int *dest,int first,int groups,int offset,int rows,int width,
+                                 int top,void *s,unsigned mask) {
+    check_expert_mask(mask,groups);
+    if (first<0 || groups<0 || offset<0 || rows<0 || width<1 || top<1)
+        throw std::invalid_argument("GLM: invalid weighted expert scatter");
+    if (groups && rows) scatter_expert_weighted<<<dim3((int64_t(rows)*width+255)/256,groups),256,0,
+        (cudaStream_t)s>>>(x,out,weights,bounds,dest,first,offset,rows,width,top,mask);
+    check();
+}
+void glm_scatter_expert_weighted_ordered(const float *x,float *out,const float *weights,const int *bounds,
+                                         const int *dest,int first,int groups,int offset,int rows,int width,
+                                         int top,void *s,unsigned mask) {
+    check_expert_mask(mask,groups);
+    if (first<0 || groups<0 || offset<0 || rows<0 || width<4 || width%4 || top<1)
+        throw std::invalid_argument("GLM: invalid ordered expert scatter");
+    unsigned remaining=mask;
+    for (int g=0; g<groups; ++g) {
+        int expert=first+g;
+        if (mask) { expert=first+__builtin_ctz(remaining); remaining&=remaining-1; }
+        if (!rows) continue;
+        const int64_t quads=int64_t(rows)*(width/4);
+        scatter_expert_weighted_one<<<(quads+255)/256,256,0,(cudaStream_t)s>>>(
+            reinterpret_cast<const float4 *>(x+int64_t(g)*rows*width),out,weights,bounds,dest,expert,offset,rows,width,top);
+    }
+    check();
+}
+void glm_sum_selected_rows(const float *rows,const float *weights,float *sum,int width,int top,int tokens,void *s) {
+    if (width<1 || top<1 || top>8 || tokens<1 || tokens>8) throw std::invalid_argument("GLM: invalid selected row sum");
+    sum_selected_rows<<<(width*tokens+255)/256,256,0,(cudaStream_t)s>>>(rows,weights,sum,width,top,tokens);
+    check();
+}
+void glm_accumulate_token_rows(const float *x,float *out,const int *tokens,int rows,int width,void *s) {
+    if (rows<0 || width<1) throw std::invalid_argument("GLM: invalid token accumulation");
+    if (rows) accumulate_token_rows<<<(int64_t(rows)*width+255)/256,256,0,(cudaStream_t)s>>>(x,out,tokens,rows,width);
+    check();
+}
+void glm_accumulate_token_rows_half(const uint16_t *x,float *out,const int *tokens,int rows,int width,void *s) {
+    if (rows<0 || width<1) throw std::invalid_argument("GLM: invalid half token accumulation");
+    if (rows) accumulate_token_rows_half<<<(int64_t(rows)*width+255)/256,256,0,(cudaStream_t)s>>>(
+        reinterpret_cast<const __half *>(x),out,tokens,rows,width);
+    check();
+}
 void glm_gather_f16(const float *x, uint16_t *y, const int *routes, int begin,
                     int rows, int width, void *s) {
     if (begin < 0 || rows < 0 || width < 1) throw std::invalid_argument("GLM: invalid gather");
@@ -1185,7 +1266,7 @@ void glm_conv_batch(const float *x, const float *w, float *h, float *y, int n, i
 }
 void glm_route_batch(const float *l, const float *b, int *ids, float *w, int ne, int top, float scale,
                      int tokens, void *s, const float *bonus) {
-    if (strata_env_is_one("STRATA_GLM_PREFILL_ROUTE_WARP") && ne <= 512) routing_warp<<<(tokens + 7) / 8, 256, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale, bonus, tokens);
+    if (ne <= 512) routing_warp<<<(tokens + 7) / 8, 256, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale, bonus, tokens);
     else routing<<<tokens, 1, 0, (cudaStream_t)s>>>(l, b, ids, w, ne, top, scale, bonus);
     check();
 }
@@ -1281,7 +1362,7 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
         }
         if (row_parts == 2)
             throw std::invalid_argument("GLM: two KDA row parts require ordered rows");
-        if (std::getenv("STRATA_GLM_KDA_COLUMN_TILES") && glm_prefill_lossy_allowed) {
+        if (strata_env_is_set("STRATA_GLM_KDA_COLUMN_TILES") && glm_prefill_lossy_allowed) {
             const dim3 grid(heads, 4);
             if (prepared_qi) {
                 if (row_parts == 4)
@@ -1416,9 +1497,7 @@ void glm_transcode_q8_0(const void *src, int type, void *dst, long long rows, lo
 }
 void glm_kda_output_batch(const float *x, const float *g, const float *w, float *y, int h, int d, float eps,
                           int tokens, void *s) {
-    if (strata_env_is_one("STRATA_GLM_KDA_OUTPUT_SHARED"))
-        kda_output_shared<<<h * tokens, d, 0, (cudaStream_t)s>>>(x, g, w, y, d, eps);
-    else kda_output<<<h * tokens, d, 0, (cudaStream_t)s>>>(x, g, w, y, d, eps);
+    kda_output<<<h * tokens, d, 0, (cudaStream_t)s>>>(x, g, w, y, d, eps);
     check();
 }
 void glm_decode_position(int *position, int value, void *s) {
@@ -1467,7 +1546,7 @@ void glm_mla_gather(const float *c, const int *ids, const int *counts, float *ou
 void glm_mla_gather_f16(const float *c, const int *ids, const int *counts, uint16_t *out, int q, int stride,
                         int latent, void *s) {
     if (q < 1 || q > 65535 || stride < 1 || latent < 1) throw std::invalid_argument("GLM: invalid FP16 MLA gather");
-    if (strata_env_is_one("STRATA_GLM_MLA_GATHER_VECTOR") && latent % 512 == 0)
+    if (latent % 512 == 0)
         gather_vector_half8<<<dim3((stride + 3) / 4, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
     else gather_vector_half<<<dim3(stride, q), 256, 0, (cudaStream_t)s>>>(c, ids, counts, out, stride, latent);
     check();

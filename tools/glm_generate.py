@@ -46,7 +46,12 @@ def main():
     parser.add_argument("--threads", type=int, default=6)
     parser.add_argument("--prefill-batch", default="8", help="1-8192 or auto; above 8 uses GPU prefill")
     parser.add_argument("--gpu-budget-mib", type=int, default=12288)
-    parser.add_argument("--gpu-devices", help="one or two CUDA device IDs, e.g. 0,1")
+    parser.add_argument("--gpu-devices", help="CUDA/HIP device IDs, e.g. 0,1")
+    parser.add_argument("--gpu-layout", choices=("legacy", "layer"), default="legacy")
+    parser.add_argument("--layer-split", default="auto")
+    parser.add_argument("--layer-pipeline", choices=("none", "mtp"), default="none")
+    parser.add_argument("--layer-memory", choices=("interleave", "socket"))
+    parser.add_argument("--layer-plan", type=pathlib.Path)
     parser.add_argument("--prefill-expert-cache-mib", default="0", help="native prefill cache per GPU: auto or MiB")
     parser.add_argument("--context", type=int, help="total prompt and output capacity")
     parser.add_argument("--lock-weights", action="store_true", help="make byte-identical private mapped weights resident and lock them (Linux)")
@@ -67,9 +72,17 @@ def main():
     parser.add_argument("--cpu-affinity", choices=("none", "auto", "numa"), default="none")
     parser.add_argument("--weight-pages", choices=("4k", "huge"), default="4k", help="EXL3 routed weight page advice (huge uses Linux THP)")
     parser.add_argument("--system")
+    parser.add_argument("--layer-workers", help="comma-separated worker counts in stage order")
+    parser.add_argument("--layer-cache-mib", help="comma-separated cache budgets in stage order")
+    parser.add_argument("--layer-pin-coordinator", action="store_true")
     parser.add_argument("--raw", action="store_true", help="tokenize the prompt without a chat template")
     parser.add_argument("--dry-run", action="store_true", help="print prompt token IDs without running the network")
     args = parser.parse_args()
+    if args.gpu_layout!="layer" and (args.layer_workers or args.layer_cache_mib or args.layer_pin_coordinator):
+        parser.error("per-stage budgets and coordinator affinity require --gpu-layout=layer")
+    if args.gpu_layout == "layer":
+        if not any(x == "--cpu-affinity" or x.startswith("--cpu-affinity=") for x in sys.argv[1:]): args.cpu_affinity = "auto"
+        if not any(x == "--draft-depth" or x.startswith("--draft-depth=") for x in sys.argv[1:]): args.draft_depth = 1
     if (args.prompt is None) == (args.prompt_file is None):
         parser.error("provide either a prompt or --prompt-file")
     text = args.prompt_file.read_text(encoding="utf-8") if args.prompt_file else args.prompt
@@ -123,6 +136,13 @@ def main():
     if args.decode_cache_mib != "0": command.append(f"--decode-cache-mib={args.decode_cache_mib}")
     command.append(f"--decode-cache-window={args.decode_cache_window}")
     if args.gpu_devices is not None: command.append(f"--gpu-devices={args.gpu_devices}")
+    if args.gpu_layout == "layer":
+        command.extend(("--gpu-layout=layer", f"--layer-split={args.layer_split}", f"--layer-pipeline={args.layer_pipeline}"))
+        if args.layer_memory: command.append(f"--layer-memory={args.layer_memory}")
+        if args.layer_plan: command.append(f"--layer-plan={args.layer_plan}")
+        if args.layer_workers: command.append(f"--layer-workers={args.layer_workers}")
+        if args.layer_cache_mib: command.append(f"--layer-cache-mib={args.layer_cache_mib}")
+        if args.layer_pin_coordinator: command.append("--layer-pin-coordinator")
     if args.prefill_expert_cache_mib != "0":
         command.append(f"--prefill-expert-cache-mib={args.prefill_expert_cache_mib}")
     with tempfile.TemporaryDirectory(prefix="strata-glm-") as temporary:

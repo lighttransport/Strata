@@ -1,0 +1,251 @@
+{
+  "schema": "strata.heterogeneous.hardware.v1",
+  "name": "tr16-mixed",
+  "primary": "hip",
+  "resources": {
+    "host": 1.0,
+    "cpu": 1.0,
+    "ram": 63790800.0,
+    "numa0.ram": 42550500.0,
+    "numa1.ram": 41652200.0,
+    "numa0->1": 20698700.0,
+    "numa1->0": 20927900.0,
+    "cuda.compute": 1.0,
+    "hip.compute": 1.0,
+    "cuda.vram": 448000000.0,
+    "hip.vram": 640000000.0,
+    "cuda.h2d": 7198849.0,
+    "cuda.d2h": 7147985.0,
+    "hip.h2d": 14309531.0,
+    "hip.d2h": 13901390.0,
+    "disk:model": 933573.2007508428,
+    "disk:work": 3684988.5563276107
+  },
+  "paths": {
+    "ram->cuda": [
+      {
+        "bytes": {
+          "cuda.h2d": 1,
+          "ram": 1,
+          "numa1.ram": 1,
+          "cuda.vram": 1
+        }
+      }
+    ],
+    "cuda->ram": [
+      {
+        "bytes": {
+          "cuda.d2h": 1,
+          "ram": 1,
+          "numa1.ram": 1,
+          "cuda.vram": 1
+        }
+      }
+    ],
+    "ram->hip": [
+      {
+        "bytes": {
+          "hip.h2d": 1,
+          "ram": 1,
+          "numa0.ram": 1,
+          "hip.vram": 1
+        }
+      }
+    ],
+    "hip->ram": [
+      {
+        "bytes": {
+          "hip.d2h": 1,
+          "ram": 1,
+          "numa0.ram": 1,
+          "hip.vram": 1
+        }
+      }
+    ],
+    "disk:model->ram": [
+      {
+        "bytes": {
+          "disk:model": 1,
+          "ram": 1
+        },
+        "slots": {
+          "model.reads": 1
+        }
+      }
+    ],
+    "disk:work->ram": [
+      {
+        "bytes": {
+          "disk:work": 1,
+          "ram": 1
+        },
+        "slots": {
+          "work.reads": 1
+        }
+      }
+    ],
+    "cuda->hip": [
+      {
+        "bytes": {
+          "cuda.d2h": 1,
+          "ram": 1,
+          "numa1.ram": 1,
+          "cuda.vram": 1
+        }
+      },
+      {
+        "bytes": {
+          "numa1->0": 1,
+          "ram": 2
+        }
+      },
+      {
+        "bytes": {
+          "hip.h2d": 1,
+          "ram": 1,
+          "numa0.ram": 1,
+          "hip.vram": 1
+        }
+      }
+    ],
+    "hip->cuda": [
+      {
+        "bytes": {
+          "hip.d2h": 1,
+          "ram": 1,
+          "numa0.ram": 1,
+          "hip.vram": 1
+        }
+      },
+      {
+        "bytes": {
+          "numa0->1": 1,
+          "ram": 2
+        }
+      },
+      {
+        "bytes": {
+          "cuda.h2d": 1,
+          "ram": 1,
+          "numa1.ram": 1,
+          "cuda.vram": 1
+        }
+      }
+    ]
+  },
+  "memory_bytes": {
+    "ram": 125627793408,
+    "cuda": 13958643712,
+    "hip": 15032385536
+  },
+  "cache_bytes": {
+    "ram": 102005473280,
+    "cuda": 10737418240,
+    "hip": 6442450944
+  },
+  "devices": [
+    {
+      "id": "cuda",
+      "name": "RTX 5060 Ti 16GB",
+      "numa": 1,
+      "pci": "0000:43:00.0",
+      "host_link": "3.0 x8"
+    },
+    {
+      "id": "hip",
+      "name": "RX 9070 XT 16GB",
+      "numa": 0,
+      "pci": "0000:0b:00.0",
+      "host_link": "3.0 x16"
+    }
+  ],
+  "storage": [
+    {
+      "id": "model",
+      "mount": "/mnt/nvme01",
+      "pci": "0000:08:00.0",
+      "numa": 0,
+      "host_link": "3.0 x1"
+    },
+    {
+      "id": "work",
+      "mount": "/mnt/nvme02",
+      "pci": "0000:41:00.0",
+      "numa": 1,
+      "host_link": "3.0 x4"
+    }
+  ],
+  "provenance": {
+    "resources": "docs/benchmarks/tr16_mixed_20261014/resources.json",
+    "rocm": "/opt/rocm/core-10.1",
+    "LD_LIBRARY_PATH": "/opt/rocm/core-10.1/lib",
+    "gpu_vram_bandwidth": "Architectural reference peaks, not measured Q2/Q3 throughput",
+    "compute_resources": "Work is measured milliseconds per operation, capacity 1",
+    "cache_bytes": "Illustrative AMD-primary decode partition: CUDA worker 10 GiB, HIP primary 6 GiB, RAM 95 GiB. Not a deployed measurement. Override exact per-phase allocations/cache capacities.",
+    "ram_capacity": "125 GiB usable minus 8 GiB host reserve",
+    "host_bounce": "Explicit conservative cross-NUMA host copy; paths may be refined after transport profiling",
+    "cpu_memory_resources": "Conditional even interleaving across NUMA nodes; override for measured placement",
+    "return_bytes_per_row": "CPU uploads all eight expert slots; mixed GPU device reduction returns one vector per token. Strict per-expert transport needs a different profile.",
+    "link_encoding_bytes_per_ms": "PCIe 3: 8 GT/s, 128/130 encoding, 8 bits/byte; excludes packet overhead. Not measured throughput.",
+    "gpu_memory_capacity": "Operative runner allocation limits: NVIDIA 14336 MiB minus 1024 MiB reserve; AMD 15360 minus 1024. Reported device availability is retained separately.",
+    "storage_io": "docs/benchmarks/tr16_mixed_20261014/storage_small_reads.json; QD1 mean latency, QD4 held out; 8 MiB throughput supplies shared bandwidth.",
+    "storage_read_bytes": "Illustrative 1 MiB O_DIRECT cold-tier reads, full-block tail overfetch charged. Existing mmap demand faults require a different read-size profile."
+  },
+  "slots": {
+    "model.reads": 4,
+    "work.reads": 4
+  },
+  "cpu_memory_resources": {
+    "numa0.ram": 0.5,
+    "numa1.ram": 0.5
+  },
+  "return_bytes_per_row": {
+    "cpu": 131072,
+    "cuda": 16384,
+    "hip": 16384
+  },
+  "link_encoding_bytes_per_ms": {
+    "cuda": 7876923.076923077,
+    "hip": 15753846.153846154,
+    "disk:model": 984615.3846153846,
+    "disk:work": 3938461.5384615385
+  },
+  "reported_available_gpu_bytes": {
+    "cuda": 16679698432,
+    "hip": 17095983104
+  },
+  "storage_io": {
+    "disk:model": {
+      "4096": {
+        "single_read_ms": 0.0874612886131127,
+        "scope": "Mean QD1 service inferred from measured bytes/wall time, includes submission overhead"
+      },
+      "65536": {
+        "single_read_ms": 0.21800367378760435,
+        "scope": "Mean QD1 service inferred from measured bytes/wall time, includes submission overhead"
+      },
+      "1048576": {
+        "single_read_ms": 1.3697170985669065,
+        "scope": "Mean QD1 service inferred from measured bytes/wall time, includes submission overhead"
+      }
+    },
+    "disk:work": {
+      "4096": {
+        "single_read_ms": 0.08286519887318608,
+        "scope": "Mean QD1 service inferred from measured bytes/wall time, includes submission overhead"
+      },
+      "65536": {
+        "single_read_ms": 0.21057216624530065,
+        "scope": "Mean QD1 service inferred from measured bytes/wall time, includes submission overhead"
+      },
+      "1048576": {
+        "single_read_ms": 0.5511818084859296,
+        "scope": "Mean QD1 service inferred from measured bytes/wall time, includes submission overhead"
+      }
+    }
+  },
+  "storage_read_bytes": {
+    "disk:model": 1048576,
+    "disk:work": 1048576
+  }
+}

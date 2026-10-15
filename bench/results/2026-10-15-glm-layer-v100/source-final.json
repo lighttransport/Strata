@@ -1,0 +1,55 @@
+{
+  "base_commit": "7a33c9c796337b9871f0b3639ece7d8281a5f391",
+  "files": {
+    "CMakeLists.txt": "a51342757c80ca20dab1b492241abee57f8498d6a6b56cc2abdf315d04da70ab",
+    "docs/GLM_MULTI_GPU.md": "ace57f403e27865e7c171afafc80024eca0efc14d84d99c9d1c23671341e8684",
+    "docs/MULTI_GPU.md": "d526b676f4ecf83e13036d3693fe8e17451fa35ed69256eea425e3b73b5b7db5",
+    "docs/licenses/project-maya.txt": "7aa4f00bcc3e0192a49261b5c849e90f0c3eba6e33888902196322b31471453b",
+    "include/strata/host/glm_layer.h": "2619e7f14dc7ff344a6e8a723cd4923f4640bbd5eeccc4a9a064ddd471bacce5",
+    "include/strata/kernels/cpu/pool.hpp": "8ddf382a80d68f7f289d735e575f6d0f3d38c0c9b1dfa6fa20b70c3ddf3847a6",
+    "include/strata/kernels/glm.hpp": "3d1c0ee494bc866cde53b784800ab107c1db09bdb478ac75a360753e51ff1ab3",
+    "include/strata/spec/layer_pipeline.hpp": "89af60ceb1dd817388ae4f6fa50e2d1ce5666b97a7a50ca2a09f00b835e80e8a",
+    "serve/server.py": "6b91a1d517668601ae09248916ede980a76d968c86e881120ae28d735ab46c3d",
+    "serve/test_glm.py": "cf7daf615a2d8ca9241e9b5c3b5be993941b6e457398e4cc9349ac0fb052ff4d",
+    "src/host/glm_layer.c": "2162e9c34e84f6426d1a099de7777b8bc8b428d4c088c3cab3d4cda0ff4e97f5",
+    "src/kernels/cpu/layer_pool_test.cpp": "0c54d97b1017152d5cc9b8356afca80dbaffce2a01ddc082b15f5d917f2bd603",
+    "src/kernels/cpu/pool.cpp": "bab4aa381a0211096c81b6f1f3fde03795e10038a444ca0d58a890d1bdf8fe4b",
+    "src/kernels/cuda/glm.cu": "48e76e7176919b4628cbb9484b9f67d4afaabf9ad9cb6382df33ae66106bf511",
+    "src/kernels/glm_greedy_pick_test.cpp": "9e6e1b84f589b1d51f6b9f157a6072cd13ed400a1cb97b21f5780e5b5eeadc09",
+    "src/program/glm_decode.cpp": "2752c2769d9f025a9f2828fd19a069a3d2866a2901c866b1b8dcc3269ec5e22b",
+    "src/program/glm_layer_decode.inc": "714020ab2ff04dbd9aa8d680088989adb1cf3ca4f98b8ac8284054da9c30f967",
+    "tests/host/glm_layer_test.c": "3ae3154fece913f3f4eb6ddeaaac08f388058ee79a632c8502e16b2e2ce1f203",
+    "tests/host/layer_pipeline_test.cpp": "fe9e8b56b9bd2158b1d5611a697cb5592329613247f21db722af083e1ecb432b",
+    "tools/glm_generate.py": "57737c34de552bbea34e3d855a664a7d29d36129faa1e26a344fb937e7b82a17",
+    "tools/glm_layer_tune.py": "e23f857f981bb442f4cdd23d93e33401785d45231ae5896143184606bf674397",
+    "tools/glm_v100_bench.py": "e0fd4b13abf86ce18646bd4d78f2bdddb25d295fda11b15f682e7f02d8de9121",
+    "tools/glm_v100_layer.env": "fb8c6e8e96580b8c65f2ae9608a025e3702613e04ff3cb02c94e236b645312f5",
+    "tools/test_glm_generate.py": "8e5a47520c780181b44a3875db8924702f7580ce61b9c42482238264451cd6a4",
+    "tools/test_glm_layer_tune.py": "b7987b63db81ca91b47840d175988646b95387318428b8ddaec8fee88fd88ad7",
+    "tools/test_glm_v100_bench.py": "1ac0c34ea672a83dd48b0368e5bac8e8a3f43a6fc8418ee75f2b105b56104423"
+  },
+  "changes_since_v9": [
+    "docs/GLM_MULTI_GPU.md",
+    "src/program/glm_layer_decode.inc",
+    "tools/glm_v100_layer.env"
+  ],
+  "additional_files": [
+    "docs/MULTI_GPU.md"
+  ],
+  "v9_binary_sha256": "a0eade4a7082550c2add397a5f9849dfbaae75b37c839baed168883b4b78a699",
+  "v10_binary_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+  "engine_reconstruction": "Apply implementation-v9.patch to base commit, then serving-frontier-v10.patch. Final documentation/env recipe changes are noncompiled; all other engine files match v9.",
+  "dependency_commit": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+  "dependency_worktree_clean": true,
+  "measurement_cohorts": {
+    "v9": "Q2 native and Q23 canonical timing, correctness and memcheck",
+    "v10": "Native Q23 timing, both native quality profiles and final serving validation"
+  },
+  "private_runner_sha256": {
+    "run-q23-native-cuts-v2-v10.py": "df21d3eb411072102d7d0debfbebf5c04a2f9be78341e4c34ef58be019fc4602",
+    "run-native-abba-v10.py": "df6e15dc25f0f65ab7324b556868022330d0a2986e074ac5d4a5624da812ae6a",
+    "run-quality-profiles-v3-v10.py": "0fdfd4cc29741cf8b647a690ec76dd612b1f1b9dd369fdeccfe88b75bcd08ca8",
+    "run-quality-v3.py": "1b00b2617aa9c4fcbac636a4014138fee6e265b6b63e5ff2da68ccd453a2f851",
+    "check-quality-resume-v10.py": "06d4727560c3243f956230ad91728543b640f8697c91f6a970ee4bba6b6881d2"
+  }
+}

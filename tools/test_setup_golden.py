@@ -56,7 +56,11 @@ def normalize(v, t: Path):
     if isinstance(v, list):
         return [normalize(x, t) for x in v]
     if isinstance(v, str):
-        return re.sub(rf"(?<![w.-]){re.escape(setup.EXE)}(?![w.-])", "<EXE>", v.replace(str(t), "<T>").replace("\\", "/"))   # #973: only the whole name, not "strata-x.log" on Linux
+        v = v.replace(str(t), "<T>").replace("\\", "/")
+        # The golden config was recorded on Windows; the vision helper has no
+        # .exe suffix on Linux, just like the main engine.
+        v = re.sub(r"(?<![\w.-])strata-vision(?:\.exe)?(?![\w.-])", "strata-vision.exe", v)
+        return re.sub(rf"(?<![w.-]){re.escape(setup.EXE)}(?![w.-])", "<EXE>", v)   # #973: only the whole name, not "strata-x.log" on Linux
     return v
 
 

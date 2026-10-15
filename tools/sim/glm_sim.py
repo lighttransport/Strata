@@ -147,8 +147,12 @@ def config_from_args(args, **overrides):
     return RunConfig.from_dict(data)
 
 
-def hardware_from_args(args):
+def hardware_from_args(args, allow_heterogeneous=False):
     hw = hwmod.load(args.hw)
+    if hw.heterogeneous and not allow_heterogeneous:
+        raise ValueError('Mixed hardware requires heterogeneous --manifest; identical-GPU scaling is disabled')
+    if hw.heterogeneous and args.set:
+        raise ValueError('Edit the exported heterogeneous resource/memory manifest; legacy --set fields do not price this topology')
     for item in args.set:
         key, _, value = item.partition("=")
         hw.set(key, value)
@@ -186,6 +190,8 @@ def fmt_table(rows, columns):
 
 def estimate(args):
     hw = hardware_from_args(args)
+    if hw.heterogeneous:
+        raise ValueError("Use heterogeneous --manifest for explicit mixed-GPU resources")
     params = params_from_args(args)
     cfg = config_from_args(args)
     trace, prior = load_trace(args)
@@ -458,8 +464,31 @@ def plan(args):
 
 
 def show_hw(args):
-    hw = hardware_from_args(args)
-    print(json.dumps(hw.to_dict(), indent=2))
+    hw = hardware_from_args(args, allow_heterogeneous=True)
+    print(json.dumps(hw.heterogeneous if hw.heterogeneous else hw.to_dict(), indent=2))
+
+
+def heterogeneous_estimate(args):
+    import heterogeneous
+    document=json.loads(pathlib.Path(args.manifest).read_text())
+    if document.get('schema') != 'strata.heterogeneous.v1':
+        raise ValueError('unsupported manifest schema')
+    if 'miss_lanes' in document:
+        spec=document['miss_lanes']
+        result=heterogeneous.plan_miss_lanes(spec['count'],spec['expert_bytes'],spec['costs'],
+            document['hardware'],spec.get('width',1),spec['staging_experts'],
+            [heterogeneous.Event(e['name'],e.get('work',{}),tuple(e.get('after',())))
+             for e in spec.get('fixed_events',[])],document.get('allocations'))
+        result['provenance']=document.get('provenance',{})
+    elif 'groups' in document:
+        result=heterogeneous.trace_replay(document['groups'],document['hardware'],document['costs'],
+            document.get('policy','resident-hybrid'),document.get('initial'),document.get('allocations'),
+            document.get('storage','model'),document.get('accepted_tokens'))
+    else:
+        result=heterogeneous.evaluate(document)
+    text=json.dumps(result,indent=2)+'\n'
+    if args.output:pathlib.Path(args.output).write_text(text)
+    print(text)
 
 
 def main(argv=None):
@@ -474,6 +503,11 @@ def main(argv=None):
         model.use_model(chosen)
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("heterogeneous", help="dependency/resource replay; explicit measured manifest")
+    p.add_argument('--manifest',required=True)
+    p.add_argument('--output')
+    p.set_defaults(func=heterogeneous_estimate)
 
     p = sub.add_parser("estimate", help="one configuration")
     add_hw_args(p); add_config_args(p); p.add_argument("--output")

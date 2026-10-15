@@ -10,7 +10,11 @@
 #include <atomic>
 #include <cmath>
 #include <chrono>
+#include <mutex>
 #include <immintrin.h>
+#if defined(_MSC_VER)
+#include <intrin.h>   // __cpuidex, __rdtsc (STRATA_POOL_UMWAIT)
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -34,6 +38,41 @@
 namespace strata::kernels::cpu {
 
 namespace {
+// STRATA_POOL_UMWAIT=<TSC cycles> (experimental, x86 WAITPKG only): a parked worker waits with UMONITOR/UMWAIT on the
+// epoch's cache line instead of spinning on _mm_pause.  It wakes when the host publishes (a write to that line) or
+// after the cycles, in the light C0.1 state; on a laptop the CPU then gives back the power the spin took, which the
+// GPU's share of the budget gets.  0 or unset (or no WAITPKG): the spin, unchanged.  STRATA_POOL_UMWAIT_C02=1: the
+// deeper C0.2 state (slower wake).  MSVC x64 only for now (the intrinsics need no target flag there); other builds spin.
+uint64_t umwait_cycles() {
+    static const uint64_t c = [] {
+        const char* e = std::getenv("STRATA_POOL_UMWAIT");
+        if (e == nullptr || std::atoll(e) <= 0) return (uint64_t) 0;
+#if defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)   // MSVC proper: clang-cl (the Windows HIP build) has no WAITPKG intrinsics by default
+        int r[4] = {0, 0, 0, 0};
+        __cpuidex(r, 7, 0);
+        if (((r[2] >> 5) & 1) == 0) {
+            std::fprintf(stderr, "strata: STRATA_POOL_UMWAIT: this CPU has no WAITPKG, the workers spin\n");
+            return (uint64_t) 0;
+        }
+        std::fprintf(stderr, "strata: STRATA_POOL_UMWAIT: parked workers wait with UMWAIT (%lld cycles)\n", std::atoll(e));
+        return (uint64_t) std::atoll(e);
+#else
+        return (uint64_t) 0;
+#endif
+    }();
+    return c;
+}
+unsigned umwait_state() {
+    static const unsigned s = [] { const char* e = std::getenv("STRATA_POOL_UMWAIT_C02"); return e && *e == '1' ? 0u : 1u; }();
+    return s;   // 1 = C0.1 (light), 0 = C0.2
+}
+// STRATA_POOL_UMWAIT_ESC=<TSC cycles> (experimental): an escalating wait - C0.1 for the first cycles of a park, C0.2 after
+// (a wait that has lasted that long is a GPU phase, a draft or a prompt read, where a slower wake costs little).
+uint64_t umwait_escalate() {
+    static const uint64_t c = [] { const char* e = std::getenv("STRATA_POOL_UMWAIT_ESC"); return e ? (uint64_t) (std::max)(0LL, std::atoll(e)) : (uint64_t) 0; }();
+    return c;
+}
+
 constexpr uint64_t pack_head(uint32_t epoch, uint32_t n, uint32_t i) {
     return ((uint64_t) epoch << 32) | ((uint64_t) n << 16) | (uint64_t) i;
 }
@@ -410,9 +449,11 @@ void restore_thread_affinity(const ThreadAffinity& previous) {
 }
 
 namespace {
-std::atomic<const ExpertPool*> g_diag_pool{nullptr};
+std::mutex g_diag_mutex;
+std::vector<const ExpertPool*> g_diag_pools;
 void diag_active_pool(std::FILE* f) {
-    if (const ExpertPool* p = g_diag_pool.load()) p->diag(f);
+    std::lock_guard<std::mutex> lock(g_diag_mutex);
+    for (const ExpertPool* p : g_diag_pools) p->diag(f);
 }
 int64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -441,8 +482,12 @@ void ExpertPool::diag(std::FILE* f) const {
     std::fprintf(f, " for %lld ms\n", (long long) (now_ms() - hstate_ms_.load()));
 }
 
-ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
-    : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
+ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity,
+                       int tasks, const CpuTopology *placement)
+    : tasks_(tasks), host_works_(host_works), affinity_(affinity),
+      topo_(placement ? *placement : detect_cpu_topology(true, affinity)) {
+    if (placement && (topo_.worker_cores.empty() || n_workers > (int)topo_.worker_cores.size()))
+        throw std::invalid_argument("expert pool placement has too few worker cores");
     if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
     if (const char* e = std::getenv("STRATA_NATIVE_NUMA_LOCAL")) {
         if (std::string(e) != "0" && std::string(e) != "1")
@@ -498,24 +543,33 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
     wstate_.reset(new std::atomic<int32_t>[(size_t) n_]);
     for (int i = 0; i < n_; ++i) wstate_[(size_t) i].store(kParked);
     hstate_ms_.store(now_ms());
-    g_diag_pool.store(this);
-    strata::core::diag_pool_fn().store(&diag_active_pool);
     split_.resize((size_t) kMaxSplit);
     split_multi_.resize((size_t) kMaxSplitMulti);
     threads_.reserve((size_t) n_);
-    for (int i = 0; i < n_; ++i) {
-        const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
-        threads_.emplace_back([this, i, core] {
-            strata::aux_cpus::note_owned_thread();   // --aux-cpus never moves a worker
-            pin_this_thread(core, i);
-            worker(i);
-        });
+    try {
+        for (int i = 0; i < n_; ++i) {
+            const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
+            threads_.emplace_back([this, i, core] {
+                strata::aux_cpus::note_owned_thread();   // --aux-cpus never moves a worker
+                pin_this_thread(core, i);
+                worker(i);
+            });
+        }
+        { std::lock_guard<std::mutex> lock(g_diag_mutex); g_diag_pools.push_back(this); }
+        strata::core::diag_pool_fn().store(&diag_active_pool);
+    } catch (...) {
+        stop_.store(true, std::memory_order_release);
+        publish();
+        for (auto &thread : threads_) if (thread.joinable()) thread.join();
+        throw;
     }
 }
 
 ExpertPool::~ExpertPool() {
-    const ExpertPool* self = this;
-    g_diag_pool.compare_exchange_strong(self, nullptr);
+    {
+        std::lock_guard<std::mutex> lock(g_diag_mutex);
+        g_diag_pools.erase(std::remove(g_diag_pools.begin(), g_diag_pools.end(), this), g_diag_pools.end());
+    }
     stop_.store(true, std::memory_order_release);
     // Bump the epoch so a PARKED worker notices the stop flag rather than sleeping through it.
     publish();
@@ -556,10 +610,27 @@ void ExpertPool::worker(int id) {
         // every 1024 pauses, so the spin itself is unchanged.
         const auto parked_at = std::chrono::steady_clock::now();
         uint32_t spins = 0;
+        const uint64_t um = umwait_cycles();
+#if defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)   // MSVC proper: clang-cl (the Windows HIP build) has no WAITPKG intrinsics by default
+        const uint64_t um_esc = umwait_escalate();
+        const uint64_t um_t0 = um != 0 && um_esc != 0 ? __rdtsc() : 0;
+#endif
         while (epoch_.load(std::memory_order_acquire) == seen) {
             if (stop_.load(std::memory_order_relaxed)) return;
-            _mm_pause();
-            if ((++spins & 1023u) != 0) continue;
+#if defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)   // MSVC proper: clang-cl (the Windows HIP build) has no WAITPKG intrinsics by default
+            if (um != 0) {   // STRATA_POOL_UMWAIT: wake on the publish's write to epoch_, or after `um` cycles
+                _umonitor((void*) &epoch_);
+                if (epoch_.load(std::memory_order_acquire) != seen) break;
+                const uint64_t now = __rdtsc();
+                const unsigned st = um_esc != 0 ? (now - um_t0 < um_esc ? 1u : 0u) : umwait_state();
+                _umwait(st, now + um);
+                if ((++spins & 15u) != 0) continue;   // each wait is ~um cycles: look at the clock more often
+            } else
+#endif
+            {
+                _mm_pause();
+                if ((++spins & 1023u) != 0) continue;
+            }
             if (std::chrono::steady_clock::now() - parked_at < spin_before_sleep_) continue;
             std::unique_lock<std::mutex> lk(sleep_mu_);
             wstate_[(size_t) id].store(kSleeping, std::memory_order_relaxed);

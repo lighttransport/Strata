@@ -1,0 +1,14 @@
+{
+  "quality_allocation_alias": "C",
+  "reference_allocation_aliases": [
+    "A",
+    "B"
+  ],
+  "same_node": true,
+  "cpu_model_matches_reference": true,
+  "gpu_models_and_order_match_reference": true,
+  "binary_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+  "raw_capture_sha256": "2b1489e72cd6bb207c3c58d0407dac0d4fb1bf119cb49f4a065252299a9aa58c",
+  "guard_source_sha256": "06d4727560c3243f956230ad91728543b640f8697c91f6a970ee4bba6b6881d2",
+  "scope": "Final Q2 pipeline quality only. Timing cohorts remain separate. Q2 serial quality ran in allocationB; pipeline in C."
+}

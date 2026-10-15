@@ -1,0 +1,1194 @@
+{
+  "scope": "Independent bounded component probes; GPU memory-copy kernel is not an expert-kernel throughput measurement",
+  "source_commit": "62d48657968e4e36053ea51b6e070e0c1ea98db6",
+  "source_sha256": {
+    "tools/glm_transfer_probe.cu": "37d8affb49f92a337d667189b35bcde82851913cb0947f250976312b03093333",
+    "tools/glm_nvme_read_probe.py": "76a84598d6483f6fc3592a3ec26f92e1f3cb26e35ffe2a1db728084db07240be",
+    "tools/glm_memory_bandwidth.cpp": "c7b091aad6d19d08ade122d667f12f1d7edae056bca5442ce2a1d66761afa57f"
+  },
+  "records": {
+    "cuda-d2h-mem0": {
+      "returncode": 0,
+      "started_unix": 1791957379.4378657,
+      "seconds": 2.396012306213379,
+      "rows": [
+        {
+          "mode": "d2h",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356887721,
+          "GB_s": 7.145488,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356882701,
+          "GB_s": 7.145588,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.35688214,
+          "GB_s": 7.145599,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.357060247,
+          "GB_s": 7.142035,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.357394113,
+          "GB_s": 7.135363,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.357147162,
+          "GB_s": 7.140297,
+          "kernel_check": true
+        }
+      ]
+    },
+    "cuda-d2h-mem1": {
+      "returncode": 0,
+      "started_unix": 1791957374.6516597,
+      "seconds": 2.3971023559570312,
+      "rows": [
+        {
+          "mode": "d2h",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356977692,
+          "GB_s": 7.143687,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356763027,
+          "GB_s": 7.147985,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356728376,
+          "GB_s": 7.14868,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356736208,
+          "GB_s": 7.148523,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356789348,
+          "GB_s": 7.147458,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.356898553,
+          "GB_s": 7.145271,
+          "kernel_check": true
+        }
+      ]
+    },
+    "cuda-h2d-concurrent": {
+      "returncode": 0,
+      "started_unix": 1791957396.236236,
+      "seconds": 6.296041488647461,
+      "rows": [
+        {
+          "mode": "h2d",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 108,
+          "seconds": 1.006642278,
+          "GB_s": 7.199933,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 108,
+          "seconds": 1.00556991,
+          "GB_s": 7.207612,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 108,
+          "seconds": 1.005253007,
+          "GB_s": 7.209884,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 108,
+          "seconds": 1.005143254,
+          "GB_s": 7.210671,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 108,
+          "seconds": 1.005925462,
+          "GB_s": 7.205064,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 108,
+          "seconds": 1.005267603,
+          "GB_s": 7.209779,
+          "kernel_check": true
+        }
+      ]
+    },
+    "cuda-h2d-mem0": {
+      "returncode": 0,
+      "started_unix": 1791957377.0490954,
+      "seconds": 2.388476848602295,
+      "rows": [
+        {
+          "mode": "h2d",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.354181047,
+          "GB_s": 7.200094,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.35404481,
+          "GB_s": 7.202865,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.354145046,
+          "GB_s": 7.200826,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.353648611,
+          "GB_s": 7.210934,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.353801288,
+          "GB_s": 7.207822,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.353924074,
+          "GB_s": 7.205322,
+          "kernel_check": true
+        }
+      ]
+    },
+    "cuda-h2d-mem1": {
+      "returncode": 0,
+      "started_unix": 1791957372.1391451,
+      "seconds": 2.5123090744018555,
+      "rows": [
+        {
+          "mode": "h2d",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.353859024,
+          "GB_s": 7.206646,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.354242307,
+          "GB_s": 7.198849,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.354721034,
+          "GB_s": 7.189133,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.354712183,
+          "GB_s": 7.189313,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.354119849,
+          "GB_s": 7.201338,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 38,
+          "seconds": 0.353941407,
+          "GB_s": 7.204969,
+          "kernel_check": true
+        }
+      ]
+    },
+    "cuda-kernel": {
+      "returncode": 0,
+      "started_unix": 1791957381.8342164,
+      "seconds": 2.360475778579712,
+      "rows": [
+        {
+          "mode": "kernel",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 747,
+          "seconds": 0.350191341,
+          "GB_s": 286.302461,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 748,
+          "seconds": 0.350335579,
+          "GB_s": 286.567698,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 770,
+          "seconds": 0.350099265,
+          "GB_s": 295.19528,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 780,
+          "seconds": 0.350066755,
+          "GB_s": 299.056755,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 777,
+          "seconds": 0.350296056,
+          "GB_s": 297.71153,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 766,
+          "seconds": 0.350268532,
+          "GB_s": 293.519886,
+          "kernel_check": true
+        }
+      ]
+    },
+    "hip-d2h-mem0": {
+      "returncode": 0,
+      "started_unix": 1791957386.9238012,
+      "seconds": 2.3283474445343018,
+      "rows": [
+        {
+          "mode": "d2h",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.351993384,
+          "GB_s": 13.917725,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352154721,
+          "GB_s": 13.911349,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352452211,
+          "GB_s": 13.899607,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352417853,
+          "GB_s": 13.900962,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352407003,
+          "GB_s": 13.90139,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352327163,
+          "GB_s": 13.90454,
+          "kernel_check": true
+        }
+      ]
+    },
+    "hip-d2h-mem1": {
+      "returncode": 0,
+      "started_unix": 1791957391.5827634,
+      "seconds": 2.3371551036834717,
+      "rows": [
+        {
+          "mode": "d2h",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352534915,
+          "GB_s": 13.896346,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352635792,
+          "GB_s": 13.89237,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352551669,
+          "GB_s": 13.895685,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352414188,
+          "GB_s": 13.901106,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352382121,
+          "GB_s": 13.902371,
+          "kernel_check": true
+        },
+        {
+          "mode": "d2h",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 73,
+          "seconds": 0.352227374,
+          "GB_s": 13.908479,
+          "kernel_check": true
+        }
+      ]
+    },
+    "hip-h2d-concurrent": {
+      "returncode": 0,
+      "started_unix": 1791957396.2365155,
+      "seconds": 6.233105659484863,
+      "rows": [
+        {
+          "mode": "h2d",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 214,
+          "seconds": 1.003864992,
+          "GB_s": 14.306004,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 214,
+          "seconds": 1.003649364,
+          "GB_s": 14.309078,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 214,
+          "seconds": 1.00353304,
+          "GB_s": 14.310736,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 214,
+          "seconds": 1.003478869,
+          "GB_s": 14.311509,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 214,
+          "seconds": 1.003465881,
+          "GB_s": 14.311694,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 214,
+          "seconds": 1.003494744,
+          "GB_s": 14.311283,
+          "kernel_check": true
+        }
+      ]
+    },
+    "hip-h2d-mem0": {
+      "returncode": 0,
+      "started_unix": 1791957384.1949866,
+      "seconds": 2.728515148162842,
+      "rows": [
+        {
+          "mode": "h2d",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.352264153,
+          "GB_s": 14.288041,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351713791,
+          "GB_s": 14.310399,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351715721,
+          "GB_s": 14.310321,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351741737,
+          "GB_s": 14.309262,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351735131,
+          "GB_s": 14.309531,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351743622,
+          "GB_s": 14.309186,
+          "kernel_check": true
+        }
+      ]
+    },
+    "hip-h2d-mem1": {
+      "returncode": 0,
+      "started_unix": 1791957389.252456,
+      "seconds": 2.32999587059021,
+      "rows": [
+        {
+          "mode": "h2d",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351948281,
+          "GB_s": 14.300865,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.3517631,
+          "GB_s": 14.308393,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351715571,
+          "GB_s": 14.310327,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351732132,
+          "GB_s": 14.309653,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351731556,
+          "GB_s": 14.309677,
+          "kernel_check": true
+        },
+        {
+          "mode": "h2d",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 75,
+          "seconds": 0.351722601,
+          "GB_s": 14.310041,
+          "kernel_check": true
+        }
+      ]
+    },
+    "hip-kernel": {
+      "returncode": 0,
+      "started_unix": 1791957393.92024,
+      "seconds": 2.3134613037109375,
+      "rows": [
+        {
+          "mode": "kernel",
+          "trial": 0,
+          "warmup": true,
+          "bytes_per_iteration": 67108864,
+          "iterations": 1390,
+          "seconds": 0.350072196,
+          "GB_s": 532.926191,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 1,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 1389,
+          "seconds": 0.350178011,
+          "GB_s": 532.38187,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 2,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 1392,
+          "seconds": 0.350239869,
+          "GB_s": 533.437492,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 3,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 1393,
+          "seconds": 0.350161489,
+          "GB_s": 533.940199,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 4,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 1389,
+          "seconds": 0.350203991,
+          "GB_s": 532.342375,
+          "kernel_check": true
+        },
+        {
+          "mode": "kernel",
+          "trial": 5,
+          "warmup": false,
+          "bytes_per_iteration": 67108864,
+          "iterations": 1392,
+          "seconds": 0.350099721,
+          "GB_s": 533.651032,
+          "kernel_check": true
+        }
+      ]
+    },
+    "nvme-model-qd1-random": {
+      "returncode": 0,
+      "started_unix": 1791957420.0458379,
+      "seconds": 2.0571298599243164,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 1,
+          "access": "random",
+          "bytes": 1795162112,
+          "seconds": 2.0037996690007276,
+          "GB_s": 0.8958790341028587,
+          "median_read_ms": 9.3415100054699,
+          "p95_read_ms": 9.391751998919062,
+          "direct": true
+        }
+      ]
+    },
+    "nvme-model-qd1-sequential": {
+      "returncode": 0,
+      "started_unix": 1791957417.986478,
+      "seconds": 2.0592119693756104,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 1,
+          "access": "sequential",
+          "bytes": 1728053248,
+          "seconds": 2.0056844560022,
+          "GB_s": 0.8615778233852477,
+          "median_read_ms": 9.700246999273077,
+          "p95_read_ms": 9.765189999598078,
+          "direct": true
+        }
+      ]
+    },
+    "nvme-model-qd4-random": {
+      "returncode": 0,
+      "started_unix": 1791957424.187706,
+      "seconds": 2.082943916320801,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 4,
+          "access": "random",
+          "bytes": 1895825408,
+          "seconds": 2.0307196119974833,
+          "GB_s": 0.9335732007508428,
+          "median_read_ms": 35.93783999531297,
+          "p95_read_ms": 37.29939200275112,
+          "direct": true
+        }
+      ]
+    },
+    "nvme-model-qd4-sequential": {
+      "returncode": 0,
+      "started_unix": 1791957422.1032138,
+      "seconds": 2.0842607021331787,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 4,
+          "access": "sequential",
+          "bytes": 1895825408,
+          "seconds": 2.031326162003097,
+          "GB_s": 0.933294437625182,
+          "median_read_ms": 35.89889999420848,
+          "p95_read_ms": 38.33339999982854,
+          "direct": true
+        }
+      ]
+    },
+    "nvme-work-qd1-random": {
+      "returncode": 0,
+      "started_unix": 1791957428.3289251,
+      "seconds": 2.0543620586395264,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 1,
+          "access": "random",
+          "bytes": 6534725632,
+          "seconds": 2.002508277997549,
+          "GB_s": 3.2632702215516125,
+          "median_read_ms": 2.5510349951218814,
+          "p95_read_ms": 2.6250779992551543,
+          "direct": true
+        }
+      ]
+    },
+    "nvme-work-qd1-sequential": {
+      "returncode": 0,
+      "started_unix": 1791957426.2708561,
+      "seconds": 2.057845115661621,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 1,
+          "access": "sequential",
+          "bytes": 6366953472,
+          "seconds": 2.0011898779994226,
+          "GB_s": 3.181583887664375,
+          "median_read_ms": 2.5950159979402088,
+          "p95_read_ms": 2.765213997918181,
+          "direct": true
+        }
+      ]
+    },
+    "nvme-work-qd4-random": {
+      "returncode": 0,
+      "started_unix": 1791957432.4423852,
+      "seconds": 2.0611519813537598,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 4,
+          "access": "random",
+          "bytes": 7398752256,
+          "seconds": 2.007808747002855,
+          "GB_s": 3.684988556327611,
+          "median_read_ms": 9.082625001610722,
+          "p95_read_ms": 9.553946001688018,
+          "direct": true
+        }
+      ]
+    },
+    "nvme-work-qd4-sequential": {
+      "returncode": 0,
+      "started_unix": 1791957430.3835192,
+      "seconds": 2.0586326122283936,
+      "rows": [
+        {
+          "block_bytes": 8388608,
+          "queue_depth": 4,
+          "access": "sequential",
+          "bytes": 7381975040,
+          "seconds": 2.006786250996811,
+          "GB_s": 3.678505887875814,
+          "median_read_ms": 9.102105999772903,
+          "p95_read_ms": 9.461433000979014,
+          "direct": true
+        }
+      ]
+    },
+    "ram-cpu0-mem0": {
+      "returncode": 0,
+      "started_unix": 1791957402.532823,
+      "seconds": 2.695852041244507,
+      "rows": [
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "read_avx2",
+          "median_GB_s": 42.5505,
+          "best_GB_s": 42.9339,
+          "worst_GB_s": 42.1987
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "memcpy",
+          "median_GB_s": 38.3374,
+          "best_GB_s": 38.4077,
+          "worst_GB_s": 38.2298
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "triad",
+          "median_GB_s": 27.7321,
+          "best_GB_s": 27.9193,
+          "worst_GB_s": 27.5315
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "copy_nt",
+          "median_GB_s": 39.4223,
+          "best_GB_s": 40.0224,
+          "worst_GB_s": 38.0603
+        }
+      ]
+    },
+    "ram-cpu0-mem1": {
+      "returncode": 0,
+      "started_unix": 1791957405.228935,
+      "seconds": 4.25883936882019,
+      "rows": [
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "read_avx2",
+          "median_GB_s": 20.6987,
+          "best_GB_s": 20.8221,
+          "worst_GB_s": 20.2227
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "memcpy",
+          "median_GB_s": 24.039,
+          "best_GB_s": 24.1922,
+          "worst_GB_s": 23.7126
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "triad",
+          "median_GB_s": 19.1138,
+          "best_GB_s": 19.1364,
+          "worst_GB_s": 19.0329
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "copy_nt",
+          "median_GB_s": 24.3899,
+          "best_GB_s": 24.4742,
+          "worst_GB_s": 24.0975
+        }
+      ]
+    },
+    "ram-cpu1-mem0": {
+      "returncode": 0,
+      "started_unix": 1791957409.4880497,
+      "seconds": 3.9485905170440674,
+      "rows": [
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "read_avx2",
+          "median_GB_s": 20.9279,
+          "best_GB_s": 21.0447,
+          "worst_GB_s": 20.6166
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "memcpy",
+          "median_GB_s": 24.0341,
+          "best_GB_s": 24.1677,
+          "worst_GB_s": 23.9303
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "triad",
+          "median_GB_s": 19.0236,
+          "best_GB_s": 19.0939,
+          "worst_GB_s": 18.9032
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "copy_nt",
+          "median_GB_s": 24.4976,
+          "best_GB_s": 24.5777,
+          "worst_GB_s": 24.3948
+        }
+      ]
+    },
+    "ram-cpu1-mem1": {
+      "returncode": 0,
+      "started_unix": 1791957413.4369192,
+      "seconds": 2.6580898761749268,
+      "rows": [
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "read_avx2",
+          "median_GB_s": 41.6522,
+          "best_GB_s": 42.1153,
+          "worst_GB_s": 41.0697
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "memcpy",
+          "median_GB_s": 37.9742,
+          "best_GB_s": 38.262,
+          "worst_GB_s": 37.2425
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "triad",
+          "median_GB_s": 28.0708,
+          "best_GB_s": 28.2087,
+          "worst_GB_s": 27.5343
+        },
+        {
+          "threads": 8,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "copy_nt",
+          "median_GB_s": 40.887,
+          "best_GB_s": 41.015,
+          "worst_GB_s": 40.6159
+        }
+      ]
+    },
+    "ram-interleave": {
+      "returncode": 0,
+      "started_unix": 1791957416.0951993,
+      "seconds": 1.8910057544708252,
+      "rows": [
+        {
+          "threads": 15,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "read_avx2",
+          "median_GB_s": 63.7908,
+          "best_GB_s": 65.6768,
+          "worst_GB_s": 63.2928
+        },
+        {
+          "threads": 15,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "memcpy",
+          "median_GB_s": 73.4609,
+          "best_GB_s": 74.0347,
+          "worst_GB_s": 72.9456
+        },
+        {
+          "threads": 15,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "triad",
+          "median_GB_s": 47.4752,
+          "best_GB_s": 47.7328,
+          "worst_GB_s": 47.141
+        },
+        {
+          "threads": 15,
+          "pages": "4k",
+          "anon_huge_mib": 0,
+          "array_bytes": 1073741824,
+          "kernel": "copy_nt",
+          "median_GB_s": 72.2769,
+          "best_GB_s": 72.9229,
+          "worst_GB_s": 71.3156
+        }
+      ]
+    }
+  }
+}

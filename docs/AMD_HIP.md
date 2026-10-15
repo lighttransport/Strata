@@ -237,6 +237,21 @@ If CMake cannot find the HIP compiler, add
 host this was `/usr/lib64/rocm/llvm/bin/clang++`. Use the compiler and libraries
 from the same ROCm installation. Do not enable both GPU backends in one build.
 
+For a versioned ROCm installation, set its library path before launching the
+engine or Python server. `ROCM_PATH` selects the build toolkit; the Linux loader
+also needs `LD_LIBRARY_PATH` when those libraries are not on its search path:
+
+```sh
+export ROCM_PATH=/opt/rocm/core-10.1
+export LD_LIBRARY_PATH="$ROCM_PATH/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+On TR16 (Threadripper 1950X, RX 9070 XT, Linux), ROCm 10.1 required this setting
+on 2026-10-14: without it, `strata-device` could not find `libamdhip64.so.7`.
+With it, the GPU kernel diagnostic, Strata device self-test and one-step
+GLM-5.3f REAP224 Q23 inference passed. The GLM runner's HIP, hipBLAS, hipBLASLt,
+rocBLAS and HSA libraries resolved under `/opt/rocm/core-10.1/lib`.
+
 Native IQ experts are enabled by default. CMake fetches the llama.cpp revision
 pinned by this repository. For an offline build, point `STRATA_GGML_DIR` at a
 checkout of that exact revision; using an arbitrary newer checkout changes the
@@ -304,6 +319,14 @@ that default stays. The measurements disagree by platform. 2x RX 6900 XT on Linu
 of decode (one card 47.5 / 46.9 / 48.3 -> 50.5 / 48.5 / 51.3 tok/s with it on). RX 6800 on Windows (#816,
 `bench/results/2026-10-04-community-rx-6800-windows`): on was 12-22% slower. 4x R9700: fork off was 13-45% faster.
 Linux RX 6000 users can try `STRATA_SH_STREAM=1`; the output is identical either way.
+
+**The draft's side stream (`STRATA_MTP_SIDE_STREAM`):** HIP does not use the MTP drafter's branch stream, and since
+0.1.40.2 it does not create it (#1240: an R9700 lost prompt speed with it). gfx103x is the exception and creates it: on
+an RX 6800 under Windows (`STRATA_HIP_PROMPT_F16=1`, IQ3_XXS, two runs each) a 7.9K-token prompt reads at 798-808 tok/s
+with the stream and 584-596 without, and a 30.4K-token one at 855-863 against 553-600; `STRATA_PREFILL_TIMING=1` puts
+the whole difference in the "wait copy" phase (3,081 -> 75 ms and 12,642 -> 288 ms). Decode and the output are the same.
+`STRATA_MTP_SIDE_STREAM=0` turns it off on gfx103x, `=1` creates it on another HIP card. Measured on one card and one
+OS; a Linux gfx103x number is welcome.
 
 **Long prompts on a big card: check the lend-coverage line (#1389, measured by the reporter on an RX 7900 XTX, gfx1100,
 v0.1.40.2, 50 GB RAM).** With `--resident-experts` the prompt path borrows cache slots, and the experts of those slots

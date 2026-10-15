@@ -1,0 +1,43 @@
+{
+  "pairs": [
+    {
+      "pair": "a",
+      "prefill_gain_percent": 12.939810362391624,
+      "long_decode_change_percent": -2.0578035971142716,
+      "short_response_ms_f16": 14021.349999999999,
+      "short_response_ms_mmq": 13030.699999999999,
+      "short_latency_reduction_percent": 7.065296850873848,
+      "long_response_ms_f16": 27092.06,
+      "long_response_ms_mmq": 26604.510000000002,
+      "long_latency_reduction_percent": 1.7996047550463135
+    },
+    {
+      "pair": "b",
+      "prefill_gain_percent": 12.895301879816845,
+      "long_decode_change_percent": -2.23204283729892,
+      "short_response_ms_f16": 14008.720000000001,
+      "short_response_ms_mmq": 13016.78,
+      "short_latency_reduction_percent": 7.080875340502201,
+      "long_response_ms_f16": 26988.58,
+      "long_response_ms_mmq": 26504.260000000002,
+      "long_latency_reduction_percent": 1.7945368003800088
+    }
+  ],
+  "mmq_repetitions_identical": true,
+  "mmq_pair_token_ids_identical": true,
+  "first_token_difference_from_f16_zero_based": 17,
+  "strict_parser_oracle_cases_passed_each_run": 400532,
+  "quality": {
+    "heldout_passes_f16": 16,
+    "heldout_passes_mmq": 14,
+    "caps_f16": 4,
+    "caps_mmq": 6,
+    "regressions": [
+      "add_i64",
+      "merge_overlap"
+    ],
+    "improvements": [],
+    "long_cpp_and_recall_passed": true,
+    "decision": "retain f16-batched for the qualified recipe"
+  }
+}

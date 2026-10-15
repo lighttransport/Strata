@@ -1,0 +1,776 @@
+{
+ "rows": [
+  {
+   "name": "trace-cuda-hip-8k-holdout-code",
+   "kind": "decode",
+   "split": "fit",
+   "measured_tok_s": 32.403,
+   "predicted_tok_s": 34.72834339254884,
+   "error_fraction": 0.0717632130527679,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 3.432,
+     "predicted": 3.31963088,
+     "error_fraction": -0.03274158508158509
+    },
+    "cpu_service": {
+     "measured": 55.47,
+     "predicted": 47.21192636565816,
+     "error_fraction": -0.14887459229028022
+    },
+    "between": {
+     "measured": 20.835,
+     "predicted": 21.634796586146283,
+     "error_fraction": 0.03838716516180862
+    },
+    "tail": {
+     "measured": 3.711,
+     "predicted": 4.5,
+     "error_fraction": 0.21261115602263536
+    },
+    "draft": {
+     "measured": 8.76,
+     "predicted": 8.928402172594488,
+     "error_fraction": 0.019223992305306803
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "timeline-hip-8k",
+   "kind": "prefill",
+   "split": "fit",
+   "measured_tok_s": 562.90799147942,
+   "predicted_tok_s": 627.6727042365121,
+   "error_fraction": 0.11505381649828617,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "timeline-cuda-8k",
+   "kind": "prefill",
+   "split": "fit",
+   "measured_tok_s": 421.63775799063256,
+   "predicted_tok_s": 426.5097851728344,
+   "error_fraction": 0.011555006850952232,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "timeline-cuda-hip-8k",
+   "kind": "prefill",
+   "split": "fit",
+   "measured_tok_s": 487.21303675508506,
+   "predicted_tok_s": 486.71763173760456,
+   "error_fraction": -0.001016813960439067,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 31.193454248585024,
+   "predicted_tok_s": 32.22507602256379,
+   "error_fraction": 0.03307173888975634,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 401.169,
+   "predicted_tok_s": 426.5097851728344,
+   "error_fraction": 0.06316735633320225,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 31.487733928648307,
+   "predicted_tok_s": 32.49321474036489,
+   "error_fraction": 0.031932460239756155,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 552.705,
+   "predicted_tok_s": 627.6727042365121,
+   "error_fraction": 0.13563782530737378,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 33.36874417513377,
+   "predicted_tok_s": 32.203593452663455,
+   "error_fraction": -0.034917428008530815,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-train-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 525.573,
+   "predicted_tok_s": 526.1217827739185,
+   "error_fraction": 0.0010441608947160397,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 29.88105937693323,
+   "predicted_tok_s": 30.777326826525734,
+   "error_fraction": 0.029994500472241725,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 390.898,
+   "predicted_tok_s": 426.5097851728344,
+   "error_fraction": 0.0911025003270276,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 35.08339157724513,
+   "predicted_tok_s": 34.66743740179841,
+   "error_fraction": -0.01185615633912962,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 554.016,
+   "predicted_tok_s": 627.6727042365121,
+   "error_fraction": 0.13295050005146458,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 32.99436775831626,
+   "predicted_tok_s": 32.25860796088382,
+   "error_fraction": -0.022299557391791125,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 523.197,
+   "predicted_tok_s": 526.1217827739185,
+   "error_fraction": 0.005590213196785321,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 31.71142602318898,
+   "predicted_tok_s": 31.506688853100655,
+   "error_fraction": -0.006456258698004036,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 163.309,
+   "predicted_tok_s": 158.20507057028752,
+   "error_fraction": -0.031253203618370584,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 31.573949025339328,
+   "predicted_tok_s": 32.580758336492536,
+   "error_fraction": 0.03188734200923693,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 239.825,
+   "predicted_tok_s": 292.8876151570685,
+   "error_fraction": 0.22125556200174512,
+   "tolerance": 0.15,
+   "within": false,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 29.19757979436236,
+   "predicted_tok_s": 30.13471774759697,
+   "error_fraction": 0.03209642579401595,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-train-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 133.757,
+   "predicted_tok_s": 234.69461939409948,
+   "error_fraction": 0.7546342949834361,
+   "tolerance": 0.15,
+   "within": false,
+   "scope_errors": {},
+   "gate": false
+  },
+  {
+   "name": "bench-2k-holdout-chat-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 31.81013326706222,
+   "predicted_tok_s": 31.286621462448696,
+   "error_fraction": -0.016457391115540898,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 162.72,
+   "predicted_tok_s": 158.20507057028752,
+   "error_fraction": -0.027746616455951778,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 37.82897167260207,
+   "predicted_tok_s": 39.33980877653644,
+   "error_fraction": 0.039938624740058604,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 240.528,
+   "predicted_tok_s": 292.8876151570685,
+   "error_fraction": 0.21768615361649601,
+   "tolerance": 0.15,
+   "within": false,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 35.405328778585314,
+   "predicted_tok_s": 37.2099623793956,
+   "error_fraction": 0.05097067766538599,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-chat-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 133.946,
+   "predicted_tok_s": 234.69461939409948,
+   "error_fraction": 0.7521584772527696,
+   "tolerance": 0.15,
+   "within": false,
+   "scope_errors": {},
+   "gate": false
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "fit",
+   "measured_tok_s": 27.513420853238475,
+   "predicted_tok_s": 28.583669837629937,
+   "error_fraction": 0.038899160889529494,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 3.5057077922077924,
+     "predicted": 3.4834601920000003,
+     "error_fraction": -0.0063461079834554734
+    },
+    "cpu_service": {
+     "measured": 68.33051948051948,
+     "predicted": 51.66781553539123,
+     "error_fraction": -0.24385448949906885
+    },
+    "between": {
+     "measured": 26.071363636363635,
+     "predicted": 40.93671723398262,
+     "error_fraction": 0.5701793663329979
+    },
+    "tail": {
+     "measured": 3.5446753246753246,
+     "predicted": 3.5999999999999943,
+     "error_fraction": 0.015607825895799676
+    },
+    "draft": {
+     "measured": 10.357727272727272,
+     "predicted": 10.076809414640309,
+     "error_fraction": -0.027121573168531143
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "fit",
+   "measured_tok_s": 526.237,
+   "predicted_tok_s": 526.1217827739185,
+   "error_fraction": -0.0002189455056968992,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-1-0",
+   "kind": "decode",
+   "split": "fit",
+   "measured_tok_s": 28.89602510342181,
+   "predicted_tok_s": 28.10195357077642,
+   "error_fraction": -0.027480303252898186,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 3.2948917197452228,
+     "predicted": 3.31963088,
+     "error_fraction": 0.0075083378632818665
+    },
+    "cpu_service": {
+     "measured": 79.17770700636943,
+     "predicted": 81.70380525667888,
+     "error_fraction": 0.03190416022159148
+    },
+    "between": {
+     "measured": 11.272675159235668,
+     "predicted": 11.046129336655511,
+     "error_fraction": -0.02009689974917339
+    },
+    "tail": {
+     "measured": 4.209573248407644,
+     "predicted": 4.5,
+     "error_fraction": 0.06899197007730318
+    },
+    "draft": {
+     "measured": 9.077388535031847,
+     "predicted": 8.928402172594488,
+     "error_fraction": -0.016412910151679005
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "fit",
+   "measured_tok_s": 429.253,
+   "predicted_tok_s": 426.5097851728344,
+   "error_fraction": -0.0063906712991302905,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-hip-0.5-0",
+   "kind": "decode",
+   "split": "fit",
+   "measured_tok_s": 31.143173440712403,
+   "predicted_tok_s": 36.578156491525114,
+   "error_fraction": 0.1745160319374437,
+   "tolerance": 0.1,
+   "within": false,
+   "scope_errors": {
+    "head": {
+     "measured": 3.2160066225165562,
+     "predicted": 3.31963088,
+     "error_fraction": 0.032221406746469006
+    },
+    "cpu_service": {
+     "measured": 70.28278145695364,
+     "predicted": 47.05429575779904,
+     "error_fraction": -0.3305003760185763
+    },
+    "between": {
+     "measured": 15.031456953642385,
+     "predicted": 22.346849612206817,
+     "error_fraction": 0.48667222885482064
+    },
+    "tail": {
+     "measured": 3.973132450331126,
+     "predicted": 4.5,
+     "error_fraction": 0.13260759772178354
+    },
+    "draft": {
+     "measured": 8.675562913907285,
+     "predicted": 8.928402172594488,
+     "error_fraction": 0.029143844750626036
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-cuda-hip-0.5-0",
+   "kind": "prefill",
+   "split": "fit",
+   "measured_tok_s": 498.735,
+   "predicted_tok_s": 486.71763173760456,
+   "error_fraction": -0.024095698642356056,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 31.301774786175862,
+   "predicted_tok_s": 30.888297111804615,
+   "error_fraction": -0.013209400335787214,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 3.237625850340136,
+     "predicted": 3.0928827200000004,
+     "error_fraction": -0.04470656494323744
+    },
+    "cpu_service": {
+     "measured": 79.34693877551021,
+     "predicted": 84.05074986258744,
+     "error_fraction": 0.05928156977026333
+    },
+    "between": {
+     "measured": 10.76204081632653,
+     "predicted": 5.639898120842873,
+     "error_fraction": -0.475945295404671
+    },
+    "tail": {
+     "measured": 3.9685850340136053,
+     "predicted": 4.5,
+     "error_fraction": 0.13390539989235184
+    },
+    "draft": {
+     "measured": 8.743469387755102,
+     "predicted": 8.928402172594488,
+     "error_fraction": 0.02115096155061491
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 156.934,
+   "predicted_tok_s": 158.20507057028752,
+   "error_fraction": 0.008099395735070347,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-hip-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 29.91300689985569,
+   "predicted_tok_s": 37.1311826222208,
+   "error_fraction": 0.2413055881185897,
+   "tolerance": 0.1,
+   "within": false,
+   "scope_errors": {
+    "head": {
+     "measured": 3.23526582278481,
+     "predicted": 3.0928827200000004,
+     "error_fraction": -0.04400970757396716
+    },
+    "cpu_service": {
+     "measured": 69.53544303797469,
+     "predicted": 47.63227465328356,
+     "error_fraction": -0.31499286446955366
+    },
+    "between": {
+     "measured": 14.41620253164557,
+     "predicted": 16.569272382649707,
+     "error_fraction": 0.1493506938653122
+    },
+    "tail": {
+     "measured": 4.032930379746835,
+     "predicted": 4.5,
+     "error_fraction": 0.11581395567817476
+    },
+    "draft": {
+     "measured": 9.068481012658227,
+     "predicted": 8.928402172594488,
+     "error_fraction": -0.015446780984401887
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-cuda-hip-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 186.539,
+   "predicted_tok_s": 274.3075985630761,
+   "error_fraction": 0.4705107165958653,
+   "tolerance": 0.15,
+   "within": false,
+   "scope_errors": {},
+   "gate": false
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-1-0",
+   "kind": "decode",
+   "split": "fit",
+   "measured_tok_s": 30.341999371825793,
+   "predicted_tok_s": 30.498965972511137,
+   "error_fraction": 0.00517324513661066,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 3.17178064516129,
+     "predicted": 3.4834601920000003,
+     "error_fraction": 0.09826642561622068
+    },
+    "cpu_service": {
+     "measured": 66.8316129032258,
+     "predicted": 64.39946741610159,
+     "error_fraction": -0.03639214110612643
+    },
+    "between": {
+     "measured": 19.998387096774195,
+     "predicted": 20.1974202885855,
+     "error_fraction": 0.009952462208485446
+    },
+    "tail": {
+     "measured": 3.9562645161290324,
+     "predicted": 3.5999999999999943,
+     "error_fraction": -0.09005073211778614
+    },
+    "draft": {
+     "measured": 9.294451612903227,
+     "predicted": 10.076809414640309,
+     "error_fraction": 0.08417471350875139
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-8k-holdout-code-hip-1-0",
+   "kind": "prefill",
+   "split": "fit",
+   "measured_tok_s": 628.102,
+   "predicted_tok_s": 627.6727042365121,
+   "error_fraction": -0.000683480968836081,
+   "tolerance": 0.15,
+   "within": true,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-1-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 31.503814915087375,
+   "predicted_tok_s": 32.306409067843056,
+   "error_fraction": 0.025476094083174416,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 3.156880794701987,
+     "predicted": 3.3601600480000005,
+     "error_fraction": 0.0643924387766448
+    },
+    "cpu_service": {
+     "measured": 69.60860927152318,
+     "predicted": 72.45614292892105,
+     "error_fraction": 0.04090777975882931
+    },
+    "between": {
+     "measured": 16.091721854304634,
+     "predicted": 8.91317588268492,
+     "error_fraction": -0.446101792997336
+    },
+    "tail": {
+     "measured": 3.3204503311258278,
+     "predicted": 3.5999999999999943,
+     "error_fraction": 0.08419028776117332
+    },
+    "draft": {
+     "measured": 10.389735099337747,
+     "predicted": 10.076809414640309,
+     "error_fraction": -0.030118735627569948
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-1-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 226.755,
+   "predicted_tok_s": 292.8876151570685,
+   "error_fraction": 0.29164788056302404,
+   "tolerance": 0.15,
+   "within": false,
+   "scope_errors": {},
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-cuda-0.5-0",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 30.83984363235533,
+   "predicted_tok_s": 28.640949910080717,
+   "error_fraction": -0.07130041735904469,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 3.217879746835443,
+     "predicted": 3.3601600480000005,
+     "error_fraction": 0.04421554326400168
+    },
+    "cpu_service": {
+     "measured": 61.232531645569615,
+     "predicted": 54.119847213205816,
+     "error_fraction": -0.11615858827353298
+    },
+    "between": {
+     "measured": 18.113354430379747,
+     "predicted": 35.436601410411804,
+     "error_fraction": 0.9563798382356765
+    },
+    "tail": {
+     "measured": 3.494126582278481,
+     "predicted": 3.5999999999999943,
+     "error_fraction": 0.030300395600572294
+    },
+    "draft": {
+     "measured": 9.256645569620252,
+     "predicted": 10.076809414640309,
+     "error_fraction": 0.088602705899401
+    }
+   },
+   "gate": true
+  },
+  {
+   "name": "bench-2k-holdout-code-hip-cuda-0.5-0",
+   "kind": "prefill",
+   "split": "holdout",
+   "measured_tok_s": 134.423,
+   "predicted_tok_s": 234.69461939409948,
+   "error_fraction": 0.7459409430982753,
+   "tolerance": 0.15,
+   "within": false,
+   "scope_errors": {},
+   "gate": false
+  }
+ ],
+ "calibrated": false,
+ "holdout_count": 28,
+ "ungated": [
+  "bench-2k-train-code-hip-cuda-0.5-0",
+  "bench-2k-holdout-chat-hip-cuda-0.5-0",
+  "bench-2k-holdout-code-cuda-hip-0.5-0",
+  "bench-2k-holdout-code-hip-cuda-0.5-0"
+ ],
+ "scope_tolerance": 0.15,
+ "scope": "Gated holdout rows within 10% decode / 15% prefill and every traced scope within the scope tolerance; ungated rows are reported only"
+}

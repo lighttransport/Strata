@@ -1,5 +1,6 @@
 // The decode-step mailbox: publication, CPU completion, graph replay across generations, and abort.
 #include "strata/kernels/glm_mailbox.hpp"
+#include "strata/kernels/glm.hpp"
 #include <chrono>
 #include <cstring>
 #include <cuda_runtime.h>
@@ -12,8 +13,64 @@ namespace k = strata::kernels;
 void ck(cudaError_t e) {
     if (e != cudaSuccess) throw std::runtime_error(cudaGetErrorString(e));
 }
+void check_fused_publish() {
+    constexpr int max_tokens=8,top_k=8,hidden=4096;
+    void *host=nullptr,*mapped=nullptr;
+    const size_t bytes=k::glm_mailbox_bytes(2,max_tokens,top_k,hidden,false,true);
+    ck(cudaHostAlloc(&host,bytes,cudaHostAllocMapped|cudaHostAllocPortable));
+    ck(cudaHostGetDevicePointer(&mapped,host,0));std::memset(host,0,bytes);
+    auto hv=k::glm_mailbox_view(host,2,max_tokens,top_k,hidden,false,true);
+    auto dv=k::glm_mailbox_view(mapped,2,max_tokens,top_k,hidden,false,true);
+    float *logits=nullptr,*bias=nullptr,*bonus=nullptr,*weights=nullptr,*unused=nullptr,*x=nullptr;
+    int *ids=nullptr,*wanted=nullptr;unsigned *generation=nullptr;
+    ck(cudaMalloc(&logits,max_tokens*512*4));ck(cudaMalloc(&bias,512*4));ck(cudaMalloc(&bonus,512*4));
+    ck(cudaMalloc(&weights,max_tokens*top_k*4));ck(cudaMalloc(&unused,max_tokens*top_k*4));
+    ck(cudaMalloc(&ids,max_tokens*top_k*4));ck(cudaMalloc(&wanted,max_tokens*top_k*4));
+    ck(cudaMalloc(&x,max_tokens*hidden*4));ck(cudaMalloc(&generation,4));
+    cudaStream_t stream;ck(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));
+    unsigned step=0;
+    for (int ne:{224,288,512}) for (int nt:{1,2,4,8}) for (bool with_bonus:{false,true}) {
+        std::vector<float> hl(nt*ne),hb(ne),ha(ne),hx(nt*hidden);
+        const auto enqueue=[&] {
+            k::glm_mailbox_begin(dv,generation,stream);
+            k::glm_router_tokens(logits,bias,ids,weights,ne,top_k,1.f,nt,stream,with_bonus?bonus:nullptr);
+            k::glm_router_tokens(logits,bias,wanted,unused,ne,top_k,1.f,nt,stream);
+            k::glm_mailbox_publish(dv,0,ids,weights,x,nt,generation,stream,wanted);
+            k::glm_router_publish_tokens(logits,bias,ids,weights,ne,top_k,1.f,with_bonus?bonus:nullptr,
+                                         dv,1,x,nt,generation,stream,wanted);
+        };
+        cudaGraph_t graph=nullptr;cudaGraphExec_t exec=nullptr;
+        for (int replay=0;replay<3;++replay) {
+            for (int i=0;i<nt*ne;++i) hl[i]=replay ? float((i%ne)%7-3)*.125f : 0.f;
+            for (int i=0;i<ne;++i) {hb[i]=replay ? float(i%3)*.01f : 0.f;ha[i]=float(i%13)*.02f;}
+            for (int i=0;i<nt*hidden;++i) hx[i]=float(i%101-50)*.125f;
+            ck(cudaMemcpyAsync(logits,hl.data(),hl.size()*4,cudaMemcpyHostToDevice,stream));
+            ck(cudaMemcpyAsync(bias,hb.data(),hb.size()*4,cudaMemcpyHostToDevice,stream));
+            ck(cudaMemcpyAsync(bonus,ha.data(),ha.size()*4,cudaMemcpyHostToDevice,stream));
+            ck(cudaMemcpyAsync(x,hx.data(),hx.size()*4,cudaMemcpyHostToDevice,stream));
+            __atomic_store_n(hv.control,++step,__ATOMIC_SEQ_CST);
+            if (!exec) {
+                ck(cudaStreamBeginCapture(stream,cudaStreamCaptureModeThreadLocal));enqueue();
+                ck(cudaStreamEndCapture(stream,&graph));ck(cudaGraphInstantiate(&exec,graph,nullptr,nullptr,0));
+            }
+            ck(cudaGraphLaunch(exec,stream));ck(cudaStreamSynchronize(stream));
+            const size_t routes=max_tokens*top_k;
+            if (std::memcmp(hv.ids,hv.ids+routes,nt*top_k*4) ||
+                std::memcmp(hv.weights,hv.weights+routes,nt*top_k*4) ||
+                std::memcmp(hv.wanted,hv.wanted+routes,nt*top_k*4) ||
+                std::memcmp(hv.act,hv.act+max_tokens*hidden,nt*hidden*4) ||
+                hv.flags[0]!=step || hv.flags[32]!=step)
+                throw std::runtime_error("batched fused router/mailbox parity failed");
+        }
+        ck(cudaGraphExecDestroy(exec));ck(cudaGraphDestroy(graph));
+    }
+    ck(cudaStreamDestroy(stream));
+    cudaFree(logits);cudaFree(bias);cudaFree(bonus);cudaFree(weights);cudaFree(unused);
+    cudaFree(x);cudaFree(ids);cudaFree(wanted);cudaFree(generation);cudaFreeHost(host);
+}
 int main() {
     try {
+        check_fused_publish();
         const int slots = 46, max_tokens = 8, top_k = 8, hidden = 4096;
         const int layers[] = {3, 7, 44};
         const size_t bytes = k::glm_mailbox_bytes(slots, max_tokens, top_k, hidden);
