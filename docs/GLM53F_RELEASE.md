@@ -62,6 +62,37 @@ top-k 8), no adaptive worker-cache refresh and the fused worker return. The full
 profiles and what did not work are in [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (sections 12-15) and
 the simulator that ranked the work in [GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md).
 
+## Context length
+
+The model allows 1,048,576 tokens; the runner allocates the context given by `context` in the profile up front.
+Only the 11 MLA attention layers and the MTP draft layer grow with context: 2,048 bytes of compressed KV cache plus
+128 bytes of indexer keys per token per layer, **26.1 KB per token (about 26 MB per 1K tokens)**. The 34 KDA
+linear-attention layers hold a fixed 146 MiB. All of it lives on the primary GPU; the expert worker in the
+two-GPU setup holds no context state, and host RAM is not the limit.
+
+Everything else on the primary GPU is fixed (dense weights, draft bank, verify history: about 8 GB), so a longer
+context takes VRAM from the GPU-resident expert tier, about 3 expert slots per 1K tokens, and decode slows as the
+tier shrinks. Selecting the attended keys also scans all pooled keys, which grows linearly with context.
+
+| | RX 9070 XT alone | two GPUs (RTX 5060 Ti primary) |
+|---|---:|---:|
+| expert tier at 12K context | 4.86 GB (559 slots) | 3.42 GB (394 slots) |
+| at 64K | ~3.5 GB (~400 slots) | ~2.1 GB (~240 slots) |
+| at 128K | ~1.9 GB (~225 slots) | ~0.5 GB (~60 slots) |
+| largest context with no tier | ~198K | ~143K |
+| same, draft experts on the CPU | ~270K | ~215K |
+| estimated decode at 128K | 22-27 tok/s | 25-30 tok/s |
+
+Estimated from the allocation sizes in the code and the memory records of the 12K-context runs; the measured
+32K / 64K / 128K results replace this table when they are in. Further limits:
+
+- Prefill holds the expert staging ring (4.6 GB at 8K batches) and a scratch area that grows with context at the
+  same time as the state; on the RX 9070 XT this is about 11.2 GB at 12K and about 14.6 GB at 128K against a 15.36 GB
+  budget. Beyond ~128K, reduce `STRATA_GLM_PREFETCH_GROUPS` (slower prefill). The prefill profile's 256-token MLA
+  tile (`STRATA_GLM_MLA_TILE=256`) makes the scratch grow four times faster; keep that profile at 64K or below.
+- The two-GPU runner exchanges at most 8,192 prompt tokens per call; longer prompts are processed in 8K passes.
+- Measured so far: up to 12K context on TR16 (16K as two 8K passes); the V100 server ran a 131,072-token context.
+
 ## Weights
 
 Hugging Face: [`lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts`](https://huggingface.co/lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts).

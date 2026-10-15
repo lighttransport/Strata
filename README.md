@@ -38,6 +38,8 @@ quality gate and is not shipped. Removing every approximation leaves 20 tok/s.
 
 - **[Release notes: measurements, weights on Hugging Face, setup for one and two GPUs](docs/GLM53F_RELEASE.md)**
 - **[Running and benchmarking it on your own hardware](docs/GLM53F_NEW_HARDWARE.md)**
+- **[How long a context fits](docs/GLM53F_RELEASE.md#context-length)**: about 26 MB of VRAM per 1K tokens on the primary GPU,
+  taken from the GPU expert cache; roughly 128K is practical on a 16 GB card
 - **Weights:** [`lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts`](https://huggingface.co/lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts)
   (full Q23 120.9 GB, REAP-224 95.5 GB, REAP-50 63.2 GB, expert sidecars)
 - **Two-GPU runner and the simulator that planned it:** [GLM_TR16_RUNNER_PLAN.md](docs/GLM_TR16_RUNNER_PLAN.md),
