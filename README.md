@@ -10,11 +10,12 @@ useful experts pruned away (REAP-224: 224 of 288 experts per layer, 95 GB; REAP-
 <a href="docs/media/glm53-tr16-9070xt-live-decode.gif"><img src="docs/media/glm53-tr16-9070xt-live-decode.gif" width="640" alt="About 32 decode tok/s on Threadripper 1950X and RX 9070 XT"></a>
 </p>
 
-**One desktop GPU, ~32 tok/s.** Threadripper 1950X, 128 GB DDR4 and an **RX 9070 XT 16 GB**, REAP-224 Q23, writing
-a C++ function for a 4K-token prompt; eight seconds of live decoding at original speed, loading and prompt processing
-omitted. The request decoded at **31.8 tok/s** over 512 tokens (the profile measures 34 on the 8K benchmark). The
-generated function compiles cleanly but fails the C++ oracle: it rejects inputs longer than 20 characters although
-the prompt allows leading zeroes. [Timing](demos/glm53_chat/tr16_9070xt_measurement.json),
+**One desktop GPU, ~32 tok/s.** Threadripper 1950X, 128 GB DDR4 and an **RX 9070 XT 16 GB**, REAP-224 Q23 with
+routing affinity 0.08, writing a C++ function for a 4K-token prompt; eight seconds of live decoding at original
+speed, loading and prompt processing omitted. The request decoded at **32.5 tok/s** over 512 tokens. The generated
+function compiles cleanly and passes all 400,532 cases of the C++ oracle (one of three runs at this setting, all
+three passed). This setting scored 145/164 on HumanEval, below the 152 floor, so it is a demo setting rather than a
+qualified profile. [Timing](demos/glm53_chat/tr16_9070xt_measurement.json),
 [how it was recorded](demos/glm53_chat/README.md).
 
 **How fast** (single-stream decode and prompt processing, tokens per second; details, trials and the quality

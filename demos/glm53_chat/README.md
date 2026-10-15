@@ -104,6 +104,18 @@ python3 tools/glm_chat_render.py recordings/glm53-9070xt-chat.cast docs/media/gl
   --start <seconds> --duration 8 --title '...'
 ```
 
+The README animation was later replaced by an affinity-0.08 run of the same profile (`STRATA_GLM_ROUTE_AFFINITY=0.08`,
+clip from 182.9 s), whose answer passes the C++ oracle. Every answer of the 4K C++ request on the RX 9070 XT was
+compiled with `-Wall -Wextra -Werror` under ASan/UBSan and run against
+`docs/fixtures/glm53_cpp_quality/test_generated.cpp` (400,532 `std::from_chars` cases):
+
+| affinity | decode tok/s | oracle |
+|---|---:|---|
+| 0.08 | 28.4 / **32.5** (README clip) / 27.3 | pass / pass / pass |
+| 0.14 | 31.8 (first clip) / 33.5 / 35.6 | fail (rejects inputs longer than 20 characters, although leading zeroes are allowed) / pass / pass |
+
+HumanEval for the affinity-0.08 setting: 145/164, below the 152 floor.
+
 Measured in the recorded requests: one GPU 31.79 tok/s decode (511 steps in 16.07 s), 305 tok/s prompt; two GPUs
 37.74 tok/s decode (511 steps in 13.54 s), 301 tok/s prompt. Both are below the profiles' 8K benchmark medians
 (34.1 and 43.6) on this shorter, differently-accepting prompt. The clips start 0.8 and 1.3 seconds after the

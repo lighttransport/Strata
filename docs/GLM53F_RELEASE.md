@@ -53,6 +53,12 @@ floor. It is published as an experimental speed result. The highest-scoring conf
 REAP-224 profile (152/164) and the full Q23 model (153/164). Lower routing affinity (0.08) is the next candidate
 to qualify.
 
+**Lower routing affinity on the RX 9070 XT.** Affinity 0.08 instead of 0.14 on the single-card profile costs about
+4 tok/s on the 4K C++ request (28.4 / 32.5 / 27.3 against 31.8 / 33.5 / 35.6) and all three of its C++ answers pass
+the 400,532-case oracle (two of three at 0.14). Its HumanEval score is 145/164, below the floor, so lowering
+affinity alone does not qualify a configuration; the next candidate is the strict draft acceptance of the
+qualified profile (margin 4, top-k 6).
+
 Notes on the two-GPU rows. The decode and prefill configurations have opposite primaries and cannot run in one
 process at these speeds; a server picks one. The decode row's quality gate is the one agreed for this work
 (perplexity within +6%, KL within +0.08, top-1 within 3 pp of the unpruned Q23 run, plus HumanEval at or above
