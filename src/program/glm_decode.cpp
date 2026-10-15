@@ -3694,7 +3694,7 @@ class Decoder {
         // its pool slot's consumption event, so the uploads overlap this layer's queued expert products.
         if (prefetch_early && fast) {
             const int next = std::stoi(p.substr(4)) + 1;
-            if (next < (int)m.layers.size() && m.layers[next].ffn == strata::core::FfnKind::Moe) {
+            if (next < (int)m.layers.size() && m.layers[next].ffn == strata::core::FfnKind::Moe && owns_layer(next)) {
                 prefetch_groups(next);
                 early_prefetched_layer = next;
             }
@@ -5090,7 +5090,7 @@ class Decoder {
         const uintptr_t page = 4096;
         std::vector<std::pair<uintptr_t, uintptr_t>> spans, merged;
         for (size_t l = 0; l < m.layers.size(); ++l) {
-            if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+            if (m.layers[l].ffn != strata::core::FfnKind::Moe || !owns_layer(l)) continue;
             for (const char *role : {"gate", "up", "down"}) {
                 const auto &t = artifact.at("blk." + std::to_string(l) + ".ffn_" + role + "_exps.weight");
                 const auto a = (uintptr_t)t.data();
@@ -5315,7 +5315,7 @@ class Decoder {
         // The service order is the publication order: per MoE layer, group A then (split verify) group B.
         std::vector<ServiceItem> layers;
         for (size_t l = 0; l < m.layers.size(); ++l)
-            if (m.layers[l].ffn == strata::core::FfnKind::Moe) {
+            if (m.layers[l].ffn == strata::core::FfnKind::Moe && owns_layer(l)) {
                 if (!split) layers.push_back({(int)l, (int)l, batch_tokens, position});
                 else {
                     layers.push_back({(int)l, (int)l, split, position});
@@ -6881,6 +6881,7 @@ class Decoder {
         // GPU waits for this thread's CPU experts.
         auto enqueue_layers = [&] {
         for (size_t l = 0; l < m.layers.size(); ++l) {
+            if (!owns_layer(l)) continue;
             prefill_trace("layer_begin", (int)l);
             const std::string p = "blk." + std::to_string(l) + ".";
             const auto &layer = m.layers[l];
@@ -7060,7 +7061,7 @@ class Decoder {
                 // Group A runs ahead through the dense layers to its first publication, so the CPU starts
                 // while group B computes its dense layers; after that the groups alternate per layer.
                 std::vector<std::pair<size_t, int>> order;
-                const size_t begin = 0, end = m.layers.size();
+                const size_t begin = owned_layer_first, end = owned_layer_last;
                 size_t first_moe = begin;
                 while (first_moe < end && m.layers[first_moe].ffn != strata::core::FfnKind::Moe) ++first_moe;
                 // STRATA_GLM_SPLIT_JOINT_DENSE=1 (opt-in): the layers before the first MoE layer run once for the
@@ -7562,7 +7563,7 @@ class Decoder {
             if (gpu) gpu->place_by_node = false;
             artifact.discard_original_experts();
             size_t bytes = 0;
-            for (size_t l=3;l<m.layers.size();++l) for (const auto* part : {"gate","up","down"})
+            for (size_t l=3;l<m.layers.size();++l) if (owns_layer(l)) for (const auto* part : {"gate","up","down"})
                 bytes += artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight").bytes;
             std::cerr << "MAPPED_EXPERTS numa_rows=0 lazy=1 bytes=" << bytes << '\n';
             return;
@@ -7571,7 +7572,7 @@ class Decoder {
             throw std::invalid_argument("Q2 NUMA weights require native GGUF, pinned workers on two nodes, single GPU, no TP/prepack/direct upload");
         for(const auto& cache:expert_cache)if(cache)throw std::invalid_argument("Q2 NUMA weights cannot use legacy expert cache");
         size_t required=0;
-        for(size_t l=3;l<m.layers.size();++l)for(const auto* part:{"gate","up","down"})
+        for(size_t l=3;l<m.layers.size();++l)if(owns_layer(l))for(const auto* part:{"gate","up","down"})
             required+=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight").bytes;
         size_t budget_mib=artifact.has_expert_pack()?114688:98304;
         if(const char* value=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHT_MIB")) {
@@ -7596,12 +7597,13 @@ class Decoder {
         artifact.discard_original_experts();
         // File-cache pages must yield before anonymous weights grow. Merely
         // dropping this process's PTEs allowed Linux to swap the new arenas.
-        if(!mapped)for(size_t l=3;l<m.layers.size();++l)for(const auto* part:{"gate","up","down"}) {
+        if(!mapped)for(size_t l=3;l<m.layers.size();++l)if(owns_layer(l))for(const auto* part:{"gate","up","down"}) {
             const auto& t=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight");
             t.file->discard_tensor_pages(*t.tensor,t.bytes);
         }
         try {
             for(size_t l=3;l<m.layers.size();++l) {
+                if(!owns_layer(l))continue;
                 check_stop();auto& entry=numa_experts[l];const auto prefix="blk."+std::to_string(l)+".ffn_";
                 for(const auto* part:{"gate","up","down"}) {
                     const auto& t=artifact.at(prefix+part+"_exps.weight");const auto& shape=t.tensor->shape;
@@ -8482,7 +8484,7 @@ class Decoder {
         if (fixed_cache_recent && !decode_cache_auto)
             std::cerr << "DECODE_CACHE_WINDOW mode=fixed tokens=" << decode_cache_window << '\n';
         for (size_t l = 0; l < m.layers.size(); ++l) {
-            if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+            if (m.layers[l].ffn != strata::core::FfnKind::Moe || !owns_layer(l)) continue;
             if (canon_experts) {
                 // A layer left in another format would round differently on the GPU; it stays on the CPU.
                 if (!canon_layer((int)l)) continue;
