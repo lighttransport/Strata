@@ -7,6 +7,8 @@ the unpruned Q23 model) plus HumanEval at or above 152/164, plus no loops at 8K.
 
 ## 1. Quality qualification
 
+Tracked in [lighttransport/Strata#1](https://github.com/lighttransport/Strata/issues/1).
+
 - **Find a two-GPU decode configuration that passes HumanEval.** The current one (affinity 0.14, soft acceptance
   6/8) passes the corpus gate but scored 146/164. Candidates in order: affinity 0.08 (passed the corpus gate:
   KL 0.197), then the strict acceptance of the single-GPU profile (margin 4, top-k 6). Each needs the corpus run
@@ -22,6 +24,8 @@ the unpruned Q23 model) plus HumanEval at or above 152/164, plus no loops at 8K.
   floor applies to one run or to a median of runs.
 
 ## 2. Quantization: smaller weights at the same quality
+
+Tracked in [lighttransport/Strata#2](https://github.com/lighttransport/Strata/issues/2).
 
 - **GSQ + RCO for the GLM experts.** ISTA-DASLab's GSQ-RCO compressed GGUFs are what upstream Strata ships for its
   Qwen model (Q2_0, IQ2_XS, IQ3_XXS, IQ3_S sizes, [MODELS.md](MODELS.md)). Applying the same recipe to GLM-5.3-Flash's
@@ -43,6 +47,8 @@ the unpruned Q23 model) plus HumanEval at or above 152/164, plus no loops at 8K.
   at all (today 0.3 tok/s).
 
 ## 3. Multi-GPU optimization
+
+Tracked in [lighttransport/Strata#3](https://github.com/lighttransport/Strata/issues/3).
 
 Measured limits on TR16 (RTX 5060 Ti + RX 9070 XT), from the steady-state profile in plan section 15:
 
@@ -67,6 +73,8 @@ Measured limits on TR16 (RTX 5060 Ti + RX 9070 XT), from the steady-state profil
 
 ## 4. Single-GPU and CPU work
 
+Tracked in [lighttransport/Strata#4](https://github.com/lighttransport/Strata/issues/4).
+
 - **CPU expert lane**: whole-expert span access (`STRATA_NATIVE_FLOW_SCHEDULE=span`) forecast +1 tok/s, unmeasured.
 - **MLA decode cache kernel**: small at 8K (about 2% of the step) but grows with context; measure at 32K before
   building.
@@ -74,6 +82,8 @@ Measured limits on TR16 (RTX 5060 Ti + RX 9070 XT), from the steady-state profil
   frequency-ranked subset that covers >99% of generated tokens to avoid losing acceptance.
 
 ## 5. Vulkan runner
+
+Tracked in [lighttransport/Strata#5](https://github.com/lighttransport/Strata/issues/5).
 
 - Fast engine numerical gate (KL 0.20 against strict, limit 0.01); the Q8 emulation reduced it to 0.12.
 - 2048-token prefill windows hit the amdgpu 2-second scheduler timeout on the RX 570; split the dense prefix into
