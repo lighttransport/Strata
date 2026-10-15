@@ -18,7 +18,7 @@ evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
 | --- | --- | ---: | ---: | --- |
 | Threadripper 1950X, 128 GB, **RTX 5060 Ti 16 GB** (one GPU) | REAP-224 Q23 | 29-32 | 170-500 | HumanEval 152/164, corpus gate passed |
 | Threadripper 1950X, 128 GB, **RX 9070 XT 16 GB** (one GPU) | REAP-224 Q23 | 34 | 560 | same profile family, not separately gated |
-| Threadripper 1950X, 128 GB, **RTX 5060 Ti + RX 9070 XT** (two GPUs) | REAP-224 Q23 | **40-44** | 465 (decode orientation), **870** (prefill orientation) | corpus gate passed; HumanEval in progress |
+| Threadripper 1950X, 128 GB, **RTX 5060 Ti + RX 9070 XT** (two GPUs) | REAP-224 Q23 | **40-44** | 465 (decode orientation), **870** (prefill orientation) | corpus gate passed; HumanEval 146/164, below the 152 floor |
 | Ryzen 9 3950X, 64 GB, **RX 9070 XT 16 GB** | REAP-50 Q23 | 10-16 | 230-250 | coding-task review only; perplexity +30% vs the 2-bit original |
 | Ryzen 9 3950X, 64 GB, **RTX 3070 8 GB** | REAP-50 Q23 | 10-20 | 210-510 | matched perplexity within +10% and a 30-task HumanEval subset |
 | 2x Xeon Gold 6240, 160 GB, **2x Tesla V100 32 GB** | full UD-Q2_K_XL | 29 | 790 (16K) | logit parity and 400k C++ oracle cases |

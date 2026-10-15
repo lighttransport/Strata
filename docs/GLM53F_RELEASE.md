@@ -28,7 +28,7 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 |---|---|---:|---:|---|
 | TR16, RTX 5060 Ti alone | REAP-224 Q23, tuned profile (`configs/experimental/glm53f-q23-reap224-tr16-tuned.json`) | 29.0 (2K), 31.6 (8K) | 168 (2K), 496 (8K) | HumanEval 152/164 (a later rerun scored 150/164); corpus perplexity +4.9%, KL 0.064, top-1 -1.9 pp vs unpruned Q23 |
 | TR16, RX 9070 XT alone | REAP-224 Q23, affinity 0.14 | 34.1 (8K), 35.0 (8K chat) | 561 (8K) | same profile family; no HumanEval or corpus run on this card |
-| TR16, two GPUs (decode) | REAP-224 Q23, CUDA primary + HIP expert worker, affinity 0.14, fused publish, tier inflight 4 (`configs/experimental/glm53f-reap224-tr16-two-gpu-decode.json`) | 43.6 / 41.9 / 43.8 (8K, 512 tokens), 44.1 / 41.3 / 40.2 (1K, 256) | 465 (8K, this orientation) | corpus gate `tr16-35` passed (KL 0.210, top-1 0.853, perplexity 5.08 against limits 0.253 / 0.839 / 5.21); HumanEval 164 in progress |
+| TR16, two GPUs (decode) | REAP-224 Q23, CUDA primary + HIP expert worker, affinity 0.14, fused publish, tier inflight 4 (`configs/experimental/glm53f-reap224-tr16-two-gpu-decode.json`) | 43.6 / 41.9 / 43.8 (8K, 512 tokens), 44.1 / 41.3 / 40.2 (1K, 256) | 465 (8K, this orientation) | corpus gate `tr16-35` passed (KL 0.210, top-1 0.853, perplexity 5.08 against limits 0.253 / 0.839 / 5.21); **HumanEval 146/164, below the 152/164 floor** |
 | TR16, two GPUs (prefill) | REAP-224 Q23, HIP primary + CUDA expert worker, fraction 0.79 (`configs/experimental/glm53f-reap224-tr16-two-gpu-prefill.json`) | about 37 (short samples) | 870-875 (8K) | lossy F16 attention and F16 partial return; not gated separately |
 | TR16, two GPUs, fastest | as the decode row with affinity 0.30 | 49.0 (1K), 46.1 (8K) | 510 (8K) | fails the corpus gate (KL 0.310, top-1 0.817); not a release configuration |
 | TR16, RTX 5060 Ti, full model | full Q23 (288 experts), affinity 0.08, MTP depth 1 | 23.1 (2K), 23.0 (8K) | 131 (2K), 428 (8K) | HumanEval 153/164 |
@@ -45,6 +45,13 @@ The RTX 3070 rows come from the four `docs/benchmarks/glm_rtx3070_*_20261011.jso
 trials, 128 generated tokens, 56 GiB cgroup, no swap, 512 MiB VRAM reserve); the presets they name
 (`configs/glm53f-reap50-q23-64g-rtx3070-*.json`) and their engine switches came in with the merge of that machine's
 branch; build with `CMAKE_CUDA_ARCHITECTURES=86` and set the preset's model path.
+
+**The two-GPU decode configuration does not pass the agreed quality gate.** It passes the corpus gate, but
+HumanEval scored 146/164 (18 test failures, no timeouts) against the 152/164 floor; an earlier run of the same
+settings without the fused publish and tier cap was stopped at 127 of 144 passes, which also caps it below the
+floor. It is published as an experimental speed result. The highest-scoring configurations remain the single-GPU
+REAP-224 profile (152/164) and the full Q23 model (153/164). Lower routing affinity (0.08) is the next candidate
+to qualify.
 
 Notes on the two-GPU rows. The decode and prefill configurations have opposite primaries and cannot run in one
 process at these speeds; a server picks one. The decode row's quality gate is the one agreed for this work

@@ -569,7 +569,8 @@ are gate-coupled under affinity, so the candidate (fused publish + inflight 4) w
 
 Release decode configuration: `screen-20261015/release-decode.json` (= rel-aff0.14 + `STRATA_GLM_FUSE_ROUTE_BATCH=1` +
 `STRATA_GLM_TIER_INFLIGHT=4`), measured 43.6 / 41.9 / 43.8 tok/s at 8K/512 and 44.1 / 41.3 / 40.2 at 1K/256, corpus gate
-passed; HumanEval 164 still to run (`release-decode/humaneval-aff0.14.sh` with the two switches added).
+passed; HumanEval 164 (`release-decode/humaneval-release.sh`): **146/164**, below the 152 floor (18 test failures, no
+timeouts). The configuration fails the agreed gate on HumanEval.
 
 Status: 45+ is reached at 1K only with the fused publish (mean 45.0, within the noise band); 8K stays at 40. The
 46-50 ceiling the simulator forecast is not supported by the measurements; the levers it ranked first were worth

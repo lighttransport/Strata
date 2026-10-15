@@ -113,7 +113,7 @@
  },
  "prefill_experts": "f16-batched",
  "model_name": "glm53f-reap224-tr16-two-gpu-decode",
- "experimental_role": "Two-GPU decode release configuration (CUDA primary + HIP expert worker, case cuda-hip); corpus gate tr16-35 passed 2026-10-16; HumanEval pending.",
+ "experimental_role": "Two-GPU decode configuration (CUDA primary + HIP expert worker, case cuda-hip). Corpus gate tr16-35 passed; HumanEval 146/164 (2026-10-16), below the 152 floor: experimental, not quality-qualified.",
  "backend": "hip",
  "cuda_prefetch_groups": 4,
  "worker_cache_mib": 14336,
