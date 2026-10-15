@@ -27,6 +27,8 @@ Tracked in [lighttransport/Strata#1](https://github.com/lighttransport/Strata/is
 
 Tracked in [lighttransport/Strata#2](https://github.com/lighttransport/Strata/issues/2).
 
+Research note with sources and a ranked plan (GSQ refinement in the existing Q2_K/Q3_K format first): [GLM_QUANT_RESEARCH.md](GLM_QUANT_RESEARCH.md).
+
 - **GSQ + RCO for the GLM experts.** ISTA-DASLab's GSQ-RCO compressed GGUFs are what upstream Strata ships for its
   Qwen model (Q2_0, IQ2_XS, IQ3_XXS, IQ3_S sizes, [MODELS.md](MODELS.md)). Applying the same recipe to GLM-5.3-Flash's
   routed experts could give a smaller file at the Q23 quality, or better quality at the REAP-50 size. Work items:
