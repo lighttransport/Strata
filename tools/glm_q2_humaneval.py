@@ -26,6 +26,31 @@ DATA_SHA256 = "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef"
 DATA_URL = f"https://raw.githubusercontent.com/openai/human-eval/{REVISION}/data/HumanEval.jsonl.gz"
 
 
+def load_engine_arguments(path, model, context, stops):
+    """Use a measured engine configuration while keeping model/context/stops bound."""
+    values = json.loads(pathlib.Path(path).read_text())
+    if not isinstance(values,list) or len(values)<23 or any(not isinstance(v,str) for v in values):
+        raise ValueError('engine arguments must be a list of at least 23 strings')
+    if pathlib.Path(values[0]).resolve()!=pathlib.Path(model).resolve() or int(values[1])!=context:
+        raise ValueError('engine arguments use a different model or context')
+    supplied={int(value) for value in values[6].split(',')}
+    if not stops or not stops<=supplied:
+        raise ValueError('engine arguments must retain every model stop token')
+    return values
+
+
+def result_summary(results):
+    graded=[r for r in results if isinstance(r.get('passed'),bool)]
+    return dict(complete=len(results)==164 and len(graded)==164,
+                generation_complete=len(results)==164, tasks=len(results), graded_tasks=len(graded),
+                pass_at_1=sum(r['passed'] for r in graded)/len(graded) if graded else None,results=results)
+
+
+def atomic_json(path, value):
+    temporary=path.with_suffix(path.suffix+'.tmp')
+    temporary.write_text(json.dumps(value,indent=2)+'\n');temporary.replace(path)
+
+
 def solution(text, prompt, entry):
     text = text.rsplit("</think>", 1)[-1]
     blocks = re.findall(r"```(?:python|py)?\s*\n(.*?)```", text, re.S)
@@ -69,6 +94,11 @@ def main():
     parser.add_argument("dataset", type=pathlib.Path, help=f"download {DATA_URL}")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--decoder", default="build-glm/strata-glm-decode")
+    parser.add_argument("--engine-args", type=pathlib.Path, help="JSON engine argument list from the measured configuration")
+    parser.add_argument("--generate-only", action="store_true", help="save ungraded answers for isolated grading on another host")
+    parser.add_argument("--resume", action="store_true", help="resume completed tasks with the exact same generation manifest")
+    parser.add_argument("--bound-binary", type=pathlib.Path, action="append", default=[],
+                        help="also bind an underlying decoder/worker when --decoder is a launcher")
     parser.add_argument("--expert-pack", type=pathlib.Path)
     parser.add_argument("--expert-pack-profile", type=pathlib.Path)
     parser.add_argument("--tokens", type=int, default=2048)
@@ -94,10 +124,10 @@ def main():
     tasks = [json.loads(line) for line in gzip.decompress(raw).splitlines()]
     if len(tasks) != 164 or len({task["task_id"] for task in tasks}) != 164:
         raise ValueError("invalid HumanEval task set")
-    if args.output.exists():
+    if args.output.exists() and not args.resume:
         raise ValueError("refusing to overwrite evaluation output")
-    args.output.mkdir(parents=True)
-    if not isolated_test("def candidate(): return 1", "def check(f): assert f() == 1", "candidate")["passed"]:
+    args.output.mkdir(parents=True,exist_ok=args.resume)
+    if not args.generate_only and not isolated_test("def candidate(): return 1", "def check(f): assert f() == 1", "candidate")["passed"]:
         raise RuntimeError("isolated test runner unavailable; no generated code was executed")
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "serve"))
     from server import GlmEngine
@@ -113,22 +143,39 @@ def main():
                    str(args.decode_cache_mib), "1", "256", "0", args.prefill_experts, "4k"]
     if args.expert_pack:
         engine_args += [str(args.expert_pack.resolve()), str(args.expert_pack_profile.resolve()) if args.expert_pack_profile else "", "native"]
+    if args.engine_args:
+        if args.expert_pack or args.expert_pack_profile:
+            parser.error('engine-args already owns the expert placement configuration')
+        engine_args=load_engine_arguments(args.engine_args,model,args.context,stops)
     manifest = {"dataset_revision": REVISION, "dataset_sha256": DATA_SHA256,
                 "protocol": "greedy chat, low reasoning, one sample per task, isolated tests",
                 "maximum_generated_tokens": args.tokens, "engine_args": engine_args,
                 "environment": {k: v for k, v in os.environ.items() if k.startswith("STRATA_")}}
-    (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    if args.engine_args:
+        manifest['engine_args_sha256']=hashlib.sha256(args.engine_args.read_bytes()).hexdigest()
     engine_env = os.environ.copy()
     if args.route_affinity:
         engine_env["STRATA_GLM_ROUTE_AFFINITY"] = str(args.route_affinity)
     manifest["environment"] = {k: v for k, v in engine_env.items() if k.startswith("STRATA_")}
     manifest["decoder_sha256"] = hashlib.sha256(pathlib.Path(args.decoder).read_bytes()).hexdigest()
     manifest["route_affinity"] = args.route_affinity
-    (args.output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    manifest['generation_only']=args.generate_only
+    if args.bound_binary:
+        manifest['bound_binaries']={str(path.resolve()):hashlib.sha256(path.read_bytes()).hexdigest() for path in args.bound_binary}
+    manifest_path=args.output/'manifest.json'
+    if manifest_path.exists() and json.loads(manifest_path.read_text())!=manifest:
+        raise ValueError('resume generation identity differs; use a new output directory')
+    if not manifest_path.exists():atomic_json(manifest_path,manifest)
+    measurement=args.output/'measurement.json'
+    results=json.loads(measurement.read_text())['results'] if measurement.exists() else []
+    done={r['task_id'] for r in results}
+    if len(done)!=len(results) or not done<={task['task_id'] for task in tasks}:
+        raise ValueError('invalid or duplicate resumed task set')
+    if all(task['task_id'] in done for task in tasks[:args.limit]):return
     engine = GlmEngine(args.decoder, engine_args, log=str(args.output / "engine.log"), env=engine_env)
-    results = []
     try:
         for task in tasks[:args.limit]:
+            if task['task_id'] in done:continue
             prompt = "Complete this Python function. Return the complete function in one Python code block with any required imports. Keep reasoning very brief.\n\n" + task["prompt"]
             chat = template.render(messages=[dict(role="user", content=prompt)], tools=None,
                                    add_generation_prompt=True, reasoning_effort="low")
@@ -140,15 +187,22 @@ def main():
             text = tokenizer.decode([t for t in generated if t not in stops])
             code = solution(text, task["prompt"], task["entry_point"])
             result = {"task_id": task["task_id"], "input_tokens": len(ids), "generated_tokens": len(generated),
+                      "input_token_sha256":hashlib.sha256(json.dumps(ids).encode()).hexdigest(),
                       "wall_seconds": time.monotonic() - start, "token_sha256": hashlib.sha256(json.dumps(generated).encode()).hexdigest(),
-                      **isolated_test(code, task["test"], task["entry_point"])}
+                      **(dict(passed=None,reason='ungraded generation') if args.generate_only else
+                         isolated_test(code, task["test"], task["entry_point"]))}
             stem = task["task_id"].replace("/", "_")
+            if any((args.output/(stem+suffix)).exists() for suffix in ('.txt','.py','.tokens.json')):
+                attempt=1
+                while any((args.output/(stem+f'.retry-{attempt}'+suffix)).exists() for suffix in ('.txt','.py','.tokens.json')):attempt+=1
+                stem+=f'.retry-{attempt}'
             (args.output / (stem + ".txt")).write_text(text)
             (args.output / (stem + ".py")).write_text(code)
+            atomic_json(args.output/(stem+'.tokens.json'),generated)
+            result.update(text_file=stem+'.txt',code_file=stem+'.py',tokens_file=stem+'.tokens.json',
+                          code_sha256=hashlib.sha256(code.encode()).hexdigest(),text_sha256=hashlib.sha256(text.encode()).hexdigest())
             results.append(result)
-            summary = {"complete": len(results) == 164, "tasks": len(results),
-                       "pass_at_1": sum(r["passed"] for r in results) / len(results), "results": results}
-            (args.output / "measurement.json").write_text(json.dumps(summary, indent=2) + "\n")
+            atomic_json(measurement,result_summary(results))
             print(json.dumps(result), flush=True)
     finally:
         engine.close()

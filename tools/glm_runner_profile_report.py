@@ -41,10 +41,19 @@ def read_rocprof(path):
             yield row['Kernel_Name'], int(row['Start_Timestamp']), int(row['End_Timestamp'])
 
 
-def read_nsys(path):
+def nsys_lanes(path):
+    with open(path, newline='') as f:
+        return {(row.get('Device'), row.get('Stream')) for row in csv.DictReader(f)}
+
+
+def read_nsys(path, device=None, stream=None):
     with open(path, newline='') as f:
         reader = csv.DictReader(f)
+        if device is not None and 'Device' not in reader.fieldnames or stream is not None and 'Stream' not in reader.fieldnames:
+            raise ValueError('trace has no requested device/stream identity column')
         for row in reader:
+            if device is not None and row.get('Device') != str(device): continue
+            if stream is not None and row.get('Stream') != str(stream): continue
             start = row.get('Start (ns)') or row.get('Start(ns)') or row.get('Start')
             dur = row.get('Duration (ns)') or row.get('Duration(ns)') or row.get('Duration')
             name = row.get('Name') or row.get('Kernel Name') or ''
@@ -89,8 +98,28 @@ def analyze(kernels, min_slot_us=50):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('trace'); ap.add_argument('--format', choices=('rocprof', 'nsys'), default='rocprof'); ap.add_argument('--output')
+    ap.add_argument('--device'); ap.add_argument('--stream')
+    ap.add_argument('--all-streams', action='store_true', help='report each Nsight device/stream independently')
     a = ap.parse_args()
-    kernels = list(read_rocprof(a.trace) if a.format == 'rocprof' else read_nsys(a.trace))
+    if a.format!='nsys' and (a.device is not None or a.stream is not None or a.all_streams):
+        ap.error('device/stream selection currently applies to Nsight CSV')
+    if a.format=='nsys':
+        lanes=sorted(nsys_lanes(a.trace),key=lambda x:tuple(str(v) for v in x))
+        lanes=[(d,s) for d,s in lanes if (a.device is None or d==a.device) and (a.stream is None or s==a.stream)]
+        if not lanes:ap.error('no matching device/stream')
+        if a.all_streams:
+            reports=[]
+            for device,stream in lanes:
+                try:report=analyze(list(read_nsys(a.trace,device,stream)))
+                except SystemExit as exc:report=dict(not_decode_trace=str(exc))
+                reports.append(dict(device=device,stream=stream,**report))
+            result=dict(source=a.trace,streams=reports,scope='Independent device/stream reports; no cross-GPU time sum.')
+            if a.output:Path(a.output).write_text(json.dumps(result,indent=1)+'\n')
+            print(json.dumps({**result,'streams':[{k:v for k,v in row.items() if k!='top_kernels'} for row in reports]},indent=1))
+            return
+        if len(lanes)>1:ap.error('trace contains multiple device/stream lanes; select --device and --stream or use --all-streams')
+        a.device,a.stream=lanes[0]
+    kernels = list(read_rocprof(a.trace) if a.format == 'rocprof' else read_nsys(a.trace,a.device,a.stream))
     result = analyze(kernels)
     result['source'] = a.trace
     text = json.dumps(result, indent=1)

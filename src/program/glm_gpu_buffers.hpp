@@ -16,6 +16,35 @@ struct DeviceScope {
     }
     ~DeviceScope() { cudaSetDevice(previous); }
 };
+// Report CUDA's visible ordinals, rather than nvidia-smi's host-wide indices.
+// A launcher can restrict each child to a UUID without escaping a Slurm mask.
+static void report_gpu_devices(std::ostream &out) {
+    int count = 0; check(cudaGetDeviceCount(&count));
+    out << "[";
+    for (int device = 0; device < count; ++device) {
+        cudaDeviceProp props{}; check(cudaGetDeviceProperties(&props, device));
+        char bus[32]{}; check(cudaDeviceGetPCIBusId(bus, sizeof(bus), device));
+        if (device) out << ',';
+        out << "{\"ordinal\":" << device << ",\"pci_bus_id\":" << std::quoted(bus)
+            << ",\"name\":" << std::quoted(props.name)
+            << ",\"total_bytes\":" << props.totalGlobalMem << ",\"uuid\":";
+#ifdef STRATA_USE_HIP
+        out << "null";
+#else
+        const auto &uuid = props.uuid;
+        std::string name = "GPU-";
+        constexpr char hex[] = "0123456789abcdef";
+        for (int i = 0; i < 16; ++i) {
+            if (i == 4 || i == 6 || i == 8 || i == 10) name += '-';
+            const auto value = static_cast<unsigned char>(uuid.bytes[i]);
+            name += hex[value >> 4]; name += hex[value & 15];
+        }
+        out << std::quoted(name);
+#endif
+        out << '}';
+    }
+    out << "]\n";
+}
 struct DeviceAccount {
     size_t live = 0, peak = 0, limit = SIZE_MAX;
     std::map<std::string, size_t> by_tag;   // live bytes per allocation category, for GPU_LIVE
@@ -139,7 +168,10 @@ struct DeviceTag {
 constexpr size_t MiB = 1024 * 1024;
 struct Pinned {
     void *p = nullptr;
-    explicit Pinned(size_t bytes) { check(cudaMallocHost(&p, bytes)); }
+    explicit Pinned(size_t bytes, bool portable = false) {
+        if (portable) check(cudaHostAlloc(&p, bytes, cudaHostAllocPortable));
+        else check(cudaMallocHost(&p, bytes));
+    }
     ~Pinned() { cudaFreeHost(p); }
 };
 // Only instantiated by opt-in paths. Drain DMA before the mapping is unpinned.
@@ -149,7 +181,16 @@ struct HostMappingRegistration {
     bool registered = false;
     HostMappingRegistration(void *mapping, size_t bytes, const char *role) : mapping(mapping) {
         check(cudaGetDevice(&owner));
-        const auto status=cudaHostRegister(mapping,bytes,cudaHostRegisterPortable);
+        // The mapping covers whole pages; a protocol size that is not a page multiple is refused otherwise.
+        const size_t page=4096;
+        check(cudaSetDevice(owner));
+        auto status=cudaHostRegister(mapping,(bytes+page-1)/page*page,cudaHostRegisterPortable);
+        if (status!=cudaSuccess) {
+            std::cerr << "MIXED_REGISTER_RETRY " << role << " first_error=" << cudaGetErrorString(status)
+                      << " address=" << mapping << " bytes=" << bytes << '\n';
+            cudaGetLastError();
+            status=cudaHostRegister(mapping,(bytes+page-1)/page*page,cudaHostRegisterMapped|cudaHostRegisterPortable);
+        }
         registered=status==cudaSuccess;
         std::cerr << "MIXED_REGISTER " << role << '=' << registered;
         if (!registered) {cudaGetLastError();std::cerr << " error=" << cudaGetErrorString(status);}

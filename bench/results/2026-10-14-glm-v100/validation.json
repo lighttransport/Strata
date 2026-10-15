@@ -1,0 +1,82 @@
+{
+  "cuda_tests": {
+    "base_passed": 10,
+    "candidate_passed": 5,
+    "candidate_test_names": [
+      "glm_prefill_parity",
+      "glm_kda_column_tiles_parity",
+      "glm_mailbox_test",
+      "glm_greedy_pick_test",
+      "glm_q8_test"
+    ]
+  },
+  "python_regression": {
+    "passed": 49
+  },
+  "hip": {
+    "status": "compile only; runtime device unavailable",
+    "targets": [
+      "strata-glm-decode",
+      "glm_greedy_pick_test"
+    ],
+    "architectures": [
+      "gfx1201"
+    ],
+    "binary_sha256": {
+      "strata-glm-decode": "65d0d7a565442685bf13935ead92c931f75e880ca4660989a291293bf984c922",
+      "glm_greedy_pick_test": "769661cb3b9dc386ea7b5ef845223936c9c7ba5da80db0ac59b31f9ee0875e8f"
+    }
+  },
+  "default_path": {
+    "comparison_complete": true,
+    "context": 4096,
+    "prompt_tokens": 48,
+    "generated_tokens": 8,
+    "modes": [
+      "base",
+      "candidate-unset",
+      "candidate-zero"
+    ],
+    "logits_and_token_bytes_equal": true
+  },
+  "source_logs": {
+    "tests-base.log": {
+      "sha256": "03da43e87ddcc7c1adec98d38f02b2ec31827dbae96988d70779b10dd5c16fcc"
+    },
+    "tests-candidate.log": {
+      "sha256": "2c7ef5c4afd361ed42614a0939692f19908b97fdcd7a2e7e95b0a5458f5d3e76"
+    },
+    "python-candidate-local.log": {
+      "sha256": "25aef098f5da3b757d92ff8570476596dfb6c23b2355357fae1e1e28324c5a7c"
+    },
+    "build-hip-candidate-final.log": {
+      "sha256": "8a74aa0bdbba662bbe2a96269662c75569f599c4c4a14fb85548b8155a7d0c12"
+    },
+    "full-model-memcheck-v2.sanitizer.log": {
+      "sha256": "a9d061cee538182f762e132abeea7bac7bddb844338f25751bbbb043f242c425"
+    },
+    "default-locked-check.controller.log": {
+      "sha256": "dc31e15ffd23fda4bc44dc3074fb261402201dd64030b311a1b484c18066df7f"
+    },
+    "q23-native-expert-parity.log": {
+      "sha256": "53d301b032cf7febed27c8ce20c61560d95eb96c9a346c94af36ff8ef5772127"
+    }
+  },
+  "whitespace": {
+    "engine_diff_and_new_test": "passed",
+    "report_sources_and_prompts": "passed",
+    "frozen_candidate_patch": {
+      "warnings": 3,
+      "lines": [
+        18,
+        32,
+        84
+      ],
+      "reason": "Unified-diff blank context lines contain their required context marker; preserve the exact frozen patch and its SHA-256"
+    }
+  },
+  "portable_report_tools": {
+    "help_checks": "passed from final repository paths",
+    "generation_protocol": "same measured runner with documented path/argument portability changes"
+  }
+}

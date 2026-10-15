@@ -1,0 +1,32 @@
+{
+  "binary_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+  "scope": "Native Q23, two V100 GPUs, cut24, context8192,254-token prefix,32 outputs, GPU draft,22528MiB cache per stage,graphs,confirmed windows8,forced rejection every proposal",
+  "environment": {
+    "STRATA_GLM_STEP_PIPELINE": "1",
+    "STRATA_GLM_ACTIVE_POOLS": "1",
+    "STRATA_GLM_DEVICE_EXPERTS": "1",
+    "STRATA_GLM_DEVICE_REDUCTION": "1",
+    "STRATA_GLM_LAYER_GRAPHS": "1",
+    "STRATA_GLM_KDA_PREPARE": "1",
+    "STRATA_GLM_DEQUANT_COALESCED": "1",
+    "STRATA_GLM_DEQUANT_ONCE": "1",
+    "STRATA_OLD_IQ_MMVQ": "1",
+    "STRATA_NATIVE_NUMA_LOCAL": "0",
+    "STRATA_GLM_KDA_ROW_PARTS": "8",
+    "STRATA_GLM_IQ_COALESCED": "8",
+    "STRATA_GLM_PACK_FUSE_QUANT": "0",
+    "STRATA_GLM_Q2_NUMA_WEIGHTS": "0",
+    "STRATA_GLM_STABLE_ROUTES": "1"
+  },
+  "exit": 0,
+  "generated_tokens": 32,
+  "proposed": 31,
+  "accepted": 0,
+  "token_ids_equal": true,
+  "committed_state_bitwise_equal": true,
+  "cache_policy_history_equal": true,
+  "committed_route_statistics_equal": true,
+  "payload_checks": 16,
+  "raw_record_sha256": "97a51afa340369a473a2e6775740417a935afe5f02c08a46e301fc436c620ff5",
+  "raw_log_sha256": "563d3c350ced999a13b1a22e7f3565a5afe2477b089d3d05b3dff01093959cfd"
+}

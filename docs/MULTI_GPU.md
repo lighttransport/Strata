@@ -1,5 +1,9 @@
 # Strata on two or more GPUs (layer split)
 
+For the experimental **GLM 5.3f** decoder, see [GLM_MULTI_GPU.md](GLM_MULTI_GPU.md).
+It uses separate `gpu_layout=layer` settings and a one-ahead MTP scheduler.
+The setup instructions below describe the Qwen engine.
+
 One model can run across several NVIDIA cards in one PC. The layers are split into contiguous ranges, one per GPU:
 the first card runs layers 0 to K-1, the next card runs K onward, and so on; the last card also runs the output head
 and the draft (MTP) layer. Each card keeps an expert cache for **its own layers only**, so two cards hold about twice

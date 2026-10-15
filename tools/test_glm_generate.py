@@ -58,6 +58,19 @@ class GenerateTransport(unittest.TestCase):
         self.assertEqual(len(observed), 1)
         self.assertFalse(observed[0].exists())
 
+    def test_layer_options_preserve_token_protocol(self):
+        def process(command, **kwargs):
+            self.assertIn("--gpu-layout=layer", command)
+            self.assertIn("--layer-split=24", command)
+            self.assertIn("--layer-pipeline=mtp", command)
+            result = mock.MagicMock()
+            result.__enter__.return_value = result
+            result.stdout = io.StringIO("7\n9\n")
+            result.wait.return_value = 0
+            return result
+        self.run_frontend(["hello", "--gpu-layout", "layer", "--layer-split", "24", "--layer-pipeline", "mtp",
+                           "--speculative", "mtp", "--draft-depth", "1"], [1, 2], process)
+
     def test_overflow_rejected_before_launch(self):
         launch = mock.Mock()
         with self.assertRaises(SystemExit) as result:

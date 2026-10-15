@@ -163,6 +163,21 @@ __global__ void scatter_expert_weighted(const float *x, float *out, const float 
     atomicAdd(out+int64_t(route/top)*width+i%width,
               weights[route]*x[int64_t(blockIdx.y)*rows*width+i]);
 }
+__global__ void scatter_expert_weighted_one(const float4 *x, float *out, const float *weights,
+                                            const int *bounds, const int *dest, int expert,
+                                            int offset, int rows, int width, int top) {
+    const int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x, quads=width/4;
+    if (i>=int64_t(rows)*quads) return;
+    const int row=int(i/quads)+offset;
+    if (row>=bounds[expert+1]-bounds[expert]) return;
+    const int route=dest[bounds[expert]+row];
+    const float w=weights[route];
+    const float4 v=x[i];
+    float4 *o=reinterpret_cast<float4 *>(out+int64_t(route/top)*width)+i%quads;
+    float4 a=*o;
+    a.x=fmaf(w,v.x,a.x);a.y=fmaf(w,v.y,a.y);a.z=fmaf(w,v.z,a.z);a.w=fmaf(w,v.w,a.w);
+    *o=a;
+}
 __global__ void sum_selected_rows(const float *rows,const float *weights,float *sum,int width,int top,int tokens) {
     const int i=blockIdx.x*blockDim.x+threadIdx.x;
     if (i>=width*tokens) return;
@@ -176,6 +191,10 @@ __global__ void sum_selected_rows(const float *rows,const float *weights,float *
 __global__ void accumulate_token_rows(const float *x,float *out,const int *tokens,int rows,int width) {
     const int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;
     if (i<int64_t(rows)*width) atomicAdd(out+int64_t(tokens[i/width])*width+i%width,x[i]);
+}
+__global__ void accumulate_token_rows_half(const __half *x,float *out,const int *tokens,int rows,int width) {
+    const int64_t i=int64_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if (i<int64_t(rows)*width) out[int64_t(tokens[i/width])*width+i%width]+=__half2float(x[i]);
 }
 __global__ void copy_route_rows(const float *source, float *dest, const int *routes, int begin,
                                int rows, int width, bool gather_rows) {
@@ -1178,6 +1197,23 @@ void glm_scatter_expert_weighted(const float *x,float *out,const float *weights,
         (cudaStream_t)s>>>(x,out,weights,bounds,dest,first,offset,rows,width,top,mask);
     check();
 }
+void glm_scatter_expert_weighted_ordered(const float *x,float *out,const float *weights,const int *bounds,
+                                         const int *dest,int first,int groups,int offset,int rows,int width,
+                                         int top,void *s,unsigned mask) {
+    check_expert_mask(mask,groups);
+    if (first<0 || groups<0 || offset<0 || rows<0 || width<4 || width%4 || top<1)
+        throw std::invalid_argument("GLM: invalid ordered expert scatter");
+    unsigned remaining=mask;
+    for (int g=0; g<groups; ++g) {
+        int expert=first+g;
+        if (mask) { expert=first+__builtin_ctz(remaining); remaining&=remaining-1; }
+        if (!rows) continue;
+        const int64_t quads=int64_t(rows)*(width/4);
+        scatter_expert_weighted_one<<<(quads+255)/256,256,0,(cudaStream_t)s>>>(
+            reinterpret_cast<const float4 *>(x+int64_t(g)*rows*width),out,weights,bounds,dest,expert,offset,rows,width,top);
+    }
+    check();
+}
 void glm_sum_selected_rows(const float *rows,const float *weights,float *sum,int width,int top,int tokens,void *s) {
     if (width<1 || top<1 || top>8 || tokens<1 || tokens>8) throw std::invalid_argument("GLM: invalid selected row sum");
     sum_selected_rows<<<(width*tokens+255)/256,256,0,(cudaStream_t)s>>>(rows,weights,sum,width,top,tokens);
@@ -1186,6 +1222,12 @@ void glm_sum_selected_rows(const float *rows,const float *weights,float *sum,int
 void glm_accumulate_token_rows(const float *x,float *out,const int *tokens,int rows,int width,void *s) {
     if (rows<0 || width<1) throw std::invalid_argument("GLM: invalid token accumulation");
     if (rows) accumulate_token_rows<<<(int64_t(rows)*width+255)/256,256,0,(cudaStream_t)s>>>(x,out,tokens,rows,width);
+    check();
+}
+void glm_accumulate_token_rows_half(const uint16_t *x,float *out,const int *tokens,int rows,int width,void *s) {
+    if (rows<0 || width<1) throw std::invalid_argument("GLM: invalid half token accumulation");
+    if (rows) accumulate_token_rows_half<<<(int64_t(rows)*width+255)/256,256,0,(cudaStream_t)s>>>(
+        reinterpret_cast<const __half *>(x),out,tokens,rows,width);
     check();
 }
 void glm_gather_f16(const float *x, uint16_t *y, const int *routes, int begin,

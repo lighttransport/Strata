@@ -8,9 +8,17 @@ import re
 import statistics
 import subprocess
 import time
+import sys
 
 from glm_generate import metadata_shard
 from strata_tokenizer import Tokenizer
+
+
+def prompt_ids(path):
+    fields = re.split(r"[,\s]+", pathlib.Path(path).read_text().strip())
+    if not fields or any(not value.isdigit() for value in fields):
+        raise ValueError("prompt IDs must be nonnegative integers separated by commas or whitespace")
+    return [int(value) for value in fields]
 
 
 def experiment_environment():
@@ -24,6 +32,27 @@ def experiment_environment():
     prefixes = ("STRATA_GLM_", "STRATA_NATIVE_", "STRATA_POOL_")
     return {name: os.environ[name] for name in sorted(os.environ, key=lambda n: (n not in names, n))
             if name in names or name.startswith(prefixes)}
+
+
+def diagnostic_environment():
+    # Presence enables STEP_TRACE even for "0"; conservatively keep every
+    # explicitly requested diagnostic out of placement/speed qualification.
+    names = ("STRATA_GLM_STEP_TRACE", "STRATA_GLM_TASK_TRACE", "STRATA_GLM_TASK_TRACE_SYNC",
+             "STRATA_GLM_ROUTING_EVENTS", "STRATA_GLM_STATE_TRACE_DIR", "STRATA_GLM_CHECK_RESIDENT_ROWS",
+             "STRATA_GLM_MIXED_PROFILE", "STRATA_GLM_MIXED_DECODE_PROFILE", "STRATA_GLM_MTP_TIMING",
+             "STRATA_GLM_LAYER_VERIFY_CACHE")
+    return [name for name in names if name in os.environ]
+
+
+def cpu_diagnostics(text):
+    cpu = re.search(r"CPU_EXPERT gu_ms=([\d.]+) quant_ms=([\d.]+) down_ms=([\d.]+) "
+                    r"(?:layer_flow_ms=[\d.]+ )?bytes=(\d+)", text)
+    if not cpu: return {}
+    result = dict(cpu_expert_ms=dict(zip(("gate_up", "quantize", "down"), map(float,cpu.groups()[:3]))),
+                  cpu_expert_bytes=int(cpu[4]))
+    flow = re.search(r"CPU_EXPERT[^\n]*layer_flow_ms=([\d.]+)", text)
+    if flow: result['cpu_expert_ms']['layer_flow'] = float(flow[1])
+    return result
 
 
 def save_result(path, result):
@@ -68,14 +97,44 @@ def request_diagnostics(log):
         if repairs:
             row["prefill_repairs"] = [dict(device=int(d), groups=int(g), checked_groups=int(c), wait_ms=float(t))
                                        for d, g, c, t in repairs]
-        cpu = re.search(r"CPU_EXPERT gu_ms=([\d.]+) quant_ms=([\d.]+) down_ms=([\d.]+) bytes=(\d+)", section)
-        if cpu:
-            row["cpu_expert_ms"] = dict(zip(("gate_up", "quantize", "down"), map(float, cpu.groups()[:3])))
-            row["cpu_expert_bytes"] = int(cpu[4])
+        row.update(cpu_diagnostics(section))
         hits = re.search(r"resident expert entries=(\d+)/(\d+)", section)
         if hits:
             row["gpu_expert_hits"], row["expert_entries"] = map(int, hits.groups())
             row["gpu_expert_hit_fraction"] = int(hits[1]) / int(hits[2]) if int(hits[2]) else None
+        mtp = re.search(r"LAYER_MTP proposed=(\d+) accepted=(\d+) depth=(\d+)", section)
+        if mtp:
+            proposed, accepted, depth = map(int, mtp.groups())
+            row["layer_mtp"] = dict(proposed=proposed, accepted=accepted, rejected=proposed-accepted,
+                                    depth=depth, acceptance_fraction=accepted/proposed if proposed else None)
+        layer_work = []
+        for stage, device, count, wall, draft, detail in re.findall(
+                r"LAYER_WORK stage=(\d+) device=(\d+) decode_rows=(\d+) decode_wall_ms=([\d.]+) "
+                r"draft_wall_ms=([\d.]+)[^\n]*\n(.*?)(?=\nLAYER_WORK |\Z)", section, re.S):
+            item = dict(stage=int(stage), device=int(device), decode_rows=int(count),
+                        decode_wall_ms=float(wall), draft_wall_ms=float(draft))
+            hit = re.search(r"resident expert entries=(\d+)/(\d+)", detail)
+            if hit:
+                item.update(gpu_expert_hits=int(hit[1]), expert_entries=int(hit[2]))
+            item.update(cpu_diagnostics(detail))
+            traced = re.search(r"STEP_TRACE ([^\n]+)", detail)
+            if traced:
+                item['step_trace']={k:float(v) for k,v in re.findall(r'(\w+)=([\d.]+)',traced[1])}
+            layer_work.append(item)
+        if layer_work:
+            row["layer_stages"] = layer_work
+            measured_cpu=[stage for stage in layer_work if 'cpu_expert_bytes' in stage]
+            if measured_cpu:
+                row['cpu_expert_bytes']=sum(stage['cpu_expert_bytes'] for stage in measured_cpu)
+                row['cpu_expert_ms']={key:sum(stage['cpu_expert_ms'].get(key,0) for stage in measured_cpu)
+                                      for key in ('gate_up','quantize','down','layer_flow')}
+                row['cpu_expert_scope']='sum of stage work; overlapping stage times are not elapsed decode time'
+            measured = [item for item in layer_work if "expert_entries" in item]
+            if measured:
+                hits = sum(item["gpu_expert_hits"] for item in measured)
+                entries = sum(item["expert_entries"] for item in measured)
+                row.update(gpu_expert_hits=hits, expert_entries=entries,
+                           gpu_expert_hit_fraction=hits / entries if entries else None)
         row["gpu_devices"] = []
         for device, peak, live, tail in re.findall(
                 r"GPU_DEVICE device=(\d+) peak_allocated_MiB=([\d.]+) live_MiB=([\d.]+)([^\n]*)", section):
@@ -89,6 +148,15 @@ def request_diagnostics(log):
     return result
 
 
+def executable_fingerprint(path):
+    value = 14695981039346656037
+    with pathlib.Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(131072), b""):
+            for byte in chunk:
+                value = ((value ^ byte) * 1099511628211) & ((1 << 64) - 1)
+    return value
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("model", type=pathlib.Path)
@@ -96,11 +164,21 @@ def main():
     ap.add_argument("--decoder", default="build-glm-v100/strata-glm-decode")
     ap.add_argument("--compute-sanitizer", action="store_true", help="instrument the decoder for memory validation")
     ap.add_argument("--prompt-tokens", type=int, default=4096)
+    ap.add_argument("--prompt-ids", action="store_true", help="the prompt file contains frozen token IDs")
     ap.add_argument("--generated-tokens", type=int, default=128)
     ap.add_argument("--context", type=int, default=131072)
     ap.add_argument("--threads", type=int, default=17)
+    ap.add_argument("--cpu-affinity", choices=("auto", "numa", "none"), default="auto")
     ap.add_argument("--gpu-budget-mib", type=int, default=32768)
     ap.add_argument("--gpu-devices", default="0,1")
+    ap.add_argument("--gpu-layout", choices=("legacy", "layer"), default="legacy")
+    ap.add_argument("--layer-split", default="auto")
+    ap.add_argument("--layer-pipeline", choices=("none", "mtp"), default="none")
+    ap.add_argument("--layer-memory", choices=("interleave", "socket"))
+    ap.add_argument("--layer-plan", type=pathlib.Path)
+    ap.add_argument("--layer-workers", help="comma-separated worker counts in stage order")
+    ap.add_argument("--layer-cache-mib", help="comma-separated cache budgets in stage order")
+    ap.add_argument("--layer-pin-coordinator", action="store_true")
     ap.add_argument("--prefill-batch", type=int, default=4096)
     ap.add_argument("--prefill-expert-cache-mib", default="auto")
     ap.add_argument("--decode-prefill-cache", action="store_true")
@@ -110,15 +188,28 @@ def main():
     ap.add_argument("--decode-cache-adapt", action="store_true")
     ap.add_argument("--prefill-experts", choices=("mmq", "f16", "f16-batched"), default="mmq")
     ap.add_argument("--repetitions", type=int, default=3)
+    ap.add_argument("--full-warmups", type=int, default=0, help="full generated-token requests excluded before timed trials")
     ap.add_argument("--validation-tokens", type=int, default=0, help="save longer responses for behavioral validation")
     ap.add_argument("--validation-repetitions", type=int, default=3)
     ap.add_argument("--prefill-text", type=pathlib.Path, help="additional long raw-text prefill workload")
     ap.add_argument("--prefill-tokens", type=int, default=8192)
     ap.add_argument("--speculative", choices=("none", "mtp"), default="none")
     ap.add_argument("--draft-depth", type=int, default=1)
+    ap.add_argument("--worker-decoder", type=pathlib.Path, help="opt-in CUDA+CUDA expert worker binary")
+    ap.add_argument("--primary-device", type=int, default=0)
+    ap.add_argument("--worker-device", type=int, default=1)
+    ap.add_argument("--worker-cache-mib", type=int, default=24576)
+    ap.add_argument("--worker-gpu-budget-mib", type=int, default=32768)
+    ap.add_argument("--worker-combine", choices=("strict","device","native"), default="strict")
+    ap.add_argument("--primary-cpus")
+    ap.add_argument("--worker-cpus")
+    ap.add_argument("--stop-ids", default="-1", help="real stop IDs; -1 retains fixed-length diagnostic timing")
     ap.add_argument("--output", type=pathlib.Path, required=True)
     args = ap.parse_args()
-    ids = Tokenizer.from_gguf(metadata_shard(args.model)).encode(args.text.read_text(), parse_special=True)
+    if args.gpu_layout!="layer" and (args.layer_workers or args.layer_cache_mib or args.layer_pin_coordinator):
+        ap.error("per-stage budgets and coordinator affinity require --gpu-layout=layer")
+    ids = (prompt_ids(args.text) if args.prompt_ids else
+           Tokenizer.from_gguf(metadata_shard(args.model)).encode(args.text.read_text(), parse_special=True))
     if not 0 < args.prompt_tokens <= len(ids) or args.generated_tokens < 2 or args.repetitions < 1 or args.threads < 1:
         ap.error("invalid prompt, generated token count, or repetitions")
     ids = ids[:args.prompt_tokens]
@@ -131,17 +222,46 @@ def main():
         if not 0 < args.prefill_tokens <= len(extra_ids) or args.prefill_tokens + 2 > args.context:
             ap.error("invalid additional prefill length")
         extra_ids = extra_ids[:args.prefill_tokens]
+    if args.full_warmups < 0: ap.error("full-warmups must be nonnegative")
     if (args.validation_tokens < 0 or args.validation_tokens == 1 or args.validation_repetitions < 1 or
             args.validation_tokens + len(ids) > args.context):
         ap.error("invalid validation length")
     command = [str(pathlib.Path(args.decoder).resolve()), "--serve", str(args.model.resolve()),
-               str(args.context), "4096", str(args.threads), "0", str(args.prefill_batch), "-1",
-               str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), "auto", "0", args.gpu_devices,
+               str(args.context), "4096", str(args.threads), "0", str(args.prefill_batch), args.stop_ids,
+               str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), args.cpu_affinity, "0", args.gpu_devices,
                args.prefill_expert_cache_mib, "1"]
     command.extend((str(int(args.decode_prefill_cache)), args.decode_cache_mib, str(int(args.decode_graphs)), str(args.decode_cache_window), str(int(args.decode_cache_adapt))))
     command.append(args.prefill_experts)
+    if args.gpu_layout == "layer":
+        if args.prefill_expert_cache_mib != "0" or args.decode_prefill_cache or args.decode_cache_mib in ("auto", "extend") or args.prefill_experts != "mmq":
+            ap.error("layer benchmark requires fixed decode cache, mmq prefill and no legacy prefill cache")
+        # Same positional padding as serve/server.py; argv[29] starts named options.
+        command.extend(("4k", "", "", "auto", "--gpu-layout=layer",
+                        f"--layer-split={args.layer_split}", f"--layer-pipeline={args.layer_pipeline}"))
+        if args.layer_memory: command.append(f"--layer-memory={args.layer_memory}")
+        if args.layer_plan: command.append(f"--layer-plan={args.layer_plan}")
+        if args.layer_workers: command.append(f"--layer-workers={args.layer_workers}")
+        if args.layer_cache_mib: command.append(f"--layer-cache-mib={args.layer_cache_mib}")
+        if args.layer_pin_coordinator: command.append("--layer-pin-coordinator")
     with pathlib.Path(command[0]).open("rb") as binary:
         decoder_sha256 = hashlib.file_digest(binary, "sha256").hexdigest()
+    worker_sha256 = None
+    if args.worker_decoder:
+        if args.gpu_layout != "legacy" or args.gpu_devices != "0" or args.compute_sanitizer:
+            ap.error("CUDA+CUDA worker requires legacy layout, logical --gpu-devices=0 and separate sanitizer checks")
+        with args.worker_decoder.open("rb") as binary:
+            worker_sha256 = hashlib.file_digest(binary, "sha256").hexdigest()
+        launch = [sys.executable, str(pathlib.Path(__file__).with_name("glm_mixed_run.py")),
+                  "--primary-worker-mode", "--primary", command[0], "--worker", str(args.worker_decoder.resolve()),
+                  "--model", str(args.model.resolve()), "--primary-device", str(args.primary_device),
+                  "--worker-device", str(args.worker_device), "--worker-cache-mib", str(args.worker_cache_mib),
+                  "--worker-gpu-budget-mib", str(args.worker_gpu_budget_mib),
+                  "--combine", args.worker_combine,
+                  "--report", str(args.output.with_suffix(".memory.json"))]
+        for role in ("primary", "worker"):
+            mask = getattr(args, role + "_cpus")
+            if mask: launch += ["--" + role + "-cpus", mask]
+        command = launch + ["--"] + command[3:]
     sanitizer_path = args.output.with_suffix(".sanitizer.log") if args.compute_sanitizer else None
     if sanitizer_path:
         if args.output.exists() or sanitizer_path.exists():
@@ -159,11 +279,22 @@ def main():
     rows = []
     prefill_rows = []
     validation = None
-    result = dict(configuration={k: str(v) if isinstance(v, pathlib.Path) else v for k, v in vars(args).items()},
-                  command=command, decoder_sha256=decoder_sha256, startup_seconds=None,
+    hardware = {}
+    try:
+        hardware["gpus"] = subprocess.check_output(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], text=True, stderr=subprocess.DEVNULL).strip().splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        hardware["gpus"] = []
+    cpuinfo = pathlib.Path("/proc/cpuinfo")
+    hardware["cpu"] = next((line.split(":", 1)[1].strip() for line in cpuinfo.read_text().splitlines()
+                             if line.startswith("model name")), "") if cpuinfo.exists() else ""
+    hardware["node"] = os.uname().nodename if hasattr(os, "uname") else ""
+    hardware["job_id"] = os.environ.get("SLURM_JOB_ID", "")
+    result = dict(hardware=hardware, configuration={k: str(v) if isinstance(v, pathlib.Path) else v for k, v in vars(args).items()},
+                  command=command, decoder_sha256=decoder_sha256, decoder_fnv64=executable_fingerprint(args.decoder), worker_sha256=worker_sha256, startup_seconds=None,
                   prompt_sha256=hashlib.sha256(encoded.encode()).hexdigest(), trials=rows,
                   validation=None, additional_prefill_trials=prefill_rows, complete=False,
-                  instrumented=args.compute_sanitizer,
+                  instrumented=args.compute_sanitizer or bool(diagnostic_environment()),
+                  diagnostic_environment=diagnostic_environment(),
                   sanitizer_log_path=str(sanitizer_path) if sanitizer_path else None,
                   execution=dict(workers=args.threads),
                   environment=experiment_environment(),
@@ -204,23 +335,36 @@ def main():
                     generated.append(int(line.split()[1]))
                 if line.startswith("DONE "):
                     fields = line.split()
-                    if int(fields[1]) != count or int(fields[2]) != len(prompt_ids) or len(generated) != count:
+                    actual = int(fields[1])
+                    if (int(fields[2]) != len(prompt_ids) or len(generated) != actual or not 1 <= actual <= count or
+                            (actual != count and args.stop_ids == "-1")):
                         raise RuntimeError(f"unexpected response: {line}")
                     prefill, decode = map(float, fields[3:5])
                     return dict(prefill_ms=prefill, decode_ms=decode,
                                 prefill_tok_s=len(prompt_ids) * 1000 / prefill,
-                                decode_tok_s=(count - 1) * 1000 / decode,
+                                decode_tok_s=(actual - 1) * 1000 / decode if decode > 0 else 0,
+                                generated_tokens=actual, requested_tokens=count, stop_reason=fields[5] if len(fields)>5 else None,
                                 response_ms=prefill + decode, token_ids=generated)
 
         try:
             while True:
                 ready = read()
                 if ready.startswith("READY "): break
+            visible_gpus = re.findall(r"LAYER_GPU device=(\d+) name=([^\n]+)", log_path.read_text())
+            if visible_gpus:
+                hardware["gpus"] = [""] * (max(int(device) for device, _ in visible_gpus) + 1)
+                for device, name in visible_gpus: hardware["gpus"][int(device)] = name
             result["prefill_includes_reset"] = "prefill-includes-reset" in ready.split()
             startup = time.monotonic() - started
             result["startup_seconds"] = startup
             save()
             print(f"READY startup_s={startup:.3f}", flush=True)
+            result["full_warmup_trials"] = []
+            for trial in range(args.full_warmups):
+                row = request(args.generated_tokens, ids)
+                result["full_warmup_trials"].append(row)
+                save()
+                print(f"FULL_WARMUP {trial} decode_tok_s={row['decode_tok_s']:.3f}", flush=True)
             for trial in range(args.repetitions + 1):
                 # Populate prefill caches without an extra full decode warmup.
                 count = args.generated_tokens if trial else (3 if args.decode_graphs else 2)

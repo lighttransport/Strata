@@ -1,0 +1,96 @@
+{
+  "plans": [
+    {
+      "model": "q23native",
+      "schema": "strata.glm.layer-plan.v1",
+      "model_filename": "GLM-5.3-Flash-Q23-assembled.gguf",
+      "model_bytes": 120875172704,
+      "configuration": {
+        "context": 32768,
+        "threads": 32,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "decode_cache_mib": "22528",
+        "decode_cache_window": 256,
+        "decode_cache_adapt": false,
+        "decode_graphs": true,
+        "prefill_batch": 4096,
+        "speculative": "mtp",
+        "draft_depth": 1,
+        "layer_pipeline": "mtp",
+        "layer_memory": "socket",
+        "prompt_tokens": 4096,
+        "generated_tokens": 512,
+        "repetitions": 3,
+        "validation_tokens": 512,
+        "validation_repetitions": 3,
+        "full_warmups": 2,
+        "cpu_affinity": "auto",
+        "pin_cpu": true
+      },
+      "environment": {
+        "STRATA_GLM_ACTIVE_POOLS": "1",
+        "STRATA_GLM_CANON": null,
+        "STRATA_GLM_DEQUANT_COALESCED": "1",
+        "STRATA_GLM_DEQUANT_ONCE": "1",
+        "STRATA_GLM_DEVICE_EXPERTS": "1",
+        "STRATA_GLM_DEVICE_REDUCTION": "1",
+        "STRATA_GLM_IQ_COALESCED": "8",
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_GLM_KDA_ROW_PARTS": "8",
+        "STRATA_GLM_LAYER_GRAPHS": "1",
+        "STRATA_GLM_PACK_FUSE_QUANT": "0",
+        "STRATA_GLM_Q2_NUMA_WEIGHTS": "0",
+        "STRATA_GLM_Q8_DECODE": null,
+        "STRATA_GLM_STABLE_ROUTES": "1",
+        "STRATA_GLM_STEP_PIPELINE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_OLD_IQ_MMVQ": "1"
+      },
+      "hardware": {
+        "gpus": [
+          "Tesla V100-PCIE-32GB",
+          "Tesla V100-PCIE-32GB"
+        ],
+        "cpu": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "decoder_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+      "decoder_fnv64": 4408269237847683185,
+      "prompt_sha256": "81f514ae71a9ce6652444936d18c347ed6b614678e71a0b0c6730c4e99effd63",
+      "layer_split": "23",
+      "candidates": [
+        {
+          "layer_split": "22",
+          "median_decode_tok_s": 31.8344360134066,
+          "decode_tok_s": [
+            31.824919347807132,
+            31.8344360134066,
+            31.838799720865318
+          ]
+        },
+        {
+          "layer_split": "23",
+          "median_decode_tok_s": 34.795042897998094,
+          "decode_tok_s": [
+            34.80381139194813,
+            34.79456905121815,
+            34.795042897998094
+          ]
+        }
+      ],
+      "timing_scope": "measured single-stream decode; placement screening, not a coding-quality qualification",
+      "records": [
+        {
+          "name": "q23native-cut22.json",
+          "sha256": "30e284ee054ea87fd55ece8649c7436b118d91bf1d86d1b63e3258f36d2c4b68"
+        },
+        {
+          "name": "q23native-cut23.json",
+          "sha256": "09500670a92f13fb92b794ac7b83aec44751c7d6fa6fcf06df5667c8735c2112"
+        }
+      ],
+      "raw_record_sha256": "ebc10ea34571343423e5bc407760567d8326f1c9e9dd9ecdc745310c02e0f4f9"
+    }
+  ],
+  "note": "Public copies omit node identifiers; use a new plan generated from original records for runtime validation."
+}

@@ -6800,8 +6800,9 @@ def main() -> int:
         dcache = cfg.get("decode_cache_mib", 0)
         if isinstance(dcache, bool) or not (isinstance(dcache, int) and dcache >= 0 or dcache in ("auto", "extend")):
             ap.error('GLM decode_cache_mib must be a whole number of MiB (0..12288), "auto" or "extend"')
-        if isinstance(dcache, int) and dcache > 12288:
-            ap.error("GLM decode_cache_mib must be at most 12288")
+        cache_limit = int(cfg.get("gpu_budget_mib", 12288)) if cfg.get("gpu_layout") == "layer" else 12288
+        if isinstance(dcache, int) and dcache > cache_limit:
+            ap.error(f"GLM decode_cache_mib must be at most {cache_limit}")
         gpu_decode = cfg.get("decode_experts", "cpu") == "gpu"
         expert_mib, prepack = int(cfg.get("expert_cache_mib", 0)), int(cfg.get("cpu_prepack_mib", 0))
         if dcache and (gpu_decode or lookup or expert_mib or prepack):
@@ -6833,7 +6834,7 @@ def main() -> int:
             ap.error("native EXL3 does not support decode_graphs or decode_cache_mib")
         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
                 str(cfg.get("threads", 15 if glm_native else 6)), str(cfg.get("expert_cache_mib", 0)),
-                str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(map(str, sorted(glm_stop_ids))), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native else "none"), str(cfg.get("cpu_prepack_mib", 0))]
+                str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(map(str, sorted(glm_stop_ids))), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native or cfg.get("gpu_layout") == "layer" else "none"), str(cfg.get("cpu_prepack_mib", 0))]
         devices = cfg.get("gpu_devices", "0")
         if isinstance(devices, list): devices = ",".join(map(str, devices))
         args.extend((str(devices), str(cfg.get("prefill_expert_cache_mib", 0)), str(int(bool(cfg.get("lock_weights", False)))),
@@ -6855,14 +6856,76 @@ def main() -> int:
                 ap.error("invalid GLM CPU expert backend")
             args.extend(("4k", cfg["expert_pack"], cfg.get("expert_pack_profile", ""), backend))
         batch_args = parallel_args(cfg, [])
-        if batch_args:
+        gpu_layout = cfg.get("gpu_layout", "legacy")
+        if gpu_layout not in ("legacy", "layer"):
+            ap.error("GLM gpu_layout must be legacy or layer")
+        layer_args = []
+        if gpu_layout == "layer":
+            if glm_native or batch_args:
+                ap.error("GLM layer layout requires GGUF and one conversation")
+            split = cfg.get("layer_split", "auto")
+            if isinstance(split, list):
+                split = ",".join(map(str, split))
+            pipeline = cfg.get("layer_pipeline", "none")
+            if pipeline not in ("none", "mtp"):
+                ap.error("GLM layer_pipeline must be none or mtp")
+            if pipeline == "mtp" and (spec != "mtp" or int(cfg.get("draft_depth", 1)) != 1):
+                ap.error("GLM layer_pipeline=mtp needs speculative=mtp and draft_depth=1")
+            if spec == "mtp" and int(cfg.get("draft_depth", 1)) != 1:
+                ap.error("GLM layer MTP currently requires draft_depth=1")
+            if dcache in ("auto", "extend"):
+                ap.error("GLM layer layout currently requires a fixed decode cache budget")
+            if cfg.get("decode_cache_adapt") and (not dcache or int(cfg.get("decode_cache_window", 256)) < 1):
+                stage_caches=cfg.get("layer_cache_mib",[])
+                if (not isinstance(stage_caches,list) or
+                        not any(isinstance(n,int) and not isinstance(n,bool) and n>0 for n in stage_caches) or
+                        int(cfg.get("decode_cache_window",256))<1):
+                    ap.error("GLM layer cache adaptation needs a positive budget and window")
+            if gpu_decode or lookup or expert_mib or prepack or cfg.get("expert_pack") or cfg.get("decode_prefill_cache") or cfg.get("prefill_expert_cache_mib", 0) or prefill_experts != "mmq":
+                ap.error("GLM layer layout requires native GGUF, CPU decode experts, mmq prefill and no legacy helper options")
+            n_devices = len(str(devices).split(","))
+            if not 2 <= n_devices <= 16 or pipeline == "mtp" and n_devices != 2:
+                ap.error("GLM layer layout needs 2..16 GPUs; overlapped MTP needs two")
+            args[11] = str(cfg.get("draft_depth", 1))
+            layer_args = ["--gpu-layout=layer", f"--layer-split={split}", f"--layer-pipeline={pipeline}"]
+            for key, minimum in (("layer_workers",1),("layer_cache_mib",0)):
+                if key not in cfg: continue
+                values=cfg[key]
+                if (not isinstance(values,list) or len(values)!=n_devices or
+                        any(isinstance(n,bool) or not isinstance(n,int) or n<minimum for n in values)):
+                    ap.error(f"GLM {key} needs one whole number per stage, at least {minimum}")
+                if key=="layer_workers" and sum(values)>int(cfg.get("threads",6)):
+                    ap.error("GLM layer_workers exceeds threads")
+                if key=="layer_cache_mib" and max(values)>int(cfg.get("gpu_budget_mib",12288)):
+                    ap.error("GLM layer_cache_mib exceeds gpu_budget_mib")
+                layer_args.append("--"+key.replace('_','-')+"="+','.join(map(str,values)))
+            if "layer_pin_coordinator" in cfg and not isinstance(cfg["layer_pin_coordinator"],bool):
+                ap.error("GLM layer_pin_coordinator must be true or false")
+            if cfg.get("layer_pin_coordinator"):
+                if cfg.get("cpu_affinity")=="none":ap.error("GLM coordinator pinning requires CPU affinity")
+                layer_args.append("--layer-pin-coordinator")
+            if cfg.get("layer_plan"):
+                if split != "auto" or not Path(cfg["layer_plan"]).is_file():
+                    ap.error("GLM layer_plan needs layer_split=auto and an existing measured plan file")
+                layer_args.append(f"--layer-plan={cfg['layer_plan']}")
+            if "layer_memory" in cfg:
+                if cfg["layer_memory"] not in ("interleave", "socket"):
+                    ap.error("GLM layer_memory must be interleave or socket")
+                if cfg["layer_memory"] == "socket" and not cfg.get("lock_weights"):
+                    ap.error("GLM layer_memory=socket requires lock_weights")
+                layer_args.append(f"--layer-memory={cfg['layer_memory']}")
+            if "mtp_experts" in cfg:
+                if cfg["mtp_experts"] not in ("cpu", "gpu"):
+                    ap.error("GLM layer mtp_experts must be cpu or gpu")
+                layer_args.append(f"--mtp-experts={cfg['mtp_experts']}")
+        if batch_args or layer_args:
             if glm_native:
                 ap.error("GLM parallel requests currently require GGUF weights")
             # Preserve all positional fields before appending named batch options.
             defaults = ["mmq", "4k", "", "", "auto"]
             while len(args) < 27:
                 args.append(defaults[len(args) - 22])
-            args += batch_args
+            args += batch_args + layer_args
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
         vision, sampling_defaults = None, {}
     elif a.engine == "strata":

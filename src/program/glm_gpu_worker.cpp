@@ -29,6 +29,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -77,6 +78,7 @@ public:
 int main(int argc, char **argv) {
 #ifdef __linux__
     try {
+        if (argc==2 && std::string(argv[1])=="--device-info") { report_gpu_devices(std::cout); return 0; }
         if (argc==2 && std::string(argv[1])=="--backend") {
 #ifdef STRATA_USE_HIP
             std::cout << "hip\n";
@@ -172,14 +174,27 @@ int main(int argc, char **argv) {
         const auto &m = artifact.descriptor();
         if (m.hidden != 4096 || m.top_k != 8 || m.experts > 288 ||
             std::any_of(m.layers.begin(),m.layers.end(),[](const auto &l){return l.ffn==strata::core::FfnKind::Moe && l.intermediate!=2048;})) throw std::runtime_error("mixed worker unsupported geometry");
-        size_t budget = std::stoull(argv[4]) * MiB;
-        if (budget > 14336*MiB || !budget) throw std::runtime_error("mixed worker cache must be 1..14336 MiB");
+        auto mib_bytes = [](const char *text) {
+            const std::string value(text); size_t used = 0;
+            if (value.empty() || value.front() == '-') throw std::invalid_argument("mixed worker budget must be positive MiB");
+            const auto n = std::stoull(value, &used);
+            if (used != value.size() || !n || n > SIZE_MAX / MiB)
+                throw std::invalid_argument("mixed worker budget must be positive MiB without overflow");
+            return size_t(n) * MiB;
+        };
+        size_t budget = mib_bytes(argv[4]);
         const bool check_rows = strata_env_truthy_one("STRATA_GLM_MIXED_CHECK_ROWS");
         std::unique_ptr<cpu::ExpertPool> checker;
         if (check_rows) checker=std::make_unique<cpu::ExpertPool>(2,false,true);
-        const size_t gpu_budget = std::stoull(argv[5]);
-        if (gpu_budget != 14336 && gpu_budget != 15360) throw std::runtime_error("mixed worker GPU budget must be 14336 or 15360 MiB");
-        Device::limit() = gpu_budget * MiB - Device::budget_reserve();
+        const size_t requested_gpu_bytes = mib_bytes(argv[5]);
+        size_t initial_free = 0, physical_bytes = 0; check(cudaMemGetInfo(&initial_free, &physical_bytes));
+        const size_t effective_gpu_bytes = std::min(requested_gpu_bytes, physical_bytes);
+        if (effective_gpu_bytes <= Device::budget_reserve() || budget > effective_gpu_bytes - Device::budget_reserve())
+            throw std::invalid_argument("mixed worker cache exceeds the GPU budget after the runtime reserve");
+        Device::limit() = effective_gpu_bytes - Device::budget_reserve();
+        std::cerr << "MIXED_BUDGET requested_gpu_MiB=" << requested_gpu_bytes/double(MiB)
+                  << " effective_gpu_MiB=" << effective_gpu_bytes/double(MiB)
+                  << " requested_cache_MiB=" << budget/double(MiB) << '\n';
         cudaStream_t stream; check(cudaStreamCreate(&stream));
         ResidentExecutor executor;
         strata::prefill::Gemm gemm; std::string error;
@@ -197,6 +212,8 @@ int main(int argc, char **argv) {
         Device sources(STRATA_MIXED_ROUTES*sizeof(int)), bounds(5*sizeof(int)), down_dense(4ULL*4096*2048*2);
         Pinned source_host(STRATA_MIXED_ROUTES*sizeof(int)), bounds_host(5*sizeof(int));
         std::unique_ptr<Device> partial_result, partial_weights, partial_dest;
+        std::unique_ptr<Device> partial_half;
+        const bool half_partial=strata_env_truthy_one("STRATA_GLM_MIXED_HALF_PARTIAL");
         std::unique_ptr<Pinned> partial_weight_host, partial_dest_host;
         if (strata_env_truthy_one("STRATA_GLM_MIXED_PARTIAL_PREFILL")) {
             partial_result=std::make_unique<Device>(STRATA_MIXED_TOKENS*4096ULL*sizeof(float));
@@ -390,6 +407,7 @@ int main(int argc, char **argv) {
         std::vector<uint8_t> scanned_valid(m.layers.size());
         double decode_prologue_ms=0, decode_body_ms=0, decode_idle_ms=0; uint64_t decode_requests=0;
         std::chrono::steady_clock::time_point last_reply{};
+        std::chrono::steady_clock::time_point prefill_last_end{};
         uint64_t ready = STRATA_MIXED_MAGIC; strata::core::mixed_signal(transport.socket, ready, true);
         for (;;) {
             uint64_t sequence = 0; strata::core::mixed_signal(transport.socket, sequence, false, -1);
@@ -640,10 +658,23 @@ int main(int argc, char **argv) {
                 if (partial) {
                     // Activation staging is free after its upload; reuse its
                     // bounded pinned buffer for one FP32 partial vector/token.
+                    // STRATA_GLM_MIXED_HALF_PARTIAL=1 (opt-in, lossy; registered protocol 5): the partial returns as
+                    // FP16, one chunk, halving the reply bytes on the link.
+                    if (half_partial) {
+                        if (!registered_transport || b.nt>transport.layout.output_rows)
+                            throw std::runtime_error("mixed half partial needs a registered protocol 5 mapping");
+                        if (!partial_half) partial_half=std::make_unique<Device>(STRATA_MIXED_TOKENS*4096ULL*sizeof(uint16_t));
+                        k::glm_f16(partial_result->f(),static_cast<uint16_t *>(partial_half->p),int64_t(b.nt)*4096,stream);
+                        check(cudaMemcpyAsync(transport.output(),partial_half->p,size_t(b.nt)*4096*sizeof(uint16_t),cudaMemcpyDeviceToHost,stream));
+                        check(cudaStreamSynchronize(stream));
+                        b.chunk_rows=b.nt;
+                        for (uint32_t row=0;row<b.nt;++row) transport.destinations()[row]=row;
+                        flush_chunk();
+                    }
                     if (!registered_transport)
                         check(cudaMemcpyAsync(input.p,partial_result->p,size_t(b.nt)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
-                    check(cudaStreamSynchronize(stream));
-                    for (uint32_t start=0;start<b.nt;start+=transport.layout.output_rows) {
+                    if (!half_partial) check(cudaStreamSynchronize(stream));
+                    for (uint32_t start=0;start<b.nt && !half_partial;start+=transport.layout.output_rows) {
                         b.chunk_rows=std::min(transport.layout.output_rows,b.nt-start);
                         if (registered_transport) {
                             check(cudaMemcpyAsync(transport.output(),partial_result->f(size_t(start)*4096),
@@ -865,7 +896,11 @@ int main(int argc, char **argv) {
             if (profile_prefill && is_prefill)
                 std::cerr << "MIXED_PREFILL_PROFILE layer=" << b.layer << " tile=" << panel_rows << " panels=" << panels
                           << " cache_prepare_ms=" << cache_prepare_ms << " products_copy_ms=" << products_ms
-                          << " acknowledgement_ms=" << ack_ms << " chunks=" << chunk_counter << '\n';
+                          << " acknowledgement_ms=" << ack_ms << " chunks=" << chunk_counter
+                          << " wall_ms=" << std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-request_start).count()
+                          << " gap_ms=" << (prefill_last_end.time_since_epoch().count() ?
+                                 std::chrono::duration<double,std::milli>(request_start-prefill_last_end).count() : 0.0) << '\n';
+            if (profile_prefill && is_prefill) prefill_last_end=std::chrono::steady_clock::now();
             if (b.prefill==0 || decode_partial) {
                 decode_rows+=b.routes;
                 if (profile_decode) {

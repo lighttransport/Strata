@@ -152,6 +152,7 @@ public:
         if(expert>=experts || node<0 || node>1)throw std::out_of_range("NUMA packed tensor shard");
         return data_[node]+expert*(view_?stride_:half_rows*row_bytes);
     }
+    bool packed()const{return packed_type_!=0;}
     void copy(size_t expert,void* dest)const {
         for(int node=0;node<2;++node) {
             auto* out=static_cast<uint8_t*>(dest)+node*half_rows*row_bytes;

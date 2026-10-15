@@ -1,0 +1,162 @@
+{
+  "complete": true,
+  "clean": null,
+  "repeated_tokens_equal": true,
+  "measurements": {
+    "prefill": [
+      {
+        "trial": 0,
+        "tokens": 4096,
+        "batch": 8192,
+        "milliseconds": 17589.3,
+        "tokens_per_second": 232.869
+      },
+      {
+        "trial": 1,
+        "tokens": 4096,
+        "batch": 8192,
+        "milliseconds": 17595.8,
+        "tokens_per_second": 232.783
+      }
+    ],
+    "decode": [
+      {
+        "kind": "single",
+        "tokens": 127,
+        "milliseconds": 7011.27,
+        "tokens_per_second": 18.1137
+      }
+    ],
+    "cpu_expert": [
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 0,
+        "bytes": 0
+      },
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 3469.96,
+        "bytes": 268843286528
+      },
+      {
+        "gu_ms": 0,
+        "quant_ms": 0,
+        "down_ms": 0,
+        "layer_flow_ms": 2802.38,
+        "bytes": 200030093312
+      }
+    ],
+    "mtp_timing": [],
+    "mtp_positions": [],
+    "lookup_positions": [],
+    "draft_timing": [],
+    "external_prepare": [],
+    "external_ready": [],
+    "external_verification": [],
+    "mtp_approx": [],
+    "mtp_first_margin": [],
+    "mtp_reuse": [],
+    "mtp_sync_state": [],
+    "mtp_repeat_guard": [],
+    "step_trace": [],
+    "decode_cache": [
+      {
+        "prefix_trained": 1,
+        "slots": 1414,
+        "MiB": 12284.1,
+        "fingerprint": 11083264218233297500
+      }
+    ],
+    "speculation": [],
+    "affinity_quality": [],
+    "lookup_parity": [],
+    "median_prefill_tok_s": 232.826,
+    "median_decode_tok_s": 18.1137,
+    "peak_allocated_gpu_mib": 21681.5,
+    "gpu_live": [
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "other": 1478.98,
+          "prefill": 4672.0,
+          "state": 3137.61
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "other": 1478.98,
+          "prefill": 4672.0,
+          "state": 3137.61
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "other": 12355.2,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 3137.61
+        }
+      },
+      {
+        "device": 0,
+        "tags": {
+          "dense": 6153.68,
+          "other": 12355.2,
+          "prefill": 32.0,
+          "resident_exec": 2.94288,
+          "state": 3137.61
+        }
+      }
+    ],
+    "page_faults": [
+      {
+        "trial": 0,
+        "major": 0,
+        "minor": 65537
+      },
+      {
+        "trial": 1,
+        "major": 0,
+        "minor": 65689
+      }
+    ],
+    "decode_warmup": [
+      {
+        "kind": "single",
+        "tokens": 127,
+        "milliseconds": 7858.26,
+        "tokens_per_second": 16.1613
+      }
+    ]
+  },
+  "output_sha256": "5b78fa4fd1ac9813da75710b841a5ca3b6ed1e135cd8322e391bbe97ac200b5c",
+  "trial_token_sha256": [
+    "d18fef2ffd24582fd19691c4169ee0f7694f204f4c6cf781246ee290b7f1a432",
+    "d18fef2ffd24582fd19691c4169ee0f7694f204f4c6cf781246ee290b7f1a432"
+  ],
+  "memory": {
+    "exit_code": 0,
+    "rejected": false
+  },
+  "resource_monitoring": "not sampled: screening only",
+  "decoder_sha256": "7da829b6379619914f09425ef36a62a51cd1281854c64e20fe12def7b324de85",
+  "protocol": "CLI cached-prefix decode replay; one warmup plus one timed 128-token trial; not resident serve protocol",
+  "source_commit": "7a33c9c796337b9871f0b3639ece7d8281a5f391",
+  "pipeline_execution_confirmed": true
+}
