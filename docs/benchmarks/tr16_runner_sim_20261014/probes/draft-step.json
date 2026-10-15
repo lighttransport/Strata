@@ -1,0 +1,82 @@
+{
+ "schema": "strata.glm.draft_step.v1",
+ "scope": "HIP alone, 128 tokens, 8K holdout code; MTP_TIMING per run with CPU vs GPU draft experts",
+ "results": {
+  "cpu": [
+   {
+    "free_MiB": "9824"
+   },
+   {},
+   {
+    "resident_MiB": "0",
+    "allocated_MiB": "5780.89",
+    "primed_tokens": "8192"
+   },
+   {
+    "generated": "128",
+    "rounds": "37",
+    "proposed": "110",
+    "accepted": "90",
+    "replayed": "0",
+    "ms": "5799.68",
+    "tok_s": "21.8978"
+   },
+   {
+    "prepare_ms": "2.60499",
+    "draft_ms": "1805.95",
+    "verify_ms": "3870.04",
+    "resync_ms": "78.7924"
+   },
+   {
+    "steps": "37",
+    "moe_layers": "3108",
+    "pipelined": "1",
+    "head_ms": "120.797",
+    "cpu_ms": "3132.98",
+    "between_ms": "395.803",
+    "tail_ms": "192.628",
+    "tail_sync_ms": "32.7446",
+    "tail_plan_ms": "12.8866",
+    "tail_copy_ms": "38.7907",
+    "hidden_readback_ms": "106.364",
+    "enqueue_ms": "307.865",
+    "tier_swaps": "192",
+    "split_windows": "37",
+    "per_step_ms": "103.843"
+   },
+   {
+    "generated": "128",
+    "rounds": "35",
+    "proposed": "105",
+    "accepted": "91",
+    "replayed": "0",
+    "ms": "3848.41",
+    "tok_s": "33.0007"
+   },
+   {
+    "prepare_ms": "0.39002",
+    "draft_ms": "425.937",
+    "verify_ms": "3261.41",
+    "resync_ms": "69.6605"
+   },
+   {
+    "steps": "36",
+    "moe_layers": "2982",
+    "pipelined": "1",
+    "head_ms": "115.096",
+    "cpu_ms": "2589.16",
+    "between_ms": "493.902",
+    "tail_ms": "85.2102",
+    "tail_sync_ms": "31.5465",
+    "tail_plan_ms": "15.4331",
+    "tail_copy_ms": "33.4202",
+    "hidden_readback_ms": "3.31121",
+    "enqueue_ms": "74.142",
+    "tier_swaps": "384",
+    "split_windows": "72",
+    "per_step_ms": "91.2045"
+   }
+  ],
+  "gpu": []
+ }
+}

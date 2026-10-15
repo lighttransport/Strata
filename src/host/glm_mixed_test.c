@@ -4,7 +4,42 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+static void check_v5(void) {
+    const struct strata_mixed_layout *legacy=strata_mixed_protocol_layout(4), *fast=strata_mixed_protocol_layout(5);
+    assert(strata_mixed_protocol(NULL)==4 && strata_mixed_protocol("4")==4 && strata_mixed_protocol("5")==5);
+    assert(!strata_mixed_protocol("") && !strata_mixed_protocol("05") && !strata_mixed_protocol("5 "));
+    assert(!strata_mixed_protocol_layout(6));
+    assert(legacy->bytes==sizeof(struct strata_mixed_buffer) && legacy->output_rows==512 && !legacy->activation_half);
+    assert(fast->bytes==sizeof(struct strata_mixed_buffer_v5) && fast->output_rows==8192);
+    assert(fast->activation==legacy->activation && fast->output==legacy->output);
+    struct strata_mixed_buffer_v5 *b=calloc(1,fast->bytes);
+    uint8_t *wanted=calloc(STRATA_MIXED_ROUTES,1),*seen=calloc(STRATA_MIXED_ROUTES,1);
+    assert(b && wanted && seen);
+    b->magic=STRATA_MIXED_MAGIC;b->version=5;b->sequence=b->generation=1;
+    b->nt=8192;b->routes=1;b->prefill=STRATA_MIXED_PREFILL_PARTIAL;b->activation_half=1;
+    assert(strata_mixed_valid_sized(b,fast->bytes,48,224));
+    assert(!strata_mixed_valid_sized(b,legacy->bytes,48,224));
+    assert(!strata_mixed_valid_sized(b,fast->bytes-1,48,224));
+    b->activation_half=2;assert(!strata_mixed_valid_sized(b,fast->bytes,48,224));b->activation_half=1;
+    b->activation_pad=1;assert(!strata_mixed_valid_sized(b,fast->bytes,48,224));b->activation_pad=0;
+    b->canon=1;assert(!strata_mixed_valid_sized(b,fast->bytes,48,224));b->canon=0;
+    b->prefill=2;b->routes=0;b->nt=1;assert(!strata_mixed_valid_sized(b,fast->bytes,48,224));
+    b->activation_half=0;assert(strata_mixed_valid_sized(b,fast->bytes,48,224));
+    b->prefill=0;b->routes=1;b->activation_half=1;assert(!strata_mixed_valid_sized(b,fast->bytes,48,224));
+    b->activation_half=0;assert(strata_mixed_valid_sized(b,fast->bytes,48,224));
+    b->prefill=STRATA_MIXED_PREFILL_PARTIAL;b->nt=8192;b->chunk_rows=8192;b->chunk_tag=1;
+    for (uint32_t i=0;i<8192;++i) {b->chunk_destination[i]=i;wanted[i]=1;}
+    b->chunk_rows=8193;assert(!strata_mixed_chunk_valid_sized(b,fast->bytes,wanted,seen));b->chunk_rows=8192;
+    b->chunk_destination[8191]=8190;assert(!strata_mixed_chunk_valid_sized(b,fast->bytes,wanted,seen));
+    for (uint32_t i=0;i<8192;++i) assert(!seen[i]);
+    b->chunk_destination[8191]=8191;assert(strata_mixed_chunk_valid_sized(b,fast->bytes,wanted,seen));
+    assert(!strata_mixed_chunk_valid_sized(b,fast->bytes,wanted,seen));
+    b->chunk_rows=0;b->chunk_tag=STRATA_MIXED_FINAL|2;
+    assert(strata_mixed_chunk_valid_sized(b,fast->bytes,wanted,seen));
+    free(b);free(wanted);free(seen);
+}
 int main(void) {
+    check_v5();
     struct strata_mixed_buffer *b = calloc(1, sizeof *b);
     assert(b);
     b->magic=STRATA_MIXED_MAGIC; b->version=STRATA_MIXED_VERSION;

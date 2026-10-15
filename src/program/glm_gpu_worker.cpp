@@ -146,7 +146,8 @@ int main(int argc, char **argv) {
             }
             std::cout << "]\n";check(cudaStreamDestroy(stream));return 0;
         }
-        if (argc == 2 && std::string(argv[1]) == "--protocol-size") { std::cout << sizeof(strata_mixed_buffer) << '\n'; return 0; }
+        if (argc == 2 && std::string(argv[1]) == "--protocol-size") { std::cout << strata::core::mixed_layout().bytes << '\n'; return 0; }
+        if (argc == 2 && std::string(argv[1]) == "--protocol-layout") { strata::core::mixed_layout_report(std::cout); return 0; }
         if (argc != 6) throw std::invalid_argument("usage: strata-glm-gpu-worker MODEL MEMORY_FD SOCKET_FD CACHE_MIB GPU_BUDGET_MIB");
         const strata_env_knob cache_knobs[] = {
             {"STRATA_GLM_MIXED_ADAPT_MIN_ROUTES", STRATA_ENV_FLOAT, 0, 1000000, 0},
@@ -159,6 +160,14 @@ int main(int argc, char **argv) {
         const double adapt_min_gain=strata_env_get(1);
         const bool cache_hysteresis=adapt_min_routes>0 || adapt_min_gain>0;
         strata::core::MixedMapping transport(std::stoi(argv[2]), std::stoi(argv[3]));
+        std::unique_ptr<HostMappingRegistration> registration;
+        if (strata_env_truthy_one("STRATA_GLM_MIXED_REGISTER"))
+            registration=std::make_unique<HostMappingRegistration>(transport.buffer,transport.layout.bytes,"worker");
+        const bool registered_transport=registration && registration->registered;
+        const bool device_dispatch=strata_env_truthy_one("STRATA_GLM_MIXED_DEVICE_DISPATCH");
+        if (device_dispatch && strata_env_truthy_one("STRATA_GLM_MIXED_FUSED_RETURN"))
+            throw std::invalid_argument("mixed device dispatch uses the ordered device sum, not MIXED_FUSED_RETURN");
+        if (device_dispatch) std::cerr << "MIXED_DEVICE_DISPATCH enabled=1\n";
         strata::core::ModelArtifact artifact(argv[1]);
         const auto &m = artifact.descriptor();
         if (m.hidden != 4096 || m.top_k != 8 || m.experts > 288 ||
@@ -375,17 +384,25 @@ int main(int argc, char **argv) {
             for (int e=0;e<m.experts;++e)
                 if (strata::prefill::owns_expert_group(e/16,1,2,primary_groups,groups)) next_experts[e]={};
         }
+        const bool profile_decode=strata_env_truthy_one("STRATA_GLM_MIXED_PROFILE_DECODE");
+        const bool scan_once=strata_env_truthy_one("STRATA_GLM_MIXED_SCAN_ONCE");
+        std::vector<std::array<uint8_t,288>> scanned_masks(m.layers.size());
+        std::vector<uint8_t> scanned_valid(m.layers.size());
+        double decode_prologue_ms=0, decode_body_ms=0, decode_idle_ms=0; uint64_t decode_requests=0;
+        std::chrono::steady_clock::time_point last_reply{};
         uint64_t ready = STRATA_MIXED_MAGIC; strata::core::mixed_signal(transport.socket, ready, true);
         for (;;) {
             uint64_t sequence = 0; strata::core::mixed_signal(transport.socket, sequence, false, -1);
             if (!sequence) {
                 std::ostringstream report;
+                if (profile_decode) report << "MIXED_WORKER_DECODE_PROFILE requests=" << decode_requests << " prologue_ms=" << decode_prologue_ms
+                    << " body_ms=" << decode_body_ms << " idle_ms=" << decode_idle_ms << '\n';
                 report << "MIXED_WORKER_SUMMARY requests=" << previous << " decode_rows=" << decode_rows
                           << " prefill_rows=" << prefill_rows << " upload_MiB=" << upload_bytes/double(MiB)
                        << " adapt_updates=" << adapt_updates << " adapt_replacements=" << adapt_replacements
                        << " max_cpu_float_error=" << maximum_cpu_float_error
                        << " max_cpu_ggml_error=" << maximum_cpu_ggml_error
-                       << " worker_graphs=" << executor.graphs.size();
+                       << " worker_graphs=" << executor.graphs.size()+executor.device_graphs.size();
                 if (adapt_metrics) report << " adapt_upload_MiB=" << adapt_upload_bytes/double(MiB);
                 report << '\n';
                 std::cerr << report.str();
@@ -393,9 +410,11 @@ int main(int argc, char **argv) {
             }
             auto &b = *transport.buffer;
             if (sequence <= previous || b.sequence != sequence || b.generation != sequence ||
-                !strata_mixed_valid(&b, m.layers.size(), m.experts)) throw std::runtime_error("mixed worker invalid request");
+                !transport.valid(m.layers.size(), m.experts)) throw std::runtime_error("mixed worker invalid request");
             previous = sequence;
             const auto request_start = std::chrono::steady_clock::now();
+            if (profile_decode && last_reply.time_since_epoch().count())
+                decode_idle_ms += std::chrono::duration<double,std::milli>(request_start-last_reply).count();
             const std::string p = "blk." + std::to_string(b.layer) + ".";
             const auto &G = artifact.at(p + "ffn_gate_exps.weight");
             const auto &U = artifact.at(p + "ffn_up_exps.weight");
@@ -405,13 +424,22 @@ int main(int argc, char **argv) {
             if (b.canon && !((layout.gu_type==10 || layout.gu_type==11) && (layout.d_type==10 || layout.d_type==11)))
                 throw std::runtime_error("mixed worker canonical type mismatch");
             if (!k::native_expert_supported(G.tensor->type, D.tensor->type, m.hidden, m.layers.at(b.layer).intermediate)) throw std::runtime_error("mixed worker unsupported expert types");
-            for (auto it = cache.begin(); it != cache.end();) {
-                if (it->first.first == int(b.layer) && b.primary_owned[it->first.second]) {
-                    occupied -= it->second.charged; it = cache.erase(it);
-                } else ++it;
+            // Evict primary-owned entries only when this layer's primary mask changed since the last scan
+            // (STRATA_GLM_MIXED_SCAN_ONCE=1, opt-in); the scan visits every cached expert.
+            if (scan_once && b.prefill != 0 && b.prefill != STRATA_MIXED_DECODE_PARTIAL) std::fill(scanned_valid.begin(), scanned_valid.end(), 0);
+            const bool scan = !scan_once || b.layer >= scanned_masks.size() || !scanned_valid[b.layer] ||
+                              std::memcmp(scanned_masks[b.layer].data(), b.primary_owned, 288);
+            if (scan) {
+                for (auto it = cache.begin(); it != cache.end();) {
+                    if (it->first.first == int(b.layer) && b.primary_owned[it->first.second]) {
+                        occupied -= it->second.charged; it = cache.erase(it);
+                    } else ++it;
+                }
+                if (scan_once && b.layer < scanned_masks.size()) { std::memcpy(scanned_masks[b.layer].data(), b.primary_owned, 288); scanned_valid[b.layer] = 1; }
             }
             std::map<int, std::vector<int>> hits;
             for (uint32_t i = 0; i < b.routes; ++i) hits[b.expert[i]].push_back(b.destination[i]);
+            const auto prologue_end = std::chrono::steady_clock::now();
             if (b.prefill == 2) {
                 std::array<uint8_t,288> previous_owned{};
                 std::memcpy(previous_owned.data(),b.worker_owned+b.layer*288,288);
@@ -506,8 +534,10 @@ int main(int argc, char **argv) {
                 std::array<int, STRATA_MIXED_ROUTES> output_index;
                 output_index.fill(-1);
                 for (uint32_t i=0; i<b.routes; ++i) output_index[b.destination[i]]=i;
-                std::memcpy(input.p,b.activation,size_t(b.nt)*4096*sizeof(float));
-                px.put_async(input.p,size_t(b.nt)*4096*sizeof(float),stream);
+                const bool half_activation=transport.activation_half();
+                const size_t activation_bytes=size_t(b.nt)*4096*(half_activation ? sizeof(uint16_t) : sizeof(float));
+                if (registered_transport) px.put_async(b.activation,activation_bytes,stream);
+                else { std::memcpy(input.p,b.activation,activation_bytes); px.put_async(input.p,activation_bytes,stream); }
                 if (partial) {
                     check(cudaMemsetAsync(partial_result->p,0,size_t(b.nt)*4096*sizeof(float),stream));
                     std::memcpy(partial_weight_host->p,b.route_weight,size_t(b.nt)*8*sizeof(float));
@@ -554,14 +584,21 @@ int main(int argc, char **argv) {
                             const auto product_start=std::chrono::steady_clock::now();
                             ++panels;
                             const int rows=std::min(panel_rows,bucket-offset),all_rows=rows*batches;
-                            k::glm_gather_expert_f16(px.f(),static_cast<uint16_t *>(hx.p),static_cast<int *>(bounds.p),
+                            if (half_activation)
+                                k::glm_gather_expert_f16_from_half(static_cast<const uint16_t *>(px.p),static_cast<uint16_t *>(hx.p),static_cast<int *>(bounds.p),
+                                    static_cast<int *>(sources.p),0,batches,offset,rows,4096,stream);
+                            else k::glm_gather_expert_f16(px.f(),static_cast<uint16_t *>(hx.p),static_cast<int *>(bounds.p),
                                 static_cast<int *>(sources.p),0,batches,offset,rows,4096,stream);
                             if (single_gemm) for (int group=0;group<batches;++group)
                                 gemm.f16(static_cast<uint16_t *>(hx.p)+size_t(group)*rows*4096,
                                          gemm.scratch()+size_t(group)*2*F*4096,gu.f()+size_t(group)*rows*2*F,rows,2*F,4096);
                             else gemm.f16_batched(static_cast<uint16_t *>(hx.p),gemm.scratch(),gu.f(),rows,2*F,4096,batches);
-                            strata::prefill::mmq::swiglu(gu.f(),hidden.f(),all_rows,F,false,stream,layout.swiglu_limit);
-                            k::glm_f16(hidden.f(),static_cast<uint16_t *>(hh.p),int64_t(all_rows)*F,stream);
+                            if (strata_env_truthy_one("STRATA_GLM_PREFILL_FUSED_SWIGLU"))
+                                strata::prefill::mmq::swiglu_f16(gu.f(),static_cast<uint16_t *>(hh.p),all_rows,F,false,stream,layout.swiglu_limit);
+                            else {
+                                strata::prefill::mmq::swiglu(gu.f(),hidden.f(),all_rows,F,false,stream,layout.swiglu_limit);
+                                k::glm_f16(hidden.f(),static_cast<uint16_t *>(hh.p),int64_t(all_rows)*F,stream);
+                            }
                             if (single_gemm) for (int group=0;group<batches;++group)
                                 gemm.f16(static_cast<uint16_t *>(hh.p)+size_t(group)*rows*F,
                                          static_cast<uint16_t *>(down_dense.p)+size_t(group)*4096*F,
@@ -583,9 +620,9 @@ int main(int argc, char **argv) {
                                     const auto *value=static_cast<float *>(output.p)+size_t(group*rows+row)*4096;
                                     if (j<4) std::memcpy(checked_output.data()+size_t(j)*4096,value,4096*sizeof(float));
                                     if (partial) continue;
-                                    b.chunk_destination[b.chunk_rows]=destination;
-                                    std::memcpy(b.output+size_t(b.chunk_rows++)*4096,value,4096*sizeof(float));
-                                    if (b.chunk_rows==STRATA_MIXED_OUTPUT_ROWS) flush_chunk();
+                                    transport.destinations()[b.chunk_rows]=destination;
+                                    std::memcpy(transport.output()+size_t(b.chunk_rows++)*4096,value,4096*sizeof(float));
+                                    if (b.chunk_rows==transport.layout.output_rows) flush_chunk();
                                 }
                             }
                             flush_chunk();
@@ -603,21 +640,56 @@ int main(int argc, char **argv) {
                 if (partial) {
                     // Activation staging is free after its upload; reuse its
                     // bounded pinned buffer for one FP32 partial vector/token.
-                    check(cudaMemcpyAsync(input.p,partial_result->p,size_t(b.nt)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
+                    if (!registered_transport)
+                        check(cudaMemcpyAsync(input.p,partial_result->p,size_t(b.nt)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
                     check(cudaStreamSynchronize(stream));
-                    for (uint32_t start=0;start<b.nt;start+=STRATA_MIXED_OUTPUT_ROWS) {
-                        b.chunk_rows=std::min(uint32_t(STRATA_MIXED_OUTPUT_ROWS),b.nt-start);
-                        std::memcpy(b.output,static_cast<float *>(input.p)+size_t(start)*4096,size_t(b.chunk_rows)*4096*sizeof(float));
-                        for (uint32_t row=0;row<b.chunk_rows;++row) b.chunk_destination[row]=start+row;
+                    for (uint32_t start=0;start<b.nt;start+=transport.layout.output_rows) {
+                        b.chunk_rows=std::min(transport.layout.output_rows,b.nt-start);
+                        if (registered_transport) {
+                            check(cudaMemcpyAsync(transport.output(),partial_result->f(size_t(start)*4096),
+                                size_t(b.chunk_rows)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
+                            check(cudaStreamSynchronize(stream));
+                        } else std::memcpy(transport.output(),static_cast<float *>(input.p)+size_t(start)*4096,
+                            size_t(b.chunk_rows)*4096*sizeof(float));
+                        for (uint32_t row=0;row<b.chunk_rows;++row) transport.destinations()[row]=start+row;
                         flush_chunk();
                     }
                 }
             } else if (b.prefill == 0 || decode_partial) {
             const bool fused_return=decode_partial && strata_env_truthy_one("STRATA_GLM_MIXED_FUSED_RETURN");
-            executor.run(layout, hits, [&](int e) { return cache.at({int(b.layer),e}).device->p; }, b.activation, b.nt, stream,
-                         strata_env_truthy_one("STRATA_GLM_MIXED_DECODE_GRAPHS"), b.canon, true, !decode_partial || check_rows,
-                         strata_env_truthy_one("STRATA_GLM_MIXED_FIXED_GRAPH_GEOMETRY"), fused_return ? b.route_weight : nullptr);
-            check(cudaStreamSynchronize(stream));
+            if (device_dispatch) {
+                // Keep only this request's owners in the table. Unrequested
+                // slots point at a zero entry and cannot read an evicted expert.
+                auto *lookup=static_cast<unsigned long long *>(executor.host_lookup->p)+size_t(b.layer)*288;
+                std::fill_n(lookup,288,0ULL);
+                for (const auto &[e,unused]:hits) lookup[e]=(unsigned long long)cache.at({int(b.layer),e}).device->p;
+                int empty=0;while (empty<288 && lookup[empty]) ++empty;
+                if (empty==288) throw std::runtime_error("mixed device dispatch has no empty route sentinel");
+                auto *ids=static_cast<int *>(executor.host_metadata->p);
+                std::fill_n(ids,size_t(b.nt)*8,empty);
+                for (uint32_t i=0;i<b.routes;++i) ids[b.destination[i]]=b.expert[i];
+                if (registered_transport) executor.activation->put_async(b.activation,size_t(b.nt)*4096*4,stream);
+                else {
+                    std::memcpy(executor.host_activation->p,b.activation,size_t(b.nt)*4096*4);
+                    executor.activation->put_async(executor.host_activation->p,size_t(b.nt)*4096*4,stream);
+                }
+                executor.route_ids->put_async(ids,size_t(b.nt)*8*4,stream);
+                executor.run_device(layout,executor.activation->f(),static_cast<int *>(executor.route_ids->p),b.layer,
+                                    stream,strata_env_truthy_one("STRATA_GLM_MIXED_DECODE_GRAPHS"),check_rows,b.nt,b.canon);
+                if (!decode_partial) {
+                    if (registered_transport) sources.put_async(b.destination,size_t(b.routes)*4,stream);
+                    else {
+                        std::memcpy(source_host.p,b.destination,size_t(b.routes)*4);
+                        sources.put_async(source_host.p,size_t(b.routes)*4,stream);
+                    }
+                    k::glm_copy_route_rows(executor.output->f(),py.f(),static_cast<int *>(sources.p),0,b.routes,4096,true,stream);
+                    check(cudaMemcpyAsync(registered_transport ? static_cast<void *>(transport.output()) : output.p,
+                        py.p,size_t(b.routes)*4096*4,cudaMemcpyDeviceToHost,stream));
+                }
+            } else executor.run(layout, hits, [&](int e) { return cache.at({int(b.layer),e}).device->p; }, b.activation, b.nt, stream,
+                                strata_env_truthy_one("STRATA_GLM_MIXED_DECODE_GRAPHS"), b.canon, true, !decode_partial || check_rows,
+                                strata_env_truthy_one("STRATA_GLM_MIXED_FIXED_GRAPH_GEOMETRY"), fused_return ? b.route_weight : nullptr);
+            if (!device_dispatch || !decode_partial || check_rows) check(cudaStreamSynchronize(stream));
             if (decode_partial) {
                 if (check_rows) {
                     checked_decode.resize(size_t(b.routes)*4096);
@@ -625,14 +697,20 @@ int main(int argc, char **argv) {
                         static_cast<float *>(executor.host_output->p)+size_t(b.destination[i])*4096,4096*sizeof(float));
                 }
                 if (fused_return) {
-                    std::memcpy(b.output,executor.host_partial_sum->p,size_t(b.nt)*4096*sizeof(float));
+                    std::memcpy(transport.output(),executor.host_partial_sum->p,size_t(b.nt)*4096*sizeof(float));
                 } else {
-                    std::memcpy(decode_weight_host.p,b.route_weight,size_t(b.nt)*8*sizeof(float));
-                    decode_weights.put_async(decode_weight_host.p,size_t(b.nt)*8*sizeof(float),stream);
+                    if (device_dispatch && registered_transport)
+                        decode_weights.put_async(b.route_weight,size_t(b.nt)*8*sizeof(float),stream);
+                    else {
+                        std::memcpy(decode_weight_host.p,b.route_weight,size_t(b.nt)*8*sizeof(float));
+                        decode_weights.put_async(decode_weight_host.p,size_t(b.nt)*8*sizeof(float),stream);
+                    }
                     k::glm_sum_selected_rows(executor.output->f(),decode_weights.f(),decode_sum.f(),4096,8,b.nt,stream);
-                    check(cudaMemcpyAsync(decode_sum_host.p,decode_sum.p,size_t(b.nt)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
+                    check(cudaMemcpyAsync(device_dispatch && registered_transport ? static_cast<void *>(transport.output()) : decode_sum_host.p,
+                        decode_sum.p,size_t(b.nt)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
                     check(cudaStreamSynchronize(stream));
-                    std::memcpy(b.output,decode_sum_host.p,size_t(b.nt)*4096*sizeof(float));
+                    if (!(device_dispatch && registered_transport))
+                        std::memcpy(transport.output(),decode_sum_host.p,size_t(b.nt)*4096*sizeof(float));
                 }
                 if (check_rows) {
                     const float *rows=static_cast<float *>(executor.host_output->p);
@@ -642,15 +720,17 @@ int main(int argc, char **argv) {
                             const float weight=b.route_weight[t*8+r];
                             if (weight!=0) expected=std::fma(rows[(size_t(t)*8+r)*4096+h],weight,expected);
                         }
-                        if (std::memcmp(&expected,b.output+size_t(t)*4096+h,sizeof(float)))
+                        if (std::memcmp(&expected,transport.output()+size_t(t)*4096+h,sizeof(float)))
                             throw std::runtime_error("mixed worker decode partial reduction parity failed layer="+std::to_string(b.layer));
                     }
                 }
+            } else if (device_dispatch) {
+                if (!registered_transport) std::memcpy(transport.output(),output.p,size_t(b.routes)*4096*4);
             } else for (uint32_t i = 0; i < b.routes; ++i)
-                std::memcpy(b.output + size_t(i) * 4096, static_cast<float *>(executor.host_output->p) + size_t(b.destination[i]) * 4096, 4096 * sizeof(float));
+                std::memcpy(transport.output() + size_t(i) * 4096, static_cast<float *>(executor.host_output->p) + size_t(b.destination[i]) * 4096, 4096 * sizeof(float));
             }
             check(cudaStreamSynchronize(stream));
-            const float *check_output=is_prefill ? checked_output.data() : decode_partial ? checked_decode.data() : b.output;
+            const float *check_output=is_prefill ? checked_output.data() : decode_partial ? checked_decode.data() : transport.output();
             if (check_rows && b.prefill != 2) {
                 cpu::NativeFmt f; std::string error;
                 if (!cpu::native_fmt(G.tensor->type,D.tensor->type,4096,layout.n_ff,f,error)) throw std::runtime_error(error);
@@ -786,7 +866,15 @@ int main(int argc, char **argv) {
                 std::cerr << "MIXED_PREFILL_PROFILE layer=" << b.layer << " tile=" << panel_rows << " panels=" << panels
                           << " cache_prepare_ms=" << cache_prepare_ms << " products_copy_ms=" << products_ms
                           << " acknowledgement_ms=" << ack_ms << " chunks=" << chunk_counter << '\n';
-            if (b.prefill==0 || decode_partial) decode_rows+=b.routes;
+            if (b.prefill==0 || decode_partial) {
+                decode_rows+=b.routes;
+                if (profile_decode) {
+                    const auto now = std::chrono::steady_clock::now();
+                    decode_prologue_ms += std::chrono::duration<double,std::milli>(prologue_end-request_start).count();
+                    decode_body_ms += std::chrono::duration<double,std::milli>(now-prologue_end).count();
+                    ++decode_requests;
+                }
+            }
             if (is_prefill) prefill_rows+=b.routes;
             if (sequence % 1000 == 0 || check_rows)
                 std::cerr << "MIXED_WORKER sequence=" << sequence << " layer=" << b.layer << " mode=" << b.prefill
@@ -798,6 +886,7 @@ int main(int argc, char **argv) {
                 strata_mixed_message packet{sequence,b.chunk_tag,STRATA_MIXED_CHUNK};
                 strata::core::mixed_packet(transport.socket,packet,true);
             } else strata::core::mixed_signal(transport.socket, sequence, true);
+            if (profile_decode) last_reply = std::chrono::steady_clock::now();
             if (next_layer>=0 && size_t(next_layer)<m.layers.size() && m.layers[next_layer].ffn==strata::core::FfnKind::Moe) {
                 const auto start=std::chrono::steady_clock::now();
                 const std::string prefix="blk."+std::to_string(next_layer)+".";

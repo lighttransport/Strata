@@ -1,11 +1,14 @@
 #ifndef STRATA_GLM_MIXED_H
 #define STRATA_GLM_MIXED_H
 #include <stdint.h>
+#include <stddef.h>
 #define STRATA_MIXED_MAGIC UINT32_C(0x474d5831)
 #define STRATA_MIXED_VERSION 4
+#define STRATA_MIXED_VERSION_FAST 5
 #define STRATA_MIXED_TOKENS 8192
 #define STRATA_MIXED_ROUTES 65536
 #define STRATA_MIXED_OUTPUT_ROWS 512
+#define STRATA_MIXED_FAST_OUTPUT_ROWS 8192
 #define STRATA_MIXED_FINAL UINT32_C(0x80000000)
 #define STRATA_MIXED_HIDDEN 4096
 struct strata_mixed_message { uint64_t sequence; uint32_t tag, kind; };
@@ -27,9 +30,36 @@ struct strata_mixed_buffer {
     float activation[STRATA_MIXED_TOKENS * STRATA_MIXED_HIDDEN];
     float output[STRATA_MIXED_OUTPUT_ROWS * STRATA_MIXED_HIDDEN];
 };
+/* v5 keeps the v4 prefix offsets. Only the explicitly selected v5 mapping
+   allocates the larger reply and its destination table. */
+struct strata_mixed_buffer_v5 {
+    uint32_t magic, version, layer, nt, routes, canon, prefill, reserved;
+    uint64_t sequence, generation;
+    float swiglu_limit, gate_skip;
+    uint32_t chunk_rows, chunk_tag;
+    int32_t expert[STRATA_MIXED_ROUTES], destination[STRATA_MIXED_ROUTES];
+    float route_weight[STRATA_MIXED_ROUTES];
+    uint8_t primary_owned[288];
+    uint8_t worker_owned[64 * 288];
+    int32_t legacy_chunk_destination[STRATA_MIXED_OUTPUT_ROWS];
+    float activation[STRATA_MIXED_TOKENS * STRATA_MIXED_HIDDEN];
+    float output[STRATA_MIXED_FAST_OUTPUT_ROWS * STRATA_MIXED_HIDDEN];
+    int32_t chunk_destination[STRATA_MIXED_FAST_OUTPUT_ROWS];
+    uint32_t activation_half, activation_pad;
+};
+struct strata_mixed_layout {
+    uint32_t version, output_rows;
+    size_t bytes, expert, destination, route_weight, primary_owned, worker_owned;
+    size_t chunk_destination, activation, output, activation_half;
+};
 #ifdef __cplusplus
 extern "C" {
 #endif
+/* Unset selects v4; only the literal strings "4" and "5" are accepted. */
+uint32_t strata_mixed_protocol(const char *value);
+const struct strata_mixed_layout *strata_mixed_protocol_layout(uint32_t version);
+int strata_mixed_valid_sized(const void *buffer, size_t bytes, uint32_t layers, uint32_t experts);
+int strata_mixed_chunk_valid_sized(const void *buffer, size_t bytes, const uint8_t *requested, uint8_t *seen);
 int strata_mixed_valid(const struct strata_mixed_buffer *b, uint32_t layers, uint32_t experts);
 /* Optional ownership request: route_weight holds counts; chunk_tag 1 refreshes. */
 int strata_mixed_prompt_valid(const struct strata_mixed_buffer *b, uint32_t experts);

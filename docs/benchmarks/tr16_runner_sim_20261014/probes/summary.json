@@ -1,0 +1,406 @@
+{
+ "steps": [
+  {
+   "name": "flow-node0-w1",
+   "command": [
+    "numactl",
+    "--cpunodebind=0",
+    "--membind=0",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-q2-flow-bench",
+    "1",
+    "96",
+    "300",
+    "flow",
+    "8"
+   ],
+   "returncode": 1,
+   "elapsed_seconds": 0.03259091499785427
+  },
+  {
+   "name": "flow-node1-w1",
+   "command": [
+    "numactl",
+    "--cpunodebind=1",
+    "--membind=1",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-q2-flow-bench",
+    "1",
+    "96",
+    "300",
+    "flow",
+    "8"
+   ],
+   "returncode": 1,
+   "elapsed_seconds": 0.03328469999541994
+  },
+  {
+   "name": "flow-interleave-w1",
+   "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-q2-flow-bench",
+    "1",
+    "96",
+    "300",
+    "flow",
+    "15"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 5.778629471009481
+  },
+  {
+   "name": "flow-node0-w2",
+   "command": [
+    "numactl",
+    "--cpunodebind=0",
+    "--membind=0",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-q2-flow-bench",
+    "2",
+    "96",
+    "300",
+    "flow",
+    "8"
+   ],
+   "returncode": 1,
+   "elapsed_seconds": 0.03265715599991381
+  },
+  {
+   "name": "flow-node1-w2",
+   "command": [
+    "numactl",
+    "--cpunodebind=1",
+    "--membind=1",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-q2-flow-bench",
+    "2",
+    "96",
+    "300",
+    "flow",
+    "8"
+   ],
+   "returncode": 1,
+   "elapsed_seconds": 0.032801559995277785
+  },
+  {
+   "name": "flow-interleave-w2",
+   "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-q2-flow-bench",
+    "2",
+    "96",
+    "300",
+    "flow",
+    "15"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 4.175655009996262
+  },
+  {
+   "name": "build-probe-cuda",
+   "command": [
+    "nvcc",
+    "-O3",
+    "/mnt/nvme02/work/Strata/tools/glm_transfer_probe.cu",
+    "-o",
+    "build-glm-release/runner-sim/probes-20261014/probe-cuda"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 2.523829644007492
+  },
+  {
+   "name": "build-probe-hip",
+   "command": [
+    "/opt/rocm/core-10.1/bin/hipcc",
+    "-O3",
+    "-DSTRATA_PROBE_HIP",
+    "/mnt/nvme02/work/Strata/tools/glm_transfer_probe.cu",
+    "-o",
+    "build-glm-release/runner-sim/probes-20261014/probe-hip"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 2.5714430090010865
+  },
+  {
+   "name": "bounce-cuda-131072",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-cuda",
+    "bounce",
+    "131072",
+    "2000"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 0.3153576089971466
+  },
+  {
+   "name": "bounce-cuda-1048576",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-cuda",
+    "bounce",
+    "1048576",
+    "2000"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 0.8168450990051497
+  },
+  {
+   "name": "bounce-cuda-16777216",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-cuda",
+    "bounce",
+    "16777216",
+    "400"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 2.321698756000842
+  },
+  {
+   "name": "bounce-cuda-67108864",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-cuda",
+    "bounce",
+    "67108864",
+    "400"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 8.63959103099478
+  },
+  {
+   "name": "bounce-cuda-134217728",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-cuda",
+    "bounce",
+    "134217728",
+    "400"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 17.16059394000331
+  },
+  {
+   "name": "bounce-hip-131072",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-hip",
+    "bounce",
+    "131072",
+    "2000"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 0.6663617549929768
+  },
+  {
+   "name": "bounce-hip-1048576",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-hip",
+    "bounce",
+    "1048576",
+    "2000"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 0.5157543440000154
+  },
+  {
+   "name": "bounce-hip-16777216",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-hip",
+    "bounce",
+    "16777216",
+    "400"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 1.2683764440007508
+  },
+  {
+   "name": "bounce-hip-67108864",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-hip",
+    "bounce",
+    "67108864",
+    "400"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 4.524295370007167
+  },
+  {
+   "name": "bounce-hip-134217728",
+   "command": [
+    "build-glm-release/runner-sim/probes-20261014/probe-hip",
+    "bounce",
+    "134217728",
+    "400"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 8.839361267004278
+  },
+  {
+   "name": "loopback-cuda",
+   "command": [
+    "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+    "/mnt/nvme02/work/Strata/tools/glm_mixed_worker_loopback.py",
+    "--worker",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-gpu-worker",
+    "--model",
+    "/mnt/nvme01/models/glm53f/prune/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "--output",
+    "build-glm-release/runner-sim/probes-20261014/worker-rtt-cuda.json",
+    "--numa-node",
+    "1",
+    "--cache-mib",
+    "12288",
+    "--gpu-budget-mib",
+    "14336"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 9.649467879993608
+  },
+  {
+   "name": "loopback-hip",
+   "command": [
+    "/mnt/nvme02/work/Strata/build-exl3-venv/bin/python",
+    "/mnt/nvme02/work/Strata/tools/glm_mixed_worker_loopback.py",
+    "--worker",
+    "/mnt/nvme02/work/Strata/build-hip-rocm101-tr16/strata-glm-gpu-worker",
+    "--model",
+    "/mnt/nvme01/models/glm53f/prune/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "--output",
+    "build-glm-release/runner-sim/probes-20261014/worker-rtt-hip.json",
+    "--numa-node",
+    "0",
+    "--cache-mib",
+    "12288",
+    "--gpu-budget-mib",
+    "15360"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 8.536722842996824
+  },
+  {
+   "name": "draft-cpu",
+   "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-hip-rocm101-tr16/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/prune/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "@/mnt/nvme02/work/Strata/docs/fixtures/glm_tr16_20261009/prompts/8k/holdout-code.ids",
+    "128",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=8192",
+    "--gpu-budget-mib=15360",
+    "--cpu-affinity=numa",
+    "--decode-experts=cpu",
+    "--decode-cache-mib=12288",
+    "--prefill-experts=f16-batched",
+    "--decode-graphs",
+    "--speculative=mtp",
+    "--draft-depth=3",
+    "--bench=1",
+    "--decode-bench=2",
+    "--mtp-experts=cpu"
+   ],
+   "returncode": 0,
+   "elapsed_seconds": 143.48160716499842
+  },
+  {
+   "name": "draft-gpu",
+   "command": [
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-hip-rocm101-tr16/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/prune/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "@/mnt/nvme02/work/Strata/docs/fixtures/glm_tr16_20261009/prompts/8k/holdout-code.ids",
+    "128",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=8192",
+    "--gpu-budget-mib=15360",
+    "--cpu-affinity=numa",
+    "--decode-experts=cpu",
+    "--decode-cache-mib=12288",
+    "--prefill-experts=f16-batched",
+    "--decode-graphs",
+    "--speculative=mtp",
+    "--draft-depth=3",
+    "--bench=1",
+    "--decode-bench=2",
+    "--mtp-experts=gpu"
+   ],
+   "returncode": 1,
+   "elapsed_seconds": 0.5660295700072311
+  },
+  {
+   "name": "nsys-cuda",
+   "command": [
+    "nsys",
+    "profile",
+    "--trace=cuda",
+    "--sample=none",
+    "--cpuctxsw=none",
+    "-f",
+    "true",
+    "-o",
+    "build-glm-release/runner-sim/probes-20261014/decode-nsys-cuda",
+    "--",
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/prune/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "@/mnt/nvme02/work/Strata/docs/fixtures/glm_tr16_20261009/prompts/8k/holdout-code.ids",
+    "48",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=8192",
+    "--gpu-budget-mib=14336",
+    "--cpu-affinity=numa",
+    "--decode-experts=cpu",
+    "--decode-cache-mib=12288",
+    "--prefill-experts=f16-batched",
+    "--decode-graphs",
+    "--speculative=mtp",
+    "--draft-depth=3",
+    "--bench=1",
+    "--decode-bench=2"
+   ],
+   "returncode": 1,
+   "elapsed_seconds": 5.180668089000392
+  },
+  {
+   "name": "rocprof-hip",
+   "command": [
+    "/opt/rocm/core-10.1/bin/rocprofv3",
+    "--kernel-trace",
+    "--memory-copy-trace",
+    "--stats",
+    "--output-format",
+    "csv",
+    "--output-directory",
+    "build-glm-release/runner-sim/probes-20261014/decode-rocprof-hip",
+    "--output-file",
+    "decode",
+    "--",
+    "numactl",
+    "--interleave=all",
+    "/mnt/nvme02/work/Strata/build-hip-rocm101-tr16/strata-glm-decode",
+    "/mnt/nvme01/models/glm53f/prune/GLM-5.3-Flash-Q23-REAP224-assembled.gguf",
+    "@/mnt/nvme02/work/Strata/docs/fixtures/glm_tr16_20261009/prompts/8k/holdout-code.ids",
+    "48",
+    "4096",
+    "15",
+    "--context=12288",
+    "--prefill-batch=8192",
+    "--gpu-budget-mib=15360",
+    "--cpu-affinity=numa",
+    "--decode-experts=cpu",
+    "--decode-cache-mib=12288",
+    "--prefill-experts=f16-batched",
+    "--decode-graphs",
+    "--speculative=mtp",
+    "--draft-depth=3",
+    "--bench=1",
+    "--decode-bench=2"
+   ],
+   "returncode": 1,
+   "elapsed_seconds": 0.6665929180016974
+  }
+ ]
+}

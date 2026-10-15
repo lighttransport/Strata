@@ -142,3 +142,55 @@ struct Pinned {
     explicit Pinned(size_t bytes) { check(cudaMallocHost(&p, bytes)); }
     ~Pinned() { cudaFreeHost(p); }
 };
+// Only instantiated by opt-in paths. Drain DMA before the mapping is unpinned.
+struct HostMappingRegistration {
+    void *mapping;
+    int owner = 0;
+    bool registered = false;
+    HostMappingRegistration(void *mapping, size_t bytes, const char *role) : mapping(mapping) {
+        check(cudaGetDevice(&owner));
+        const auto status=cudaHostRegister(mapping,bytes,cudaHostRegisterPortable);
+        registered=status==cudaSuccess;
+        std::cerr << "MIXED_REGISTER " << role << '=' << registered;
+        if (!registered) {cudaGetLastError();std::cerr << " error=" << cudaGetErrorString(status);}
+        std::cerr << '\n';
+    }
+    ~HostMappingRegistration() {
+        if (!registered) return;
+        int previous=owner;
+        cudaGetDevice(&previous);
+        cudaSetDevice(owner);
+        cudaDeviceSynchronize();
+        cudaHostUnregister(mapping);
+        cudaSetDevice(previous);
+    }
+    HostMappingRegistration(const HostMappingRegistration &)=delete;
+};
+struct ResidentSideStream {
+    cudaStream_t stream=nullptr;
+    cudaEvent_t fork[2]{}, done[2]{}, consumed[2]{};
+    bool consumed_valid[2]{};
+    ResidentSideStream() {
+        try {
+            check(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));
+            for (int g=0;g<2;++g) {
+                check(cudaEventCreateWithFlags(&fork[g],cudaEventDisableTiming));
+                check(cudaEventCreateWithFlags(&done[g],cudaEventDisableTiming));
+                check(cudaEventCreateWithFlags(&consumed[g],cudaEventDisableTiming));
+            }
+        } catch (...) {release();throw;}
+    }
+    void release() noexcept {
+        if (stream) cudaStreamSynchronize(stream);
+        for (int g=0;g<2;++g) {
+            if (fork[g]) cudaEventDestroy(fork[g]);
+            if (done[g]) cudaEventDestroy(done[g]);
+            if (consumed[g]) cudaEventDestroy(consumed[g]);
+            fork[g]=done[g]=consumed[g]=nullptr;
+        }
+        if (stream) cudaStreamDestroy(stream);
+        stream=nullptr;
+    }
+    ~ResidentSideStream() {release();}
+    ResidentSideStream(const ResidentSideStream &)=delete;
+};

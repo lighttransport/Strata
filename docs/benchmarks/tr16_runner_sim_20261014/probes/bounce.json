@@ -1,0 +1,124 @@
+{
+ "schema": "strata.glm.bounce.v1",
+ "bounce": {
+  "bounce-cuda-131072": {
+   "mode": "bounce",
+   "bytes": 131072,
+   "iterations": 2000,
+   "p50_us": 47.411,
+   "p90_us": 48.221,
+   "p99_us": 56.181,
+   "min_us": 45.261,
+   "GB_s_at_p50": 5.529181
+  },
+  "bounce-cuda-1048576": {
+   "mode": "bounce",
+   "bytes": 1048576,
+   "iterations": 2000,
+   "p50_us": 302.817,
+   "p90_us": 305.136,
+   "p99_us": 314.747,
+   "min_us": 300.757,
+   "GB_s_at_p50": 6.925476
+  },
+  "bounce-cuda-16777216": {
+   "mode": "bounce",
+   "bytes": 16777216,
+   "iterations": 400,
+   "p50_us": 4672.703,
+   "p90_us": 4700.214,
+   "p99_us": 4788.866,
+   "min_us": 4669.243,
+   "GB_s_at_p50": 7.180947
+  },
+  "bounce-cuda-67108864": {
+   "mode": "bounce",
+   "bytes": 67108864,
+   "iterations": 400,
+   "p50_us": 18655.951,
+   "p90_us": 18769.212,
+   "p99_us": 18847.085,
+   "min_us": 18642.47,
+   "GB_s_at_p50": 7.194365
+  },
+  "bounce-cuda-134217728": {
+   "mode": "bounce",
+   "bytes": 134217728,
+   "iterations": 400,
+   "p50_us": 37352.213,
+   "p90_us": 37463.145,
+   "p99_us": 37538.968,
+   "min_us": 37274.041,
+   "GB_s_at_p50": 7.186601
+  },
+  "bounce-hip-131072": {
+   "mode": "bounce",
+   "bytes": 131072,
+   "iterations": 2000,
+   "p50_us": 46.051,
+   "p90_us": 46.971,
+   "p99_us": 48.641,
+   "min_us": 38.411,
+   "GB_s_at_p50": 5.692471
+  },
+  "bounce-hip-1048576": {
+   "mode": "bounce",
+   "bytes": 1048576,
+   "iterations": 2000,
+   "p50_us": 177.104,
+   "p90_us": 177.744,
+   "p99_us": 179.824,
+   "min_us": 172.064,
+   "GB_s_at_p50": 11.841359
+  },
+  "bounce-hip-16777216": {
+   "mode": "bounce",
+   "bytes": 16777216,
+   "iterations": 400,
+   "p50_us": 2406.033,
+   "p90_us": 2422.964,
+   "p99_us": 2424.593,
+   "min_us": 2392.512,
+   "GB_s_at_p50": 13.945957
+  },
+  "bounce-hip-67108864": {
+   "mode": "bounce",
+   "bytes": 67108864,
+   "iterations": 400,
+   "p50_us": 9495.359,
+   "p90_us": 9523.25,
+   "p99_us": 9591.222,
+   "min_us": 9479.929,
+   "GB_s_at_p50": 14.135087
+  },
+  "bounce-hip-134217728": {
+   "mode": "bounce",
+   "bytes": 134217728,
+   "iterations": 400,
+   "p50_us": 18951.539,
+   "p90_us": 18981.059,
+   "p99_us": 19029.62,
+   "min_us": 18938.048,
+   "GB_s_at_p50": 14.164309
+  }
+ },
+ "register": {
+  "register-cuda": {
+   "returncode": 0,
+   "text": "{\"mode\":\"register\",\"bytes\":67108864,\"registered\":true,\"d2h_into_shared_us\":9652.764,\"GB_s\":6.952295,\"readback_equal\":true}\n"
+  },
+  "register-hip": {
+   "returncode": 0,
+   "text": "{\"mode\":\"register\",\"bytes\":67108864,\"registered\":true,\"d2h_into_shared_us\":4825.886,\"GB_s\":13.906019,\"readback_equal\":true}\n"
+  },
+  "register-both-cuda": {
+   "returncode": 0,
+   "text": "{\"mode\":\"register\",\"bytes\":67108864,\"registered\":true,\"d2h_into_shared_us\":9652.083,\"GB_s\":6.952786,\"readback_equal\":true}\n"
+  },
+  "register-both-hip": {
+   "returncode": 0,
+   "text": "{\"mode\":\"register\",\"bytes\":67108864,\"registered\":true,\"d2h_into_shared_us\":4807.857,\"GB_s\":13.958166,\"readback_equal\":true}\n"
+  }
+ },
+ "scope": "One D2H + one H2D of SIZE bytes through pinned host memory (wall clock), and HostRegister of a shared memfd mapping per vendor, alone and both at once"
+}

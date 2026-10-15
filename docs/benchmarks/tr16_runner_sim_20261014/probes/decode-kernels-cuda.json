@@ -1,0 +1,123 @@
+{
+ "slots": 275,
+ "period_ms": {
+  "mean": 1.532584429090909,
+  "p50": 1.19115,
+  "p90": 2.315261
+ },
+ "kernel_ms_mean": 1.2130776654545454,
+ "gap_ms_mean": 0.31950676363636354,
+ "launches_mean": 59.07272727272727,
+ "by_category_ms": {
+  "copy": 0.09978218181818183,
+  "mixer": 0.40971599999999997,
+  "other": 0.05260981818181818,
+  "publish": 0.028464727272727273,
+  "resident": 0.11445709090909091,
+  "wait_add": 0.5080425454545455
+ },
+ "top_kernels": [
+  {
+   "name": "strata::kernels::<unnamed>::wait_add_resident(strata::kernels::GlmMailboxView, int, float *, int, const unsigned int *, ",
+   "total_ms_per_slot": 0.508
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_q4_k_mmvq_kernel<(bool)0>(const strata::kernels::<unnamed>::Q4KBlock *, const st",
+   "total_ms_per_slot": 0.1071
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_mmvq_multi_kernel<strata::kernels::<unnamed>::Q4KTraits, (int)2, (int)4, (int)2,",
+   "total_ms_per_slot": 0.1005
+  },
+  {
+   "name": "[CUDA memcpy Host-to-Device]",
+   "total_ms_per_slot": 0.0773
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::gu_kernel<(int)10, (int)4>(const unsigned long long *, const int *, const int *, const ",
+   "total_ms_per_slot": 0.0756
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::down_kernel<(int)11, (int)4>(const unsigned long long *, const int *, const int *, cons",
+   "total_ms_per_slot": 0.0385
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::kda_chunk<(int)128, (bool)0>(float *, const float *, const float *, const float *, cons",
+   "total_ms_per_slot": 0.0358
+  },
+  {
+   "name": "strata::kernels::<unnamed>::heads_gemv_blocks(const unsigned char *, const float *, float *, int, int, int)",
+   "total_ms_per_slot": 0.0278
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_mmvq_multi_kernel<strata::kernels::<unnamed>::SmallTraits<strata::kernels::<unna",
+   "total_ms_per_slot": 0.0233
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_small_mmvq_kernel<strata::kernels::<unnamed>::Q80Block, (int)8, (bool)0>(const T",
+   "total_ms_per_slot": 0.019
+  },
+  {
+   "name": "[CUDA memcpy Device-to-Device]",
+   "total_ms_per_slot": 0.0171
+  },
+  {
+   "name": "strata::kernels::<unnamed>::hc_read_fused(const float *, const float *, const float *, const float *, float *, float *, ",
+   "total_ms_per_slot": 0.0164
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_q5_k_mmvq_kernel<(bool)0>(const strata::kernels::<unnamed>::Q5KBlock *, const st",
+   "total_ms_per_slot": 0.0145
+  },
+  {
+   "name": "strata::kernels::<unnamed>::route_warp(const float *, const float *, int *, float *, int, int, float, float, const float",
+   "total_ms_per_slot": 0.0139
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_small_mmvq_kernel<strata::kernels::<unnamed>::Q80Block, (int)8, (bool)1>(const T",
+   "total_ms_per_slot": 0.0114
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_q6_k_mmvq_kernel<(bool)0>(const strata::kernels::<unnamed>::Q6KBlock *, const st",
+   "total_ms_per_slot": 0.0109
+  },
+  {
+   "name": "strata::kernels::<unnamed>::hc_partial_sumsq(const unsigned char *, const float *, float *, int, int)",
+   "total_ms_per_slot": 0.0106
+  },
+  {
+   "name": "strata::kernels::<unnamed>::selection(const float *, int *, int *, int, int, int, int, int, const int *, int)",
+   "total_ms_per_slot": 0.0104
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::native_mmvq_multi_kernel<strata::kernels::<unnamed>::Q4KTraits, (int)4, (int)4, (int)2,",
+   "total_ms_per_slot": 0.0097
+  },
+  {
+   "name": "void cutlass::Kernel2<cutlass_80_simt_sgemm_64x64_8x5_tn_align1>(T1::Params)",
+   "total_ms_per_slot": 0.0085
+  },
+  {
+   "name": "void cutlass::Kernel2<cutlass_80_simt_sgemm_128x64_8x5_nn_align1>(T1::Params)",
+   "total_ms_per_slot": 0.0061
+  },
+  {
+   "name": "strata::kernels::<unnamed>::conv(const float *, const float *, float *, float *, int, int)",
+   "total_ms_per_slot": 0.0053
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::f32_rows<(int)1>(const float4 *, const float4 *, float *, int, int, int)",
+   "total_ms_per_slot": 0.0051
+  },
+  {
+   "name": "void strata::kernels::<unnamed>::f32_rows<(int)2>(const float4 *, const float4 *, float *, int, int, int)",
+   "total_ms_per_slot": 0.0051
+  },
+  {
+   "name": "[CUDA memcpy Device-to-Host]",
+   "total_ms_per_slot": 0.0049
+  }
+ ],
+ "scope": "Kernel time per decode slot between consecutive wait-add kernels on the primary stream; the gap is GPU idle or host-blocked time. Not a throughput rate.",
+ "source": "build-glm-release/runner-sim/probes-20261014-nsys/decode-nsys-cuda_cuda_gpu_trace.csv"
+}

@@ -108,6 +108,8 @@ void gather_strata_q2(const uint8_t* blob, void* gu_dst, void* d_dst, void* stre
 /// h[r, k] = silu(gate) * up of GU rows [2 n_ff wide]: interleaved (gate 2k, up 2k+1: the Strata pack) or split
 /// (gate k, up n_ff + k: GGUF).  FP32 out (the down product's quantizer reads floats).
 void swiglu(const float* gu, float* h, int64_t rows, int64_t n_ff, bool interleaved, void* stream, float limit = 0);
+/// Same FP32 arithmetic, followed by round-to-nearest FP16, in one launch.
+void swiglu_f16(const float* gu, uint16_t* h, int64_t rows, int64_t n_ff, bool interleaved, void* stream, float limit = 0);
 /// swiglu of an NVFP4 group's gate/up rows (split halves) with scale_gu_rows' scales applied as they are read.
 void swiglu_scaled(const float* gu, float* h, int64_t rows, int64_t n_ff, const int32_t* bounds, int n,
                    const float* tails, int64_t row0, void* stream);

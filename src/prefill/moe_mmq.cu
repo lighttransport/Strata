@@ -134,6 +134,18 @@ __global__ void swiglu_kernel(const float* __restrict__ gu, float* __restrict__ 
     h[i] = g / (1.0f + __expf(-g)) * up;
 }
 
+__global__ void swiglu_f16_kernel(const float* __restrict__ gu, uint16_t* __restrict__ h,
+                                  int64_t rows, int64_t n_ff, bool interleaved, float limit) {
+    const int64_t i=(int64_t)blockIdx.x*blockDim.x+threadIdx.x;
+    if (i>=rows*n_ff) return;
+    const int64_t r=i/n_ff,k=i%n_ff;
+    const float *row=gu+r*2*n_ff;
+    float g=interleaved ? row[2*k] : row[k],u=interleaved ? row[2*k+1] : row[n_ff+k];
+    float up=u;
+    if (limit>0) {g=fminf(g,limit);up=fmaxf(-limit,fminf(up,limit));}
+    const float value=g/(1.0f+__expf(-g))*up;
+    reinterpret_cast<__half *>(h)[i]=__float2half_rn(value);
+}
 // swiglu_kernel on the MMQ gate/up output with each expert's gate and up scales applied as it is read: the products
 // scale_gu_rows stored, without the pass that stored them
 __global__ void swiglu_scaled_kernel(const float* __restrict__ gu, float* __restrict__ h, int64_t rows, int64_t n_ff,
@@ -492,6 +504,11 @@ void swiglu(const float* gu, float* h, int64_t rows, int64_t n_ff, bool interlea
     if (rows <= 0) return;
     swiglu_kernel<<<blocks(rows * n_ff), 256, 0, (cudaStream_t) stream>>>(gu, h, rows, n_ff, interleaved, limit);
     ck(cudaGetLastError(), "swiglu");
+}
+void swiglu_f16(const float* gu, uint16_t* h, int64_t rows, int64_t n_ff, bool interleaved, void* stream, float limit) {
+    if (rows<=0 || n_ff<=0) return;
+    swiglu_f16_kernel<<<blocks(rows*n_ff),256,0,(cudaStream_t)stream>>>(gu,h,rows,n_ff,interleaved,limit);
+    ck(cudaGetLastError(),"swiglu_f16");
 }
 
 void iota(int32_t* dst, int64_t n, void* stream) {

@@ -1,0 +1,215 @@
+{
+ "base": {
+  "decode_tok_s": 34.8898042159781,
+  "prefill_tok_s": 485.41657900053855
+ },
+ "path": [
+  {
+   "lever": "mixer_subbatch",
+   "lossless": true,
+   "decode_tok_s": 34.8898042159781,
+   "prefill_tok_s": 545.0740980796273,
+   "engine_knob": "STRATA_GLM_MIXER_SUB_BATCH / hipBLASLt tables / WMMA attention",
+   "required_measurement": "rocprof per-kernel mixer decomposition at 8K; logits hash per sub-lever"
+  },
+  {
+   "lever": "shared_window_projections",
+   "lossless": true,
+   "decode_tok_s": 37.11171621611299,
+   "prefill_tok_s": 545.0740980796273,
+   "engine_knob": "split_projections / window_projections: one projection GEMM for both verify groups per layer (dense weights read once per window)",
+   "required_measurement": "rocprof: mixer kernel ms per slot (0.47 ms measured on HIP, 2026-10-14); prefill/decode logits hash equal (GEMM row invariance)"
+  },
+  {
+   "lever": "cpu_span_access",
+   "lossless": true,
+   "decode_tok_s": 39.32318160120968,
+   "prefill_tok_s": 545.0740980796273,
+   "engine_knob": "STRATA_NATIVE_FLOW_SCHEDULE=span",
+   "required_measurement": "strata-glm-q2-kernel-bench packed GB/s (72 -> 84 target)"
+  },
+  {
+   "lever": "mla_kv_kernel",
+   "lossless": true,
+   "decode_tok_s": 40.652253501362765,
+   "prefill_tok_s": 545.0740980796273,
+   "engine_knob": "MLA decode attention kernel over the 8K latent cache (STRATA_GLM_MLA_* kernels)",
+   "required_measurement": "nsys MLA slot time at 2K vs 8K"
+  },
+  {
+   "lever": "head_hidden",
+   "lossless": true,
+   "decode_tok_s": 41.96717820352471,
+   "prefill_tok_s": 545.0740980796273,
+   "engine_knob": "STRATA_GLM_SPLIT_PUBLISH_FIRST=1 (or VERIFY_SPLIT_FIRST)",
+   "required_measurement": "STEP_TRACE head_ms and layer-3 slot wait after the change"
+  },
+  {
+   "lever": "residents_side_stream",
+   "lossless": true,
+   "decode_tok_s": 42.849142359554904,
+   "prefill_tok_s": 545.0740980796273,
+   "engine_knob": "resident expert executor on its own stream (or all cached experts on the worker)",
+   "required_measurement": "nsys: resident kernels overlap the next mixer; combine waits on both"
+  },
+  {
+   "lever": "layer_split_interleave",
+   "lossless": true,
+   "decode_tok_s": 46.38256946939676,
+   "prefill_tok_s": 545.0740980796273,
+   "engine_knob": "--layer-range / --stage (topology B) with both verify groups interleaved per stage and the shared 15-thread CPU lane",
+   "required_measurement": "host bounce latency (probe 5); mixer rounding across vendors; dense weights duplicated for prefill"
+  },
+  {
+   "lever": "hip_primary",
+   "lossless": true,
+   "decode_tok_s": 46.99336853939515,
+   "prefill_tok_s": 576.882616053074,
+   "engine_knob": "tools/glm_mixed_run.py orientation hip-cuda",
+   "required_measurement": "per-slot STEP_TRACE on hip primary (probe 1)"
+  },
+  {
+   "lever": "exchange_f16_partial",
+   "lossless": true,
+   "decode_tok_s": 46.99336853939515,
+   "prefill_tok_s": 692.7340551516585,
+   "engine_knob": "STRATA_GLM_MIXED_EXCHANGE=f16 (one partial per layer, no chunk acks)",
+   "required_measurement": "prefill logits hash equal to the current mixed path (worker already gathers F16)"
+  },
+  {
+   "lever": "expert_gemm_efficiency",
+   "lossless": true,
+   "decode_tok_s": 46.99336853939515,
+   "prefill_tok_s": 748.9870173413733,
+   "engine_knob": "HIP expert FFN path: hipBLASLt / MMQ with SwiGLU epilogue, 1024-row sub-batches, dequant once per group",
+   "required_measurement": "rocprof: fitted 13.5 ms per 16-expert group at 8K against about 5 ms at the 100 TFLOP/s GEMM microbenchmark; required <= 6 ms"
+  },
+  {
+   "lever": "fraction_0.6",
+   "lossless": true,
+   "decode_tok_s": 46.99336853939515,
+   "prefill_tok_s": 825.027263464081,
+   "engine_knob": "STRATA_GLM_MIXED_PRIMARY_FRACTION=0.6",
+   "required_measurement": "prefill screen at the chosen split"
+  },
+  {
+   "lever": "resident_skip",
+   "lossless": true,
+   "decode_tok_s": 46.99336853939515,
+   "prefill_tok_s": 870.2664500861528,
+   "engine_knob": "PREFETCH_REUSE_DEVICE on both devices",
+   "required_measurement": "streamed bytes per layer from PREFILL_WORK transferred_bytes"
+  },
+  {
+   "lever": "fused_publish",
+   "lossless": true,
+   "decode_tok_s": 48.69162988515945,
+   "prefill_tok_s": 870.2664500861528,
+   "engine_knob": "STRATA_GLM_FUSE_ROUTE=1 plus mhc/norm fusion in the segment",
+   "required_measurement": "nsys per-slot kernel count and gap time"
+  },
+  {
+   "lever": "sampling_lookup_trim",
+   "lossless": true,
+   "decode_tok_s": 49.515127600044416,
+   "prefill_tok_s": 870.2664500861528,
+   "engine_knob": "logits readback, sampling and lookup on the step critical path (other_ms)",
+   "required_measurement": "SPECULATIVE remainder per step after the change (7.4 ms today)"
+  },
+  {
+   "lever": "fraction_by_bandwidth",
+   "lossless": true,
+   "decode_tok_s": 49.515127600044416,
+   "prefill_tok_s": 872.3866396872874,
+   "engine_knob": "STRATA_GLM_MIXED_PRIMARY_FRACTION=0.67",
+   "required_measurement": "10-of-14 split measured 562 vs 523 at 0.5"
+  },
+  {
+   "lever": "stream_overlap_mixer",
+   "lossless": true,
+   "decode_tok_s": 49.515127600044416,
+   "prefill_tok_s": 899.2025447457132,
+   "engine_knob": "STRATA_GLM_STAGE_PREFETCH ring sized to the mixer (PREFETCH_GROUPS)",
+   "required_measurement": "rocprof/nsys: streaming hidden under the mixer"
+  }
+ ],
+ "final": {
+  "decode_tok_s": 49.515127600044416,
+  "prefill_tok_s": 899.2025447457132
+ },
+ "reaches": {
+  "decode": false,
+  "prefill": false
+ },
+ "excluded_lossy": [
+  "lfu_partition",
+  "three_groups"
+ ],
+ "targets": {
+  "decode": 50.0,
+  "prefill": 1000.0
+ },
+ "scope": "Greedy lever path on the calibrated model; gains are conditional on each lever delivering its edited constant",
+ "base_state": {
+  "topology": {
+   "kind": "A",
+   "primary": "cuda",
+   "worker": "hip",
+   "groups": [
+    2,
+    2
+   ],
+   "combine": "strict",
+   "dispatch": "socket",
+   "ownership": "blocking",
+   "cpu_lanes": "single15",
+   "split_layer": 24,
+   "stage_order": "pipeline",
+   "head_hidden_fraction": 0.0,
+   "context_tokens": 8192,
+   "residents": "chain"
+  },
+  "placement": {
+   "primary_slots": 15.0,
+   "worker_slots": 33.0,
+   "experts_per_layer": 224,
+   "policy": "lru",
+   "draft_bank": "cpu",
+   "draft_bank_slots": 0.0
+  },
+  "plan": {
+   "tokens": 8192,
+   "primary": "cuda",
+   "worker": "hip",
+   "primary_fraction": 0.5,
+   "exchange": "f32",
+   "return_mode": "chunks",
+   "prefetch_layers": 1,
+   "resident_groups": 0.0,
+   "mixer_speedup": 1.0,
+   "gemm_speedup": 1.0,
+   "cpu_groups": 0.0,
+   "groups_per_layer": 14,
+   "stream_overlap": "none",
+   "worker_stream_overlap": "mixer"
+  }
+ },
+ "provenance": [
+  {
+   "path": "/mnt/nvme02/work/Strata/tools/sim/data/glm_kernels_tr16.json",
+   "sha256": "38775e598a041377020b5aaa776cf922bbacf91b618a8c3f68a6bbe86e767d1b"
+  },
+  {
+   "path": "/mnt/nvme02/work/Strata/tools/sim/data/glm_runner_params_tr16.json",
+   "sha256": "8eb77636dd17fe2318d061e41c2d7bd94ef781191e99ae62e2c6622e6ac739aa"
+  },
+  {
+   "path": "/mnt/nvme02/work/Strata/tools/sim/data/glm_levers.json",
+   "sha256": "c2310e04ba36b8df01a2fa5c0584ec72c6f4f39a39a97b8eae30dd2152733513"
+  },
+  {
+   "path": "/mnt/nvme02/work/Strata/tools/sim/data/hw_tr16_runner.json",
+   "sha256": "439559c186d1a7915e803b6ec926656a501f2d34da603f6c24788c7d67bf636c"
+  }
+ ]
+}

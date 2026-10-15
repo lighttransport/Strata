@@ -7,6 +7,47 @@
 #include <cassert>
 #include <vector>
 
+void check_fast_transport() {
+    setenv("STRATA_GLM_MIXED_PROTOCOL","5",1);
+    const auto &layout=strata::core::mixed_layout();
+    const int memory=syscall(SYS_memfd_create,"mixed-fast-test",MFD_CLOEXEC);
+    assert(memory>=0 && ftruncate(memory,layout.bytes)==0);
+    int sockets[2];assert(socketpair(AF_UNIX,SOCK_SEQPACKET,0,sockets)==0);
+    const pid_t child=fork();assert(child>=0);
+    if (!child) {
+        close(sockets[0]);strata::core::MixedMapping mapping(memory,sockets[1]);
+        uint64_t seq=STRATA_MIXED_MAGIC;strata::core::mixed_signal(sockets[1],seq,true);
+        strata::core::mixed_signal(sockets[1],seq,false);
+        assert(seq==1 && mapping.valid(48,224) && mapping.activation_half());
+        auto &b=*mapping.buffer;b.chunk_rows=b.nt;b.chunk_tag=1;
+        for (uint32_t i=0;i<b.nt;++i) mapping.destinations()[i]=i;
+        mapping.output()[size_t(b.nt)*4096-1]=123.f;
+        strata_mixed_message packet{seq,1,STRATA_MIXED_CHUNK};
+        strata::core::mixed_packet(sockets[1],packet,true);strata::core::mixed_packet(sockets[1],packet,false);
+        assert(packet.sequence==seq && packet.tag==1 && packet.kind==STRATA_MIXED_ACK);
+        b.chunk_rows=0;b.chunk_tag=2|STRATA_MIXED_FINAL;
+        packet={seq,b.chunk_tag,STRATA_MIXED_CHUNK};strata::core::mixed_packet(sockets[1],packet,true);
+        strata::core::mixed_signal(sockets[1],seq,false);assert(seq==0);_exit(0);
+    }
+    close(sockets[1]);
+    {
+        strata::core::MixedClient client(memory,sockets[0]);auto &b=*client.buffer;
+        b.layer=3;b.nt=8192;b.routes=1;b.prefill=STRATA_MIXED_PREFILL_PARTIAL;b.canon=0;
+        client.set_activation_half(true);client.submit();
+        assert(client.wait_chunk() && b.chunk_rows==8192 && client.destinations()[8191]==8191);
+        assert(client.output()[size_t(8192)*4096-1]==123.f);
+        client.acknowledge_chunk();assert(!client.wait_chunk());
+    }
+    int status=0;assert(waitpid(child,&status,0)==child && WIFEXITED(status) && WEXITSTATUS(status)==0);
+    close(sockets[0]);close(memory);
+    // A v5 selection must never map a legacy-size buffer.
+    const int small=syscall(SYS_memfd_create,"mixed-wrong-size",MFD_CLOEXEC);
+    assert(small>=0 && ftruncate(small,sizeof(strata_mixed_buffer))==0);
+    bool rejected=false;
+    try {strata::core::MixedMapping wrong(small,-1);} catch (const std::runtime_error &) {rejected=true;}
+    assert(rejected);close(small);unsetenv("STRATA_GLM_MIXED_PROTOCOL");
+}
+
 void check_stable_ownership() {
 #ifdef __linux__
     setenv("STRATA_GLM_MIXED_STABLE_OWNERSHIP","1",1);
@@ -57,6 +98,7 @@ void check_stable_ownership() {
 #endif
 }
 int main() {
+    check_fast_transport();
     check_stable_ownership();
     for (int groups: {14,18}) for (int primary=1;primary<groups;++primary) {
         int owned=0;

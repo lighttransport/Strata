@@ -301,7 +301,17 @@ def tr16_mixed():
     return h
 
 
+def tr16_runner():
+    h=tr16()
+    h.name='tr16-runner'
+    profile=pathlib.Path(__file__).resolve().parent/'data'/'hw_tr16_runner.json'
+    h.heterogeneous=json.loads(profile.read_text())
+    h.notes='tr16-mixed plus the GLM runner model resources (tools/sim/glm_runner.py); use tools/glm_runner_sim.py.'
+    return h
+
+
 PRESETS = {
+    "tr16-runner": tr16_runner,
     "tr16-mixed": tr16_mixed,
     "tr16": tr16,
     "b550": b550,

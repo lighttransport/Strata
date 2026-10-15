@@ -1,0 +1,563 @@
+{
+ "schema": "strata.glm.levers.v1",
+ "note": "Each lever edits the calibrated table, topology, placement, prefill plan or sweep state. `lossless` means the lever changes no generated token when implemented as described; it still needs the listed check. Gains are conditional on the edited constant being delivered by the engine change.",
+ "levers": [
+  {
+   "name": "device3_combine",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_CANON_COMBINE=device3 + STRATA_GLM_MIXED_ROWS=1",
+   "required_measurement": "STRATA_GLM_CHECK_COMBINE parity (device3 vs strict, 64 steps); identical 512-token streams",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "combine",
+     "value": "device3"
+    }
+   ]
+  },
+  {
+   "name": "direct_dispatch",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MIXED_DIRECT=1",
+   "required_measurement": "worker --loopback-bench rtt_flag vs rtt_socket; 14 vs 15 pool threads",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "dispatch",
+     "value": "direct"
+    }
+   ]
+  },
+  {
+   "name": "ownership_async",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MIXED_ADAPT_AFTER_ROWS=1 / asynchronous ownership updates",
+   "required_measurement": "MIXED_CLIENT ownership_wait_ms after the change",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "ownership",
+     "value": "async"
+    }
+   ]
+  },
+  {
+   "name": "gpu_draft_bank",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "--mtp-experts=gpu (STRATA_GLM_MTP_GPU_CACHE)",
+   "required_measurement": "mtp_timing.draft_ms per step with the bank; primary slots lost (2.23 GB = 5.8 slots/layer)",
+   "edits": [
+    {
+     "target": "placement",
+     "path": "draft_bank",
+     "value": "primary"
+    },
+    {
+     "target": "placement",
+     "path": "primary_slots",
+     "op": "add",
+     "value": -5.8
+    }
+   ]
+  },
+  {
+   "name": "head_hidden",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_SPLIT_PUBLISH_FIRST=1 (or VERIFY_SPLIT_FIRST)",
+   "required_measurement": "STEP_TRACE head_ms and layer-3 slot wait after the change",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "head_hidden_fraction",
+     "value": 0.6
+    }
+   ]
+  },
+  {
+   "name": "cpu_span_access",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_NATIVE_FLOW_SCHEDULE=span",
+   "required_measurement": "strata-glm-q2-kernel-bench packed GB/s (72 -> 84 target)",
+   "edits": [
+    {
+     "target": "table",
+     "path": "cpu.lanes.single15.gb_s",
+     "op": "scale",
+     "value": 1.17
+    }
+   ]
+  },
+  {
+   "name": "hip_primary",
+   "applies_to": "both",
+   "lossless": true,
+   "engine_knob": "tools/glm_mixed_run.py orientation hip-cuda",
+   "required_measurement": "per-slot STEP_TRACE on hip primary (probe 1)",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "primary",
+     "value": "hip"
+    },
+    {
+     "target": "topology",
+     "path": "worker",
+     "value": "cuda"
+    },
+    {
+     "target": "plan",
+     "path": "primary",
+     "value": "hip"
+    },
+    {
+     "target": "plan",
+     "path": "worker",
+     "value": "cuda"
+    }
+   ]
+  },
+  {
+   "name": "lfu_partition",
+   "applies_to": "decode",
+   "lossless": false,
+   "engine_knob": "STRATA_GLM_MIXED_CACHE_PLAN + STRATA_GLM_MIXED_ADAPT_LFU=1",
+   "required_measurement": "corpus gate (residency changes routes under affinity); hit share from MIXED_CLIENT rows",
+   "edits": [
+    {
+     "target": "placement",
+     "path": "policy",
+     "value": "lfu"
+    }
+   ]
+  },
+  {
+   "name": "three_groups",
+   "applies_to": "decode",
+   "lossless": false,
+   "engine_knob": "STRATA_GLM_SPLIT_VERIFY=3 with --draft-depth=5",
+   "required_measurement": "acceptance at positions 3-4 (extrapolated 0.75/0.70 today); loop proxy; corpus gate under soft acceptance",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "groups",
+     "value": [
+      2,
+      2,
+      2
+     ]
+    },
+    {
+     "target": "state",
+     "path": "accepted_per_round",
+     "value": 4.3
+    }
+   ]
+  },
+  {
+   "name": "layer_pipeline",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "--layer-range / --stage (topology B, two decoder processes)",
+   "required_measurement": "node-local lane GB/s (probe 3), host bounce latency (probe 5); mixer rounding across vendors",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "kind",
+     "value": "B"
+    },
+    {
+     "target": "topology",
+     "path": "stage_order",
+     "value": "pipeline"
+    },
+    {
+     "target": "topology",
+     "path": "cpu_lanes",
+     "value": "node_local8x2"
+    },
+    {
+     "target": "topology",
+     "path": "split_layer",
+     "value": 24
+    }
+   ]
+  },
+  {
+   "name": "exchange_f16_partial",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MIXED_EXCHANGE=f16 (one partial per layer, no chunk acks)",
+   "required_measurement": "prefill logits hash equal to the current mixed path (worker already gathers F16)",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "exchange",
+     "value": "f16"
+    },
+    {
+     "target": "plan",
+     "path": "return_mode",
+     "value": "partial"
+    }
+   ]
+  },
+  {
+   "name": "stream_overlap_mixer",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_STAGE_PREFETCH ring sized to the mixer (PREFETCH_GROUPS)",
+   "required_measurement": "rocprof/nsys: streaming hidden under the mixer",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "stream_overlap",
+     "value": "mixer"
+    }
+   ]
+  },
+  {
+   "name": "fraction_by_bandwidth",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MIXED_PRIMARY_FRACTION=0.67",
+   "required_measurement": "10-of-14 split measured 562 vs 523 at 0.5",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "primary_fraction",
+     "value": 0.67
+    }
+   ]
+  },
+  {
+   "name": "mixer_subbatch",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MIXER_SUB_BATCH / hipBLASLt tables / WMMA attention",
+   "required_measurement": "rocprof per-kernel mixer decomposition at 8K; logits hash per sub-lever",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "mixer_speedup",
+     "value": 1.3
+    }
+   ]
+  },
+  {
+   "name": "fused_swiglu",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "fused SwiGLU + F16 convert epilogue",
+   "required_measurement": "prefill logits hash equal; rocprof share of swiglu/convert",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "gemm_speedup",
+     "value": 1.2
+    }
+   ]
+  },
+  {
+   "name": "resident_skip",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "PREFETCH_REUSE_DEVICE on both devices",
+   "required_measurement": "streamed bytes per layer from PREFILL_WORK transferred_bytes",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "resident_groups",
+     "value": 3.0
+    }
+   ]
+  },
+  {
+   "name": "cpu_lane_cold",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "CPU lane for experts with predicted rows < 4 (kappa rule)",
+   "required_measurement": "CPU prefill row ms (0.056 assumed from Maya)",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "cpu_groups",
+     "value": 0.5
+    }
+   ]
+  },
+  {
+   "name": "residents_side_stream",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "resident expert executor on its own stream (or all cached experts on the worker)",
+   "required_measurement": "nsys: resident kernels overlap the next mixer; combine waits on both",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "residents",
+     "value": "side"
+    }
+   ]
+  },
+  {
+   "name": "fused_publish",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_FUSE_ROUTE=1 plus mhc/norm fusion in the segment",
+   "required_measurement": "nsys per-slot kernel count and gap time",
+   "edits": [
+    {
+     "target": "table",
+     "path": "devices.hip.decode.publish_ms",
+     "op": "scale",
+     "value": 0.5
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.publish_ms",
+     "op": "scale",
+     "value": 0.5
+    },
+    {
+     "target": "table",
+     "path": "devices.hip.decode.launch_ms",
+     "op": "scale",
+     "value": 0.5
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.launch_ms",
+     "op": "scale",
+     "value": 0.5
+    }
+   ]
+  },
+  {
+   "name": "mla_kv_kernel",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "MLA decode attention kernel over the 8K latent cache (STRATA_GLM_MLA_* kernels)",
+   "required_measurement": "nsys MLA slot time at 2K vs 8K",
+   "edits": [
+    {
+     "target": "table",
+     "path": "devices.hip.decode.mla_kv_ms_per_ktoken",
+     "op": "scale",
+     "value": 0.6
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.mla_kv_ms_per_ktoken",
+     "op": "scale",
+     "value": 0.6
+    }
+   ]
+  },
+  {
+   "name": "sampling_lookup_trim",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "logits readback, sampling and lookup on the step critical path (other_ms)",
+   "required_measurement": "SPECULATIVE remainder per step after the change (7.4 ms today)",
+   "edits": [
+    {
+     "target": "table",
+     "path": "host.other_ms",
+     "value": 4.0
+    }
+   ]
+  },
+  {
+   "name": "worker_request_fast",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "worker request service: persistent/graphed request path, rows written straight into the shared mapping (no worker-side memcpy)",
+   "required_measurement": "worker --loopback-bench request_us p50 (MIXED_WORKER elapsed 0.43-0.49 ms today); target <= 0.2 ms",
+   "edits": [
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.worker_request_fixed_ms",
+     "op": "scale",
+     "value": 0.5
+    },
+    {
+     "target": "table",
+     "path": "devices.hip.decode.worker_request_fixed_ms",
+     "op": "scale",
+     "value": 0.5
+    },
+    {
+     "target": "table",
+     "path": "worker.memcpy_gb_s",
+     "op": "scale",
+     "value": 4.0
+    }
+   ]
+  },
+  {
+   "name": "layer_split_interleave",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "--layer-range / --stage (topology B) with both verify groups interleaved per stage and the shared 15-thread CPU lane",
+   "required_measurement": "host bounce latency (probe 5); mixer rounding across vendors; dense weights duplicated for prefill",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "kind",
+     "value": "B"
+    },
+    {
+     "target": "topology",
+     "path": "stage_order",
+     "value": "interleave"
+    },
+    {
+     "target": "topology",
+     "path": "cpu_lanes",
+     "value": "single15"
+    },
+    {
+     "target": "topology",
+     "path": "split_layer",
+     "value": 24
+    }
+   ]
+  },
+  {
+   "name": "expert_gemm_efficiency",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "HIP expert FFN path: hipBLASLt / MMQ with SwiGLU epilogue, 1024-row sub-batches, dequant once per group",
+   "required_measurement": "rocprof: fitted 13.5 ms per 16-expert group at 8K against about 5 ms at the 100 TFLOP/s GEMM microbenchmark; required <= 6 ms",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "gemm_speedup",
+     "op": "scale",
+     "value": 2.0
+    }
+   ]
+  },
+  {
+   "name": "fraction_0.5",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MIXED_PRIMARY_FRACTION=0.5",
+   "required_measurement": "prefill screen at the chosen split",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "primary_fraction",
+     "value": 0.5
+    }
+   ]
+  },
+  {
+   "name": "fraction_0.6",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MIXED_PRIMARY_FRACTION=0.6",
+   "required_measurement": "prefill screen at the chosen split",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "primary_fraction",
+     "value": 0.6
+    }
+   ]
+  },
+  {
+   "name": "shared_window_projections",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "split_projections / window_projections: one projection GEMM for both verify groups per layer (dense weights read once per window)",
+   "required_measurement": "rocprof: mixer kernel ms per slot (0.47 ms measured on HIP, 2026-10-14); prefill/decode logits hash equal (GEMM row invariance)",
+   "edits": [
+    {
+     "target": "table",
+     "path": "devices.hip.decode.kda_ms.2",
+     "op": "scale",
+     "value": 0.7
+    },
+    {
+     "target": "table",
+     "path": "devices.hip.decode.mla_ms.2",
+     "op": "scale",
+     "value": 0.7
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.kda_ms.2",
+     "op": "scale",
+     "value": 0.7
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.mla_ms.2",
+     "op": "scale",
+     "value": 0.7
+    }
+   ]
+  },
+  {
+   "name": "batched_resident_knob",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_BATCHED_RESIDENT=1 (existing; direct resident expert path for the verify window)",
+   "required_measurement": "screen 2026-10-14 hip-cuda 8K holdout-code: 27.1 -> 32.6 tok/s (single trials); corpus gate pending",
+   "edits": [
+    {
+     "target": "table",
+     "path": "devices.hip.decode.resident_fixed_ms",
+     "op": "scale",
+     "value": 0.5
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.resident_fixed_ms",
+     "op": "scale",
+     "value": 0.5
+    },
+    {
+     "target": "table",
+     "path": "devices.hip.decode.launch_ms",
+     "op": "scale",
+     "value": 0.7
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.launch_ms",
+     "op": "scale",
+     "value": 0.7
+    }
+   ]
+  },
+  {
+   "name": "mla_graphs_knob",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MLA_GRAPHS=1 (existing; MLA layer segments replay as graphs)",
+   "required_measurement": "screen 2026-10-14 hip-cuda 8K holdout-code: 27.1 -> 30.6 tok/s (single trials)",
+   "edits": [
+    {
+     "target": "table",
+     "path": "devices.hip.decode.mla_ms.2",
+     "op": "scale",
+     "value": 0.7
+    },
+    {
+     "target": "table",
+     "path": "devices.cuda.decode.mla_ms.2",
+     "op": "scale",
+     "value": 0.7
+    }
+   ]
+  }
+ ]
+}

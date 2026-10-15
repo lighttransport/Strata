@@ -17,6 +17,15 @@ from glm_regression import parse_eval, check_quality, TRAILING
 from glm_tr16_calibrate import ROOT, digest, wait_idle, input_identity
 
 TOLERANCE = dict(ppl_rel=.03, kl_rel=0, kl_abs=.03, top1_abs=.01)
+QUALITY_GATES = {'regression': TOLERANCE,
+                 'tr16-35': dict(ppl_rel=.06, kl_rel=0, kl_abs=.08, top1_abs=.03)}
+
+
+def evaluation_prefill(config, override=None):
+    batch = override if override is not None else config.get('prefill_batch', 256)
+    if not isinstance(batch, int) or isinstance(batch, bool) or not 1 <= batch <= min(8192, config['context']):
+        raise ValueError('prefill batch must be 1..min(8192, context)')
+    return batch
 
 
 def evaluation_width(config):
@@ -46,6 +55,7 @@ def compare_humaneval(candidate, baseline):
 
 def compare(result, baseline):
     failures = []
+    gate = result.get('quality_gate', 'regression')
     try:
         widths = [evaluation_width(item.get('config', {})) for item in (result, baseline)]
         if widths[0] != widths[1]:
@@ -53,6 +63,10 @@ def compare(result, baseline):
     except (ValueError, TypeError) as exc:
         failures.append('invalid evaluation width: ' + str(exc))
     for key in ('corpus_sha256', 'reference', 'reference_size', 'reference_mtime_ns', 'sequences', 'inputs'):
+        # The resumed experiment compares the selected REAP pack against the
+        # unchanged full Q23 baseline. Keep both weight identities in receipts.
+        if key == 'inputs' and gate == 'tr16-35':
+            continue
         if result[key] != baseline[key]:
             failures.append('incomparable ' + key)
     if not result['complete'] or not baseline['complete']:
@@ -63,7 +77,13 @@ def compare(result, baseline):
             failures.append('missing or nonfinite quality metrics')
     if failures:
         return failures
-    return check_quality(result['metrics'], baseline['metrics'], TOLERANCE)
+    if gate not in QUALITY_GATES:
+        return ['unknown quality gate']
+    if result.get('eval_prefill', False) != baseline.get('eval_prefill', False):
+        return ['incomparable evaluation prefill path']
+    if result.get('eval_prefill', False) and result.get('prefill_batch') != baseline.get('prefill_batch'):
+        return ['incomparable evaluation prefill batch']
+    return check_quality(result['metrics'], baseline['metrics'], QUALITY_GATES[gate])
 
 
 def quality_guard(output, command, record_cpu_interference=False, shared_model=False, allow_desktop=False):
@@ -80,12 +100,16 @@ def main():
     ap.add_argument('--config', type=Path, required=True)
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--baseline', type=Path)
+    ap.add_argument('--quality-gate', choices=tuple(QUALITY_GATES), default='regression')
+    ap.add_argument('--prefill-batch', type=int, help='override the config prefill batch (otherwise config or 256)')
+    ap.add_argument('--eval-prefill', action='store_true', help='score the batched prefill path as well as its final state')
     ap.add_argument('--regression-config', type=Path, default=ROOT / 'tests/glm/regression.json')
     ap.add_argument('--wait-idle-seconds', type=int, default=1800)
     ap.add_argument('--record-cpu-interference', action='store_true',
                     help='record CPU contention without aborting quality scoring; no timing comparison')
     args = ap.parse_args()
     c = json.loads(args.config.read_text())
+    prefill_batch = evaluation_prefill(c, args.prefill_batch)
     width = evaluation_width(c)
     if width != 4 and b'STRATA_GLM_EVAL_WIDTH' not in Path(c['exe']).read_bytes():
         raise ValueError('decoder does not support STRATA_GLM_EVAL_WIDTH')
@@ -101,7 +125,7 @@ def main():
     expected_tokens = sum(len(re.split(r'[,\s]+', line.strip())) - 1 for line in lines)
     cmd = ['numactl', '--interleave=all', str(Path(c['exe']).resolve()), c['model'], '0', '1',
            str(c['dense_cache_mib']), str(c['threads']), '--context=' + str(c['context']),
-           '--prefill-batch=256', '--gpu-budget-mib=' + str(c['gpu_budget_mib']),
+           '--prefill-batch=' + str(prefill_batch), '--gpu-budget-mib=' + str(c['gpu_budget_mib']),
            '--cpu-affinity=' + c['cpu_affinity'], '--decode-graphs',
            '--decode-cache-mib=' + str(c['decode_cache_mib'])]
     if c.get('prefill_experts'): cmd.append('--prefill-experts='+c['prefill_experts'])
@@ -109,12 +133,15 @@ def main():
     if c.get('expert_pack'):
         cmd.append('--expert-pack=' + c['expert_pack'])
     cmd += ['--eval-corpus=' + str(output / 'corpus.ids'), '--eval-reference=' + str(reference)]
+    if args.eval_prefill:
+        cmd.append('--eval-prefill')
     result = dict(config=c, command=cmd, decoder_sha256=digest(c['exe']), runner_sha256=digest(__file__),
                   inputs=input_identity(c),
                   corpus_sha256=digest(corpus), reference=str(reference), reference_size=refstat.st_size,
                   reference_mtime_ns=refstat.st_mtime_ns, sequences=sequences, expected_tokens=expected_tokens,
                   evaluation_width=width,
-                  quality_tolerance=TOLERANCE, complete=False, qualified=False,
+                  quality_gate=args.quality_gate, quality_tolerance=QUALITY_GATES[args.quality_gate],
+                  prefill_batch=prefill_batch, eval_prefill=args.eval_prefill, complete=False, qualified=False,
                   cpu_interference_policy='record' if args.record_cpu_interference else 'reject',
                   performance_comparable=False)
     if args.baseline:
@@ -149,6 +176,8 @@ def main():
         result['failures'] = compare(result, json.loads(args.baseline.read_text()))
         result['corpus_gate_passed'] = not result['failures']
     result['promotion_note'] = 'Full paired HumanEval and held-out timing still required.'
+    if args.quality_gate == 'tr16-35':
+        result['baseline_scope'] = 'Compared to unchanged Q23; weight identities may differ, corpus/reference/evaluation width must match.'
     (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps({k: result[k] for k in ('complete', 'metrics', 'failures', 'corpus_gate_passed') if k in result}))
     return 0 if result['complete'] and not result.get('failures') else 1

@@ -1,0 +1,46 @@
+{
+ "schema": "strata.glm.cpu_lanes.v1",
+ "flow_bench": "/mnt/nvme02/work/Strata/build-glm-release/strata-glm-q2-flow-bench",
+ "sha256": "823d5a0f7368fb54254f8cf6589ba97b30ce8795651fb7e0256365e4cc91c521",
+ "scope": "Synthetic Q2_K/Q3_K expert flow bench (96 experts, 300 layers, 8 routes per token); node-local 8-thread lanes alone and concurrently, and the 15-thread interleaved reference",
+ "results": {
+  "flow-node0-w1": {
+   "gb_s": null,
+   "text": ""
+  },
+  "flow-node1-w1": {
+   "gb_s": null,
+   "text": ""
+  },
+  "flow-both-node0-w1": {
+   "gb_s": null,
+   "returncode": 1
+  },
+  "flow-both-node1-w1": {
+   "gb_s": null,
+   "returncode": 1
+  },
+  "flow-interleave-w1": {
+   "gb_s": 75.67
+  },
+  "flow-node0-w2": {
+   "gb_s": null,
+   "text": ""
+  },
+  "flow-node1-w2": {
+   "gb_s": null,
+   "text": ""
+  },
+  "flow-both-node0-w2": {
+   "gb_s": null,
+   "returncode": 1
+  },
+  "flow-both-node1-w2": {
+   "gb_s": null,
+   "returncode": 1
+  },
+  "flow-interleave-w2": {
+   "gb_s": 75.2
+  }
+ }
+}

@@ -1,0 +1,405 @@
+{
+ "schema": "strata.glm.kernels.v1",
+ "provenance": {
+  "sources": [
+   {
+    "path": "build-glm-release/mixed-redesign-trace-v2/8k-holdout-code-cuda-hip-0.5-0.log",
+    "role": "decode scopes, CPU_EXPERT, MIXED_CLIENT, MTP_TIMING (cuda primary, hip worker, REAP224, 8K holdout code)"
+   },
+   {
+    "path": "build-glm-release/mixed-validation/redesign-prefill-sim-v2.json",
+    "role": "per-layer prefill mixer/FFN ms at 8192 tokens (cuda, hip, cuda-hip)"
+   },
+   {
+    "path": "tools/sim/data/lru_curve.json",
+    "role": "coverage -> share of routes (ideal LRU on q23 288-expert traces)"
+   },
+   {
+    "path": "docs/benchmarks/tr16_mixed_20261014/resources.json",
+    "role": "link and RAM rates (through hw_tr16_runner.json)"
+   }
+  ],
+  "note": "Initial constants: values marked in `free` are fitted by tools/glm_runner_sim.py calibrate; the rest are read directly from the traces. Nothing here is a quality claim.",
+  "derivation": "Per slot the traced cuda-primary step shows cpu_service 0.664 ms and exposed wait 0.258 ms, a period of 0.92 ms set by the primary GPU chain (launch + mixer + publish + residents); the CPU kernel itself is 0.457 ms (CPU_EXPERT) and the worker exposure about 0.1 ms. Single-GPU rows at 2.3x the CPU bytes decode no slower, and the faster HIP card alone decodes 12% faster: decode is bound by the primary GPU chain. The per-slot nsys decomposition (probe 1) must confirm the chain composition.",
+  "per_slot_seed": "STEP_TRACE_SLOTS of the cuda-primary trace: KDA slot periods (service+wait) 0.6-0.97 ms, MLA 0.9-1.5 ms; the GPU chain per slot is seeded at 0.80 (KDA) and 1.03 (MLA at 8K) before the fit."
+ },
+ "model": {
+  "expert_bytes_default": 9109504,
+  "top_k": 8,
+  "unique_experts_per_route": 0.93,
+  "accepted_per_round": 3.2,
+  "hit_curve": {
+   "points": [
+    [
+     0.0104,
+     0.0084
+    ],
+    [
+     0.0208,
+     0.0537
+    ],
+    [
+     0.0347,
+     0.2081
+    ],
+    [
+     0.0486,
+     0.2691
+    ],
+    [
+     0.0694,
+     0.3398
+    ],
+    [
+     0.1007,
+     0.4119
+    ],
+    [
+     0.1354,
+     0.4769
+    ],
+    [
+     0.2014,
+     0.5773
+    ],
+    [
+     0.25,
+     0.6389
+    ],
+    [
+     0.309,
+     0.6987
+    ],
+    [
+     0.3993,
+     0.7589
+    ],
+    [
+     0.5,
+     0.808
+    ],
+    [
+     0.6007,
+     0.8443
+    ],
+    [
+     0.75,
+     0.8738
+    ],
+    [
+     0.8993,
+     0.8838
+    ],
+    [
+     1.0,
+     0.8848
+    ]
+   ],
+   "scale": 1.3,
+   "policy_gain": {
+    "lru": 1.0,
+    "lfu": 1.1,
+    "recorded": 1.0
+   },
+   "note": "scale>1 reflects REAP224 + adaptive worker cache + affinity 0.14 concentrating routes beyond the q23 LRU curve; fitted"
+  },
+  "acceptance_by_position": {
+   "measured": [
+    0.931,
+    0.784,
+    0.75
+   ],
+   "extrapolated": [
+    0.75,
+    0.7
+   ],
+   "source": "MTP_POSITION of the timed trial of the cuda-hip 8K trace; positions 3-4 are assumptions"
+  },
+  "rows_per_worker_expert": 1.07,
+  "note_rows": "MIXED_CLIENT decode_rows/requests = 7.3 rows per request at width 2 against ~6.9 worker experts: most experts are routed by one of the two tokens",
+  "experts_per_layer": 224
+ },
+ "cpu": {
+  "lanes": {
+   "single15": {
+    "gb_s": 65.6,
+    "source": "CPU_EXPERT bytes/layer_flow_ms of the trace (375.6 GB / 5723 ms); flow probe 69.8 at width 1-2",
+    "synthetic_gb_s": 75.4,
+    "note": "flow bench interleaved 15 threads 75.7/75.2 GB/s (width 1/2) on 2026-10-14; in-run effective 65.6 GB/s from CPU_EXPERT"
+   },
+   "node8": {
+    "gb_s": 42.0,
+    "source": "ram-cpu0-mem0 / ram-cpu1-mem1 probes (42.55/41.65) with 8 threads; a node-local expert lane is not yet measured",
+    "note": "Not measured: strata-glm-q2-flow-bench refuses a single-node membind (node-owned rows); 42 GB/s is the plain-read probe per node"
+   }
+  },
+  "slot_fixed_ms": 0.03,
+  "quant_ms_per_token": 0.005,
+  "expert_fixed_ms": 0.0,
+  "mailbox_latency_ms": 0.02,
+  "strict_combine_factor": 1.0,
+  "prefill_row_ms": 0.056
+ },
+ "worker": {
+  "rtt_socket_ms": 0.0418,
+  "rtt_flag_ms": 0.01,
+  "submit_host_ms": 0.01,
+  "memcpy_gb_s": 5.0,
+  "ownership_interval": 75,
+  "ownership_ms": 7.0,
+  "wait_release_ms": 0.0,
+  "bounce_latency_ms": 0.0461,
+  "bounce_host_ms": 0.01,
+  "prefill_ack_ms": 1.9,
+  "exchange_memcpy_passes": 2,
+  "source": "MIXED_CLIENT decode_wait 4353 ms / ownership_wait 2453 ms / 351 updates over 26376 requests; MIXED_WORKER elapsed 0.43-0.49 ms per request",
+  "return_rows_per_token": 1.5,
+  "note_return": "MIXED_CLIENT prefill_rows 1032192 over 2 passes x 42 layers = 12288 rows per layer at 8192 tokens",
+  "prefill_tile_rows": 512,
+  "note_tile": "STRATA_GLM_MIXED_PREFILL_TILE=512: worker GEMM rows per expert are padded to the tile (8192 tokens: 293 -> 512; 2048: 73 -> 512)",
+  "client_host_ms": 0.05,
+  "note_client": "Primary service-thread work per worker request (request packing, ownership memcmp, reply unpacking); seeded, fitted",
+  "note_ownership": "MIXED_CLIENT ownership_wait_ms / adapt_updates: 7.0 ms with the HIP worker (x16 link), 13.4 ms with the CUDA worker (x8 link, 2026-10-14 hip-cuda 8K trace)",
+  "source_loopback": "tools/glm_mixed_worker_loopback.py 2026-10-14: ownership_noop p50 42/40 us (cuda/hip); decode_partial width 2: cuda 105 us at 1 route, 500 us at 16; hip 157 / 396 us. Bounce 128 KB round trip 47/46 us; HostRegister on a shared memfd works on both vendors, also concurrently (6.95 / 13.9 GB/s)."
+ },
+ "host": {
+  "resync_ms": 1.456,
+  "other_ms": 5.093,
+  "source": "MTP_TIMING resync and SPECULATIVE remainder per verify step of the timed trial",
+  "register_shared_supported": true
+ },
+ "devices": {
+  "cuda": {
+   "decode": {
+    "kda_ms": {
+     "1": 0.36,
+     "2": 0.4,
+     "4": 0.45
+    },
+    "mla_ms": {
+     "1": 0.36,
+     "2": 0.4,
+     "4": 0.45
+    },
+    "publish_ms": 0.08,
+    "resident_fixed_ms": 0.12,
+    "resident_expert_ms": {
+     "1": 0.0263,
+     "2": 0.0263,
+     "4": 0.0342
+    },
+    "launch_ms": 0.05,
+    "combine_ms": 0.01,
+    "draft_step_ms": {
+     "1": 2.3
+    },
+    "head_ms": 2.6,
+    "tail_ms": 4.5,
+    "worker_request_fixed_ms": 0.037,
+    "vram_gb_s": 448.0,
+    "mla_kv_ms_per_ktoken": 0.03,
+    "ownership_ms": 13.4,
+    "measured_slot_kernels_ms": {
+     "copy": 0.09978218181818183,
+     "mixer": 0.40971599999999997,
+     "other": 0.05260981818181818,
+     "publish": 0.028464727272727273,
+     "resident": 0.11445709090909091,
+     "wait_add": 0.5080425454545455,
+     "gap": 0.31950676363636354,
+     "launches": 59.07272727272727,
+     "source": "nsys cuda_gpu_trace, CUDA alone, 8K holdout code (2K prefill chunks), 48 tokens x 2 trials, tier 6144 MiB, width 2 (build-glm-release/runner-sim/probes-20261014-nsys); 275 slots sampled; wait_add time is spin on the CPU, not GPU work"
+    }
+   },
+   "prefill": {
+    "mixer_ms": {
+     "0": 119,
+     "1": 122.5,
+     "2": 119.5,
+     "3": 348,
+     "4": 124,
+     "5": 125.5,
+     "6": 119.5,
+     "7": 341.5,
+     "8": 125.5,
+     "9": 120,
+     "10": 126.5,
+     "11": 360.5,
+     "12": 125.5,
+     "13": 125.5,
+     "14": 120,
+     "15": 339.5,
+     "16": 119.5,
+     "17": 122.5,
+     "18": 122.5,
+     "19": 349.5,
+     "20": 129,
+     "21": 124,
+     "22": 124.5,
+     "23": 343.5,
+     "24": 120.5,
+     "25": 122.5,
+     "26": 122,
+     "27": 344,
+     "28": 126.5,
+     "29": 127.5,
+     "30": 125.5,
+     "31": 348.5,
+     "32": 120,
+     "33": 124,
+     "34": 119,
+     "35": 346,
+     "36": 121,
+     "37": 127,
+     "38": 123.5,
+     "39": 356.5,
+     "40": 126,
+     "41": 123,
+     "42": 120.5,
+     "43": 340.5,
+     "44": 122.5
+    },
+    "dense_ffn_ms": 76.0,
+    "unassigned_ms": 541.5,
+    "group_fixed_ms": 3.0,
+    "group_gemm_ms": 6.0,
+    "head_ms": 25.0,
+    "layer_join_ms": 1.0,
+    "accumulate_ms": 2.0,
+    "measured_ffn_ms_per_moe_layer": 253.70238095238096,
+    "resident_groups": 0.0,
+    "ring_groups": 4,
+    "ring_note": "PREFETCH_STAGED groups=4 device staging slots in the traced run; the worker ring is assumed equal"
+   }
+  },
+  "hip": {
+   "decode": {
+    "kda_ms": {
+     "1": 0.31,
+     "2": 0.34,
+     "4": 0.38
+    },
+    "mla_ms": {
+     "1": 0.31,
+     "2": 0.34,
+     "4": 0.38
+    },
+    "publish_ms": 0.06,
+    "resident_fixed_ms": 0.1,
+    "resident_expert_ms": {
+     "1": 0.0159,
+     "2": 0.0159,
+     "4": 0.0207
+    },
+    "launch_ms": 0.04,
+    "combine_ms": 0.01,
+    "draft_step_ms": {
+     "1": 1.7
+    },
+    "head_ms": 2.0,
+    "tail_ms": 3.6,
+    "worker_request_fixed_ms": 0.1007,
+    "vram_gb_s": 640.0,
+    "mla_kv_ms_per_ktoken": 0.022,
+    "ownership_ms": 7.0,
+    "measured_slot_kernels_ms": {
+     "copy": 0.01480240653201547,
+     "mixer": 0.47200305113880536,
+     "other": 0.053019252256123764,
+     "publish": 0.041438848302535455,
+     "resident": 0.10023528147829824,
+     "wait_add": 3.571941254834551,
+     "gap": 0.31323505930382467,
+     "launches": 65.54834550923937,
+     "source": "rocprofv3 kernel trace, HIP alone, 8K holdout code, 48 tokens x 2 trials, width 2 (build-glm-release/runner-sim/probes-20261014-profiles); wait_add time is spin on the CPU, not GPU work; rocprof inflates the slot period about 4x"
+    }
+   },
+   "prefill": {
+    "mixer_ms": {
+     "0": 73,
+     "1": 76.5,
+     "2": 79,
+     "3": 267.5,
+     "4": 89,
+     "5": 90.5,
+     "6": 90,
+     "7": 267,
+     "8": 88,
+     "9": 90,
+     "10": 90.5,
+     "11": 272.5,
+     "12": 90.5,
+     "13": 89.5,
+     "14": 89,
+     "15": 266.5,
+     "16": 90.5,
+     "17": 89,
+     "18": 90,
+     "19": 266,
+     "20": 88.5,
+     "21": 89.5,
+     "22": 90.5,
+     "23": 265,
+     "24": 89.5,
+     "25": 90,
+     "26": 89,
+     "27": 265.5,
+     "28": 89.5,
+     "29": 89,
+     "30": 88.5,
+     "31": 265.5,
+     "32": 89.5,
+     "33": 89.5,
+     "34": 90,
+     "35": 266.5,
+     "36": 88.5,
+     "37": 90,
+     "38": 89,
+     "39": 264.5,
+     "40": 89.5,
+     "41": 89.5,
+     "42": 88.5,
+     "43": 266.5,
+     "44": 91
+    },
+    "dense_ffn_ms": 37.5,
+    "unassigned_ms": 481.0,
+    "group_fixed_ms": 2.0,
+    "group_gemm_ms": 4.0,
+    "head_ms": 25.0,
+    "layer_join_ms": 1.0,
+    "accumulate_ms": 2.0,
+    "measured_ffn_ms_per_moe_layer": 191.01190476190476,
+    "resident_groups": 0.0,
+    "ring_groups": 4,
+    "ring_note": "PREFETCH_STAGED groups=4 device staging slots in the traced run; the worker ring is assumed equal"
+   }
+  }
+ },
+ "free": [
+  "cpu.slot_fixed_ms",
+  "worker.rtt_socket_ms",
+  "devices.cuda.decode.worker_request_fixed_ms",
+  "devices.hip.decode.worker_request_fixed_ms",
+  "devices.cuda.decode.kda_ms.2",
+  "devices.cuda.decode.mla_ms.2",
+  "devices.hip.decode.kda_ms.2",
+  "devices.hip.decode.mla_ms.2",
+  "devices.cuda.decode.mla_kv_ms_per_ktoken",
+  "devices.hip.decode.mla_kv_ms_per_ktoken",
+  "devices.cuda.decode.resident_fixed_ms",
+  "devices.hip.decode.resident_fixed_ms",
+  "devices.cuda.decode.draft_step_ms.1",
+  "devices.hip.decode.draft_step_ms.1",
+  "devices.cuda.decode.head_ms",
+  "devices.hip.decode.head_ms",
+  "model.hit_curve.scale",
+  "devices.cuda.prefill.group_gemm_ms",
+  "devices.hip.prefill.group_gemm_ms",
+  "devices.cuda.prefill.group_fixed_ms",
+  "devices.hip.prefill.group_fixed_ms",
+  "worker.prefill_ack_ms",
+  "worker.memcpy_gb_s",
+  "worker.client_host_ms"
+ ]
+}

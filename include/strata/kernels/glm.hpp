@@ -25,6 +25,12 @@ struct GlmMailboxView;
 void glm_router_publish(const float *logits, const float *correction, int *ids, float *weights, int experts,
                         int top_k, float scale, const float *bonus, GlmMailboxView view, int slot, const float *x,
                         const unsigned *generation, void *stream);
+// Opt-in batched publication. Each row uses the single-row router arithmetic;
+// wanted receives unbiased IDs when requested, with no change to executed weights.
+void glm_router_publish_tokens(const float *logits, const float *correction, int *ids, float *weights,
+                               int experts, int top_k, float scale, const float *bonus, GlmMailboxView view,
+                               int slot, const float *x, int tokens, const unsigned *generation,
+                               void *stream, int *wanted = nullptr);
 
 // Four-stream mHC: projected is the 24-wide FP32 projection of normalized streams.
 // coefficients layout: pre[4], post[4], comb[4][4] (input stream, output stream).

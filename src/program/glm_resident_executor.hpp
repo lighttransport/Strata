@@ -18,7 +18,7 @@ struct ResidentExecutor {
     // pinned metadata, so replacements do not invalidate these graphs.
     using GraphKey = std::tuple<int, int, float, float, int, size_t, size_t, bool, bool>;
     std::map<GraphKey, std::unique_ptr<Graph>> graphs;
-    std::map<std::tuple<int, bool, int>, std::unique_ptr<Graph>> device_graphs;
+    std::map<std::tuple<int, bool, int, float, float>, std::unique_ptr<Graph>> device_graphs;
     std::unique_ptr<Device> lookup, route_ids;
     std::unique_ptr<Pinned> host_lookup;
     std::unique_ptr<Pinned> host_reduction;
@@ -111,7 +111,7 @@ struct ResidentExecutor {
                 check(cudaMemcpyAsync(host_output->p, output->p, (size_t)nt * 8 * 4096 * sizeof(float), cudaMemcpyDeviceToHost, stream));
         };
         if (!use_graphs) { enqueue(); return; }
-        auto &graph = device_graphs[{layer, readback, nt + (canon ? 100 : 0)}];
+        auto &graph = device_graphs[{layer, readback, nt + (canon ? 100 : 0),layout.swiglu_limit,layout.gate_skip}];
         if (graph && (graph->input != x || graph->ids != ids)) graph.reset();
         if (!graph) {
             auto capture = std::make_unique<Graph>();

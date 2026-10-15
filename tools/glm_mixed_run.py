@@ -61,6 +61,11 @@ def main():
     p.add_argument('--rocm-path', default='/opt/rocm/core-10.1')
     p.add_argument('runner_args', nargs=argparse.REMAINDER)
     a = p.parse_args()
+    version = os.environ.get('STRATA_GLM_MIXED_PROTOCOL', '4')
+    if version not in ('4', '5'):
+        p.error('STRATA_GLM_MIXED_PROTOCOL must be 4 or 5')
+    if os.environ.get('STRATA_GLM_MIXED_EXCHANGE') == 'f16' and version != '5':
+        p.error('STRATA_GLM_MIXED_EXCHANGE=f16 requires STRATA_GLM_MIXED_PROTOCOL=5')
     if a.report and a.report.exists():
         p.error('report already exists')
     if not 0 < a.worker_cache_mib <= 14336:
@@ -88,10 +93,19 @@ def main():
     worker_backend=subprocess.check_output([a.worker,'--backend'],text=True,env=library_env).strip()
     if {primary_backend,worker_backend}!={'cuda','hip'}:
         p.error('primary and worker must be separately built CUDA and HIP executables')
+    layout = None
+    if version == '5':
+        layouts = [json.loads(subprocess.check_output([binary, '--protocol-layout'], text=True, env=library_env))
+                   for binary in (a.primary, a.worker)]
+        if layouts[0] != layouts[1] or layouts[0]['version'] != 5:
+            p.error('mixed primary and worker protocol layouts differ')
+        layout = layouts[0]
     library_env.setdefault('STRATA_GLM_GPU_RESERVE_MIB','1024')
     library_env.setdefault('STRATA_GLM_BUDGET_RESERVE_MIB','1024')
     with tempfile.TemporaryFile(prefix='strata-mixed-') as memory:
         size = int(subprocess.check_output([a.worker, '--protocol-size'], text=True, env=library_env))
+        if layout is not None and size != layout['bytes']:
+            p.error('mixed worker protocol size differs from its layout')
         memory.truncate(size)
         monitor = mmap.mmap(memory.fileno(), 64, access=mmap.ACCESS_READ)
         primary_channel, worker_channel = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)

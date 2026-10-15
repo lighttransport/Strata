@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     pid_t child=-1;
     try {
         memory=int(syscall(SYS_memfd_create,"glm-worker-check",MFD_CLOEXEC));
-        if (memory<0 || ftruncate(memory,sizeof(strata_mixed_buffer)) ||
+        if (memory<0 || ftruncate(memory,strata::core::mixed_layout().bytes) ||
             socketpair(AF_UNIX,SOCK_SEQPACKET,0,sockets))
             throw std::runtime_error("worker check transport creation failed");
         child=fork();
@@ -38,11 +38,11 @@ int main(int argc, char **argv) {
             auto &b=*client.buffer;
             for (int repeat=0;repeat<2;++repeat) for (uint32_t rows: {1u,2u,4u,8u}) {
                 b.layer=3;b.nt=rows;b.routes=rows*2;b.prefill=0;b.canon=1;
-                b.swiglu_limit=0;b.gate_skip=0;b.chunk_tag=0;
+                b.swiglu_limit=repeat ? 7.f : 0.f;b.gate_skip=repeat ? .001f : 0.f;b.chunk_tag=0;
                 std::memset(b.primary_owned,0,sizeof b.primary_owned);
                 for (uint32_t row=0;row<rows;++row) {
                     for (uint32_t h=0;h<4096;++h)
-                        b.activation[size_t(row)*4096+h]=float(int(h%23)-11)*float(row+1)*.001f;
+                        b.activation[size_t(row)*4096+h]=float(int(h%23)-11)*float(row+1)*.013f;
                     for (uint32_t expert=0;expert<2;++expert) {
                         const uint32_t i=row*2+expert;
                         b.expert[i]=int(expert);b.destination[i]=int(row*8+expert);
@@ -58,13 +58,26 @@ int main(int argc, char **argv) {
                 if (!nonzero) throw std::runtime_error("all expert rows are zero");
                 output.write(reinterpret_cast<const char *>(b.output),std::streamsize(count*sizeof(float)));
                 if (!output) throw std::runtime_error("worker check output write failed");
+                const std::vector<float> rows_copy(b.output,b.output+count);
+                b.prefill=STRATA_MIXED_DECODE_PARTIAL;
+                std::fill_n(b.route_weight,size_t(b.nt)*8,0.f);
+                for (uint32_t i=0;i<b.routes;++i) b.route_weight[b.destination[i]]=1.f/float(i+2);
+                client.submit();client.wait();
+                for (uint32_t t=0;t<b.nt;++t) for (uint32_t h=0;h<4096;++h) {
+                    float sum=0.f;
+                    for (int r=7;r>=0;--r) for (uint32_t i=0;i<b.routes;++i)
+                        if (b.destination[i]==int(t*8+r))
+                            sum=std::fma(rows_copy[size_t(i)*4096+h],b.route_weight[t*8+r],sum);
+                    if (std::memcmp(&sum,client.output()+size_t(t)*4096+h,sizeof(float)))
+                        throw std::runtime_error("worker check partial differs from the ordered expert-row sum");
+                }
             }
         }
         int status=0;
         if (waitpid(child,&status,0)!=child || !WIFEXITED(status) || WEXITSTATUS(status))
             throw std::runtime_error("worker check child failed");
         child=-1;close(sockets[0]);close(memory);
-        std::cout << "WORKER_CHECK rows=1,2,4,8 experts=2 repeats=2 finite=1\n";
+        std::cout << "WORKER_CHECK rows=1,2,4,8 experts=2 repeats=2 finite=1 partial_bitwise_equal=1 limits=0,7 gate_skip=0,0.001\n";
         return 0;
     } catch (const std::exception &error) {
         if (child>0) {kill(child,SIGTERM);waitpid(child,nullptr,0);}
