@@ -132,6 +132,7 @@ class Topology:
     head_hidden_fraction: float = 0.0
     context_tokens: int = 8192       # MLA attention reads the latent cache of this many positions
     residents: str = 'chain'         # chain (resident experts on the mixer stream) | side (own stream, overlapped)
+    worker_cpu_share: float = 0.0    # two nodes: share of the CPU-lane experts served by the worker node's CPU (or {layer: share})
 
 
 def route_shares(placement, table):
@@ -231,6 +232,80 @@ class Builder:
             self.names.add(e.name)
             self.events.append(e)
         return events[-1].name if events else (after[-1] if after else None)
+
+
+class expert_scale:
+    """Context manager: every routed expert `factor` times larger (higher-precision experts): expert bytes for the CPU
+    lane and prefill streaming, and the bandwidth-bound per-expert GPU kernel time in the returned table."""
+    def __init__(self, factor):
+        self.factor = factor
+
+    def __enter__(self):
+        self.saved = dict(EXPERT_BYTES)
+        for k in EXPERT_BYTES:
+            EXPERT_BYTES[k] = int(EXPERT_BYTES[k] * self.factor)
+        return self
+
+    def table(self, table):
+        t = copy.deepcopy(table)
+        for dev in t['devices'].values():
+            d = dev.get('decode', {})
+            if isinstance(d.get('resident_expert_ms'), dict):
+                d['resident_expert_ms'] = {k: v * self.factor for k, v in d['resident_expert_ms'].items()}
+        return t
+
+    def __exit__(self, *exc):
+        EXPERT_BYTES.clear()
+        EXPERT_BYTES.update(self.saved)
+
+
+def two_node_hardware(base, link, worker='cuda', node=None, gpu_on_b=True):
+    """Hardware manifest for the worker GPU on a second host: the base (one-host) manifest with the worker's PCIe
+    moved to node B and every path between node A's RAM or GPU and the worker crossing the network.
+
+    link: dict(name, rtt_us, gbps, ...) as in sim/hw.py LINKS. rtt_us is the application-level (ucomm) round trip of a
+    small decode-shaped message pair, so it already holds the software cost: each message is charged rtt/2 plus its
+    bytes at gbps (TR16-B550 QDR: 36 KB -> 48 KB predicted 41.7 us, measured 42.3). node: node B constants (RAM, CPU
+    expert lane and the worker GPU's PCIe)."""
+    node = dict(dict(name='b550', ram_gb_s=29.27, cpu_flow_gb_s=26.0, h2d_gb_s=13.0, d2h_gb_s=13.0,
+                     memcpy_gb_s=8.0, source='B550 RAM 29.27 GB/s (read probe, DDR4-2133), expert rows ~26 GB/s '
+                     '(GLM_REMOTE_TP_COMM.md); RTX 5060 Ti PCIe 4 x8 13 GB/s is an estimate'), **(node or {}))
+    hw = copy.deepcopy(base)
+    r = hw['resources']
+    latency = link['rtt_us'] / 2 / 1000
+    hop_ab = [dict(bytes={}, minimum_ms=latency), dict(bytes={'net.ab': 1, 'b.ram': 1})]
+    hop_ba = [dict(bytes={}, minimum_ms=latency), dict(bytes={'net.ba': 1, 'ram': 1})]
+    if not gpu_on_b:
+        # Both GPUs stay on node A; node B is a CPU expert node (cold experts that do not fit node A's RAM).
+        r.update({'net.ab': link['gbps'] * 1e6, 'net.ba': link['gbps'] * 1e6, 'b.ram': node['ram_gb_s'] * 1e6,
+                  'b.host': 1.0, 'b.cpu.lane': 1.0, 'b.cpu.flow': node['cpu_flow_gb_s'] * 1e6})
+        hw['paths']['ram->b.ram'] = [dict(bytes={'ram': 1})] + hop_ab
+        hw['paths']['b.ram->ram'] = [dict(bytes={'b.ram': 1})] + hop_ba
+        hw['remote_worker'] = dict(link=dict(link), node=node, worker=None, gpu_on_b=False, latency_ms=latency)
+        hw['name'] = f"{base.get('name', 'base')}+{node['name']}-cpu-{link.get('name', 'link')}"
+        return hw
+    r['net.ab'] = link['gbps'] * 1e6
+    r['net.ba'] = link['gbps'] * 1e6
+    r['b.ram'] = node['ram_gb_s'] * 1e6
+    r['b.host'] = 1.0
+    r['b.cpu.lane'] = 1.0
+    r['b.cpu.flow'] = node['cpu_flow_gb_s'] * 1e6
+    r[f'{worker}.h2d'] = node['h2d_gb_s'] * 1e6
+    r[f'{worker}.d2h'] = node['d2h_gb_s'] * 1e6
+    to_gpu = dict(bytes={f'{worker}.h2d': 1, 'b.ram': 1, f'{worker}.vram': 1})
+    from_gpu = dict(bytes={f'{worker}.d2h': 1, 'b.ram': 1, f'{worker}.vram': 1})
+    paths = hw['paths']
+    primary = [d for d in ('cuda', 'hip') if d != worker][0]
+    paths[f'ram->{worker}'] = [dict(bytes={'ram': 1})] + hop_ab + [to_gpu]
+    paths[f'{worker}->ram'] = [from_gpu] + hop_ba
+    paths[f'b.ram->{worker}'] = [to_gpu]
+    paths['ram->b.ram'] = [dict(bytes={'ram': 1})] + hop_ab
+    paths['b.ram->ram'] = [dict(bytes={'b.ram': 1})] + hop_ba
+    paths[f'{primary}->{worker}'] = paths[f'{primary}->ram'] + paths[f'ram->{worker}']
+    paths[f'{worker}->{primary}'] = paths[f'{worker}->ram'] + paths[f'ram->{primary}']
+    hw['remote_worker'] = dict(link=dict(link), node=node, worker=worker, gpu_on_b=True, latency_ms=latency)
+    hw['name'] = f"{base.get('name', 'base')}+{node['name']}-{link.get('name', 'link')}"
+    return hw
 
 
 def resources_for(hardware, table, topology):
@@ -335,37 +410,63 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
                 last_gpu[dev] = residents
             # CPU lane: in publication order; sees the publication after the mailbox latency.
             cpu_dep = [publish, lane_tail[lane]]
-            n_cpu = s.cpu_experts
+            remote = hardware.get('remote_worker')
+            share_b = topology.worker_cpu_share.get(l, 0.0) if isinstance(topology.worker_cpu_share, dict) else topology.worker_cpu_share
+            n_remote_cpu = s.cpu_experts * min(1.0, share_b) if remote else 0.0
+            n_cpu = s.cpu_experts - n_remote_cpu
+            remote_bytes = s.cpu_bytes * (n_remote_cpu / s.cpu_experts) if s.cpu_experts else 0.0
             # The service thread's own work per slot: wake, quantise the activations, run its experts; with a
             # worker it also packs the request (activation copy, ownership memcmp) and unpacks the reply.
             cpu_work = {f'cpu.lane{lane}': cpu_t['slot_fixed_ms'] + s.width * cpu_t['quant_ms_per_token'] +
                         n_cpu * cpu_t['expert_fixed_ms'] + (w_t['client_host_ms'] if worker and s.worker_experts > 0 else 0.0),
-                        f'cpu.flow{lane}': s.cpu_bytes}
+                        f'cpu.flow{lane}': s.cpu_bytes - remote_bytes}
             cpu = b.add(tag + '/cpu', cpu_work, cpu_dep, 'cpu', minimum_ms=cpu_t['mailbox_latency_ms'])
             markers['cpu_start'][(si, l, g)] = cpu
             rows_back = b.transfer(tag + '/cpu-rows', s.width * TOP_K * ROW_BYTES, 'ram', dev, hardware, cpu)
             ends = [cpu]
             # Worker (topology A): request, execution, rows return.
             worker_end = None
+            remote_end = None
+            gpu_remote = bool(remote) and remote.get('gpu_on_b', True)
+            submit_dep = [publish] if topology.dispatch == 'direct' else [publish, lane_tail[lane]]
+            submit_ms = w_t['rtt_flag_ms'] if topology.dispatch == 'direct' else w_t['rtt_socket_ms']
+            arrived = None
             if worker and s.worker_experts > 0:
-                submit_dep = [publish] if topology.dispatch == 'direct' else [publish, lane_tail[lane]]
-                submit_ms = w_t['rtt_flag_ms'] if topology.dispatch == 'direct' else w_t['rtt_socket_ms']
-                submit = b.add(tag + '/submit', {'host': w_t['submit_host_ms']}, submit_dep, 'worker', minimum_ms=submit_ms / 2)
+                if gpu_remote:
+                    # Second host: the request (activations + routes) crosses the network; latency is in the path.
+                    submit = b.add(tag + '/submit', {'host': w_t['submit_host_ms']}, submit_dep, 'worker')
+                    arrived = b.transfer(tag + '/request', s.width * HIDDEN * 4 + 4096, 'ram', 'b.ram', hardware, submit)
+                    up = b.transfer(tag + '/worker-input', s.width * HIDDEN * 4, 'b.ram', worker, hardware, arrived)
+                else:
+                    submit = b.add(tag + '/submit', {'host': w_t['submit_host_ms']}, submit_dep, 'worker', minimum_ms=submit_ms / 2)
+                    up = submit
                 wd = get(table, f'devices.{worker}.decode')
                 exec_ms = wd['worker_request_fixed_ms'] + s.worker_experts * width_value(wd['resident_expert_ms'], s.width)
-                run = b.add(tag + '/worker', {f'{worker}.compute': exec_ms}, submit, 'worker')
+                run = b.add(tag + '/worker', {f'{worker}.compute': exec_ms}, up, 'worker')
                 ret = b.transfer(tag + '/worker-rows', s.worker_rows * ROW_BYTES, worker, 'ram', hardware, run)
-                copy = b.add(tag + '/worker-copy', {'host': s.worker_rows * ROW_BYTES / (w_t['memcpy_gb_s'] * 1e6)},
-                             ret, 'worker', minimum_ms=submit_ms / 2)
+                copy_rate = (remote['node']['memcpy_gb_s'] if gpu_remote else w_t['memcpy_gb_s']) * 1e6
+                copy = b.add(tag + '/worker-copy', {'host': s.worker_rows * ROW_BYTES / copy_rate},
+                             ret, 'worker', minimum_ms=0.0 if gpu_remote else submit_ms / 2)
                 worker_end = copy
+            if n_remote_cpu > 0:
+                # The second node's CPU lane serves its share of cold experts and returns one partial per token.
+                if arrived is None:
+                    rsub = b.add(tag + '/remote-submit', {'host': w_t['submit_host_ms']}, submit_dep, 'worker')
+                    arrived = b.transfer(tag + '/request', s.width * HIDDEN * 4 + 4096, 'ram', 'b.ram', hardware, rsub)
+                rcpu = b.add(tag + '/remote-cpu', {'b.cpu.lane': cpu_t['slot_fixed_ms'] + s.width * cpu_t['quant_ms_per_token'] +
+                                                   n_remote_cpu * cpu_t['expert_fixed_ms'], 'b.cpu.flow': remote_bytes},
+                             arrived, 'cpu')
+                remote_end = b.transfer(tag + '/remote-partial', s.width * HIDDEN * 4, 'b.ram', 'ram', hardware, rcpu)
             if topology.combine == 'device3':
                 dep = [rows_back, residents] + ([b.transfer(tag + '/worker-rows-dev', s.worker_rows * ROW_BYTES, 'ram', dev,
-                                                            hardware, worker_end)] if worker_end else [])
+                                                            hardware, worker_end)] if worker_end else []) + \
+                    ([remote_end] if remote_end else [])
                 finish = b.add(tag + '/combine', {f'{dev}.compute': c['combine'] * s.width}, dep, 'combine')
                 lane_tail[lane] = cpu
                 scope_end = cpu  # the CPU thread is done when its rows are posted; the GPU combine is not host service
             else:
-                dep = [cpu] + ([worker_end] if worker_end else []) + ([residents] if topology.residents == 'side' else [])
+                dep = [cpu] + ([worker_end] if worker_end else []) + ([remote_end] if remote_end else []) + \
+                    ([residents] if topology.residents == 'side' else [])
                 finish = b.add(tag + '/finish', {f'cpu.lane{lane}': c['combine'] * s.width * cpu_t['strict_combine_factor']},
                                dep, 'finish')
                 lane_tail[lane] = finish
@@ -557,7 +658,8 @@ def prefill_events(table, plan, hardware):
                 frac = min(1.0, n - i)
                 hist = gemm_history[dev]
                 reuse = hist[-ring[dev]] if len(hist) >= ring[dev] else None
-                up = b.transfer(f'{tag}/{dev}/stream{i}', group_bytes * frac, 'ram', dev, hardware, [dep0, reuse])
+                source = 'b.ram' if dev == w and hardware.get('remote_worker') else 'ram'
+                up = b.transfer(f'{tag}/{dev}/stream{i}', group_bytes * frac, source, dev, hardware, [dep0, reuse])
                 gdep = [up, last_gemm] + ([exchange_in] if dev == w else [mixer])
                 gemm = b.add(f'{tag}/{dev}/gemm{i}', {f'{dev}.compute': per_group * frac}, gdep, 'gemm')
                 hist.append(gemm); last_gemm = gemm
