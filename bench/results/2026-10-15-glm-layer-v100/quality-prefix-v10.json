@@ -1,0 +1,29 @@
+{
+  "comparisons": [
+    {
+      "model": "q23native",
+      "natural_completion_tokens": 290,
+      "timing_tokens": 512,
+      "common_prefix_equal": true,
+      "prompt_hash_equal": true,
+      "environment_equal": true,
+      "quality_binary_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+      "timing_binary_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+      "quality_raw_record_sha256": "16dc733ffe97c2c72041ab3677e4f7960f07b586f7d57630d90d720092f30dda",
+      "timing_raw_record_sha256": "5e36400251adefbd34a02b7011a41ee3a40a549ab9a4d807a23148ecb4be6598"
+    },
+    {
+      "model": "q2",
+      "natural_completion_tokens": 431,
+      "timing_tokens": 512,
+      "common_prefix_equal": true,
+      "prompt_hash_equal": true,
+      "environment_equal": true,
+      "quality_binary_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+      "timing_binary_sha256": "a0eade4a7082550c2add397a5f9849dfbaae75b37c839baed168883b4b78a699",
+      "quality_raw_record_sha256": "19799f8e040e1326bfb1b017135d8668b39d72ad46f0279959d2175b6684ced4",
+      "timing_raw_record_sha256": "4406bc0c635c134c51e4f7b26ed2ecef4fb4b6665ae46d704ef5133a82b05089"
+    }
+  ],
+  "note": "Natural-stop v10 parser completions exactly match earlier forced-length timing prefixes. Q2 first stop index430; subsequent forced generation enters a second answer, explaining its preserved512-token final-answer gate failure."
+}

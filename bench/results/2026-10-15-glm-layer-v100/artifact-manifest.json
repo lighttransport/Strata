@@ -1,0 +1,106 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 16792,
+      "sha256": "485ecfd46c776c16825ebfe9d22e76968bbb2f32d3ad531f08649951805b0245"
+    },
+    "code-fixed-8192.txt": {
+      "bytes": 32681,
+      "sha256": "c976e06cb97b79511fd02bb114760c59d841920beb3a8b01e362f6d1832df874"
+    },
+    "comparisons-native-v10.json": {
+      "bytes": 679,
+      "sha256": "e9e14f7950ae6541425691ba270773b549e0c0747f490450df06e9a366ecf1ae"
+    },
+    "comparisons-v9.json": {
+      "bytes": 1278,
+      "sha256": "2e22846ad3325e24ecd7e9f38a126082a2826508277d693c9e908635824f8a22"
+    },
+    "grade_parser.py": {
+      "bytes": 3540,
+      "sha256": "f0993d7fb75ce360c07a91ee9b744b7c2b74591ed62cb125738f5b12bf588eb5"
+    },
+    "implementation-v9.patch": {
+      "bytes": 194759,
+      "sha256": "43fc3dc8c1ed63b89e9108ab620d4c91aa0bf98a3e98c42968ddd25731db2627"
+    },
+    "measurements-native-v10.json": {
+      "bytes": 137806,
+      "sha256": "eb22de8627227ec88e8f996d201a4c7f51267fb7d95b36b6ef4b19be78dbf654"
+    },
+    "measurements-v9.json": {
+      "bytes": 322977,
+      "sha256": "da1f32665f7da8aa4fa8d1e9bd80f7c373dca2b02eb2ef0326fcee123a9692ce"
+    },
+    "models.json": {
+      "bytes": 2229,
+      "sha256": "ac9fd1e9c5322128b4d91aeeaa2c471b8630ab537b11330c3eec2e7c3aebb100"
+    },
+    "placement-native-v10.json": {
+      "bytes": 3198,
+      "sha256": "5e658a14ad8bcb9bb80845e8a448d2c611601916317bcff0b98cedbbb9ba6841"
+    },
+    "placement-v9.json": {
+      "bytes": 6229,
+      "sha256": "f95451580d981d3c636ca018db89077ca1dc6d9d8ddd9b10cc4a8329aff33092"
+    },
+    "q2-native-parser.cpp": {
+      "bytes": 933,
+      "sha256": "831c69a71d203341cd99782a0810a32f825b3b6b14181363b93e67141ca0e35c"
+    },
+    "q23-canonical-parser.cpp": {
+      "bytes": 780,
+      "sha256": "0e539546b36ef6091724a7fc2d2cb72a2ffca8a2d55d5f999464d3c941780042"
+    },
+    "q23-native-parser.cpp": {
+      "bytes": 584,
+      "sha256": "d61261edc55f50e302fc1aee9c1090c36bfb52ecfb981577cb2b3117f07ff465"
+    },
+    "quality-prefix-v10.json": {
+      "bytes": 1481,
+      "sha256": "00dce8b462f247c5fbd7abf7dca6ee537b52fa1b25c0970cf83f7a9d52b00709"
+    },
+    "quality-resume-v10.json": {
+      "bytes": 607,
+      "sha256": "0fa9ff9efc4f73bad4a83e3dd0346d4ee0338acee6f0953a5664d7dc5f6ca572"
+    },
+    "quality-v10.json": {
+      "bytes": 133765,
+      "sha256": "16323562e80588e8de1d32a67de33880cf82badd689ad369264504afd2fc191c"
+    },
+    "reproduce.py": {
+      "bytes": 5075,
+      "sha256": "53713c677b88f51d17d672292cdb28846583dc60555d83c7387ec7d1814263fc"
+    },
+    "reproduce_quality.py": {
+      "bytes": 8457,
+      "sha256": "d06cc31f513fc049b54cb8309936210a27765e9e28a433d5df0c1d784914c489"
+    },
+    "serving-frontier-v10.json": {
+      "bytes": 1133,
+      "sha256": "c1598294803a5884603eeca8df161ab4d2c52905a38e7eb6568c71cbe2a6f6fe"
+    },
+    "serving-frontier-v10.patch": {
+      "bytes": 1780,
+      "sha256": "84e3e50115226f863dba2c07804a28296bc24442f1ca09aeed702847759ed40a"
+    },
+    "source-final.json": {
+      "bytes": 4134,
+      "sha256": "616c78d85ed23de432a9e301a891c253c3b56a0b0881354aa2809126f4f7935f"
+    },
+    "source-v9.json": {
+      "bytes": 3482,
+      "sha256": "fa5d019bb0551d1d3b9e3c4330439874aacafc32329da062fa0f09301d30617c"
+    },
+    "validation-native-v10.json": {
+      "bytes": 1277,
+      "sha256": "54cdc3b62f30a1fd0483a9589234bb73ece76e55c470d5a5e011ede011d0c90d"
+    },
+    "validation-v9.json": {
+      "bytes": 22000,
+      "sha256": "18d1bfb813e8dcda5cb2dac88df7caea965a58616b2629dde0656ba236444fc4"
+    }
+  },
+  "total_bytes": 907656,
+  "note": "SHA-256 identities of shareable artifacts, excluding this manifest itself. Raw evidence is retained separately."
+}

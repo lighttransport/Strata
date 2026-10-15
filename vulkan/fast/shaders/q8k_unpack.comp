@@ -1,0 +1,20 @@
+#version 450
+// Original GGML Q8_K blocks: d, 256 signed bytes, 16 signed int16 sums.
+// Copy integer codes and metadata exactly, reusing CPU quantization instead
+// of transferring FP32 activations and finding their grid again on the GPU.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Packed {uint packed[];};
+layout(binding = 1, std430) writeonly buffer Codes {float codes[];};
+layout(binding = 2, std430) writeonly buffer Metadata {float metadata[];};
+void main() {
+  const uint b = gl_WorkGroupID.x, t = gl_LocalInvocationID.x, base = b * 73u;
+  const uint word = packed[base + 1u + t / 4u];
+  const int q = int(((word >> (8u * (t % 4u))) & 255u) << 24u) >> 24;
+  codes[b * 256u + t] = float(q);
+  if (t == 0) metadata[b * 17u] = uintBitsToFloat(packed[base]);
+  if (t < 16) {
+    const uint sums = packed[base + 65u + t / 2u];
+    const int sum = int(((sums >> (16u * (t % 2u))) & 65535u) << 16u) >> 16;
+    metadata[b * 17u + 1u + t] = float(sum);
+  }
+}

@@ -20,11 +20,13 @@ evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
 | Threadripper 1950X, 128 GB, **RX 9070 XT 16 GB** (one GPU) | REAP-224 Q23 | 34 | 560 | same profile family, not separately gated |
 | Threadripper 1950X, 128 GB, **RTX 5060 Ti + RX 9070 XT** (two GPUs) | REAP-224 Q23 | **40-44** | 465 (decode orientation), **870** (prefill orientation) | corpus gate passed; HumanEval in progress |
 | Ryzen 9 3950X, 64 GB, **RX 9070 XT 16 GB** | REAP-50 Q23 | 10-16 | 230-250 | coding-task review only; perplexity +30% vs the 2-bit original |
-| Ryzen 9 3950X, 64 GB, **RTX 3070 8 GB** | REAP-50 Q23 | 10-20 | 210-510 | matched perplexity within +10% and a 30-task HumanEval subset; measured on that machine's branch |
+| Ryzen 9 3950X, 64 GB, **RTX 3070 8 GB** | REAP-50 Q23 | 10-20 | 210-510 | matched perplexity within +10% and a 30-task HumanEval subset |
 | 2x Xeon Gold 6240, 160 GB, **2x Tesla V100 32 GB** | full UD-Q2_K_XL | 29 | 790 (16K) | logit parity and 400k C++ oracle cases |
+| Ryzen 9 3950X, 64 GB, **RX 570 16 GB**, experimental Vulkan runner | REAP-50 Q23 | 3.6 strict, 15.8 fast engine (short prompt) | 34 | not gated: the fast engine fails the numerical gate against strict |
 
 Decode numbers are at 1K-8K context with 256-512 generated tokens; prompt numbers at 2K-16K prompts. The
-two-GPU decode and prompt rates come from two different primary cards and are not available in one process.
+two-GPU decode and prompt rates come from two different primary cards and are not available in one process. The
+Vulkan row is a separate experimental runner ([GLM_VULKAN.md](docs/GLM_VULKAN.md)) that needs no CUDA or ROCm.
 With the fastest (ungated) two-GPU settings the desktop reaches 49 tok/s at 1K; that configuration fails the
 quality gate and is not shipped. Removing every approximation leaves 20 tok/s.
 

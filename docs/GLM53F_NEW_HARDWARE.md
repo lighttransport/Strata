@@ -26,7 +26,7 @@ the driver can pin shared mappings.
 | RAM | weights (Hugging Face `lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts`) | start from |
 |---|---|---|
 | 128 GB | `GLM-5.3-Flash-Q23-assembled.gguf` (120.9 GB) or `reap224/...` (95.5 GB) | `configs/experimental/glm53f-q23-reap224-tr16-tuned.json` |
-| 64 GB | `reap50/GLM-5.3-Flash-REAP50-Q23-assembled.gguf` (63.2 GB) | the B550 profile in [GLM_B550_REAP50.md](GLM_B550_REAP50.md); for an 8 GB card the RTX 3070 presets (zen5 branch) |
+| 64 GB | `reap50/GLM-5.3-Flash-REAP50-Q23-assembled.gguf` (63.2 GB) | the B550 profile in [GLM_B550_REAP50.md](GLM_B550_REAP50.md); for an 8 GB card the RTX 3070 presets `configs/glm53f-reap50-q23-64g-rtx3070-*.json` |
 | 32 GB | nothing fits with acceptable speed ([GLM_32G_8G.md](GLM_32G_8G.md)) | |
 
 The profile is a JSON file with the decoder arguments and an `env` block of `STRATA_GLM_*` switches. The
@@ -37,7 +37,7 @@ fields you change first:
 | `threads` | CPU expert threads | physical cores minus one |
 | `cpu_affinity` | `numa` pins threads per node (two-node machines), `auto` on one node | |
 | `gpu_budget_mib` | total VRAM the runner may use | free VRAM minus 1024-2048 MiB |
-| `dense_cache_mib` | VRAM for the dense/attention weights | 4096 for the Q4 dense set; smaller cards stream them (`STRATA_GLM_PREFILL_DENSE_MIB`, zen5 branch) |
+| `dense_cache_mib` | VRAM for the dense/attention weights | 4096 for the Q4 dense set; smaller cards stream them (`STRATA_GLM_PREFILL_DENSE_MIB`) |
 | `decode_cache_mib` | GPU-resident expert tier | what is left after dense cache and prefill scratch; more residents = faster decode |
 | `prefill_batch` | prompt tokens per GPU pass | 8192 with 16 GB, 2048-4096 with 8 GB |
 | `context` | token capacity | prompt plus the longest answer plus the draft window |

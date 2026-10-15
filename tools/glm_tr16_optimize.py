@@ -16,15 +16,28 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-KNOBS = ('STRATA_GLM_MIXED_REGISTER', 'STRATA_GLM_MIXED_EXCHANGE', 'STRATA_GLM_MIXED_PROTOCOL',
-         'STRATA_HIPBLASLT_TUNING', 'STRATA_GLM_MTP_GPU_CACHE', 'STRATA_GLM_STEP_TRACE')
+KNOBS = ('STRATA_GLM_RESIDENT_STREAM', 'STRATA_GLM_MIXED_REGISTER', 'STRATA_GLM_MIXED_EXCHANGE',
+         'STRATA_GLM_MIXED_PROTOCOL', 'STRATA_GLM_FUSE_ROUTE_BATCH', 'STRATA_GLM_MIXED_DEVICE_DISPATCH',
+         'STRATA_GLM_PREFILL_FUSED_SWIGLU', 'STRATA_GLM_HIP_BATCH_SINGLE', 'STRATA_HIPBLASLT_TUNING',
+         'STRATA_GLM_MTP_GPU_CACHE', 'STRATA_GLM_STEP_TRACE')
 VARIANTS = {
     'parent': {},
+    'resident': {'STRATA_GLM_RESIDENT_STREAM': '1'},
     'register': {'STRATA_GLM_MIXED_REGISTER': '1'},
     'exchange': {'STRATA_GLM_MIXED_REGISTER': '1', 'STRATA_GLM_MIXED_PROTOCOL': '5',
                  'STRATA_GLM_MIXED_EXCHANGE': 'f16'},
+    'resident-exchange': {'STRATA_GLM_RESIDENT_STREAM': '1', 'STRATA_GLM_MIXED_REGISTER': '1',
+                          'STRATA_GLM_MIXED_PROTOCOL': '5', 'STRATA_GLM_MIXED_EXCHANGE': 'f16'},
+    'fused-route': {'STRATA_GLM_FUSE_ROUTE_BATCH': '1'},
+    'dispatch': {'STRATA_GLM_MIXED_DEVICE_DISPATCH': '1', 'STRATA_GLM_MIXED_REGISTER': '1'},
+    'swiglu': {'STRATA_GLM_PREFILL_FUSED_SWIGLU': '1'},
+    'hiplt': {'STRATA_GLM_HIP_BATCH_SINGLE': '1'},
     'gpu-draft': {'STRATA_GLM_MTP_GPU_CACHE': '1'},
     'flow': {'STRATA_NATIVE_FLOW_SCHEDULE': 'span'},
+    'joint': {'STRATA_GLM_RESIDENT_STREAM': '1', 'STRATA_GLM_MIXED_REGISTER': '1',
+              'STRATA_GLM_MIXED_PROTOCOL': '5', 'STRATA_GLM_MIXED_EXCHANGE': 'f16',
+              'STRATA_GLM_FUSE_ROUTE_BATCH': '1', 'STRATA_GLM_MIXED_DEVICE_DISPATCH': '1',
+              'STRATA_GLM_PREFILL_FUSED_SWIGLU': '1', 'STRATA_GLM_HIP_BATCH_SINGLE': '1'},
 }
 
 
@@ -64,7 +77,9 @@ def profile(base, parent, variant, case, table=None):
         env['STRATA_GLM_MLA_GRAPHS'] = '1'
     env.update(VARIANTS[variant])
     c['mtp_experts'] = 'gpu' if variant == 'gpu-draft' else 'cpu'
-    if table is not None:
+    if variant in ('hiplt', 'joint'):
+        if table is None:
+            raise ValueError('hiplt and joint require a runtime-matched tuning table')
         env['STRATA_HIPBLASLT_TUNING'] = str(table)
     if case == 'cuda-hip':
         c['decode_cache_mib'] = min(c['decode_cache_mib'], 10240)

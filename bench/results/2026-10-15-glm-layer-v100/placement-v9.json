@@ -1,0 +1,187 @@
+{
+  "plans": [
+    {
+      "model": "q2",
+      "schema": "strata.glm.layer-plan.v1",
+      "model_filename": "GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "model_bytes": 9429859,
+      "configuration": {
+        "context": 32768,
+        "threads": 32,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "decode_cache_mib": "22528",
+        "decode_cache_window": 256,
+        "decode_cache_adapt": false,
+        "decode_graphs": true,
+        "prefill_batch": 4096,
+        "speculative": "mtp",
+        "draft_depth": 1,
+        "layer_pipeline": "mtp",
+        "layer_memory": "socket",
+        "prompt_tokens": 4096,
+        "generated_tokens": 512,
+        "repetitions": 3,
+        "validation_tokens": 512,
+        "validation_repetitions": 3,
+        "full_warmups": 2,
+        "cpu_affinity": "auto",
+        "pin_cpu": true
+      },
+      "environment": {
+        "STRATA_GLM_ACTIVE_POOLS": "1",
+        "STRATA_GLM_CANON": null,
+        "STRATA_GLM_DEQUANT_COALESCED": "1",
+        "STRATA_GLM_DEQUANT_ONCE": "1",
+        "STRATA_GLM_DEVICE_EXPERTS": "1",
+        "STRATA_GLM_DEVICE_REDUCTION": "1",
+        "STRATA_GLM_IQ_COALESCED": "8",
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_GLM_KDA_ROW_PARTS": "8",
+        "STRATA_GLM_LAYER_GRAPHS": "1",
+        "STRATA_GLM_PACK_FUSE_QUANT": "0",
+        "STRATA_GLM_Q2_NUMA_WEIGHTS": "0",
+        "STRATA_GLM_Q8_DECODE": null,
+        "STRATA_GLM_STABLE_ROUTES": "1",
+        "STRATA_GLM_STEP_PIPELINE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_OLD_IQ_MMVQ": "1"
+      },
+      "hardware": {
+        "gpus": [
+          "Tesla V100-PCIE-32GB",
+          "Tesla V100-PCIE-32GB"
+        ],
+        "cpu": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "decoder_sha256": "a0eade4a7082550c2add397a5f9849dfbaae75b37c839baed168883b4b78a699",
+      "decoder_fnv64": 17435749719716685368,
+      "prompt_sha256": "81f514ae71a9ce6652444936d18c347ed6b614678e71a0b0c6730c4e99effd63",
+      "layer_split": "24",
+      "candidates": [
+        {
+          "layer_split": "24",
+          "median_decode_tok_s": 30.312197841961332,
+          "decode_tok_s": [
+            30.333790417846476,
+            30.312197841961332,
+            30.229531471840986
+          ]
+        },
+        {
+          "layer_split": "26",
+          "median_decode_tok_s": 28.903041889614137,
+          "decode_tok_s": [
+            28.905167293605228,
+            28.902714932126695,
+            28.903041889614137
+          ]
+        }
+      ],
+      "timing_scope": "measured single-stream decode; placement screening, not a coding-quality qualification",
+      "records": [
+        {
+          "name": "q2-cut24.json",
+          "sha256": "a624094d634918ea2f22ca071c51825c3126e6db90af3cea59bf4923e4f872b4"
+        },
+        {
+          "name": "q2-cut26.json",
+          "sha256": "d0e71ba1d21cb6b6fbfa51763a839505f168f59fe75a11247b130ccb7ad4e03e"
+        }
+      ],
+      "raw_record_sha256": "2db7565e1309db15d89309000747b3c015283a7b3432f1f3d16c46be98443c8f"
+    },
+    {
+      "model": "q23",
+      "schema": "strata.glm.layer-plan.v1",
+      "model_filename": "GLM-5.3-Flash-Q23-assembled.gguf",
+      "model_bytes": 120875172704,
+      "configuration": {
+        "context": 32768,
+        "threads": 32,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "decode_cache_mib": "22528",
+        "decode_cache_window": 256,
+        "decode_cache_adapt": false,
+        "decode_graphs": true,
+        "prefill_batch": 4096,
+        "speculative": "mtp",
+        "draft_depth": 1,
+        "layer_pipeline": "mtp",
+        "layer_memory": "socket",
+        "prompt_tokens": 4096,
+        "generated_tokens": 512,
+        "repetitions": 3,
+        "validation_tokens": 512,
+        "validation_repetitions": 3,
+        "full_warmups": 2,
+        "cpu_affinity": "auto",
+        "pin_cpu": true
+      },
+      "environment": {
+        "STRATA_GLM_ACTIVE_POOLS": "1",
+        "STRATA_GLM_CANON": "1",
+        "STRATA_GLM_DEQUANT_COALESCED": "1",
+        "STRATA_GLM_DEQUANT_ONCE": "1",
+        "STRATA_GLM_DEVICE_EXPERTS": "1",
+        "STRATA_GLM_DEVICE_REDUCTION": "1",
+        "STRATA_GLM_IQ_COALESCED": "8",
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_GLM_KDA_ROW_PARTS": "8",
+        "STRATA_GLM_LAYER_GRAPHS": "1",
+        "STRATA_GLM_PACK_FUSE_QUANT": "0",
+        "STRATA_GLM_Q2_NUMA_WEIGHTS": "0",
+        "STRATA_GLM_Q8_DECODE": null,
+        "STRATA_GLM_STABLE_ROUTES": "1",
+        "STRATA_GLM_STEP_PIPELINE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_OLD_IQ_MMVQ": "1"
+      },
+      "hardware": {
+        "gpus": [
+          "Tesla V100-PCIE-32GB",
+          "Tesla V100-PCIE-32GB"
+        ],
+        "cpu": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "decoder_sha256": "a0eade4a7082550c2add397a5f9849dfbaae75b37c839baed168883b4b78a699",
+      "decoder_fnv64": 17435749719716685368,
+      "prompt_sha256": "81f514ae71a9ce6652444936d18c347ed6b614678e71a0b0c6730c4e99effd63",
+      "layer_split": "24",
+      "candidates": [
+        {
+          "layer_split": "24",
+          "median_decode_tok_s": 34.69228419158831,
+          "decode_tok_s": [
+            34.64312832194381,
+            34.69723101158385,
+            34.69228419158831
+          ]
+        },
+        {
+          "layer_split": "26",
+          "median_decode_tok_s": 32.92589418609896,
+          "decode_tok_s": [
+            32.861736334405144,
+            32.92589418609896,
+            32.94542406756713
+          ]
+        }
+      ],
+      "timing_scope": "measured single-stream decode; placement screening, not a coding-quality qualification",
+      "records": [
+        {
+          "name": "q23-cut24.json",
+          "sha256": "f22faf60a6b806e62baa02b757e2032a6862638dca1e620fc9b3bde7cb588a9b"
+        },
+        {
+          "name": "q23-cut26.json",
+          "sha256": "12e41aef7cc711c7265a1a10c39b9d01fe59a6ec4fa132927cbee233a73c6818"
+        }
+      ],
+      "raw_record_sha256": "c35f9e719f6c91b2aec686550d5052745f67af5b6cb870d2ddc52f7120f38f89"
+    }
+  ],
+  "note": "Public copies omit node identifiers; use a new plan generated from original records for runtime validation."
+}

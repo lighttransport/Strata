@@ -1,0 +1,383 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -438,6 +438,10 @@
+     add_executable(glm_mailbox_test src/kernels/glm_mailbox_test.cpp)
+     target_link_libraries(glm_mailbox_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+     add_test(NAME glm_mailbox_test COMMAND glm_mailbox_test)
++    add_executable(glm_greedy_pick_test src/kernels/glm_greedy_pick_test.cpp)
++    target_link_libraries(glm_greedy_pick_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
++    add_test(NAME glm_greedy_pick_test COMMAND glm_greedy_pick_test)
++    set_tests_properties(glm_greedy_pick_test PROPERTIES LABELS glm)
+     add_executable(glm_q8_test src/kernels/glm_q8_test.cpp)
+     target_link_libraries(glm_q8_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+     add_test(NAME glm_q8_test COMMAND glm_q8_test)
+--- a/include/strata/kernels/glm.hpp
++++ b/include/strata/kernels/glm.hpp
+@@ -5,6 +5,12 @@
+ namespace strata::kernels {
+ 
+ // All buffers are device pointers. Calls enqueue on stream without allocating.
++// One finite GGUF logit row: ties select the lowest token index, including signed zero.
++// nonfinite is set if ANY input is NaN or infinity; callers reject such a row.
++struct GlmGreedyPick { int32_t token; int32_t nonfinite; };
++uint64_t glm_greedy_pick_scratch_bytes(int vocabulary);
++void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
++                     GlmGreedyPick *result, void *stream);
+ void glm_rms_norm(const float *x, const float *weight, float *y, int width, int tokens, float eps,
+                   void *stream);
+ // Same result to rounding with 1024 threads and float4 traffic per row; the sum order differs from glm_rms_norm,
+--- a/src/kernels/cuda/glm.cu
++++ b/src/kernels/cuda/glm.cu
+@@ -12,6 +12,49 @@
+ 
+ namespace strata::kernels {
+ namespace {
++struct GreedyPartial { uint32_t rank; int token; int nonfinite; };
++constexpr int greedy_slice = 4096;
++__device__ GreedyPartial greedy_merge(GreedyPartial a, GreedyPartial b) {
++    const int bad = a.nonfinite | b.nonfinite;
++    if (b.rank > a.rank || (b.rank == a.rank && b.token < a.token)) a = b;
++    a.nonfinite = bad;
++    return a;
++}
++__device__ GreedyPartial greedy_reduce(GreedyPartial value, GreedyPartial *shared) {
++    const int t = threadIdx.x;
++    shared[t] = value;
++    __syncthreads();
++    for (int stride = 128; stride; stride /= 2) {
++        if (t < stride) shared[t] = greedy_merge(shared[t], shared[t + stride]);
++        __syncthreads();
++    }
++    return shared[0];
++}
++__global__ void greedy_partials(const float *logits, int n, GreedyPartial *partials) {
++    __shared__ GreedyPartial shared[256];
++    const int first = int(blockIdx.x) * greedy_slice;
++    const int count = n - first < greedy_slice ? n - first : greedy_slice;
++    GreedyPartial best{0, INT32_MAX, 0};
++    for (int offset = threadIdx.x; offset < count; offset += 256) {
++        const int token = first + offset;
++        uint32_t bits = __float_as_uint(logits[token]);
++        const int bad = (bits & 0x7f800000u) == 0x7f800000u;
++        // Integer ordering retains subnormals even on backends that flush FP32 arithmetic.
++        // Both signs of zero have the same rank, matching std::max_element's first tie.
++        if ((bits & 0x7fffffffu) == 0) bits = 0;
++        const uint32_t rank = bits & 0x80000000u ? ~bits : bits ^ 0x80000000u;
++        best = greedy_merge(best, GreedyPartial{rank, token, bad});
++    }
++    best = greedy_reduce(best, shared);
++    if (!threadIdx.x) partials[blockIdx.x] = best;
++}
++__global__ void greedy_finish(const GreedyPartial *partials, int count, GlmGreedyPick *result) {
++    __shared__ GreedyPartial shared[256];
++    GreedyPartial best{0, INT32_MAX, 0};
++    for (int i = threadIdx.x; i < count; i += 256) best = greedy_merge(best, partials[i]);
++    best = greedy_reduce(best, shared);
++    if (!threadIdx.x) *result = GlmGreedyPick{best.token, best.nonfinite};
++}
+ __device__ float sig(float x) {
+     return 1.f / (1.f + expf(-x));
+ }
+@@ -615,6 +658,20 @@
+ }
+ } // namespace
+ 
++uint64_t glm_greedy_pick_scratch_bytes(int vocabulary) {
++    width(vocabulary);
++    return ((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice) * sizeof(GreedyPartial);
++}
++void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
++                     GlmGreedyPick *result, void *s) {
++    width(vocabulary);
++    if (!logits || !scratch || !result) throw std::invalid_argument("GLM: null greedy buffer");
++    const int blocks = int((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice);
++    greedy_partials<<<blocks, 256, 0, (cudaStream_t)s>>>(logits, vocabulary, (GreedyPartial *)scratch);
++    check();
++    greedy_finish<<<1, 256, 0, (cudaStream_t)s>>>((const GreedyPartial *)scratch, blocks, result);
++    check();
++}
+ void glm_rms_norm(const float *x, const float *w, float *y, int n, int tokens, float eps, void *s) {
+     width(n);
+     width(tokens);
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -1723,6 +1723,7 @@
+     int projection_first = 0;
+     bool fast = false, profile = false, gpu_decode_experts = false;
+     std::unique_ptr<GpuPrefill> gpu;
++    std::unique_ptr<Device> greedy_scratch, greedy_pick;
+     std::unique_ptr<GpuWorker> prefetch_launcher;
+     std::future<void> prefetch_pending;
+     const bool stream_prefetch = [] {
+@@ -6512,7 +6513,12 @@
+         }
+     }
+     std::vector<float> batch(const std::vector<int> &tokens, bool prefill = true, bool all_logits = false,
+-                            const std::function<void(const float *, int, int)> &consume_logits = {}) {
++                            const std::function<void(const float *, int, int)> &consume_logits = {},
++                            k::GlmGreedyPick *greedy_result = nullptr) {
++        if (greedy_result && (prefill || all_logits || consume_logits || artifact.is_exl3() ||
++                             tokens.size() != 1 || !row_sequences.empty() || capturing_history ||
++                             !gpu || !greedy_scratch || !greedy_pick))
++            throw std::invalid_argument("GLM: compact greedy requires one ordinary GGUF decode row");
+         if (consume_logits && (!all_logits || artifact.is_exl3()))
+             throw std::invalid_argument("GLM: streamed logits require all GGUF rows");
+         if (!prefill) finish_prefill_repairs();
+@@ -7018,6 +7024,9 @@
+                 consume_logits(panel.data(), first, count);
+             }
+         }
++        if (greedy_result)
++            k::glm_greedy_pick(logits.f(), m.vocab, greedy_scratch->p,
++                               (k::GlmGreedyPick *)greedy_pick->p, stream);
+         const bool trace_tail = step_trace && !fast && trace.any;
+         auto tail_mark = std::chrono::steady_clock::now();
+         auto tail_part = [&](double &part) {
+@@ -7040,7 +7049,13 @@
+         tail_part(trace.plan_ms);
+         position += nt;
+         batch_tokens = 1;
+-        auto result = consume_logits ? std::vector<float>{} : logits.floats((size_t)m.vocab * head_tokens);
++        auto result = (consume_logits || greedy_result) ? std::vector<float>{} : logits.floats((size_t)m.vocab * head_tokens);
++        if (greedy_result) {
++            check(cudaMemcpy(greedy_result, greedy_pick->p, sizeof(*greedy_result), cudaMemcpyDeviceToHost));
++            if (greedy_result->nonfinite) throw std::runtime_error("GLM: non-finite logits");
++            if (greedy_result->token < 0 || greedy_result->token >= m.vocab)
++                throw std::runtime_error("GLM: invalid greedy token");
++        }
+         for (float v : result)
+             if (!std::isfinite(v))
+                 throw std::runtime_error("GLM: non-finite logits");
+@@ -7137,6 +7152,23 @@
+             row_sequences.clear(); row_positions.clear(); capture_hidden = saved_capture; position = saved_position;
+             throw;
+         }
++    }
++    // Called before prefill/graph capture and automatic cache sizing. Ineligible modes never call it.
++    bool prepare_device_greedy() {
++        if (!strata_env_is_one("STRATA_GLM_DEVICE_GREEDY") || !gpu || artifact.is_exl3()) return false;
++        if (!greedy_scratch) {
++            DeviceTag tag("greedy_pick");
++            greedy_scratch = std::make_unique<Device>(k::glm_greedy_pick_scratch_bytes(m.vocab));
++            greedy_pick = std::make_unique<Device>(sizeof(k::GlmGreedyPick));
++            std::cerr << "DEVICE_GREEDY vocabulary=" << m.vocab
++                      << " scratch_bytes=" << greedy_scratch->bytes << " readback_bytes=" << greedy_pick->bytes << '\n';
++        }
++        return true;
++    }
++    int step_greedy(int token) {
++        k::GlmGreedyPick pick{};
++        batch({token}, false, false, {}, &pick);
++        return pick.token;
+     }
+     std::vector<float> step(int token) { return batch({token}, false); }
+     void enable_verify_history(int slots) {
+@@ -9715,6 +9747,7 @@
+             throw std::invalid_argument("STRATA_GLM_REMOTE_TP_REPLY must be f16 or f32");
+         decoder.enable_remote_tp(address, fraction, !reply || std::string(reply) != "f32", true);
+     }
++    const bool compact_greedy = !parallel && !use_mtp && !lookup_depth && decoder.prepare_device_greedy();
+     decoder.prepare_numa_weights();
+     if (argc > 18 && std::string(argv[18]) == "1" && !direct_upload_enabled()) decoder.warm_weights(true);
+     if (use_mtp) decoder.enable_mtp_capture();
+@@ -9845,7 +9878,7 @@
+             if (!*request.cancel) lock_small_runtime_mappings();
+             const auto prefilled = Clock::now();
+             decoder.reset_decode_stats();
+-            int generated = 0;
++            int generated = 0, compact_next = -1;
+             std::string finish = "length";
+             if (use_mtp && !*request.cancel) {
+                 auto result = generate_mtp(decoder, logits, count, stops, draft_depth, [&](int token) {
+@@ -9872,7 +9905,8 @@
+                         finish = "cancel";
+                         break;
+                     }
+-                    const int next = std::max_element(logits.begin(), logits.end()) - logits.begin();
++                    const int next = compact_next >= 0 ? compact_next :
++                        int(std::max_element(logits.begin(), logits.end()) - logits.begin());
+                     ++sent;
+                     std::cout << "T " << next << '\n' << std::flush;
+                     if (std::find(stops.begin(), stops.end(), next) != stops.end()) {
+@@ -9880,8 +9914,10 @@
+                         finish = "stop";
+                         break;
+                     }
+-                    if (generated + 1 < count)
+-                        logits = decoder.step(next);
++                    if (generated + 1 < count) {
++                        if (compact_greedy) compact_next = decoder.step_greedy(next);
++                        else logits = decoder.step(next);
++                    }
+                 }
+             std::cout << "DONE " << generated << ' ' << tokens.size() << ' ' << millis(start, prefilled)
+                       << ' ' << millis(prefilled, Clock::now()) << ' ' << finish << " 0 0 0\n"
+@@ -10213,6 +10249,11 @@
+         if (use_mtp) decoder.enable_mtp_capture();
+         if (warm_weights && !direct_upload_enabled())
+             decoder.warm_weights(lock_weights);
++        const bool compact_greedy = !use_mtp && !lookup_depth && !external_speculation && !replay &&
++            dump.empty() && eval_corpus.empty() && !decode_mode_sweep && !check_verify &&
++            !check_decode_graphs && !check_verify_graphs && !check_prefill && !check_gpu_split &&
++            !check_eval_stream && !check_native_dense_q8 && !profile &&
++            decoder.prepare_device_greedy();
+         if(eval_prefill && eval_corpus.empty())throw std::invalid_argument("--eval-prefill requires --eval-corpus");
+         if(!eval_corpus.empty()) {
+             if(use_mtp||lookup_depth||decode_mode_sweep||check_verify||stream_decode)throw std::invalid_argument("evaluation requires ordinary CPU target decode");
+@@ -10687,9 +10728,10 @@
+             }, true, external_worker.get());
+         } else {
+             const auto decode_start = std::chrono::steady_clock::now();
+-            int decode_steps = 0;
++            int decode_steps = 0, compact_next = -1;
+             for (int i = 0; i < steps; ++i) {
+-                const int next = std::max_element(logits.begin(), logits.end()) - logits.begin();
++                const int next = compact_next >= 0 ? compact_next :
++                    int(std::max_element(logits.begin(), logits.end()) - logits.begin());
+                 std::cout << next << '\n' << std::flush;
+                 if (std::find(stops.begin(), stops.end(), next) != stops.end())
+                     break;
+@@ -10703,8 +10745,9 @@
+                         if (logits != expected)
+                             throw std::runtime_error("GLM: snapshot replay logits differ");
+                         std::cerr << "snapshot replay logits identical\n";
+-                    } else
+-                        logits = decoder.step(next);
++                    } else if (compact_greedy)
++                        compact_next = decoder.step_greedy(next);
++                    else logits = decoder.step(next);
+                     ++decode_steps;
+                     const double step_ms = std::chrono::duration<double, std::milli>(
+                                                std::chrono::steady_clock::now() - step_start)
+--- a/src/kernels/glm_greedy_pick_test.cpp
++++ b/src/kernels/glm_greedy_pick_test.cpp
+@@ -0,0 +1,129 @@
++// Compact greedy readback: CPU tie/finite semantics, bounds, scratch reuse and graph replay.
++#include "strata/kernels/glm.hpp"
++#include <cuda_runtime.h>
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <cstring>
++#include <iostream>
++#include <limits>
++#include <random>
++#include <stdexcept>
++#include <vector>
++namespace k = strata::kernels;
++static void check(cudaError_t status) {
++    if (status != cudaSuccess) throw std::runtime_error(cudaGetErrorString(status));
++}
++struct Buffer {
++    void *p = nullptr;
++    explicit Buffer(size_t bytes) { check(cudaMalloc(&p, bytes)); }
++    ~Buffer() { const auto status = cudaFree(p); (void)status; }
++    Buffer(const Buffer &) = delete;
++    Buffer &operator=(const Buffer &) = delete;
++};
++int main() {
++    cudaStream_t stream = nullptr;
++    cudaGraph_t graph = nullptr;
++    cudaGraphExec_t executable = nullptr;
++    try {
++        check(cudaStreamCreate(&stream));
++        std::mt19937 rng(2718);
++        int cases = 0, graph_replays = 0;
++        constexpr int32_t canary = 0x12345678;
++        for (int n : {1,31,32,33,255,256,257,4095,4096,4097,8193,154880,154881}) {
++            const auto scratch_bytes = k::glm_greedy_pick_scratch_bytes(n);
++            Buffer input((size_t(n) + 8) * sizeof(float));
++            Buffer scratch(scratch_bytes + 64);
++            Buffer output(6 * sizeof(int32_t));
++            auto *logits = static_cast<float *>(input.p) + 4;
++            auto *work = static_cast<char *>(scratch.p) + 32;
++            auto *result = reinterpret_cast<k::GlmGreedyPick *>(static_cast<int32_t *>(output.p) + 2);
++            auto compare = [&](const std::vector<float> &values) {
++                int32_t picked[6];
++                check(cudaMemcpy(picked, output.p, sizeof(picked), cudaMemcpyDeviceToHost));
++                const bool bad = std::any_of(values.begin(), values.end(), [](float x) { return !std::isfinite(x); });
++                if (picked[3] != int(bad)) throw std::runtime_error("nonfinite flag mismatch");
++                if (!bad && picked[2] != std::max_element(values.begin(), values.end()) - values.begin())
++                    throw std::runtime_error("greedy token mismatch");
++                for (int i : {0,1,4,5}) if (picked[i] != canary) throw std::runtime_error("result guard overwritten");
++                std::vector<unsigned char> bytes(scratch_bytes + 64);
++                check(cudaMemcpy(bytes.data(), scratch.p, bytes.size(), cudaMemcpyDeviceToHost));
++                for (size_t i = 0; i < 32; ++i)
++                    if (bytes[i] != 0xa5 || bytes[scratch_bytes + 32 + i] != 0xa5)
++                        throw std::runtime_error("scratch guard overwritten");
++                std::vector<float> roundtrip(size_t(n) + 8);
++                check(cudaMemcpy(roundtrip.data(), input.p, roundtrip.size() * sizeof(float), cudaMemcpyDeviceToHost));
++                if (std::memcmp(roundtrip.data() + 4, values.data(), size_t(n) * sizeof(float)))
++                    throw std::runtime_error("input modified");
++                for (int i = 0; i < 4; ++i)
++                    if (roundtrip[i] != 1234.5f || roundtrip[size_t(n) + 4 + i] != 1234.5f)
++                        throw std::runtime_error("input guard overwritten");
++            };
++            auto upload = [&](const std::vector<float> &values) {
++                std::vector<float> guarded(size_t(n) + 8, 1234.5f);
++                std::copy(values.begin(), values.end(), guarded.begin() + 4);
++                check(cudaMemcpy(input.p, guarded.data(), guarded.size() * sizeof(float), cudaMemcpyHostToDevice));
++                int32_t guards[6] = {canary,canary,canary,canary,canary,canary};
++                check(cudaMemcpy(output.p, guards, sizeof(guards), cudaMemcpyHostToDevice));
++                check(cudaMemset(scratch.p, 0xa5, scratch_bytes + 64));
++            };
++            for (int pattern = 0; pattern < 12; ++pattern) {
++                std::vector<float> values(n);
++                for (auto &v : values) v = float(int(rng() % 257) - 128);
++                if (pattern == 1) std::fill(values.begin(), values.end(), -42.f);
++                if (pattern == 2) { std::fill(values.begin(), values.end(), -0.f); values.back() = 0.f; }
++                if (pattern == 3) { values[0] = std::numeric_limits<float>::max(); values.back() = values[0]; }
++                if (pattern == 4) { std::fill(values.begin(), values.end(), -std::numeric_limits<float>::max()); values.back() = -1.f; }
++                if (pattern == 5) values[n / 2] = std::numeric_limits<float>::quiet_NaN();
++                if (pattern == 6) values.back() = std::numeric_limits<float>::infinity();
++                if (pattern == 7) values[0] = -std::numeric_limits<float>::infinity();
++                if (pattern == 8) std::fill(values.begin(), values.end(), std::numeric_limits<float>::quiet_NaN());
++                if (pattern == 9) { std::fill(values.begin(), values.end(), std::numeric_limits<float>::denorm_min()); values.back() = 3.f * std::numeric_limits<float>::denorm_min(); }
++                if (pattern == 10) { std::fill(values.begin(), values.end(), -3.f * std::numeric_limits<float>::denorm_min()); values.back() = -std::numeric_limits<float>::denorm_min(); }
++                if (pattern == 11) for (auto &value : values) {
++                    uint32_t bits = rng();
++                    if ((bits & 0x7f800000u) == 0x7f800000u) bits ^= 0x00800000u;
++                    std::memcpy(&value, &bits, sizeof(value));
++                }
++                upload(values);
++                k::glm_greedy_pick(logits,n,work,result,stream);
++                check(cudaStreamSynchronize(stream));
++                compare(values);
++                ++cases;
++            }
++            check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
++            k::glm_greedy_pick(logits,n,work,result,stream);
++            check(cudaStreamEndCapture(stream,&graph));
++            check(cudaGraphInstantiate(&executable,graph,nullptr,nullptr,0));
++            for (int repeat = 0; repeat < 3; ++repeat) {
++                std::vector<float> values(n,-1.f);
++                values[(size_t(repeat) * 4096) % n] = 7.f;
++                upload(values);
++                check(cudaGraphLaunch(executable,stream));
++                check(cudaStreamSynchronize(stream));
++                compare(values);
++                ++graph_replays;
++            }
++            check(cudaGraphExecDestroy(executable)); executable = nullptr;
++            check(cudaGraphDestroy(graph)); graph = nullptr;
++        }
++        for (int n : {0,-1}) {
++            bool rejected = false;
++            try { (void)k::glm_greedy_pick_scratch_bytes(n); } catch (const std::invalid_argument &) { rejected = true; }
++            if (!rejected) throw std::runtime_error("invalid vocabulary accepted");
++        }
++        bool rejected = false;
++        try { k::glm_greedy_pick(nullptr,1,nullptr,nullptr,stream); } catch (const std::invalid_argument &) { rejected = true; }
++        if (!rejected) throw std::runtime_error("null buffers accepted");
++        check(cudaStreamDestroy(stream)); stream = nullptr;
++        std::cout << "PASS greedy_pick cases=" << cases << " graph_replays=" << graph_replays
++                  << " tie_finite_guards_scratch_reuse=1\n";
++        return 0;
++    } catch (const std::exception &e) {
++        if (executable) { const auto status = cudaGraphExecDestroy(executable); (void)status; }
++        if (graph) { const auto status = cudaGraphDestroy(graph); (void)status; }
++        if (stream) { const auto status = cudaStreamDestroy(stream); (void)status; }
++        std::cerr << "FAIL " << e.what() << '\n';
++        return 1;
++    }
++}

@@ -1,0 +1,45 @@
+#version 450
+// F32 matrix-vector products for small row counts (router, mHC, index gates).
+// All 256 threads of a workgroup stream one row's K contiguously (coalesced);
+// RS rows share each activation load. Fixed-order subgroup + LDS reduction.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly restrict buffer W4 { vec4 w4[]; };
+layout(binding = 1, std430) readonly restrict buffer X4 { vec4 x4[]; };
+layout(binding = 2, std430) restrict buffer Y { float y[]; };
+layout(push_constant) uniform P { uint K, M, N, xs, ys, RS, xofs, yofs, accumulate, pad0, pad1, pad2; } p;
+#define RSMAX 4
+#define NMAX 4
+shared float partial[4][RSMAX * NMAX];
+void main() {
+  const uint t = gl_LocalInvocationID.x, wave = gl_SubgroupID, lane = gl_SubgroupInvocationID;
+  const uint row0 = gl_WorkGroupID.x * p.RS, k4 = p.K / 4;
+  float acc[RSMAX][NMAX];
+  for (uint r = 0; r < RSMAX; r++)
+    for (uint n = 0; n < NMAX; n++) acc[r][n] = 0;
+  for (uint i = t; i < k4; i += 256) {
+    for (uint n = 0; n < NMAX; n++) {
+      if (n >= p.N) break;
+      const vec4 xv = x4[(p.xofs + n * p.xs) / 4 + i];
+      for (uint r = 0; r < RSMAX; r++) {
+        if (r >= p.RS) break;
+        if (row0 + r < p.M) acc[r][n] += dot(w4[(row0 + r) * k4 + i], xv);
+      }
+    }
+  }
+  for (uint r = 0; r < RSMAX; r++)
+    for (uint n = 0; n < NMAX; n++) {
+      const float v = subgroupAdd(acc[r][n]);
+      if (lane == 0) partial[wave][r * NMAX + n] = v;
+    }
+  barrier();
+  if (t < RSMAX * NMAX) {
+    const uint r = t / NMAX, n = t % NMAX, row = row0 + r;
+    if (r < p.RS && n < p.N && row < p.M) {
+      const float v = (partial[0][t] + partial[1][t]) + (partial[2][t] + partial[3][t]);
+      const uint o = p.yofs + n * p.ys + row;
+      y[o] = p.accumulate != 0 ? y[o] + v : v;
+    }
+  }
+}

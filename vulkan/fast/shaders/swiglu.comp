@@ -1,0 +1,16 @@
+#version 450
+// h[t][i] = swiglu(gu[t][i], gu[t][n+i], limit) for T tokens.
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer GU { float gu[]; };
+layout(binding = 1, std430) writeonly buffer H { float h[]; };
+layout(push_constant) uniform P { uint n, tokens; float limit; } p;
+void main() {
+  const uint i = gl_GlobalInvocationID.x;
+  if (i >= p.n * p.tokens) return;
+  const uint t = i / p.n, e = i % p.n;
+  float g = gu[t * 2 * p.n + e], u = gu[t * 2 * p.n + p.n + e];
+  if (p.limit > 0) { g = min(g, p.limit); u = clamp(u, -p.limit, p.limit); }
+  h[i] = g * sigmoid(g) * u;
+}

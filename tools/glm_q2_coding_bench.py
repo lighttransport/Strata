@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time
 
+from glm_q2_run_guard import process_cpu_snapshot
 from gguf_reader import GGUFFile
 from strata_tokenizer import Tokenizer
 from jinja2.sandbox import SandboxedEnvironment
@@ -75,22 +76,6 @@ def parse_trials(log, ids, stops, source="none", depth=0, same_output=True):
         if same_output and any(t["token_ids"] != reference for t in trials):
             raise ValueError("greedy output differs across trials/modes")
     return groups
-
-
-def process_cpu_snapshot():
-    """Linux process CPU counters; never read command arguments."""
-    rows = {}
-    for stat in pathlib.Path("/proc").glob("[0-9]*/stat"):
-        try:
-            value = stat.read_text()
-            end = value.rindex(")")
-            fields = value[end + 2:].split()
-            if fields[0] == "Z":
-                continue
-            rows[int(stat.parent.name)] = (value[value.index("(") + 1:end], int(fields[11]) + int(fields[12]))
-        except (FileNotFoundError, PermissionError, ProcessLookupError, ValueError):
-            continue
-    return time.monotonic(), rows
 
 
 def main():

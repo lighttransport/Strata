@@ -574,3 +574,7 @@ passed; HumanEval 164 still to run (`release-decode/humaneval-aff0.14.sh` with t
 Status: 45+ is reached at 1K only with the fused publish (mean 45.0, within the noise band); 8K stays at 40. The
 46-50 ceiling the simulator forecast is not supported by the measurements; the levers it ranked first were worth
 0 to +1.5 at 8K.
+
+Note, 2026-10-16: the merge of the zen5 branch restored the layer split and the other switches listed as removed in
+section 14 (its NUMA-aware layer pipelines and dual-CUDA workers for the two-socket V100 server build on the stage
+code). They are opt-in and off by default; the TR16 release configurations do not use them.

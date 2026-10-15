@@ -1,0 +1,48 @@
+{
+  "comparisons": [
+    {
+      "model": "q2",
+      "order": [
+        "q2-A1",
+        "q2-B1",
+        "q2-B2",
+        "q2-A2"
+      ],
+      "decode_medians_tok_s": {
+        "serial": 17.5823464897569,
+        "pipeline": 30.252620389941548
+      },
+      "decode_gain_percent": 72.06247418435348,
+      "response_medians_ms": {
+        "serial": 59420.35,
+        "pipeline": 47270.649999999994
+      },
+      "response_change_percent": -20.447035401171487,
+      "all_timed_and_validation_token_ids_equal": true,
+      "compared_sequences": 24,
+      "token_sha256": "3de6d9504614fd4a5dea1282b4e9fdcdf764d27b65ea15cce25e4e34b9cbbc88"
+    },
+    {
+      "model": "q23",
+      "order": [
+        "q23-A1",
+        "q23-B1",
+        "q23-B2",
+        "q23-A2"
+      ],
+      "decode_medians_tok_s": {
+        "serial": 20.889098089703765,
+        "pipeline": 34.68204230060122
+      },
+      "decode_gain_percent": 66.02939079354503,
+      "response_medians_ms": {
+        "serial": 55963.8,
+        "pipeline": 46218.6
+      },
+      "response_change_percent": -17.413399376025218,
+      "all_timed_and_validation_token_ids_equal": true,
+      "compared_sequences": 24,
+      "token_sha256": "d82b871f9dbf84d7e74a1d48be66f5df8f76c103b263b09c1f72910b5346a24f"
+    }
+  ]
+}

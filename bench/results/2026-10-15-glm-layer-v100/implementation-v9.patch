@@ -1,0 +1,3276 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 889eb464..a7c764b0 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -314,13 +314,13 @@ target_link_libraries(strata-plan PRIVATE strata_plan)
+ # read once through strata_env_init from main(), since C has no thread-safe function-local static for the
+ # lambdas this replaces to lean on.
+ enable_language(C)
+-add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c)
++add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_layer.c)
+ set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+ target_include_directories(strata_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+ target_link_libraries(strata_host PUBLIC strata_warnings)
+ if(STRATA_BUILD_TESTS)
+   # The spellings and the rules, on synthetic data: no model, no GPU, and no C++ in the way.
+-  foreach(_host_test glm_names glm_env glm_expert_pack)
++  foreach(_host_test glm_names glm_env glm_expert_pack glm_layer)
+     add_executable(${_host_test}_test tests/host/${_host_test}_test.c)
+     target_include_directories(${_host_test}_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+     target_link_libraries(${_host_test}_test PRIVATE strata_host)
+@@ -438,6 +438,10 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
+     add_executable(glm_mailbox_test src/kernels/glm_mailbox_test.cpp)
+     target_link_libraries(glm_mailbox_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+     add_test(NAME glm_mailbox_test COMMAND glm_mailbox_test)
++    add_executable(glm_greedy_pick_test src/kernels/glm_greedy_pick_test.cpp)
++    target_link_libraries(glm_greedy_pick_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
++    add_test(NAME glm_greedy_pick_test COMMAND glm_greedy_pick_test)
++    set_tests_properties(glm_greedy_pick_test PROPERTIES LABELS glm)
+     add_executable(glm_q8_test src/kernels/glm_q8_test.cpp)
+     target_link_libraries(glm_q8_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+     add_test(NAME glm_q8_test COMMAND glm_q8_test)
+@@ -1917,3 +1921,16 @@ endif()
+ if(TARGET glm_prefill_parity AND TARGET ggml-base)
+   target_link_libraries(glm_prefill_parity PRIVATE ggml-base)
+ endif()
++
++if(STRATA_BUILD_TESTS)
++  add_executable(glm_layer_pipeline_test tests/host/layer_pipeline_test.cpp)
++  target_link_libraries(glm_layer_pipeline_test PRIVATE strata_host Threads::Threads)
++  add_test(NAME glm_layer_pipeline_test COMMAND glm_layer_pipeline_test)
++  set_tests_properties(glm_layer_pipeline_test PROPERTIES LABELS glm TIMEOUT 60)
++endif()
++if(STRATA_BUILD_TESTS)
++  add_executable(glm_layer_pool_test src/kernels/cpu/layer_pool_test.cpp)
++  target_link_libraries(glm_layer_pool_test PRIVATE strata_kernels_cpu)
++  add_test(NAME glm_layer_pool_test COMMAND glm_layer_pool_test)
++  set_tests_properties(glm_layer_pool_test PROPERTIES LABELS glm SKIP_RETURN_CODE 77 TIMEOUT 60)
++endif()
+diff --git a/include/strata/kernels/cpu/pool.hpp b/include/strata/kernels/cpu/pool.hpp
+index 5faf254a..e0ee1729 100644
+--- a/include/strata/kernels/cpu/pool.hpp
++++ b/include/strata/kernels/cpu/pool.hpp
+@@ -165,7 +165,8 @@ public:
+     /// threads on six cores. `false` is the A/B arm and exists so the change is measurable rather than
+     /// asserted - the counter it moves is `pool phases ... drain`, which is host-side and needs no profiler.
+     explicit ExpertPool(int n_workers = 0, bool pin = true, bool host_works = true,
+-                        PoolAffinity affinity = PoolAffinity::All, int tasks = 0);
++                        PoolAffinity affinity = PoolAffinity::All, int tasks = 0,
++                        const CpuTopology *placement = nullptr);
+     /// Batched row phases: 0 keeps three tasks per participating thread; explicit counts are capped by rows.
+     static constexpr int kMaxTasks = 4096;
+     /// The watchdog's view of the pool (issue #31): the batch, the counters, every thread's state.
+diff --git a/include/strata/kernels/glm.hpp b/include/strata/kernels/glm.hpp
+index 870cce19..0be0563a 100644
+--- a/include/strata/kernels/glm.hpp
++++ b/include/strata/kernels/glm.hpp
+@@ -5,6 +5,12 @@
+ namespace strata::kernels {
+ 
+ // All buffers are device pointers. Calls enqueue on stream without allocating.
++// One finite GGUF logit row: ties select the lowest token index, including signed zero.
++// nonfinite is set if ANY input is NaN or infinity; callers reject such a row.
++struct GlmGreedyPick { int32_t token; int32_t nonfinite; };
++uint64_t glm_greedy_pick_scratch_bytes(int vocabulary);
++void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
++                     GlmGreedyPick *result, void *stream);
+ void glm_rms_norm(const float *x, const float *weight, float *y, int width, int tokens, float eps,
+                   void *stream);
+ // Same result to rounding with 1024 threads and float4 traffic per row; the sum order differs from glm_rms_norm,
+diff --git a/serve/server.py b/serve/server.py
+index 69c197ee..5013d32b 100644
+--- a/serve/server.py
++++ b/serve/server.py
+@@ -6192,8 +6192,9 @@ def main() -> int:
+         dcache = cfg.get("decode_cache_mib", 0)
+         if isinstance(dcache, bool) or not (isinstance(dcache, int) and dcache >= 0 or dcache in ("auto", "extend")):
+             ap.error('GLM decode_cache_mib must be a whole number of MiB (0..12288), "auto" or "extend"')
+-        if isinstance(dcache, int) and dcache > 12288:
+-            ap.error("GLM decode_cache_mib must be at most 12288")
++        cache_limit = int(cfg.get("gpu_budget_mib", 12288)) if cfg.get("gpu_layout") == "layer" else 12288
++        if isinstance(dcache, int) and dcache > cache_limit:
++            ap.error(f"GLM decode_cache_mib must be at most {cache_limit}")
+         gpu_decode = cfg.get("decode_experts", "cpu") == "gpu"
+         expert_mib, prepack = int(cfg.get("expert_cache_mib", 0)), int(cfg.get("cpu_prepack_mib", 0))
+         if dcache and (gpu_decode or lookup or expert_mib or prepack):
+@@ -6225,7 +6226,7 @@ def main() -> int:
+             ap.error("native EXL3 does not support decode_graphs or decode_cache_mib")
+         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
+                 str(cfg.get("threads", 15 if glm_native else 6)), str(cfg.get("expert_cache_mib", 0)),
+-                str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(map(str, sorted(glm_stop_ids))), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native else "none"), str(cfg.get("cpu_prepack_mib", 0))]
++                str(cfg.get("prefill_batch", 256 if glm_native else 8)), ",".join(map(str, sorted(glm_stop_ids))), str(cfg.get("gpu_budget_mib", 10240 if glm_native else 12288)), str(cfg.get("lookup_depth", 3 if cfg.get("speculative") == "lookup" else 0)), str(int(cfg.get("decode_experts", "cpu") == "gpu")), cfg.get("speculative", "none"), str(cfg.get("draft_depth", 3)), cfg.get("cpu_affinity", "numa" if glm_native or cfg.get("gpu_layout") == "layer" else "none"), str(cfg.get("cpu_prepack_mib", 0))]
+         devices = cfg.get("gpu_devices", "0")
+         if isinstance(devices, list): devices = ",".join(map(str, devices))
+         args.extend((str(devices), str(cfg.get("prefill_expert_cache_mib", 0)), str(int(bool(cfg.get("lock_weights", False)))),
+@@ -6247,14 +6248,56 @@ def main() -> int:
+                 ap.error("invalid GLM CPU expert backend")
+             args.extend(("4k", cfg["expert_pack"], cfg.get("expert_pack_profile", ""), backend))
+         batch_args = parallel_args(cfg, [])
+-        if batch_args:
++        gpu_layout = cfg.get("gpu_layout", "legacy")
++        if gpu_layout not in ("legacy", "layer"):
++            ap.error("GLM gpu_layout must be legacy or layer")
++        layer_args = []
++        if gpu_layout == "layer":
++            if glm_native or batch_args:
++                ap.error("GLM layer layout requires GGUF and one conversation")
++            split = cfg.get("layer_split", "auto")
++            if isinstance(split, list):
++                split = ",".join(map(str, split))
++            pipeline = cfg.get("layer_pipeline", "none")
++            if pipeline not in ("none", "mtp"):
++                ap.error("GLM layer_pipeline must be none or mtp")
++            if pipeline == "mtp" and (spec != "mtp" or int(cfg.get("draft_depth", 1)) != 1):
++                ap.error("GLM layer_pipeline=mtp needs speculative=mtp and draft_depth=1")
++            if spec == "mtp" and int(cfg.get("draft_depth", 1)) != 1:
++                ap.error("GLM layer MTP currently requires draft_depth=1")
++            if dcache in ("auto", "extend"):
++                ap.error("GLM layer layout currently requires a fixed decode cache budget")
++            if cfg.get("decode_cache_adapt") and (not dcache or int(cfg.get("decode_cache_window", 256)) < 1):
++                ap.error("GLM layer cache adaptation needs a positive budget and window")
++            if gpu_decode or lookup or expert_mib or prepack or cfg.get("expert_pack") or cfg.get("decode_prefill_cache") or cfg.get("prefill_expert_cache_mib", 0) or prefill_experts != "mmq":
++                ap.error("GLM layer layout requires native GGUF, CPU decode experts, mmq prefill and no legacy helper options")
++            n_devices = len(str(devices).split(","))
++            if not 2 <= n_devices <= 16 or pipeline == "mtp" and n_devices != 2:
++                ap.error("GLM layer layout needs 2..16 GPUs; overlapped MTP needs two")
++            args[11] = str(cfg.get("draft_depth", 1))
++            layer_args = ["--gpu-layout=layer", f"--layer-split={split}", f"--layer-pipeline={pipeline}"]
++            if cfg.get("layer_plan"):
++                if split != "auto" or not Path(cfg["layer_plan"]).is_file():
++                    ap.error("GLM layer_plan needs layer_split=auto and an existing measured plan file")
++                layer_args.append(f"--layer-plan={cfg['layer_plan']}")
++            if "layer_memory" in cfg:
++                if cfg["layer_memory"] not in ("interleave", "socket"):
++                    ap.error("GLM layer_memory must be interleave or socket")
++                if cfg["layer_memory"] == "socket" and not cfg.get("lock_weights"):
++                    ap.error("GLM layer_memory=socket requires lock_weights")
++                layer_args.append(f"--layer-memory={cfg['layer_memory']}")
++            if "mtp_experts" in cfg:
++                if cfg["mtp_experts"] not in ("cpu", "gpu"):
++                    ap.error("GLM layer mtp_experts must be cpu or gpu")
++                layer_args.append(f"--mtp-experts={cfg['mtp_experts']}")
++        if batch_args or layer_args:
+             if glm_native:
+                 ap.error("GLM parallel requests currently require GGUF weights")
+             # Preserve all positional fields before appending named batch options.
+             defaults = ["mmq", "4k", "", "", "auto"]
+             while len(args) < 27:
+                 args.append(defaults[len(args) - 22])
+-            args += batch_args
++            args += batch_args + layer_args
+         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
+         vision, sampling_defaults = None, {}
+     elif a.engine == "strata":
+diff --git a/serve/test_glm.py b/serve/test_glm.py
+index 25c8adc1..e018e6a3 100644
+--- a/serve/test_glm.py
++++ b/serve/test_glm.py
+@@ -116,10 +116,14 @@ class GlmConfigChecks(unittest.TestCase):
+             config.write_text(json.dumps({"exe": "unused", "model": str(model), **cfg}))
+             metadata = {"general.architecture": "glm5next", "tokenizer.ggml.eos_token_id": 1,
+                         "tokenizer.ggml.tokens": ["a", "b"], "tokenizer.chat_template": "{{ messages }}"}
++            def engine_start(*args, **kwargs):
++                self.launch_args = args
++                raise RuntimeError("engine would start")
+             with mock.patch.object(sys, "argv", ["server", "--engine", "glm", "--config", str(config), "--port", "0"]), \
+                  mock.patch.object(gguf_reader, "GGUFFile", return_value=mock.Mock(metadata=metadata)), \
+                  mock.patch.object(strata_tokenizer.Tokenizer, "from_gguf", return_value=ByteTokenizer()), \
+-                 mock.patch.object(server, "GlmEngine", side_effect=RuntimeError("engine would start")), \
++                 mock.patch.object(server, "Server"), \
++                 mock.patch.object(server, "GlmEngine", side_effect=engine_start), \
+                  mock.patch("sys.stderr"):
+                 with self.assertRaises((SystemExit, RuntimeError)) as caught:
+                     server.main()
+@@ -145,6 +149,32 @@ class GlmConfigChecks(unittest.TestCase):
+         self.assertRefused({"parallel": 2, "speculative": "lookup"})
+         self.assertRefused({"reasoning_loop_recovery": "recover"})
+ 
++    def test_layer_layout(self):
++        self.assertAccepted({"gpu_layout": "layer", "gpu_devices": [0, 1],
++                             "layer_split": [24], "layer_pipeline": "mtp", "speculative": "mtp"})
++        args = self.launch_args[1]
++        self.assertEqual(args[11], "1")
++        self.assertEqual(args[12], "numa")
++        self.assertEqual(args[14], "0,1")
++        self.assertEqual(args[22:27], ["mmq", "4k", "", "", "auto"])
++        self.assertEqual(args[27:], ["--gpu-layout=layer", "--layer-split=24", "--layer-pipeline=mtp"])
++        self.assertAccepted({"gpu_layout": "layer", "gpu_devices": [0, 1], "gpu_budget_mib": 32768,
++                             "decode_cache_mib": 22528})
++        self.assertRefused({"decode_cache_mib": 22528})
++        self.assertAccepted({"gpu_layout": "layer", "gpu_devices": [0, 1], "decode_cache_mib": 4096,
++                             "decode_cache_adapt": True, "decode_cache_window": 64})
++        for cfg in ({"gpu_layout": "wrong"},
++                    {"gpu_layout": "layer", "gpu_devices": [0]},
++                    {"gpu_layout": "layer", "gpu_devices": [0, 1], "layer_pipeline": "mtp"},
++                    {"gpu_layout": "layer", "gpu_devices": [0, 1], "speculative": "mtp", "draft_depth": 3},
++                    {"gpu_layout": "layer", "gpu_devices": [0, 1], "decode_cache_adapt": True}):
++            self.assertRefused(cfg)
++
++    def test_legacy_ignores_generic_layer_split(self):
++        self.assertAccepted({"layer_split": "auto"})
++        self.assertEqual(len(self.launch_args[1]), 23)
++        self.assertNotIn("--gpu-layout=layer", self.launch_args[1])
++
+     def test_accepted(self):
+         self.assertAccepted({})
+         self.assertAccepted({"speculative": "lookup"})
+diff --git a/src/kernels/cpu/pool.cpp b/src/kernels/cpu/pool.cpp
+index 3938b6f4..e34dfae1 100644
+--- a/src/kernels/cpu/pool.cpp
++++ b/src/kernels/cpu/pool.cpp
+@@ -1,3 +1,4 @@
++#include <mutex>
+ // src/kernels/cpu/pool.cpp - P2.S3: the CPU expert pool.  Read pool.hpp first; it explains the protocol.
+ #include "strata/kernels/cpu/pool.hpp"
+ #include "strata/kernels/canon_expert.hpp"
+@@ -410,9 +411,11 @@ void restore_thread_affinity(const ThreadAffinity& previous) {
+ }
+ 
+ namespace {
+-std::atomic<const ExpertPool*> g_diag_pool{nullptr};
++std::mutex g_diag_mutex;
++std::vector<const ExpertPool*> g_diag_pools;
+ void diag_active_pool(std::FILE* f) {
+-    if (const ExpertPool* p = g_diag_pool.load()) p->diag(f);
++    std::lock_guard<std::mutex> lock(g_diag_mutex);
++    for (const ExpertPool* p : g_diag_pools) p->diag(f);
+ }
+ int64_t now_ms() {
+     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+@@ -441,8 +444,11 @@ void ExpertPool::diag(std::FILE* f) const {
+     std::fprintf(f, " for %lld ms\n", (long long) (now_ms() - hstate_ms_.load()));
+ }
+ 
+-ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
+-    : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
++ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks, const CpuTopology *placement)
++    : tasks_(tasks), host_works_(host_works), affinity_(affinity),
++      topo_(placement ? *placement : detect_cpu_topology(true, affinity)) {
++    if (placement && (topo_.worker_cores.empty() || n_workers > (int)topo_.worker_cores.size()))
++        throw std::invalid_argument("expert pool placement has too few worker cores");
+     if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
+     if (const char* e = std::getenv("STRATA_NATIVE_NUMA_LOCAL")) {
+         if (std::string(e) != "0" && std::string(e) != "1")
+@@ -498,24 +504,33 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
+     wstate_.reset(new std::atomic<int32_t>[(size_t) n_]);
+     for (int i = 0; i < n_; ++i) wstate_[(size_t) i].store(kParked);
+     hstate_ms_.store(now_ms());
+-    g_diag_pool.store(this);
+-    strata::core::diag_pool_fn().store(&diag_active_pool);
+     split_.resize((size_t) kMaxSplit);
+     split_multi_.resize((size_t) kMaxSplitMulti);
+     threads_.reserve((size_t) n_);
+-    for (int i = 0; i < n_; ++i) {
+-        const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
+-        threads_.emplace_back([this, i, core] {
+-            strata::aux_cpus::note_owned_thread();   // --aux-cpus never moves a worker
+-            pin_this_thread(core, i);
+-            worker(i);
+-        });
++    try {
++        for (int i = 0; i < n_; ++i) {
++            const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
++            threads_.emplace_back([this, i, core] {
++                strata::aux_cpus::note_owned_thread();   // --aux-cpus never moves a worker
++                pin_this_thread(core, i);
++                worker(i);
++            });
++        }
++        { std::lock_guard<std::mutex> lock(g_diag_mutex); g_diag_pools.push_back(this); }
++        strata::core::diag_pool_fn().store(&diag_active_pool);
++    } catch (...) {
++        stop_.store(true, std::memory_order_release);
++        publish();
++        for (auto &thread : threads_) if (thread.joinable()) thread.join();
++        throw;
+     }
+ }
+ 
+ ExpertPool::~ExpertPool() {
+-    const ExpertPool* self = this;
+-    g_diag_pool.compare_exchange_strong(self, nullptr);
++    {
++        std::lock_guard<std::mutex> lock(g_diag_mutex);
++        g_diag_pools.erase(std::remove(g_diag_pools.begin(), g_diag_pools.end(), this), g_diag_pools.end());
++    }
+     stop_.store(true, std::memory_order_release);
+     // Bump the epoch so a PARKED worker notices the stop flag rather than sleeping through it.
+     publish();
+diff --git a/src/kernels/cuda/glm.cu b/src/kernels/cuda/glm.cu
+index 8dcf894a..3edb25bc 100644
+--- a/src/kernels/cuda/glm.cu
++++ b/src/kernels/cuda/glm.cu
+@@ -12,6 +12,49 @@
+ 
+ namespace strata::kernels {
+ namespace {
++struct GreedyPartial { uint32_t rank; int token; int nonfinite; };
++constexpr int greedy_slice = 4096;
++__device__ GreedyPartial greedy_merge(GreedyPartial a, GreedyPartial b) {
++    const int bad = a.nonfinite | b.nonfinite;
++    if (b.rank > a.rank || (b.rank == a.rank && b.token < a.token)) a = b;
++    a.nonfinite = bad;
++    return a;
++}
++__device__ GreedyPartial greedy_reduce(GreedyPartial value, GreedyPartial *shared) {
++    const int t = threadIdx.x;
++    shared[t] = value;
++    __syncthreads();
++    for (int stride = 128; stride; stride /= 2) {
++        if (t < stride) shared[t] = greedy_merge(shared[t], shared[t + stride]);
++        __syncthreads();
++    }
++    return shared[0];
++}
++__global__ void greedy_partials(const float *logits, int n, GreedyPartial *partials) {
++    __shared__ GreedyPartial shared[256];
++    const int first = int(blockIdx.x) * greedy_slice;
++    const int count = n - first < greedy_slice ? n - first : greedy_slice;
++    GreedyPartial best{0, INT32_MAX, 0};
++    for (int offset = threadIdx.x; offset < count; offset += 256) {
++        const int token = first + offset;
++        uint32_t bits = __float_as_uint(logits[token]);
++        const int bad = (bits & 0x7f800000u) == 0x7f800000u;
++        // Integer ordering retains subnormals even on backends that flush FP32 arithmetic.
++        // Both signs of zero have the same rank, matching std::max_element's first tie.
++        if ((bits & 0x7fffffffu) == 0) bits = 0;
++        const uint32_t rank = bits & 0x80000000u ? ~bits : bits ^ 0x80000000u;
++        best = greedy_merge(best, GreedyPartial{rank, token, bad});
++    }
++    best = greedy_reduce(best, shared);
++    if (!threadIdx.x) partials[blockIdx.x] = best;
++}
++__global__ void greedy_finish(const GreedyPartial *partials, int count, GlmGreedyPick *result) {
++    __shared__ GreedyPartial shared[256];
++    GreedyPartial best{0, INT32_MAX, 0};
++    for (int i = threadIdx.x; i < count; i += 256) best = greedy_merge(best, partials[i]);
++    best = greedy_reduce(best, shared);
++    if (!threadIdx.x) *result = GlmGreedyPick{best.token, best.nonfinite};
++}
+ __device__ float sig(float x) {
+     return 1.f / (1.f + expf(-x));
+ }
+@@ -615,6 +658,20 @@ void width(int n) {
+ }
+ } // namespace
+ 
++uint64_t glm_greedy_pick_scratch_bytes(int vocabulary) {
++    width(vocabulary);
++    return ((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice) * sizeof(GreedyPartial);
++}
++void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
++                     GlmGreedyPick *result, void *s) {
++    width(vocabulary);
++    if (!logits || !scratch || !result) throw std::invalid_argument("GLM: null greedy buffer");
++    const int blocks = int((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice);
++    greedy_partials<<<blocks, 256, 0, (cudaStream_t)s>>>(logits, vocabulary, (GreedyPartial *)scratch);
++    check();
++    greedy_finish<<<1, 256, 0, (cudaStream_t)s>>>((const GreedyPartial *)scratch, blocks, result);
++    check();
++}
+ void glm_rms_norm(const float *x, const float *w, float *y, int n, int tokens, float eps, void *s) {
+     width(n);
+     width(tokens);
+diff --git a/src/program/glm_decode.cpp b/src/program/glm_decode.cpp
+index 654dee45..fdbca698 100644
+--- a/src/program/glm_decode.cpp
++++ b/src/program/glm_decode.cpp
+@@ -1,4 +1,5 @@
+ #include "strata/host/glm_env.h"
++#include "strata/host/glm_layer.h"
+ #include "strata/kernels/cpu/exl3/pool.hpp"
+ #include "strata/kernels/cpu/exl3/dense_q8.hpp"
+ #include "strata/kernels/exl3.hpp"
+@@ -14,6 +15,7 @@
+ #include "strata/artifact/expert_block_screen.hpp"
+ #include "strata/artifact/json.hpp"
+ #include "strata/spec/bounded_accept.hpp"
++#include "strata/spec/layer_pipeline.hpp"
+ #include "strata/spec/external_worker.hpp"
+ #include "strata/spec/suffix_drafter.hpp"
+ #include "strata/kernels/cpu/pool.hpp"
+@@ -71,6 +73,7 @@
+ #include <numeric>
+ #include <queue>
+ #include <sstream>
++#include <syncstream>
+ #include <set>
+ #include <thread>
+ #include <tuple>
+@@ -308,7 +311,10 @@ size_t prefill_expert_stride(const strata::core::ArtifactTensor &g,
+ namespace mmq = strata::prefill::mmq;
+ struct Pinned {
+     void *p = nullptr;
+-    explicit Pinned(size_t bytes) { check(cudaMallocHost(&p, bytes)); }
++    explicit Pinned(size_t bytes, bool portable = false) {
++        if (portable) check(cudaHostAlloc(&p, bytes, cudaHostAllocPortable));
++        else check(cudaMallocHost(&p, bytes));
++    }
+     ~Pinned() { cudaFreeHost(p); }
+ };
+ // GPU-driven decode step (STRATA_GLM_STEP_PIPELINE=1). One slot per layer; the generation advances once per
+@@ -455,7 +461,8 @@ struct GpuLocality {
+     std::array<unsigned long, 16> previous_nodes{};
+     bool policy_changed = false;
+ #endif
+-    GpuLocality() {
++    explicit GpuLocality(bool enabled = true) {
++        if (!enabled) return;
+ #ifdef __linux__
+         int dev;
+         check(cudaGetDevice(&dev));
+@@ -1424,9 +1431,11 @@ class GpuWorker {
+     bool queued = false, stopping = false;
+     std::thread thread;
+   public:
+-    explicit GpuWorker(int device, bool allow_queue = false) : queued(allow_queue), thread([this, device] {
++    explicit GpuWorker(int device, bool allow_queue = false, int host_core = -1, bool localize = true)
++        : queued(allow_queue), thread([this, device, host_core, localize] {
+         check(cudaSetDevice(device));
+-        GpuLocality locality;
++        GpuLocality locality(localize);
++        auto affinity = cpu::pin_current_thread(host_core);
+         for (;;) {
+             std::unique_lock lock(mutex);
+             ready.wait(lock, [&] { return stopping || !tasks.empty(); });
+@@ -1706,7 +1715,14 @@ struct RemoteTp {
+     }
+ };
+ class Decoder {
+-    strata::core::ModelArtifact artifact;
++    std::shared_ptr<strata::core::ModelArtifact> artifact_owner;
++    strata::core::ModelArtifact &artifact;
++    const bool layer_stage;
++    const size_t layer_first, layer_last;
++    bool owns_layer(size_t l) const { return l >= layer_first && l < layer_last; }
++    bool owns_tensor(const std::string &n) const {
++        return !layer_stage || strata_glm_layer_tensor_owned(n.c_str(), (int)layer_first, (int)layer_last, (int)m.layers.size(), 0);
++    }
+     const strata::core::ModelDescriptor &m;
+     std::unique_ptr<RegisteredWeights> registered_weights;
+     cudaStream_t stream = nullptr;
+@@ -1723,6 +1739,7 @@ class Decoder {
+     int projection_first = 0;
+     bool fast = false, profile = false, gpu_decode_experts = false;
+     std::unique_ptr<GpuPrefill> gpu;
++    std::unique_ptr<Device> greedy_scratch, greedy_pick;
+     std::unique_ptr<GpuWorker> prefetch_launcher;
+     std::future<void> prefetch_pending;
+     const bool stream_prefetch = [] {
+@@ -2031,7 +2048,7 @@ class Decoder {
+         const char *v = std::getenv("STRATA_PREFILL_LOSSY_MIN_TOKENS");
+         return v ? std::max(1, std::atoi(v)) : 4096;
+     }();
+-    bool lossy_prefill() const { return fast && batch_tokens >= lossy_prefill_min; }
++    bool lossy_prefill() const { return !layer_stage && fast && batch_tokens >= lossy_prefill_min; }
+     const bool mla_absorb_f16 = [] { return strata_env_is_one("STRATA_GLM_MLA_ABSORB_F16"); }();
+     // STRATA_GLM_MLA_F16_OUT=1 (opt-in, lossy; with MLA_ABSORB_F16): scores and absorbed values are FP16-accumulated
+     // FP16 outputs, the softmax reads FP16 scores, and the value absorb takes the FP16 values directly.
+@@ -2116,11 +2133,20 @@ class Decoder {
+     std::function<bool()> cancelled;
+     bool cache_frozen = false;
+     std::ofstream routing_trace;
++    std::vector<std::vector<uint64_t>> layer_route_counts;
++    size_t layer_cache_capacity = 0, layer_admission_budget = 0;
++    bool layer_admission_ready = false, layer_verify_cache = false;
++    std::unique_ptr<Device> layer_cache_scratch;
+     uint64_t routing_event = 0;
+     int routing_request = 0, routing_round = -1;
+     const char *routing_phase = "target";
+     bool routing_events = std::getenv("STRATA_GLM_ROUTING_EVENTS") != nullptr;
+     void trace_routes(int layer, int position, int nt, int k, const int *ids) {
++        if (!fast && !layer_route_counts.empty() && layer >= 0 && (size_t)layer < m.layers.size())
++            for (int j = 0; j < nt*k; ++j) {
++                if (ids[j] < 0 || ids[j] >= m.experts) throw std::runtime_error("GLM: invalid committed route");
++                ++layer_route_counts[layer][ids[j]];
++            }
+         if (!routing_trace.is_open()) return;
+         if (routing_events) {
+             routing_trace << "{\"request\":" << routing_request << ",\"round\":" << routing_round
+@@ -3076,8 +3102,10 @@ class Decoder {
+         }
+         auto &W = weight(name, floating);
+         // Every layer's first product passes here, so the lossy-path switches follow the current batch (decode included).
+-        strata::prefill::Gemm::lossy_allowed = lossy_prefill();
+-        k::glm_set_prefill_lossy(lossy_prefill());
++        if (!layer_stage) {
++            strata::prefill::Gemm::lossy_allowed = lossy_prefill();
++            k::glm_set_prefill_lossy(lossy_prefill());
++        }
+         const float one = 1, zero = 0;
+         if (fast && name != "output.weight") {
+             if (t.type == 0 || floating) {
+@@ -4310,7 +4338,7 @@ class Decoder {
+         f.q23_layout = q23_layout;
+         f.observer = expert_observer && expert_observer->collects_moments() ? expert_observer.get() : nullptr;
+         f.observer_layer = l;
+-        f.fuse_h_quant = artifact.has_expert_pack() && (!std::getenv("STRATA_GLM_PACK_FUSE_QUANT") ||
++        f.fuse_h_quant = !layer_stage && artifact.has_expert_pack() && (!std::getenv("STRATA_GLM_PACK_FUSE_QUANT") ||
+                                                         std::string(std::getenv("STRATA_GLM_PACK_FUSE_QUANT")) != "0");
+         auto prepared = prepared_experts.find(l);
+         if (prepared != prepared_experts.end()) f = prepared->second.format;
+@@ -4599,6 +4627,7 @@ class Decoder {
+             throw std::invalid_argument("GLM: exact cache prototype needs plain GGUF, single CPU/GPU pipeline, fixed GPU cache, unbiased routes and no speculation");
+         exact_cache.reset();
+         for (size_t l=0; l<m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+             for (const char* role : {"gate", "up", "down"}) {
+                 const auto& t=artifact.at("blk."+std::to_string(l)+".ffn_"+role+"_exps.weight");
+@@ -4948,6 +4977,7 @@ class Decoder {
+         const uintptr_t page = 4096;
+         std::vector<std::pair<uintptr_t, uintptr_t>> spans, merged;
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+             for (const char *role : {"gate", "up", "down"}) {
+                 const auto &t = artifact.at("blk." + std::to_string(l) + ".ffn_" + role + "_exps.weight");
+@@ -5169,7 +5199,7 @@ class Decoder {
+         // The service order is the publication order: per MoE layer, group A then (split verify) group B.
+         std::vector<ServiceItem> layers;
+         for (size_t l = 0; l < m.layers.size(); ++l)
+-            if (m.layers[l].ffn == strata::core::FfnKind::Moe) {
++            if (owns_layer(l) && m.layers[l].ffn == strata::core::FfnKind::Moe) {
+                 if (!split) layers.push_back({(int)l, (int)l, batch_tokens, position});
+                 else {
+                     layers.push_back({(int)l, (int)l, split, position});
+@@ -5235,6 +5265,7 @@ class Decoder {
+         tp.recurrent.resize(m.layers.size());
+         for (auto &c : tp.conv) c.resize(m.layers.size());
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (m.layers[l].mixer != strata::core::MixerKind::Kda) continue;
+             const auto p = "blk." + std::to_string(l) + ".";
+             for (const char *name : {"attn_q.weight", "attn_k.weight", "attn_v.weight", "ssm_f_b.weight", "ssm_g_b.weight"})
+@@ -5273,6 +5304,7 @@ class Decoder {
+         auto &tp = *other.tp;
+         check(cudaStreamSynchronize(stream));
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (m.layers[l].mixer != strata::core::MixerKind::Kda) continue;
+             auto &state = states[l];
+             const size_t state_half = (size_t)heads / 2 * dim * dim * 4, conv_half = (size_t)n / 2 * (m.conv_kernel - 1) * 4;
+@@ -5352,6 +5384,7 @@ class Decoder {
+         auto &tp = *other.tp;
+         check(cudaStreamSynchronize(other.stream));
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (!tp.recurrent[l]) continue;
+             auto &state = states[l];
+             const size_t state_half = (size_t)heads / 2 * dim * dim * 4, conv_half = (size_t)n / 2 * (m.conv_kernel - 1) * 4;
+@@ -6107,6 +6140,7 @@ class Decoder {
+             if (compact) return;
+             DeviceScope scope(device);
+             for (size_t l = 0; l < m.layers.size(); ++l) {
++                if (!owns_layer(l)) continue;
+                 if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+                 const auto p = "blk." + std::to_string(l) + ".";
+                 const size_t bytes = 16 * prefill_expert_stride(artifact.at(p + "ffn_gate_exps.weight"),
+@@ -6146,6 +6180,7 @@ class Decoder {
+             snapshot.position > (int)capacity)
+             throw std::invalid_argument("GLM: incompatible state snapshot");
+         for (size_t l = 0; l < states.size(); ++l) {
++            if (layer_stage && l < m.layers.size() && !owns_layer(l)) continue;
+             auto &s = states[l];
+             const std::array<Device *, 8> buffers = {s.recurrent.get(), s.conv_q.get(), s.conv_k.get(),
+                                                      s.conv_v.get(),    s.cache.get(),  s.keys.get(),
+@@ -6233,9 +6268,14 @@ class Decoder {
+         std::cerr << "RESPONSE_PREPARE kind=cache_probe ms=" << ms << '\n';
+     }
+     Decoder(const std::string &path, size_t ctx, size_t cache_bytes, int threads, size_t expert_bytes = 0, bool pin_cpu = false,
+-            const std::string& expert_pack="",const std::string& pack_profile="",const std::string& cpu_backend="auto")
+-        : artifact(path), m(artifact.descriptor()), pool(artifact.is_exl3()?1:threads, artifact.is_exl3()?false:pin_cpu, true), capacity(ctx),
++            const std::string& expert_pack="",const std::string& pack_profile="",const std::string& cpu_backend="auto",
++            std::shared_ptr<strata::core::ModelArtifact> shared = {}, size_t first = 0, size_t last = SIZE_MAX,
++            const cpu::CpuTopology *placement = nullptr)
++        : artifact_owner(shared ? shared : std::make_shared<strata::core::ModelArtifact>(path)),
++          artifact(*artifact_owner), layer_stage(bool(shared)), layer_first(first),
++          layer_last(last == SIZE_MAX ? artifact.descriptor().layers.size() : last), m(artifact.descriptor()), pool(artifact.is_exl3()?1:threads, artifact.is_exl3()?false:pin_cpu, true, cpu::PoolAffinity::All, 0, placement), capacity(ctx),
+           budget(cache_bytes) {
++        if (layer_first >= layer_last || layer_last > m.layers.size()) throw std::invalid_argument("GLM: invalid stage layer range");
+         if (m.experts % 16 || m.experts > 288) throw std::invalid_argument("GLM: expert count must be a multiple of 16, at most 288");
+         prefill_expert_groups = (int)m.experts / 16;
+         if (reap_prefetch && (artifact.is_exl3() || m.experts >= 288 || direct_upload_enabled() ||
+@@ -6248,6 +6288,7 @@ class Decoder {
+             std::cerr << "PREFETCH_REAP experts=" << m.experts << " maximum_groups=" << prefill_expert_groups << '\n';
+         }
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+             const auto p = "blk." + std::to_string(l) + ".";
+             const size_t group = 16 * prefill_expert_stride(artifact.at(p + "ffn_gate_exps.weight"),
+@@ -6289,6 +6330,7 @@ class Decoder {
+             if (compact && std::string(compact) == "1") {
+                 size_t largest = 0;
+                 for (size_t l = 0; l < m.layers.size(); ++l) {
++                    if (!owns_layer(l)) continue;
+                     if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+                     const auto p = "blk." + std::to_string(l) + ".";
+                     largest = std::max(largest, 16 * prefill_expert_stride(
+@@ -6315,6 +6357,7 @@ class Decoder {
+         }
+         if (!artifact.is_exl3() && GpuPrefill::prefetch_groups() && prefetch_geometry_supported())
+             for (size_t l = 0; l < m.layers.size(); ++l) {
++                if (!owns_layer(l)) continue;
+                 if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+                 const auto p = "blk." + std::to_string(l) + ".";
+                 GpuPrefill::prefetch_bytes = std::max(GpuPrefill::prefetch_bytes,
+@@ -6322,7 +6365,7 @@ class Decoder {
+                         artifact.at(p + "ffn_up_exps.weight"), artifact.at(p + "ffn_down_exps.weight")) + 16384);
+             }
+         prepack_cpus = cpu::physical_cores(false);
+-        if (pin_cpu) {
++        if (pin_cpu && !placement) {
+             const auto cores = cpu::physical_cores(false);
+             if (!cores.empty()) host_affinity = cpu::pin_current_thread(cores.front());
+         }
+@@ -6339,6 +6382,7 @@ class Decoder {
+         expert_cache.resize(m.layers.size());
+         DeviceTag state_tag("state");
+         for (size_t l = 0; l < states.size(); ++l) {
++            if (layer_stage && l < m.layers.size() && !owns_layer(l)) continue;
+             auto &s = states[l];
+             if (m.layers[l].mixer == strata::core::MixerKind::Kda) {
+                 s.recurrent =
+@@ -6439,6 +6483,7 @@ class Decoder {
+         artifact.shape("output_norm.weight", {H});
+         fp32("output_norm.weight");
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             const auto &layer = m.layers[l];
+             const std::string p = "blk." + std::to_string(l) + ".";
+             const uint64_t ff = layer.intermediate;
+@@ -6512,7 +6557,16 @@ class Decoder {
+         }
+     }
+     std::vector<float> batch(const std::vector<int> &tokens, bool prefill = true, bool all_logits = false,
+-                            const std::function<void(const float *, int, int)> &consume_logits = {}) {
++                            const std::function<void(const float *, int, int)> &consume_logits = {},
++                            k::GlmGreedyPick *greedy_result = nullptr,
++                            const float *stage_input = nullptr, float *stage_output = nullptr) {
++        if (layer_stage && ((layer_first > 0) != bool(stage_input) ||
++                            (layer_last < m.layers.size()) != bool(stage_output)))
++            throw std::invalid_argument("GLM: stage residual ownership mismatch");
++        if (greedy_result && (prefill || all_logits || consume_logits || artifact.is_exl3() ||
++                             tokens.size() != 1 || !row_sequences.empty() || capturing_history ||
++                             !gpu || !greedy_scratch || !greedy_pick))
++            throw std::invalid_argument("GLM: compact greedy requires one ordinary GGUF decode row");
+         if (consume_logits && (!all_logits || artifact.is_exl3()))
+             throw std::invalid_argument("GLM: streamed logits require all GGUF rows");
+         if (!prefill) finish_prefill_repairs();
+@@ -6526,8 +6580,10 @@ class Decoder {
+             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
+                 throw std::out_of_range("GLM: token or context out of range");
+         batch_tokens = nt;
+-        strata::prefill::Gemm::lossy_allowed = lossy_prefill();
+-        k::glm_set_prefill_lossy(lossy_prefill());
++        if (!layer_stage) {
++            strata::prefill::Gemm::lossy_allowed = lossy_prefill();
++            k::glm_set_prefill_lossy(lossy_prefill());
++        }
+         task_trace(prefill ? "prefill_batch_begin" : "decode_batch_begin", position, nt);
+         const bool trace_prefill = fast && std::getenv("STRATA_GLM_TASK_TRACE");
+         const char *trace_sync_value = std::getenv("STRATA_GLM_TASK_TRACE_SYNC");
+@@ -6598,6 +6654,7 @@ class Decoder {
+                 const auto &resident = participant ? remote_decode_resident : decode_resident;
+                 auto &cache = participant ? secondary->cache : prefill_cache;
+                 for (size_t l = 0; l < m.layers.size(); ++l) {
++                    if (!owns_layer(l)) continue;
+                     if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+                     const auto p = "blk." + std::to_string(l) + ".";
+                     const size_t stride = prefill_expert_stride(artifact.at(p + "ffn_gate_exps.weight"),
+@@ -6615,8 +6672,8 @@ class Decoder {
+         const auto *traits = ggml_get_type_traits((ggml_type)embedding.tensor->type);
+         if (embedding.tensor->type != GGML_TYPE_F32 && (!traits || !traits->to_float))
+             throw std::runtime_error("GLM: unsupported embedding quantization");
+-        std::vector<float> emb(m.hidden * 4 * nt);
+-        for (int t = 0; t < nt; ++t) {
++        std::vector<float> emb(stage_input ? 0 : m.hidden * 4 * nt);
++        if (!stage_input) for (int t = 0; t < nt; ++t) {
+             auto *row = emb.data() + t * m.hidden * 4;
+             const auto *data = embedding.data() + (size_t)tokens[t] * (embedding.bytes / m.vocab);
+             if (embedding.tensor->type == GGML_TYPE_F32)
+@@ -6627,7 +6684,7 @@ class Decoder {
+                 std::copy_n(row, m.hidden, row + i * m.hidden);
+         }
+         auto &r = buf("streams", m.hidden * 4 * nt);
+-        r.put(emb.data(), emb.size() * 4);
++        r.put(stage_input ? stage_input : emb.data(), (size_t)m.hidden * 4 * nt * sizeof(float));
+         auto &collapsed = buf("collapsed", m.hidden * nt);
+         auto &x = buf("x", m.hidden * nt);
+         auto &y = buf("y", m.hidden * nt);
+@@ -6665,6 +6722,7 @@ class Decoder {
+         // GPU waits for this thread's CPU experts.
+         auto enqueue_layers = [&] {
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             prefill_trace("layer_begin", (int)l);
+             const std::string p = "blk." + std::to_string(l) + ".";
+             const auto &layer = m.layers[l];
+@@ -6818,9 +6876,11 @@ class Decoder {
+         if (kda_split_active()) kda_split_sync_back();
+         else if (!tp_active()) tp_stale = true; // primary-only states advanced without the secondary halves
+         reset_phase();
+-        for (int t = 0; t < nt; ++t)
+-            k::glm_hyper_head(r.f(t * 4 * m.hidden), collapsed.f(t * m.hidden), m.hidden, stream);
+-        norm("output_norm.weight", collapsed.f(), x.f(), m.hidden);
++        if (!stage_output) {
++            for (int t = 0; t < nt; ++t)
++                k::glm_hyper_head(r.f(t * 4 * m.hidden), collapsed.f(t * m.hidden), m.hidden, stream);
++            norm("output_norm.weight", collapsed.f(), x.f(), m.hidden);
++        }
+         };
+         // Split verify, per layer: combine group A's previous MoE layer, enqueue A's layer up to its publication,
+         // then the same for B. The GPU computes one group's attention while the CPU computes the other group's
+@@ -6985,6 +7045,17 @@ class Decoder {
+         if (split) { ++split_windows; run_pipelined_step(enqueue_split, split); }
+         else if (pipelining) run_pipelined_step(enqueue_layers);
+         else enqueue_layers();
++        if (stage_output) {
++            check(cudaMemcpyAsync(stage_output, r.p, (size_t)nt * 4 * m.hidden * sizeof(float), cudaMemcpyDeviceToHost, stream));
++            check(cudaStreamSynchronize(stream));
++            if (pipelining) {
++                pipelining = false;
++                if (const unsigned error = mailbox->gpu_error())
++                    throw std::runtime_error("GLM: stage GPU wait timed out at layer " + std::to_string(error - 1));
++            }
++            position += nt; batch_tokens = 1;
++            return {};
++        }
+         prefill_trace("output_head_begin", -1);
+         if (capture_hidden && !row_sequences.empty()) {
+             for (int t = 0; t < nt; ++t) {
+@@ -7018,6 +7089,9 @@ class Decoder {
+                 consume_logits(panel.data(), first, count);
+             }
+         }
++        if (greedy_result)
++            k::glm_greedy_pick(logits.f(), m.vocab, greedy_scratch->p,
++                               (k::GlmGreedyPick *)greedy_pick->p, stream);
+         const bool trace_tail = step_trace && !fast && trace.any;
+         auto tail_mark = std::chrono::steady_clock::now();
+         auto tail_part = [&](double &part) {
+@@ -7040,7 +7114,13 @@ class Decoder {
+         tail_part(trace.plan_ms);
+         position += nt;
+         batch_tokens = 1;
+-        auto result = consume_logits ? std::vector<float>{} : logits.floats((size_t)m.vocab * head_tokens);
++        auto result = (consume_logits || greedy_result) ? std::vector<float>{} : logits.floats((size_t)m.vocab * head_tokens);
++        if (greedy_result) {
++            check(cudaMemcpy(greedy_result, greedy_pick->p, sizeof(*greedy_result), cudaMemcpyDeviceToHost));
++            if (greedy_result->nonfinite) throw std::runtime_error("GLM: non-finite logits");
++            if (greedy_result->token < 0 || greedy_result->token >= m.vocab)
++                throw std::runtime_error("GLM: invalid greedy token");
++        }
+         for (float v : result)
+             if (!std::isfinite(v))
+                 throw std::runtime_error("GLM: non-finite logits");
+@@ -7138,6 +7218,23 @@ class Decoder {
+             throw;
+         }
+     }
++    // Called before prefill/graph capture and automatic cache sizing. Ineligible modes never call it.
++    bool prepare_device_greedy() {
++        if (!strata_env_is_one("STRATA_GLM_DEVICE_GREEDY") || !gpu || artifact.is_exl3()) return false;
++        if (!greedy_scratch) {
++            DeviceTag tag("greedy_pick");
++            greedy_scratch = std::make_unique<Device>(k::glm_greedy_pick_scratch_bytes(m.vocab));
++            greedy_pick = std::make_unique<Device>(sizeof(k::GlmGreedyPick));
++            std::cerr << "DEVICE_GREEDY vocabulary=" << m.vocab
++                      << " scratch_bytes=" << greedy_scratch->bytes << " readback_bytes=" << greedy_pick->bytes << '\n';
++        }
++        return true;
++    }
++    int step_greedy(int token) {
++        k::GlmGreedyPick pick{};
++        batch({token}, false, false, {}, &pick);
++        return pick.token;
++    }
+     std::vector<float> step(int token) { return batch({token}, false); }
+     void enable_verify_history(int slots) {
+         if (!gpu || verify_history) return;
+@@ -7150,6 +7247,7 @@ class Decoder {
+         history_offsets.clear();
+         replay_history.clear();
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             auto &s = states[l];
+             for (auto *b : {s.recurrent.get(), s.conv_q.get(), s.conv_k.get(), s.conv_v.get(), s.keys.get(), s.gates.get()})
+                 if (b) {
+@@ -7249,6 +7347,7 @@ class Decoder {
+         std::cerr<<"BLOCK_SCREEN mode=oracle diagnostic_only=1 profile="<<profile<<'\n';
+     }
+     void prepare_numa_weights() {
++        if (layer_stage) return; // the shared mapping is owned and locked once by the layer coordinator
+         const char* enabled=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS");
+         if(!numa_experts.empty())return;
+         if(!artifact.has_expert_pack()&&(!enabled||std::string(enabled)=="0"))return;
+@@ -7391,6 +7490,7 @@ class Decoder {
+             if (cache) throw std::invalid_argument("CPU packing requires expert-cache-mib=0");
+         size_t required = 0;
+         for (size_t l = 3; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             const auto p = "blk." + std::to_string(l) + ".";
+             for (const auto *part : {"gate", "up", "down"}) {
+                 const auto &tensor = artifact.at(p + "ffn_" + part + "_exps.weight");
+@@ -7415,6 +7515,7 @@ class Decoder {
+         const auto start = std::chrono::steady_clock::now();
+         try {
+         for (size_t l = 3; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             check_stop();
+             const auto p = "blk." + std::to_string(l) + ".";
+             const auto &G = artifact.at(p + "ffn_gate_exps.weight"), &D = artifact.at(p + "ffn_down_exps.weight");
+@@ -7689,6 +7790,7 @@ class Decoder {
+     }
+     void set_decode_cache_budget(size_t bytes) {
+         if(artifact.is_exl3()&&bytes)throw std::invalid_argument("EXL3: GGUF decode cache is unsupported");
++        if (layer_stage && decode_cache_budget != bytes) {layer_admission_budget = 0;layer_admission_ready = false;}
+         decode_cache_budget = bytes;
+         if (bytes) {
+             prefill_routes.assign(m.layers.size(), std::vector<uint64_t>(m.experts));
+@@ -7812,6 +7914,7 @@ class Decoder {
+         }
+         std::vector<uint8_t> setup(sizeof(strata::net::TpSetup));
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+             const std::string p = "blk." + std::to_string(l) + ".";
+             const auto &G = artifact.at(p + "ffn_gate_exps.weight");
+@@ -7951,6 +8054,132 @@ class Decoder {
+         device_lookup_ready = false;
+     }
+     void set_decode_cache_slots(int slots) { decode_cache_slots_limit = slots; }
++    void enable_layer_cache_windows(bool enabled) {
++        if (!layer_stage || (enabled && !decode_cache_budget))
++            throw std::invalid_argument("GLM: layer cache windows need an owned stage and a fixed cache budget");
++        if(enabled)layer_route_counts.assign(m.layers.size(),std::vector<uint64_t>(m.experts));
++        else layer_route_counts.clear();
++    }
++    void set_layer_cache_checks(bool enabled) {layer_verify_cache=enabled;}
++    void verify_layer_cache() {
++        if(!layer_verify_cache)return;
++        std::vector<uint8_t> bytes;size_t checked=0,experts=0;
++        for(size_t l=layer_first;l<layer_last;++l){
++            const auto prefix="blk."+std::to_string(l)+".ffn_";
++            for(const auto &[expert,entry]:decode_resident[l]){
++                bytes.resize(entry->bytes);check(cudaMemcpy(bytes.data(),entry->p,entry->bytes,cudaMemcpyDeviceToHost));
++                size_t offset=0;
++                for(const char *part:{"gate","up","down"}){
++                    const auto &tensor=artifact.at(prefix+part+"_exps.weight");const size_t n=tensor.bytes/m.experts;
++                    if(offset>bytes.size() || n>bytes.size()-offset || std::memcmp(bytes.data()+offset,tensor.data()+(size_t)expert*n,n))
++                        throw std::runtime_error("GLM: layer cache payload differs from GGUF at layer "+std::to_string(l)+" expert "+std::to_string(expert));
++                    offset+=n;
++                }
++                if(offset!=bytes.size())throw std::runtime_error("GLM: layer cache payload size differs");
++                checked+=bytes.size();++experts;
++            }
++        }
++        std::osyncstream(std::cerr)<<"LAYER_CACHE_CHECK device="<<primary_device<<" experts="<<experts
++                                  <<" MiB="<<checked/double(MiB)<<" payload=byte_identical\n";
++    }
++    uint64_t layer_cache_fingerprint() const {
++        uint64_t hash=14695981039346656037ULL;
++        for(size_t l=0;l<decode_resident.size();++l)for(const auto &[expert,entry]:decode_resident[l]) {
++            hash^=l*(size_t)m.experts+expert;hash*=1099511628211ULL;
++        }
++        return hash;
++    }
++    uint64_t layer_routes_fingerprint() const {
++        uint64_t hash=14695981039346656037ULL;
++        for(const auto &row:layer_route_counts)for(uint64_t n:row){hash^=n;hash*=1099511628211ULL;}
++        return hash;
++    }
++    void rebalance_layer_cache() {
++        if(!layer_stage || layer_route_counts.empty())throw std::logic_error("GLM: layer cache windows disabled");
++        const auto start=std::chrono::steady_clock::now();
++        check(cudaStreamSynchronize(stream));
++        bool eligible=false;
++        for(size_t l=layer_first;l<layer_last;++l)eligible=eligible ||
++            (m.layers[l].ffn==strata::core::FfnKind::Moe && (!canon_experts || canon_layer((int)l)));
++        if(!layer_cache_capacity)layer_cache_capacity=layer_admission_budget;
++        if(!eligible || !layer_cache_capacity){
++            for(auto &row:layer_route_counts)std::fill(row.begin(),row.end(),0);
++            std::osyncstream(std::cerr)<<"LAYER_CACHE_WINDOW device="<<primary_device<<" skipped=no_eligible_capacity\n";
++            return;
++        }
++        mixer_graphs.clear();
++        if(cached_decode){cached_decode->graphs.clear();cached_decode->device_graphs.clear();}
++        device_lookup_ready=false;
++        struct Candidate{uint64_t score;int layer,expert;size_t bytes;};
++        std::vector<Candidate> candidates;
++        for(size_t l=layer_first;l<layer_last;++l) {
++            if(m.layers[l].ffn!=strata::core::FfnKind::Moe || (canon_experts&&!canon_layer((int)l)))continue;
++            const auto prefix="blk."+std::to_string(l)+".ffn_";
++            const size_t bytes=(artifact.at(prefix+"gate_exps.weight").bytes+artifact.at(prefix+"up_exps.weight").bytes+
++                                artifact.at(prefix+"down_exps.weight").bytes)/m.experts;
++            for(int e=0;e<m.experts;++e){
++                auto &score=prefill_routes[l][e];
++                const uint64_t count=layer_route_counts[l][e];
++                if(count>(UINT64_MAX-score/4)/32)throw std::overflow_error("GLM: layer cache route score overflow");
++                score=score/4+32*count;
++                if(score)candidates.push_back({score,(int)l,e,bytes});
++            }
++        }
++        std::sort(candidates.begin(),candidates.end(),[](const auto &a,const auto &b){
++            if(a.score!=b.score)return a.score>b.score;
++            return std::tie(a.layer,a.expert)<std::tie(b.layer,b.expert);
++        });
++        std::vector<Candidate> selected;size_t used=0;
++        std::set<std::pair<int,int>> desired;
++        for(const auto &c:candidates)if(c.bytes<=layer_cache_capacity-used){
++            used+=c.bytes;selected.push_back(c);desired.emplace(c.layer,c.expert);
++        }
++        auto *storage=decode_cache_storage[0].get();
++        if(!storage || storage->bytes<layer_cache_capacity || !layer_cache_scratch)
++            throw std::logic_error("GLM: layer cache slab is missing");
++        for(size_t l=0;l<decode_resident.size();++l)for(auto it=decode_resident[l].begin();it!=decode_resident[l].end();) {
++            if(desired.count({(int)l,it->first})){++it;continue;}
++            it=decode_resident[l].erase(it);
++        }
++        // Compact surviving views in old-address order. Destinations never
++        // overtake an unread source; the scratch copy handles self-overlap.
++        std::vector<Device *> keep;
++        for(auto &row:decode_resident)for(auto &[expert,entry]:row)keep.push_back(entry.get());
++        std::sort(keep.begin(),keep.end(),[](const Device *a,const Device *b){return (uintptr_t)a->p<(uintptr_t)b->p;});
++        size_t cursor=0;
++        for(auto *entry:keep){
++            const uintptr_t base=(uintptr_t)storage->p,address=(uintptr_t)entry->p;
++            if(address<base || address-base>storage->bytes || entry->bytes>storage->bytes-(address-base) ||
++               cursor>address-base || entry->bytes>layer_cache_scratch->bytes)
++                throw std::logic_error("GLM: invalid layer cache view");
++            if(address-base!=cursor){
++                check(cudaMemcpyAsync(layer_cache_scratch->p,entry->p,entry->bytes,cudaMemcpyDeviceToDevice,stream));
++                check(cudaMemcpyAsync((char *)storage->p+cursor,layer_cache_scratch->p,entry->bytes,cudaMemcpyDeviceToDevice,stream));
++                entry->p=(char *)storage->p+cursor;
++            }
++            cursor+=entry->bytes;
++        }
++        size_t copies=0,bytes=0,retained=0;
++        for(const auto &c:selected){
++            if(decode_resident[c.layer].count(c.expert)){++retained;continue;}
++            if(cursor>storage->bytes || c.bytes>storage->bytes-cursor)throw std::logic_error("GLM: layer cache slab capacity exceeded");
++            auto entry=std::make_unique<Device>((char *)storage->p+cursor,c.bytes);cursor+=c.bytes;
++            size_t offset=0;const auto prefix="blk."+std::to_string(c.layer)+".ffn_";
++            for(const char *part:{"gate","up","down"}){
++                const auto &tensor=artifact.at(prefix+part+"_exps.weight");const size_t n=tensor.bytes/m.experts;
++                if(offset>entry->bytes || n>entry->bytes-offset)throw std::runtime_error("GLM: layer cache expert size mismatch");
++                check(cudaMemcpyAsync((char *)entry->p+offset,tensor.data()+(size_t)c.expert*n,n,cudaMemcpyHostToDevice,stream));offset+=n;
++            }
++            bytes+=c.bytes;++copies;decode_resident[c.layer].emplace(c.expert,std::move(entry));
++        }
++        check(cudaStreamSynchronize(stream));
++        verify_layer_cache();
++        for(auto &row:layer_route_counts)std::fill(row.begin(),row.end(),0);
++        std::osyncstream(std::cerr)<<"LAYER_CACHE_WINDOW device="<<primary_device<<" retained="<<retained<<" copies="<<copies
++                 <<" copied_MiB="<<bytes/double(MiB)<<" admitted_MiB="<<used/double(MiB)
++                 <<" fingerprint="<<layer_cache_fingerprint()<<" ms="
++                 <<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()<<'\n';
++    }
+     bool has_decode_cache() const { return decode_cache_budget || decode_cache_auto; }
+     bool numa_relocated_after_prefill = false;
+     void relocate_numa_after_prefill() {
+@@ -7999,7 +8228,7 @@ class Decoder {
+         if (secondary) report_prefill(secondary->device, secondary->gpu.get());
+         prefill_cache.release_spare();
+         if (secondary) secondary->cache.release_spare();
+-        if (!prepared_experts.empty() || mtp_experts || gpu_decode_experts)
++        if (!prepared_experts.empty() || (mtp_experts && !layer_stage) || gpu_decode_experts)
+             throw std::invalid_argument("GLM: prefix-trained decode cache requires unpacked CPU target experts");
+         compact_decode();
+         if (decode_cache_auto) {
+@@ -8055,6 +8284,7 @@ class Decoder {
+         if (fixed_cache_recent && !decode_cache_auto)
+             std::cerr << "DECODE_CACHE_WINDOW mode=fixed tokens=" << decode_cache_window << '\n';
+         for (size_t l = 0; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+             if (canon_experts) {
+                 // A layer left in another format would round differently on the GPU; it stays on the CPU.
+@@ -8148,6 +8378,41 @@ class Decoder {
+             scratch_reserve = mib * MiB;
+             std::cerr << "DECODE_RUNTIME override_reserve_MiB=" << mib << '\n';
+         }
++        size_t admission_budget = decode_cache_budget;
++        if (layer_stage && !decode_cache_auto && decode_cache_budget) {
++            size_t maximum=0,blob=0;
++            for(size_t l=layer_first;l<layer_last;++l){
++                if(m.layers[l].ffn!=strata::core::FfnKind::Moe || (canon_experts&&!canon_layer((int)l)))continue;
++                const auto prefix="blk."+std::to_string(l)+".ffn_";
++                const size_t n=artifact.at(prefix+"gate_exps.weight").bytes+artifact.at(prefix+"up_exps.weight").bytes+artifact.at(prefix+"down_exps.weight").bytes;
++                maximum+=n;blob=std::max(blob,n/(size_t)m.experts);
++            }
++            if(!layer_route_counts.empty() && blob && !layer_cache_scratch){DeviceTag tag("cache_move");layer_cache_scratch=std::make_unique<Device>(blob);}
++            if (!layer_admission_ready) {
++                size_t free=0,total=0;check(cudaMemGetInfo(&free,&total));
++                // CUDA module/graph workspaces can persist after reset. Keep a
++                // stable ceiling and reserve their first-use growth before
++                // selecting any experts; do not silently vary the next set.
++                constexpr size_t guard=256*MiB, granule=128*MiB;
++                const size_t physical=Device::physical_reserve()+scratch_reserve+guard;
++                const size_t logical=scratch_reserve+guard;
++                const size_t available=std::min(free>physical?free-physical:0,
++                    Device::limit()>Device::live()+logical?Device::limit()-Device::live()-logical:0);
++                const size_t desired=std::min(decode_cache_budget,maximum);
++                layer_admission_budget=std::min(desired,available);
++                if(layer_admission_budget<desired && layer_admission_budget>=granule)layer_admission_budget=layer_admission_budget/granule*granule;
++                layer_admission_ready=true;
++                std::cerr<<"LAYER_CACHE_BUDGET device="<<primary_device<<" requested_MiB="<<decode_cache_budget/MiB
++                         <<" ceiling_MiB="<<layer_admission_budget/double(MiB)<<" growth_reserve_MiB="<<guard/MiB<<'\n';
++            }
++            admission_budget=layer_admission_budget;
++            if(admission_budget && !decode_cache_storage[0]){
++                size_t free=0,total=0;check(cudaMemGetInfo(&free,&total));
++                const size_t physical=Device::physical_reserve()+scratch_reserve;
++                if(free<physical || admission_budget>free-physical)throw std::runtime_error("GLM: stable layer cache slab no longer fits GPU headroom");
++                DeviceTag tag("tier");decode_cache_storage[0]=std::make_unique<Device>(admission_budget);
++            }
++        }
+         for (const auto &c : candidates) {
+             check_stop();
+             if (decode_cache_slots_limit && slots >= (size_t)decode_cache_slots_limit) break;
+@@ -8156,19 +8421,25 @@ class Decoder {
+                 if (remaining[0] < c.bytes && remaining[1] < c.bytes) continue;
+                 if (remaining[0] < c.bytes ||
+                     (remaining[1] >= c.bytes && load[1] < load[0])) participant = 1;
+-            } else if (c.bytes > decode_cache_budget - used) continue;
++            } else if (c.bytes > admission_budget - used) continue;
+             DeviceScope scope(participant ? secondary->device : primary_device);
+-            if (!decode_cache_auto && (Device::live() > Device::limit() || Device::limit() - Device::live() < scratch_reserve ||
+-                c.bytes > Device::limit() - Device::live() - scratch_reserve)) break;
++            if (!decode_cache_auto && !layer_stage && (Device::live() > Device::limit() || Device::limit() - Device::live() < scratch_reserve ||
++                c.bytes > Device::limit() - Device::live() - scratch_reserve)) {
++                break;
++            }
+             std::unique_ptr<Device> entry;
+-            if (decode_cache_auto) {
++            if (decode_cache_auto || layer_stage) {
++                if(!decode_cache_storage[participant] || device_bytes[participant]>decode_cache_storage[participant]->bytes ||
++                   c.bytes>decode_cache_storage[participant]->bytes-device_bytes[participant])throw std::runtime_error("GLM: expert cache slab bounds");
+                 entry = std::make_unique<Device>((char *)decode_cache_storage[participant]->p +
+                                                  device_bytes[participant], c.bytes);
+             } else {
+                 size_t free = 0, total = 0;
+                 check(cudaMemGetInfo(&free, &total));
+                 const size_t physical = Device::physical_reserve();
+-                if (free < physical + scratch_reserve || c.bytes > free - physical - scratch_reserve) break;
++                if (free < physical + scratch_reserve || c.bytes > free - physical - scratch_reserve) {
++                    break;
++                }
+                 entry = std::make_unique<Device>(c.bytes);
+             }
+             const auto p = "blk." + std::to_string(c.layer) + ".";
+@@ -8333,6 +8604,7 @@ class Decoder {
+         size_t draft_begin = 0;
+         std::unique_ptr<Device> storage;
+         std::vector<std::pair<Device *, size_t>> buffers;
++        std::vector<std::vector<uint64_t>> layer_routes;
+     };
+     Checkpoint checkpoint() {
+         Checkpoint cp;
+@@ -8372,12 +8644,14 @@ class Decoder {
+     void save(Checkpoint &cp) {
+         cp.position = position;
+         cp.mtp_position = mtp_position;
++        if (!layer_route_counts.empty()) cp.layer_routes = layer_route_counts;
+         for (auto [buffer, offset] : cp.buffers)
+             check(cudaMemcpyAsync((char *)cp.storage->p + offset, buffer->p, buffer->bytes,
+                                   cudaMemcpyDeviceToDevice, stream));
+     }
+     void restore(const Checkpoint &cp) {
+         tp_stale = true;
++        if (!cp.layer_routes.empty()) layer_route_counts = cp.layer_routes;
+         for (auto [buffer, offset] : cp.buffers)
+             check(cudaMemcpyAsync(buffer->p, (char *)cp.storage->p + offset, buffer->bytes,
+                                   cudaMemcpyDeviceToDevice, stream));
+@@ -8470,6 +8744,7 @@ class Decoder {
+             m.index_dim != 128)
+             throw std::invalid_argument("GLM: GPU prefill requires the inspected GLM-5.3-Flash geometry");
+         for (size_t l = 3; l < m.layers.size(); ++l) {
++            if (!owns_layer(l)) continue;
+             auto p = "blk." + std::to_string(l) + ".";
+             if (!mmq::supported(artifact.at(p + "ffn_gate_exps.weight").tensor->type) ||
+                 !mmq::supported(artifact.at(p + "ffn_down_exps.weight").tensor->type))
+@@ -8486,8 +8761,8 @@ class Decoder {
+             return n.ends_with("hc_attn_fn.weight") || n.ends_with("hc_ffn_fn.weight") ||
+                    n.ends_with("attn_k_b.weight") || n.ends_with("attn_v_b.weight");
+         };
+-        auto eligible = [](const std::string &n) {
+-            return n != "token_embd.weight" && !n.starts_with("blk.45.") && !n.ends_with("_exps.weight");
++        auto eligible = [this](const std::string &n) {
++            return owns_tensor(n) && n != "token_embd.weight" && !n.starts_with("blk.45.") && !n.ends_with("_exps.weight");
+         };
+         for (const auto &[n, t] : artifact.tensors())
+             if (eligible(n)) {
+@@ -8546,6 +8821,7 @@ class Decoder {
+         gpu = std::make_unique<GpuPrefill>(width, stream, false, capacity);
+         // Allocate persistent residual and output buffers before carving phase scratch.
+         for (auto name : {"streams", "collapsed", "x", "y", "hc_coeff", "output"}) {
++            if (layer_stage && layer_last < m.layers.size() && std::string(name) == "output") continue;
+             size_t count = std::string(name) == "streams"    ? width * m.hidden * 4
+                            : std::string(name) == "hc_coeff" ? width * 24
+                            : std::string(name) == "output"   ? m.vocab
+@@ -8606,6 +8882,7 @@ class Decoder {
+             // Resident before the cache allowance below is measured.
+             check(cudaStreamSynchronize(stream));
+             for (size_t l = 0; l < m.layers.size(); ++l) {
++                if (!owns_layer(l)) continue;
+                 if (m.layers[l].mixer == strata::core::MixerKind::Kda) continue;
+                 for (const char *role : {"attn_k_b.weight", "attn_v_b.weight"}) {
+                     const auto name = "blk." + std::to_string(l) + "." + role;
+@@ -8642,6 +8919,7 @@ class Decoder {
+             std::vector<std::pair<size_t, int>> costs;
+             size_t round = 0;
+             for (size_t l = 0; l < m.layers.size(); ++l) {
++                if (!owns_layer(l)) continue;
+                 if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+                 const auto p = "blk." + std::to_string(l) + ".";
+                 const size_t cost = 16 * prefill_expert_stride(artifact.at(p + "ffn_gate_exps.weight"),
+@@ -8694,7 +8972,8 @@ class Decoder {
+         prefill_cache.reset();
+         if (secondary) secondary->cache.reset();
+     }
+-    void warm_weights(bool lock = false, const std::vector<int> &upload_devices = {}) {
++    void warm_weights(bool lock = false, const std::vector<int> &upload_devices = {}, bool include_draft = false,
++                      const std::function<bool(const std::string &)> &selected = {}) {
+         if(artifact.is_exl3())throw std::invalid_argument("EXL3: GGUF weight locking is unsupported");
+         if(lock && !numa_sources.empty())throw std::invalid_argument("Q2 NUMA weights cannot lock the original GGUF mappings");
+         if (direct_upload_enabled() && !lock)
+@@ -8707,7 +8986,7 @@ class Decoder {
+             const size_t page = (size_t)sysconf(_SC_PAGESIZE);
+             std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
+             for (const auto &[name, t] : artifact.tensors())
+-                if (!name.starts_with("blk.45."))
++                if (include_draft || !name.starts_with("blk.45."))
+                     ranges.emplace_back((uintptr_t)t.data() / page * page,
+                                         ((uintptr_t)t.data() + t.bytes + page - 1) / page * page);
+             std::sort(ranges.begin(), ranges.end());
+@@ -8724,7 +9003,8 @@ class Decoder {
+         }
+ #endif
+         for (const auto &[name, t] : artifact.tensors())
+-            if (!name.starts_with("blk.45.") && !numa_sources.count(t.tensor) && !numa_local_only.count(t.tensor)) {
++            if ((include_draft || !name.starts_with("blk.45.")) && (!selected || selected(name)) &&
++                !numa_sources.count(t.tensor) && !numa_local_only.count(t.tensor)) {
+                 if (lock) {
+ #ifdef __linux__
+                     // A file-system client can invalidate clean file-backed
+@@ -8841,6 +9121,7 @@ class Decoder {
+             for (int group = 0; group < 2; ++group) {
+                 std::cerr << "STEP_TRACE_SLOTS group=" << group << " wait_cpu_us_per_step=";
+                 for (size_t l = 0; l < m.layers.size(); ++l) {
++                    if (!owns_layer(l)) continue;
+                     const size_t slot = l + group * mailbox_group_stride();
+                     if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
+                     std::cerr << l << (m.layers[l].mixer == strata::core::MixerKind::Kda ? "k:" : "m:")
+@@ -8915,6 +9196,8 @@ class Decoder {
+         for (int i = 0; i < 2; ++i) finish_copy(i);
+         victims.clear();
+         for (auto &counts : decode_seen) std::fill(counts.begin(), counts.end(), 0);
++        for (auto &counts : layer_route_counts) std::fill(counts.begin(), counts.end(), 0);
++        layer_cache_capacity = 0;
+         adaptive_copies = adaptive_bytes = 0; adaptive_wait_ms = 0;
+         check(cudaStreamSynchronize(stream));
+         mixer_graphs.clear();
+@@ -8982,6 +9265,7 @@ class Decoder {
+             DeviceScope scope(secondary->device);
+             auto &tp = *secondary->tp;
+             for (size_t l = 0; l < m.layers.size(); ++l) {
++                if (!owns_layer(l)) continue;
+                 if (!tp.recurrent[l]) continue;
+                 check(cudaMemsetAsync(tp.recurrent[l]->p, 0, tp.recurrent[l]->bytes, secondary->stream));
+                 for (auto &c : tp.conv) check(cudaMemsetAsync(c[l]->p, 0, c[l]->bytes, secondary->stream));
+@@ -9579,7 +9863,7 @@ static void preflight_gpu_budget(size_t budget) {
+         throw std::invalid_argument("GPU budget exceeds the selected device capacity");
+     Device::limit() = std::min(budget, total) - Device::budget_reserve();
+ }
+-static std::vector<int> configure_devices(const std::string &text, size_t budget) {
++static std::vector<int> configure_devices(const std::string &text, size_t budget, size_t max_devices = 2) {
+     std::vector<int> devices;
+     std::istringstream input(text);
+     std::string item;
+@@ -9601,8 +9885,8 @@ static std::vector<int> configure_devices(const std::string &text, size_t budget
+ #endif
+         devices.push_back(device);
+     }
+-    if (devices.empty() || devices.size() > 2 || text.back() == ',')
+-        throw std::invalid_argument("GLM: select one or two GPU devices");
++    if (devices.empty() || devices.size() > max_devices || text.back() == ',')
++        throw std::invalid_argument("GLM: invalid number of GPU devices");
+     for (int device : devices) {
+         check(cudaSetDevice(device));
+         preflight_gpu_budget(budget);
+@@ -9618,6 +9902,7 @@ static std::pair<size_t, bool> cache_setting(const std::string &value) {
+         throw std::invalid_argument("GLM: invalid prefill cache budget");
+     return {mib * MiB, false};
+ }
++#include "glm_layer_decode.inc"
+ #include "glm_batch_serve.inc"
+ 
+ static int serve(int argc, char **argv) {
+@@ -9715,6 +10000,7 @@ static int serve(int argc, char **argv) {
+             throw std::invalid_argument("STRATA_GLM_REMOTE_TP_REPLY must be f16 or f32");
+         decoder.enable_remote_tp(address, fraction, !reply || std::string(reply) != "f32", true);
+     }
++    const bool compact_greedy = !parallel && !use_mtp && !lookup_depth && decoder.prepare_device_greedy();
+     decoder.prepare_numa_weights();
+     if (argc > 18 && std::string(argv[18]) == "1" && !direct_upload_enabled()) decoder.warm_weights(true);
+     if (use_mtp) decoder.enable_mtp_capture();
+@@ -9845,7 +10131,7 @@ static int serve(int argc, char **argv) {
+             if (!*request.cancel) lock_small_runtime_mappings();
+             const auto prefilled = Clock::now();
+             decoder.reset_decode_stats();
+-            int generated = 0;
++            int generated = 0, compact_next = -1;
+             std::string finish = "length";
+             if (use_mtp && !*request.cancel) {
+                 auto result = generate_mtp(decoder, logits, count, stops, draft_depth, [&](int token) {
+@@ -9872,7 +10158,8 @@ static int serve(int argc, char **argv) {
+                         finish = "cancel";
+                         break;
+                     }
+-                    const int next = std::max_element(logits.begin(), logits.end()) - logits.begin();
++                    const int next = compact_next >= 0 ? compact_next :
++                        int(std::max_element(logits.begin(), logits.end()) - logits.begin());
+                     ++sent;
+                     std::cout << "T " << next << '\n' << std::flush;
+                     if (std::find(stops.begin(), stops.end(), next) != stops.end()) {
+@@ -9880,8 +10167,10 @@ static int serve(int argc, char **argv) {
+                         finish = "stop";
+                         break;
+                     }
+-                    if (generated + 1 < count)
+-                        logits = decoder.step(next);
++                    if (generated + 1 < count) {
++                        if (compact_greedy) compact_next = decoder.step_greedy(next);
++                        else logits = decoder.step(next);
++                    }
+                 }
+             std::cout << "DONE " << generated << ' ' << tokens.size() << ' ' << millis(start, prefilled)
+                       << ' ' << millis(prefilled, Clock::now()) << ' ' << finish << " 0 0 0\n"
+@@ -9931,6 +10220,7 @@ int main(int argc, char **argv) {
+     }
+     try {
+         capture_allocation();
++        if (auto result = layer_entry(argc, argv); result.first) return result.second;
+         if (std::string(argv[1]) == "--serve")
+             return serve(argc, argv);
+         std::string ids_text = argv[2];
+@@ -10213,6 +10503,11 @@ int main(int argc, char **argv) {
+         if (use_mtp) decoder.enable_mtp_capture();
+         if (warm_weights && !direct_upload_enabled())
+             decoder.warm_weights(lock_weights);
++        const bool compact_greedy = !use_mtp && !lookup_depth && !external_speculation && !replay &&
++            dump.empty() && eval_corpus.empty() && !decode_mode_sweep && !check_verify &&
++            !check_decode_graphs && !check_verify_graphs && !check_prefill && !check_gpu_split &&
++            !check_eval_stream && !check_native_dense_q8 && !profile &&
++            decoder.prepare_device_greedy();
+         if(eval_prefill && eval_corpus.empty())throw std::invalid_argument("--eval-prefill requires --eval-corpus");
+         if(!eval_corpus.empty()) {
+             if(use_mtp||lookup_depth||decode_mode_sweep||check_verify||stream_decode)throw std::invalid_argument("evaluation requires ordinary CPU target decode");
+@@ -10687,9 +10982,10 @@ int main(int argc, char **argv) {
+             }, true, external_worker.get());
+         } else {
+             const auto decode_start = std::chrono::steady_clock::now();
+-            int decode_steps = 0;
++            int decode_steps = 0, compact_next = -1;
+             for (int i = 0; i < steps; ++i) {
+-                const int next = std::max_element(logits.begin(), logits.end()) - logits.begin();
++                const int next = compact_next >= 0 ? compact_next :
++                    int(std::max_element(logits.begin(), logits.end()) - logits.begin());
+                 std::cout << next << '\n' << std::flush;
+                 if (std::find(stops.begin(), stops.end(), next) != stops.end())
+                     break;
+@@ -10703,8 +10999,9 @@ int main(int argc, char **argv) {
+                         if (logits != expected)
+                             throw std::runtime_error("GLM: snapshot replay logits differ");
+                         std::cerr << "snapshot replay logits identical\n";
+-                    } else
+-                        logits = decoder.step(next);
++                    } else if (compact_greedy)
++                        compact_next = decoder.step_greedy(next);
++                    else logits = decoder.step(next);
+                     ++decode_steps;
+                     const double step_ms = std::chrono::duration<double, std::milli>(
+                                                std::chrono::steady_clock::now() - step_start)
+diff --git a/tools/glm_generate.py b/tools/glm_generate.py
+index b94e9e04..05e25734 100644
+--- a/tools/glm_generate.py
++++ b/tools/glm_generate.py
+@@ -46,7 +46,12 @@ def main():
+     parser.add_argument("--threads", type=int, default=6)
+     parser.add_argument("--prefill-batch", default="8", help="1-8192 or auto; above 8 uses GPU prefill")
+     parser.add_argument("--gpu-budget-mib", type=int, default=12288)
+-    parser.add_argument("--gpu-devices", help="one or two CUDA device IDs, e.g. 0,1")
++    parser.add_argument("--gpu-devices", help="CUDA/HIP device IDs, e.g. 0,1")
++    parser.add_argument("--gpu-layout", choices=("legacy", "layer"), default="legacy")
++    parser.add_argument("--layer-split", default="auto")
++    parser.add_argument("--layer-pipeline", choices=("none", "mtp"), default="none")
++    parser.add_argument("--layer-memory", choices=("interleave", "socket"))
++    parser.add_argument("--layer-plan", type=pathlib.Path)
+     parser.add_argument("--prefill-expert-cache-mib", default="0", help="native prefill cache per GPU: auto or MiB")
+     parser.add_argument("--context", type=int, help="total prompt and output capacity")
+     parser.add_argument("--lock-weights", action="store_true", help="make byte-identical private mapped weights resident and lock them (Linux)")
+@@ -70,6 +75,9 @@ def main():
+     parser.add_argument("--raw", action="store_true", help="tokenize the prompt without a chat template")
+     parser.add_argument("--dry-run", action="store_true", help="print prompt token IDs without running the network")
+     args = parser.parse_args()
++    if args.gpu_layout == "layer":
++        if not any(x == "--cpu-affinity" or x.startswith("--cpu-affinity=") for x in sys.argv[1:]): args.cpu_affinity = "auto"
++        if not any(x == "--draft-depth" or x.startswith("--draft-depth=") for x in sys.argv[1:]): args.draft_depth = 1
+     if (args.prompt is None) == (args.prompt_file is None):
+         parser.error("provide either a prompt or --prompt-file")
+     text = args.prompt_file.read_text(encoding="utf-8") if args.prompt_file else args.prompt
+@@ -123,6 +131,10 @@ def main():
+     if args.decode_cache_mib != "0": command.append(f"--decode-cache-mib={args.decode_cache_mib}")
+     command.append(f"--decode-cache-window={args.decode_cache_window}")
+     if args.gpu_devices is not None: command.append(f"--gpu-devices={args.gpu_devices}")
++    if args.gpu_layout == "layer":
++        command.extend(("--gpu-layout=layer", f"--layer-split={args.layer_split}", f"--layer-pipeline={args.layer_pipeline}"))
++        if args.layer_memory: command.append(f"--layer-memory={args.layer_memory}")
++        if args.layer_plan: command.append(f"--layer-plan={args.layer_plan}")
+     if args.prefill_expert_cache_mib != "0":
+         command.append(f"--prefill-expert-cache-mib={args.prefill_expert_cache_mib}")
+     with tempfile.TemporaryDirectory(prefix="strata-glm-") as temporary:
+diff --git a/tools/glm_v100_bench.py b/tools/glm_v100_bench.py
+index 27cffec7..9298205b 100644
+--- a/tools/glm_v100_bench.py
++++ b/tools/glm_v100_bench.py
+@@ -76,6 +76,29 @@ def request_diagnostics(log):
+         if hits:
+             row["gpu_expert_hits"], row["expert_entries"] = map(int, hits.groups())
+             row["gpu_expert_hit_fraction"] = int(hits[1]) / int(hits[2]) if int(hits[2]) else None
++        mtp = re.search(r"LAYER_MTP proposed=(\d+) accepted=(\d+) depth=(\d+)", section)
++        if mtp:
++            proposed, accepted, depth = map(int, mtp.groups())
++            row["layer_mtp"] = dict(proposed=proposed, accepted=accepted, rejected=proposed-accepted,
++                                    depth=depth, acceptance_fraction=accepted/proposed if proposed else None)
++        layer_work = []
++        for stage, device, count, wall, draft, detail in re.findall(
++                r"LAYER_WORK stage=(\d+) device=(\d+) decode_rows=(\d+) decode_wall_ms=([\d.]+) "
++                r"draft_wall_ms=([\d.]+)[^\n]*\n(.*?)(?=\nLAYER_WORK |\Z)", section, re.S):
++            item = dict(stage=int(stage), device=int(device), decode_rows=int(count),
++                        decode_wall_ms=float(wall), draft_wall_ms=float(draft))
++            hit = re.search(r"resident expert entries=(\d+)/(\d+)", detail)
++            if hit:
++                item.update(gpu_expert_hits=int(hit[1]), expert_entries=int(hit[2]))
++            layer_work.append(item)
++        if layer_work:
++            row["layer_stages"] = layer_work
++            measured = [item for item in layer_work if "expert_entries" in item]
++            if measured:
++                hits = sum(item["gpu_expert_hits"] for item in measured)
++                entries = sum(item["expert_entries"] for item in measured)
++                row.update(gpu_expert_hits=hits, expert_entries=entries,
++                           gpu_expert_hit_fraction=hits / entries if entries else None)
+         row["gpu_devices"] = []
+         for device, peak, live, tail in re.findall(
+                 r"GPU_DEVICE device=(\d+) peak_allocated_MiB=([\d.]+) live_MiB=([\d.]+)([^\n]*)", section):
+@@ -89,6 +112,15 @@ def request_diagnostics(log):
+     return result
+ 
+ 
++def executable_fingerprint(path):
++    value = 14695981039346656037
++    with pathlib.Path(path).open("rb") as stream:
++        for chunk in iter(lambda: stream.read(131072), b""):
++            for byte in chunk:
++                value = ((value ^ byte) * 1099511628211) & ((1 << 64) - 1)
++    return value
++
++
+ def main():
+     ap = argparse.ArgumentParser(description=__doc__)
+     ap.add_argument("model", type=pathlib.Path)
+@@ -99,8 +131,14 @@ def main():
+     ap.add_argument("--generated-tokens", type=int, default=128)
+     ap.add_argument("--context", type=int, default=131072)
+     ap.add_argument("--threads", type=int, default=17)
++    ap.add_argument("--cpu-affinity", choices=("auto", "numa", "none"), default="auto")
+     ap.add_argument("--gpu-budget-mib", type=int, default=32768)
+     ap.add_argument("--gpu-devices", default="0,1")
++    ap.add_argument("--gpu-layout", choices=("legacy", "layer"), default="legacy")
++    ap.add_argument("--layer-split", default="auto")
++    ap.add_argument("--layer-pipeline", choices=("none", "mtp"), default="none")
++    ap.add_argument("--layer-memory", choices=("interleave", "socket"))
++    ap.add_argument("--layer-plan", type=pathlib.Path)
+     ap.add_argument("--prefill-batch", type=int, default=4096)
+     ap.add_argument("--prefill-expert-cache-mib", default="auto")
+     ap.add_argument("--decode-prefill-cache", action="store_true")
+@@ -110,6 +148,7 @@ def main():
+     ap.add_argument("--decode-cache-adapt", action="store_true")
+     ap.add_argument("--prefill-experts", choices=("mmq", "f16", "f16-batched"), default="mmq")
+     ap.add_argument("--repetitions", type=int, default=3)
++    ap.add_argument("--full-warmups", type=int, default=0, help="full generated-token requests excluded before timed trials")
+     ap.add_argument("--validation-tokens", type=int, default=0, help="save longer responses for behavioral validation")
+     ap.add_argument("--validation-repetitions", type=int, default=3)
+     ap.add_argument("--prefill-text", type=pathlib.Path, help="additional long raw-text prefill workload")
+@@ -131,15 +170,24 @@ def main():
+         if not 0 < args.prefill_tokens <= len(extra_ids) or args.prefill_tokens + 2 > args.context:
+             ap.error("invalid additional prefill length")
+         extra_ids = extra_ids[:args.prefill_tokens]
++    if args.full_warmups < 0: ap.error("full-warmups must be nonnegative")
+     if (args.validation_tokens < 0 or args.validation_tokens == 1 or args.validation_repetitions < 1 or
+             args.validation_tokens + len(ids) > args.context):
+         ap.error("invalid validation length")
+     command = [str(pathlib.Path(args.decoder).resolve()), "--serve", str(args.model.resolve()),
+                str(args.context), "4096", str(args.threads), "0", str(args.prefill_batch), "-1",
+-               str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), "auto", "0", args.gpu_devices,
++               str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), args.cpu_affinity, "0", args.gpu_devices,
+                args.prefill_expert_cache_mib, "1"]
+     command.extend((str(int(args.decode_prefill_cache)), args.decode_cache_mib, str(int(args.decode_graphs)), str(args.decode_cache_window), str(int(args.decode_cache_adapt))))
+     command.append(args.prefill_experts)
++    if args.gpu_layout == "layer":
++        if args.prefill_expert_cache_mib != "0" or args.decode_prefill_cache or args.decode_cache_mib in ("auto", "extend") or args.prefill_experts != "mmq":
++            ap.error("layer benchmark requires fixed decode cache, mmq prefill and no legacy prefill cache")
++        # Same positional padding as serve/server.py; argv[29] starts named options.
++        command.extend(("4k", "", "", "auto", "--gpu-layout=layer",
++                        f"--layer-split={args.layer_split}", f"--layer-pipeline={args.layer_pipeline}"))
++        if args.layer_memory: command.append(f"--layer-memory={args.layer_memory}")
++        if args.layer_plan: command.append(f"--layer-plan={args.layer_plan}")
+     with pathlib.Path(command[0]).open("rb") as binary:
+         decoder_sha256 = hashlib.file_digest(binary, "sha256").hexdigest()
+     sanitizer_path = args.output.with_suffix(".sanitizer.log") if args.compute_sanitizer else None
+@@ -159,8 +207,18 @@ def main():
+     rows = []
+     prefill_rows = []
+     validation = None
+-    result = dict(configuration={k: str(v) if isinstance(v, pathlib.Path) else v for k, v in vars(args).items()},
+-                  command=command, decoder_sha256=decoder_sha256, startup_seconds=None,
++    hardware = {}
++    try:
++        hardware["gpus"] = subprocess.check_output(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], text=True, stderr=subprocess.DEVNULL).strip().splitlines()
++    except (OSError, subprocess.CalledProcessError):
++        hardware["gpus"] = []
++    cpuinfo = pathlib.Path("/proc/cpuinfo")
++    hardware["cpu"] = next((line.split(":", 1)[1].strip() for line in cpuinfo.read_text().splitlines()
++                             if line.startswith("model name")), "") if cpuinfo.exists() else ""
++    hardware["node"] = os.uname().nodename if hasattr(os, "uname") else ""
++    hardware["job_id"] = os.environ.get("SLURM_JOB_ID", "")
++    result = dict(hardware=hardware, configuration={k: str(v) if isinstance(v, pathlib.Path) else v for k, v in vars(args).items()},
++                  command=command, decoder_sha256=decoder_sha256, decoder_fnv64=executable_fingerprint(command[0] if not args.compute_sanitizer else args.decoder), startup_seconds=None,
+                   prompt_sha256=hashlib.sha256(encoded.encode()).hexdigest(), trials=rows,
+                   validation=None, additional_prefill_trials=prefill_rows, complete=False,
+                   instrumented=args.compute_sanitizer,
+@@ -216,11 +274,21 @@ def main():
+             while True:
+                 ready = read()
+                 if ready.startswith("READY "): break
++            visible_gpus = re.findall(r"LAYER_GPU device=(\d+) name=([^\n]+)", log_path.read_text())
++            if visible_gpus:
++                hardware["gpus"] = [""] * (max(int(device) for device, _ in visible_gpus) + 1)
++                for device, name in visible_gpus: hardware["gpus"][int(device)] = name
+             result["prefill_includes_reset"] = "prefill-includes-reset" in ready.split()
+             startup = time.monotonic() - started
+             result["startup_seconds"] = startup
+             save()
+             print(f"READY startup_s={startup:.3f}", flush=True)
++            result["full_warmup_trials"] = []
++            for trial in range(args.full_warmups):
++                row = request(args.generated_tokens, ids)
++                result["full_warmup_trials"].append(row)
++                save()
++                print(f"FULL_WARMUP {trial} decode_tok_s={row['decode_tok_s']:.3f}", flush=True)
+             for trial in range(args.repetitions + 1):
+                 # Populate prefill caches without an extra full decode warmup.
+                 count = args.generated_tokens if trial else (3 if args.decode_graphs else 2)
+diff --git a/tools/test_glm_generate.py b/tools/test_glm_generate.py
+index af683c7a..d0f2fcd3 100644
+--- a/tools/test_glm_generate.py
++++ b/tools/test_glm_generate.py
+@@ -58,6 +58,19 @@ class GenerateTransport(unittest.TestCase):
+         self.assertEqual(len(observed), 1)
+         self.assertFalse(observed[0].exists())
+ 
++    def test_layer_options_preserve_token_protocol(self):
++        def process(command, **kwargs):
++            self.assertIn("--gpu-layout=layer", command)
++            self.assertIn("--layer-split=24", command)
++            self.assertIn("--layer-pipeline=mtp", command)
++            result = mock.MagicMock()
++            result.__enter__.return_value = result
++            result.stdout = io.StringIO("7\n9\n")
++            result.wait.return_value = 0
++            return result
++        self.run_frontend(["hello", "--gpu-layout", "layer", "--layer-split", "24", "--layer-pipeline", "mtp",
++                           "--speculative", "mtp", "--draft-depth", "1"], [1, 2], process)
++
+     def test_overflow_rejected_before_launch(self):
+         launch = mock.Mock()
+         with self.assertRaises(SystemExit) as result:
+diff --git a/tools/test_glm_v100_bench.py b/tools/test_glm_v100_bench.py
+index 2214ce4b..16aba31a 100644
+--- a/tools/test_glm_v100_bench.py
++++ b/tools/test_glm_v100_bench.py
+@@ -45,6 +45,20 @@ resident expert entries=800/1000
+         self.assertEqual(second["gpu_expert_hit_fraction"], .8)
+         self.assertNotIn("free_mib", second["gpu_devices"][0])
+ 
++    def test_layer_work_and_hits_include_both_stages(self):
++        row, = request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=1\n"
++            "LAYER_MTP proposed=5 accepted=3 depth=1\n"
++            "LAYER_WORK stage=0 device=0 decode_rows=7 decode_wall_ms=14 draft_wall_ms=0 scope=host_submission_through_completion\n"
++            "resident expert entries=20/40\n"
++            "LAYER_WORK stage=1 device=1 decode_rows=5 decode_wall_ms=15 draft_wall_ms=3 scope=host_submission_through_completion\n"
++            "resident expert entries=30/60\n")
++        self.assertEqual(row["layer_mtp"]["rejected"], 2)
++        self.assertEqual(row["layer_mtp"]["acceptance_fraction"], .6)
++        self.assertEqual(row["gpu_expert_hits"], 50)
++        self.assertEqual(row["expert_entries"], 100)
++        self.assertEqual(row["layer_stages"][0]["decode_rows"], 7)
++        self.assertEqual(row["layer_stages"][1]["draft_wall_ms"], 3)
++
+     def test_empty_generation_has_no_hit_fraction(self):
+         row, = request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=0\nresident expert entries=0/0\n")
+         self.assertIsNone(row["gpu_expert_hit_fraction"])
+@@ -89,7 +103,7 @@ resident expert entries=800/1000
+ 
+ 
+ class ResidentProgress(unittest.TestCase):
+-    def run_fake(self, module, *, fail=False, cases=None, boundary=False, sanitizer=None, validate_all=False, prefill_batch=None):
++    def run_fake(self, module, *, fail=False, cases=None, boundary=False, sanitizer=None, validate_all=False, prefill_batch=None, extra_args=()):
+         temporary = tempfile.TemporaryDirectory()
+         self.addCleanup(temporary.cleanup)
+         root = pathlib.Path(temporary.name)
+@@ -121,6 +135,7 @@ for line in sys.stdin:
+         argv = ["bench", str(root / "model.gguf"), str(text), "--decoder", str(decoder),
+                 "--prompt-tokens", "4", "--generated-tokens", "2", "--repetitions", "2",
+                 "--validation-tokens", "3", "--threads", "5", "--output", str(output)]
++        argv.extend(extra_args)
+         if prefill_batch is not None:
+             argv.extend(("--prefill-batch", str(prefill_batch)))
+         if cases:
+@@ -168,6 +183,16 @@ sys.exit(97 if MODE == 'failure' else rc)
+         self.assertEqual(result["decoder_sha256"], hashlib.sha256(decoder.read_bytes()).hexdigest())
+         return result
+ 
++    def test_layer_options_and_full_warmups(self):
++        result = self.run_fake(glm_v100_bench, extra_args=(
++            "--gpu-layout", "layer", "--layer-split", "24", "--layer-pipeline", "mtp",
++            "--speculative", "mtp", "--prefill-expert-cache-mib", "0", "--full-warmups", "2"))
++        self.assertTrue(result["complete"])
++        self.assertEqual(len(result["trials"]), 2)
++        self.assertEqual(len(result["full_warmup_trials"]), 2)
++        self.assertEqual(result["command"][25:29], ["4k", "", "", "auto"])
++        self.assertEqual(result["command"][29:], ["--gpu-layout=layer", "--layer-split=24", "--layer-pipeline=mtp"])
++
+     def test_sanitizer_wraps_decoder_and_retains_actual_binary_identity(self):
+         result = self.run_fake(glm_v100_bench, sanitizer="success")
+         self.assertTrue(result["complete"])
+diff --git a/docs/GLM_MULTI_GPU.md b/docs/GLM_MULTI_GPU.md
+new file mode 100644
+index 00000000..994930aa
+--- /dev/null
++++ b/docs/GLM_MULTI_GPU.md
+@@ -0,0 +1,219 @@
++# GLM on multiple GPUs and sockets
++
++The experimental GLM decoder has an opt-in contiguous layer layout. It uses the
++existing Q2 and assembled Q23 GGUF files, tensor loaders, CPU experts and GPU
++kernels. `gpu_layout` defaults to `legacy`; existing configurations, including
++ones with the generic Qwen `layer_split` setting, keep their existing path.
++
++## Configuration
++
++For the native GLM engine in the Python server, add:
++
++```json
++{
++  "gpu_devices": [0, 1],
++  "gpu_layout": "layer",
++  "layer_split": "24",
++  "layer_pipeline": "mtp",
++  "speculative": "mtp",
++  "draft_depth": 1,
++  "threads": 32,
++  "prefill_batch": 256,
++  "prefill_experts": "mmq",
++  "prefill_expert_cache_mib": 0,
++  "decode_cache_mib": 4096,
++  "decode_cache_adapt": false,
++  "lock_weights": true
++}
++```
++
++These are additional fields in an existing GLM config containing `exe`, `model`
++and `context`. Cache budgets are MiB **per stage**. `threads` is the total worker
++budget; each stage also has a submission thread that participates in CPU work.
++The coordinator and submission cores are reserved before distributing workers.
++A small CPU allowance or insufficient worker budget is rejected.
++
++`layer_split` is a comma-separated list, or a JSON list, of first-layer indices
++on later devices. `24` means layers `[0,24)` on GPU 0 and `[24,45)` on GPU 1.
++Device order is preserved. Without calibration, `auto` supplies balanced layer
++counts as an initial placement. To use a measured placement, collect at least
++two comparable explicit-cut records with `tools/glm_v100_bench.py`, then run:
++
++```sh
++python3 tools/glm_layer_tune.py cut24.json cut26.json --model "$MODEL" --output layer-plan.json
++```
++
++Set `layer_split=auto` and `layer_plan=layer-plan.json`, or pass
++`--layer-split=auto --layer-plan=layer-plan.json`. Selection maximizes measured
++single-stream decode throughput, including tail draft work and rejection,
++among placements that actually ran. The engine validates the model filename and
++size, decoder identity, CPU/GPU types, device order, settings and environment
++before applying the cut, then performs normal stage memory preflight. Calibration
++records must share a binary, node, allocation, prompt, environment, cache policy
++and timing protocol; incomplete, instrumented or unstable records are rejected.
++The plan includes SHA-256 provenance for its input records and decoder. Retune
++after changing hardware or the build. Placement screening is separate from
++coding-quality qualification and does not prove optimality for every workload.
++
++`layer_pipeline=none` runs the stages serially and accepts 2–16 GPUs.
++`layer_pipeline=mtp` overlaps a single unconfirmed head input with confirmed
++work on the tail. It currently requires exactly two GPUs and draft depth one.
++`speculative=mtp, layer_pipeline=none` computes the same draft sequence without
++issuing speculative head work, providing a serial reference.
++
++The named CLI options are `--gpu-layout=layer`, `--layer-split=24` and
++`--layer-pipeline=mtp`. The server appends them after all 27 legacy model and
++settings fields. GEN/STOP/QUIT, PP, T and DONE retain their existing protocol.
++The generation wrapper and V100 benchmark accept the same options.
++
++Use [the layer recipe](../tools/glm_v100_layer.env) in a clean environment.
++The legacy V100 recipe selects direct weight registration and GPU helpers;
++those settings cannot be combined with layer ownership. Native EXL3, external
++expert overlays, route bias, tensor/expert GPU splitting, mutable RAM tiers,
++requantized dense weights and automatic cache budgets are rejected. Adaptation
++within a fixed budget is opt-in, as described below. An assembled Q23 file uses its original mapped expert
++bytes; it is not copied into the legacy two-node expert arenas.
++
++## Ownership and scheduling
++
++A single shared `ModelArtifact` owns all mappings and tensor metadata. Stages
++keep global layer indices and allocate target state and dense weights only for
++their range. The first stage reads embeddings. The tail owns output norm,
++output projection, captured target hidden states and the draft block. The
++shared C11 rules in `glm_layer.h` validate cuts and tensor ownership.
++
++Each GPU has one persistent submission thread and a CPU pool with an explicit
++physical-core list. Linux placement respects the original allowed cpuset,
++finds each GPU's PCI NUMA node, and prefers cores from that node's **socket**.
++It does not assume that two sockets imply two NUMA domains. Pools have disjoint
++cores and the diagnostic hook reports all live pools.
++
++Locking materializes one byte-identical private COW mapping before `mlock`,
++including draft tensors when MTP is enabled. The existing lock-limit preflight
++runs before touching pages; a separate host budget reserves 4 GiB plus transport buffers and 512 MiB per stage. During the
++single materialization pass, Linux requests interleaving across allowed memory
++nodes and logs whether the policy applied. Transport stays pinned and portable
++across devices. NUMA policy failures are visible in the log. The optional
++`layer_memory=socket` / `--layer-memory=socket` policy materializes each stage's
++owned tensors on the allowed memory nodes of its CPU socket. It requires locked
++weights and still uses the single shared mapping. `interleave` remains the
++default; measure both policies on the host before choosing one.
++
++The tail loads draft experts before admitting its fixed target cache. New layer
++mode uses GPU draft experts by default; `mtp_experts=cpu` in the server config
++or `--mtp-experts=cpu` selects the CPU draft reference. The draft changes only
++proposals; confirmed target tokens still select every emitted output. The
++legacy restriction on combining resident draft experts and a decode cache is
++unchanged. Original IQ tensors use the native expert kernels. `STRATA_GLM_CANON=1`
++currently permits canonical GPU cache admission only for Q2_K/Q3_K expert pairs;
++it leaves IQ experts on the CPU and can therefore empty the Q2 model's cache.
++
++A boundary carries four FP32 residual streams: 65,536 bytes per GLM token.
++Two pinned slots have occupancy and generation checks. A stage completes its
++stream before publishing its slot through a future; the consumer releases it
++only after its own copy and execution complete. This conservative host fence
++requires no peer access or cross-device event support. Prefill chunks advance through stages in diagonal waves: each stage preserves
++token order while independent stages process different chunks. A wave drains
++all submitted work before publishing or reusing transport slots.
++
++For MTP, the head runs the confirmed input and checkpoints recurrent KDA,
++convolution and open indexer state. The tail confirms that input while the head
++runs the proposed next token in the other slot. On mismatch, the scheduler
++restores the checkpoint and replays the actual token. The tail receives only
++confirmed tokens, and its next draft may overlap head replay. Count/EOS exits
++drain the head, restore it and discard the unused future residual. Cancellation
++and failures drain outstanding futures before restoration; serving resets every
++stage before accepting another request. Append-only latent and completed pool
++rows are masked by committed position and overwritten during replay.
++
++With a positive fixed cache budget, `decode_cache_adapt=true` enables confirmed
++windows of `decode_cache_window` consumed inputs. Both stages drain to the same
++frontier before residency changes. The head checkpoint includes route counters;
++rejected and discarded future work does not affect admission. Each stage blends
++one quarter of its previous route score with 32 times the committed window's
++counts, then deterministically selects experts within its admitted byte budget.
++It retains unchanged experts, compacts their views inside the slab with a
++bounded device scratch copy, transfers new experts, and invalidates graphs and
++lookup views before resuming. A policy boundary
++replays even a matching head proposal under the new residency policy. The serial
++reference uses the same boundaries and policy. DONE timing includes adaptation.
++
++The new layer path disables lossy prefill. Its reference must use the same
++prefill panels and arithmetic switches. This setting applies only to the new
++layout; the legacy prefill policy is unchanged.
++
++## Checks and measurements
++
++CPU-only tests:
++
++```sh
++cmake --build build --target glm_layer_test glm_layer_pipeline_test
++ctest --test-dir build -R '^glm_(layer|layer_pipeline)_test$' --output-on-failure
++python3 -m unittest serve.test_glm
++```
++
++The pipeline test uses the production scheduler with a recurrent fake backend.
++It checks acceptance, forced misses, committed cache-policy changes, open
++four-token pools, append-only ring positions, cancellation, failure and slot reuse around 3/4, 255/256 and
++8191/8192. This is scheduler validation, not GPU arithmetic validation.
++
++Full-model serial parity, requiring space for an additional full-layer GPU
++reference as well as the two stages:
++
++```sh
++source tools/glm_v100_layer.env
++strata-glm-decode "$MODEL" 1,2,3,4,5,6,7,8 16 4096 32 \
++  --gpu-layout=layer --gpu-devices=0,1 --layer-split=24 \
++  --context=8192 --prefill-batch=8 --gpu-budget-mib=32768 \
++  --lock-weights --check-layer-parity
++```
++
++The check compares every prefill panel and eight decode steps with an unsplit
++reference, including owned recurrent, convolution, latent and indexer buffers.
++A pass requires bitwise-equal logits and state. `--check-layer-stages=3` or
++`--check-layer-stages=4` emulates those logical ranges on the selected physical
++GPUs for this diagnostic; `--gpu-devices=0` permits a single-GPU check. Logical
++stages sharing a device use one serialized submission owner. Production device
++lists still reject duplicates, and emulation is not a throughput result.
++
++`--check-layer-pipeline` with `--speculative=mtp --draft-depth=1` compares serial
++and overlapped execution, emitted token IDs and committed state. Add
++`--layer-force-miss-every=1` to perturb every proposal and exercise rejection.
++With a fixed cache budget and `--decode-cache-adapt --decode-cache-window=8`, it
++also requires identical cache fingerprints at every confirmed boundary and
++identical committed route statistics. This diagnostic copies every resident
++expert back and checks its payload byte for byte against the GGUF after initial
++admission and every compaction; those checks are excluded from timing runs. Append-only future cache rows are outside
++the committed state comparison; open pool rows and recurrent state are included.
++
++
++No throughput target follows from compiling this code or passing scheduler
++tests. Qualify Q2 and Q23 separately with a same-day serial control, two full
++512-token warmups, three 512-token timed runs, three validation runs, coding
++quality and strict-parser checks, and 8K/16K recall. Record RAM speed if known,
++GPU and CPU models, source/binary hashes, environment and cache budgets.
++Do not count whole-device utilization or aggregate conversation throughput as
++single-stream overlap. CUDA sm_70 execution and Compute Sanitizer are separate
++from local CUDA sm_80 or HIP compile-only checks.
++
++## Maya source study
++
++Reference: [project-maya at 4c9f1b1b](https://github.com/mw00/project-maya/tree/4c9f1b1bcb4b40d202fd6c4ed41e5608c78f0f0e).
++Its [MIT notice](licenses/project-maya.txt) is retained. The implementation here
++is adapted to Strata's existing GGUF decoder; no Maya model-pack conversion is
++required.
++
++| Source in that revision | Idea used or considered here |
++| --- | --- |
++| `include/strata/core/glm_model.hpp`, `src/core/glm_model.cu`: `load_pack_split` | Ordered contiguous ranges, global layer IDs, first-stage embeddings and tail head/MTP; stage memory feasibility before expert residency. |
++| `src/core/glm_model.cu`: placement planner | Tail draft cost belongs in the two-stage critical path. Count-balanced `auto` is the fallback; the measured-plan tool selects among completed full-model placements. |
++| `src/core/glm_fast_path.cu`: fast speculative path | One head input ahead, head checkpoint/rollback, confirmed-only tail, two alternating boundary slots, draft overlap with replay, drain on exit. |
++| `src/core/glm_fast_path.cu`: CPU placement and pinned allocation | Disjoint physical cores, GPU PCI locality, allowed cpus/mems, interleaved model memory; preserve transport lifetime while CPU experts block. |
++| `src/core/glm_fast_path.cu`: CPU/PCIe calibration | Calibration must rotate through experts beyond LLC. A hot single-expert microbenchmark cannot select the full-model transfer split. Not yet ported. |
++| `src/core/glm_multi.cu` | Multiple-conversation pipelining measures aggregate throughput. It is not the single-stream objective of this port. |
++| `src/core/glm_window.cu` | DFlash2 and batched speculation are separate algorithms, outside this initial one-ahead port. |
++
++Maya's published dual-V100 results use different quantizations, memory budgets
++and prompts. They motivate investigating this architecture; they are not
++measurements of this implementation. Open upstream PRs, including alternative
++batched MTP schedules, are not treated as landed behavior in the pinned source.
+diff --git a/docs/licenses/project-maya.txt b/docs/licenses/project-maya.txt
+new file mode 100644
+index 00000000..8bca634a
+--- /dev/null
++++ b/docs/licenses/project-maya.txt
+@@ -0,0 +1,25 @@
++project-maya
++https://github.com/mw00/project-maya
++Reference revision: 4c9f1b1bcb4b40d202fd6c4ed41e5608c78f0f0e
++
++MIT License
++
++Copyright (c) 2026 Niko1221 and the Strata contributors
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/include/strata/host/glm_layer.h b/include/strata/host/glm_layer.h
+new file mode 100644
+index 00000000..5012d64a
+--- /dev/null
++++ b/include/strata/host/glm_layer.h
+@@ -0,0 +1,19 @@
++#ifndef STRATA_HOST_GLM_LAYER_H
++#define STRATA_HOST_GLM_LAYER_H
++#include <stddef.h>
++#ifdef __cplusplus
++extern "C" {
++#endif
++#define STRATA_GLM_MAX_STAGES 16
++/* Cuts are the first global layer on each later device. Empty stages, trailing
++   commas, signs, whitespace and duplicate cuts are errors. auto is a balanced
++   initial placement, not a claim of a measured optimum. */
++int strata_glm_layer_bounds(const char *split, int layers, int stages,
++                            int bounds[STRATA_GLM_MAX_STAGES + 1]);
++/* Embedding belongs to the first stage, head and draft to the tail. */
++int strata_glm_layer_tensor_owned(const char *name, int first, int last,
++                                 int layers, int include_draft);
++#ifdef __cplusplus
++}
++#endif
++#endif
+diff --git a/include/strata/spec/layer_pipeline.hpp b/include/strata/spec/layer_pipeline.hpp
+new file mode 100644
+index 00000000..81b1ca82
+--- /dev/null
++++ b/include/strata/spec/layer_pipeline.hpp
+@@ -0,0 +1,97 @@
++#pragma once
++#include <cstdint>
++#include <future>
++#include <exception>
++#include <vector>
++#include <utility>
++
++namespace strata::spec {
++struct LayerPipelineStats { uint64_t proposed = 0, accepted = 0; };
++// One unconfirmed input can advance the head. The tail sees confirmed inputs
++// only. A backend owns two generation-tagged transport slots and recurrent
++// checkpoints; every exit drains outstanding work before restoring the head.
++// emit returns true on count/EOS; it may throw on cancellation.
++template<class Backend, class Emit>
++LayerPipelineStats run_layer_pipeline(Backend &b, int current, Emit emit) {
++    LayerPipelineStats stats;
++    uint64_t generation = 1;
++    int slot = 0, draft = -1;
++    auto first = b.start_head(current, slot, generation);
++    try { draft = b.draft(current); }
++    catch (...) { if (first.valid()) first.wait(); throw; }
++    first.get();
++    for (;;) {
++        b.save_head();
++        const int next_slot = slot ^ 1;
++        const uint64_t next_generation = generation + 1;
++        auto ahead = b.start_head(draft, next_slot, next_generation);
++        try {
++            const int actual = b.confirm(current, slot, generation);
++            ++stats.proposed; stats.accepted += actual == draft;
++            if (emit(actual)) {
++                ahead.get();
++                b.restore_head();
++                b.release(next_slot, next_generation);
++                return stats;
++            }
++            bool boundary=false;
++            if constexpr(requires { b.window_due(stats.proposed); }) boundary=b.window_due(stats.proposed);
++            if(boundary) {
++                // Bring both stages to the same confirmed frontier before a
++                // policy change, even if this proposal happened to match.
++                ahead.get();b.restore_head();b.release(next_slot,next_generation);
++                if constexpr(requires { b.rebalance(); }) b.rebalance();
++                ahead=b.start_head(actual,next_slot,next_generation);
++            }
++            int next_draft = -1;
++            // The confirmed tail hidden is ready even if the head is still
++            // computing. Submit the next draft before joining that head.
++            auto drafting = b.start_draft(actual, next_draft);
++            try {
++                ahead.get();
++                if (!boundary && actual != draft) {
++                    b.restore_head();
++                    b.release(next_slot, next_generation);
++                    b.start_head(actual, next_slot, next_generation).get();
++                }
++            } catch (...) { if (drafting.valid()) drafting.wait(); throw; }
++            drafting.get();
++            current = actual; draft = next_draft;
++            slot = next_slot; generation = next_generation;
++        } catch (...) {
++            if (ahead.valid()) ahead.wait();
++            b.restore_head();
++            throw;
++        }
++    }
++}
++// Chunks advance in waves. A physical device owns one ordered queue; the
++// diagonal gives independent stages concurrent work without reordering a
++// layer's tokens. complete() publishes/recycles slots only after all jobs in
++// the wave have drained, including on a failed producer or consumer.
++template<class Backend>
++void run_layer_prefill(Backend &b, size_t panels, size_t stages) {
++    if (!panels || !stages) return;
++    struct Job { size_t stage, panel; std::future<void> future; };
++    for(size_t wave=0;wave<panels+stages-1;++wave) {
++        std::vector<Job> jobs;
++        jobs.reserve(stages);
++        try {
++            for(size_t stage=0;stage<stages;++stage) {
++                if(wave<stage || wave-stage>=panels) continue;
++                const size_t panel=wave-stage;
++                jobs.push_back({stage,panel,b.start(stage,panel)});
++            }
++        } catch (...) {
++            for(auto &job:jobs)if(job.future.valid())job.future.wait();
++            throw;
++        }
++        std::exception_ptr error;
++        for(auto &job:jobs) {
++            try {job.future.get();}catch(...){if(!error)error=std::current_exception();}
++        }
++        if(error)std::rethrow_exception(error);
++        for(auto &job:jobs)b.complete(job.stage,job.panel);
++    }
++}
++} // namespace strata::spec
+diff --git a/src/host/glm_layer.c b/src/host/glm_layer.c
+new file mode 100644
+index 00000000..74cdbcb6
+--- /dev/null
++++ b/src/host/glm_layer.c
+@@ -0,0 +1,41 @@
++#include "strata/host/glm_layer.h"
++#include "strata/host/glm_names.h"
++#include <limits.h>
++#include <string.h>
++
++int strata_glm_layer_bounds(const char *split, int layers, int stages, int out[STRATA_GLM_MAX_STAGES + 1]) {
++    int tmp[STRATA_GLM_MAX_STAGES + 1], i;
++    const char *p = split;
++    if (!split || !out || layers < 1 || stages < 1 || stages > STRATA_GLM_MAX_STAGES || stages > layers) return -1;
++    tmp[0] = 0;
++    tmp[stages] = layers;
++    if (!strcmp(split, "auto")) {
++        for (i = 1; i < stages; ++i) tmp[i] = (int)((long long)layers * i / stages);
++    } else {
++        for (i = 1; i < stages; ++i) {
++            int n = 0;
++            if (*p < '0' || *p > '9') return -1;
++            do {
++                if (n > (INT_MAX - (*p - '0')) / 10) return -1;
++                n = n * 10 + (*p++ - '0');
++            } while (*p >= '0' && *p <= '9');
++            if (n <= tmp[i - 1] || n >= layers) return -1;
++            tmp[i] = n;
++            if (i < stages - 1 && *p++ != ',') return -1;
++        }
++        if (*p) return -1;
++    }
++    memcpy(out, tmp, (size_t)(stages + 1) * sizeof(*out));
++    return 0;
++}
++int strata_glm_layer_tensor_owned(const char *name, int first, int last, int layers, int include_draft) {
++    int layer = 0, parsed;
++    const char *suffix = NULL;
++    if (!name || first < 0 || first >= last || last > layers) return 0;
++    parsed = strata_parse_blk(name, &layer, &suffix);
++    if (parsed < 0) return 0;
++    if (parsed) return (layer >= first && layer < last) ||
++        (include_draft && last == layers && layer == layers);
++    if (!strcmp(name, "token_embd.weight")) return first == 0;
++    return last == layers;
++}
+diff --git a/src/kernels/cpu/layer_pool_test.cpp b/src/kernels/cpu/layer_pool_test.cpp
+new file mode 100644
+index 00000000..3ab1f08e
+--- /dev/null
++++ b/src/kernels/cpu/layer_pool_test.cpp
+@@ -0,0 +1,42 @@
++#include "strata/kernels/cpu/pool.hpp"
++#include "strata/core/progress.hpp"
++#include <algorithm>
++#include <array>
++#include <future>
++#include <iostream>
++#include <string>
++#include <vector>
++using namespace strata::kernels::cpu;
++int main() { try {
++    auto cores=physical_cores(false);
++    if(cores.size()<4)return 77;
++    CpuTopology a,b;
++    a.worker_cores={cores[0],cores[1]};b.worker_cores={cores[2],cores[3]};
++    ExpertPool first(2,true,true,PoolAffinity::All,0,&a);
++    {
++        ExpertPool second(2,true,true,PoolAffinity::All,0,&b);
++        auto run=[](ExpertPool &pool,int salt) {
++            constexpr int nt=4,k=8,h=256;
++            std::vector<float> source(nt*k*h),weights(nt*k),actual(nt*h),expected(nt*h);
++            for(size_t i=0;i<source.size();++i)source[i]=float(int((i+salt)%37)-18)*.125f;
++            for(size_t i=0;i<weights.size();++i)weights[i]=float((i+salt)%7)*.0625f;
++            for(int t=0;t<nt;++t)for(int r=0;r<h;++r)for(int e=0;e<k;++e)
++                expected[t*h+r]+=weights[t*k+e]*source[(t*k+e)*h+r];
++            for(int n=0;n<100;++n) {
++                pool.reduce_routed(source.data(),weights.data(),actual.data(),nt,k,h);
++                if(actual!=expected)throw std::runtime_error("concurrent pool reduction differs");
++            }
++        };
++        auto one=std::async(std::launch::async,[&]{run(first,1);});
++        auto two=std::async(std::launch::async,[&]{run(second,3);});
++        one.get();two.get();
++        std::FILE *file=std::tmpfile();if(!file)throw std::runtime_error("tmpfile failed");
++        auto diag=strata::core::diag_pool_fn().load();if(!diag)throw std::runtime_error("missing diagnostics");
++        diag(file);std::rewind(file);
++        char line[1024];int count=0;
++        while(std::fgets(line,sizeof(line),file))if(std::string(line).find("expert pool:")!=std::string::npos)++count;
++        std::fclose(file);if(count!=2)throw std::runtime_error("diagnostics omit a live pool");
++    }
++    first.reduce_routed(std::array<float,1>{2}.data(),std::array<float,1>{3}.data(),std::array<float,1>{0}.data(),1,1,1);
++    std::cout<<"layer pools: concurrent reductions and diagnostics passed\n";
++} catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;} }
+diff --git a/src/kernels/glm_greedy_pick_test.cpp b/src/kernels/glm_greedy_pick_test.cpp
+new file mode 100644
+index 00000000..09fc0dce
+--- /dev/null
++++ b/src/kernels/glm_greedy_pick_test.cpp
+@@ -0,0 +1,129 @@
++// Compact greedy readback: CPU tie/finite semantics, bounds, scratch reuse and graph replay.
++#include "strata/kernels/glm.hpp"
++#include <cuda_runtime.h>
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <cstring>
++#include <iostream>
++#include <limits>
++#include <random>
++#include <stdexcept>
++#include <vector>
++namespace k = strata::kernels;
++static void check(cudaError_t status) {
++    if (status != cudaSuccess) throw std::runtime_error(cudaGetErrorString(status));
++}
++struct Buffer {
++    void *p = nullptr;
++    explicit Buffer(size_t bytes) { check(cudaMalloc(&p, bytes)); }
++    ~Buffer() { const auto status = cudaFree(p); (void)status; }
++    Buffer(const Buffer &) = delete;
++    Buffer &operator=(const Buffer &) = delete;
++};
++int main() {
++    cudaStream_t stream = nullptr;
++    cudaGraph_t graph = nullptr;
++    cudaGraphExec_t executable = nullptr;
++    try {
++        check(cudaStreamCreate(&stream));
++        std::mt19937 rng(2718);
++        int cases = 0, graph_replays = 0;
++        constexpr int32_t canary = 0x12345678;
++        for (int n : {1,31,32,33,255,256,257,4095,4096,4097,8193,154880,154881}) {
++            const auto scratch_bytes = k::glm_greedy_pick_scratch_bytes(n);
++            Buffer input((size_t(n) + 8) * sizeof(float));
++            Buffer scratch(scratch_bytes + 64);
++            Buffer output(6 * sizeof(int32_t));
++            auto *logits = static_cast<float *>(input.p) + 4;
++            auto *work = static_cast<char *>(scratch.p) + 32;
++            auto *result = reinterpret_cast<k::GlmGreedyPick *>(static_cast<int32_t *>(output.p) + 2);
++            auto compare = [&](const std::vector<float> &values) {
++                int32_t picked[6];
++                check(cudaMemcpy(picked, output.p, sizeof(picked), cudaMemcpyDeviceToHost));
++                const bool bad = std::any_of(values.begin(), values.end(), [](float x) { return !std::isfinite(x); });
++                if (picked[3] != int(bad)) throw std::runtime_error("nonfinite flag mismatch");
++                if (!bad && picked[2] != std::max_element(values.begin(), values.end()) - values.begin())
++                    throw std::runtime_error("greedy token mismatch");
++                for (int i : {0,1,4,5}) if (picked[i] != canary) throw std::runtime_error("result guard overwritten");
++                std::vector<unsigned char> bytes(scratch_bytes + 64);
++                check(cudaMemcpy(bytes.data(), scratch.p, bytes.size(), cudaMemcpyDeviceToHost));
++                for (size_t i = 0; i < 32; ++i)
++                    if (bytes[i] != 0xa5 || bytes[scratch_bytes + 32 + i] != 0xa5)
++                        throw std::runtime_error("scratch guard overwritten");
++                std::vector<float> roundtrip(size_t(n) + 8);
++                check(cudaMemcpy(roundtrip.data(), input.p, roundtrip.size() * sizeof(float), cudaMemcpyDeviceToHost));
++                if (std::memcmp(roundtrip.data() + 4, values.data(), size_t(n) * sizeof(float)))
++                    throw std::runtime_error("input modified");
++                for (int i = 0; i < 4; ++i)
++                    if (roundtrip[i] != 1234.5f || roundtrip[size_t(n) + 4 + i] != 1234.5f)
++                        throw std::runtime_error("input guard overwritten");
++            };
++            auto upload = [&](const std::vector<float> &values) {
++                std::vector<float> guarded(size_t(n) + 8, 1234.5f);
++                std::copy(values.begin(), values.end(), guarded.begin() + 4);
++                check(cudaMemcpy(input.p, guarded.data(), guarded.size() * sizeof(float), cudaMemcpyHostToDevice));
++                int32_t guards[6] = {canary,canary,canary,canary,canary,canary};
++                check(cudaMemcpy(output.p, guards, sizeof(guards), cudaMemcpyHostToDevice));
++                check(cudaMemset(scratch.p, 0xa5, scratch_bytes + 64));
++            };
++            for (int pattern = 0; pattern < 12; ++pattern) {
++                std::vector<float> values(n);
++                for (auto &v : values) v = float(int(rng() % 257) - 128);
++                if (pattern == 1) std::fill(values.begin(), values.end(), -42.f);
++                if (pattern == 2) { std::fill(values.begin(), values.end(), -0.f); values.back() = 0.f; }
++                if (pattern == 3) { values[0] = std::numeric_limits<float>::max(); values.back() = values[0]; }
++                if (pattern == 4) { std::fill(values.begin(), values.end(), -std::numeric_limits<float>::max()); values.back() = -1.f; }
++                if (pattern == 5) values[n / 2] = std::numeric_limits<float>::quiet_NaN();
++                if (pattern == 6) values.back() = std::numeric_limits<float>::infinity();
++                if (pattern == 7) values[0] = -std::numeric_limits<float>::infinity();
++                if (pattern == 8) std::fill(values.begin(), values.end(), std::numeric_limits<float>::quiet_NaN());
++                if (pattern == 9) { std::fill(values.begin(), values.end(), std::numeric_limits<float>::denorm_min()); values.back() = 3.f * std::numeric_limits<float>::denorm_min(); }
++                if (pattern == 10) { std::fill(values.begin(), values.end(), -3.f * std::numeric_limits<float>::denorm_min()); values.back() = -std::numeric_limits<float>::denorm_min(); }
++                if (pattern == 11) for (auto &value : values) {
++                    uint32_t bits = rng();
++                    if ((bits & 0x7f800000u) == 0x7f800000u) bits ^= 0x00800000u;
++                    std::memcpy(&value, &bits, sizeof(value));
++                }
++                upload(values);
++                k::glm_greedy_pick(logits,n,work,result,stream);
++                check(cudaStreamSynchronize(stream));
++                compare(values);
++                ++cases;
++            }
++            check(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
++            k::glm_greedy_pick(logits,n,work,result,stream);
++            check(cudaStreamEndCapture(stream,&graph));
++            check(cudaGraphInstantiate(&executable,graph,nullptr,nullptr,0));
++            for (int repeat = 0; repeat < 3; ++repeat) {
++                std::vector<float> values(n,-1.f);
++                values[(size_t(repeat) * 4096) % n] = 7.f;
++                upload(values);
++                check(cudaGraphLaunch(executable,stream));
++                check(cudaStreamSynchronize(stream));
++                compare(values);
++                ++graph_replays;
++            }
++            check(cudaGraphExecDestroy(executable)); executable = nullptr;
++            check(cudaGraphDestroy(graph)); graph = nullptr;
++        }
++        for (int n : {0,-1}) {
++            bool rejected = false;
++            try { (void)k::glm_greedy_pick_scratch_bytes(n); } catch (const std::invalid_argument &) { rejected = true; }
++            if (!rejected) throw std::runtime_error("invalid vocabulary accepted");
++        }
++        bool rejected = false;
++        try { k::glm_greedy_pick(nullptr,1,nullptr,nullptr,stream); } catch (const std::invalid_argument &) { rejected = true; }
++        if (!rejected) throw std::runtime_error("null buffers accepted");
++        check(cudaStreamDestroy(stream)); stream = nullptr;
++        std::cout << "PASS greedy_pick cases=" << cases << " graph_replays=" << graph_replays
++                  << " tie_finite_guards_scratch_reuse=1\n";
++        return 0;
++    } catch (const std::exception &e) {
++        if (executable) { const auto status = cudaGraphExecDestroy(executable); (void)status; }
++        if (graph) { const auto status = cudaGraphDestroy(graph); (void)status; }
++        if (stream) { const auto status = cudaStreamDestroy(stream); (void)status; }
++        std::cerr << "FAIL " << e.what() << '\n';
++        return 1;
++    }
++}
+diff --git a/src/program/glm_layer_decode.inc b/src/program/glm_layer_decode.inc
+new file mode 100644
+index 00000000..78deb175
+--- /dev/null
++++ b/src/program/glm_layer_decode.inc
+@@ -0,0 +1,773 @@
++namespace {
++// Contiguous GLM stages using the existing GGUF arithmetic. The scheduling idea
++// follows project-maya (MIT), pinned and credited in docs/GLM_MULTI_GPU.md.
++// No quantization or model-pack conversion is performed here.
++struct GlmLayerOptions {
++    std::string devices = "0,1", split = "auto", pipeline = "none", memory = "interleave", plan, executable;
++    int context = 4096, dense = 4096, threads = 6, width = 8, steps = 1, repeats = 1;
++    int depth = 1, cache_window = 256, force_miss = 0, emulate = 0;
++    size_t gpu_budget = 12288 * MiB, cache = 0;
++    bool mtp = false, draft_cpu = false, lock = false, graphs = false, pin = true, check = false, check_pipeline = false, adapt = false;
++    std::string prefill_dump;
++    std::vector<int> stops;
++};
++
++static std::string layer_measured_split(const GlmLayerOptions &options,const std::string &path,
++                                        const std::vector<int> &devices) {
++    if(options.plan.empty())return options.split;
++    if(options.split!="auto")throw std::invalid_argument("GLM: layer-plan requires layer-split=auto");
++    const auto plan=strata::artifact::read_json(options.plan);
++    if(plan.at("schema").string()!="strata.glm.layer-plan.v1" ||
++       plan.at("model_filename").string()!=std::filesystem::path(path).filename().string() ||
++       plan.at("model_bytes").integer()!=std::filesystem::file_size(path))
++        throw std::invalid_argument("GLM: measured layer plan belongs to a different model");
++    std::string executable=options.executable;
++#ifdef __linux__
++    executable="/proc/self/exe";
++#endif
++    std::ifstream binary(executable,std::ios::binary);
++    if(!binary)throw std::runtime_error("GLM: cannot read decoder identity for measured plan");
++    uint64_t fingerprint=14695981039346656037ULL;std::array<char,131072> buffer{};
++    while(binary){binary.read(buffer.data(),buffer.size());for(std::streamsize i=0;i<binary.gcount();++i){fingerprint^=(unsigned char)buffer[i];fingerprint*=1099511628211ULL;}}
++    if(!binary.eof() || fingerprint!=plan.at("decoder_fnv64").integer())throw std::invalid_argument("GLM: measured layer plan belongs to a different decoder build");
++    const auto &cfg=plan.at("configuration");
++    auto number=[&](const char *name,uint64_t expected){if(cfg.at(name).integer()!=expected)throw std::invalid_argument(std::string("GLM: layer plan setting differs: ")+name);};
++    auto text=[&](const char *name,const std::string &expected){if(cfg.at(name).string()!=expected)throw std::invalid_argument(std::string("GLM: layer plan setting differs: ")+name);};
++    number("context",options.context);number("threads",options.threads);number("gpu_budget_mib",options.gpu_budget/MiB);
++    number("decode_cache_window",options.cache_window);number("draft_depth",options.depth);number("prefill_batch",options.width?options.width:256);
++    text("gpu_devices",options.devices);text("decode_cache_mib",std::to_string(options.cache/MiB));
++    text("speculative",options.mtp?"mtp":"none");text("layer_pipeline",options.pipeline);text("layer_memory",options.memory);
++    if(cfg.at("decode_cache_adapt").flag()!=options.adapt || cfg.at("decode_graphs").flag()!=options.graphs || cfg.at("pin_cpu").flag()!=options.pin)
++        throw std::invalid_argument("GLM: layer plan cache or graph policy differs");
++    const auto &environment=plan.at("environment");
++    for(const auto &[name,value]:environment.object){
++        const char *actual=std::getenv(name.c_str());
++        if(value.kind==strata::artifact::Json::Null ? actual!=nullptr : (!actual || value.string()!=actual))
++            throw std::invalid_argument("GLM: layer plan environment differs: "+name);
++    }
++#ifdef __linux__
++    for(char **entry=::environ;entry && *entry;++entry){
++        const std::string item=*entry;const auto at=item.find('=');const std::string name=item.substr(0,at);
++        const bool relevant=name.starts_with("STRATA_GLM_") || name.starts_with("STRATA_NATIVE_") ||
++                            name.starts_with("STRATA_POOL_") || name=="STRATA_OLD_IQ_MMVQ" || name=="STRATA_GROUPED_V1";
++        if(relevant && !environment.object.count(name))throw std::invalid_argument("GLM: layer plan has no matching environment setting: "+name);
++    }
++#endif
++    const auto &hardware=plan.at("hardware");const auto &names=hardware.at("gpus").array;
++    for(int device:devices){cudaDeviceProp props{};check(cudaGetDeviceProperties(&props,device));
++        if((size_t)device>=names.size() || names[device].string()!=props.name)throw std::invalid_argument("GLM: layer plan GPU hardware differs");}
++#ifdef __linux__
++    std::ifstream cpuinfo("/proc/cpuinfo");std::string line,cpu;
++    while(std::getline(cpuinfo,line))if(line.starts_with("model name")){
++        cpu=line.substr(line.find(':')+1);cpu.erase(0,cpu.find_first_not_of(" \t"));break;
++    }
++    if(hardware.at("cpu").string()!=cpu)throw std::invalid_argument("GLM: layer plan CPU hardware differs");
++#endif
++    std::cerr<<"LAYER_PLAN source="<<options.plan<<" selected="<<plan.at("layer_split").string()<<" objective=measured_single_stream_decode\n";
++    return plan.at("layer_split").string();
++}
++
++// Keep the allocation's physical cores: in particular, do not equate NUMA node
++// with socket on hosts with two NUMA domains per socket. Socket is used only as
++// a preference; physical_cores already respects the caller's allowed cpuset.
++static std::vector<cpu::CpuTopology> layer_cpu_placement(const std::vector<int> &devices, int threads) {
++    const int stages=(int)devices.size();
++    auto cores = cpu::physical_cores(false);
++    if (cores.size() < (size_t)(2 * stages + 1))
++        throw std::invalid_argument("GLM layer layout needs a coordinator, one submitter and one worker core per stage");
++    std::vector<cpu::CpuTopology> result(stages);
++    cores.erase(cores.begin()); // coordinator
++    const int budget = std::min(threads, (int)cores.size() - stages);
++    if (budget < stages) throw std::invalid_argument("GLM layer threads must provide at least one worker per stage");
++    auto package=[](int core) {
++        int id=-1;
++#ifdef __linux__
++        std::ifstream file("/sys/devices/system/cpu/cpu"+std::to_string(core)+"/topology/physical_package_id");file>>id;
++#else
++        (void)core;
++#endif
++        return id;
++    };
++    std::vector<int> preferred(stages,-1);
++#ifdef __linux__
++    for(int i=0;i<stages;++i) {
++        char pci[32]{}; check(cudaDeviceGetPCIBusId(pci,sizeof(pci),devices[i]));
++        std::string address=pci;
++        std::transform(address.begin(),address.end(),address.begin(),[](unsigned char c){return (char)std::tolower(c);});
++        int node=-1;std::ifstream file("/sys/bus/pci/devices/"+address+"/numa_node");file>>node;
++        if(node>=0)for(int core:cores)if(std::filesystem::exists("/sys/devices/system/cpu/cpu"+std::to_string(core)+"/node"+std::to_string(node))) {
++            preferred[i]=package(core);break;
++        }
++    }
++#endif
++    auto take=[&](int preferred_package) {
++        auto it=std::find_if(cores.begin(),cores.end(),[&](int core){return preferred_package>=0 && package(core)==preferred_package;});
++        if(it==cores.end())it=cores.begin();
++        const int core=*it;cores.erase(it);return core;
++    };
++    // Reserve every submitter before assigning workers so a large first pool
++    // cannot consume a later stage's control core.
++    for(int i=0;i<stages;++i)result[i].host_core=take(preferred[i]);
++    for (int i = 0; i < stages; ++i) {
++        auto &topo = result[i];
++        const int n = budget / stages + (i < budget % stages);
++        for(int j=0;j<n;++j)topo.worker_cores.push_back(take(preferred[i]));
++        std::cerr << "LAYER_CPU stage=" << i << " socket=" << preferred[i] << " host=" << topo.host_core << " workers=";
++        for (int c : topo.worker_cores) std::cerr << c << ',';
++        std::cerr << '\n';
++    }
++    std::cerr << "LAYER_CPU requested_workers=" << threads << " workers=" << budget << " reserve_submitters=" << stages << '\n';
++    return result;
++}
++
++// Apply NUMA policy only while the single shared mapping is materialized.
++// MPOL_F_MEMS_ALLOWED handles restricted Slurm memory masks and any number of
++// NUMA domains. Pinned transport keeps the existing GPU locality policy.
++class LayerWeightPolicy {
++#ifdef __linux__
++    int previous=MPOL_DEFAULT;
++    std::array<unsigned long,16> saved{};
++    bool changed=false;
++#endif
++  public:
++    explicit LayerWeightPolicy(int socket_core=-1) {
++#ifdef __linux__
++        std::array<unsigned long,16> allowed{};
++        if (!syscall(SYS_get_mempolicy,&previous,saved.data(),1024,nullptr,0) &&
++            !syscall(SYS_get_mempolicy,nullptr,allowed.data(),1024,nullptr,MPOL_F_MEMS_ALLOWED)) {
++            if(socket_core>=0) {
++                int package=-1;
++                std::ifstream file("/sys/devices/system/cpu/cpu"+std::to_string(socket_core)+"/topology/physical_package_id");file>>package;
++                std::array<unsigned long,16> local{};
++                for(int cpu=0;cpu<CPU_SETSIZE;++cpu)if(CPU_ISSET(cpu,&allocation_cpus)) {
++                    int id=-1;std::ifstream info("/sys/devices/system/cpu/cpu"+std::to_string(cpu)+"/topology/physical_package_id");info>>id;
++                    if(id!=package || package<0)continue;
++                    for(int node=0;node<1024;++node)if((allowed[node/64]>>(node%64)&1UL) &&
++                        std::filesystem::exists("/sys/devices/system/cpu/cpu"+std::to_string(cpu)+"/node"+std::to_string(node)))
++                        local[node/64]|=1UL<<(node%64);
++                }
++                if(std::any_of(local.begin(),local.end(),[](unsigned long bits){return bits!=0;}))allowed=local;
++            }
++            changed=!syscall(SYS_set_mempolicy,MPOL_INTERLEAVE,allowed.data(),1024);
++        }
++        std::cerr << "LAYER_WEIGHT_POLICY requested=" << (socket_core>=0?"socket":"interleave") << " applied=" << changed << " nodes=";
++        for(int node=0;node<1024;++node)if(allowed[node/64]>>(node%64)&1UL)std::cerr<<node<<',';
++        std::cerr<<'\n';
++#else
++        (void)socket_core;
++#endif
++    }
++    ~LayerWeightPolicy() {
++#ifdef __linux__
++        if(changed) syscall(SYS_set_mempolicy,previous,previous==MPOL_DEFAULT?nullptr:saved.data(),1024);
++#endif
++    }
++};
++static void layer_lock_budget(const strata::core::ModelArtifact &model,bool draft,size_t transport_bytes,size_t stages) {
++#ifdef __linux__
++    size_t bytes=0;
++    for(const auto &[name,tensor]:model.tensors()) {
++        int layer=0; const char *suffix=nullptr;
++        if(!draft && strata_parse_blk(name.c_str(),&layer,&suffix)==1 && layer==(int)model.descriptor().layers.size()) continue;
++        if(tensor.bytes>SIZE_MAX-bytes)throw std::overflow_error("GLM layer host budget overflow");
++        bytes+=tensor.bytes;
++    }
++    uint64_t limit=uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
++    for(const char *path:{"/sys/fs/cgroup/memory.max","/sys/fs/cgroup/memory/memory.limit_in_bytes"}) {
++        std::ifstream file(path); std::string text; uint64_t value=0;
++        if(file>>text && text!="max") {try{value=std::stoull(text);}catch(...){continue;} if(value)limit=std::min(limit,value);}
++    }
++    // Slurm can expose a nested or unmounted memory controller. Its requested
++    // node allowance is still an upper bound even when memory.max is absent.
++    if(const char *text=std::getenv("SLURM_MEM_PER_NODE")) {
++        try {
++            size_t used=0;const auto mib=std::stoull(text,&used);
++            if(text[used]=='\0' && mib && mib<=UINT64_MAX/MiB)limit=std::min(limit,uint64_t(mib)*MiB);
++        } catch(const std::exception &) {}
++    }
++    const uint64_t staging=transport_bytes+stages*512*MiB;
++    rlimit locked{};
++    if(getrlimit(RLIMIT_MEMLOCK,&locked) || (locked.rlim_cur!=RLIM_INFINITY && bytes+staging>locked.rlim_cur))
++        throw std::runtime_error("GLM: layer weights and staging need a larger locked-memory allowance");
++    const uint64_t reserve=4ULL*1024*MiB+staging;
++    if(limit<reserve || bytes>limit-reserve)throw std::runtime_error("GLM layer locked weights plus 4 GiB host reserve exceed memory allowance");
++    std::cerr << "LAYER_HOST_BUDGET weights_MiB=" << bytes/MiB << " reserve_MiB=" << reserve/MiB << " limit_MiB=" << limit/MiB << '\n';
++#else
++    (void)model;(void)draft;(void)transport_bytes;(void)stages;
++#endif
++}
++
++class LayerDecoder {
++    struct Stage {
++        int device;
++        uint64_t decode_rows=0;
++        double decode_ms=0, draft_ms=0;
++        std::unique_ptr<Decoder> decoder;
++        std::shared_ptr<GpuWorker> worker;
++        Stage(int id, std::shared_ptr<GpuWorker> submitter) : device(id), worker(std::move(submitter)) {}
++        ~Stage() {
++            // A worker may still refer to its decoder during exception unwinding.
++            if (worker) worker->submit([this] { decoder.reset(); }).get();
++            worker.reset();
++        }
++    };
++    struct Hop {
++        std::unique_ptr<Pinned> data;
++        uint64_t generation = 0;
++        bool occupied = false;
++        explicit Hop(size_t bytes) : data(std::make_unique<Pinned>(bytes, true)) {}
++        float *write(uint64_t gen) {
++            if (occupied) throw std::logic_error("GLM: live layer hop overwritten");
++            generation = gen; occupied = true;
++            return (float *)data->p;
++        }
++        const float *read(uint64_t gen) const {
++            if (!occupied || generation != gen) throw std::logic_error("GLM: stale layer hop generation");
++            return (const float *)data->p;
++        }
++        void release(uint64_t gen) {
++            (void)read(gen); occupied = false;
++        }
++    };
++    std::shared_ptr<strata::core::ModelArtifact> model;
++    std::vector<std::unique_ptr<Stage>> stages;
++    std::vector<std::array<std::unique_ptr<Hop>, 2>> hops;
++    GlmLayerOptions options;
++    uint64_t generation = 0;
++    int chunk = 1;
++    Decoder::Checkpoint head_checkpoint;
++    uint64_t proposed = 0, accepted = 0, draft_count = 0;
++    std::vector<std::vector<uint64_t>> cache_history;
++    static int pick(const std::vector<float> &logits) {
++        if (logits.empty()) throw std::logic_error("GLM: missing tail logits");
++        return int(std::max_element(logits.begin(), logits.end()) - logits.begin());
++    }
++    int proposal(Decoder &decoder,int token,bool perturb=true) {
++        const auto start=std::chrono::steady_clock::now();
++        int next=pick(decoder.mtp_propose(token,true));
++        stages.back()->draft_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
++        if(perturb && options.force_miss && ++draft_count%(unsigned)options.force_miss==0)
++            next=(next+1)%(int)model->descriptor().vocab;
++        return next;
++    }
++    void call(size_t i, const std::function<void(Decoder &)> &fn) {
++        stages[i]->worker->submit([&, i] { fn(*stages[i]->decoder); }).get();
++    }
++    std::future<void> head(int token, Hop &out, uint64_t gen) {
++        float *dst = out.write(gen);
++        return stages[0]->worker->submit([this, token, dst] {
++            const auto start=std::chrono::steady_clock::now();
++            stages[0]->decoder->batch({token}, false, false, {}, nullptr, nullptr, dst);
++            stages[0]->decode_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
++            ++stages[0]->decode_rows;
++        });
++    }
++    std::future<void> tail(int token, Hop &in, uint64_t gen, std::vector<float> &logits) {
++        const float *src = in.read(gen);
++        return stages.back()->worker->submit([this, token, src, &logits] {
++            const auto start=std::chrono::steady_clock::now();
++            logits = stages.back()->decoder->batch({token}, false, false, {}, nullptr, src);
++            stages.back()->decode_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
++            ++stages.back()->decode_rows;
++        });
++    }
++  public:
++    LayerDecoder(const std::string &path, GlmLayerOptions config) : options(std::move(config)) {
++        if (std::filesystem::is_directory(path)) throw std::invalid_argument("GLM layer layout currently requires GGUF");
++        // These paths own another GPU, remap/discard shared source pages, change
++        // target arithmetic, or mutate residency inside an uncommitted window.
++        for (const char *name : {"STRATA_GLM_DECODE_TP", "STRATA_GLM_KDA_SPLIT", "STRATA_GLM_MLA_SPLIT",
++                "STRATA_GLM_MTP_BATCHED", "STRATA_GLM_TIER_ADAPT", "STRATA_GLM_REMOTE_TP",
++                "STRATA_GLM_PREFER_RESIDENT_MIB", "STRATA_GLM_PRIMARY_GROUPS"})
++            if (strata_env_is_set(name))
++                throw std::invalid_argument(std::string("GLM layer layout is incompatible with ") + name);
++        for (const char *name : {
++                "STRATA_GLM_SPLIT_VERIFY", "STRATA_GLM_BATCH_SPLIT", "STRATA_GLM_DIRECT_WEIGHT_UPLOAD",
++                "STRATA_GLM_Q2_NUMA_WEIGHTS", "STRATA_GLM_MAPPED_OWNED",
++                "STRATA_GLM_RAM_TIER", "STRATA_GLM_RELEASE_GPU_DENSE_HOST",
++                "STRATA_GLM_SPLIT_PROJECTIONS", "STRATA_GLM_RAM_MIB",
++                "STRATA_GLM_PREFILL_ROUTE_BONUS", "STRATA_GLM_TIER_DIRECT",
++                "STRATA_GLM_FLOATING_Q8", "STRATA_GLM_DENSE_Q4", "STRATA_GLM_ROUTE_AFFINITY"})
++            if (strata_env_is_set(name) && !strata_env_equals(name, "0"))
++                throw std::invalid_argument(std::string("GLM layer layout is incompatible with ") + name);
++        if(options.memory!="interleave" && options.memory!="socket")throw std::invalid_argument("layer-memory must be interleave or socket");
++        if(options.memory=="socket" && !options.lock)throw std::invalid_argument("layer-memory=socket requires locked COW model weights");
++        if (options.pipeline != "none" && options.pipeline != "mtp") throw std::invalid_argument("layer-pipeline must be none or mtp");
++        if (options.pipeline == "mtp" && (!options.mtp || options.depth != 1))
++            throw std::invalid_argument("layer-pipeline=mtp needs speculative=mtp and draft-depth=1");
++        if (options.mtp && options.depth != 1) throw std::invalid_argument("GLM layer MTP currently supports draft-depth=1");
++        auto devices = configure_devices(options.devices, options.gpu_budget, STRATA_GLM_MAX_STAGES);
++        if(options.emulate){
++            if(options.emulate<2 || options.emulate>STRATA_GLM_MAX_STAGES || options.mtp || options.adapt || !options.plan.empty())
++                throw std::invalid_argument("GLM: stage emulation is a 2..16-stage non-MTP parity diagnostic");
++            const auto physical=devices;devices.resize(options.emulate);
++            std::cerr<<"LAYER_EMULATION physical_devices="<<physical.size()<<" logical_stages="<<options.emulate<<'\n';
++            for(size_t i=0;i<devices.size();++i)devices[i]=physical[i%physical.size()];
++        }
++        if (devices.size() < 2 || ((options.pipeline == "mtp" || options.check_pipeline) && devices.size() != 2))
++            throw std::invalid_argument("GLM layer layout needs 2..16 GPUs; overlapped MTP needs exactly two");
++        for(int device:devices){cudaDeviceProp props{};check(cudaGetDeviceProperties(&props,device));std::cerr<<"LAYER_GPU device="<<device<<" name="<<props.name<<'\n';}
++        model = std::make_shared<strata::core::ModelArtifact>(path);
++        int bounds[STRATA_GLM_MAX_STAGES + 1];
++        const auto split=layer_measured_split(options,path,devices);
++        if (strata_glm_layer_bounds(split.c_str(), (int)model->descriptor().layers.size(), (int)devices.size(), bounds))
++            throw std::invalid_argument("GLM: layer-split must be auto or strictly increasing first-layer cuts");
++        auto placement = layer_cpu_placement(devices, options.threads);
++        std::cerr << "LAYER_CPU pinned=" << options.pin << '\n';
++        strata::prefill::Gemm::lossy_allowed = false;
++        k::glm_set_prefill_lossy(false);
++        chunk = options.width ? options.width : 256;
++        // Sequential construction also fixes the shared staging geometry before
++        // any stage executes. Each submission thread owns all CUDA resource use.
++        std::map<int,std::shared_ptr<GpuWorker>> submitters;
++        for (size_t i = 0; i < devices.size(); ++i) {
++            auto &worker=submitters[devices[i]];
++            if(!worker)worker=std::make_shared<GpuWorker>(devices[i],true,options.pin?placement[i].host_core:-1,options.pin);
++            stages.push_back(std::make_unique<Stage>(devices[i],worker));
++        }
++        for (size_t i = 0; i < stages.size(); ++i) {
++            stages[i]->worker->submit([&, i] {
++                stages[i]->decoder = std::make_unique<Decoder>(path, options.context, (size_t)options.dense * MiB,
++                    (int)placement[i].worker_cores.size(), 0, options.pin, "", "", "auto", model,
++                    bounds[i], bounds[i + 1], &placement[i]);
++            }).get();
++            std::cerr << "LAYER_STAGE stage=" << i << " device=" << devices[i] << " first=" << bounds[i] << " last=" << bounds[i+1] << '\n';
++        }
++        // Shared COW mapping: one touch/lock pass, including the draft block.
++        if (options.lock) {
++            const size_t hop_bytes=(stages.size()-1)*2*(size_t)chunk*model->descriptor().hidden*4*sizeof(float);
++            layer_lock_budget(*model,options.mtp,hop_bytes,stages.size());
++            if(options.memory=="socket")for(size_t i=0;i<stages.size();++i)call(i,[&,i](Decoder &d) {
++                LayerWeightPolicy policy(placement[i].host_core);
++                d.warm_weights(true,{},options.mtp,[&](const std::string &name) {
++                    return strata_glm_layer_tensor_owned(name.c_str(),bounds[i],bounds[i+1],(int)model->descriptor().layers.size(),options.mtp);
++                });
++            });
++            else call(0, [&](Decoder &d) { LayerWeightPolicy policy; d.warm_weights(true, {}, options.mtp); });
++        }
++        for (size_t i = 0; i < stages.size(); ++i) call(i, [&](Decoder &d) {
++            if (options.mtp && i + 1 == stages.size()) { d.enable_mtp_capture(); d.set_mtp_cpu_experts(options.draft_cpu); }
++            chunk = std::min(chunk, d.enable_gpu(chunk, options.gpu_budget, options.pipeline == "mtp" || options.check_pipeline));
++            d.configure_prefill({devices[i]}, options.gpu_budget, 0, false, false);
++            d.set_decode_cache_budget(options.cache);
++            d.set_decode_cache_window(options.cache_window);
++            d.enable_layer_cache_windows(options.adapt);
++            d.set_decode_graphs(options.graphs);
++        });
++        for (size_t i = 1; i < stages.size(); ++i) {
++            std::array<std::unique_ptr<Hop>, 2> pair;
++            for (auto &hop : pair) hop = std::make_unique<Hop>((size_t)chunk * model->descriptor().hidden * 4 * sizeof(float));
++            hops.push_back(std::move(pair));
++        }
++        if (options.pipeline == "mtp" || options.check_pipeline) call(0, [&](Decoder &d) { head_checkpoint = d.checkpoint(); });
++    }
++    ~LayerDecoder() { stages.clear(); }
++    int width() const { return chunk; }
++    void reset() {
++        for (size_t i = 0; i < stages.size(); ++i) call(i, [](Decoder &d) { d.reset(); });
++        for (auto &pair : hops) for (auto &h : pair) h->occupied = false;
++        proposed = accepted = draft_count = 0;
++        cache_history.clear();
++        for(auto &s:stages){s->decode_rows=0;s->decode_ms=s->draft_ms=0;}
++    }
++    void set_cancel(const std::function<bool()> &cancel) {
++        for (size_t i = 0; i < stages.size(); ++i) call(i, [&](Decoder &d) { d.set_cancel(cancel); });
++    }
++    std::vector<float> batch(const std::vector<int> &tokens, bool prefill = true, bool all_logits = false) {
++        const uint64_t gen = ++generation;
++        std::vector<float> logits;
++        for (size_t i = 0; i < stages.size(); ++i) {
++            const float *src = i ? hops[i-1][gen & 1]->read(gen) : nullptr;
++            float *dst = i+1 < stages.size() ? hops[i][gen & 1]->write(gen) : nullptr;
++            call(i, [&](Decoder &d) {
++                const auto start=std::chrono::steady_clock::now();
++                logits = d.batch(tokens, prefill, all_logits, {}, nullptr, src, dst);
++                if(!prefill){stages[i]->decode_ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();stages[i]->decode_rows+=tokens.size();}
++            });
++            // batch completes the stream before returning: its future is a host
++            // publication fence stronger than an event wait on a pending copy.
++            if (i) hops[i-1][gen & 1]->release(gen);
++        }
++        return logits;
++    }
++    std::vector<float> prefill(const std::vector<int> &tokens,
++                              const std::function<void(size_t)> &progress={}) {
++        struct Backend {
++            LayerDecoder &owner;
++            std::vector<std::vector<int>> panels;
++            std::vector<uint64_t> generations;
++            std::vector<float> logits;
++            const std::function<void(size_t)> &progress;
++            std::future<void> start(size_t stage,size_t panel) {
++                const uint64_t gen=generations[panel];
++                const float *src=stage?owner.hops[stage-1][gen&1]->read(gen):nullptr;
++                float *dst=stage+1<owner.stages.size()?owner.hops[stage][gen&1]->write(gen):nullptr;
++                return owner.stages[stage]->worker->submit([this,stage,panel,src,dst] {
++                    auto result=owner.stages[stage]->decoder->batch(panels[panel],true,false,{},nullptr,src,dst);
++                    if(stage+1==owner.stages.size())logits=std::move(result);
++                });
++            }
++            void complete(size_t stage,size_t panel) {
++                const uint64_t gen=generations[panel];
++                if(stage)owner.hops[stage-1][gen&1]->release(gen);
++                if(stage+1==owner.stages.size() && progress)
++                    progress(std::min((panel+1)*(size_t)owner.chunk,total()));
++            }
++            size_t total()const {return (panels.size()-1)*(size_t)owner.chunk+panels.back().size();}
++        } backend{*this,{},{},{},progress};
++        for(size_t t=0;t<tokens.size();t+=chunk) {
++            const size_t end=std::min(tokens.size(),t+chunk);
++            backend.panels.emplace_back(tokens.begin()+t,tokens.begin()+end);
++            backend.generations.push_back(++generation);
++        }
++        strata::spec::run_layer_prefill(backend,backend.panels.size(),stages.size());
++        return backend.logits;
++    }
++    void prepare(const std::vector<int> &prompt) {
++        if (options.mtp) call(stages.size()-1, [&](Decoder &d) { d.prepare_mtp(prompt); });
++        for (size_t i=0;i<stages.size();++i) call(i, [](Decoder &d) { d.prepare_decode_cache(); d.verify_layer_cache(); d.freeze_cache(); });
++    }
++    void rebalance() {
++        std::vector<uint64_t> fingerprints(stages.size());std::vector<std::future<void>> tasks;
++        try{
++            for(size_t i=0;i<stages.size();++i)tasks.push_back(stages[i]->worker->submit([&,i]{
++                auto &d=*stages[i]->decoder;d.rebalance_layer_cache();fingerprints[i]=d.layer_cache_fingerprint();
++            }));
++        }catch(...){for(auto &task:tasks)if(task.valid())task.wait();throw;}
++        std::exception_ptr error;
++        for(auto &task:tasks)try{task.get();}catch(...){if(!error)error=std::current_exception();}
++        if(error)std::rethrow_exception(error);
++        cache_history.push_back(std::move(fingerprints));
++    }
++    void report() {
++        for(size_t i=0;i<stages.size();++i) call(i,[&](Decoder &d) {
++            std::cerr << "LAYER_WORK stage=" << i << " device=" << stages[i]->device
++                      << " decode_rows=" << stages[i]->decode_rows << " decode_wall_ms=" << stages[i]->decode_ms
++                      << " draft_wall_ms=" << stages[i]->draft_ms << " scope=host_submission_through_completion\n";
++            d.report_gpu();d.report_cache();
++        });
++    }
++    void check_serial(const std::vector<int> &prompt) {
++        DeviceScope scope(stages.front()->device);
++        // The reference uses the same shared mapping and unmodified full-layer
++        // arithmetic. Both arms disable lossy prefill and use the same panels.
++        Decoder reference("", options.context, (size_t)options.dense*MiB, 1, 0, false,
++                          "", "", "auto", model, 0, model->descriptor().layers.size());
++        reference.enable_gpu(chunk,options.gpu_budget);
++        reference.configure_prefill({stages.front()->device},options.gpu_budget,0,false,false);
++        reset();
++        std::vector<float> actual,expected;
++        auto compare=[&] {
++            if(actual.size()!=expected.size() || std::memcmp(actual.data(),expected.data(),actual.size()*sizeof(float)))
++                throw std::runtime_error("GLM: serial layer logits differ from full-layer reference");
++            const auto full=reference.snapshot();
++            for(size_t i=0;i<stages.size();++i) call(i,[&](Decoder &d) {
++                const auto part=d.snapshot();
++                if(part.position!=full.position)throw std::runtime_error("GLM: stage position differs from full-layer reference");
++                for(size_t l=0;l<model->descriptor().layers.size();++l)for(size_t b=0;b<8;++b)
++                    if(!part.layers[l][b].empty() && part.layers[l][b]!=full.layers[l][b])
++                        throw std::runtime_error("GLM: layer state differs from full-layer reference at layer "+std::to_string(l));
++            });
++        };
++        for(size_t t=0;t<prompt.size();t+=chunk) {
++            size_t end=std::min(prompt.size(),t+chunk);
++            std::vector<int> panel(prompt.begin()+t,prompt.begin()+end);
++            expected=reference.batch(panel);
++        }
++        actual=prefill(prompt);compare();
++        for(int i=0;i<8 && prompt.size()+i<(size_t)options.context;++i) {
++            int token=pick(expected);
++            actual=batch({token},false);expected=reference.step(token);compare();
++        }
++        std::cerr << "LAYER_SERIAL_PARITY logits=bitwise_equal state=bitwise_equal decode_steps="
++                  << std::min<size_t>(8,(size_t)options.context-prompt.size()) << '\n';
++        reset();
++    }
++    void check_pipeline(const std::vector<int> &prompt,int count) {
++        if(!options.mtp || stages.size()!=2)throw std::invalid_argument("pipeline check needs two GPUs and speculative=mtp");
++        const std::string original=options.pipeline;
++        for(size_t i=0;i<stages.size();++i)call(i,[](Decoder &d){d.set_layer_cache_checks(true);});
++        std::vector<int> expected,actual;
++        std::vector<Decoder::Snapshot> saved;
++        options.pipeline="none";reset();auto logits=prefill(prompt);prepare(prompt);
++        generate(std::move(logits),count,[&](int token){expected.push_back(token);});
++        std::vector<uint64_t> route_fingerprints;
++        const auto expected_history=cache_history;
++        for(size_t i=0;i<stages.size();++i)call(i,[&](Decoder &d){saved.push_back(d.snapshot());route_fingerprints.push_back(d.layer_routes_fingerprint());});
++        options.pipeline="mtp";reset();logits=prefill(prompt);prepare(prompt);
++        generate(std::move(logits),count,[&](int token){actual.push_back(token);});
++        if(actual!=expected)throw std::runtime_error("GLM: layer MTP tokens differ from serial control");
++        if(cache_history!=expected_history)throw std::runtime_error("GLM: layer MTP cache policy differs from serial control");
++        for(size_t i=0;i<stages.size();++i)call(i,[&](Decoder &d){
++            const auto state=d.snapshot();const auto &reference=saved[i];
++            if(d.layer_routes_fingerprint()!=route_fingerprints[i])throw std::runtime_error("GLM: speculative routes leaked into committed statistics");
++            if(state.position!=reference.position || state.mtp_position!=reference.mtp_position)
++                throw std::runtime_error("GLM: layer MTP frontiers differ");
++            for(size_t l=0;l<state.layers.size();++l)for(size_t b=0;b<8;++b){
++                const auto &a=state.layers[l][b],&e=reference.layers[l][b];
++                size_t visible=a.size();
++                const int position=l==model->descriptor().layers.size()?state.mtp_position:state.position;
++                if(b==4)visible=std::min(visible,(size_t)position*model->descriptor().kv_rank);
++                if(b==7)visible=std::min(visible,(size_t)(position/model->descriptor().index_pool)*model->descriptor().index_dim);
++                if(a.size()!=e.size() || !std::equal(a.begin(),a.begin()+visible,e.begin()))
++                    throw std::runtime_error("GLM: layer MTP committed state differs at layer "+std::to_string(l)+" buffer "+std::to_string(b));
++            }
++        });
++        std::cerr << "LAYER_PIPELINE_PARITY tokens=" << actual.size() << " token_ids=equal committed_state=bitwise_equal forced_miss_every=" << options.force_miss << '\n';
++        options.pipeline=original;reset();
++        for(size_t i=0;i<stages.size();++i)call(i,[](Decoder &d){d.set_layer_cache_checks(false);});
++    }
++    int generate(std::vector<float> logits, int count, const std::function<void(int)> &emit) {
++        int current = pick(logits), generated = 0;
++        auto output = [&](int token) {
++            emit(token); ++generated;
++            return generated == count || std::find(options.stops.begin(), options.stops.end(), token) != options.stops.end();
++        };
++        if (output(current)) return generated;
++        if (!options.mtp) {
++            while (generated < count) {
++                logits = batch({current}, false); current = pick(logits); if (output(current)) break;
++                if(options.adapt && (generated-1)%(unsigned)options.cache_window==0)rebalance();
++            }
++            return generated;
++        }
++        // Serialized MTP is the exact reference: same draft computations, but
++        // no work is issued to the head before the target token is confirmed.
++        if (options.pipeline == "none") {
++            while (generated < count) {
++                call(stages.size()-1, [&](Decoder &d) { (void)proposal(d,current,false); });
++                logits = batch({current}, false); current = pick(logits); if (output(current)) break;
++                if(options.adapt && (generated-1)%(unsigned)options.cache_window==0)rebalance();
++            }
++            return generated;
++        }
++        struct Backend {
++            LayerDecoder &owner;
++            std::vector<float> logits;
++            std::future<void> start_head(int token, int slot, uint64_t gen) {
++                return owner.head(token, *owner.hops[0][slot], gen);
++            }
++            int draft(int token) {
++                int result=-1;
++                owner.call(1, [&](Decoder &d) {
++                    result=owner.proposal(d,token);
++                });
++                return result;
++            }
++            std::future<void> start_draft(int token, int &result) {
++                return owner.stages[1]->worker->submit([this,token,&result] {
++                    result=owner.proposal(*owner.stages[1]->decoder,token);
++                });
++            }
++            bool window_due(uint64_t consumed)const {return owner.options.adapt && consumed%(unsigned)owner.options.cache_window==0;}
++            void rebalance(){owner.rebalance();}
++            void save_head() { owner.call(0,[&](Decoder &d){d.save(owner.head_checkpoint);}); }
++            void restore_head() { owner.call(0,[&](Decoder &d){d.restore(owner.head_checkpoint);}); }
++            void release(int slot,uint64_t gen) { owner.hops[0][slot]->release(gen); }
++            int confirm(int token,int slot,uint64_t gen) {
++                owner.tail(token,*owner.hops[0][slot],gen,logits).get();
++                release(slot,gen); return pick(logits);
++            }
++        } backend{*this,{}};
++        const auto stats=strata::spec::run_layer_pipeline(backend,current,output);
++        proposed+=stats.proposed; accepted+=stats.accepted;
++        std::cerr << "LAYER_MTP proposed=" << proposed << " accepted=" << accepted << " depth=1\n";
++        return generated;
++    }
++};
++
++static void layer_binary_dump(const std::string &path, const std::vector<float> &values) {
++    if (path.empty()) return;
++    std::ofstream out(path, std::ios::binary);
++    out.write((const char *)values.data(), values.size() * sizeof(float));
++    if (!out) throw std::runtime_error("GLM: layer logits write failed");
++}
++
++static int serve_layers(const std::string &path, GlmLayerOptions config) {
++    LayerDecoder decoder(path, config);
++    struct Request { std::string line; std::shared_ptr<std::atomic<bool>> cancel; };
++    std::mutex mutex; std::condition_variable ready; std::deque<Request> requests;
++    std::shared_ptr<std::atomic<bool>> active;
++    bool ended = false;
++    std::jthread reader([&] {
++        for (std::string line; std::getline(std::cin, line);) {
++            std::lock_guard lock(mutex);
++            if (line == "STOP") {
++                if (active) active->store(true);
++                else if (!requests.empty()) requests.front().cancel->store(true);
++                continue;
++            }
++            bool quit = line == "QUIT";
++            requests.push_back({std::move(line), std::make_shared<std::atomic<bool>>(false)});
++            ready.notify_one(); if (quit) break;
++        }
++        std::lock_guard lock(mutex); ended = true; ready.notify_one();
++    });
++    using Clock = std::chrono::steady_clock;
++    auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b-a).count(); };
++    std::cout << "INFO engine=glm-layer-experimental sampling=greedy\nREADY " << config.context << " stop prefill-includes-reset\n" << std::flush;
++    for (;;) {
++        Request request;
++        {
++            std::unique_lock lock(mutex); ready.wait(lock, [&] { return ended || !requests.empty(); });
++            if (requests.empty()) break;
++            request = std::move(requests.front()); requests.pop_front(); active = request.cancel;
++        }
++        if (request.line == "QUIT") break;
++        int sent = 0; size_t prompt_count = 0;
++        try {
++            std::istringstream input(request.line); std::string op, ids, extra; int count = 0;
++            if (!(input >> op >> count >> ids) || op != "GEN" || input >> extra) throw std::invalid_argument("expected GEN <max_new> <IDs>");
++            auto tokens = token_ids(ids); prompt_count = tokens.size();
++            if (tokens.empty() || count < 1 || tokens.size() + (size_t)count > (size_t)config.context)
++                throw std::invalid_argument("request exceeds context or has invalid token counts");
++            auto start = Clock::now(); decoder.reset();
++            decoder.set_cancel([cancel = request.cancel] { return cancel->load(); });
++            std::vector<float> logits;
++            const auto prompt_start = Clock::now();
++            logits=decoder.prefill(tokens,[&](size_t end) {
++                if (request.cancel->load()) throw std::runtime_error("cancelled");
++                double elapsed = ms(prompt_start, Clock::now());
++                std::cout << "PP " << end << ' ' << tokens.size() << ' ' << elapsed << ' ' << (elapsed>0?end*1000.0/elapsed:0) << '\n' << std::flush;
++            });
++            const auto preparing=Clock::now();
++            decoder.prepare(tokens);
++            std::cerr << "RESPONSE_PREPARE kind=decode_cache ms=" << ms(preparing,Clock::now()) << '\n';
++            const auto prefilled = Clock::now(); std::string finish = "length";
++            decoder.generate(std::move(logits), count, [&](int token) {
++                if (request.cancel->load()) throw std::runtime_error("cancelled");
++                ++sent; std::cout << "T " << token << '\n' << std::flush;
++                if (std::find(config.stops.begin(), config.stops.end(), token) != config.stops.end()) finish = "stop";
++            });
++            std::cout << "DONE " << sent << ' ' << tokens.size() << ' ' << ms(start,prefilled) << ' ' << ms(prefilled,Clock::now()) << ' ' << finish << " 0 0 0\n" << std::flush;
++        } catch (const std::exception &e) {
++            decoder.set_cancel({});
++            try { decoder.reset(); } catch (...) { std::cerr << "GLM: layer reset failed\n"; std::_Exit(1); }
++            if (request.cancel->load() && std::string(e.what()) == "cancelled")
++                std::cout << "DONE " << sent << ' ' << prompt_count << " 0 0 cancel 0 0 0\n" << std::flush;
++            else std::cout << "ERR " << e.what() << '\n' << std::flush;
++        }
++        decoder.set_cancel({});
++        decoder.report();
++        { std::lock_guard lock(mutex); active.reset(); }
++    }
++    return 0;
++}
++
++static std::pair<bool,int> layer_entry(int &argc, char **argv) {
++    std::string layout = "legacy";
++    for (int i=1;i<argc;++i) if (std::string(argv[i]).starts_with("--gpu-layout=")) layout=std::string(argv[i]).substr(13);
++    if (layout != "legacy" && layout != "layer") throw std::invalid_argument("gpu-layout must be legacy or layer");
++    if (layout == "legacy") {
++        for (int i=1;i<argc;) {
++            const std::string flag=argv[i];
++            if (flag.starts_with("--layer-split=") || flag.starts_with("--layer-pipeline="))
++                throw std::invalid_argument("GLM layer options require --gpu-layout=layer");
++            if (flag.starts_with("--gpu-layout=")) { for(int j=i;j<argc;++j) argv[j]=argv[j+1]; --argc; }
++            else ++i;
++        }
++        return {false,0};
++    }
++    const bool serving = std::string(argv[1]) == "--serve";
++    GlmLayerOptions o;o.executable=argv[0];
++    std::string path;
++    int named = 6;
++    auto nonnegative = [](const std::string &s) {
++        size_t used=0; int n=std::stoi(s,&used);
++        if (used!=s.size() || n<0) throw std::invalid_argument("GLM: expected a nonnegative integer");
++        return n;
++    };
++    if (serving) {
++        if (argc < 29) throw std::invalid_argument("GLM layer serve requires all legacy positional fields before named options");
++        path=argv[2]; o.context=nonnegative(argv[3]); o.dense=nonnegative(argv[4]); o.threads=nonnegative(argv[5]);
++        o.width=prefill_width(argv[7]); o.stops=token_ids(argv[8]); o.gpu_budget=gpu_budget_bytes(argv[9]);
++        o.mtp=std::string(argv[12])=="mtp"; o.depth=nonnegative(argv[13]); o.pin=std::string(argv[14])!="none";
++        o.devices=argv[16]; o.lock=std::string(argv[18])=="1"; o.cache=cache_setting(argv[20]).first;
++        o.graphs=std::string(argv[21])=="1"; o.cache_window=nonnegative(argv[22]);o.adapt=std::string(argv[23])=="1";
++        if (std::string(argv[6])!="0" || std::string(argv[10])!="0" || std::string(argv[11])!="0" ||
++            std::string(argv[15])!="0" || std::string(argv[17])!="0" || std::string(argv[19])!="0" ||
++            std::string(argv[24])!="mmq" || std::string(argv[26])!="" ||
++            std::string(argv[27])!="" || std::string(argv[28])!="auto" ||
++            (std::string(argv[20])=="auto" || std::string(argv[20])=="extend"))
++            throw std::invalid_argument("GLM layer recipe requires fixed decode cache, mmq prefill, native assembled GGUF and no legacy helper options");
++        if (std::string(argv[12])!="none" && !o.mtp) throw std::invalid_argument("GLM layer speculation must be none or mtp");
++        named=29;
++    } else {
++        if (argc<6) throw std::invalid_argument("GLM layer CLI requires model, IDs, steps, dense MiB and threads");
++        path=argv[1]; o.steps=nonnegative(argv[3]); o.dense=nonnegative(argv[4]); o.threads=nonnegative(argv[5]);
++    }
++    for (int i=named;i<argc;++i) {
++        std::string f=argv[i];
++        if (f=="--gpu-layout=layer") {}
++        else if (f.starts_with("--gpu-devices=")) o.devices=f.substr(14);
++        else if (f.starts_with("--layer-split=")) o.split=f.substr(14);
++        else if (f.starts_with("--layer-pipeline=")) o.pipeline=f.substr(17);
++        else if (f.starts_with("--layer-memory=")) o.memory=f.substr(15);
++        else if (f.starts_with("--layer-plan=")) o.plan=f.substr(13);
++        else if (f.starts_with("--context=")) o.context=nonnegative(f.substr(10));
++        else if (f.starts_with("--prefill-batch=")) o.width=prefill_width(f.substr(16));
++        else if (f.starts_with("--gpu-budget-mib=")) o.gpu_budget=gpu_budget_bytes(f.substr(17));
++        else if (f.starts_with("--decode-cache-mib=")) o.cache=(size_t)nonnegative(f.substr(19))*MiB;
++        else if (f=="--speculative=mtp") o.mtp=true;
++        else if (f=="--speculative=none") o.mtp=false;
++        else if (f.starts_with("--draft-depth=")) o.depth=nonnegative(f.substr(14));
++        else if (f=="--lock-weights") o.lock=true;
++        else if (f=="--decode-graphs") o.graphs=true;
++        else if (f=="--decode-cache-adapt") o.adapt=true;
++        else if (f=="--cpu-affinity=none") o.pin=false;
++        else if (f=="--cpu-affinity=numa" || f=="--cpu-affinity=auto") o.pin=true;
++        else if (f.starts_with("--stop-ids=")) o.stops=token_ids(f.substr(11));
++        else if (f.starts_with("--dump-logits=")) throw std::invalid_argument("GLM layer path: use --dump-prefill-logits for reference logits");
++        else if (f.starts_with("--dump-prefill-logits=")) o.prefill_dump=f.substr(22);
++        else if (f.starts_with("--bench=")) o.repeats=nonnegative(f.substr(8));
++        else if (f=="--check-layer-parity") o.check=true;
++        else if (f.starts_with("--check-layer-stages=")) {
++            o.emulate=nonnegative(f.substr(21));o.check=true;
++            if(o.emulate<2 || o.emulate>STRATA_GLM_MAX_STAGES)throw std::invalid_argument("GLM: emulated stage count must be 2..16");
++        }
++        else if (f=="--check-layer-pipeline") o.check_pipeline=true;
++        else if (f.starts_with("--layer-force-miss-every=")) o.force_miss=nonnegative(f.substr(25));
++        else if (f.starts_with("--decode-cache-window=")) o.cache_window=nonnegative(f.substr(22));
++        else if (f=="--lookup-depth=0" || f=="--decode-experts=cpu" || f=="--expert-cache-mib=0" ||
++                 f=="--cpu-prepack-mib=0" || f=="--prefill-expert-cache-mib=0" || f=="--prefill-experts=mmq") {}
++        else if (f=="--mtp-experts=cpu") o.draft_cpu=true;
++        else if (f=="--mtp-experts=gpu") o.draft_cpu=false;
++        else if (f=="--gpu-prefill") {}
++        else throw std::invalid_argument("unsupported GLM layer option: "+f);
++    }
++    if (o.context<1 || o.dense<64 || o.threads<1 || o.steps<1 || o.repeats<1 || o.cache>o.gpu_budget ||
++        o.cache_window>8192 || (o.adapt && (!o.cache || o.cache_window<1)))
++        throw std::invalid_argument("GLM: invalid layer configuration");
++    if(serving && (o.check || o.check_pipeline))throw std::invalid_argument("GLM: parity diagnostics use the generation CLI");
++    if (serving) return {true,serve_layers(path,o)};
++    std::string ids=argv[2];
++    if (ids.starts_with("@")) {
++        std::ifstream file(ids.substr(1)); if (!file) throw std::runtime_error("cannot read token file");
++        ids.assign(std::istreambuf_iterator<char>(file),{});
++    }
++    const auto tokens=token_ids(ids);
++    if (tokens.empty() || tokens.size()+(size_t)o.steps>(size_t)o.context) throw std::invalid_argument("GLM layer request exceeds context");
++    LayerDecoder decoder(path,o);
++    if(o.check) {decoder.check_serial(tokens);return {true,0};}
++    if(o.check_pipeline) {decoder.check_pipeline(tokens,o.steps);return {true,0};}
++    using Clock=std::chrono::steady_clock;
++    for(int r=0;r<o.repeats;++r) {
++        auto start=Clock::now(); decoder.reset(); std::vector<float> logits;
++        logits=decoder.prefill(tokens);
++        layer_binary_dump(o.prefill_dump,logits);
++        decoder.prepare(tokens); auto prefilled=Clock::now();
++        std::vector<int> output;
++        int n=decoder.generate(logits,o.steps,[&](int token){output.push_back(token);});
++        auto end=Clock::now();
++        const double pp=std::chrono::duration<double,std::milli>(prefilled-start).count();
++        const double tg=std::chrono::duration<double,std::milli>(end-prefilled).count();
++        for(int token:output)std::cout<<token<<'\n';
++        std::cout<<std::flush;
++        std::cerr << "PREFILL tokens=" << tokens.size() << " ms=" << pp << " tok_s=" << tokens.size()*1000.0/pp << '\n'
++                  << "DECODE steps=" << n-1 << " ms=" << tg << " tok_s=" << (tg>0?(n-1)*1000.0/tg:0) << '\n';
++        decoder.report();
++    }
++    return {true,0};
++}
++
++} // namespace
+diff --git a/tests/host/glm_layer_test.c b/tests/host/glm_layer_test.c
+new file mode 100644
+index 00000000..93bef145
+--- /dev/null
++++ b/tests/host/glm_layer_test.c
+@@ -0,0 +1,34 @@
++#include "strata/host/glm_layer.h"
++#include <stdio.h>
++#include <string.h>
++#define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while (0)
++int main(void) {
++    int b[17], before[17], n, l, s;
++    for (n = 1; n <= 16; ++n) {
++        CHECK(!strata_glm_layer_bounds("auto",45,n,b));
++        CHECK(b[0]==0 && b[n]==45);
++        for (s=0;s<n;++s) CHECK(b[s]<b[s+1]);
++        for (l=0;l<=45;++l) {
++            int owners=0; char name[64];
++            snprintf(name,sizeof(name),"blk.%d.attn_norm.weight",l);
++            for (s=0;s<n;++s) owners+=strata_glm_layer_tensor_owned(name,b[s],b[s+1],45,1);
++            CHECK(owners==1);
++        }
++    }
++    CHECK(!strata_glm_layer_bounds("24",45,2,b) && b[1]==24);
++    CHECK(!strata_glm_layer_bounds("3,4,44",45,4,b));
++    memset(b,7,sizeof(b)); memcpy(before,b,sizeof(b));
++    const char *bad[]={"","0","45","-1","+24"," 24","24 ","24,","24,25","999999999999999999999"};
++    for (s=0;s<(int)(sizeof(bad)/sizeof(*bad));++s) {
++        CHECK(strata_glm_layer_bounds(bad[s],45,2,b)==-1);
++        CHECK(!memcmp(b,before,sizeof(b)));
++    }
++    CHECK(strata_glm_layer_bounds("4,3",45,3,b)==-1);
++    CHECK(strata_glm_layer_bounds("auto",2,3,b)==-1);
++    CHECK(strata_glm_layer_tensor_owned("token_embd.weight",0,24,45,1));
++    CHECK(!strata_glm_layer_tensor_owned("output.weight",0,24,45,1));
++    CHECK(strata_glm_layer_tensor_owned("output.weight",24,45,45,1));
++    CHECK(!strata_glm_layer_tensor_owned("blk.45.attn_norm.weight",24,45,45,0));
++    CHECK(!strata_glm_layer_tensor_owned("blk.x.bad",24,45,45,1));
++    return 0;
++}
+diff --git a/tests/host/layer_pipeline_test.cpp b/tests/host/layer_pipeline_test.cpp
+new file mode 100644
+index 00000000..ce141c4e
+--- /dev/null
++++ b/tests/host/layer_pipeline_test.cpp
+@@ -0,0 +1,120 @@
++#include "strata/spec/layer_pipeline.hpp"
++#include <array>
++#include <atomic>
++#include <future>
++#include <iostream>
++#include <stdexcept>
++#include <vector>
++
++// A recurrent head and a tail with a four-token open pool and an 8192-entry
++// ring. Rolled-back slots deliberately retain stale values, as GPU memory does.
++struct Backend {
++    struct State { int position; uint64_t recurrent; std::array<uint64_t,4> open; };
++    struct Hop { uint64_t generation=0, value=0; bool live=false; };
++    State head{}, saved{}, tail{};
++    std::array<Hop,2> hops;
++    std::array<uint64_t,8192> ring{};
++    bool miss;
++    int draft_calls=0, head_calls=0, fail_at=-1, window=0, policy=0;
++    int head_routes=0,saved_routes=0,tail_routes=0;
++    explicit Backend(int pos,bool misses,int w=0):miss(misses),window(w) {head.position=tail.position=pos;}
++    static void step(State &s,int token) {
++        s.recurrent=s.recurrent*6364136223846793005ULL+unsigned(token)+s.position;
++        s.open[s.position%4]=s.recurrent;
++        ++s.position;
++    }
++    static int next(int token) {return (token*13+7)%113;}
++    std::future<void> start_head(int token,int slot,uint64_t gen) {
++        if(hops[slot].live)throw std::logic_error("overwrite live slot");
++        hops[slot].live=true;hops[slot].generation=gen;
++        return std::async(std::launch::async,[=,this]{
++            ++head_calls;
++            ++head_routes;step(head,token+policy*131);ring[(head.position-1)%8192]=head.recurrent;
++            hops[slot].value=head.recurrent;
++            if(head_calls==fail_at)throw std::runtime_error("forced head failure");
++        });
++    }
++    void save_head(){saved=head;saved_routes=head_routes;}
++    void restore_head(){head=saved;head_routes=saved_routes;}
++    bool window_due(uint64_t consumed)const{return window && consumed%(unsigned)window==0;}
++    void rebalance(){
++        if(head_routes!=tail_routes||head.position!=tail.position||head.recurrent!=tail.recurrent)
++            throw std::logic_error("policy updated outside confirmed frontier");
++        head_routes=tail_routes=0;++policy;
++    }
++    void release(int slot,uint64_t gen){
++        if(!hops[slot].live||hops[slot].generation!=gen)throw std::logic_error("stale hop");
++        hops[slot].live=false;
++    }
++    int draft(int token){++draft_calls;return next(token)+(miss&&draft_calls%2?1:0);}
++    std::future<void> start_draft(int token,int &out){return std::async(std::launch::async,[&,token]{out=draft(token);});}
++    int confirm(int token,int slot,uint64_t gen){
++        if(!hops[slot].live||hops[slot].generation!=gen)throw std::logic_error("unpublished hop");
++        ++tail_routes;step(tail,token+policy*131);
++        if(tail.recurrent!=hops[slot].value)throw std::logic_error("unconfirmed input reached tail");
++        release(slot,gen);return next(token);
++    }
++};
++struct PrefillBackend {
++    struct Hop{uint64_t generation=0,value=0;bool live=false;};
++    std::vector<std::array<Hop,2>> hops;
++    std::vector<size_t> positions;
++    std::vector<uint64_t> output;
++    std::atomic<int> active{0};
++    bool fail=false;
++    explicit PrefillBackend(size_t stages,size_t panels):hops(stages-1),positions(stages),output(panels){}
++    static uint64_t expected(size_t stages,size_t panel){return (stages*(stages+1)/2)*100+stages*panel;}
++    std::future<void> start(size_t stage,size_t panel){
++        const uint64_t gen=panel+1;const size_t slot=gen&1;
++        uint64_t input=0;
++        if(stage){auto &h=hops[stage-1][slot];if(!h.live||h.generation!=gen)throw std::logic_error("stale prefill source");input=h.value;}
++        if(stage+1<positions.size()){auto &h=hops[stage][slot];if(h.live)throw std::logic_error("prefill slot overwritten");h.live=true;h.generation=gen;}
++        return std::async(std::launch::async,[=,this]{
++            ++active;
++            if(positions[stage]++!=panel){--active;throw std::logic_error("prefill reordered a layer");}
++            uint64_t result=input+(stage+1)*100+panel;
++            if(stage+1<positions.size())hops[stage][slot].value=result;else output[panel]=result;
++            --active;
++            if(fail&&stage==1&&panel==1)throw std::runtime_error("forced prefill failure");
++        });
++    }
++    void complete(size_t stage,size_t panel){if(stage)hops[stage-1][(panel+1)&1].live=false;}
++};
++int main(){
++    try {
++        for(int pos:{0,2,3,4,254,255,256,8190,8191,8192})for(bool misses:{false,true})for(int count:{1,2,7,17})for(int window:{0,2,7}) {
++            Backend b(pos,misses,window);int token=11, emitted=0;
++            auto stats=strata::spec::run_layer_pipeline(b,token,[&](int actual){
++                token=Backend::next(token);
++                if(actual!=token)throw std::runtime_error("wrong output");
++                return ++emitted==count;
++            });
++            if(b.head.position!=b.tail.position||b.head.recurrent!=b.tail.recurrent||b.head.open!=b.tail.open)
++                throw std::runtime_error("frontiers differ");
++            if(b.head_routes!=b.tail_routes || (window && b.policy!=(count-1)/window))throw std::runtime_error("uncommitted route statistics");
++            if(stats.proposed!=(unsigned)count||(!misses&&stats.accepted!=stats.proposed))throw std::runtime_error("wrong accounting");
++            for(const auto &h:b.hops)if(h.live)throw std::runtime_error("leaked hop");
++        }
++        for(int pos:{3,255,8191}) {
++            Backend b(pos,true);int emitted=0;
++            try {strata::spec::run_layer_pipeline(b,11,[&](int){if(++emitted==4)throw std::runtime_error("cancelled");return false;});}
++            catch(const std::runtime_error &e){if(std::string(e.what())!="cancelled")throw;}
++            if(b.head.position!=b.tail.position||b.head.recurrent!=b.tail.recurrent||b.head.open!=b.tail.open)throw std::runtime_error("cancel rollback differs");
++        }
++        for(size_t stages:{2,3,4,16})for(size_t panels:{1,2,3,17}) {
++            PrefillBackend b(stages,panels);
++            strata::spec::run_layer_prefill(b,panels,stages);
++            for(size_t p=0;p<panels;++p)if(b.output[p]!=PrefillBackend::expected(stages,p))throw std::runtime_error("prefill result differs");
++            for(const auto &pair:b.hops)for(const auto &h:pair)if(h.live)throw std::runtime_error("prefill slot leaked");
++        }
++        PrefillBackend failed(4,8);failed.fail=true;
++        try{strata::spec::run_layer_prefill(failed,8,4);return 4;}
++        catch(const std::runtime_error &e){if(std::string(e.what())!="forced prefill failure")throw;}
++        if(failed.active.load())throw std::runtime_error("prefill failure left an active job");
++        Backend b(8191,false);b.fail_at=2;
++        try {strata::spec::run_layer_pipeline(b,11,[](int){return false;});return 2;}
++        catch(const std::runtime_error &e){if(std::string(e.what())!="forced head failure")throw;}
++        if(b.head.position!=b.saved.position||b.head.recurrent!=b.saved.recurrent)return 3;
++        std::cout<<"layer pipeline: 240 decode traces, 16 prefill traces, cancellation and failures passed\n";
++    }catch(const std::exception &e){std::cerr<<e.what()<<'\n';return 1;}
++}
+diff --git a/tools/glm_layer_tune.py b/tools/glm_layer_tune.py
+new file mode 100644
+index 00000000..830a66d1
+--- /dev/null
++++ b/tools/glm_layer_tune.py
+@@ -0,0 +1,87 @@
++"""Select a measured GLM layer cut from comparable completed benchmark records."""
++import argparse
++import hashlib
++import json
++import math
++import pathlib
++import statistics
++
++MATCH = ("context", "threads", "gpu_devices", "gpu_budget_mib", "decode_cache_mib",
++         "decode_cache_window", "decode_cache_adapt", "decode_graphs", "prefill_batch",
++         "speculative", "draft_depth", "layer_pipeline", "layer_memory", "prompt_tokens", "generated_tokens",
++         "repetitions", "validation_tokens", "validation_repetitions", "full_warmups", "cpu_affinity")
++CRITICAL_ENV = ("STRATA_GLM_CANON", "STRATA_GLM_Q8_DECODE", "STRATA_GLM_STEP_PIPELINE",
++                "STRATA_GLM_DEVICE_EXPERTS", "STRATA_GLM_DEVICE_REDUCTION", "STRATA_GLM_LAYER_GRAPHS",
++                "STRATA_GLM_KDA_PREPARE", "STRATA_GLM_KDA_ROW_PARTS", "STRATA_OLD_IQ_MMVQ")
++
++
++def select_plan(records, model):
++    if len(records) < 2:
++        raise ValueError("provide at least two measured cuts")
++    first = records[0]
++    cfg = first["configuration"]
++    expected = {k: cfg.get(k, "interleave" if k == "layer_memory" else None) for k in MATCH}
++    expected["layer_memory"] = expected["layer_memory"] or "interleave"
++    expected["pin_cpu"] = cfg.get("cpu_affinity", "auto") != "none"
++    environment = {k: first.get("environment", {}).get(k) for k in sorted(set(first.get("environment", {})) | set(CRITICAL_ENV))}
++    candidates = []
++    for record in records:
++        current = record["configuration"]
++        settings = {k: current.get(k, "interleave" if k == "layer_memory" else None) for k in MATCH}
++        settings["layer_memory"] = settings["layer_memory"] or "interleave"
++        settings["pin_cpu"] = current.get("cpu_affinity", "auto") != "none"
++        env = {k: record.get("environment", {}).get(k) for k in sorted(set(record.get("environment", {})) | set(CRITICAL_ENV))}
++        if (settings != expected or env != environment or record["decoder_sha256"] != first["decoder_sha256"] or
++                record["decoder_fnv64"] != first["decoder_fnv64"] or record["prompt_sha256"] != first["prompt_sha256"] or current["model"] != cfg["model"] or
++                record.get("hardware") != first.get("hardware")):
++            raise ValueError("cuts must share model, binary, hardware, prompt, environment and settings")
++        if (current.get("gpu_layout") != "layer" or not record.get("complete") or record.get("instrumented") or
++                not record.get("repetitions_identical") or len(record.get("trials", [])) < 2):
++            raise ValueError("only complete, repeated, stable, uninstrumented layer runs qualify for placement selection")
++        split = current.get("layer_split")
++        devices = [int(x) for x in str(current["gpu_devices"]).split(",")]
++        try:
++            bounds = [0] + [int(x) for x in str(split).split(",")] + [45]
++        except (ValueError, TypeError) as exc:
++            raise ValueError("measure explicit GLM-5.3 layer cuts") from exc
++        if len(bounds) != len(devices) + 1 or any(a >= b for a, b in zip(bounds, bounds[1:])):
++            raise ValueError("invalid or empty stage in measured cut")
++        if any(len(t["token_ids"]) < 2 or not math.isfinite(t["decode_ms"]) or t["decode_ms"] <= 0
++               or t["token_ids"] != record["trials"][0]["token_ids"] for t in record["trials"]):
++            raise ValueError("invalid or unstable measured decode trials")
++        timings = [(len(t["token_ids"]) - 1) * 1000.0 / t["decode_ms"] for t in record["trials"]]
++        candidates.append({"layer_split": str(split), "median_decode_tok_s": statistics.median(timings),
++                           "decode_tok_s": timings})
++    if len({r["layer_split"] for r in candidates}) < 2:
++        raise ValueError("provide at least two distinct measured cuts")
++    best = max(candidates, key=lambda r: (r["median_decode_tok_s"], r["layer_split"]))
++    model = pathlib.Path(model)
++    if model.resolve() != pathlib.Path(cfg["model"]).resolve():
++        raise ValueError("provided model differs from the measured model")
++    return dict(schema="strata.glm.layer-plan.v1", model_filename=model.name, model_bytes=model.stat().st_size,
++                configuration=expected, environment=environment, hardware=first.get("hardware", {}),
++                decoder_sha256=first["decoder_sha256"], decoder_fnv64=first["decoder_fnv64"], prompt_sha256=first["prompt_sha256"],
++                layer_split=best["layer_split"], candidates=candidates,
++                timing_scope="measured single-stream decode; placement screening, not a coding-quality qualification")
++
++
++def main():
++    ap = argparse.ArgumentParser(description=__doc__)
++    ap.add_argument("records", type=pathlib.Path, nargs="+")
++    ap.add_argument("--model", type=pathlib.Path, required=True)
++    ap.add_argument("--output", type=pathlib.Path, required=True)
++    args = ap.parse_args()
++    if args.output.exists():
++        ap.error("output exists; preserve the previous measured plan")
++    try:
++        records = [json.loads(p.read_text()) for p in args.records]
++        plan = select_plan(records, args.model)
++    except (ValueError, KeyError, OSError) as exc:
++        ap.error(str(exc))
++    plan["records"] = [{"name": p.name, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in args.records]
++    args.output.write_text(json.dumps(plan, indent=2) + "\n")
++    print(f"selected layer_split={plan['layer_split']}; plan={args.output}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tools/glm_v100_layer.env b/tools/glm_v100_layer.env
+new file mode 100644
+index 00000000..accf2b60
+--- /dev/null
++++ b/tools/glm_v100_layer.env
+@@ -0,0 +1,10 @@
++# Opt-in GLM layer layout. Start from a shell with inherited STRATA_* settings
++# cleared; tools/glm_v100.env selects the legacy GPU-helper architecture.
++# Keep target tensors and routes unchanged. Use fixed per-stage cache budgets.
++# Original IQ GGUF uses native expert kernels. For Q23 K-quants, additionally
++# set STRATA_GLM_CANON=1 to request the canonical CPU/GPU arithmetic.
++export STRATA_GLM_STEP_PIPELINE=1
++export STRATA_GLM_ACTIVE_POOLS=1
++export STRATA_GLM_DEVICE_EXPERTS=1
++export STRATA_GLM_DEVICE_REDUCTION=1
++export STRATA_NATIVE_NUMA_LOCAL=0
+diff --git a/tools/test_glm_layer_tune.py b/tools/test_glm_layer_tune.py
+new file mode 100644
+index 00000000..23a2f109
+--- /dev/null
++++ b/tools/test_glm_layer_tune.py
+@@ -0,0 +1,43 @@
++"""Placement selection rejects incomplete and incomparable timing evidence."""
++import copy
++import pathlib
++import tempfile
++import unittest
++from glm_layer_tune import select_plan, MATCH
++
++
++class LayerPlan(unittest.TestCase):
++    def fixture(self, model, split, ms):
++        cfg = dict(context=32768, threads=32, gpu_devices="0,1", gpu_budget_mib=32768,
++                   decode_cache_mib="22528", decode_cache_window=256, decode_cache_adapt=False,
++                   decode_graphs=True, prefill_batch=256, speculative="mtp", draft_depth=1,
++                   layer_pipeline="mtp", layer_memory="socket", gpu_layout="layer", layer_split=split, model=str(model))
++        return dict(configuration=cfg, complete=True, instrumented=False, repetitions_identical=True,
++                    decoder_sha256="abc", decoder_fnv64=123, prompt_sha256="def", environment={},
++                    hardware={"cpu": "Xeon", "gpus": ["V100", "V100"], "node": "node", "job_id": "1"},
++                    trials=[dict(token_ids=[1]*64, decode_ms=ms), dict(token_ids=[1]*64, decode_ms=ms+1)])
++
++    def test_measured_choice_and_identity(self):
++        with tempfile.TemporaryDirectory() as directory:
++            model = pathlib.Path(directory)/"m.gguf"; model.write_bytes(b"fixture")
++            records = [self.fixture(model, "24", 100), self.fixture(model, "26", 120)]
++            plan = select_plan(records, model)
++            self.assertEqual(plan["layer_split"], "24")
++            self.assertEqual(plan["model_bytes"], 7)
++            self.assertEqual(plan["decoder_fnv64"], 123)
++            for field in MATCH:
++                broken = copy.deepcopy(records)
++                broken[1]["configuration"][field] = "changed"
++                with self.assertRaises(ValueError): select_plan(broken, model)
++            for field, value in (("complete", False), ("instrumented", True), ("repetitions_identical", False),
++                                 ("decoder_sha256", "different"), ("decoder_fnv64", 2), ("environment", {"STRATA_GLM_CANON": "1"}),
++                                 ("hardware", {}), ("prompt_sha256", "different")):
++                broken = copy.deepcopy(records); broken[1][field] = value
++                with self.assertRaises(ValueError): select_plan(broken, model)
++            with self.assertRaises(ValueError): select_plan(records[:1], model)
++            with self.assertRaises(ValueError): select_plan([records[0], records[0]], model)
++            broken = copy.deepcopy(records); broken[1]["configuration"]["layer_split"] = "0"
++            with self.assertRaises(ValueError): select_plan(broken, model)
++
++
++if __name__ == "__main__": unittest.main()

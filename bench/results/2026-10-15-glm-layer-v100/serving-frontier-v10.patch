@@ -1,0 +1,32 @@
+--- a/src/program/glm_layer_decode.inc
++++ b/src/program/glm_layer_decode.inc
+@@ -615,6 +615,9 @@
+         }
+         if (request.line == "QUIT") break;
+         int sent = 0; size_t prompt_count = 0;
++        // Publish the idle frontier before DONE/ERR: the client may immediately
++        // queue another GEN and STOP after reading the terminal response.
++        auto finish_active = [&] { std::lock_guard lock(mutex); active.reset(); };
+         try {
+             std::istringstream input(request.line); std::string op, ids, extra; int count = 0;
+             if (!(input >> op >> count >> ids) || op != "GEN" || input >> extra) throw std::invalid_argument("expected GEN <max_new> <IDs>");
+@@ -639,17 +642,18 @@
+                 ++sent; std::cout << "T " << token << '\n' << std::flush;
+                 if (std::find(config.stops.begin(), config.stops.end(), token) != config.stops.end()) finish = "stop";
+             });
++            finish_active();
+             std::cout << "DONE " << sent << ' ' << tokens.size() << ' ' << ms(start,prefilled) << ' ' << ms(prefilled,Clock::now()) << ' ' << finish << " 0 0 0\n" << std::flush;
+         } catch (const std::exception &e) {
+             decoder.set_cancel({});
+             try { decoder.reset(); } catch (...) { std::cerr << "GLM: layer reset failed\n"; std::_Exit(1); }
++            finish_active();
+             if (request.cancel->load() && std::string(e.what()) == "cancelled")
+                 std::cout << "DONE " << sent << ' ' << prompt_count << " 0 0 cancel 0 0 0\n" << std::flush;
+             else std::cout << "ERR " << e.what() << '\n' << std::flush;
+         }
+         decoder.set_cancel({});
+         decoder.report();
+-        { std::lock_guard lock(mutex); active.reset(); }
+     }
+     return 0;
+ }

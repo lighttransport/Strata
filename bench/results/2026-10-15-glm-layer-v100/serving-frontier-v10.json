@@ -1,0 +1,19 @@
+{
+  "base_engine_binary_sha256": "a0eade4a7082550c2add397a5f9849dfbaae75b37c839baed168883b4b78a699",
+  "file": "src/program/glm_layer_decode.inc",
+  "before_sha256": "ef8d3a642474c48a284adacbdb00cc466eac790fd1e0ee997ac06cf143fa33ed",
+  "after_sha256": "714020ab2ff04dbd9aa8d680088989adb1cf3ca4f98b8ac8284054da9c30f967",
+  "delta_patch_sha256": "84e3e50115226f863dba2c07804a28296bc24442f1ca09aeed702847759ed40a",
+  "change": "Clear active request before publishing DONE/ERR, closing immediately following GEN/STOP race. Decoder, scheduler and kernels unchanged.",
+  "local_cuda_compile": "passed",
+  "local_hip_compile": "passed",
+  "remote_sm70_build_pending": false,
+  "binary_sha256": "070fa623b07c28d4c8b9420a58a433d326bb189d6314c98c745d03e48d5b63ae",
+  "boundary_cancel_reason": "cancel",
+  "boundary_output_tokens": 0,
+  "mid_generation_cancelled_tokens": 8,
+  "post_cancel_replay_identical": true,
+  "v9_v10_baseline_tokens_identical": true,
+  "raw_record_sha256": "189533540a915ef734857a8b3a801e66e934a25e77f2b8e285daf253b089054d",
+  "raw_protocol_sha256": "cd90e5bfa7169fd8af83d27a15e436947b956f9ac761427899891d28c4ca3832"
+}

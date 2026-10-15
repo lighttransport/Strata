@@ -17,7 +17,7 @@ public:
     void *mapped = nullptr;
     size_t size = 0, allocated = 0;
     VkMemoryPropertyFlags memory_flags = 0;
-    Buffer(Compute &, size_t, bool device_local = false);
+    Buffer(Compute &, size_t, bool device_local = false, bool host_access = true);
     ~Buffer();
     Buffer(const Buffer &) = delete;
     Buffer &operator=(const Buffer &) = delete;
@@ -50,6 +50,13 @@ public:
   void mla(int layer, std::span<const float> row, int position, int capacity,
            std::span<const float> q, std::span<const int> ids,
            std::span<float> y, int heads, float scale);
+  std::vector<float> mla_batch(int layer, std::span<const float> rows, int position,
+                               int capacity, std::span<const float> q,
+                               const std::vector<std::vector<int>> &ids,
+                               int heads, float scale);
+  std::vector<float> index_scores(std::span<const float> pooled, std::span<const float> queries,
+                                   std::span<const float> weights, std::span<const int> counts,
+                                   int heads,int dim);
   void mhc_read(std::span<const float> r, std::span<const float> projected,
                 std::span<const float> base, std::span<const float> scale,
                 std::span<float> c, std::span<float> x, int iterations,
@@ -58,8 +65,32 @@ public:
                  std::span<const float> y, std::span<float> out);
   std::vector<float> kda_state(int layer) const;
   void reset();
+  void release_working_buffers();
+  size_t upload_expert(int key, std::span<const uint8_t> gate,
+                     std::span<const uint8_t> up, std::span<const uint8_t> down,
+                       size_t max_bytes = size_t(-1));
+  std::vector<float> expert_dot(int key, std::span<const uint8_t> activation,
+                                int columns, int rows, int type, size_t offset, int tokens = 1);
+  void clear_experts();
+  void release_expert(int key);
+  struct Snapshot {
+    Compute *owner = nullptr;
+    std::map<int, std::unique_ptr<Buffer>> state, convolution;
+    std::map<int, int> positions;
+  };
+  void rewind_mla(int layer, int position);
+  Snapshot checkpoint();
+  void restore(const Snapshot &);
+
+  struct TransferMeasurement {
+    std::string direction;
+    size_t bytes;
+    uint32_t source_flags, destination_flags;
+    std::vector<double> milliseconds;
+  };
+  std::vector<TransferMeasurement> benchmark_transfers(size_t bytes, int repeats);
   size_t peak_bytes() const { return peak_; }
-  double dispatch_ms = 0;
+  double dispatch_ms = 0, transfer_ms = 0;
   const std::string &device_name() const { return name_; }
 
 private:
@@ -70,15 +101,22 @@ private:
   VkCommandPool commands_ = VK_NULL_HANDLE;
   VkCommandBuffer command_ = VK_NULL_HANDLE;
   VkFence fence_ = VK_NULL_HANDLE;
-  uint32_t queue_family_ = 0;
+  uint32_t queue_family_ = 0, max_groups_x_ = 0, max_groups_y_ = 0;
   size_t budget_, live_ = 0, peak_ = 0;
+  bool float64_ = false, device_state_ = false;
   std::string name_;
   std::map<std::string, Kernel> kernels_;
   std::array<std::unique_ptr<Buffer>, 8> scratch_;
   std::map<int, std::unique_ptr<Buffer>> state_, cache_, conv_, kda_weights_;
   std::map<int, int> positions_;
+  std::map<int, std::unique_ptr<Buffer>> experts_;
+  void copy(Buffer &source, Buffer &destination, size_t bytes, size_t offset = 0, size_t source_offset = 0);
+  void zero(Buffer &);
+  std::unique_ptr<Buffer> persistent(size_t bytes);
   void dispatch(const std::string &, const std::array<Buffer *, 8> &,
-                const void *, uint32_t);
+                const void *, uint32_t, uint32_t groups_y = 1);
+  void dispatch_grid(const std::string &, const std::array<Buffer *, 8> &,
+                     const void *, uint32_t);
   Buffer &scratch(int, size_t);
   Kernel &kernel(const std::string &);
   void cleanup() noexcept;

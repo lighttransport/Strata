@@ -1,0 +1,30 @@
+#version 450
+// Decode index scores: each wave scores two pools, 32 lanes (one per head) per
+// pool; the query sits in LDS and the per-head terms reduce by clustered add.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_clustered : require
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Pooled { vec4 pooled4[]; };
+layout(binding = 1, std430) readonly buffer Q { float q[]; };       // heads*dim at qofs
+layout(binding = 2, std430) readonly buffer W { float w[]; };       // heads at wofs
+layout(binding = 3, std430) writeonly buffer Scores { float scores[]; };
+layout(binding = 4, std430) readonly buffer Step { uint pos; } step;
+layout(push_constant) uniform P { uint heads, dim, pool, qofs, wofs, qstride, wstride, sstride; } p;  // heads == 32, dim == 128; token = workgroup y
+shared vec4 qs[32 * 32];
+void main() {
+  const uint t = gl_LocalInvocationID.x, tok = gl_WorkGroupID.y, pools = (step.pos + tok + 1) / p.pool;
+  const uint qo = p.qofs + tok * p.qstride, wo = p.wofs + tok * p.wstride, so = tok * p.sstride;
+  if (gl_WorkGroupID.x * 8 >= pools) return;
+  for (uint i = t; i < 32 * 32; i += 256)
+    qs[i] = vec4(q[qo + 4 * i], q[qo + 4 * i + 1], q[qo + 4 * i + 2], q[qo + 4 * i + 3]);
+  barrier();
+  const uint head = t % 32, b = gl_WorkGroupID.x * 8 + t / 32;
+  float v = 0;
+  if (b < pools) {
+    float d = 0;
+    for (uint i = 0; i < 32; i++) d += dot(qs[head * 32 + i], pooled4[b * 32 + i]);
+    v = w[wo + head] * max(d / sqrt(float(p.dim)), 0.0);
+  }
+  v = subgroupClusteredAdd(v, 32);
+  if (head == 0 && b < pools) scores[so + b] = v / sqrt(float(p.heads));
+}

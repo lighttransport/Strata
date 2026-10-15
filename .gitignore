@@ -30,7 +30,7 @@ td.log
 /.venv-glm/
 /build/
 /third_party/llama.cpp
-/models/
+/models
 /packs/
 /mtp/
 /run-*.bat
@@ -76,3 +76,10 @@ build-vision-cuda12.bat
 /bench/results/2026-10-03-glm-v100*/
 /docs/glm53_flash_v100*_measurement.json
 /docs/fixtures/glm53_v100_cpp_quality/
+
+# Local experiments, alternate environments and profiler runtime state.
+/tmp/
+/.venv-*/
+/.rocprofv3/
+/build-*.out
+/build-*.ctest.summary

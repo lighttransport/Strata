@@ -1,0 +1,143 @@
+#version 450
+// GPU-resident routed experts: row-per-lane products over repacked Q2_K/Q3_K
+// slots (see gemv_rows.comp for the layout). gl_WorkGroupID.y is the hit index;
+// hits[hofs] = count, then (slot, weight bits). A slot's matrix parts (gate and
+// up, or down) are addressed by buffer device address from the slot table.
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+layout(local_size_x = 64, local_size_y = 4) in;
+layout(buffer_reference, std430, buffer_reference_align = 16) readonly buffer U4 { uvec4 v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer U1 { uint v[]; };
+layout(binding = 0, std430) readonly restrict buffer Slots { uint64_t slot_address[]; };
+layout(binding = 1, std430) readonly restrict buffer X1 { float x[]; };
+layout(binding = 2, std430) writeonly restrict buffer Y { float y[]; };
+layout(binding = 3, std430) readonly restrict buffer Hits { uint hits[]; };
+layout(binding = 4, std430) readonly restrict buffer XSum { float xsum[]; };  // 16-element sums of x
+// K inputs, part_rows (rows of each part), parts (1 or 2), Mp padded part rows,
+// part_bytes, offset of the first part inside the slot, ksw, side byte offset,
+// x offset/stride per hit, y stride per hit, hofs (union list: count, slots), columns
+// (tokens) with x/y column strides.
+layout(push_constant) uniform P {
+  uint K, part_rows, parts, Mp, part_bytes, slot_offset, ksw, side, xofs, xhit, yhit, hofs, columns, xcol, ycol;
+} p;
+#define NMAX 4
+#if defined(TYPE_Q2K)
+#define QK 256u
+#define CH 5u
+#define SW 1u
+#elif defined(TYPE_Q3K)
+#define QK 256u
+#define CH 6u
+#define SW 4u
+#endif
+float acc[NMAX];
+uint64_t base;
+uint column_mask;
+uvec4 chunk(uint b, uint c, uint row) { return U4(base + uint64_t(((b * CH + c) * p.Mp + row) * 16)).v[0]; }
+uint side_word(uint b, uint w, uint row) { return U1(base + uint64_t(p.side + ((b * SW + w) * p.Mp + row) * 4)).v[0]; }
+
+#if defined(TYPE_Q2K)
+void block(uint b, uint row, uint xb) {
+  const uvec4 sc = chunk(b, 0, row);
+  const vec2 dm = unpackHalf2x16(side_word(b, 0, row));
+  float dsum[NMAX], msum[NMAX];
+  for (uint c = 0; c < NMAX; c++) { dsum[c] = 0; msum[c] = 0; }
+  for (uint n = 0; n < 2; n++) {
+    const uvec4 qa = chunk(b, 1 + 2 * n, row), qb = chunk(b, 2 + 2 * n, row);
+    for (uint j = 0; j < 4; j++) {
+      const uint sh = 2 * j;
+      for (uint half_index = 0; half_index < 2; half_index++) {
+        const uint is = 8 * n + 2 * j + half_index;
+        const uint s = (sc[is / 4] >> (8 * (is & 3))) & 255u;
+        const uvec4 q = half_index == 0 ? qa : qb;
+        for (uint c = 0; c < NMAX; c++) {
+          if (c >= p.columns) break;
+          if ((column_mask & (1u << c)) == 0u) continue;
+          const uint xo = xb + c * p.xcol + n * 128 + j * 32 + 16 * half_index;
+          float dotq = 0;
+          for (uint i = 0; i < 4; i++) {
+            const uint w = (q[i] >> sh) & 0x03030303u;
+            dotq += float(w & 255u) * x[xo + 4 * i] + float((w >> 8) & 255u) * x[xo + 4 * i + 1] +
+                    float((w >> 16) & 255u) * x[xo + 4 * i + 2] + float(w >> 24) * x[xo + 4 * i + 3];
+          }
+          dsum[c] += float(s & 15u) * dotq;
+          msum[c] += float(s >> 4) * xsum[xo / 16];
+        }
+      }
+    }
+  }
+  for (uint c = 0; c < NMAX; c++) acc[c] += dm.x * dsum[c] - dm.y * msum[c];
+}
+#elif defined(TYPE_Q3K)
+void block(uint b, uint row, uint xb) {
+  const uvec4 h0 = chunk(b, 0, row), h1 = chunk(b, 1, row);
+  const uint a0 = side_word(b, 0, row), a1 = side_word(b, 1, row), t = side_word(b, 2, row);
+  const float d = unpackHalf2x16(side_word(b, 3, row)).x;
+  uint scales[4];
+  scales[0] = (a0 & 0x0f0f0f0fu) | ((t & 0x03030303u) << 4);
+  scales[1] = (a1 & 0x0f0f0f0fu) | (((t >> 2) & 0x03030303u) << 4);
+  scales[2] = ((a0 >> 4) & 0x0f0f0f0fu) | (((t >> 4) & 0x03030303u) << 4);
+  scales[3] = ((a1 >> 4) & 0x0f0f0f0fu) | (((t >> 6) & 0x03030303u) << 4);
+  for (uint n = 0; n < 2; n++) {
+    const uvec4 qa = chunk(b, 2 + 2 * n, row), qb = chunk(b, 3 + 2 * n, row);
+    for (uint j = 0; j < 4; j++) {
+      const uint sh = 2 * j, bit = 4 * n + j;
+      for (uint half_index = 0; half_index < 2; half_index++) {
+        const uint is = 8 * n + 2 * j + half_index;
+        const int s = int((scales[is / 4] >> (8 * (is & 3))) & 255u) - 32;
+        const uvec4 q = half_index == 0 ? qa : qb;
+        const uvec4 hm = half_index == 0 ? h0 : h1;
+        uint cw[4];
+        for (uint i = 0; i < 4; i++) cw[i] = ((q[i] >> sh) & 0x03030303u) + (((hm[i] >> bit) & 0x01010101u) << 2);
+        for (uint c = 0; c < NMAX; c++) {
+          if (c >= p.columns) break;
+          if ((column_mask & (1u << c)) == 0u) continue;
+          const uint xo = xb + c * p.xcol + n * 128 + j * 32 + 16 * half_index;
+          float dotq = 0;
+          for (uint i = 0; i < 4; i++)
+            dotq += float(cw[i] & 255u) * x[xo + 4 * i] + float((cw[i] >> 8) & 255u) * x[xo + 4 * i + 1] +
+                    float((cw[i] >> 16) & 255u) * x[xo + 4 * i + 2] + float(cw[i] >> 24) * x[xo + 4 * i + 3];
+          acc[c] += d * float(s) * (dotq - 4.0 * xsum[xo / 16]);
+        }
+      }
+    }
+  }
+}
+#else
+#error "gemv_expert.comp needs TYPE_Q2K or TYPE_Q3K"
+#endif
+
+shared float partial[4][NMAX][64];
+
+void main() {
+  const uint hit = gl_WorkGroupID.y;
+  if (hit >= hits[p.hofs]) return;
+  column_mask = 0u;
+  for (uint c = 0; c < NMAX; ++c)
+    if (c < p.columns && hits[p.hofs + 33u + 4u * hit + c] != 0u) column_mask |= 1u << c;
+  const uint slot = hits[p.hofs + 1 + hit];
+  const uint lane = gl_SubgroupInvocationID, wave = gl_SubgroupID;
+  const uint kgroup = wave % p.ksw, rgroup = wave / p.ksw;
+  const uint r = (gl_WorkGroupID.x * (4 / p.ksw) + rgroup) * 64 + lane;  // row across parts
+  const uint rows_padded = p.Mp * p.parts;
+  const uint part = r / p.Mp, row = r % p.Mp;
+  base = slot_address[slot] + uint64_t(p.slot_offset) + uint64_t(part) * uint64_t(p.part_bytes);
+  const uint nb = p.K / QK, xh = p.xofs + hit * p.xhit;
+  for (uint c = 0; c < NMAX; c++) acc[c] = 0;
+  if (r < rows_padded)
+    for (uint b = kgroup; b < nb; b += p.ksw) block(b, row, xh + b * QK);
+  if (p.ksw > 1) {
+    for (uint c = 0; c < NMAX; c++) partial[wave][c][lane] = acc[c];
+    barrier();
+    if (kgroup != 0) return;
+    for (uint c = 0; c < NMAX; c++) {
+      float v = 0;
+      for (uint g = 0; g < p.ksw; g++) v += partial[wave + g][c][lane];
+      acc[c] = v;
+    }
+  }
+  if (r < rows_padded && row < p.part_rows)
+    for (uint c = 0; c < NMAX; c++)
+      if (c < p.columns) y[hit * p.yhit + c * p.ycol + part * p.part_rows + row] = acc[c];
+}

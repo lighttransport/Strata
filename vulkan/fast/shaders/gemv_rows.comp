@@ -1,0 +1,177 @@
+#version 450
+// Row-per-lane matrix-vector products over the fast engine's repacked layout.
+// Weights are stored as 16-byte chunks ordered [block][chunk][row] (rows padded
+// to Mp, a multiple of 64), so the 64 lanes of a wave (64 consecutive rows)
+// load one contiguous 1 KiB span per instruction. Small per-block values live
+// in a side plane ordered [block][word][row]. Activations are wave-uniform and
+// read through scalar loads. Waves of a workgroup split the blocks of K
+// (ksw groups) and reduce through LDS in a fixed order.
+#extension GL_KHR_shader_subgroup_basic : require
+#ifndef WAVES
+#define WAVES 4
+#endif
+layout(local_size_x = 64, local_size_y = WAVES) in;
+layout(binding = 0, std430) readonly restrict buffer W4 { uvec4 w4[]; };
+layout(binding = 0, std430) readonly restrict buffer W1 { uint w1[]; };
+layout(binding = 1, std430) readonly restrict buffer X1 { float x[]; };
+layout(binding = 2, std430) restrict buffer Y { float y[]; };
+layout(binding = 3, std430) writeonly restrict buffer Part { float part[]; };
+// K, M rows, Mp padded rows, N columns, xs/ys column strides, x/y offsets (floats),
+// accumulate, ksw K-split waves, hb head bytes, hx/hy head strides, side byte offset,
+// kparts workgroup K-split (gl_WorkGroupID.z; partial sums go to part[z][n*M+row]).
+layout(push_constant) uniform P {
+  uint K, M, Mp, N, xs, ys, xofs, yofs, accumulate, ksw, hb, hx, hy, side, kparts, pad1;
+} p;
+#define NMAX 4
+float acc[NMAX];
+#if defined(TYPE_Q4K)
+#define QK 256u
+#define CH 9u
+#define SW 1u
+#elif defined(TYPE_Q6K)
+#define QK 256u
+#define CH 13u
+#define SW 1u
+#elif defined(TYPE_Q50)
+#define QK 32u
+#define CH 1u
+#define SW 2u
+#endif
+
+uvec4 chunk(uint base, uint b, uint c, uint row) { return w4[(base + ((b * CH + c) * p.Mp + row) * 16) >> 4]; }
+uint side_word(uint base, uint b, uint w, uint row) { return w1[(base + p.side + ((b * SW + w) * p.Mp + row) * 4) >> 2]; }
+
+#if defined(TYPE_Q4K)
+uint sbyte(uvec4 h, uint i) { return (h[1 + i / 4] >> (8 * (i & 3))) & 255u; }
+void block(uint base, uint b, uint row, uint xb) {
+  const uvec4 h = chunk(base, b, 0, row);
+  const vec2 dm = unpackHalf2x16(h.x);
+  for (uint q = 0; q < 4; q++) {
+    const uint j0 = 2 * q, j1 = j0 + 1;
+    float sc0, m0, sc1, m1;
+    if (q < 2) {
+      sc0 = float(sbyte(h, j0) & 63u); m0 = float(sbyte(h, j0 + 4) & 63u);
+      sc1 = float(sbyte(h, j1) & 63u); m1 = float(sbyte(h, j1 + 4) & 63u);
+    } else {
+      sc0 = float((sbyte(h, j0 + 4) & 15u) | ((sbyte(h, j0 - 4) >> 6) << 4));
+      m0 = float((sbyte(h, j0 + 4) >> 4) | ((sbyte(h, j0) >> 6) << 4));
+      sc1 = float((sbyte(h, j1 + 4) & 15u) | ((sbyte(h, j1 - 4) >> 6) << 4));
+      m1 = float((sbyte(h, j1 + 4) >> 4) | ((sbyte(h, j1) >> 6) << 4));
+    }
+    const uvec4 qa = chunk(base, b, 1 + 2 * q, row), qb = chunk(base, b, 2 + 2 * q, row);
+    for (uint n = 0; n < NMAX; n++) {
+      if (n >= p.N) break;
+      const uint xo = xb + n * p.xs + 64 * q;
+      float lo = 0, hi = 0, sl = 0, sh = 0;
+      for (uint i = 0; i < 8; i++) {
+        const uint w = i < 4 ? qa[i] : qb[i - 4];
+        const uint l = w & 0x0F0F0F0Fu, u = (w >> 4) & 0x0F0F0F0Fu;
+        const uint e = xo + 4 * i;
+        const float x0 = x[e], x1 = x[e + 1], x2 = x[e + 2], x3 = x[e + 3];
+        const float y0 = x[e + 32], y1 = x[e + 33], y2 = x[e + 34], y3 = x[e + 35];
+        lo += float(l & 255u) * x0 + float((l >> 8) & 255u) * x1 + float((l >> 16) & 255u) * x2 + float(l >> 24) * x3;
+        hi += float(u & 255u) * y0 + float((u >> 8) & 255u) * y1 + float((u >> 16) & 255u) * y2 + float(u >> 24) * y3;
+        sl += (x0 + x1) + (x2 + x3);
+        sh += (y0 + y1) + (y2 + y3);
+      }
+      acc[n] += dm.x * (sc0 * lo + sc1 * hi) - dm.y * (m0 * sl + m1 * sh);
+    }
+  }
+}
+#elif defined(TYPE_Q6K)
+int sc8(uvec4 s, uint i) { return int(((s[i / 4] >> (8 * (i & 3))) & 255u) << 24) >> 24; }
+void block(uint base, uint b, uint row, uint xb) {
+  const float d = unpackHalf2x16(side_word(base, b, 0, row)).x;
+  const uvec4 sc = chunk(base, b, 12, row);
+  for (uint hf = 0; hf < 2; hf++) {
+    // ql: 64 bytes = chunks 4hf..4hf+3; qh: 32 bytes = chunks 8+2hf, 9+2hf
+    const uvec4 l0 = chunk(base, b, 4 * hf, row), l1 = chunk(base, b, 4 * hf + 1, row);
+    const uvec4 l2 = chunk(base, b, 4 * hf + 2, row), l3 = chunk(base, b, 4 * hf + 3, row);
+    const uvec4 h0 = chunk(base, b, 8 + 2 * hf, row), h1 = chunk(base, b, 9 + 2 * hf, row);
+    for (uint n = 0; n < NMAX; n++) {
+      if (n >= p.N) break;
+      const uint xo = xb + n * p.xs + 128 * hf;
+      float s[8];
+      for (uint g = 0; g < 8; g++) s[g] = 0;
+      for (uint i = 0; i < 8; i++) {  // 8 words of l = 0..31
+        const uint a = i < 4 ? l0[i] : l1[i - 4];   // ql[l]
+        const uint c = i < 4 ? l2[i] : l3[i - 4];   // ql[l+32]
+        const uint h = i < 4 ? h0[i] : h1[i - 4];   // qh[l]
+        const uint is = i / 4;                       // l/16
+        for (uint e = 0; e < 4; e++) {
+          const uint sh = 8 * e, l = 4 * i + e;
+          const uint av = (a >> sh) & 255u, cv = (c >> sh) & 255u, hv = (h >> sh) & 255u;
+          const float q1 = float(int((av & 15u) | ((hv & 3u) << 4)) - 32);
+          const float q2 = float(int((cv & 15u) | (((hv >> 2) & 3u) << 4)) - 32);
+          const float q3 = float(int((av >> 4) | (((hv >> 4) & 3u) << 4)) - 32);
+          const float q4 = float(int((cv >> 4) | (((hv >> 6) & 3u) << 4)) - 32);
+          s[is * 4 + 0] += q1 * x[xo + l];
+          s[is * 4 + 1] += q2 * x[xo + l + 32];
+          s[is * 4 + 2] += q3 * x[xo + l + 64];
+          s[is * 4 + 3] += q4 * x[xo + l + 96];
+        }
+      }
+      float t = 0;
+      for (uint is = 0; is < 2; is++)
+        t += float(sc8(sc, 8 * hf + is + 0)) * s[is * 4 + 0] + float(sc8(sc, 8 * hf + is + 2)) * s[is * 4 + 1] +
+             float(sc8(sc, 8 * hf + is + 4)) * s[is * 4 + 2] + float(sc8(sc, 8 * hf + is + 6)) * s[is * 4 + 3];
+      acc[n] += d * t;
+    }
+  }
+}
+#elif defined(TYPE_Q50)
+void block(uint base, uint b, uint row, uint xb) {
+  const uvec4 qs = chunk(base, b, 0, row);
+  const uint qh = side_word(base, b, 0, row);
+  const float d = unpackHalf2x16(side_word(base, b, 1, row)).x;
+  for (uint n = 0; n < NMAX; n++) {
+    if (n >= p.N) break;
+    const uint xo = xb + n * p.xs;
+    float s = 0;
+    for (uint i = 0; i < 4; i++)
+      for (uint e = 0; e < 4; e++) {
+        const uint j = 4 * i + e, v = (qs[i] >> (8 * e)) & 255u;
+        s += float(int((v & 15u) | (((qh >> j) & 1u) << 4)) - 16) * x[xo + j];
+        s += float(int((v >> 4) | (((qh >> (j + 16)) & 1u) << 4)) - 16) * x[xo + j + 16];
+      }
+    acc[n] += d * s;
+  }
+}
+#else
+#error "gemv_rows.comp needs a TYPE_* define"
+#endif
+
+shared float partial[WAVES][NMAX][64];
+
+void main() {
+  const uint lane = gl_SubgroupInvocationID, wave = gl_SubgroupID, head = gl_WorkGroupID.y;
+  const uint kgroup = wave % p.ksw, rgroup = wave / p.ksw;
+  const uint row = (gl_WorkGroupID.x * (WAVES / p.ksw) + rgroup) * 64 + lane;
+  const uint nb = p.K / QK, base = head * p.hb, xh = p.xofs + head * p.hx;
+  for (uint n = 0; n < NMAX; n++) acc[n] = 0;
+  if (row < p.Mp)
+    for (uint b = gl_WorkGroupID.z * p.ksw + kgroup; b < nb; b += p.ksw * p.kparts) block(base, b, row, xh + b * QK);
+  if (p.ksw > 1) {
+    for (uint n = 0; n < NMAX; n++) partial[wave][n][lane] = acc[n];
+    barrier();
+    if (kgroup != 0) return;
+    for (uint n = 0; n < NMAX; n++) {
+      float v = 0;
+      for (uint g = 0; g < p.ksw; g++) v += partial[wave + g][n][lane];
+      acc[n] = v;
+    }
+  }
+  if (row >= p.M) return;
+  if (p.kparts > 1) {
+    for (uint n = 0; n < NMAX; n++) {
+      if (n >= p.N) break;
+      part[(gl_WorkGroupID.z * p.N + n) * p.M + row] = acc[n];
+    }
+    return;
+  }
+  for (uint n = 0; n < NMAX; n++) {
+    if (n >= p.N) break;
+    const uint o = p.yofs + n * p.ys + head * p.hy + row;
+    y[o] = p.accumulate != 0 ? y[o] + acc[n] : acc[n];
+  }
+}

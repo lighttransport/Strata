@@ -1,0 +1,28 @@
+#version 450
+// Union of the per-token GPU-resident hits of one layer (token lists at hofs+32t:
+// count, (slot, weight bits)...). Output at uofs: count, slots[32], then the
+// weight of union entry u for token t at 33 + 4u + t (zero when not routed).
+layout(local_size_x = 1) in;
+layout(binding = 0, std430) buffer Hits { uint hits[]; };
+layout(push_constant) uniform P { uint hofs, uofs, tokens; } p;
+void main() {
+  uint count = 0;
+  for (uint i = 0; i < 32 * 4; i++) hits[p.uofs + 33 + i] = 0u;
+  for (uint t = 0; t < p.tokens; t++) {
+    const uint ho = p.hofs + 32 * t, n = hits[ho];
+    uint union_index[8];
+    for (uint k = 0; k < n; k++) {
+      const uint slot = hits[ho + 1 + 2 * k], w = hits[ho + 2 + 2 * k];
+      uint u = 0;
+      while (u < count && hits[p.uofs + 1 + u] != slot) u++;
+      if (u == count) { hits[p.uofs + 1 + u] = slot; count++; }
+      hits[p.uofs + 33 + 4 * u + t] = w;
+      union_index[k] = u;
+    }
+    for (uint rank = 0; rank < 8u; ++rank) {
+      const uint ordinal = hits[ho + 17u + rank];
+      hits[ho + 17u + rank] = ordinal < n ? union_index[ordinal] : 0xffffffffu;
+    }
+  }
+  hits[p.uofs] = count;
+}

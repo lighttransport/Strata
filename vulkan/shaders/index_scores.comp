@@ -1,0 +1,29 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+layout(local_size_x=128) in;
+layout(binding=0,std430) readonly buffer Pools { float pooled[]; };
+layout(binding=1,std430) readonly buffer Queries { float queries[]; };
+layout(binding=2,std430) readonly buffer Weights { float weights[]; };
+layout(binding=3,std430) readonly buffer Counts { uint counts[]; };
+layout(binding=6,std430) writeonly buffer Scores { float scores[]; };
+layout(push_constant) uniform Params { uint heads; uint dim; uint pools; uint tokens; } p;
+void main() {
+ uint entry=gl_GlobalInvocationID.x;
+#ifdef STRATA_WIDE_DISPATCH
+ entry+=gl_WorkGroupID.y*gl_NumWorkGroups.x*gl_WorkGroupSize.x;
+#endif
+ uint token=entry/p.pools,row=entry%p.pools;
+ if(token>=p.tokens)return;
+ if(row>=counts[token]){scores[entry]=0;return;}
+ precise float score=0;
+ // Use the CPU's rounded roots and division rounding. Polaris FP32 division
+ // can differ by an ULP, which can reorder nearly tied selection scores.
+ float root_dim=weights[p.tokens*p.heads],root_heads=weights[p.tokens*p.heads+1];
+ for(uint head=0;head<p.heads;head++) {
+  precise float dot=0;
+  for(uint d=0;d<p.dim;d++)dot+=queries[(token*p.heads+head)*p.dim+d]*pooled[row*p.dim+d];
+  precise float normalized=float(double(dot)/double(root_dim));
+  score+=weights[token*p.heads+head]*max(normalized,0.0);
+ }
+ scores[entry]=float(double(score)/double(root_heads));
+}

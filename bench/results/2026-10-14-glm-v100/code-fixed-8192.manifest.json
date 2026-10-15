@@ -1,0 +1,9 @@
+{
+  "actual_tokens": 8192,
+  "text_sha256": "c976e06cb97b79511fd02bb114760c59d841920beb3a8b01e362f6d1832df874",
+  "ids_sha256": "f45652959378e0cb500f59138eb22d670117185560ed3539caca4a8fe7e3f245",
+  "background": "include/strata/kernels/cpu/pool.hpp",
+  "background_tokens": 4032,
+  "padding_tokens": 49,
+  "task": "unchanged historical parse_u64 task with preceding unrelated C++ source"
+}

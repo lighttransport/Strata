@@ -36,11 +36,33 @@ inline void mixed_layout_report(std::ostream &out) {
         << ",\"chunk_destination\":" << l.chunk_destination << ",\"activation\":" << l.activation
         << ",\"output\":" << l.output << ",\"activation_half\":" << l.activation_half << "}}\n";
 }
+// STRATA_GLM_MIXED_SPIN_US=N (opt-in, 0..2000): poll the socket without sleeping for up to N microseconds
+// before blocking, removing the scheduler wake-up from each short request/reply.
+inline long mixed_spin_us() {
+    static const long value = [] {
+        const char *v = std::getenv("STRATA_GLM_MIXED_SPIN_US");
+        if (!v) return 0L;
+        char *end = nullptr; const long n = std::strtol(v, &end, 10);
+        if (end == v || *end || n < 0 || n > 2000) throw std::invalid_argument("STRATA_GLM_MIXED_SPIN_US must be 0..2000");
+        return n;
+    }();
+    return value;
+}
 inline void mixed_packet(int fd, strata_mixed_message &packet, bool send_value, int timeout_ms=120000) {
     if (!send_value) {
-        pollfd p{fd,POLLIN,0};int rc;
-        do {rc=poll(&p,1,timeout_ms);} while (rc<0 && errno==EINTR);
-        if (rc!=1 || !(p.revents&POLLIN)) throw std::runtime_error("mixed worker timeout or disconnect");
+        bool ready = false;
+        if (const long spin = mixed_spin_us()) {
+            const auto until = std::chrono::steady_clock::now() + std::chrono::microseconds(spin);
+            do {
+                pollfd q{fd,POLLIN,0};
+                if (poll(&q,1,0)==1 && (q.revents&(POLLIN|POLLHUP|POLLERR))) { ready = (q.revents&POLLIN)!=0; break; }
+            } while (std::chrono::steady_clock::now() < until);
+        }
+        if (!ready) {
+            pollfd p{fd,POLLIN,0};int rc;
+            do {rc=poll(&p,1,timeout_ms);} while (rc<0 && errno==EINTR);
+            if (rc!=1 || !(p.revents&POLLIN)) throw std::runtime_error("mixed worker timeout or disconnect");
+        }
     }
     ssize_t n;
     do {n=send_value ? send(fd,&packet,sizeof packet,MSG_NOSIGNAL) : recv(fd,&packet,sizeof packet,MSG_TRUNC);}

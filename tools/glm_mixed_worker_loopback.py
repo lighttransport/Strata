@@ -136,6 +136,7 @@ def main():
     env = os.environ.copy()
     env['LD_LIBRARY_PATH'] = a.rocm_lib + (':' + env['LD_LIBRARY_PATH'] if env.get('LD_LIBRARY_PATH') else '')
     env.setdefault('STRATA_GLM_MIXED_DECODE_GRAPHS', '1')
+    env.setdefault('STRATA_GLM_MIXED_FIXED_GRAPH_GEOMETRY', '1')
     env.setdefault('STRATA_GLM_MIXED_DECODE_PARTIAL', '1')
     env['STRATA_GLM_CANON'] = '1'
     random.seed(1)

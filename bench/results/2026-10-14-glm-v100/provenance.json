@@ -1,0 +1,345 @@
+{
+  "measurement_date_local": "2026-10-14",
+  "timezone": "Asia/Tokyo",
+  "base_commit": "7a33c9c796337b9871f0b3639ece7d8281a5f391",
+  "candidate_patch_sha256": "468a22358fb02e51fb4db1d796f535af4af1224fa36968dc7acc704d4d91d79b",
+  "candidate_files": {
+    "CMakeLists.txt": {
+      "base_sha256": "20727d5cb37dc0610a042bb5de68555f96caebf6c5da24a57e02c4b33a05ba41",
+      "candidate_sha256": "c9b72128f8842a2ded17b91516f2ad2690477b9922c55429d696546333fb4c2e"
+    },
+    "include/strata/kernels/glm.hpp": {
+      "base_sha256": "a106189c74e8485a721eb044b1fd403a3cd839df63f4d30d29d392e2a885b643",
+      "candidate_sha256": "3d1c0ee494bc866cde53b784800ab107c1db09bdb478ac75a360753e51ff1ab3"
+    },
+    "src/kernels/cuda/glm.cu": {
+      "base_sha256": "a2da219b417164adff3c2bd844a342bc211279e27ec3892ce7658161ed291371",
+      "candidate_sha256": "48e76e7176919b4628cbb9484b9f67d4afaabf9ad9cb6382df33ae66106bf511"
+    },
+    "src/program/glm_decode.cpp": {
+      "base_sha256": "ba70c632ce400fe01ae12157529f3c7fd21a77e034596eede627287851c77bd5",
+      "candidate_sha256": "9a8e09be8314216fe723e2d546c9f80c7b4c38b8c9a02f298e678fa12325763c"
+    },
+    "src/kernels/glm_greedy_pick_test.cpp": {
+      "base_sha256": null,
+      "candidate_sha256": "9e6e1b84f589b1d51f6b9f157a6072cd13ed400a1cb97b21f5780e5b5eeadc09"
+    }
+  },
+  "base_source_manifest_sha256": "319e5e23f3b9b7233f79f56416269e97811fcc124815f2b704dcd4e39c479f28",
+  "ggml_commit": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+  "ggml_worktree_clean": true,
+  "binaries": {
+    "historical_q2_reference": {
+      "sha256": "36a14494cd85b2609f21e911a23c47ec4d928c811baa1abc6f7a721adbbd4715",
+      "limitation": "Historical preserved binary; rejects Q23 prefill quantization; not a clean-release source build"
+    },
+    "base": {
+      "sha256": "844a6a88a18c2c173438538fe1f91e24d565e4baab5c4dc4ee463cfb116299a4"
+    },
+    "candidate": {
+      "sha256": "7da829b6379619914f09425ef36a62a51cd1281854c64e20fe12def7b324de85"
+    }
+  },
+  "build": {
+    "cuda": {
+      "compiler": "nvcc12.9.86",
+      "host_compiler": "GCC12.2.1",
+      "architecture": "sm_70",
+      "build_type": "Release",
+      "tests_enabled": true
+    },
+    "hip": {
+      "compiler": "AMD clang24.0.0git d6f6cb691863e9258034ab48c1dfce21689d5606",
+      "architecture": "gfx1201",
+      "status": "decoder, shared kernels and greedy test compiled; no GPU execution device available"
+    }
+  },
+  "hardware": {
+    "gpu": "2x Tesla V100-PCIE-32GB",
+    "gpu_memory_each_mib": 32768,
+    "driver": "580.178.04",
+    "power_limit_each_watts": 250,
+    "cpu": "2x Xeon Gold6240",
+    "physical_cores": 36,
+    "logical_cpus": 72,
+    "workers": 35,
+    "numa_nodes": 4,
+    "os_memtotal_kib": 195834796,
+    "job_memory_gib": 160,
+    "ram_speed": null,
+    "ram_speed_note": "not available from allowed hardware interfaces",
+    "os": "Red Hat Enterprise Linux8.10 (Ootpa)",
+    "kernel": "Linux4.18.0-553.155.1.el8_10.x86_64"
+  },
+  "models": [
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf",
+      "file_bytes": 9429859,
+      "tensor_payload_bytes": 0,
+      "tensors": 0,
+      "types": {},
+      "unknown_extent_tensors": [],
+      "metadata": {
+        "general.architecture": "glm5next",
+        "glm5next.block_count": 46,
+        "glm5next.context_length": 1048576,
+        "glm5next.expert_count": 288,
+        "glm5next.expert_used_count": 8
+      },
+      "sha256": "b2aaab111a0f93f04b0627270691fe430b6bb14b17c0d62f9c0f1ac75e7efef4"
+    },
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00002-of-00004.gguf",
+      "file_bytes": 49294975936,
+      "tensor_payload_bytes": 49294932880,
+      "tensors": 676,
+      "types": {
+        "F32": 305,
+        "Q8_0": 165,
+        "Q5_K": 87,
+        "Q6_K": 61,
+        "IQ2_XS": 36,
+        "IQ3_XXS": 19,
+        "IQ4_XS": 2,
+        "Q4_K": 1
+      },
+      "unknown_extent_tensors": [],
+      "metadata": {},
+      "sha256": "f4a9e1ab13d5d9620f5590c9a4aba4c169e6707a1554f3be3fe3112f80a66825"
+    },
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00003-of-00004.gguf",
+      "file_bytes": 49949266048,
+      "tensor_payload_bytes": 49949225952,
+      "tensors": 622,
+      "types": {
+        "F32": 280,
+        "Q8_0": 150,
+        "Q5_K": 80,
+        "Q6_K": 51,
+        "IQ2_XS": 40,
+        "IQ3_XXS": 21
+      },
+      "unknown_extent_tensors": [],
+      "metadata": {},
+      "sha256": "330a8ad76c787b3ab6df062dd30abea7aafe6a0e3d5860e8720dfa4abb2434a5"
+    },
+    {
+      "filename": "GLM-5.3-Flash-UD-Q2_K_XL-00004-of-00004.gguf",
+      "file_bytes": 9466399584,
+      "tensor_payload_bytes": 9466392072,
+      "tensors": 114,
+      "types": {
+        "F32": 53,
+        "Q8_0": 31,
+        "Q5_K": 14,
+        "IQ2_XS": 6,
+        "Q6_K": 5,
+        "Q2_K": 2,
+        "IQ3_XXS": 1,
+        "IQ4_XS": 1,
+        "Q3_K": 1
+      },
+      "unknown_extent_tensors": [],
+      "metadata": {},
+      "sha256": "5c294f42edc5d69cf00a79ab444e61f0742e9933105fc5c85f97da54dab8946f"
+    },
+    {
+      "filename": "GLM-5.3-Flash-Q23-assembled.gguf",
+      "file_bytes": 120875172704,
+      "tensor_payload_bytes": 120865643896,
+      "tensors": 1412,
+      "types": {
+        "F32": 638,
+        "Q8_0": 346,
+        "Q5_K": 181,
+        "Q6_K": 117,
+        "Q2_K": 84,
+        "Q3_K": 40,
+        "IQ4_XS": 3,
+        "IQ3_XXS": 2,
+        "Q4_K": 1
+      },
+      "unknown_extent_tensors": [],
+      "metadata": {
+        "general.architecture": "glm5next",
+        "glm5next.block_count": 46,
+        "glm5next.context_length": 1048576,
+        "glm5next.expert_count": 288,
+        "glm5next.expert_used_count": 8
+      },
+      "sha256": "8e280fd86714b606211c285552e77cde7b8c31ac0e9483df85c72ab1174a50e7"
+    }
+  ],
+  "resident_protocol": {
+    "allocated_context_tokens": 131072,
+    "prompt_tokens": 4096,
+    "generated_short_tokens": 128,
+    "generated_long_tokens": 512,
+    "decode_steps": "generated_tokens minus1; first token uses prefill logits",
+    "prefill_batch": 8192,
+    "gpu_devices": "0,1",
+    "gpu_budget_mib_each": 32768,
+    "repetitions_each": 3,
+    "warmup_requests_excluded": 1,
+    "cpu_affinity": "auto",
+    "memory_policy": "numactl --interleave=all",
+    "prefill_experts": "f16-batched",
+    "decode_cache": "extend, window256, adaptive, graphs",
+    "timing_scope": "Warm resident requests, excluding startup and warmup. Prefill includes reset and CPU/cache preparation.",
+    "weights": "Byte-identical private mappings locked in RAM to avoid shared-filesystem invalidation"
+  },
+  "q23_required_overrides": {
+    "STRATA_GLM_Q2_NUMA_WEIGHTS": "0",
+    "STRATA_GLM_PACK_FUSE_QUANT": "0"
+  },
+  "feature_switch": "STRATA_GLM_DEVICE_GREEDY=1",
+  "default_validation": {
+    "context_tokens": 4096,
+    "prompt_tokens": 48,
+    "generated_tokens": 8,
+    "gpu_devices": "0",
+    "gpu_budget_mib": 12288,
+    "prefill_batch": 64,
+    "all_other_strata_switches_unset": true,
+    "weights_locked": true,
+    "base_unset_zero_logits_and_tokens_byte_identical": true,
+    "final_logits_sha256": "b09aacb8708fbd37f1e85acd0cae739b7a575c98f4bc39656b38049392bfb646"
+  },
+  "component_validation": {
+    "greedy_cases": 156,
+    "graph_replays": 39,
+    "compute_sanitizer_errors": 0,
+    "selected_cuda_tests_passed": [
+      "glm_greedy_pick_test",
+      "glm_q8_test",
+      "glm_prefill_parity",
+      "glm_kda_column_tiles_parity",
+      "glm_mailbox_test"
+    ]
+  },
+  "profiling_limitation": "Nsight2026.5.1 loaded CUPTI13.4; ActivityFlushAll returned CUPTI_ERROR_INVALID_DEVICE; no CUDA trace data. Do not use these captures for performance claims.",
+  "quality_protocol": {
+    "heldout_cpp_tasks": 20,
+    "max_generated_tokens": 1024,
+    "natural_stops": true,
+    "long_cpp_prompt_tokens": 8291,
+    "recall_prompt_tokens": [
+      7879,
+      15991
+    ],
+    "recall_max_generated_tokens": 512,
+    "grading": "Final answer after reasoning delimiter; preserve caps and raw grades; compile and run independent C++ oracles",
+    "q2_off_on_all_23_token_sequences_identical": true,
+    "q2_off_on_heldout_passes": [
+      16,
+      16
+    ],
+    "q2_off_on_caps": [
+      4,
+      4
+    ],
+    "q2_off_on_long_cpp_and_recall_passed": true,
+    "q23_off_on_all_23_token_sequences_identical": true,
+    "q23_off_on_heldout_passes": [
+      13,
+      13
+    ],
+    "q23_off_on_caps": [
+      7,
+      7
+    ],
+    "q23_off_on_long_cpp_and_recall_passed": true,
+    "q2_mmq_heldout_passes": 14,
+    "q2_mmq_caps": 6,
+    "q2_mmq_regressions": [
+      "add_i64",
+      "merge_overlap"
+    ],
+    "q2_mmq_improvements": [],
+    "q2_mmq_long_cpp_and_recall_passed": true,
+    "measured_runner_sha256": "aa49e507e32f9941cca77715c20c0422f33ec84b2afc3cd56f5dc1aa0c4f263c",
+    "measured_final_grader_sha256": "dd0d6a456b71da5ad871bec90d1f43161e20d266f78f239dfb3d05747f016ae6"
+  },
+  "full_model_memcheck_protocol": {
+    "status": "passed",
+    "context_tokens": 131072,
+    "gpu_devices": "0,1",
+    "gpu_budget_mib_each": 24576,
+    "prefill_batch": 8192,
+    "prompt_tokens": 8,
+    "generated_tokens": 16,
+    "timed_requests": 2,
+    "warmup_requests": 1,
+    "device_greedy": true,
+    "sync_limit": 1024,
+    "note": "Instrumented validation; no performance claims",
+    "error_summary": 0,
+    "source_result_sha256": "044ea78d851c7d3a06ee591bdb96280652643af558ed22d78bba9496e1fed0d5",
+    "model": "full UD-Q2_K_XL"
+  },
+  "long_prompt_inputs": {
+    "8192": {
+      "actual_tokens": 8192,
+      "text_sha256": "c976e06cb97b79511fd02bb114760c59d841920beb3a8b01e362f6d1832df874",
+      "ids_sha256": "f45652959378e0cb500f59138eb22d670117185560ed3539caca4a8fe7e3f245",
+      "background": "include/strata/kernels/cpu/pool.hpp",
+      "background_tokens": 4032,
+      "padding_tokens": 49,
+      "task": "unchanged historical parse_u64 task with preceding unrelated C++ source"
+    },
+    "16384": {
+      "actual_tokens": 16384,
+      "text_sha256": "9cf38e00db00587da0e43acc176b2c2d087c9f122e2979604ba19c3ee5f0b668",
+      "ids_sha256": "4003aa2bca536f93313dbc9e73de5fc6a152355e7f7ac8f41ad7c813a72d359d",
+      "background": "include/strata/kernels/cpu/pool.hpp",
+      "background_tokens": 12224,
+      "padding_tokens": 49,
+      "task": "unchanged historical parse_u64 task with preceding unrelated C++ source"
+    }
+  },
+  "allocations": [
+    {
+      "job_id": "681579",
+      "termination": "TIMEOUT",
+      "start_local": "2026-10-14T04:32:38+09:00",
+      "end_local": "2026-10-14T07:32:38+09:00"
+    },
+    {
+      "job_id": "681606",
+      "termination": "released after completed work; next pairs deferred by deadline guard",
+      "start_local": "2026-10-14T07:33:09+09:00"
+    },
+    {
+      "job_id": "681796",
+      "start_local": "2026-10-14T10:30:39+09:00",
+      "limit_minutes": 180,
+      "termination": "released after all final pairs and summaries completed"
+    }
+  ],
+  "remote_artifacts": {
+    "study_directory_relative_to_remote_repo": "tmp/v100-20261014-7a33c9c7",
+    "base_source": "source",
+    "base_build": "build-base",
+    "candidate_source": "source-candidate",
+    "candidate_build": "build-candidate",
+    "raw_results_directory_relative_to_remote_repo": "slurm-gpu/tmp/runs/20261014-v100",
+    "existing_remote_checkout_preserved": true
+  },
+  "candidate_source_manifest_sha256": "14d260823b8e2d0b58321cb5323c66832aa3f7f382dd3fa0089d5d6f09afe560",
+  "all_long_pairs_token_identical": true,
+  "long_pair_strict_parser_results": {
+    "q2_8192": "passed both",
+    "q2_16384": "compilation failed both: unexpected namespace for fixture global function",
+    "q23_8192": "passed both",
+    "q23_16384": "passed both"
+  },
+  "q23_cli_pipeline_screen": {
+    "public_artifact": "pipeline-cli-screen.json",
+    "raw_filename": "q23-cli-pipeline-cache12288.json",
+    "sha256": "1325823bd446dc5ce8dcd49985c7bfe29acd54372073124798322fbf8c09ceb1",
+    "protocol": "separate cached-prefix CLI replay; one measured128-token request after one warmup",
+    "pipeline_execution_confirmed": true
+  },
+  "gpu_allocations_released": true
+}

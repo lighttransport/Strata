@@ -1,0 +1,34 @@
+{
+  "exe": "./build-vulkan/vulkan/strata-glm-vulkan",
+  "model": "./models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "backend": "vulkan",
+  "context": 24576,
+  "threads": 12,
+  "cpu_affinity": "auto",
+  "dense_cache_mib": 8192,
+  "gpu_budget_mib": 15360,
+  "prefill_batch": 32,
+  "prefill_experts": "gpu",
+  "speculative": "none",
+  "decode_cache_mib": 0,
+  "stop_ids": [
+    154820,
+    154827,
+    154829
+  ],
+  "gpu_telemetry": true,
+  "gpu_pci_preflight": true,
+  "env": {
+    "STRATA_GLM_MAPPED_LAZY": "1",
+    "STRATA_GLM_MAPPED_OWNED": "1",
+    "STRATA_GLM_GPU_RESERVE_MIB": "512",
+    "STRATA_VULKAN_ASYNC_STAGING": "1",
+    "STRATA_VULKAN_JOINED_PROJECTIONS": "1",
+    "STRATA_VULKAN_OVERLAP_EXPERTS": "1",
+    "STRATA_VULKAN_CPU_PLACEMENT": "split",
+    "STRATA_VULKAN_DEVICE_STATE": "1",
+    "STRATA_VULKAN_RELEASE_DENSE_HOST": "1",
+    "STRATA_VULKAN_GPU_INDEXER": "1",
+    "STRATA_VULKAN_BATCH_MMV": "1"
+  }
+}

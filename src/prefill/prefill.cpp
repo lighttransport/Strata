@@ -52,6 +52,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstring>
+#include <stdexcept>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -77,6 +78,9 @@ bool gather_native_group(const GatherGroup&, size_t, size_t, size_t, size_t, voi
                          void*, size_t) { return false; }
 void gather_strata_q2(const uint8_t*, void*, void*, void*) {}
 void swiglu(const float*, float*, int64_t, int64_t, bool, void*, float) {}
+void swiglu_f16(const float*, uint16_t*, int64_t, int64_t, bool, void*, float) {
+    throw std::runtime_error("fused SwiGLU FP16 requires an MMQ-enabled build");
+}
 void swiglu_scaled(const float*, float*, int64_t, int64_t, const int32_t*, int, const float*, int64_t, void*) {}
 void down_row_scales(float*, const int32_t*, int, const float*, int64_t, void*) {}
 void iota(int32_t*, int64_t, void*) {}

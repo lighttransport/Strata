@@ -1,0 +1,106 @@
+#version 450
+// KDA for T consecutive tokens of one sequence: convolution/history, decay and
+// beta gates, delta-rule recurrence, output RMS norm and gate. One 512-thread
+// workgroup per head: wave w owns state rows [32*(w/2), +32) of columns
+// [64*(w%2), +64), held in registers across the token loop; the four row parts
+// of a column reduce through LDS in a fixed order.
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 512) in;
+layout(binding = 0, std430) buffer State { float state[]; };
+layout(binding = 1, std430) readonly buffer QK { float qk[]; };     // q[n], k[n], ..., beta at bofs
+layout(binding = 2, std430) readonly buffer V { float vin[]; };
+layout(binding = 3, std430) readonly buffer Decay { float decay[]; };
+layout(binding = 4, std430) readonly buffer Gate { float gate[]; };
+layout(binding = 5, std430) readonly buffer Weights { float weights[]; }; // conv[3n*K], bias[n], a[heads], norm[128]
+layout(binding = 6, std430) writeonly buffer Output { float outv[]; };
+layout(binding = 7, std430) buffer History { float history[]; };
+layout(push_constant) uniform P {
+  uint heads, kernel, tokens, bofs; float lower, eps;
+  uint qk_stride, v_stride, d_stride, g_stride, y_stride, snapshot;
+} p;
+// snapshot != 0: after token t < tokens-1, the state is also written to
+// state[(t+1)*S + ...] and the history to history[(t+1)*Hs + ...] (rollback slots).
+shared float conv[3][128], qs[128], ks[128], fade[128];
+shared float part_sum[4][128];
+shared float red[8];
+void main() {
+  const uint h = gl_WorkGroupID.x, t = gl_LocalInvocationID.x, n = p.heads * 128;
+  const uint wave = gl_SubgroupID, lane = gl_SubgroupInvocationID;
+  const uint rp = wave / 2, j = (wave % 2) * 64 + lane;  // row part, column
+  float st[32];
+  for (uint r = 0; r < 32; r++) st[r] = state[(h * 128 + 32 * rp + r) * 128 + j];
+  const uint bias = 3 * n * p.kernel, a = bias + n, norm = a + p.heads;
+  for (uint tok = 0; tok < p.tokens; tok++) {
+    if (t < 384) {  // convolution for q, k, v channel (t / 128, t % 128)
+      const uint part = t / 128, c = t % 128, i = h * 128 + c;
+      const float raw = part < 2 ? qk[tok * p.qk_stride + part * n + i] : vin[tok * p.v_stride + i];
+      const uint wi = (part * n + i) * p.kernel, hi = (part * n + i) * (p.kernel - 1);
+      float sum = raw * weights[wi + p.kernel - 1];
+      for (uint k = 0; k + 1 < p.kernel; k++) sum += history[hi + k] * weights[wi + k];
+      for (uint k = 0; k + 2 < p.kernel; k++) history[hi + k] = history[hi + k + 1];
+      if (p.kernel > 1) history[hi + p.kernel - 2] = raw;
+      conv[part][c] = sum / (1 + exp(-sum));
+      if (part == 0) {
+        const float g = p.lower / (1 + exp(weights[a + h] * (decay[tok * p.d_stride + i] + weights[bias + i])));
+        fade[c] = exp(g);
+      }
+    }
+    barrier();
+    if (wave < 4) {  // waves 0,1: sum q^2; waves 2,3: sum k^2
+      const uint c = t % 128;
+      const float v = conv[wave / 2][c];
+      const float s = subgroupAdd(v * v);
+      if (lane == 0) red[wave] = s;
+    }
+    barrier();
+    const float qinv = inversesqrt(1e-6 + red[0] + red[1]) * inversesqrt(128.0);
+    const float kinv = inversesqrt(1e-6 + red[2] + red[3]);
+    const float beta_value = sigmoid(qk[tok * p.qk_stride + p.bofs + h]);
+    if (t < 128) {
+      qs[t] = conv[0][t] * qinv;
+      ks[t] = conv[1][t] * kinv;
+    }
+    barrier();
+    float memory = 0;
+    for (uint r = 0; r < 32; r++) {
+      const uint k = 32 * rp + r;
+      st[r] *= fade[k];
+      memory += st[r] * ks[k];
+    }
+    part_sum[rp][j] = memory;
+    barrier();
+    const float delta = (conv[2][j] - ((part_sum[0][j] + part_sum[1][j]) + (part_sum[2][j] + part_sum[3][j]))) * beta_value;
+    barrier();
+    float sum = 0;
+    for (uint r = 0; r < 32; r++) {
+      const uint k = 32 * rp + r;
+      st[r] += ks[k] * delta;
+      sum += st[r] * qs[k];
+    }
+    part_sum[rp][j] = sum;
+    barrier();
+    float y = 0;
+    if (rp == 0) {
+      y = (part_sum[0][j] + part_sum[1][j]) + (part_sum[2][j] + part_sum[3][j]);
+      const float e2 = subgroupAdd(y * y);
+      if (lane == 0) red[4 + wave] = e2;
+    }
+    barrier();
+    if (rp == 0) {
+      const float post_norm = inversesqrt((red[4] + red[5]) / 128.0 + p.eps);
+      outv[tok * p.y_stride + h * 128 + j] = y * post_norm * weights[norm + j] * sigmoid(gate[tok * p.g_stride + h * 128 + j]);
+    }
+    if (p.snapshot != 0 && tok + 1 < p.tokens) {
+      const uint slot = (tok + 1) * n * 128;
+      for (uint r = 0; r < 32; r++) state[slot + (h * 128 + 32 * rp + r) * 128 + j] = st[r];
+      if (t < 384) {
+        const uint part = t / 128, c = t % 128, i = h * 128 + c, hi = (part * n + i) * (p.kernel - 1);
+        const uint hslot = (tok + 1) * 3 * n * (p.kernel - 1);
+        for (uint k = 0; k + 1 < p.kernel; k++) history[hslot + hi + k] = history[hi + k];
+      }
+    }
+    barrier();
+  }
+  for (uint r = 0; r < 32; r++) state[(h * 128 + 32 * rp + r) * 128 + j] = st[r];
+}

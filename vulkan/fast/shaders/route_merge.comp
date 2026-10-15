@@ -1,0 +1,22 @@
+#version 450
+// Merge CPU/GPU expert rows in each token's canonical reverse router order.
+// A hit union's order differs between token windows; it must not set sum order.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Mail { float mail[]; };
+layout(binding = 1, std430) readonly buffer GPU { float gpu[]; };
+layout(binding = 2, std430) readonly buffer Hits { uint hits[]; };
+layout(binding = 3, std430) writeonly buffer Sum { float sum[]; };
+layout(push_constant) uniform P { uint width, top, mofs, stride, hofs, tokens, outofs, wofs; } p;
+void main() {
+  const uint d = gl_GlobalInvocationID.x, t = gl_WorkGroupID.y, mo = p.mofs + t * p.stride;
+  if (d >= p.width) return;
+  float value = 0;
+  for (int k = int(p.top) - 1; k >= 0; --k) {
+    const float weight = mail[mo + p.wofs + uint(k)];
+    if (weight == 0) continue;
+    const uint u = hits[p.hofs + 32u * t + 17u + uint(k)];
+    const float row = u == 0xffffffffu ? mail[mo + p.outofs + uint(k) * p.width + d] : gpu[(u * p.tokens + t) * p.width + d];
+    value = fma(weight, row, value);
+  }
+  sum[t * p.width + d] = value;
+}

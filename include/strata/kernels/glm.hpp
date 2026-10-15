@@ -5,6 +5,12 @@
 namespace strata::kernels {
 
 // All buffers are device pointers. Calls enqueue on stream without allocating.
+// One finite GGUF logit row: ties select the lowest token index, including signed zero.
+// nonfinite is set if ANY input is NaN or infinity; callers reject such a row.
+struct GlmGreedyPick { int32_t token; int32_t nonfinite; };
+uint64_t glm_greedy_pick_scratch_bytes(int vocabulary);
+void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
+                     GlmGreedyPick *result, void *stream);
 void glm_rms_norm(const float *x, const float *weight, float *y, int width, int tokens, float eps,
                   void *stream);
 // Same result to rounding with 1024 threads and float4 traffic per row; the sum order differs from glm_rms_norm,

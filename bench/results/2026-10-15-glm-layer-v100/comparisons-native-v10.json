@@ -1,0 +1,26 @@
+{
+  "comparisons": [
+    {
+      "model": "q23native",
+      "order": [
+        "q23native-A1",
+        "q23native-B1",
+        "q23native-B2",
+        "q23native-A2"
+      ],
+      "decode_medians_tok_s": {
+        "serial": 20.329610218535336,
+        "pipeline": 34.764506290516294
+      },
+      "decode_gain_percent": 71.0042933278675,
+      "response_medians_ms": {
+        "serial": 56650.9,
+        "pipeline": 46218.55
+      },
+      "response_change_percent": -18.41515315731965,
+      "all_timed_and_validation_token_ids_equal": true,
+      "compared_sequences": 24,
+      "token_sha256": "570ccb98a0f2d18fc60579c3d6b0f8dfdf2a3f4cf201d16bdb288484a719c49f"
+    }
+  ]
+}

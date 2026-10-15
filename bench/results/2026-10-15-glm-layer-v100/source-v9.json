@@ -1,0 +1,42 @@
+{
+  "base_commit": "7a33c9c796337b9871f0b3639ece7d8281a5f391",
+  "files": {
+    "CMakeLists.txt": "a51342757c80ca20dab1b492241abee57f8498d6a6b56cc2abdf315d04da70ab",
+    "docs/GLM_MULTI_GPU.md": "8c66df46a79ad9a3dc9b7b1992cd28ac9789a68afa4a420eeede5d2118064114",
+    "docs/licenses/project-maya.txt": "7aa4f00bcc3e0192a49261b5c849e90f0c3eba6e33888902196322b31471453b",
+    "include/strata/host/glm_layer.h": "2619e7f14dc7ff344a6e8a723cd4923f4640bbd5eeccc4a9a064ddd471bacce5",
+    "include/strata/kernels/cpu/pool.hpp": "8ddf382a80d68f7f289d735e575f6d0f3d38c0c9b1dfa6fa20b70c3ddf3847a6",
+    "include/strata/kernels/glm.hpp": "3d1c0ee494bc866cde53b784800ab107c1db09bdb478ac75a360753e51ff1ab3",
+    "include/strata/spec/layer_pipeline.hpp": "89af60ceb1dd817388ae4f6fa50e2d1ce5666b97a7a50ca2a09f00b835e80e8a",
+    "serve/server.py": "6b91a1d517668601ae09248916ede980a76d968c86e881120ae28d735ab46c3d",
+    "serve/test_glm.py": "cf7daf615a2d8ca9241e9b5c3b5be993941b6e457398e4cc9349ac0fb052ff4d",
+    "src/host/glm_layer.c": "2162e9c34e84f6426d1a099de7777b8bc8b428d4c088c3cab3d4cda0ff4e97f5",
+    "src/kernels/cpu/layer_pool_test.cpp": "0c54d97b1017152d5cc9b8356afca80dbaffce2a01ddc082b15f5d917f2bd603",
+    "src/kernels/cpu/pool.cpp": "bab4aa381a0211096c81b6f1f3fde03795e10038a444ca0d58a890d1bdf8fe4b",
+    "src/kernels/cuda/glm.cu": "48e76e7176919b4628cbb9484b9f67d4afaabf9ad9cb6382df33ae66106bf511",
+    "src/kernels/glm_greedy_pick_test.cpp": "9e6e1b84f589b1d51f6b9f157a6072cd13ed400a1cb97b21f5780e5b5eeadc09",
+    "src/program/glm_decode.cpp": "2752c2769d9f025a9f2828fd19a069a3d2866a2901c866b1b8dcc3269ec5e22b",
+    "src/program/glm_layer_decode.inc": "ef8d3a642474c48a284adacbdb00cc466eac790fd1e0ee997ac06cf143fa33ed",
+    "tests/host/glm_layer_test.c": "3ae3154fece913f3f4eb6ddeaaac08f388058ee79a632c8502e16b2e2ce1f203",
+    "tests/host/layer_pipeline_test.cpp": "fe9e8b56b9bd2158b1d5611a697cb5592329613247f21db722af083e1ecb432b",
+    "tools/glm_generate.py": "57737c34de552bbea34e3d855a664a7d29d36129faa1e26a344fb937e7b82a17",
+    "tools/glm_layer_tune.py": "e23f857f981bb442f4cdd23d93e33401785d45231ae5896143184606bf674397",
+    "tools/glm_v100_bench.py": "e0fd4b13abf86ce18646bd4d78f2bdddb25d295fda11b15f682e7f02d8de9121",
+    "tools/glm_v100_layer.env": "2b13cf804e63f00d13e7f163836c50dde1dc4daf035c19221b5420140bda5144",
+    "tools/test_glm_generate.py": "8e5a47520c780181b44a3875db8924702f7580ce61b9c42482238264451cd6a4",
+    "tools/test_glm_layer_tune.py": "b7987b63db81ca91b47840d175988646b95387318428b8ddaec8fee88fd88ad7",
+    "tools/test_glm_v100_bench.py": "1ac0c34ea672a83dd48b0368e5bac8e8a3f43a6fc8418ee75f2b105b56104423"
+  },
+  "patch_sha256": "43fc3dc8c1ed63b89e9108ab620d4c91aa0bf98a3e98c42968ddd25731db2627",
+  "patch_bytes": 194759,
+  "includes_preexisting_optional_device_greedy": true,
+  "benchmark_runners": {
+    "run-quality.py": "17d0bcb8aef3b3489baee3ba4a505f3b65d7316d08ed50ee888660dd4bf8659d",
+    "run-quality-queue.py": "a10d1dfeffe21aa5521d98393f849d7bdb64cf4fb8a75bd365038e0ddcd2d24a",
+    "run-memcheck.py": "c062e72da2dc976eed7b66496d7995cf29e288fab1817b56ed3a74a5292c878b",
+    "check-parser.py": "6d2dbdcb588f1569d261aff47f3b0e95e184ae919bb85bdd96631485958416a6",
+    "run-cancel.py": "c0c4429b66a29bb150f027c8403d1880ddc6990a11ffd147bcc329548effccf3",
+    "run-validation-v9.py": "2d348a713fa471adc521dfd25b4f477602ab65619c9a38792042ab559f46bb4c",
+    "run-qualified.py": "d70fd58946081547c5aee88bf6ed41c4875943ec06e725a111c02156ae918387"
+  }
+}

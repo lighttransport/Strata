@@ -34,8 +34,8 @@ Prefill at 8192 tokens: per layer the mixer runs on the primary, activations cro
 with the memcpy stages priced as host work), expert groups of 16 stream through the staging ring to the
 owning device, dequantize-plus-GEMM per group, the worker returns rows in chunks or one partial, and the next
 layer's groups prestage during the mixer. The topology B variant (a layer-range pipeline across the two
-cards, with residual handoff through host memory) is also modelled; it was built, measured at 12.5-17.6 tok/s,
-and removed from the engine again (plan sections 11 and 14).
+cards, with residual handoff through host memory) is also modelled; it was built and measured at 12.5-17.6 tok/s on
+this desktop (plan section 11) and is kept opt-in for two-socket, same-vendor servers.
 
 ## Command line
 

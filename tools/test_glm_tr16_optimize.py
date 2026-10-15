@@ -34,6 +34,7 @@ class OptimizeTest(unittest.TestCase):
         self.assertEqual(c['env']['STRATA_GLM_MIXED_PROTOCOL'],'5')
         self.assertEqual(c['env']['STRATA_GLM_MIXED_REGISTER'],'1')
         self.assertEqual(profile(base,'batched','gpu-draft','hip-cuda')['mtp_experts'],'gpu')
+        with self.assertRaises(ValueError): profile(base,'batched','joint','hip-cuda')
 
     def test_short_or_incomplete_runs_cannot_pass_speed_gate(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -1,0 +1,217 @@
+{
+  "protocol": "One off/on pair per length, three 512-token requests per arm after a three-token warmup; f16-batched, batch8192; context131072; order reversed at16K, not another pair at the same prompt",
+  "results": [
+    {
+      "model": "q2",
+      "actual_prompt_tokens": 8192,
+      "generated_tokens": 512,
+      "order": [
+        "off",
+        "on"
+      ],
+      "repetitions_per_arm": 3,
+      "all_token_ids_identical": true,
+      "token_ids_sha256": "d6acd4d413de78c23144c4053c7eb57749b05496221c6c20bc01aa150ce82d5a",
+      "raw_files": {
+        "off": {
+          "name": "q2-long8192-greedy-off.json",
+          "sha256": "99f29a7b683c2d7fe29995c6a3443710842d6192955fd6bd187c72d4584fa6ac"
+        },
+        "on": {
+          "name": "q2-long8192-greedy-on.json",
+          "sha256": "c1d48880a9bf281c415dbd88ba4b23ed68b6062f70db3f4f69fb2bed6bcfe31f"
+        }
+      },
+      "arms": {
+        "off": {
+          "prefill_tok_s": {
+            "min": 591.3221738596909,
+            "median": 592.1513918304504,
+            "max": 596.2284474915755
+          },
+          "decode_tok_s": {
+            "min": 27.951601610362335,
+            "median": 28.105491846107306,
+            "max": 28.11399647887324
+          }
+        },
+        "on": {
+          "prefill_tok_s": {
+            "min": 590.431435861214,
+            "median": 591.6211082785068,
+            "max": 596.7931112357668
+          },
+          "decode_tok_s": {
+            "min": 28.526290521567773,
+            "median": 28.7256169542976,
+            "max": 28.746624662466246
+          }
+        }
+      },
+      "strict_parser_passed": {
+        "off": true,
+        "on": true
+      },
+      "decode_gain_percent": 2.20641969756592
+    },
+    {
+      "model": "q2",
+      "actual_prompt_tokens": 16384,
+      "generated_tokens": 512,
+      "order": [
+        "on",
+        "off"
+      ],
+      "repetitions_per_arm": 3,
+      "all_token_ids_identical": true,
+      "token_ids_sha256": "fa18bb6ab562b4844bfd4bafd646838f62ce6e9811c3a56521615552362848aa",
+      "raw_files": {
+        "off": {
+          "name": "q2-long16384-greedy-off.json",
+          "sha256": "eaa686a1a29201b76a5302718c8980ebd4b292ae0fbf73125e38b1bc5c794e52"
+        },
+        "on": {
+          "name": "q2-long16384-greedy-on.json",
+          "sha256": "945ba667b5d3a8006883d1105193f06e0582c2c6229ff70b2f09ef5d73e85de3"
+        }
+      },
+      "arms": {
+        "off": {
+          "prefill_tok_s": {
+            "min": 629.8825121486129,
+            "median": 630.8259183822765,
+            "max": 633.7197383740045
+          },
+          "decode_tok_s": {
+            "min": 28.23968919762809,
+            "median": 28.287681849383315,
+            "max": 28.332224440008872
+          }
+        },
+        "on": {
+          "prefill_tok_s": {
+            "min": 629.652545857721,
+            "median": 630.3356737520438,
+            "max": 633.4551218852095
+          },
+          "decode_tok_s": {
+            "min": 28.42015105504944,
+            "median": 28.443880390978112,
+            "max": 28.45750309078556
+          }
+        }
+      },
+      "strict_parser_passed": {
+        "off": false,
+        "on": false
+      },
+      "decode_gain_percent": 0.5521786565137132
+    },
+    {
+      "model": "q23",
+      "actual_prompt_tokens": 8192,
+      "generated_tokens": 512,
+      "order": [
+        "off",
+        "on"
+      ],
+      "repetitions_per_arm": 3,
+      "all_token_ids_identical": true,
+      "token_ids_sha256": "811a8f646df411d191363675f1b4e87bad4cf11776572ae8b863533b9675943e",
+      "raw_files": {
+        "off": {
+          "name": "q23-long8192-greedy-off.json",
+          "sha256": "2e5f707524daa8a905070849e388cb5dda514c824fdfdfa90d2f266afbfbb7c1"
+        },
+        "on": {
+          "name": "q23-long8192-greedy-on.json",
+          "sha256": "a17de962a130d7ac8535473eed5c80e7a131edee947d246a2ab985518e583ac1"
+        }
+      },
+      "arms": {
+        "off": {
+          "prefill_tok_s": {
+            "min": 647.6196499438709,
+            "median": 648.5322524462459,
+            "max": 656.6365013586411
+          },
+          "decode_tok_s": {
+            "min": 23.21355562622087,
+            "median": 23.22822297275798,
+            "max": 23.26026000509814
+          }
+        },
+        "on": {
+          "prefill_tok_s": {
+            "min": 646.8372721027738,
+            "median": 648.198700754069,
+            "max": 656.8839708122845
+          },
+          "decode_tok_s": {
+            "min": 23.587082956370818,
+            "median": 23.588716192199566,
+            "max": 23.596231991134097
+          }
+        }
+      },
+      "strict_parser_passed": {
+        "off": true,
+        "on": true
+      },
+      "decode_gain_percent": 1.5519621103360803
+    },
+    {
+      "model": "q23",
+      "actual_prompt_tokens": 16384,
+      "generated_tokens": 512,
+      "order": [
+        "on",
+        "off"
+      ],
+      "repetitions_per_arm": 3,
+      "all_token_ids_identical": true,
+      "token_ids_sha256": "ddd0cf9e1f37fbac32ef3b4cf4c7e74fb3d7b15b6721f5d76521d5052da11348",
+      "raw_files": {
+        "off": {
+          "name": "q23-long16384-greedy-off.json",
+          "sha256": "fb825abfb17ea8a45cbad04297ab7ee7bd48bcbc740210053f4f32596fa7a3db"
+        },
+        "on": {
+          "name": "q23-long16384-greedy-on.json",
+          "sha256": "0457fe472309cccf72648b2e6a8e69309ee652008bc0f46727dd399b1fbe19f7"
+        }
+      },
+      "arms": {
+        "off": {
+          "prefill_tok_s": {
+            "min": 695.7171610799243,
+            "median": 695.7880700204693,
+            "max": 702.8531961717151
+          },
+          "decode_tok_s": {
+            "min": 23.040124083016586,
+            "median": 23.055301140132016,
+            "max": 23.06331353468975
+          }
+        },
+        "on": {
+          "prefill_tok_s": {
+            "min": 696.5275652144338,
+            "median": 696.7763885344901,
+            "max": 703.0251019094615
+          },
+          "decode_tok_s": {
+            "min": 23.372073345316664,
+            "median": 23.396150394666957,
+            "max": 23.406223948552114
+          }
+        }
+      },
+      "strict_parser_passed": {
+        "off": true,
+        "on": true
+      },
+      "decode_gain_percent": 1.47839862278627
+    }
+  ]
+}

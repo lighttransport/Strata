@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <chrono>
+#include <mutex>
 #include <immintrin.h>
 #if defined(_MSC_VER)
 #include <intrin.h>   // __cpuidex, __rdtsc (STRATA_POOL_UMWAIT)
@@ -448,9 +449,11 @@ void restore_thread_affinity(const ThreadAffinity& previous) {
 }
 
 namespace {
-std::atomic<const ExpertPool*> g_diag_pool{nullptr};
+std::mutex g_diag_mutex;
+std::vector<const ExpertPool*> g_diag_pools;
 void diag_active_pool(std::FILE* f) {
-    if (const ExpertPool* p = g_diag_pool.load()) p->diag(f);
+    std::lock_guard<std::mutex> lock(g_diag_mutex);
+    for (const ExpertPool* p : g_diag_pools) p->diag(f);
 }
 int64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -479,8 +482,12 @@ void ExpertPool::diag(std::FILE* f) const {
     std::fprintf(f, " for %lld ms\n", (long long) (now_ms() - hstate_ms_.load()));
 }
 
-ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
-    : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
+ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity,
+                       int tasks, const CpuTopology *placement)
+    : tasks_(tasks), host_works_(host_works), affinity_(affinity),
+      topo_(placement ? *placement : detect_cpu_topology(true, affinity)) {
+    if (placement && (topo_.worker_cores.empty() || n_workers > (int)topo_.worker_cores.size()))
+        throw std::invalid_argument("expert pool placement has too few worker cores");
     if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
     if (const char* e = std::getenv("STRATA_NATIVE_NUMA_LOCAL")) {
         if (std::string(e) != "0" && std::string(e) != "1")
@@ -536,24 +543,33 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
     wstate_.reset(new std::atomic<int32_t>[(size_t) n_]);
     for (int i = 0; i < n_; ++i) wstate_[(size_t) i].store(kParked);
     hstate_ms_.store(now_ms());
-    g_diag_pool.store(this);
-    strata::core::diag_pool_fn().store(&diag_active_pool);
     split_.resize((size_t) kMaxSplit);
     split_multi_.resize((size_t) kMaxSplitMulti);
     threads_.reserve((size_t) n_);
-    for (int i = 0; i < n_; ++i) {
-        const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
-        threads_.emplace_back([this, i, core] {
-            strata::aux_cpus::note_owned_thread();   // --aux-cpus never moves a worker
-            pin_this_thread(core, i);
-            worker(i);
-        });
+    try {
+        for (int i = 0; i < n_; ++i) {
+            const int core = pin ? (i < (int) topo_.worker_cores.size() ? topo_.worker_cores[(size_t) i] : -1) : -1;
+            threads_.emplace_back([this, i, core] {
+                strata::aux_cpus::note_owned_thread();   // --aux-cpus never moves a worker
+                pin_this_thread(core, i);
+                worker(i);
+            });
+        }
+        { std::lock_guard<std::mutex> lock(g_diag_mutex); g_diag_pools.push_back(this); }
+        strata::core::diag_pool_fn().store(&diag_active_pool);
+    } catch (...) {
+        stop_.store(true, std::memory_order_release);
+        publish();
+        for (auto &thread : threads_) if (thread.joinable()) thread.join();
+        throw;
     }
 }
 
 ExpertPool::~ExpertPool() {
-    const ExpertPool* self = this;
-    g_diag_pool.compare_exchange_strong(self, nullptr);
+    {
+        std::lock_guard<std::mutex> lock(g_diag_mutex);
+        g_diag_pools.erase(std::remove(g_diag_pools.begin(), g_diag_pools.end(), this), g_diag_pools.end());
+    }
     stop_.store(true, std::memory_order_release);
     // Bump the epoch so a PARKED worker notices the stop flag rather than sleeping through it.
     publish();

@@ -15,7 +15,7 @@ a separate GLM-5.3-Flash engine that also started from Strata. The ideas taken f
 |---|---|---|---|
 | TR16 | Threadripper 1950X (16 cores, two NUMA nodes), 128 GB DDR4-3200 | RTX 5060 Ti 16 GB (PCIe 3 x8) and RX 9070 XT 16 GB (PCIe 3 x16) | [TR16 runner plan](GLM_TR16_RUNNER_PLAN.md), [single GPU](GLM_TR16_OPTIMIZATION.md), [two GPUs](MULTI_GPU.md) |
 | B550 | Ryzen 9 3950X (16 cores, one node), 64 GB DDR4-2133 | RX 9070 XT 16 GB (ROCm) | [B550 REAP-50](GLM_B550_REAP50.md), [B550 simulator](GLM_B550_SIM.md) |
-| zen5 | Ryzen 9 3950X, 64 GB DDR4-2666 (ASUS TUF B550-PLUS) | RTX 3070 8 GB (CUDA 12.4, SM86) | measurement records `docs/benchmarks/glm_rtx3070_*_20261011.json`; presets and engine switches live on the `glm53f` branch of that machine (checkpoint `6e63bc20`), not yet merged here |
+| zen5 | Ryzen 9 3950X, 64 GB DDR4-2666 (ASUS TUF B550-PLUS) | RTX 3070 8 GB (CUDA 12.4, SM86) | measurement records `docs/benchmarks/glm_rtx3070_*_20261011.json`, presets `configs/glm53f-reap50-q23-64g-rtx3070-*.json` |
 | V100 server | 2x Xeon Gold 6240, 160 GiB | 2x Tesla V100 PCIe 32 GB | [V100](GLM53_V100.md), [V100 decode](GLM53_V100_DECODE_20261003.md) |
 
 ## Measured speed and quality
@@ -43,8 +43,8 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 
 The RTX 3070 rows come from the four `docs/benchmarks/glm_rtx3070_*_20261011.json` records (medians of three
 trials, 128 generated tokens, 56 GiB cgroup, no swap, 512 MiB VRAM reserve); the presets they name
-(`configs/glm53f-reap50-q23-64g-rtx3070-*.json`) and their engine switches are on that machine's branch and are
-not in this tree yet, so they are evidence, not something this build can run.
+(`configs/glm53f-reap50-q23-64g-rtx3070-*.json`) and their engine switches came in with the merge of that machine's
+branch; build with `CMAKE_CUDA_ARCHITECTURES=86` and set the preset's model path.
 
 Notes on the two-GPU rows. The decode and prefill configurations have opposite primaries and cannot run in one
 process at these speeds; a server picks one. The decode row's quality gate is the one agreed for this work
@@ -163,6 +163,25 @@ a calibrated kernel table.
 `tools/glm_q2_humaneval.py` runs the 164-task HumanEval with isolated tests (about two hours on TR16);
 `tools/glm_mixed_bench.py` reports distinct 4-gram fractions and repeat-guard counts so loops show up.
 
+## Experimental Vulkan backend
+
+`strata-glm-vulkan` (`-DSTRATA_ENABLE_VULKAN=ON`, no CUDA or ROCm needed, Mesa RADV tested) runs the REAP-50
+model on one Vulkan GPU plus system RAM: dense and per-head projections, mHC mixing, KDA recurrence and sparse
+MLA attention on the GPU, routed experts on the CPU pool, with opt-in batched prefill, a resident GPU expert
+tier and verified MTP drafting. It is a standalone runner: setup and the API server do not select it, and its
+numerical gate against the strict CUDA/HIP path has not passed. Full build, run and validation notes, and the
+fault investigation on the RX 570, are in [GLM_VULKAN.md](GLM_VULKAN.md).
+
+| machine | engine / profile | decode tok/s | prefill tok/s | status |
+|---|---|---:|---:|---|
+| Ryzen 9 3950X (65 W ECO), 64 GB DDR4-2666, RX 9070 XT 16 GB | strict sequential runner, CPU experts, no tier | 7.0 | 7.0 (sequential) | 81.7% of the matched ROCm control (8.5); all generated IDs matched ROCm |
+| Ryzen 9 3950X, 64 GB DDR4-2666, **RX 570 16 GB** (modified card), Mesa 26.0.8 | strict runner | 3.6 | 3.7 (sequential) | correctness check passed on a short prompt |
+| same | `--engine fast`, MTP depth 3, 9216 MiB expert tier, affinity 0.08, Q8 expert rounding and canonical sum | 15.8 (32-token prompt, 128 generated) | 34 (512-token windows, GPU packing) | fast-path KL against strict 0.20 (limit 0.01); HumanEval run incomplete (107 isolated passes of 119 completed cases); a 2048-token prefill window hits the amdgpu 2-second scheduler timeout |
+
+Profiles: `configs/experimental/glm53f-reap50-vulkan-*.json`. Measurement records:
+`docs/benchmarks/glm_vulkan_*.json`. The decode rate on the RX 570 comes from a short repetitive prompt
+(all 31 drafts accepted in the correctness run), so it is an upper bound for coding or chat use.
+
 ## How this differs from Project Maya
 
 [Project Maya](https://github.com/mw00/project-maya) (studied at v1.1.8, commit `5c970a86`) and this fork both
@@ -173,7 +192,7 @@ start from Strata and both run GLM-5.3-Flash with experts outside VRAM, but they
 | target machine | one to sixteen NVIDIA GPUs (AMD experimental), mostly 24-48 GB cards; its published results lead with 4x RTX 4090 (118 tok/s) and 2x RTX 3090 (53 tok/s decode, 885 prefill, Threadripper 3970X, 128 GB) | commodity desktops: one 8-16 GB card, or two 16 GB cards of different vendors (RTX 5060 Ti + RX 9070 XT), DDR4 desktops with 64-128 GB; plus an old V100 server |
 | weights | its own quantizations of the FP8 release (Maya-S, S24, M, L: 94.7-156.3 GB), made with statistics from the FP8 model | the Unsloth UD-Q2_K_XL base with the routed experts requantized to Q2_K/Q3_K ("Q23"), optionally REAP-pruned to 224 or 144 experts per layer (95.5 / 63.2 GB) |
 | where experts run | a VRAM / RAM / NVMe tier hierarchy: the hottest experts in VRAM, the next in RAM, the rest on the SSD, moved as the conversation goes; the engine pins most free RAM for its tier, so the model need not fit in RAM | routed experts execute on the CPU directly from RAM (a NUMA-aware expert pool), with a GPU-resident tier for the hottest experts; the model must fit in RAM |
-| several GPUs | layer-range split of the model across GPUs | expert-parallel: one primary GPU runs the model, a worker process on the second GPU (any vendor) runs a share of the experts over a shared-memory exchange; a layer split was built and measured slower on this hardware (12.5-17.6 against 36 tok/s, plan section 11) and removed |
+| several GPUs | layer-range split of the model across GPUs | expert-parallel: one primary GPU runs the model, a worker process on the second GPU (any vendor) runs a share of the experts over a shared-memory exchange; a layer split measured slower on this hardware (12.5-17.6 against 36 tok/s, plan section 11) and stays opt-in for two-socket servers |
 | drafting | the model's MTP block, optionally a separate DFlash2 drafter | the model's MTP block, with draft experts on the GPU and bounded soft acceptance |
 | tuning | `--calibrate` measures the machine and sets the configuration | profiles per machine, a calibrated simulator ([GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md)) to rank changes, and a [bring-up guide](GLM53F_NEW_HARDWARE.md) |
 | quality evidence | zero-shot accuracy of each quantization relative to FP8 | every lossy setting gated against the unpruned Q23 model: 35-track corpus perplexity/KL/top-1 limits and HumanEval at or above 152/164 |
@@ -182,7 +201,9 @@ What was taken from Maya, all reimplemented independently: the aged route-count 
 GPU expert cache (`STRATA_GLM_MIXED_ADAPT_MIN_ROUTES` / `MIN_GAIN_PCT`, default off; it did not help on
 held-out prompts here), the idea of pricing CPU expert service against host-to-device transfer as
 concurrent lanes (the simulator's miss-lane model), separating fresh-prompt from repeated warmed-prompt
-measurements, and the layer-range split, which was built and then removed for the reason above. Its
+measurements, and the layer-range split, which loses on this mixed-vendor desktop for the reason above but is kept
+opt-in (`STRATA_GLM_LAYER_RANGE`, with NUMA-aware layer pipelines and dual-CUDA workers) for two-socket servers such
+as the V100 machine, where its timing and quality are still being measured. Its
 RDNA expert kernels target IQ2/IQ3 on gfx1100/gfx1151 and were not applicable to Q2_K/Q3_K on gfx1201.
 The study is recorded in [GLM_TR16_MIXED_REDESIGN.md](GLM_TR16_MIXED_REDESIGN.md#project-maya-follow-up).
 
@@ -193,7 +214,7 @@ with the gated Q23 REAP-224 configuration. Quantization, quality measure, VRAM a
 
 ## Documents
 
-Current: this page, [GLM53F_NEW_HARDWARE.md](GLM53F_NEW_HARDWARE.md) (new-machine guide and benchmark protocol), [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (two-GPU work, sections 12-15 are
+Current: this page, [GLM_VULKAN.md](GLM_VULKAN.md) (Vulkan runner), [GLM53F_NEW_HARDWARE.md](GLM53F_NEW_HARDWARE.md) (new-machine guide and benchmark protocol), [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (two-GPU work, sections 12-15 are
 the release-phase measurements), [GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md), [MULTI_GPU.md](MULTI_GPU.md),
 [GLM_RELEASE_Q2Q3.md](GLM_RELEASE_Q2Q3.md) (full-model and sidecar recipes), [GLM_PRUNE_224.md](GLM_PRUNE_224.md),
 [GLM_B550_REAP50.md](GLM_B550_REAP50.md), [GLM53_V100.md](GLM53_V100.md), [GLM_TESTS.md](GLM_TESTS.md).

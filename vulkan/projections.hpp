@@ -33,6 +33,7 @@ public:
                                std::span<const uint8_t> bytes, int in, int out,
                                std::span<const float> input, int tokens = 1,
                                int heads = 1);
+  void release_plans();
   std::string device_name() const;
   size_t resident_bytes() const { return resident_; }
   double compute_ms = 0, transfer_ms = 0;

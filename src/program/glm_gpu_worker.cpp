@@ -29,11 +29,14 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <tuple>
 #include <vector>
+#include <source_location>
+#include <immintrin.h>
 namespace {
 namespace k = strata::kernels;
 namespace cpu = k::cpu;
@@ -77,6 +80,7 @@ public:
 int main(int argc, char **argv) {
 #ifdef __linux__
     try {
+        if (argc==2 && std::string(argv[1])=="--device-info") { report_gpu_devices(std::cout); return 0; }
         if (argc==2 && std::string(argv[1])=="--backend") {
 #ifdef STRATA_USE_HIP
             std::cout << "hip\n";
@@ -164,18 +168,35 @@ int main(int argc, char **argv) {
         if (strata_env_truthy_one("STRATA_GLM_MIXED_REGISTER"))
             registration=std::make_unique<HostMappingRegistration>(transport.buffer,transport.layout.bytes,"worker");
         const bool registered_transport=registration && registration->registered;
+        const bool device_dispatch=strata_env_truthy_one("STRATA_GLM_MIXED_DEVICE_DISPATCH");
+        if (device_dispatch && strata_env_truthy_one("STRATA_GLM_MIXED_FUSED_RETURN"))
+            throw std::invalid_argument("mixed device dispatch uses the ordered device sum, not MIXED_FUSED_RETURN");
+        if (device_dispatch) std::cerr << "MIXED_DEVICE_DISPATCH enabled=1\n";
         strata::core::ModelArtifact artifact(argv[1]);
         const auto &m = artifact.descriptor();
         if (m.hidden != 4096 || m.top_k != 8 || m.experts > 288 ||
             std::any_of(m.layers.begin(),m.layers.end(),[](const auto &l){return l.ffn==strata::core::FfnKind::Moe && l.intermediate!=2048;})) throw std::runtime_error("mixed worker unsupported geometry");
-        size_t budget = std::stoull(argv[4]) * MiB;
-        if (budget > 14336*MiB || !budget) throw std::runtime_error("mixed worker cache must be 1..14336 MiB");
+        auto mib_bytes = [](const char *text) {
+            const std::string value(text); size_t used = 0;
+            if (value.empty() || value.front() == '-') throw std::invalid_argument("mixed worker budget must be positive MiB");
+            const auto n = std::stoull(value, &used);
+            if (used != value.size() || !n || n > SIZE_MAX / MiB)
+                throw std::invalid_argument("mixed worker budget must be positive MiB without overflow");
+            return size_t(n) * MiB;
+        };
+        size_t budget = mib_bytes(argv[4]);
         const bool check_rows = strata_env_truthy_one("STRATA_GLM_MIXED_CHECK_ROWS");
         std::unique_ptr<cpu::ExpertPool> checker;
         if (check_rows) checker=std::make_unique<cpu::ExpertPool>(2,false,true);
-        const size_t gpu_budget = std::stoull(argv[5]);
-        if (gpu_budget != 14336 && gpu_budget != 15360) throw std::runtime_error("mixed worker GPU budget must be 14336 or 15360 MiB");
-        Device::limit() = gpu_budget * MiB - Device::budget_reserve();
+        const size_t requested_gpu_bytes = mib_bytes(argv[5]);
+        size_t initial_free = 0, physical_bytes = 0; check(cudaMemGetInfo(&initial_free, &physical_bytes));
+        const size_t effective_gpu_bytes = std::min(requested_gpu_bytes, physical_bytes);
+        if (effective_gpu_bytes <= Device::budget_reserve() || budget > effective_gpu_bytes - Device::budget_reserve())
+            throw std::invalid_argument("mixed worker cache exceeds the GPU budget after the runtime reserve");
+        Device::limit() = effective_gpu_bytes - Device::budget_reserve();
+        std::cerr << "MIXED_BUDGET requested_gpu_MiB=" << requested_gpu_bytes/double(MiB)
+                  << " effective_gpu_MiB=" << effective_gpu_bytes/double(MiB)
+                  << " requested_cache_MiB=" << budget/double(MiB) << '\n';
         cudaStream_t stream; check(cudaStreamCreate(&stream));
         ResidentExecutor executor;
         strata::prefill::Gemm gemm; std::string error;
@@ -592,8 +613,12 @@ int main(int argc, char **argv) {
                                 gemm.f16(static_cast<uint16_t *>(hx.p)+size_t(group)*rows*4096,
                                          gemm.scratch()+size_t(group)*2*F*4096,gu.f()+size_t(group)*rows*2*F,rows,2*F,4096);
                             else gemm.f16_batched(static_cast<uint16_t *>(hx.p),gemm.scratch(),gu.f(),rows,2*F,4096,batches);
-                            strata::prefill::mmq::swiglu(gu.f(),hidden.f(),all_rows,F,false,stream,layout.swiglu_limit);
-                            k::glm_f16(hidden.f(),static_cast<uint16_t *>(hh.p),int64_t(all_rows)*F,stream);
+                            if (strata_env_truthy_one("STRATA_GLM_PREFILL_FUSED_SWIGLU"))
+                                strata::prefill::mmq::swiglu_f16(gu.f(),static_cast<uint16_t *>(hh.p),all_rows,F,false,stream,layout.swiglu_limit);
+                            else {
+                                strata::prefill::mmq::swiglu(gu.f(),hidden.f(),all_rows,F,false,stream,layout.swiglu_limit);
+                                k::glm_f16(hidden.f(),static_cast<uint16_t *>(hh.p),int64_t(all_rows)*F,stream);
+                            }
                             if (single_gemm) for (int group=0;group<batches;++group)
                                 gemm.f16(static_cast<uint16_t *>(hh.p)+size_t(group)*rows*F,
                                          static_cast<uint16_t *>(down_dense.p)+size_t(group)*4096*F,
@@ -665,10 +690,39 @@ int main(int argc, char **argv) {
                 }
             } else if (b.prefill == 0 || decode_partial) {
             const bool fused_return=decode_partial && strata_env_truthy_one("STRATA_GLM_MIXED_FUSED_RETURN");
-            executor.run(layout, hits, [&](int e) { return cache.at({int(b.layer),e}).device->p; }, b.activation, b.nt, stream,
-                         strata_env_truthy_one("STRATA_GLM_MIXED_DECODE_GRAPHS"), b.canon, true, !decode_partial || check_rows,
-                         fused_return ? b.route_weight : nullptr);
-            check(cudaStreamSynchronize(stream));
+            if (device_dispatch) {
+                // Keep only this request's owners in the table. Unrequested
+                // slots point at a zero entry and cannot read an evicted expert.
+                auto *lookup=static_cast<unsigned long long *>(executor.host_lookup->p)+size_t(b.layer)*288;
+                std::fill_n(lookup,288,0ULL);
+                for (const auto &[e,unused]:hits) lookup[e]=(unsigned long long)cache.at({int(b.layer),e}).device->p;
+                int empty=0;while (empty<288 && lookup[empty]) ++empty;
+                if (empty==288) throw std::runtime_error("mixed device dispatch has no empty route sentinel");
+                auto *ids=static_cast<int *>(executor.host_metadata->p);
+                std::fill_n(ids,size_t(b.nt)*8,empty);
+                for (uint32_t i=0;i<b.routes;++i) ids[b.destination[i]]=b.expert[i];
+                if (registered_transport) executor.activation->put_async(b.activation,size_t(b.nt)*4096*4,stream);
+                else {
+                    std::memcpy(executor.host_activation->p,b.activation,size_t(b.nt)*4096*4);
+                    executor.activation->put_async(executor.host_activation->p,size_t(b.nt)*4096*4,stream);
+                }
+                executor.route_ids->put_async(ids,size_t(b.nt)*8*4,stream);
+                executor.run_device(layout,executor.activation->f(),static_cast<int *>(executor.route_ids->p),b.layer,
+                                    stream,strata_env_truthy_one("STRATA_GLM_MIXED_DECODE_GRAPHS"),check_rows,b.nt,b.canon);
+                if (!decode_partial) {
+                    if (registered_transport) sources.put_async(b.destination,size_t(b.routes)*4,stream);
+                    else {
+                        std::memcpy(source_host.p,b.destination,size_t(b.routes)*4);
+                        sources.put_async(source_host.p,size_t(b.routes)*4,stream);
+                    }
+                    k::glm_copy_route_rows(executor.output->f(),py.f(),static_cast<int *>(sources.p),0,b.routes,4096,true,stream);
+                    check(cudaMemcpyAsync(registered_transport ? static_cast<void *>(transport.output()) : output.p,
+                        py.p,size_t(b.routes)*4096*4,cudaMemcpyDeviceToHost,stream));
+                }
+            } else executor.run(layout, hits, [&](int e) { return cache.at({int(b.layer),e}).device->p; }, b.activation, b.nt, stream,
+                                strata_env_truthy_one("STRATA_GLM_MIXED_DECODE_GRAPHS"), b.canon, true, !decode_partial || check_rows,
+                                strata_env_truthy_one("STRATA_GLM_MIXED_FIXED_GRAPH_GEOMETRY"), fused_return ? b.route_weight : nullptr);
+            if (!device_dispatch || !decode_partial || check_rows) check(cudaStreamSynchronize(stream));
             if (decode_partial) {
                 if (check_rows) {
                     checked_decode.resize(size_t(b.routes)*4096);
@@ -678,12 +732,18 @@ int main(int argc, char **argv) {
                 if (fused_return) {
                     std::memcpy(transport.output(),executor.host_partial_sum->p,size_t(b.nt)*4096*sizeof(float));
                 } else {
-                    std::memcpy(decode_weight_host.p,b.route_weight,size_t(b.nt)*8*sizeof(float));
-                    decode_weights.put_async(decode_weight_host.p,size_t(b.nt)*8*sizeof(float),stream);
+                    if (device_dispatch && registered_transport)
+                        decode_weights.put_async(b.route_weight,size_t(b.nt)*8*sizeof(float),stream);
+                    else {
+                        std::memcpy(decode_weight_host.p,b.route_weight,size_t(b.nt)*8*sizeof(float));
+                        decode_weights.put_async(decode_weight_host.p,size_t(b.nt)*8*sizeof(float),stream);
+                    }
                     k::glm_sum_selected_rows(executor.output->f(),decode_weights.f(),decode_sum.f(),4096,8,b.nt,stream);
-                    check(cudaMemcpyAsync(decode_sum_host.p,decode_sum.p,size_t(b.nt)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
+                    check(cudaMemcpyAsync(device_dispatch && registered_transport ? static_cast<void *>(transport.output()) : decode_sum_host.p,
+                        decode_sum.p,size_t(b.nt)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));
                     check(cudaStreamSynchronize(stream));
-                    std::memcpy(transport.output(),decode_sum_host.p,size_t(b.nt)*4096*sizeof(float));
+                    if (!(device_dispatch && registered_transport))
+                        std::memcpy(transport.output(),decode_sum_host.p,size_t(b.nt)*4096*sizeof(float));
                 }
                 if (check_rows) {
                     const float *rows=static_cast<float *>(executor.host_output->p);
@@ -697,6 +757,8 @@ int main(int argc, char **argv) {
                             throw std::runtime_error("mixed worker decode partial reduction parity failed layer="+std::to_string(b.layer));
                     }
                 }
+            } else if (device_dispatch) {
+                if (!registered_transport) std::memcpy(transport.output(),output.p,size_t(b.routes)*4096*4);
             } else for (uint32_t i = 0; i < b.routes; ++i)
                 std::memcpy(transport.output() + size_t(i) * 4096, static_cast<float *>(executor.host_output->p) + size_t(b.destination[i]) * 4096, 4096 * sizeof(float));
             }

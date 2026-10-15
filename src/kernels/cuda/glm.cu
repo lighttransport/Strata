@@ -12,6 +12,49 @@
 
 namespace strata::kernels {
 namespace {
+struct GreedyPartial { uint32_t rank; int token; int nonfinite; };
+constexpr int greedy_slice = 4096;
+__device__ GreedyPartial greedy_merge(GreedyPartial a, GreedyPartial b) {
+    const int bad = a.nonfinite | b.nonfinite;
+    if (b.rank > a.rank || (b.rank == a.rank && b.token < a.token)) a = b;
+    a.nonfinite = bad;
+    return a;
+}
+__device__ GreedyPartial greedy_reduce(GreedyPartial value, GreedyPartial *shared) {
+    const int t = threadIdx.x;
+    shared[t] = value;
+    __syncthreads();
+    for (int stride = 128; stride; stride /= 2) {
+        if (t < stride) shared[t] = greedy_merge(shared[t], shared[t + stride]);
+        __syncthreads();
+    }
+    return shared[0];
+}
+__global__ void greedy_partials(const float *logits, int n, GreedyPartial *partials) {
+    __shared__ GreedyPartial shared[256];
+    const int first = int(blockIdx.x) * greedy_slice;
+    const int count = n - first < greedy_slice ? n - first : greedy_slice;
+    GreedyPartial best{0, INT32_MAX, 0};
+    for (int offset = threadIdx.x; offset < count; offset += 256) {
+        const int token = first + offset;
+        uint32_t bits = __float_as_uint(logits[token]);
+        const int bad = (bits & 0x7f800000u) == 0x7f800000u;
+        // Integer ordering retains subnormals even on backends that flush FP32 arithmetic.
+        // Both signs of zero have the same rank, matching std::max_element's first tie.
+        if ((bits & 0x7fffffffu) == 0) bits = 0;
+        const uint32_t rank = bits & 0x80000000u ? ~bits : bits ^ 0x80000000u;
+        best = greedy_merge(best, GreedyPartial{rank, token, bad});
+    }
+    best = greedy_reduce(best, shared);
+    if (!threadIdx.x) partials[blockIdx.x] = best;
+}
+__global__ void greedy_finish(const GreedyPartial *partials, int count, GlmGreedyPick *result) {
+    __shared__ GreedyPartial shared[256];
+    GreedyPartial best{0, INT32_MAX, 0};
+    for (int i = threadIdx.x; i < count; i += 256) best = greedy_merge(best, partials[i]);
+    best = greedy_reduce(best, shared);
+    if (!threadIdx.x) *result = GlmGreedyPick{best.token, best.nonfinite};
+}
 __device__ float sig(float x) {
     return 1.f / (1.f + expf(-x));
 }
@@ -645,6 +688,20 @@ void width(int n) {
 }
 } // namespace
 
+uint64_t glm_greedy_pick_scratch_bytes(int vocabulary) {
+    width(vocabulary);
+    return ((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice) * sizeof(GreedyPartial);
+}
+void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
+                     GlmGreedyPick *result, void *s) {
+    width(vocabulary);
+    if (!logits || !scratch || !result) throw std::invalid_argument("GLM: null greedy buffer");
+    const int blocks = int((uint64_t(vocabulary) + greedy_slice - 1) / greedy_slice);
+    greedy_partials<<<blocks, 256, 0, (cudaStream_t)s>>>(logits, vocabulary, (GreedyPartial *)scratch);
+    check();
+    greedy_finish<<<1, 256, 0, (cudaStream_t)s>>>((const GreedyPartial *)scratch, blocks, result);
+    check();
+}
 void glm_rms_norm(const float *x, const float *w, float *y, int n, int tokens, float eps, void *s) {
     width(n);
     width(tokens);

@@ -1,0 +1,87 @@
+#version 450
+#extension GL_ARB_gpu_shader_fp64 : require
+// Canonical Q2_K/Q3_K integer dots: eight lanes per row, fixed reduction order.
+layout(local_size_x=128) in;
+layout(binding=0,std430) readonly buffer Weights { uint weights[]; };
+layout(binding=1,std430) readonly buffer Activation { uint activation[]; };
+layout(binding=2,std430) writeonly buffer Output { float output_data[]; };
+layout(push_constant) uniform Params { uint columns; uint rows; uint type; uint offset; } p;
+shared float lanes[1024];
+uint byte_at(uint address) {return (weights[address/4] >> (8*(address%4)))&255u;}
+uint word_at(uint address) {
+ return byte_at(address)|(byte_at(address+1)<<8)|(byte_at(address+2)<<16)|(byte_at(address+3)<<24);
+}
+int signed_byte(uint value) {return int(value<<24)>>24;}
+void main() {
+ uint weight_type=p.type&65535u,tokens=p.type>>16;
+ uint tid=gl_LocalInvocationID.x,j=tid%8,row=gl_WorkGroupID.x*16+tid/8;
+ precise float acc[8];
+ for(uint t=0;t<8;t++)acc[t]=0;
+ if(row<p.rows) {
+  uint block_bytes=weight_type==10 ? 84u : 110u;
+  uint blocks=p.columns/256;
+  for(uint block=0;block<blocks;block++) {
+   uint base=p.offset+(row*blocks+block)*block_bytes;
+   uint q0=word_at(base+(weight_type==10?16u:32u)+4*j);
+   uint q1=word_at(base+(weight_type==10?48u:64u)+4*j);
+   uint mask=weight_type==11 ? word_at(base+4*j) : 0u;
+   uint scales[4];
+   if(weight_type==10) for(uint z=0;z<4;z++)scales[z]=word_at(base+4*z);
+   else {
+    uint a0=word_at(base+96),a1=word_at(base+100),t=word_at(base+104);
+    scales[0]=(a0&0x0f0f0f0fu)|((t&0x03030303u)<<4);
+    scales[1]=(a1&0x0f0f0f0fu)|(((t>>2)&0x03030303u)<<4);
+    scales[2]=((a0>>4)&0x0f0f0f0fu)|(((t>>4)&0x03030303u)<<4);
+    scales[3]=((a1>>4)&0x0f0f0f0fu)|(((t>>6)&0x03030303u)<<4);
+   }
+   int sum[8];for(uint t=0;t<8;t++)sum[t]=0;
+   uint ab=block*73;
+   for(uint h=0;h<8;h++) {
+    uint si=2*h+j/4;
+    int scale=int((scales[si/4]>>(8*(si%4)))&(weight_type==10?15u:63u));
+    if(weight_type==11) scale-=32;
+    uint codes=((h<4?q0:q1)>>(2*(h%4)))&0x03030303u;
+    for(uint t=0;t<tokens;t++) {
+    uint a=activation[t*blocks*73+ab+1+8*h+j];
+    int dot=0;
+    for(uint z=0;z<4;z++) {
+     int code=int((codes>>(8*z))&3u);
+     if(weight_type==11)code-=((mask>>(h+8*z))&1u)==0u?4:0;
+     dot+=code*signed_byte(a>>(8*z));
+    }
+    sum[t]+=scale*dot;
+    }
+   }
+   for(uint t=0;t<tokens;t++) {
+   uint input_base=t*blocks*73+ab;
+   precise float yd=uintBitsToFloat(activation[input_base]);
+   uint bits=weight_type==10?word_at(base+80):(byte_at(base+108)|(byte_at(base+109)<<8));
+   vec2 d=unpackHalf2x16(bits);
+   if(weight_type==10) {
+    uint si=2*j;
+    int m0=int((scales[si/4]>>(8*(si%4)+4))&15u);
+    si++;
+    int m1=int((scales[si/4]>>(8*(si%4)+4))&15u);
+    uint bs=activation[input_base+65+j];
+    int offset=m0*(int(bs<<16)>>16)+m1*(int(bs)>>16);
+    precise float dm=-d.y*yd;
+    precise double product=double(dm)*double(offset);
+    acc[t]=float(product+double(acc[t]));
+   }
+   precise float scale=d.x*yd;
+   precise double product=double(scale)*double(sum[t]);
+   acc[t]=float(product+double(acc[t]));
+   }
+  }
+ }
+ for(uint t=0;t<tokens;t++)lanes[t*128+tid]=acc[t];
+ barrier();
+ if(j==0 && row<p.rows) {
+  for(uint t=0;t<tokens;t++) {
+  uint b=t*128+tid;
+  precise float a=(lanes[b]+lanes[b+4])+(lanes[b+1]+lanes[b+5]);
+  precise float c=(lanes[b+2]+lanes[b+6])+(lanes[b+3]+lanes[b+7]);
+  output_data[t*p.rows+row]=a+c;
+  }
+ }
+}
