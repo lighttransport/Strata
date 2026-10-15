@@ -116,8 +116,12 @@ def read_routing_events(path):
         if not line.strip():
             continue
         e = json.loads(line)
+        if e.get('kind') == 'cache':
+            if not isinstance(e.get('layer'), int) or not isinstance(e.get('experts'), list):
+                raise ValueError('invalid cache snapshot in routing trace: ' + str(path))
+            continue  # cache preparation metadata, not an executed routing slot
         if 'routes' not in e or 'layer' not in e:
-            raise ValueError('not a routing event trace: ' + path)
+            raise ValueError('not a routing event trace: ' + str(path))
         events.append(e)
     return events
 
@@ -125,8 +129,15 @@ def read_routing_events(path):
 def rounds_from_events(events):
     """Group routing events by (request, round); draft-phase events are kept separately."""
     rounds = {}
+    previous, trial = {}, {}
     for e in events:
-        key = (e['request'], e['round'])
+        request, number = e['request'], e['round']
+        # One-shot decode trials restore a snapshot and restart round numbering
+        # without resetting the request ID. Keep those executions separate.
+        if request in previous and number < previous[request]:
+            trial[request] = trial.get(request, 0) + 1
+        previous[request] = number
+        key = (request, trial.get(request, 0), number)
         r = rounds.setdefault(key, dict(request=e['request'], round=e['round'], target=[], draft=[]))
         (r['draft'] if e.get('phase') == 'draft' else r['target']).append(e)
     return [rounds[k] for k in sorted(rounds)]

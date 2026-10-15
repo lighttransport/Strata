@@ -1,0 +1,122 @@
+{
+ "provenance": {
+  "tools/sim/data/hw_v100s_runner.json": "66ef253763ebe1ee7e60f03167f0a8117a7db5fa5a6bd9118beb97a85f19cd11",
+  "tools/sim/data/glm_runner_params_v100s.json": "ffbc46dbd467fdf176fcaafdd5796f6b8b3665eb87b4b2f733952b61f86149d1",
+  "tools/sim/data/glm_runner_records_v100s.json": "7e9ed2a475e79b176284b85d71458e241abfd53772d0605d51a8252103b620b7"
+ },
+ "scope": "Conditional sensitivity, not implemented or measured optimizations. Primary chain means the fitted KDA/MLA aggregate terms only. Other GPU work, route shares, acceptance 3.65 and control costs are fixed. No native layer-pipeline extrapolation.",
+ "scenarios": [
+  {
+   "scenario": "baseline",
+   "tok_s": 40.13882991822631,
+   "scopes_ms": {
+    "head": 6.390458333333333,
+    "cpu_service": 35.701280746660686,
+    "between": 30.308386684129907,
+    "tail": 6.205333333333343,
+    "draft": 8.320750000000004,
+    "resync_other": 4.008180555555555,
+    "round_ms": 90.93438965301283,
+    "verify_ms": 78.60545909745727
+   },
+   "measured": false,
+   "quality_qualified": false
+  },
+  {
+   "scenario": "CPU expert rate +20%",
+   "tok_s": 40.165316973373,
+   "scopes_ms": {
+    "head": 6.390458333333333,
+    "cpu_service": 31.05306728888386,
+    "between": 34.896633375179434,
+    "tail": 6.205333333333343,
+    "draft": 8.320750000000004,
+    "resync_other": 4.008180555555555,
+    "round_ms": 90.87442288628553,
+    "verify_ms": 78.54549233072997
+   },
+   "measured": false,
+   "quality_qualified": false
+  },
+  {
+   "scenario": "worker service -20%",
+   "tok_s": 40.138829918226314,
+   "scopes_ms": {
+    "head": 6.390458333333333,
+    "cpu_service": 35.70128074666067,
+    "between": 30.308386684129907,
+    "tail": 6.205333333333343,
+    "draft": 8.320750000000004,
+    "resync_other": 4.008180555555555,
+    "round_ms": 90.93438965301281,
+    "verify_ms": 78.60545909745726
+   },
+   "measured": false,
+   "quality_qualified": false
+  },
+  {
+   "scenario": "primary chain -20%",
+   "tok_s": 45.974874743062685,
+   "scopes_ms": {
+    "head": 6.208458333333333,
+    "cpu_service": 35.70128074666073,
+    "between": 18.947186684129896,
+    "tail": 6.2053333333333285,
+    "draft": 8.320750000000004,
+    "resync_other": 4.008180555555555,
+    "round_ms": 79.39118965301284,
+    "verify_ms": 67.06225909745729
+   },
+   "measured": false,
+   "quality_qualified": false
+  },
+  {
+   "scenario": "primary chain -40%",
+   "tok_s": 53.79673028879377,
+   "scopes_ms": {
+    "head": 6.026458333333333,
+    "cpu_service": 35.7012807466607,
+    "between": 7.585986684129875,
+    "tail": 6.205333333333336,
+    "draft": 8.320750000000004,
+    "resync_other": 4.008180555555555,
+    "round_ms": 67.8479896530128,
+    "verify_ms": 55.519059097457244
+   },
+   "measured": false,
+   "quality_qualified": false
+  },
+  {
+   "scenario": "primary chain -50%",
+   "tok_s": 58.65280214695049,
+   "scopes_ms": {
+    "head": 5.935458333333333,
+    "cpu_service": 35.70128074666067,
+    "between": 2.0596128993100775,
+    "tail": 6.2053333333333285,
+    "draft": 8.320750000000004,
+    "resync_other": 4.008180555555555,
+    "round_ms": 62.23061586819297,
+    "verify_ms": 49.90168531263741
+   },
+   "measured": false,
+   "quality_qualified": false
+  },
+  {
+   "scenario": "primary chain -40% and CPU expert rate +20%",
+   "tok_s": 53.84432005227365,
+   "scopes_ms": {
+    "head": 6.026458333333333,
+    "cpu_service": 31.053067288883835,
+    "between": 12.174233375179305,
+    "tail": 6.2053333333333285,
+    "draft": 8.320750000000004,
+    "resync_other": 4.008180555555555,
+    "round_ms": 67.78802288628536,
+    "verify_ms": 55.4590923307298
+   },
+   "measured": false,
+   "quality_qualified": false
+  }
+ ]
+}

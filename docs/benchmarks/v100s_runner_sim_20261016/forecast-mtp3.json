@@ -1,0 +1,62 @@
+{
+ "tok_s": 40.13882991822631,
+ "ms_per_round": 90.93438965301283,
+ "bound_tok_s": 40.1388299182263,
+ "scopes": {
+  "head": 6.390458333333333,
+  "cpu_service": 35.701280746660686,
+  "between": 30.308386684129907,
+  "tail": 6.205333333333343,
+  "draft": 8.320750000000004,
+  "resync_other": 4.008180555555555,
+  "round_ms": 90.93438965301283,
+  "verify_ms": 78.60545909745727
+ },
+ "accepted_per_round": 3.65,
+ "rounds": 1,
+ "cpu_gb_per_output": 0.6208352169847886,
+ "worker_rows_per_slot": 4.974739764370887,
+ "topology": {
+  "kind": "A",
+  "primary": "gpu0",
+  "worker": "gpu1",
+  "groups": [
+   2,
+   2
+  ],
+  "combine": "device",
+  "dispatch": "socket",
+  "ownership": "blocking",
+  "cpu_lanes": "all34",
+  "split_layer": 24,
+  "stage_order": "pipeline",
+  "head_hidden_fraction": 0.0,
+  "context_tokens": 8192,
+  "residents": "chain"
+ },
+ "placement": {
+  "primary_slots": 28.047619,
+  "worker_slots": 33.0,
+  "experts_per_layer": 224,
+  "policy": "recorded",
+  "draft_bank": "primary",
+  "draft_bank_slots": 0.0
+ },
+ "quality_qualified": false,
+ "scope": "Throughput model from measured per-slot costs; rounds are serial; no quality prediction",
+ "hardware": "v100s node",
+ "provenance": [
+  {
+   "path": "tools/sim/data/hw_v100s_runner.json",
+   "sha256": "66ef253763ebe1ee7e60f03167f0a8117a7db5fa5a6bd9118beb97a85f19cd11"
+  },
+  {
+   "path": "tools/sim/data/glm_kernels_v100s.json",
+   "sha256": "faa670aeb60a241f24d2e37057bd0c7813630766078f7e3da45b09d3786abe23"
+  },
+  {
+   "path": "tools/sim/data/glm_runner_params_v100s.json",
+   "sha256": "ffbc46dbd467fdf176fcaafdd5796f6b8b3665eb87b4b2f733952b61f86149d1"
+  }
+ ]
+}

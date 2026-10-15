@@ -1,0 +1,22 @@
+{
+ "passed": true,
+ "scope": "Two-stage native serial versus overlapped tokens, bit-identical committed state, cache-policy history and routes, plus byte-identical resident payloads under forced rejection; not a full-logit comparison or a throughput result",
+ "decoder_sha256": "a0b9f97eda44713077d76f26a40b948eb5db7066caf5597e0d225d69a5650720",
+ "raw_receipt_sha256": "765dff686a9313c5fcb9179fcd2abbb52882b2151cd68ff173b77242445bd3cd",
+ "engine_commit": "bba75e56",
+ "configuration": {
+  "experts": 288,
+  "prompt_tokens": 64,
+  "generated_tokens": 16,
+  "split_layer": 23,
+  "stage_workers": [
+   16,
+   15
+  ],
+  "memory_policy": "socket",
+  "cache_mib_per_stage": 22528,
+  "cache_adapt": true,
+  "cache_window": 8,
+  "forced_miss_every": 1
+ }
+}

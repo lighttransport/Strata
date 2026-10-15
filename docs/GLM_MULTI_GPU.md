@@ -95,10 +95,17 @@ cannot be combined with `gpu_layout=layer`.
 
 The imported decode levers remain opt-in. The fastest TR16 settings include
 lossy routing and soft acceptance and have deferred quality checks; their rates
-are not V100 measurements. The linked V100 report freezes the earlier v9/v10
+are not V100 measurements. The earlier native-layer V100 report freezes the v9/v10
 source and binaries. It does not measure this combined revision. Rebuild and
 collect fresh timings before claiming a speed change; measured plans from the
 older binary will fail the decoder-identity check.
+
+The [v100s node release-profile report](benchmarks/v100s_runner_sim_20261016/README.md)
+measures the integrated `83f3cac9` engine with two V100 PCIe 32 GB GPUs, two
+Xeon Gold 6240 sockets and four NUMA domains. It uses the CUDA expert-worker
+runner, REAP-224 Q23, affinity 0.14 and MTP depths 2 and 3. Its measured warm
+decode rates and mode-specific simulator fits are separate from the native
+one-token-ahead pipeline and from quality qualification.
 
 `tools/glm_mixed_run.py` also accepts two CUDA binaries. Supply
 `--primary-device=0 --worker-device=1` using ordinals visible inside the

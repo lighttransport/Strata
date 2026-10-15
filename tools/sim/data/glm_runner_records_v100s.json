@@ -1,0 +1,250 @@
+{
+ "schema": "strata.glm.runner_records.v1",
+ "records": [
+  {
+   "name": "v100s-ram-d3-trace-8k256",
+   "kind": "decode",
+   "fit": true,
+   "split": "fit",
+   "measured_tok_s": 38.6209,
+   "accepted_per_round": 3.5416666666666665,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "placement": {
+    "primary_slots": 28.047619047619047,
+    "worker_slots": 33,
+    "experts_per_layer": 224,
+    "policy": "recorded",
+    "draft_bank": "primary"
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "gpu0",
+    "worker": "gpu1",
+    "groups": [
+     2,
+     2
+    ],
+    "combine": "device",
+    "cpu_lanes": "all34",
+    "context_tokens": 8192
+   },
+   "scopes": {
+    "head": 6.180458333333333,
+    "cpu_service": 36.34652777777777,
+    "between": 30.642083333333332,
+    "tail": 6.205333333333333,
+    "draft": 8.32075
+   },
+   "note": "Instrumented fit. Primary residency observed, CPU bytes measured, worker share inferred. Average route mix within this mode. Token zero is outside timing."
+  },
+  {
+   "name": "v100s-release-d3-clean-trial1",
+   "kind": "decode",
+   "fit": false,
+   "split": "holdout",
+   "measured_tok_s": 38.0851,
+   "accepted_per_round": 3.548611111111111,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "placement": {
+    "primary_slots": 28.047619047619047,
+    "worker_slots": 33,
+    "experts_per_layer": 224,
+    "policy": "recorded",
+    "draft_bank": "primary"
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "gpu0",
+    "worker": "gpu1",
+    "groups": [
+     2,
+     2
+    ],
+    "combine": "device",
+    "cpu_lanes": "all34",
+    "context_tokens": 8192
+   },
+   "note": "Held-out timing, conditional on observed acceptance. No held-out routing or CPU counters used."
+  },
+  {
+   "name": "v100s-release-d3-clean-trial2",
+   "kind": "decode",
+   "fit": false,
+   "split": "holdout",
+   "measured_tok_s": 39.5533,
+   "accepted_per_round": 3.65,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "placement": {
+    "primary_slots": 28.047619047619047,
+    "worker_slots": 33,
+    "experts_per_layer": 224,
+    "policy": "recorded",
+    "draft_bank": "primary"
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "gpu0",
+    "worker": "gpu1",
+    "groups": [
+     2,
+     2
+    ],
+    "combine": "device",
+    "cpu_lanes": "all34",
+    "context_tokens": 8192
+   },
+   "note": "Held-out timing, conditional on observed acceptance. No held-out routing or CPU counters used."
+  },
+  {
+   "name": "v100s-release-d3-clean-trial3",
+   "kind": "decode",
+   "fit": false,
+   "split": "holdout",
+   "measured_tok_s": 40.4159,
+   "accepted_per_round": 3.7573529411764706,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "placement": {
+    "primary_slots": 28.047619047619047,
+    "worker_slots": 33,
+    "experts_per_layer": 224,
+    "policy": "recorded",
+    "draft_bank": "primary"
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "gpu0",
+    "worker": "gpu1",
+    "groups": [
+     2,
+     2
+    ],
+    "combine": "device",
+    "cpu_lanes": "all34",
+    "context_tokens": 8192
+   },
+   "note": "Held-out timing, conditional on observed acceptance. No held-out routing or CPU counters used."
+  },
+  {
+   "name": "v100s-release-d3-chat-clean-trial1",
+   "kind": "decode",
+   "fit": false,
+   "split": "holdout",
+   "measured_tok_s": 41.6872,
+   "accepted_per_round": 3.8134328358208953,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "placement": {
+    "primary_slots": 28.047619047619047,
+    "worker_slots": 33,
+    "experts_per_layer": 224,
+    "policy": "recorded",
+    "draft_bank": "primary"
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "gpu0",
+    "worker": "gpu1",
+    "groups": [
+     2,
+     2
+    ],
+    "combine": "device",
+    "cpu_lanes": "all34",
+    "context_tokens": 8192
+   },
+   "note": "Held-out timing, conditional on observed acceptance. No held-out routing or CPU counters used."
+  },
+  {
+   "name": "v100s-release-d3-chat-clean-trial2",
+   "kind": "decode",
+   "fit": false,
+   "split": "holdout",
+   "measured_tok_s": 40.5367,
+   "accepted_per_round": 3.785185185185185,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "placement": {
+    "primary_slots": 28.047619047619047,
+    "worker_slots": 33,
+    "experts_per_layer": 224,
+    "policy": "recorded",
+    "draft_bank": "primary"
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "gpu0",
+    "worker": "gpu1",
+    "groups": [
+     2,
+     2
+    ],
+    "combine": "device",
+    "cpu_lanes": "all34",
+    "context_tokens": 8192
+   },
+   "note": "Held-out timing, conditional on observed acceptance. No held-out routing or CPU counters used."
+  },
+  {
+   "name": "v100s-release-d3-chat-clean-trial3",
+   "kind": "decode",
+   "fit": false,
+   "split": "holdout",
+   "measured_tok_s": 42.01,
+   "accepted_per_round": 3.871212121212121,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "placement": {
+    "primary_slots": 28.047619047619047,
+    "worker_slots": 33,
+    "experts_per_layer": 224,
+    "policy": "recorded",
+    "draft_bank": "primary"
+   },
+   "topology": {
+    "kind": "A",
+    "primary": "gpu0",
+    "worker": "gpu1",
+    "groups": [
+     2,
+     2
+    ],
+    "combine": "device",
+    "cpu_lanes": "all34",
+    "context_tokens": 8192
+   },
+   "note": "Held-out timing, conditional on observed acceptance. No held-out routing or CPU counters used."
+  }
+ ]
+}

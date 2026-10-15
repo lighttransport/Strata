@@ -1,4 +1,4 @@
-"""End-to-end GLM-5.3-Flash decode and prefill model for the TR16 mixed runner.
+"""End-to-end GLM-5.3-Flash decode and prefill model for a measured mixed runner.
 
 Built on `heterogeneous.schedule`: every kernel, transfer and host step is an Event with
 resource demands; nothing is derived from advertised FLOPS. Per-slot costs come from a
@@ -123,10 +123,10 @@ class Topology:
     primary: str = 'hip'
     worker: str = 'cuda'
     groups: tuple = (2, 2)           # verification widths per group (window = sum)
-    combine: str = 'strict'          # strict (CPU adds every row) | device3 (primary adds rows in canonical order)
+    combine: str = 'strict'          # strict | device (CPU joins worker partial) | device3 (hypothetical GPU join)
     dispatch: str = 'socket'         # socket (worker asked when the CPU thread reaches the slot) | direct (at publish)
     ownership: str = 'blocking'      # blocking | async
-    cpu_lanes: str = 'single15'      # single15 | node_local8x2 (B only)
+    cpu_lanes: str = 'single15'      # key in cpu.lanes, or node_local8x2 (B only)
     split_layer: int = 24            # B: first layer of the tail stage
     stage_order: str = 'pipeline'    # B: pipeline (group after group) | interleave
     head_hidden_fraction: float = 0.0
@@ -148,11 +148,24 @@ def route_shares(placement, table):
 
 def synthetic_workload(table, placement, topology, rounds=1, accepted_per_round=None, shares=None):
     """Average slots per round. `shares` (primary/worker/cpu) overrides the placement curve."""
+    if shares is None and get(table, 'model.require_recorded_shares', False):
+        raise ValueError('profile requires recorded route shares; no measured cache hit curve')
     shares = shares or route_shares(placement, table)
     unique = get(table, 'model.unique_experts_per_route')
     depth = sum(topology.groups) - 1
-    accepted = accepted_per_round or get(table, 'model.accepted_per_round')
-    draft_cpu = 0.0 if placement.draft_bank != 'cpu' else TOP_K * unique
+    accepted = get(table, 'model.accepted_per_round') if accepted_per_round is None else accepted_per_round
+    if not topology.groups or any(not isinstance(w, int) or w < 1 for w in topology.groups):
+        raise ValueError('verification groups must have positive integer widths')
+    # Lookup continuation can emit more tokens than one verify window. Its cost
+    # must be present in the measured round; do not cap that measured yield.
+    if not math.isfinite(accepted) or accepted <= 0:
+        raise ValueError('accepted tokens per round must be finite and positive')
+    if placement.experts_per_layer < TOP_K:
+        raise ValueError('model expert count must cover top-k')
+    # Historical records round each of the three shares to four decimal places.
+    if any(not math.isfinite(shares.get(k, 0)) or shares.get(k, 0) < 0 for k in ('primary', 'worker', 'cpu')) or not math.isclose(sum(shares.get(k, 0) for k in ('primary', 'worker', 'cpu')), 1.0, abs_tol=0.0002):
+        raise ValueError('route shares must be nonnegative and sum to one')
+    draft_cpu = 0.0 if placement.draft_bank != 'cpu' else get(table, 'model.draft_top_k', TOP_K) * unique
     out = []
     for _ in range(rounds):
         slots = []
@@ -171,8 +184,8 @@ def synthetic_workload(table, placement, topology, rounds=1, accepted_per_round=
 def workload_from_routes(rounds, placement, table, topology, accepted_per_round):
     """Exact per-slot counts from a routing event trace with recorded primary residency.
 
-    Worker ownership is not recorded: the worker's share of the non-resident experts follows a
-    static top-N-per-layer rule over the trace's own route counts (a stand-in for the prior).
+    A `worker_owned` list on each event takes precedence over the historical
+    top-N-per-layer estimate from the trace's own route counts.
     """
     counts = {}
     for r in rounds:
@@ -195,7 +208,8 @@ def workload_from_routes(rounds, placement, table, topology, accepted_per_round)
                 width = len(e['routes'])
                 experts = {x for row in e['routes'] for x in row}
                 resident = set(e.get('resident', [])) & experts
-                w = (experts - resident) & worker[layer]
+                owned = set(e['worker_owned']) if 'worker_owned' in e else worker[layer]
+                w = (experts - resident) & owned if topology.kind == 'A' else set()
                 cpu = experts - resident - w
                 rows = sum(1 for row in e['routes'] for x in row if x in w)
                 slots.append(Slot(layer, g, width, len(cpu), len(w), len(resident), len(cpu) * EXPERT_BYTES[layer], rows))
@@ -242,9 +256,13 @@ def resources_for(hardware, table, topology):
             r[f'cpu.flow{i}'] = lanes['node8']['gb_s'] * 1e6
     else:
         r['cpu.lane0'] = 1.0
-        r['cpu.flow0'] = lanes['single15']['gb_s'] * 1e6
+        r['cpu.flow0'] = lanes[topology.cpu_lanes]['gb_s'] * 1e6
     r['worker.host'] = 1.0
-    for dev in ('cuda', 'hip'):
+    for dev in (topology.primary, topology.worker):
+        if not dev:
+            continue
+        if dev not in table['devices']:
+            raise ValueError('device missing from kernel profile: ' + dev)
         r[f'{dev}.compute'] = 1.0
         r[f'{dev}.side'] = 1.0
     return r
@@ -276,7 +294,10 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
         stages = [dict(device=topology.primary, layers=[l for l in MOE_LAYERS if l < topology.split_layer], lane=0, worker=None),
                   dict(device=topology.worker, layers=[l for l in MOE_LAYERS if l >= topology.split_layer],
                        lane=1 if topology.cpu_lanes == 'node_local8x2' else 0, worker=None)]
-    groups = list(range(len(topology.groups)))
+    # The release lookup policy can verify a different window in each round;
+    # a final single-token verification has only one group.
+    groups = sorted({slot.group for slot in round_.slots})
+    group_widths = {slot.group: slot.width for slot in round_.slots}
     slot_of = {(s.layer, s.group): s for s in round_.slots}
     # Head: embedding and the dense layers, per group, on the first stage's device (group A runs ahead).
     dev0 = stages[0]['device']
@@ -312,7 +333,8 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
             tag = f'{prefix}/s{si}/l{l}/g{g}'
             if si == 0 and g not in headed:
                 # Embedding and the dense layers of this group run right before its first publication.
-                name = b.add(f'{prefix}/head/g{g}', {f'{dev}.compute': head}, last_gpu[dev], 'head')
+                head_cost = 0.0 if headed and get(table, 'model.joint_dense', False) else head
+                name = b.add(f'{prefix}/head/g{g}', {f'{dev}.compute': head_cost}, last_gpu[dev], 'head')
                 last_gpu[dev] = name; headed.add(g); entry_dep[g] = name
                 if markers['head_end'] is None:
                     markers['head_end'] = name
@@ -341,9 +363,13 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
             cpu_work = {f'cpu.lane{lane}': cpu_t['slot_fixed_ms'] + s.width * cpu_t['quant_ms_per_token'] +
                         n_cpu * cpu_t['expert_fixed_ms'] + (w_t['client_host_ms'] if worker and s.worker_experts > 0 else 0.0),
                         f'cpu.flow{lane}': s.cpu_bytes}
+            if cpu_t.get('additive_service', False):
+                profile = 'node8' if topology.kind == 'B' and topology.cpu_lanes == 'node_local8x2' else topology.cpu_lanes
+                cpu_work[f'cpu.lane{lane}'] += s.cpu_bytes / (cpu_t['lanes'][profile]['gb_s'] * 1e6)
             cpu = b.add(tag + '/cpu', cpu_work, cpu_dep, 'cpu', minimum_ms=cpu_t['mailbox_latency_ms'])
             markers['cpu_start'][(si, l, g)] = cpu
-            rows_back = b.transfer(tag + '/cpu-rows', s.width * TOP_K * ROW_BYTES, 'ram', dev, hardware, cpu)
+            rows_back = (None if topology.combine == 'device' else
+                         b.transfer(tag + '/cpu-rows', s.width * TOP_K * ROW_BYTES, 'ram', dev, hardware, cpu))
             ends = [cpu]
             # Worker (topology A): request, execution, rows return.
             worker_end = None
@@ -354,11 +380,24 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
                 wd = get(table, f'devices.{worker}.decode')
                 exec_ms = wd['worker_request_fixed_ms'] + s.worker_experts * width_value(wd['resident_expert_ms'], s.width)
                 run = b.add(tag + '/worker', {f'{worker}.compute': exec_ms}, submit, 'worker')
-                ret = b.transfer(tag + '/worker-rows', s.worker_rows * ROW_BYTES, worker, 'ram', hardware, run)
-                copy = b.add(tag + '/worker-copy', {'host': s.worker_rows * ROW_BYTES / (w_t['memcpy_gb_s'] * 1e6)},
+                return_rows = s.width if topology.combine == 'device' else s.worker_rows
+                # A wall-clock RPC probe already includes the worker's return
+                # DMA and memcpy. Do not charge those a second time.
+                measured_rpc = w_t.get('service_includes_return', False)
+                ret = run if measured_rpc else b.transfer(tag + '/worker-rows', return_rows * ROW_BYTES, worker, 'ram', hardware, run)
+                copy = b.add(tag + '/worker-copy', {} if measured_rpc else {'host': return_rows * ROW_BYTES / (w_t['memcpy_gb_s'] * 1e6)},
                              ret, 'worker', minimum_ms=submit_ms / 2)
                 worker_end = copy
-            if topology.combine == 'device3':
+            if topology.combine == 'device':
+                # The release still waits for the worker on the CPU service
+                # thread. Only primary resident rows are combined on-device.
+                dep = [cpu] + ([worker_end] if worker_end else [])
+                joined = b.add(tag + '/host-join', {f'cpu.lane{lane}': cpu_t.get('partial_combine_ms', 0.0)}, dep, 'finish')
+                rows_back = b.transfer(tag + '/cpu-rows', s.width * ROW_BYTES, 'ram', dev, hardware, joined)
+                finish = b.add(tag + '/combine', {f'{dev}.compute': c['combine'] * s.width}, [rows_back, residents], 'combine')
+                lane_tail[lane] = joined
+                scope_end = joined
+            elif topology.combine == 'device3':
                 dep = [rows_back, residents] + ([b.transfer(tag + '/worker-rows-dev', s.worker_rows * ROW_BYTES, 'ram', dev,
                                                             hardware, worker_end)] if worker_end else [])
                 finish = b.add(tag + '/combine', {f'{dev}.compute': c['combine'] * s.width}, dep, 'combine')
@@ -389,7 +428,7 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
         if si + 1 < len(stages):
             nxt = stages[si + 1]['device']
             for g in groups:
-                width = topology.groups[g]
+                width = group_widths[g]
                 last = b.add(f'{prefix}/s{si}/g{g}/stage-exit', {}, [finish_prev[g], last_gpu[dev]], 'wait')
                 hand = b.transfer(f'{prefix}/s{si}/g{g}/handoff', width * RESIDUAL_BYTES, dev, nxt, hardware, last)
                 group_entry[g] = b.add(f'{prefix}/s{si}/g{g}/handoff-latency', {'host': w_t['bounce_host_ms']}, hand,
@@ -403,6 +442,7 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
     prev = tail
     # Draft chain: depth sequential MTP steps; CPU draft experts go through the last stage's lane.
     lane = stages[-1]['lane']
+    draft_k = get(table, 'model.draft_top_k', TOP_K)
     for d in range(round_.draft_steps):
         gpu = b.add(f'{prefix}/draft{d}/gpu', {f'{last_dev}.compute': cl['draft']}, prev, 'draft')
         if round_.draft_cpu_experts > 0:
@@ -411,15 +451,15 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
                                                    f'cpu.flow{lane}': round_.draft_cpu_experts * EXPERT_BYTES[44]},
                         [gpu, lane_tail[lane]], 'draft', minimum_ms=cpu_t['mailbox_latency_ms'])
             lane_tail[lane] = cpu
-            rows = b.transfer(f'{prefix}/draft{d}/rows', TOP_K * ROW_BYTES, 'ram', last_dev, hardware, cpu)
+            rows = b.transfer(f'{prefix}/draft{d}/rows', draft_k * ROW_BYTES, 'ram', last_dev, hardware, cpu)
             prev = b.add(f'{prefix}/draft{d}/combine', {f'{last_dev}.compute': cl['combine']}, rows, 'draft')
         else:
             bank_dev = topology.primary if placement.draft_bank == 'primary' else (topology.worker if placement.draft_bank == 'worker' else last_dev)
             bank = b.add(f'{prefix}/draft{d}/bank', {f'{bank_dev}.compute': get(table, f'devices.{bank_dev}.decode.resident_fixed_ms') +
-                                                     TOP_K * width_value(get(table, f'devices.{bank_dev}.decode.resident_expert_ms'), 1)},
+                                                     draft_k * width_value(get(table, f'devices.{bank_dev}.decode.resident_expert_ms'), 1)},
                          gpu, 'draft')
             if bank_dev != last_dev:
-                bank = b.transfer(f'{prefix}/draft{d}/bank-rows', TOP_K * ROW_BYTES, bank_dev, last_dev, hardware, bank)
+                bank = b.transfer(f'{prefix}/draft{d}/bank-rows', draft_k * ROW_BYTES, bank_dev, last_dev, hardware, bank)
             prev = b.add(f'{prefix}/draft{d}/combine', {f'{last_dev}.compute': cl['combine']}, bank, 'draft')
         markers['draft'].append(prev)
     resync = b.add(f'{prefix}/resync', {'host': get(table, 'host.resync_ms')}, prev, 'resync')
@@ -447,6 +487,18 @@ def scopes_from_schedule(result, markers):
 
 def simulate_decode(workload, table, placement, topology, hardware, rounds=None):
     """Sum of independent rounds (round r+1 starts after round r). Returns tok/s and scopes."""
+    if 'decode' not in table.get('supported_phases', ('decode', 'prefill')):
+        raise ValueError('profile has no decode measurements')
+    if topology.kind not in table.get('supported_topologies', ('A', 'B')):
+        raise ValueError('profile has no measurements for topology ' + topology.kind)
+    if 'supported_verification_groups' in table and list(topology.groups) not in table['supported_verification_groups']:
+        raise ValueError('profile has no measurements for this verification grouping')
+    if 'supported_contexts' in table and topology.context_tokens not in table['supported_contexts']:
+        raise ValueError('profile has no measurements for this context length')
+    if 'supported_expert_counts' in table and placement.experts_per_layer not in table['supported_expert_counts']:
+        raise ValueError('profile has no measurements for this model expert count')
+    if 'supported_group_widths' in table and any(slot.width not in table['supported_group_widths'] for r in workload for slot in r.slots):
+        raise ValueError('profile has no measurements for this verification group width')
     rounds = rounds or len(workload)
     res = resources_for(hardware, table, topology)
     totals = dict(head=0.0, cpu_service=0.0, between=0.0, tail=0.0, draft=0.0, resync_other=0.0, round_ms=0.0, verify_ms=0.0)
@@ -591,6 +643,8 @@ def prefill_events(table, plan, hardware):
 
 
 def simulate_prefill(table, plan, hardware):
+    if 'prefill' not in table.get('supported_phases', ('decode', 'prefill')):
+        raise ValueError('profile has no prefill kernel measurements')
     b, head = prefill_events(table, plan, hardware)
     res = dict(hardware['resources'])
     res.update({'cpu.lane0': 1.0, 'cpu.flow0': get(table, 'cpu.lanes.single15.gb_s') * 1e6,

@@ -9,7 +9,8 @@ takes per slot:
   decode_rows      prefill=0 requests returning expert rows (routes x 16 KB copied by the worker)
   decode_partial   prefill=4 requests returning one weighted vector per token (STRATA_GLM_MIXED_DECODE_PARTIAL)
 
-for widths 1 and 2 and 1/4/8/16 routes. Wall-clock microseconds per request (p50/p90/p99) are
+for widths 1 and 2 and 1/4/8/16 routes by default; --widths 1 2 4 also covers
+four-token lookup verification and 32 routes. Wall-clock microseconds per request (p50/p90/p99) are
 written as JSON; they are the simulator's `worker.rtt_*` and `worker_request_fixed_ms` inputs.
 Needs the model file (the worker loads it) and an idle GPU; run under the quiet-run rules.
 """
@@ -131,6 +132,9 @@ def main():
     ap.add_argument('--numa-node', type=int)
     ap.add_argument('--requests', type=int, default=2000)
     ap.add_argument('--warmup', type=int, default=200)
+    ap.add_argument('--widths', type=int, nargs='+', choices=(1, 2, 4), default=[1, 2])
+    ap.add_argument('--shared-experts', action='store_true',
+                    help='reuse each expert across tokens, to measure batched weight reuse')
     ap.add_argument('--rocm-lib', default='/opt/rocm/core-10.1/lib')
     a = ap.parse_args()
     env = os.environ.copy()
@@ -145,6 +149,9 @@ def main():
                    environment={k: v for k, v in env.items() if k.startswith('STRATA_')},
                    scope='Wall-clock request round trips from a Python client through the real worker protocol; includes the socket, validation, GPU execution and the worker-side copies. Not decoder throughput.',
                    measurements={})
+    if a.widths != [1, 2] or a.shared_experts:
+        results['probe_options'] = dict(widths=a.widths, shared_experts=a.shared_experts,
+                                       source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     try:
         counts = [float(288 - e) for e in range(288)]  # prefer low expert ids
         first = worker.ownership(a.layer, counts)
@@ -159,13 +166,17 @@ def main():
         noop = [worker.ownership(a.layer, counts) for _ in range(a.warmup + a.requests)][a.warmup:]
         results['measurements']['ownership_noop'] = percentiles(noop)
         for partial in (True, False):
-            for nt in (1, 2):
-                for routes in (1, 4, 8, 16):
+            for nt in a.widths:
+                for routes in (1, 4, 8, 16, 32):
                     if routes > nt * 8:
                         continue
                     samples = []
                     for i in range(a.warmup + a.requests):
-                        chosen = random.sample(owned, routes)
+                        if a.shared_experts:
+                            ids = random.sample(owned, (routes + nt - 1) // nt)
+                            chosen = [ids[j // nt] for j in range(routes)]
+                        else:
+                            chosen = random.sample(owned, routes)
                         samples.append(worker.decode(a.layer, nt, chosen, partial))
                     results['measurements'][f"decode_{'partial' if partial else 'rows'}_w{nt}_r{routes}"] = percentiles(samples[a.warmup:])
                     print(f"{'partial' if partial else 'rows'} width {nt} routes {routes}: p50 {results['measurements'][f'decode_{'partial' if partial else 'rows'}_w{nt}_r{routes}']['p50_us']:.0f} us", flush=True)

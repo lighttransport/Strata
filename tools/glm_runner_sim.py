@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""GLM runner simulator for TR16 (RTX 5060 Ti + RX 9070 XT + Threadripper 1950X).
+"""GLM runner simulator with explicit hardware and measured kernel profiles.
 
 Subcommands: calibrate, validate, decode, prefill, sweep, manifest, probe-plan.
-Every number comes from tools/sim/data/glm_kernels_tr16.json (measured constants plus the
-fitted ones written by `calibrate`) and tools/sim/data/hw_tr16_runner.json. No quality claim.
+Defaults retain the TR16 tables. Other machines use explicit --hardware,
+--kernels and --params profiles grounded in their own measurements. No quality claim.
 
   PYTHONPATH=tools python3 tools/glm_runner_sim.py calibrate --output tools/sim/data/glm_runner_params_tr16.json
   PYTHONPATH=tools python3 tools/glm_runner_sim.py validate --params tools/sim/data/glm_runner_params_tr16.json
@@ -24,17 +24,26 @@ DATA = pathlib.Path(__file__).resolve().parent / 'sim' / 'data'
 
 def load_table(args):
     table = g.load_json(args.kernels)
-    if args.params and pathlib.Path(args.params).exists():
-        fitted = g.load_json(args.params)
+    params = args.params
+    # The historical fit belongs only to the default TR16 kernel table. A custom
+    # hardware profile must never silently inherit its RTX/Radeon coefficients.
+    if params is None and pathlib.Path(args.kernels).resolve() == (DATA / 'glm_kernels_tr16.json').resolve():
+        if g.load_json(args.hardware).get('name') != 'tr16-runner':
+            raise ValueError('custom hardware requires its own kernel profile or explicit fitted parameters')
+        params = DATA / 'glm_runner_params_tr16.json'
+    if params and pathlib.Path(params).exists():
+        fitted = g.load_json(params)
         table = fitted.get('table', fitted)
+    expected = table.get('hardware')
+    if expected and g.load_json(args.hardware).get('name') != expected:
+        raise ValueError('kernel profile and hardware names differ')
     return table
 
 
 def common(p):
     p.add_argument('--hardware', default=str(DATA / 'hw_tr16_runner.json'))
     p.add_argument('--kernels', default=str(DATA / 'glm_kernels_tr16.json'))
-    p.add_argument('--params', default=str(DATA / 'glm_runner_params_tr16.json'),
-                   help='fitted table written by calibrate (used when it exists)')
+    p.add_argument('--params', help='fitted table; defaults to the TR16 fit only with the default kernel table')
     p.add_argument('--records', default=str(DATA / 'glm_runner_records_tr16.json'))
     p.add_argument('--output')
 
@@ -47,10 +56,12 @@ def write(args, payload):
 
 
 def provenance(*paths):
-    return [dict(path=str(p), sha256=hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()) for p in paths if pathlib.Path(p).exists()]
+    return [dict(path=str(p), sha256=hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()) for p in paths if p and pathlib.Path(p).exists()]
 
 
 def cmd_calibrate(args):
+    if not (args.output or args.params) and pathlib.Path(args.kernels).resolve() != (DATA / 'glm_kernels_tr16.json').resolve():
+        raise ValueError('calibrating custom kernels requires --output or --params')
     hw = g.load_json(args.hardware); table = g.load_json(args.kernels)
     records = g.load_json(args.records)['records']
     if args.context_filter is not None:
@@ -58,7 +69,7 @@ def cmd_calibrate(args):
                    else r.get('topology',{}).get('context_tokens',8192)) == args.context_filter]
     free = args.free.split(',') if args.free else table['free']
     fitted, score, history = g.calibrate(records, table, hw, free, rounds=args.rounds)
-    out = args.output or args.params
+    out = args.output or args.params or str(DATA / 'glm_runner_params_tr16.json')
     pathlib.Path(out).write_text(json.dumps(dict(schema='strata.glm.kernels.v1', fitted=True, score=score, history=history,
                                                  provenance=provenance(args.kernels, args.records, args.hardware),
                                                  fit_context_tokens=args.context_filter, table=fitted), indent=1) + '\n')
@@ -83,19 +94,20 @@ def cmd_validate(args):
 
 def topology_args(p):
     p.add_argument('--topology', choices=('A', 'B'), default='A')
-    p.add_argument('--primary', choices=('cuda', 'hip'), default='hip')
-    p.add_argument('--worker', choices=('cuda', 'hip', ''), default='cuda')
+    p.add_argument('--primary', default='hip', help='device ID in the hardware and kernel tables')
+    p.add_argument('--worker', default='cuda', help='worker device ID; empty for one GPU')
     p.add_argument('--groups', default='2,2')
-    p.add_argument('--combine', choices=('strict', 'device3'), default='strict')
+    p.add_argument('--combine', choices=('strict', 'device', 'device3'), default='strict')
     p.add_argument('--dispatch', choices=('socket', 'direct'), default='socket')
     p.add_argument('--ownership', choices=('blocking', 'async'), default='blocking')
-    p.add_argument('--cpu-lanes', choices=('single15', 'node_local8x2'), default='single15')
+    p.add_argument('--cpu-lanes', default='single15', help='CPU lane profile key, or node_local8x2 for two legacy lanes')
     p.add_argument('--split-layer', type=int, default=24)
     p.add_argument('--stage-order', choices=('pipeline', 'interleave'), default='pipeline')
     p.add_argument('--context', type=int, default=8192)
     p.add_argument('--primary-slots', type=float, default=15.0)
     p.add_argument('--worker-slots', type=float, default=33.0)
-    p.add_argument('--policy', choices=('lru', 'lfu'), default='lru')
+    p.add_argument('--experts-per-layer', type=int, help='actual model expert count (defaults to the kernel profile)')
+    p.add_argument('--policy', choices=('lru', 'lfu', 'recorded'), default='lru')
     p.add_argument('--draft-bank', choices=('cpu', 'primary', 'worker'), default='cpu')
     p.add_argument('--shares', help='cpu=0.22,worker=0.46,primary=0.32 (overrides the hit curve)')
     p.add_argument('--accepted', type=float, help='accepted tokens per verify step (default: table)')
@@ -107,8 +119,10 @@ def build_topology(args):
                       split_layer=args.split_layer, stage_order=args.stage_order, context_tokens=args.context)
 
 
-def build_placement(args):
+def build_placement(args, table=None):
     return g.Placement(primary_slots=args.primary_slots, worker_slots=args.worker_slots if args.worker else 0.0,
+                       experts_per_layer=(args.experts_per_layer if args.experts_per_layer is not None
+                                          else g.get(table or {}, 'model.experts_per_layer', 224)),
                        policy=args.policy, draft_bank=args.draft_bank)
 
 
@@ -120,16 +134,18 @@ def parse_shares(text):
 
 def cmd_decode(args):
     hw = g.load_json(args.hardware); table = load_table(args)
-    topo, place = build_topology(args), build_placement(args)
+    topo, place = build_topology(args), build_placement(args, table)
     wl = g.synthetic_workload(table, place, topo, rounds=1, accepted_per_round=args.accepted, shares=parse_shares(args.shares))
     result = g.simulate_decode(wl, table, place, topo, hw)
+    result['hardware'] = hw.get('name')
+    result['provenance'] = provenance(args.hardware, args.kernels, args.params)
     print(json.dumps({k: result[k] for k in ('tok_s', 'ms_per_round', 'bound_tok_s', 'scopes', 'accepted_per_round', 'cpu_gb_per_output')}, indent=1))
     write(args, result)
 
 
 def plan_args(p):
-    p.add_argument('--primary', choices=('cuda', 'hip'), default='hip')
-    p.add_argument('--worker', choices=('cuda', 'hip', ''), default='cuda')
+    p.add_argument('--primary', default='hip')
+    p.add_argument('--worker', default='cuda')
     p.add_argument('--fraction', type=float, default=0.5)
     p.add_argument('--tokens', type=int, default=8192)
     p.add_argument('--exchange', choices=('f32', 'f16'), default='f32')
@@ -164,7 +180,7 @@ def cmd_sweep(args):
     if args.exclude:
         unwanted = set(args.exclude.split(','))
         levers = [l for l in levers if l['name'] not in unwanted]
-    state = dict(table=table, topology=build_topology(args), placement=build_placement(args), plan=build_plan(args),
+    state = dict(table=table, topology=build_topology(args), placement=build_placement(args, table), plan=build_plan(args),
                  accepted_per_round=args.accepted)
     result = g.sweep_levers(levers, state, hw, args.target_decode, args.target_prefill, args.allow_lossy)
     result['base_state'] = dict(topology=dataclasses.asdict(state['topology']), placement=dataclasses.asdict(state['placement']),
@@ -176,7 +192,7 @@ def cmd_sweep(args):
 
 def cmd_manifest(args):
     hw = g.load_json(args.hardware); table = load_table(args)
-    topo, place = build_topology(args), build_placement(args)
+    topo, place = build_topology(args), build_placement(args, table)
     wl = g.synthetic_workload(table, place, topo, rounds=1, accepted_per_round=args.accepted, shares=parse_shares(args.shares))
     b, markers = g.decode_round_events(wl[0], table, place, topo, hw)
     hardware = dict(hw)

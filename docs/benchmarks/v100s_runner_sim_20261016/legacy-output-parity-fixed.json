@@ -1,0 +1,9 @@
+{
+ "passed": true,
+ "tokens": 4,
+ "scope": "Bit-identical ordinary legacy output for one-token prefix, ordinary legacy numerical defaults with four-domain Q2_NUMA_WEIGHTS=0/PACK_FUSE_QUANT=0 fallback; CPU experts/ordinary prefill, no MTP/cache; not full release throughput or model quality qualification",
+ "measured_decoder_sha256": "9a60025b03d3020b1d5cc150f389166523507192b09e6fe1f8b66b464047a496",
+ "fixed_decoder_sha256": "a0b9f97eda44713077d76f26a40b948eb5db7066caf5597e0d225d69a5650720",
+ "output_sha256": "9e9a944ce99ab5d6308b65403078371433b915204363f05679fd6850501b241d",
+ "prompt_sha256": "3176ce9f961b1cac262f0147d755e52194dc287e23957485c60829ebbbf68a1e"
+}

@@ -1,0 +1,47 @@
+{
+ "schema": "strata.v100s.build.v1",
+ "engine_commit": "83f3cac9aab5c16c50d032b3eed26b380728b0da",
+ "tr16_committed_head": "3e01337df87fdc1579a5e51fe2f10f622458d9ff",
+ "tr16_cleanup_patch_sha256": "488992e4735f281ff8c956d041a2070ed24176ec81d18ce6c9ac9c8a5cb0ce6d",
+ "dependency_commit": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+ "backend": "CUDA",
+ "cuda_version": "12.9",
+ "architectures": [
+  70
+ ],
+ "build_type": "Release",
+ "binaries_sha256": {
+  "strata-glm-decode": "9a60025b03d3020b1d5cc150f389166523507192b09e6fe1f8b66b464047a496",
+  "strata-glm-gpu-worker": "58ce80aaf27c32f1640f7a9e0972f9e5c2706a60dd8cfdb5f01bc56e3726a273",
+  "strata-glm-prune-experts": "fbe7760ce69524eeacab4c4b4651366e1346a1f6b7b13902936065d25a2fae71",
+  "transfer-probe": "4a7b893db6275f1d1236f3491bdd486631313e284d12f0dee443d523fff0bf77"
+ },
+ "frozen_source_manifest_sha256": "674a4be8468f5c5577c91e225c1669a9b36781fdfc72d1983ff00175982d75fc",
+ "scope": "Frozen source bytes of the integrated engine. Simulator and measurement helpers are later Python-only changes. Raw build/test logs retained privately.",
+ "os": "Red Hat Enterprise Linux 8.10",
+ "kernel": "4.18.0-553.155.1.el8_10.x86_64",
+ "compiler": "GNU 12.2.1",
+ "cuda_compiler": "12.9.86",
+ "source_verification": {
+  "engine_and_tool_files": 487,
+  "mismatches": 0,
+  "method": "SHA-256 comparison of every frozen src/, include/, tool C/C++/CUDA/header and root CMake file with git show COMMIT:path; full frozen manifest retained privately",
+  "engine_subset_manifest_sha256": "13f06b6e13ba923cf2a86f647a01e8c1b5b809b0790a57da263943466e2f13df"
+ },
+ "release_config_sha256": "06da4cbb2c0ad5e27ee0ba132a71e4dce6c6e2fe584826dca0f4737db9671b97",
+ "native_compatibility_fix": {
+  "commit": "bba75e5690733b254f164a86928dcf13ca37a2f3",
+  "decoder_source_sha256": "4b969333b5c7be342877f76be248b4fe35b462c885e60def1733e6b4257eb629",
+  "decoder_sha256": "a0b9f97eda44713077d76f26a40b948eb5db7066caf5597e0d225d69a5650720",
+  "full_release_throughput_remeasured": false,
+  "legacy_output_parity": {
+   "passed": true,
+   "tokens": 4,
+   "scope": "Bit-identical ordinary legacy output for one-token prefix, ordinary legacy numerical defaults with four-domain Q2_NUMA_WEIGHTS=0/PACK_FUSE_QUANT=0 fallback; CPU experts/ordinary prefill, no MTP/cache; not full release throughput or model quality qualification",
+   "measured_decoder_sha256": "9a60025b03d3020b1d5cc150f389166523507192b09e6fe1f8b66b464047a496",
+   "fixed_decoder_sha256": "a0b9f97eda44713077d76f26a40b948eb5db7066caf5597e0d225d69a5650720",
+   "output_sha256": "9e9a944ce99ab5d6308b65403078371433b915204363f05679fd6850501b241d",
+   "prompt_sha256": "3176ce9f961b1cac262f0147d755e52194dc287e23957485c60829ebbbf68a1e"
+  }
+ }
+}

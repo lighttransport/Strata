@@ -2,8 +2,10 @@
 import copy
 import json
 import pathlib
+import re
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 from tools.sim import glm_runner as g
 from tools.sim import glm_traces
@@ -48,6 +50,27 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(len(markers['cpu_start']), 84)
         self.assertEqual(sum(1 for e in b.events if e.name.endswith('/handoff-latency')), 0)
 
+    def test_trace_round_can_have_one_verification_group(self):
+        topo = g.Topology(primary='hip', worker='cuda')
+        place = g.Placement()
+        full = g.synthetic_workload(self.table, place, topo, shares=SHARES)[0]
+        short = g.Round([slot for slot in full.slots if slot.group==0], 1.0, 0, 0.0)
+        result = g.simulate_decode([short], self.table, place, topo, self.hw)
+        self.assertGreater(result['tok_s'], 0)
+        b, markers = g.decode_round_events(short, self.table, place, topo, self.hw)
+        self.assertEqual(len(markers['cpu_start']), 42)
+
+    def test_release_joint_dense_head_is_charged_once(self):
+        topo = g.Topology(primary='hip', worker='cuda')
+        kernels = g.patch(self.table, 'model.joint_dense', True)
+        place = g.Placement()
+        wl = g.synthetic_workload(kernels, place, topo, shares=SHARES)
+        b, _ = g.decode_round_events(wl[0], kernels, place, topo, self.hw)
+        heads = [e for e in b.events if e.category=='head']
+        self.assertEqual(len(heads), 2)
+        self.assertGreater(heads[0].work['hip.compute'], 0)
+        self.assertEqual(heads[1].work['hip.compute'], 0)
+
     def test_single_gpu_has_no_worker(self):
         topo = g.Topology(kind='A', primary='hip', worker='')
         wl = g.synthetic_workload(self.table, g.Placement(worker_slots=0), topo, rounds=1, shares=dict(cpu=0.4, worker=0.0, primary=0.6))
@@ -73,6 +96,40 @@ class ModelTests(unittest.TestCase):
                                  g.Topology(kind='A', primary='hip', worker='cuda', combine='device3'), self.hw)
         self.assertLess(dev3['scopes']['cpu_service'], strict['scopes']['cpu_service'] * 0.7)
 
+    def test_release_device_combine_keeps_the_cpu_worker_join(self):
+        kernels = g.patch(self.table, 'devices.cuda.decode.worker_request_fixed_ms', 3.0)
+        place = g.Placement()
+        topo = g.Topology(primary='hip', worker='cuda', combine='device')
+        wl = g.synthetic_workload(kernels, place, topo, shares=SHARES)
+        actual = g.simulate_decode(wl, kernels, place, topo, self.hw)
+        future = g.simulate_decode(wl, kernels, place, g.Topology(primary='hip', worker='cuda', combine='device3'), self.hw)
+        self.assertGreater(actual['scopes']['cpu_service'], future['scopes']['cpu_service']*1.5)
+        b, _ = g.decode_round_events(wl[0], kernels, place, topo, self.hw)
+        self.assertEqual(sum(e.name.endswith('/host-join') for e in b.events), 84)
+
+    def test_measured_cpu_service_can_add_host_work_to_kernel_time(self):
+        kernels = copy.deepcopy(self.table)
+        kernels['cpu'].update(additive_service=True, slot_fixed_ms=1.0, quant_ms_per_token=0.0)
+        kernels['cpu']['lanes']['single15']['gb_s']=100.0
+        topo=g.Topology(primary='hip', worker='', combine='device')
+        place=g.Placement(worker_slots=0, draft_bank='primary')
+        wl=g.synthetic_workload(kernels, place, topo, shares=dict(cpu=1.0, primary=0.0, worker=0.0))
+        result=g.simulate_decode(wl, kernels, place, topo, self.hw)
+        expected=sum(slot.cpu_bytes for slot in wl[0].slots)/100e6+len(wl[0].slots)
+        self.assertAlmostEqual(result['scopes']['cpu_service'], expected, places=6)
+
+    def test_rpc_probe_does_not_charge_return_copies_twice(self):
+        kernels = g.patch(self.table, 'worker.service_includes_return', True)
+        topo = g.Topology(primary='hip', worker='cuda', combine='device')
+        place = g.Placement()
+        wl = g.synthetic_workload(kernels, place, topo, shares=SHARES)
+        b, _ = g.decode_round_events(wl[0], kernels, place, topo, self.hw)
+        self.assertFalse(any('/worker-rows' in e.name for e in b.events))
+        copies = [e for e in b.events if e.name.endswith('/worker-copy')]
+        self.assertEqual(len(copies), 84)
+        self.assertTrue(all(not e.work and e.minimum_ms > 0 for e in copies))
+        self.assertTrue(any('/cpu-rows' in e.name for e in b.events))
+
     def test_direct_dispatch_and_async_ownership_never_slower(self):
         base = g.Topology(kind='A', primary='hip', worker='cuda')
         r0 = self.decode(base)
@@ -86,6 +143,16 @@ class ModelTests(unittest.TestCase):
         cpu = g.synthetic_workload(self.table, g.Placement(draft_bank='cpu'), topo, shares=SHARES)[0]
         gpu = g.synthetic_workload(self.table, g.Placement(draft_bank='primary'), topo, shares=SHARES)[0]
         self.assertGreater(cpu.draft_cpu_experts, 0); self.assertEqual(gpu.draft_cpu_experts, 0)
+
+    def test_release_draft_uses_four_experts(self):
+        topo = g.Topology(primary='hip', worker='cuda')
+        kernels = g.patch(self.table, 'model.draft_top_k', 4)
+        cpu = g.synthetic_workload(kernels, g.Placement(), topo, shares=SHARES)[0]
+        self.assertAlmostEqual(cpu.draft_cpu_experts, 4*kernels['model']['unique_experts_per_route'])
+        place = g.Placement(draft_bank='primary')
+        a = self.decode(topo, place)
+        b = g.simulate_decode(g.synthetic_workload(kernels, place, topo, shares=SHARES), kernels, place, topo, self.hw)
+        self.assertLess(b['scopes']['draft'], a['scopes']['draft'])
 
     def test_context_raises_mla_cost(self):
         short = self.decode(g.Topology(kind='A', primary='hip', worker='cuda', context_tokens=2048))
@@ -112,6 +179,39 @@ class ModelTests(unittest.TestCase):
         lru = g.route_shares(g.Placement(primary_slots=15, worker_slots=33, policy='lru'), self.table)
         self.assertLess(lfu['cpu'], lru['cpu'])
 
+    def test_two_cuda_devices_with_a_measured_cpu_profile(self):
+        # Device IDs describe physical cards, independently of their backend.
+        rename = lambda s: re.sub(r'\b(cuda|hip)\b', lambda m: {'cuda':'gpu0', 'hip':'gpu1'}[m[0]], s)
+        hw = json.loads(rename(json.dumps(self.hw)))
+        kernels = json.loads(rename(json.dumps(self.table)))
+        kernels['cpu']['lanes']['all34'] = kernels['cpu']['lanes'].pop('single15')
+        topo = g.Topology(primary='gpu0', worker='gpu1', cpu_lanes='all34')
+        place = g.Placement(experts_per_layer=288)
+        wl = g.synthetic_workload(kernels, place, topo, shares=SHARES)
+        result = g.simulate_decode(wl, kernels, place, topo, hw)
+        self.assertGreater(result['tok_s'], 0)
+        resources = g.resources_for(hw, kernels, topo)
+        self.assertIn('gpu0.compute', resources)
+        self.assertIn('gpu1.compute', resources)
+        self.assertNotIn('cuda.compute', resources)
+        self.assertNotIn('hip.compute', resources)
+
+    def test_acceptance_is_finite_positive_and_can_include_lookup(self):
+        topo = g.Topology(groups=(1, 2))  # MTP depth 2, floor(window/2) first group.
+        for accepted in (0, -1, float('inf'), float('nan')):
+            with self.subTest(accepted=accepted), self.assertRaises(ValueError):
+                g.synthetic_workload(self.table, g.Placement(), topo, accepted_per_round=accepted)
+        r = g.synthetic_workload(self.table, g.Placement(), topo, accepted_per_round=2.6)
+        self.assertEqual(r[0].draft_steps, 2)
+        self.assertEqual(r[0].accepted, 2.6)
+        lookup = g.synthetic_workload(self.table, g.Placement(), topo, accepted_per_round=4.1)
+        self.assertEqual(lookup[0].accepted, 4.1)
+
+    def test_invalid_route_shares_are_rejected(self):
+        for shares in ({'cpu':-0.1, 'worker':0.5, 'primary':0.6}, {'cpu':0.9, 'worker':0.9}):
+            with self.assertRaises(ValueError):
+                g.synthetic_workload(self.table, g.Placement(), g.Topology(), shares=shares)
+
     def test_routes_workload(self):
         events = []
         for rnd in range(2):
@@ -126,6 +226,79 @@ class ModelTests(unittest.TestCase):
         s = wl[0].slots[0]
         self.assertEqual(s.primary_experts, 2); self.assertEqual(s.worker_experts, 2); self.assertEqual(s.cpu_experts, 8); self.assertEqual(s.width, 2)
         self.assertEqual(wl[0].draft_steps, 1)
+        # An observed worker bitmap must override the trace-derived prior.
+        for rnd in rounds:
+            for event in rnd['target']:
+                event['worker_owned'] = [10, 11]
+        exact = g.workload_from_routes(rounds, g.Placement(primary_slots=2, worker_slots=2), self.table,
+                                      g.Topology(kind='A', primary='hip', worker='cuda'), 3.0)
+        self.assertEqual(exact[0].slots[0].worker_experts, 2)
+        self.assertEqual(exact[0].slots[0].worker_rows, 2)
+
+
+class ProfileSelectionTests(unittest.TestCase):
+    def test_profile_keeps_mtp2_and_mtp3_costs_separate(self):
+        kernels = g.patch(table(), 'supported_verification_groups', [[2, 2]])
+        topo = g.Topology(groups=(1, 2))
+        place = g.Placement()
+        wl = g.synthetic_workload(kernels, place, topo, shares=SHARES)
+        with self.assertRaisesRegex(ValueError, 'verification grouping'):
+            g.simulate_decode(wl, kernels, place, topo, hardware())
+
+    def test_profile_rejects_an_unmeasured_model_and_group_width(self):
+        kernels = table()
+        kernels.update(supported_expert_counts=[224], supported_group_widths=[1, 2])
+        topo = g.Topology()
+        wrong_model = g.Placement(experts_per_layer=288)
+        wl = g.synthetic_workload(kernels, wrong_model, topo, shares=SHARES)
+        with self.assertRaisesRegex(ValueError, 'model expert count'):
+            g.simulate_decode(wl, kernels, wrong_model, topo, hardware())
+        wide = g.Topology(groups=(4,))
+        place = g.Placement()
+        wl = g.synthetic_workload(kernels, place, wide, shares=SHARES)
+        with self.assertRaisesRegex(ValueError, 'group width'):
+            g.simulate_decode(wl, kernels, place, wide, hardware())
+
+    def test_profile_without_a_hit_curve_requires_recorded_shares(self):
+        kernels = g.patch(table(), 'model.require_recorded_shares', True)
+        with self.assertRaisesRegex(ValueError, 'recorded route shares'):
+            g.synthetic_workload(kernels, g.Placement(), g.Topology())
+        self.assertTrue(g.synthetic_workload(kernels, g.Placement(), g.Topology(), shares=SHARES))
+
+    def test_decode_profile_does_not_predict_unmeasured_phases(self):
+        kernels=table();kernels['supported_phases']=['decode'];kernels['supported_topologies']=['A']
+        with self.assertRaisesRegex(ValueError, 'prefill'):
+            g.simulate_prefill(kernels, g.PrefillPlan(), hardware())
+        topo=g.Topology(kind='B')
+        wl=g.synthetic_workload(kernels, g.Placement(), topo, shares=SHARES)
+        with self.assertRaisesRegex(ValueError, 'topology B'):
+            g.simulate_decode(wl, kernels, g.Placement(), topo, hardware())
+
+    def test_custom_kernels_do_not_inherit_tr16_fit(self):
+        from tools import glm_runner_sim as cli
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder)/'kernels.json'
+            path.write_text(json.dumps({'sentinel':'custom measurement'}))
+            args = SimpleNamespace(kernels=str(path), params=None, hardware='unused')
+            self.assertEqual(cli.load_table(args), {'sentinel':'custom measurement'})
+
+    def test_profile_rejects_a_different_machine(self):
+        from tools import glm_runner_sim as cli
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder)/'kernels.json'
+            hw = pathlib.Path(folder)/'hardware.json'
+            path.write_text(json.dumps({'hardware':'v100s node'}))
+            hw.write_text(json.dumps({'name':'tr16-runner'}))
+            with self.assertRaisesRegex(ValueError, 'hardware names'):
+                cli.load_table(SimpleNamespace(kernels=str(path), params=None, hardware=str(hw)))
+
+    def test_model_expert_count_comes_from_profile(self):
+        from tools import glm_runner_sim as cli
+        args = SimpleNamespace(primary_slots=15, worker_slots=33, worker='gpu1',
+                               experts_per_layer=None, policy='lru', draft_bank='primary')
+        self.assertEqual(cli.build_placement(args, {'model':{'experts_per_layer':288}}).experts_per_layer, 288)
+        args.experts_per_layer=224
+        self.assertEqual(cli.build_placement(args, {'model':{'experts_per_layer':288}}).experts_per_layer, 224)
 
 
 class PrefillTests(unittest.TestCase):
@@ -269,6 +442,23 @@ class SweepTests(unittest.TestCase):
 
 
 class TraceReaderTests(unittest.TestCase):
+    def test_repeated_decode_trials_do_not_merge_rounds(self):
+        events=[dict(request=1, round=rnd, phase='target', layer=3, routes=[[1]])
+                for rnd in (0, 1, 2, 0, 1, 2)]
+        rounds=glm_traces.rounds_from_events(events)
+        self.assertEqual(len(rounds), 6)
+        self.assertTrue(all(len(r['target'])==1 for r in rounds))
+
+    def test_cache_snapshots_are_not_executed_slots(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d)/'routes.jsonl'
+            event = dict(request=1, round=0, phase='target', layer=3, routes=[[0, 1]], resident=[0])
+            path.write_text(json.dumps(dict(kind='cache', request=1, layer=3, experts=[0]))+'\n'+json.dumps(event)+'\n')
+            self.assertEqual(glm_traces.read_routing_events(path), [event])
+            path.write_text(json.dumps(dict(kind='cache', layer=3))+'\n')
+            with self.assertRaises(ValueError):
+                glm_traces.read_routing_events(path)
+
     def test_log_and_timeline_readers(self):
         with tempfile.TemporaryDirectory() as d:
             log = pathlib.Path(d) / 'run.log'
