@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
         std::unique_ptr<cpu::ExpertPool> checker;
         if (check_rows) checker=std::make_unique<cpu::ExpertPool>(2,false,true);
         const size_t requested_gpu_bytes = mib_bytes(argv[5]);
-        size_t initial_free = 0, physical_bytes = 0; check(cudaMemGetInfo(&initial_free, &physical_bytes));
+        size_t initial_free = 0, physical_bytes = 0; check(Device::mem_info(&initial_free, &physical_bytes));
         const size_t effective_gpu_bytes = std::min(requested_gpu_bytes, physical_bytes);
         if (effective_gpu_bytes <= Device::budget_reserve() || budget > effective_gpu_bytes - Device::budget_reserve())
             throw std::invalid_argument("mixed worker cache exceeds the GPU budget after the runtime reserve");
@@ -264,7 +264,7 @@ int main(int argc, char **argv) {
             check(cudaEventRecord(slot.ready,destination_stream));slot.busy=true;
         };
         size_t upload_cursor=0;
-        size_t free_bytes=0,total_bytes=0; check(cudaMemGetInfo(&free_bytes,&total_bytes));
+        size_t free_bytes=0,total_bytes=0; check(Device::mem_info(&free_bytes,&total_bytes));
         const size_t reserve=std::max(Device::physical_reserve(),Device::budget_reserve())+512*MiB;
         if (free_bytes<=reserve) throw std::runtime_error("mixed worker has no expert cache headroom");
         budget=std::min(budget,free_bytes-reserve);
@@ -275,8 +275,8 @@ int main(int argc, char **argv) {
             const auto p = "blk." + std::to_string(l) + ".";
             const size_t bytes=(artifact.at(p+"ffn_gate_exps.weight").bytes + artifact.at(p+"ffn_up_exps.weight").bytes + artifact.at(p+"ffn_down_exps.weight").bytes) / m.experts;
             if (!charges.count(bytes)) {
-                size_t before=0,after=0,total=0; check(cudaMemGetInfo(&before,&total));
-                { Device probe(bytes); check(cudaMemGetInfo(&after,&total)); charges[bytes]=std::max(bytes,before>=after ? before-after : size_t(0)); }
+                size_t before=0,after=0,total=0; check(Device::mem_info(&before,&total));
+                { Device probe(bytes); check(Device::mem_info(&after,&total)); charges[bytes]=std::max(bytes,before>=after ? before-after : size_t(0)); }
             }
             all_layers_bytes += charges.at(bytes);
         }
@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
                         weights=std::move(recycled->back());recycled->pop_back();
                         if (weights->bytes!=layout.bytes) throw std::runtime_error("mixed recycled slot geometry mismatch");
                     }
-                    size_t available=0,total=0; check(cudaMemGetInfo(&available,&total));
+                    size_t available=0,total=0; check(Device::mem_info(&available,&total));
                     if (!weights && (occupied+charges.at(layout.bytes)>budget || available<reserve+charges.at(layout.bytes))) {
                         auto victim=cache.end();
                         for (auto it=cache.begin(); it!=cache.end(); ++it) {
@@ -356,7 +356,7 @@ int main(int argc, char **argv) {
                         }
                     }
                     auto room = [&] {
-                        size_t available=0,total=0; check(cudaMemGetInfo(&available,&total));
+                        size_t available=0,total=0; check(Device::mem_info(&available,&total));
                         return occupied+charges.at(layout.bytes)<=budget && available>=reserve+charges.at(layout.bytes);
                     };
                     while (!weights && !room()) {

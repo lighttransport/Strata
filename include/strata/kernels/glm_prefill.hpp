@@ -103,6 +103,11 @@ void glm_index_prepare(const float *keys, const float *gates, const float *ape, 
 void glm_index_reduce(const float *dots, const float *weights, float *scores, int heads, int pools,
                       int queries, int query_pos, int pool, int dim, void *stream,
                       const int *device_pos = nullptr, int position_offset = 0);
+// One block of pooled keys [first, first + count): dots has leading dimension ld (>= count); scores keeps its full
+// width pools_total. Each score is the same sum as glm_index_reduce (STRATA_GLM_INDEX_BLOCK_POOLS).
+void glm_index_reduce_block(const float *dots, const float *weights, float *scores, int heads, int ld, int first,
+                            int count, int pools_total, int queries, int query_pos, int pool, int dim, void *stream,
+                            const int *device_pos = nullptr, int position_offset = 0);
 void glm_index_select_batch(const float *scores, int *ids, int *counts, int pools, int query_pos, int queries,
                             int pool, int top_k, int stride, void *stream,
                             const int *device_pos = nullptr, int position_offset = 0);

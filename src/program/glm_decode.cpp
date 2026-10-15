@@ -1828,6 +1828,49 @@ class Decoder {
     }();
     std::unique_ptr<Device> mla_decode_workspace;
     std::unique_ptr<strata::prefill::Gemm> mla_decode_gemm;
+    // Opt-in host-RAM KV (STRATA_GLM_KV_HOST=1, docs/GLM_KV_OFFLOAD.md): the MLA latent caches (2 KiB per token
+    // per layer) live in mapped pinned host memory instead of VRAM. Decode and verify read the selected rows
+    // over PCIe (zero copy; every read goes through the gather kernels). A prefill chunk first copies the rows
+    // before it into a VRAM staging buffer, released before the decode tier is sized. Indexer keys stay on the GPU.
+    const bool host_kv = strata_env_truthy_one("STRATA_GLM_KV_HOST");
+    // Opt-in: compute prefill indexer dots in blocks of this many pooled keys (4 tokens each) so their scratch
+    // stops growing with context (STRATA_GLM_INDEX_BLOCK_POOLS; 0 = one block, the default). Narrower GEMMs may
+    // round differently, so this is not bit-identical to the default.
+    const int index_block_pools = [] {
+        const char *v = std::getenv("STRATA_GLM_INDEX_BLOCK_POOLS");
+        const int n = v ? std::atoi(v) : 0;
+        if (v && (n < 512 || n % 64)) throw std::invalid_argument("GLM: index block must be a multiple of 64 pools, at least 512");
+        return n;
+    }();
+    const int host_kv_stage_min = [] {
+        const char *v = std::getenv("STRATA_GLM_KV_HOST_STAGE_MIN");
+        const int n = v ? std::atoi(v) : 64;
+        if (v && (n < 1 || n > 1 << 20)) throw std::invalid_argument("GLM: host KV stage minimum must be 1..1048576 tokens");
+        return n;
+    }();
+    struct MappedHost {
+        void *p = nullptr;
+        explicit MappedHost(size_t bytes) {
+            check(cudaHostAlloc(&p, bytes, cudaHostAllocMapped | cudaHostAllocPortable));
+            std::memset(p, 0, bytes);
+        }
+        ~MappedHost() { if (p) cudaFreeHost(p); }
+        MappedHost(const MappedHost &) = delete;
+        MappedHost &operator=(const MappedHost &) = delete;
+    };
+    std::vector<std::unique_ptr<MappedHost>> host_kv_blocks;
+    size_t host_kv_bytes = 0;
+    std::unique_ptr<Device> kv_stage;
+    bool kv_stage_failed = false, split_mla_host_kv_reported = false;
+    std::unique_ptr<Device> make_kv_cache(size_t bytes) {
+        if (!host_kv) return std::make_unique<Device>(bytes, true);
+        host_kv_blocks.push_back(std::make_unique<MappedHost>(bytes));
+        void *device = nullptr;
+        check(cudaHostGetDevicePointer(&device, host_kv_blocks.back()->p, 0));
+        host_kv_bytes += bytes;
+        std::cerr << "KV_HOST cache_MiB=" << bytes / double(MiB) << " total_MiB=" << host_kv_bytes / double(MiB) << '\n';
+        return std::make_unique<Device>(device, bytes);   // a view: the mapped block owns the memory
+    }
     void prepare_mla_decode() {
         if (!tensor_mla_decode || mla_decode_gemm) return;
         if (!gpu || secondary || remote_tp || capture_hidden || !sequences.empty() || artifact.is_exl3())
@@ -2301,7 +2344,7 @@ class Decoder {
         // CUDA/runtime allocations and display use can grow after startup. Keep
         // extra room beyond Device's physical guard; the cache yields first.
         auto fits=[&] {
-            size_t free,total;check(cudaMemGetInfo(&free,&total));
+            size_t free,total;check(Device::mem_info(&free,&total));
             return native_expert_gpu_bytes+bytes<=native_expert_gpu_limit &&
                 free>=bytes+Device::physical_reserve()+256*MiB &&
                 Device::limit()>=Device::live()+bytes+256*MiB;
@@ -6259,7 +6302,9 @@ class Decoder {
         inspect("pooled", state.pooled->f(), (size_t)(position + B) / pool_size * idim, stream);
         // Fixed pool leading dimension avoids batch-dependent SGEMM reductions.
         int pools = capacity / pool_size, ntile = std::min(tile, B);
-        auto &dots = buf("index_dots", (size_t)ntile * ih * std::max(1, pools));
+        const bool block_index = fast && index_block_pools && index_block_pools < pools;
+        const int dot_pools = block_index ? index_block_pools : std::max(1, pools);
+        auto &dots = buf("index_dots", (size_t)ntile * ih * dot_pools);
         auto &scores = buf("index_scores", (size_t)ntile * std::max(1, pools));
         auto &ids = buf("index_ids", ntile * stride);
         auto &counts = buf("index_counts", ntile);
@@ -6347,6 +6392,32 @@ class Decoder {
                 float *aq_t = hoisted ? d.aq_all + (size_t)t * heads * latent : d.aq;
                 float *av_t = hoisted ? d.av_all + (size_t)t * heads * latent : d.av;
                 const int scored_pools = active_index_pools ? (at + count) / pool_size : pools;
+                if (block_index && !d.back) {
+                    // Blocked indexer: the same products and per-pool sums, one key block at a time.
+                    const bool f16 = mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill();
+                    if (f16 && scored_pools) {
+                        const size_t pn = (size_t)pools * idim, qn = (size_t)count * ih * idim;
+                        if (t == 0 || !index_pool16) {
+                            if (!index_pool16 || index_pool16->bytes < pn * 2) index_pool16 = std::make_unique<Device>(pn * 2);
+                            k::glm_f16(pooled_rows, (uint16_t *)index_pool16->p, (int64_t)pn, d.stream);
+                        }
+                        if (!index_q16 || index_q16->bytes < qn * 2) index_q16 = std::make_unique<Device>(qn * 2);
+                        k::glm_f16(d.iq + (size_t)t * ih * idim, (uint16_t *)index_q16->p, (int64_t)qn, d.stream);
+                    }
+                    for (int first = 0; first < pools; first += index_block_pools) {
+                        const int n = std::min(index_block_pools, pools - first);
+                        const int scored = std::clamp(scored_pools - first, 0, n);
+                        if (scored && f16)
+                            d.gemm->f16((uint16_t *)index_q16->p, (uint16_t *)index_pool16->p + (size_t)first * idim,
+                                        d.dots, count * ih, scored, idim, index_block_pools);
+                        else if (scored)
+                            check(cublasSgemm(d.blas, CUBLAS_OP_T, CUBLAS_OP_N, scored, count * ih, idim, &one,
+                                              pooled_rows + (size_t)first * idim, idim, d.iq + (size_t)t * ih * idim,
+                                              idim, &zero, d.dots, index_block_pools));
+                        k::glm_index_reduce_block(d.dots, d.iw + (size_t)t * ih, d.scores, ih, index_block_pools, first,
+                                                  n, pools, count, at, pool_size, idim, d.stream, device_pos, d.first + t);
+                    }
+                } else {
                 if (scored_pools && mla_index_f16 && d.gemm && row_sequences.empty() && lossy_prefill()) {
                     // Pooled rows only grow within this call, so one cast covers every tile; rows beyond a tile's
                     // scored_pools are not read.
@@ -6364,6 +6435,7 @@ class Decoder {
                                       pooled_rows, idim, d.iq + (size_t)t * ih * idim, idim, &zero, d.dots, pools));
                 k::glm_index_reduce(d.dots, d.iw + (size_t)t * ih, d.scores, ih, pools, count, at, pool_size,
                                     idim, d.stream, device_pos, d.first + t);
+                }
                 k::glm_index_select_batch(d.scores, d.ids, d.counts, pools, at, count,
                                           pool_size, m.index_top_k, stride, d.stream, device_pos, d.first + t);
                 if (hoisted) {}
@@ -6470,7 +6542,25 @@ class Decoder {
             (void)B;
         };
         const bool q8_mla = !fast && floating_q8_weight(p + "attn_k_b.weight") && floating_q8_weight(p + "attn_v_b.weight");
-        Tiles local{blas, stream, state.pooled->f(), state.cache->f(), iq.f(), iw.f(), q.f(),
+        const float *cache_rows = state.cache->f();
+        if (host_kv && !device_pos && row_sequences.empty() && B >= host_kv_stage_min) {
+            // Prefill reads ~2,048 rows per query; copy the rows written so far (this chunk's included) to VRAM once.
+            const size_t need = ((size_t)position + B) * latent * 4;
+            if (!kv_stage || kv_stage->bytes < need) {
+                kv_stage.reset();
+                try { DeviceTag tag("kv_stage"); kv_stage = std::make_unique<Device>(state.cache->bytes); }
+                catch (const std::runtime_error &e) {
+                    if (!kv_stage_failed)
+                        std::cerr << "KV_HOST staging unavailable, prefill reads host memory directly: " << e.what() << '\n';
+                    kv_stage_failed = true;
+                }
+            }
+            if (kv_stage) {
+                check(cudaMemcpyAsync(kv_stage->p, state.cache->p, need, cudaMemcpyDefault, stream));
+                cache_rows = kv_stage->f();
+            }
+        }
+        Tiles local{blas, stream, state.pooled->f(), cache_rows, iq.f(), iw.f(), q.f(),
                     q8_mla ? nullptr : weight(p + "attn_k_b.weight", true).f(),
                     q8_mla ? nullptr : weight(p + "attn_v_b.weight", true).f(),
                     value.f(), dots.f(), scores.f(), aq.f(), av.f(), gathered.f(), attn.f(),
@@ -6492,7 +6582,7 @@ class Decoder {
         }
         if (dense_prefix_rows) {
             auto *keys = (uint16_t *)buf("mla_dense_keys16", ((size_t)dense_prefix_rows * latent + 1) / 2).p;
-            k::glm_f16(state.cache->f(), keys, (int64_t)dense_prefix_rows * latent, stream);
+            k::glm_f16(cache_rows, keys, (int64_t)dense_prefix_rows * latent, stream);
             local.dense_keys = keys;
             local.dense_rows = dense_prefix_rows;
             if (!dense_mla_prefix_reported) {
@@ -6502,7 +6592,11 @@ class Decoder {
             }
         }
         std::future<void> pending;
-        if (split_mla && fast && secondary && secondary_enabled && secondary->blas && B >= 2 * tile &&
+        if (split_mla && host_kv && !split_mla_host_kv_reported) {
+            split_mla_host_kv_reported = true;
+            std::cerr << "KV_HOST split MLA disabled (it copies the whole cache to the second GPU)\n";
+        }
+        if (split_mla && !host_kv && fast && secondary && secondary_enabled && secondary->blas && B >= 2 * tile &&
             secondary->mla_weights.count(p + "attn_k_b.weight")) {
             auto &other = *secondary;
             const int tiles = (B + tile - 1) / tile;
@@ -6975,7 +7069,7 @@ class Decoder {
                 s.conv_k = std::make_unique<Device>(conv, true);
                 s.conv_v = std::make_unique<Device>(conv, true);
             } else {
-                s.cache = std::make_unique<Device>(ctx * m.kv_rank * 4, true);
+                s.cache = make_kv_cache(ctx * m.kv_rank * 4);
                 s.keys = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
                 s.gates = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
                 s.pooled =
@@ -7848,6 +7942,7 @@ class Decoder {
                 auto &src = states[l], &dst = layers[l];
                 copy_shape(src.recurrent, dst.recurrent); copy_shape(src.conv_q, dst.conv_q);
                 copy_shape(src.conv_k, dst.conv_k); copy_shape(src.conv_v, dst.conv_v);
+                if (host_kv) throw std::invalid_argument("GLM: host KV (STRATA_GLM_KV_HOST) supports one sequence");
                 copy_shape(src.cache, dst.cache); copy_shape(src.keys, dst.keys);
                 copy_shape(src.gates, dst.gates); copy_shape(src.pooled, dst.pooled);
             }
@@ -7946,7 +8041,7 @@ class Decoder {
         const size_t input_per_layer = (4 * n + m.linear_heads) * 4;
         const size_t per_slot = bytes + (replay ? replay_history.size() * input_per_layer + n * 4 : 0);
         size_t free_bytes = 0, total_bytes = 0;
-        check(cudaMemGetInfo(&free_bytes, &total_bytes));
+        check(Device::mem_info(&free_bytes, &total_bytes));
         const size_t reserve = Device::physical_reserve() + 64 * MiB;
         const size_t physical = free_bytes > reserve ? free_bytes - reserve : 0;
         const size_t owned = Device::live() <= Device::limit() ? Device::limit() - Device::live() : 0;
@@ -8280,7 +8375,7 @@ class Decoder {
         if (m.draft_layers.size() != 1 || states.size() > m.layers.size()) return;
         states.emplace_back();
         auto &state = states.back();
-        state.cache = std::make_unique<Device>(capacity * m.kv_rank * 4, true);
+        state.cache = make_kv_cache(capacity * m.kv_rank * 4);
         state.keys = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
         state.gates = std::make_unique<Device>(m.index_pool * m.index_dim * 4, true);
         state.pooled = std::make_unique<Device>(std::max<size_t>(1, capacity / m.index_pool) * m.index_dim * 4, true);
@@ -8910,6 +9005,10 @@ class Decoder {
                       std::chrono::steady_clock::now() - start).count() << '\n';
     }
     void prepare_decode_cache() {
+        if (kv_stage) {   // host KV: the prefill staging copy is not used by decode; give its VRAM to the tier
+            check(cudaStreamSynchronize(stream));
+            kv_stage.reset();
+        }
         stage_forward(STRATA_STAGE_PREPARE_DECODE_CACHE);
         tier_drain();
         relocate_numa_after_prefill();
@@ -8937,9 +9036,9 @@ class Decoder {
 #if defined(__linux__) && !defined(STRATA_USE_HIP)
         if (mixed && strata_env_truthy_one("STRATA_GLM_MIXED_TRIM_POOL")) {
             check(cudaStreamSynchronize(stream));
-            size_t before=0,after=0,total=0;check(cudaMemGetInfo(&before,&total));
+            size_t before=0,after=0,total=0;check(Device::mem_info(&before,&total));
             cudaMemPool_t pool;check(cudaDeviceGetDefaultMemPool(&pool,primary_device));
-            check(cudaMemPoolTrimTo(pool,0));check(cudaMemGetInfo(&after,&total));
+            check(cudaMemPoolTrimTo(pool,0));check(Device::mem_info(&after,&total));
             std::cerr << "MIXED_POOL_TRIM recovered_MiB=" << (after>=before ? after-before : 0)/double(MiB)
                       << " free_MiB=" << after/double(MiB) << '\n';
         }
@@ -9053,7 +9152,7 @@ class Decoder {
                 // buffers rather than reserving a prefill-sized workspace.
                 const size_t reserve = (i ? 64 : 256) * MiB;
                 size_t free = 0, total = 0;
-                check(cudaMemGetInfo(&free, &total));
+                check(Device::mem_info(&free, &total));
                 const size_t physical = Device::physical_reserve() + reserve;
                 const size_t logical = Device::live() + reserve;
                 remaining[i] = std::min(free > physical ? free - physical : 0,
@@ -9110,7 +9209,7 @@ class Decoder {
             }
             if(!layer_route_counts.empty() && blob && !layer_cache_scratch){DeviceTag tag("cache_move");layer_cache_scratch=std::make_unique<Device>(blob);}
             if (!layer_admission_ready) {
-                size_t free=0,total=0;check(cudaMemGetInfo(&free,&total));
+                size_t free=0,total=0;check(Device::mem_info(&free,&total));
                 // CUDA module/graph workspaces can persist after reset. Keep a
                 // stable ceiling and reserve their first-use growth before
                 // selecting any experts; do not silently vary the next set.
@@ -9128,7 +9227,7 @@ class Decoder {
             }
             admission_budget=layer_admission_budget;
             if(admission_budget && !decode_cache_storage[0]){
-                size_t free=0,total=0;check(cudaMemGetInfo(&free,&total));
+                size_t free=0,total=0;check(Device::mem_info(&free,&total));
                 const size_t physical=Device::physical_reserve()+scratch_reserve;
                 if(free<physical || admission_budget>free-physical)throw std::runtime_error("GLM: stable layer cache slab no longer fits GPU headroom");
                 DeviceTag tag("tier");decode_cache_storage[0]=std::make_unique<Device>(admission_budget);
@@ -9156,7 +9255,7 @@ class Decoder {
                                                  device_bytes[participant], c.bytes);
             } else {
                 size_t free = 0, total = 0;
-                check(cudaMemGetInfo(&free, &total));
+                check(Device::mem_info(&free, &total));
                 const size_t physical = Device::physical_reserve();
                 if (free < physical + scratch_reserve || c.bytes > free - physical - scratch_reserve) {
                     break;
@@ -9362,7 +9461,7 @@ class Decoder {
             sync_mtp(prompt, 0);
         }
         size_t free_bytes = 0, total_bytes = 0;
-        check(cudaMemGetInfo(&free_bytes, &total_bytes));
+        check(Device::mem_info(&free_bytes, &total_bytes));
         std::cerr << "MTP free_MiB=" << free_bytes / double(MiB) << '\n';
         std::cerr << "MTP expert_backend=" << (mtp_cpu_experts ? "cpu" : "gpu") << '\n';
         std::cerr << "MTP resident_MiB=" << (mtp_experts ? mtp_experts->bytes : 0) / double(MiB)
@@ -9489,7 +9588,7 @@ class Decoder {
             int width=requested?requested:256;
             const size_t reserve = Device::budget_reserve();
             if(width<1||width>256||total_budget<2048*MiB||total_budget<=reserve)throw std::invalid_argument("EXL3: GPU prefill batch must be 1..256 and its budget must exceed the runtime reserve");
-            size_t free,total;check(cudaMemGetInfo(&free,&total));
+            size_t free,total;check(Device::mem_info(&free,&total));
             Device::limit()=std::min(total_budget-reserve,Device::live()+(free>reserve?free-reserve:0));
             check(cublasSetMathMode(blas,glm_blas_math_mode));
             tensor_mla=false;
@@ -9497,7 +9596,7 @@ class Decoder {
             prepare_native_dense_q8();
             if(native_expert_gpu_limit) {
                 if(!native_dense_q8)throw std::invalid_argument("EXL3 GPU expert cache requires resident dense quantization");
-                size_t free,total;check(cudaMemGetInfo(&free,&total));
+                size_t free,total;check(Device::mem_info(&free,&total));
                 const size_t physical=free>Device::physical_reserve()?free-Device::physical_reserve():0;
                 const size_t available=std::min(physical,Device::limit()>Device::live()?Device::limit()-Device::live():0);
                 if(available<896*MiB || native_expert_gpu_limit>available-896*MiB)
@@ -9562,7 +9661,7 @@ class Decoder {
         if (prefill_dense_budget) fixed = std::min(fixed, prefill_dense_budget);
         for (size_t bytes : q8_scratch_bytes) fixed += bytes;   // prefill's FP32 expansions of Q8-only weights
         size_t free, total;
-        check(cudaMemGetInfo(&free, &total));
+        check(Device::mem_info(&free, &total));
         const size_t runtime_reserve = Device::budget_reserve();
         Device::limit() = std::min(total_budget - runtime_reserve,
             Device::live() + (free > runtime_reserve ? free - runtime_reserve : 0));
@@ -9709,7 +9808,7 @@ class Decoder {
         auto allowance = [&](int device, size_t reserve, PrefillGroupCache &cache) {
             DeviceScope scope(device);
             size_t free = 0, total = 0;
-            check(cudaMemGetInfo(&free, &total));
+            check(Device::mem_info(&free, &total));
             const size_t accounted = Device::live() < Device::limit() ? Device::limit() - Device::live() : 0;
             const size_t guard = Device::physical_reserve();
             const size_t physical = free > guard ? free - guard : 0;
@@ -9968,7 +10067,7 @@ class Decoder {
         auto report = [](int device, const GpuPrefill *prefill, const PrefillGroupCache &cache) {
             DeviceScope scope(device);
             size_t free = 0, total = 0;
-            check(cudaMemGetInfo(&free, &total));
+            check(Device::mem_info(&free, &total));
             const auto &a = Device::accounts.at(device);
             if (prefill && prefill->arena)
                 std::cerr << "PREFILL_SCRATCH device=" << device
@@ -10757,7 +10856,7 @@ static size_t gpu_budget_bytes(const std::string &value) {
 }
 static void preflight_gpu_budget(size_t budget) {
     size_t free = 0, total = 0;
-    check(cudaMemGetInfo(&free, &total));
+    check(Device::mem_info(&free, &total));
     // CUDA's usable capacity can be slightly below the card's advertised GiB.
     const size_t nominal_capacity = (total + 1024 * MiB - 1) / (1024 * MiB) * (1024 * MiB);
     if (budget <= std::max(1024 * MiB, Device::budget_reserve()) || budget > nominal_capacity)

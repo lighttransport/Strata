@@ -101,6 +101,7 @@ def main():
     p.add_argument('--cuda-build', type=Path, default=Path('build-glm-release'))
     p.add_argument('--hip-build', type=Path, default=Path('build-hip-rocm101-tr16'))
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--gpu-budget-mib', type=int, help='primary GPU budget instead of 15360 (HIP) / 14336 (CUDA); 16384 with STRATA_GLM_VRAM_PREALLOC=1 uses a whole 16 GB card')
     p.add_argument('--allow-desktop-gpu', action='store_true', help='allow and record Chrome/desktop GPU contexts during the idle check')
     p.add_argument('--wait-idle-seconds', type=int, default=600)
     p.add_argument('--repetitions', type=int, default=3)
@@ -159,7 +160,7 @@ def main():
                 for repetition in range(a.repetitions):
                     c=copy.deepcopy(base)
                     c['exe']=str(builds[primary]/'strata-glm-decode')
-                    c['gpu_budget_mib']=15360 if primary=='hip' else 14336
+                    c['gpu_budget_mib']=a.gpu_budget_mib or (15360 if primary=='hip' else 14336)
                     cmd=command(c,prompt,a.tokens,a.trials)
                     label='auto' if requested_fraction=='auto' else f'{fraction:g}'
                     tag=f'{prompt.parent.name}-{prompt.stem}-{case}-{label}-{repetition}'
