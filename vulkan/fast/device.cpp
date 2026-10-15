@@ -131,6 +131,10 @@ Device::Device(const std::string &filter, size_t budget, bool allow_cpu) : budge
     e2.pNext = &e11;
     e2.features.shaderInt16 = VK_TRUE;
     e2.features.shaderInt64 = f2.features.shaderInt64;
+    fp64_expert_math_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_FP64_MATH");
+    fp64_expert_scale_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_FP64_SCALE") || fp64_expert_math_;
+    require(!fp64_expert_scale_ || f2.features.shaderFloat64, "Vulkan FP64 expert scale diagnostic unavailable");
+    e2.features.shaderFloat64 = fp64_expert_scale_ ? VK_TRUE : VK_FALSE;
     const bool robust = strata_env_is_one("STRATA_VULKAN_FAST_ROBUST_BUFFERS");
     require(!robust || f2.features.robustBufferAccess, "Vulkan robust buffer access unavailable");
     e2.features.robustBufferAccess = robust ? VK_TRUE : VK_FALSE;

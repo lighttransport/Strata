@@ -58,7 +58,9 @@ struct GemvArgs {
 };
 // Floats of scratch a K-split GEMV of this matrix may use for `columns`.
 size_t gemv_scratch_floats(const Matrix &, uint32_t columns);
-void gemv(Recorder &, const Matrix &, View x, View y, const GemvArgs & = {});
+// The original four-column kernels remain the default. Wider panels preserve
+// the K split and per-column arithmetic while reusing decoded weight blocks.
+void gemv(Recorder &, const Matrix &, View x, View y, const GemvArgs & = {}, uint32_t panel_columns = 4);
 // Tiled matrix product for larger prefill batches, with the same strides.
 void gemm(Recorder &, const Matrix &, View x, View y, const GemvArgs &, uint32_t tile_columns = 64);
 // Keep dense activation dispatches and bound views within a 1024-token slice.

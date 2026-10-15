@@ -181,19 +181,33 @@ Matrix upload_stacked(Device &d, std::span<const core::ArtifactTensor *const> pa
   return upload_matrix(d, type, k, m, 1, joined.data());
 }
 
-void gemv(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a) {
+void gemv(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a, uint32_t panel_columns) {
   const auto &l = w.layout;
-  require(a.columns >= 1 && a.columns <= 4 && a.xofs % 4 == 0 && a.xs % 4 == 0 && a.hx % 4 == 0,
+  require((panel_columns == 4 || panel_columns == 8 || panel_columns == 16) &&
+              a.columns >= 1 && a.columns <= panel_columns && a.xofs % 4 == 0 && a.xs % 4 == 0 && a.hx % 4 == 0,
           "Vulkan fast GEMV arguments invalid");
+  const std::string suffix = panel_columns == 4 ? "" : "_n" + std::to_string(panel_columns);
   const uint32_t xs = a.xs ? a.xs : l.k * w.heads, ys = a.ys ? a.ys : l.m * w.heads;
   const uint32_t hx = w.heads > 1 ? (a.hx ? a.hx : l.k) : 0, hy = w.heads > 1 ? (a.hy ? a.hy : l.m) : 0;
+  if (panel_columns > 4) {
+    auto available = [](View v) {
+      require(v.buffer && v.offset <= v.buffer->size, "Vulkan GEMV panel view invalid");
+      const size_t left = v.buffer->size - v.offset;
+      require(!v.range || v.range <= left, "Vulkan GEMV panel range invalid");
+      return v.range ? v.range : left;
+    };
+    const size_t inputs = size_t(a.xofs) + size_t(a.columns - 1) * xs + size_t(w.heads - 1) * hx + l.k;
+    const size_t outputs = size_t(a.yofs) + size_t(a.columns - 1) * ys + size_t(w.heads - 1) * hy + l.m;
+    require(inputs <= available(x) / 4 && outputs <= available(y) / 4, "Vulkan GEMV panel buffer too small");
+    if (a.scratch.buffer) available(a.scratch);
+  }
   if (l.type == F32) {
     require(w.heads == 1, "Vulkan fast F32 GEMV has no heads");
     const uint32_t rs = l.m >= 64 ? 2 : 1;
     struct {
       uint32_t K, M, N, xs, ys, RS, xofs, yofs, accumulate, pad0, pad1, pad2;
     } push{l.k, l.m, a.columns, xs, ys, rs, a.xofs, a.yofs, a.accumulate ? 1u : 0u, 0, 0, 0};
-    r.dispatch("gemv_f32", {View(*w.data), x, y}, push, (l.m + rs - 1) / rs);
+    r.dispatch("gemv_f32" + suffix, {View(*w.data), x, y}, push, (l.m + rs - 1) / rs);
     return;
   }
   const uint32_t nb = l.k / block_elements(l.type);
@@ -226,7 +240,9 @@ void gemv(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a) {
   View part = kparts > 1 ? a.scratch : y;
   if (kparts > 1)
     require(part.buffer->size - part.offset >= size_t(kparts) * l.m * a.columns * 4, "Vulkan fast GEMV scratch too small");
-  r.dispatch(kernel, {View(*w.data), x, y, part}, push, groups, w.heads, kparts);
+  if (kparts > 1 && panel_columns > 4 && part.range)
+    require(part.range >= size_t(kparts) * l.m * a.columns * 4, "Vulkan GEMV panel scratch range too small");
+  r.dispatch(std::string(kernel) + suffix, {View(*w.data), x, y, part}, push, groups, w.heads, kparts);
   if (kparts > 1) {
     r.barrier();  // the reduction reads the partials, also inside a concurrent group
     struct {

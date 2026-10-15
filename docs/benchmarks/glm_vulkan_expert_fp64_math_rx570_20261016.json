@@ -1,0 +1,202 @@
+{
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX57016GiB /RADV POLARIS10",
+    "driver": "Mesa26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen9 3950X",
+    "ram": "64GiB DDR4-2666"
+  },
+  "feature": "Opt-in STRATA_VULKAN_FAST_EXPERT_FP64_MATH=1 for streamed GPU experts,64x64tiles. Existing default unchanged.",
+  "protocol": "Existing canonical CPU operation order; explicit binary64to32RNE with midpoint residual correction for FMA, canonical polynomial, activation/Q8 divisions. Independent CPU conversions/std::fma and whole-expert byte oracles.",
+  "runs": [
+    {
+      "run": "expert-fp64-math-native-v18",
+      "physical_gpu": true,
+      "expert_cases": 6,
+      "all_expert_outputs_cpu_byte_identical": true,
+      "all_stage_vectors_cpu_byte_identical": true,
+      "raw_vs_packed_inputs_byte_identical": true,
+      "conversion_oracle": {
+        "fp64_to_f32_cases": 9736,
+        "mismatches": 0,
+        "nan_comparison": "classification",
+        "finite_comparison": "all_bits"
+      },
+      "fma_oracle": {
+        "fma_probe_cases": 1792,
+        "ordinary_mismatches": 888,
+        "precise_mismatches": 888,
+        "separate_mismatches": 888,
+        "fp64_scale_mismatches": 0,
+        "fp64_cancel_mismatches": 0,
+        "fp64_general_mismatches": 0,
+        "fp32_multiply_mismatches": 0,
+        "cpu_double_rounding_counterexamples": 256
+      },
+      "log_sha256": "b63aaa654e37f10d862b6c2e22a0480e974062992e3ce1c83e9192cc0dbd33b0",
+      "guard_passed": true,
+      "faults": [],
+      "guard_sha256": "750329ae1ab7e502cc2379e6c610ebc2f225c9c7cb895ebe38ec9b66028d169b",
+      "executable_sha256": "cc83475af5b3d1cb69b8b2f6fb4b779394606497c59fa02167d02fd384393c66"
+    },
+    {
+      "run": "expert-fp64-math-boundaries-native-v18",
+      "physical_gpu": true,
+      "expert_cases": 12,
+      "all_expert_outputs_cpu_byte_identical": true,
+      "all_stage_vectors_cpu_byte_identical": true,
+      "raw_vs_packed_inputs_byte_identical": true,
+      "conversion_oracle": {
+        "fp64_to_f32_cases": 9736,
+        "mismatches": 0,
+        "nan_comparison": "classification",
+        "finite_comparison": "all_bits"
+      },
+      "fma_oracle": {
+        "fma_probe_cases": 1792,
+        "ordinary_mismatches": 888,
+        "precise_mismatches": 888,
+        "separate_mismatches": 888,
+        "fp64_scale_mismatches": 0,
+        "fp64_cancel_mismatches": 0,
+        "fp64_general_mismatches": 0,
+        "fp32_multiply_mismatches": 0,
+        "cpu_double_rounding_counterexamples": 256
+      },
+      "log_sha256": "eda81f6c6d29f1473389752db0f4f64a47fd8422f2058a0dd421a6a748ac5961",
+      "guard_passed": true,
+      "faults": [],
+      "guard_sha256": "4f14381f47381fecacab3741fc78772aa6c84277b076f2f4922e9d07c9ec9315",
+      "executable_sha256": "cc83475af5b3d1cb69b8b2f6fb4b779394606497c59fa02167d02fd384393c66"
+    },
+    {
+      "run": "expert-fp64-math-native-build-lvp-v18",
+      "physical_gpu": false,
+      "expert_cases": 12,
+      "all_expert_outputs_cpu_byte_identical": true,
+      "all_stage_vectors_cpu_byte_identical": true,
+      "raw_vs_packed_inputs_byte_identical": true,
+      "conversion_oracle": {
+        "fp64_to_f32_cases": 9736,
+        "mismatches": 0,
+        "nan_comparison": "classification",
+        "finite_comparison": "all_bits"
+      },
+      "fma_oracle": {
+        "fma_probe_cases": 1792,
+        "ordinary_mismatches": 888,
+        "precise_mismatches": 888,
+        "separate_mismatches": 888,
+        "fp64_scale_mismatches": 0,
+        "fp64_cancel_mismatches": 0,
+        "fp64_general_mismatches": 0,
+        "fp32_multiply_mismatches": 0,
+        "cpu_double_rounding_counterexamples": 256
+      },
+      "log_sha256": "94381b22808df4ff4180f00b9f3375e537d7a7952a10d92075c96016822fc5d9"
+    },
+    {
+      "run": "expert-fp64-math-portable-build-lvp-v18",
+      "physical_gpu": false,
+      "expert_cases": 12,
+      "all_expert_outputs_cpu_byte_identical": true,
+      "all_stage_vectors_cpu_byte_identical": true,
+      "raw_vs_packed_inputs_byte_identical": true,
+      "conversion_oracle": {
+        "fp64_to_f32_cases": 9736,
+        "mismatches": 0,
+        "nan_comparison": "classification",
+        "finite_comparison": "all_bits"
+      },
+      "fma_oracle": {
+        "fma_probe_cases": 1792,
+        "ordinary_mismatches": 888,
+        "precise_mismatches": 888,
+        "separate_mismatches": 888,
+        "fp64_scale_mismatches": 0,
+        "fp64_cancel_mismatches": 0,
+        "fp64_general_mismatches": 0,
+        "fp32_multiply_mismatches": 0,
+        "cpu_double_rounding_counterexamples": 256
+      },
+      "log_sha256": "94381b22808df4ff4180f00b9f3375e537d7a7952a10d92075c96016822fc5d9"
+    }
+  ],
+  "compiled_source_sha256": {
+    "vulkan/CMakeLists.txt": "9199bb7bcde9ccf4672bbd1543fe5e751cdfbb7dc9e0f4d02cb6cf44ed1dddce",
+    "vulkan/fast/device.cpp": "e5af01c4ec5d532a33180672bfe21dcd82b9c57077dbd11b59af4648e866b9e8",
+    "vulkan/fast/device.hpp": "0270ca89fb20d655a6f3cf60636a3296004ce6fdd035d953a1ddf74bb728bc5c",
+    "vulkan/fast/engine.cpp": "ab9186259ec144023bb16777fd692d439ba6801369db6f32c8f8a8021cc09095",
+    "vulkan/fast/engine.hpp": "380809802135eaae7484e672f44a0f56ff686e9a5a2bc39c7d14b082455e0f20",
+    "vulkan/fast/expert_batch.cpp": "3bc0de451e3570a15667b5e092e9dbd7a95c4e63092e29a1e1b49f277d56170f",
+    "vulkan/fast/expert_batch.hpp": "f6fc3d96588f50ab2c0a349d97d289f8314a6c6f8ae33465b0f24c60ccb81070",
+    "vulkan/fast/expert_batch_check.cpp": "00638158d6e2cb0718dda233224ccacfe48a4c632d13722cb5db3d93dc1c9632",
+    "vulkan/fast/gemv_panel_check.cpp": "d9730679101a4b086cd940206749c6f9bab941fb9c0ccc59a4aeaca47e553e35",
+    "vulkan/fast/kernels.cpp": "fa27d659cb1b5842f8a34e6960447f2483dfce3ac3d195dca5239e8eee102148",
+    "vulkan/fast/kernels.hpp": "49d61d98a275ca1685203848b92de552a7b28077ff8d27ade358fc7965c94f04",
+    "vulkan/fast/repack_gpu_check.cpp": "5e5cde20fe69e56064c8b3a286498d5de547196342153b0acaaa8e822b07fdce",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "5e2ea38edb7e368a6ef7bdc7d597125abce90413ab82c947867ba490072a8fbb",
+    "vulkan/fast/shaders/expert_mix.comp": "4fcc721a8c9116c566fd1dbe827788c9cb1a70da76379a5efe1b51f206043985",
+    "vulkan/fast/shaders/fma_oracle.comp": "532f7c1de76978d5039b604352839ba342138c39be1a74afab8dc2fad2324039",
+    "vulkan/fast/shaders/fp64_round.glsl": "8a7095b451472bd354a2a8edf639c3ba01ec9b81ea266afd3818b2667b7dc754",
+    "vulkan/fast/shaders/gemv_f32.comp": "e7455f46e3206cdd9c05ac0d1194e782415a26dc432a6e572fde39cbd88d9cdf",
+    "vulkan/fast/shaders/gemv_rows.comp": "7bba814ccd1b5e9059854cce6dab61f5e0b17a3bd4bbf46239b0460bec17a681",
+    "vulkan/fast/shaders/q8k_round.comp": "afc9be3b923575850e97b4b2c56460e4a1ab8a67e1727e009aa4b46d1f587e96",
+    "vulkan/fast/shaders/repack_expert.comp": "92c9438c45c478d7a42fcb9515fdfaf6ae31e33d1021c44757686536aa5fbfb6",
+    "vulkan/fast/shaders/round_fp64_oracle.comp": "cad70a14fcba5c27382c8bb13f59e8441381556bc899b67b57c86c7557070636"
+  },
+  "executable_sha256": {
+    "expert-check-fp64-math-v18": "cc83475af5b3d1cb69b8b2f6fb4b779394606497c59fa02167d02fd384393c66",
+    "strata-glm-vulkan-fp64-math-v18": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2"
+  },
+  "source_manifest_sha256": "142e8985a507ac17ccb3550c470dc1f8906c4cef30d418ab8e67b38e9eedba8b",
+  "default_shader_byte_comparisons_passed": 24,
+  "previous_experiment_excluded": "v14builds failed and a stalev13binary was accidentally frozen/run. fp64-round-v14-INVALID.json marks allv14results invalid for explicit-rounding claims; raw evidence preserved.",
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "timings_qualified": true,
+  "new_candidate_full_humaneval_qualified": false,
+  "new_candidate_training_status": "Complete: 3/3 with fixed 1536-token caps and unchanged oracles; all 1,038 output IDs match the original immutable cache-only reference.",
+  "limitations": [
+    "Two real experts in one layer at1/5/17/33/65/129columns. Byte-equivalence across these cases is not a full-model quality score.",
+    "The existing default17-column software numeric failure is retained; the new opt-in arithmetic passes its expanded byte checks without changing thresholds.",
+    "NaNs are compared by classification in the conversion oracle; all other conversion results and full expert outputs compare all bits.",
+    "FP64_MATH measured 22.7984 tok/s on repetitive 512-token prefill. No coding throughput, 100+ prefill or combined decode/quality qualification.",
+    "No host driver, watchdog, reboot, reset or persistent setting change. Current driver does not advertiseVK_KHR_shader_fma."
+  ],
+  "training": {
+    "cases": 3,
+    "passed": 3,
+    "generated": [
+      161,
+      425,
+      452
+    ],
+    "all_output_ids_identical_to_original": true,
+    "score_summary_sha256": "312512dc53a4a2fb6873bea3e510e8f34dd7b3a0553734adb5baa5395025d9ad",
+    "candidate_sha256": "85f20b4e74f5ebaa21db9789183844b3d44b86be515316dce0edbd3db4c53b20",
+    "fixture_manifest_sha256": "6288ee92355b817b385005a18ca9c61ab9c3ed8d1f31e6429e35f36df557bb2d",
+    "reference_archive_sha256": "32836afe5f77ae75e24fbc79696d2dc961c076ead63c58dcd87094499fc0d8bf"
+  },
+  "timing_scope": "Only the repetitive 512-token prefill experiment below; coding throughput and combined decode/quality qualification remain pending.",
+  "model_512": {
+    "run": "gpu512-fp64-math-v18-max20-match16-perf-run",
+    "protocol": "512 repetitive input tokens, 2 output tokens, one untimed prefill warmup and three measured trials; 12 host threads, 512-token chunk, matched GEMV panels of 16, at most 20 GPU experts per layer, minimum 32 routes. Profiling enabled.",
+    "prefill_tok_s": [
+      22.8178,
+      22.7655,
+      22.7984
+    ],
+    "median_prefill_tok_s": 22.7984,
+    "performance_guard_passed": true,
+    "faults": [],
+    "config_sha256": "6cff0dcb4522e282ae05112d60cce6e0df2d6d289ea99ed1e80d7cf1da1d7c5b",
+    "executable_sha256": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2",
+    "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+    "guard_sha256": "e073f47c04b859624feb9d8c5b4c26b60d22313cfc9f92a04b3daad50ad80db9",
+    "log_sha256": "135de656453c8d37bc83992e0d444d35a0af8b16a643ef9f0c1db1dc405d50bb",
+    "first_measured_final_vocab_logits_sha256": "d71e6466e0d6649b8d4e292c4deb7cda2a249a52ca120a9c268e4190874539ec",
+    "comparison_without_fp64_math_median_prefill_tok_s": 31.9936,
+    "comparison_record": "docs/benchmarks/glm_vulkan_gemv_panels_rx570_20261016.json",
+    "first_measured_logits_identical_to_approximate_gpu_control": false
+  }
+}

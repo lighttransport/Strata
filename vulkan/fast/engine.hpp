@@ -90,6 +90,7 @@ private:
   bool prefill_reuse_host_ = false;
   bool prefill_match_gemv_ = false;
   bool prefill_match_f32_ = false;
+  uint32_t prefill_gemv_panel_ = 4;
   bool prefill_progress_ = false;
   bool prefill_split_prefix_ = false;
   uint32_t prefill_submit_limit_ms_ = 500;

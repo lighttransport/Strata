@@ -14,6 +14,8 @@ ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool 
     throw std::invalid_argument("expert batch column tile must be 16, 32 or 64");
   if (tile_rows != 32 && tile_rows != 64)
     throw std::invalid_argument("expert batch row tile must be 32 or 64");
+  if (device.fp64_expert_scale() && (tile_columns != 64 || tile_rows != 64))
+    throw std::invalid_argument("FP64 expert scale diagnostic requires 64x64 tiles");
   quantized_row_bytes_ = ggml_row_size(GGML_TYPE_Q8_K, 4096);
   if (ggml_row_size(GGML_TYPE_Q8_K, 256) != 292)
     throw std::invalid_argument("streamed expert shader requires 292-byte Q8_K blocks");
@@ -63,6 +65,9 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
   if (!size || size > capacity_ || (packed_input ? quantized.size() != size || !inputs.empty() : inputs.size() != size))
     throw std::invalid_argument("expert batch input/output count invalid");
   const auto count = uint32_t(size);
+  const bool lane_trace = trace && device_.fp64_expert_scale();
+  if (lane_trace && !gate_lane_prefix_) gate_lane_prefix_ = device_.buffer(8 * 16 * 4, Memory::Host);
+  if (lane_trace && !gate_block_scale_) gate_block_scale_ = device_.buffer(8 * 16 * 8 * 4, Memory::Host);
   const size_t input_stride = packed_input ? quantized_row_bytes_ : 4096 * 4;
   for (uint32_t t = 0; t < count; ++t)
     std::memcpy(static_cast<uint8_t *>(input_->mapped) + size_t(t) * input_stride,
@@ -88,7 +93,8 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
     device_.upload(*down_weights_.data, packed_.data(), down_weights_.bytes());
   }
   stats_.upload_ms += elapsed(); started = Clock::now();
-  const char *round_kernel = portable_rounding_ ? "q8k_codes_portable" : "q8k_codes";
+  const std::string round_kernel = std::string(portable_rounding_ ? "q8k_codes_portable" : "q8k_codes") +
+                                   (device_.fp64_expert_math() ? "_fp64_math" : "");
   struct {uint32_t mode, n, uofs, tokens; float limit;} swiglu{0, 2048, 0, count, limit};
   auto record = [&](Recorder &r) {
     if (gpu_pack_) {
@@ -101,10 +107,19 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
       const std::string kernel = std::string(w.layout.type == Q2_K ? "expert_gemm_q2k_canon" : "expert_gemm_q3k_canon") +
                                  (vector_weights_ ? "_vector" : "") +
                                  (tile_columns_ == 64 ? "" : "_" + std::to_string(tile_columns_)) +
-                                 (tile_rows_ == 64 ? "" : "_m32");
-      r.dispatch(kernel, {View(*w.data), View(codes), View(metadata), View(*partial_)},
-                 std::array<uint32_t, 5>{w.k(), w.m(), w.layout.mp, count, uint32_t(w.layout.chunk_bytes())},
-                 (w.m() + tile_rows_ - 1) / tile_rows_, (count + tile_columns_ - 1) / tile_columns_, 8);
+                                 (tile_rows_ == 64 ? "" : "_m32") +
+                                 (device_.fp64_expert_scale() ? "_fp64_scale" : "");
+      const std::array<uint32_t, 5> push{w.k(), w.m(), w.layout.mp, count, uint32_t(w.layout.chunk_bytes())};
+      if (lane_trace && w.layout.type == Q2_K)
+        r.dispatch(kernel + "_trace", {View(*w.data), View(codes), View(metadata), View(*partial_), View(*gate_block_scale_)},
+                   push, (w.m() + tile_rows_ - 1) / tile_rows_, (count + tile_columns_ - 1) / tile_columns_, 8);
+      else
+        r.dispatch(kernel, {View(*w.data), View(codes), View(metadata), View(*partial_)},
+                   push, (w.m() + tile_rows_ - 1) / tile_rows_, (count + tile_columns_ - 1) / tile_columns_, 8);
+      if (lane_trace && w.layout.type == Q2_K)
+        for (size_t lane = 0; lane < 8; ++lane)
+          r.copy(View(*partial_, lane * count * w.m() * 4, 16 * 4),
+                 View(*gate_lane_prefix_, lane * 16 * 4, 16 * 4), 16 * 4);
       r.dispatch("expert_reduce_canon", {View(*partial_), View(out)},
                  std::array<uint32_t, 1>{count * w.m()}, (count * w.m() + 255) / 256);
     };
@@ -115,7 +130,8 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
       r.dispatch(round_kernel, {View(*input_), View(*qinput_), View(*hits_), View(*input_meta_)},
                  std::array<uint32_t, 4>{count * 4096, 0, 0, count}, count * 4096 / 256);
     product(gu_weights_, *qinput_, *input_meta_, *gu_);
-    r.dispatch("expert_mix_canon", {View(*gu_), View(*hidden_), View(*hits_)}, swiglu, count * 2048 / 256);
+    r.dispatch(device_.fp64_expert_math() ? "expert_mix_fp64_math" : "expert_mix_canon",
+               {View(*gu_), View(*hidden_), View(*hits_)}, swiglu, count * 2048 / 256);
     r.dispatch(round_kernel, {View(*hidden_), View(*qhidden_), View(*hits_), View(*hidden_meta_)},
                std::array<uint32_t, 4>{count * 2048, 0, 0, count}, count * 2048 / 256);
     product(down_weights_, *qhidden_, *hidden_meta_, *output_);
@@ -128,11 +144,11 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
   auto found = commands_.find(key);
   VkCommandBuffer command = VK_NULL_HANDLE;
   bool retained = false;
-  if (replay_ && found != commands_.end()) {
+  if (replay_ && !lane_trace && found != commands_.end()) {
     command = found->second; retained = true; ++stats_.command_replays;
   } else {
     const auto began = Clock::now();
-    const bool keep = replay_ && commands_.size() < 128;
+    const bool keep = replay_ && !lane_trace && commands_.size() < 128;
     command = device_.allocate_command();
     try {
       device_.begin(command, !keep);
@@ -158,6 +174,10 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
     capture(*gu_, trace->gate_up, size_t(count) * 4096);
     capture(*hidden_, trace->hidden, size_t(count) * 2048);
     capture(*qhidden_, trace->qhidden, size_t(count) * 2048);
+    trace->gate_lane_prefix.clear();
+    if (lane_trace) capture(*gate_lane_prefix_, trace->gate_lane_prefix, 8 * 16);
+    trace->gate_block_scale.clear();
+    if (lane_trace) capture(*gate_block_scale_, trace->gate_block_scale, 8 * 16 * 8);
     auto dequantize = [&](std::vector<float> &codes, const Buffer &metadata) {
       std::vector<float> meta(codes.size() / 256 * 17);
       device_.download(metadata, meta.data(), meta.size() * 4);

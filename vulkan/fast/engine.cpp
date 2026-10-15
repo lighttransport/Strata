@@ -88,6 +88,12 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   require(!prefill_reuse_host_ || prefill_chunk_ > int(NT), "Vulkan host scratch reuse requires a large prefill chunk");
   prefill_match_gemv_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_MATCH_GEMV");
   prefill_match_f32_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_MATCH_F32");
+  prefill_gemv_panel_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL", 4));
+  require(prefill_gemv_panel_ == 4 || prefill_gemv_panel_ == 8 || prefill_gemv_panel_ == 16,
+          "Vulkan prefill GEMV panel must be 4, 8 or 16");
+  require(prefill_gemv_panel_ == 4 || (prefill_chunk_ > int(NT) && (prefill_match_gemv_ || prefill_match_f32_) && !q8_emulate_),
+          "Wider Vulkan GEMV panels require large matched prefill without Q8 emulation");
+  require(prefill_gemv_panel_ == 4 || dev_.subgroup_size() == 64, "Wider Vulkan GEMV panels require 64-lane subgroups");
   prefill_progress_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_PROGRESS");
   prefill_split_prefix_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX");
   prefill_submit_limit_ms_ = uint32_t(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_SUBMIT_LIMIT_MS", 500));
@@ -117,6 +123,8 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   require(!prefill_gpu_pack_ || prefill_gpu_, "Vulkan GPU packing requires streamed prefill GPU experts");
   require(!prefill_gpu_vector_ || prefill_gpu_, "Vulkan vector expert loads require streamed prefill GPU experts");
   require(!prefill_reuse_expert_ || prefill_gpu_, "Vulkan expert scratch reuse requires streamed prefill GPU experts");
+  require(!dev_.fp64_expert_scale() || (prefill_gpu_ && prefill_gpu_tile_ == 64 && prefill_gpu_rows_ == 64),
+          "Vulkan FP64 expert diagnostics require streamed GPU experts with 64x64 tiles");
   if (canonical_sum_) mailbox_stride_ = MB_OUT + 8 * H;
   // Lossy, opt-in: the HIP path's routing affinity and min-share switches.
   auto fraction = [](const char *name, float hi) {
@@ -367,10 +375,11 @@ void Engine::allocate() {
 void Engine::mv(Recorder &r, const Matrix &w, View x, View y, GemvArgs a) {
   if (a.columns > NT && (prefill_match_gemv_ || (prefill_match_f32_ && w.layout.type == F32))) {
     const uint32_t xs = a.xs ? a.xs : w.k() * w.heads, ys = a.ys ? a.ys : w.m() * w.heads;
-    for (uint32_t first = 0; first < a.columns; first += NT) {
-      auto sub = a; sub.columns = std::min(NT, a.columns - first);
+    for (uint32_t first = 0; first < a.columns; first += prefill_gemv_panel_) {
+      auto sub = a; sub.columns = std::min(prefill_gemv_panel_, a.columns - first);
       sub.xofs += first * xs; sub.yofs += first * ys;
-      mv(r, w, x, y, sub);
+      if (prefill_gemv_panel_ == 4) mv(r, w, x, y, sub);
+      else gemv(r, w, x, y, sub, prefill_gemv_panel_);
       // Split-K and activation rounding scratch can be reused by the next
       // tile, including inside a caller's concurrent projection group.
       r.barrier();

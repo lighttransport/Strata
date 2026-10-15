@@ -97,6 +97,29 @@ foreach(_type IN ITEMS q2k q3k)
       "expert_gemm_${_type}_canon_vector${_column_suffix}_m32|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DNTILE=${_columns} -DMTILE=32")
   endforeach()
 endforeach()
+foreach(_columns IN ITEMS 8 16)
+  list(APPEND _glm_vk_fast_shaders "gemv_f32_n${_columns}|gemv_f32|-DNMAX=${_columns} -DRSMAX=2")
+  foreach(_type IN ITEMS q4k q6k q50)
+    string(TOUPPER "${_type}" _type_define)
+    list(APPEND _glm_vk_fast_shaders
+      "gemv_rows_${_type}_n${_columns}|gemv_rows|-DTYPE_${_type_define} -DNMAX=${_columns}")
+  endforeach()
+endforeach()
+list(APPEND _glm_vk_fast_shaders "fma_oracle_fp64_scale|fma_oracle|-DFP64_SCALE")
+list(APPEND _glm_vk_fast_shaders "round_fp64_oracle|round_fp64_oracle|")
+list(APPEND _glm_vk_fast_shaders
+  "expert_mix_fp64_math|expert_mix|-DCANON_SWIGLU -DFP64_MATH"
+  "q8k_codes_fp64_math|q8k_round|-DCODES_AND_SUMS -DFP64_MATH"
+  "q8k_codes_portable_fp64_math|q8k_round|-DCODES_AND_SUMS -DPORTABLE_REDUCTION -DFP64_MATH")
+list(APPEND _glm_vk_fast_shaders
+  "expert_gemm_q2k_canon_fp64_scale_trace|expert_gemm_canon|-DTYPE_Q2K -DFP64_SCALE -DTRACE_BLOCK_SCALE"
+  "expert_gemm_q2k_canon_vector_fp64_scale_trace|expert_gemm_canon|-DTYPE_Q2K -DVECTOR_WEIGHT_LOADS -DFP64_SCALE -DTRACE_BLOCK_SCALE")
+foreach(_type IN ITEMS q2k q3k)
+  string(TOUPPER "${_type}" _type_define)
+  list(APPEND _glm_vk_fast_shaders
+    "expert_gemm_${_type}_canon_fp64_scale|expert_gemm_canon|-DTYPE_${_type_define} -DFP64_SCALE"
+    "expert_gemm_${_type}_canon_vector_fp64_scale|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DFP64_SCALE")
+endforeach()
 set(_fast_outputs)
 set(_fast_registry "#pragma once\n#include <span>\n#include <string>\n")
 set(_fast_lookup "inline std::span<const unsigned char> fast_shader(const std::string &name) {\n")
@@ -112,6 +135,7 @@ foreach(_entry IN LISTS _glm_vk_fast_shaders)
     COMMAND Vulkan::glslc --target-env=vulkan1.2 -O ${_defines} ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/${_source}.comp -o ${_spv}
     COMMAND ${CMAKE_COMMAND} -DINPUT=${_spv} -DOUTPUT=${_hdr} -DNAME=fast_${_name} -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/${_source}.comp ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/common.glsl
+            ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/fp64_round.glsl
             ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake VERBATIM)
   list(APPEND _fast_outputs ${_hdr})
   string(APPEND _fast_registry "#include \"fast_${_name}_spv.hpp\"\n")
@@ -135,6 +159,8 @@ target_link_libraries(glm_vulkan_fast_gemm_bench PRIVATE strata_glm_vulkan_fast 
 add_executable(glm_vulkan_fast_gemm_check fast/gemm_check.cpp)
 target_link_libraries(glm_vulkan_fast_gemm_check PRIVATE strata_glm_vulkan_fast ggml)
 add_executable(glm_vulkan_fast_repack_check fast/repack_check.cpp)
+add_executable(glm_vulkan_fast_gemv_panel_check fast/gemv_panel_check.cpp)
+target_link_libraries(glm_vulkan_fast_gemv_panel_check PRIVATE strata_glm_vulkan_fast ggml)
 target_link_libraries(glm_vulkan_fast_repack_check PRIVATE strata_glm_vulkan_fast)
 add_executable(glm_vulkan_fast_repack_gpu_check fast/repack_gpu_check.cpp)
 target_link_libraries(glm_vulkan_fast_repack_gpu_check PRIVATE strata_glm_vulkan_fast)

@@ -4,6 +4,13 @@
 // mode 1: out[t][d] = sum_u w[u][t] * y[(u*T+t)][d] (workgroup y = token).
 #extension GL_GOOGLE_include_directive : require
 #include "common.glsl"
+#ifdef FP64_MATH
+#extension GL_ARB_gpu_shader_fp64 : require
+#include "fp64_round.glsl"
+#define CANON_FMA(A, B, C) fp32_fma_rne(A, B, C)
+#else
+#define CANON_FMA(A, B, C) fma(A, B, C)
+#endif
 layout(local_size_x = 256) in;
 layout(binding = 0, std430) readonly buffer In { float v[]; };
 layout(binding = 1, std430) buffer Out { float o[]; };
@@ -15,15 +22,15 @@ float canonical_exp(float x) {
   precise float mul = x * 1.44269504088896341;
   precise float rounded = mul + 12582912.0;
   precise float n = rounded - 12582912.0;
-  float r = fma(n, -0.693359375, x);
-  r = fma(n, 2.12194440e-4, r);
-  float v = fma(1.9875691500e-4, r, 1.3981999507e-3);
-  v = fma(v, r, 8.3334519073e-3);
-  v = fma(v, r, 4.1665795894e-2);
-  v = fma(v, r, 1.6666665459e-1);
-  v = fma(v, r, 5.0000001201e-1);
+  float r = CANON_FMA(n, -0.693359375, x);
+  r = CANON_FMA(n, 2.12194440e-4, r);
+  float v = CANON_FMA(1.9875691500e-4, r, 1.3981999507e-3);
+  v = CANON_FMA(v, r, 8.3334519073e-3);
+  v = CANON_FMA(v, r, 4.1665795894e-2);
+  v = CANON_FMA(v, r, 1.6666665459e-1);
+  v = CANON_FMA(v, r, 5.0000001201e-1);
   precise float rr = r * r;
-  precise float y = fma(v, rr, r) + 1.0;
+  precise float y = CANON_FMA(v, rr, r) + 1.0;
   return y * uintBitsToFloat(uint(int(n) + 127) << 23u);
 }
 #endif
@@ -36,7 +43,11 @@ void main() {
     if (p.limit > 0) { g = min(g, p.limit); u = clamp(u, -p.limit, p.limit); }
 #ifdef CANON_SWIGLU
     precise float denom = 1.0 + canonical_exp(-g);
+#ifdef FP64_MATH
+    precise float silu = round_fp64_to_fp32(double(g) / double(denom));
+#else
     precise float silu = g / denom;
+#endif
     o[vec_index * p.n + e] = silu * u;
 #else
     o[vec_index * p.n + e] = g * sigmoid(g) * u;

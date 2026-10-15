@@ -147,10 +147,21 @@ public:
   VkPipelineLayout layout() const { return layout_; }
   VkDevice handle() const { return device_; }
   const std::string &name() const { return name_; }
+  uint32_t subgroup_size() const {
+    VkPhysicalDeviceSubgroupProperties subgroup{};
+    subgroup.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    VkPhysicalDeviceProperties2 properties{};
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties.pNext = &subgroup;
+    vkGetPhysicalDeviceProperties2(physical_, &properties);
+    return subgroup.subgroupSize;
+  }
   size_t live_bytes() const { return live_; }
   size_t peak_bytes() const { return peak_; }
   size_t budget() const { return budget_; }
   bool shared_heap_large() const { return shared_large_; }
+  bool fp64_expert_scale() const { return fp64_expert_scale_; }
+  bool fp64_expert_math() const { return fp64_expert_math_; }
   uint32_t max_groups_x() const { return max_groups_x_; }
   VkQueryPool queries() const { return queries_; }
   static constexpr uint32_t query_capacity = 4096;
@@ -158,6 +169,8 @@ public:
 private:
   friend struct Buffer;
   friend class Recorder;
+  bool fp64_expert_scale_ = false;
+  bool fp64_expert_math_ = false;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkPhysicalDevice physical_ = VK_NULL_HANDLE;
   VkDevice device_ = VK_NULL_HANDLE;

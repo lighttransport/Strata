@@ -7,6 +7,8 @@ namespace strata::vulkan::fast {
 
 struct ExpertBatchTrace {
   std::vector<float> qinput, gate_up, hidden, qhidden;
+  std::vector<float> gate_lane_prefix; // FP64 diagnostic: first16 rows of token0, eight K lanes
+  std::vector<float> gate_block_scale; // lane, block, eight scale/FMA operands/results for row0/token0
 };
 struct ExpertBatchStats {
   double pack_ms = 0, upload_ms = 0, queued_work_ms = 0;
@@ -43,6 +45,8 @@ private:
   using CommandKey = std::tuple<uint32_t, uint32_t, bool>;
   std::map<CommandKey, VkCommandBuffer> commands_;
   ExpertBatchStats stats_;
+  std::unique_ptr<Buffer> gate_lane_prefix_;
+  std::unique_ptr<Buffer> gate_block_scale_;
   size_t quantized_row_bytes_ = 0;
   Layout down_layout_;
   std::vector<uint8_t> packed_;

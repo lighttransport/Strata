@@ -1,4 +1,9 @@
 #version 450
+#ifdef FP64_SCALE
+#extension GL_ARB_gpu_shader_fp64 : require
+#extension GL_GOOGLE_include_directive : require
+#include "fp64_round.glsl"
+#endif
 layout(local_size_x = 256) in;
 layout(binding = 0, std430) readonly buffer Input {vec4 x[];};
 layout(binding = 1, std430) writeonly buffer Output {vec4 y[];};
@@ -11,5 +16,9 @@ void main() {
   precise float fused = fma(v.x, v.y, v.z);
   precise float product = v.x * v.y;
   precise float separate = product + v.z;
+#ifdef FP64_SCALE
+  y[i] = vec4(ordinary, fused, separate, fp32_fma_rne(v.x, v.y, v.z));
+#else
   y[i] = vec4(ordinary, fused, separate, 0);
+#endif
 }

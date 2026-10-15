@@ -1,4 +1,9 @@
 #version 450
+#ifdef FP64_SCALE
+#extension GL_ARB_gpu_shader_fp64 : require
+#extension GL_GOOGLE_include_directive : require
+#include "fp64_round.glsl"
+#endif
 // One of the canonical CPU's eight dot lanes per z workgroup. Integer-valued
 // codes/scales accumulate exactly in FP32; only the per-block scale FMAs round.
 // A separate dispatch reduces the eight lane results in the CPU's fixed order.
@@ -10,6 +15,9 @@ layout(binding = 0, std430) readonly buffer WeightVectors { uvec4 w4[]; };
 layout(binding = 1, std430) readonly buffer Codes { float x[]; };
 layout(binding = 2, std430) readonly buffer Metadata { float meta[]; };
 layout(binding = 3, std430) writeonly buffer Partial { float part[]; };
+#ifdef TRACE_BLOCK_SCALE
+layout(binding = 4, std430) writeonly buffer BlockTrace { float block_trace[]; };
+#endif
 layout(push_constant) uniform P {uint K, M, Mp, N, side;} p;
 #ifndef NTILE
 #define NTILE 64
@@ -40,6 +48,15 @@ layout(push_constant) uniform P {uint K, M, Mp, N, side;} p;
 #define META_PANEL(A) vec4(A[ci], A[ci + 16u], A[ci + 32u], A[ci + 48u])
 #else
 #error Unsupported expert column tile
+#endif
+#ifdef FP64_SCALE
+Panel scale_fma(Panel a, Panel b, Panel c) {
+  return Panel(fp32_fma_rne(a.x, b.x, c.x), fp32_fma_rne(a.y, b.y, c.y),
+               fp32_fma_rne(a.z, b.z, c.z), fp32_fma_rne(a.w, b.w, c.w));
+}
+#define SCALE_FMA(A, B, C) scale_fma(A, B, C)
+#else
+#define SCALE_FMA(A, B, C) fma(A, B, C)
 #endif
 #ifdef TYPE_Q2K
 #define CH 5u
@@ -191,20 +208,42 @@ void main() {
 #if MTILE == 64
     precise Panel dm2 = -wm[ri + 32u] * yd, dm3 = -wm[ri + 48u] * yd;
 #endif
-    acc0 = fma(dm0, min0[ri] * s0 + min1[ri] * s1, acc0);
-    acc1 = fma(dm1, min0[ri + 16u] * s0 + min1[ri + 16u] * s1, acc1);
+#ifdef TRACE_BLOCK_SCALE
+    const uint trace_at = (lane * blocks + b) * 8u;
+    const bool trace_this = t == 0u && gl_WorkGroupID.x == 0u && gl_WorkGroupID.y == 0u;
+    if (trace_this) {
+      block_trace[trace_at] = dm0.x;
+      block_trace[trace_at + 1u] = min0[ri] * s0.x + min1[ri] * s1.x;
+      block_trace[trace_at + 2u] = acc0.x;
+    }
+#endif
+    acc0 = SCALE_FMA(dm0, min0[ri] * s0 + min1[ri] * s1, acc0);
+    acc1 = SCALE_FMA(dm1, min0[ri + 16u] * s0 + min1[ri + 16u] * s1, acc1);
 #if MTILE == 64
-    acc2 = fma(dm2, min0[ri + 32u] * s0 + min1[ri + 32u] * s1, acc2);
-    acc3 = fma(dm3, min0[ri + 48u] * s0 + min1[ri + 48u] * s1, acc3);
+    acc2 = SCALE_FMA(dm2, min0[ri + 32u] * s0 + min1[ri + 32u] * s1, acc2);
+    acc3 = SCALE_FMA(dm3, min0[ri + 48u] * s0 + min1[ri + 48u] * s1, acc3);
+#endif
+#ifdef TRACE_BLOCK_SCALE
+    if (trace_this) block_trace[trace_at + 3u] = acc0.x;
 #endif
 #endif
     precise Panel d0 = wd[ri] * yd, d1 = wd[ri + 16u] * yd;
 #if MTILE == 64
     precise Panel d2 = wd[ri + 32u] * yd, d3 = wd[ri + 48u] * yd;
 #endif
-    acc0 = fma(d0, l0, acc0); acc1 = fma(d1, l1, acc1);
+#ifdef TRACE_BLOCK_SCALE
+    if (trace_this) {
+      block_trace[trace_at + 4u] = d0.x;
+      block_trace[trace_at + 5u] = l0.x;
+      block_trace[trace_at + 7u] = wd[ri];
+    }
+#endif
+    acc0 = SCALE_FMA(d0, l0, acc0); acc1 = SCALE_FMA(d1, l1, acc1);
+#ifdef TRACE_BLOCK_SCALE
+    if (trace_this) block_trace[trace_at + 6u] = acc0.x;
+#endif
 #if MTILE == 64
-    acc2 = fma(d2, l2, acc2); acc3 = fma(d3, l3, acc3);
+    acc2 = SCALE_FMA(d2, l2, acc2); acc3 = SCALE_FMA(d3, l3, acc3);
 #endif
     barrier();
   }

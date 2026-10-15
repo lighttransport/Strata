@@ -6,6 +6,7 @@
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/kernels/cpu/q23_avx2.hpp"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -22,8 +23,10 @@ static void decode_q8k(const uint8_t *blocks, float *out, uint32_t n) {
     for (uint32_t i = 0; i < 256; ++i) out[b * 256 + i] = d * float(codes[i]);
   }
 }
-static float scalar_q2(const uint8_t *w, const uint8_t *a, uint32_t n) {
-  float acc[8]{};
+static std::array<float, 8> scalar_q2_lanes(const uint8_t *w, const uint8_t *a, uint32_t n,
+                                           std::vector<float> *block_trace = nullptr) {
+  std::array<float, 8> acc{};
+  if (block_trace) block_trace->resize(size_t(8) * (n / 256) * 8);
   const size_t stride = ggml_row_size(GGML_TYPE_Q8_K, 256);
   for (uint32_t b = 0; b < n / 256; ++b) {
     const auto *raw = w + b * 84, *act = a + b * stride;
@@ -41,10 +44,23 @@ static float scalar_q2(const uint8_t *w, const uint8_t *a, uint32_t n) {
         int sum = 0; for (uint32_t i = 0; i < 16; ++i) sum += codes[16 * s + i];
         correction += int(raw[s] >> 4) * sum;
       }
-      acc[j] = std::fma(-ggml_fp16_to_fp32(dh[1]) * yd, float(correction), acc[j]);
-      acc[j] = std::fma(ggml_fp16_to_fp32(dh[0]) * yd, float(dot), acc[j]);
+      const float dm = -ggml_fp16_to_fp32(dh[1]) * yd, d = ggml_fp16_to_fp32(dh[0]) * yd;
+      const size_t at = (size_t(j) * (n / 256) + b) * 8;
+      if (block_trace) {
+        (*block_trace)[at] = dm; (*block_trace)[at + 1] = float(correction); (*block_trace)[at + 2] = acc[j];
+        (*block_trace)[at + 4] = d; (*block_trace)[at + 5] = float(dot);
+        (*block_trace)[at + 7] = ggml_fp16_to_fp32(dh[0]);
+      }
+      acc[j] = std::fma(dm, float(correction), acc[j]);
+      if (block_trace) (*block_trace)[at + 3] = acc[j];
+      acc[j] = std::fma(d, float(dot), acc[j]);
+      if (block_trace) (*block_trace)[at + 6] = acc[j];
     }
   }
+  return acc;
+}
+static float scalar_q2(const uint8_t *w, const uint8_t *a, uint32_t n) {
+  const auto acc = scalar_q2_lanes(w, a, n);
   return ((acc[0] + acc[4]) + (acc[1] + acc[5])) + ((acc[2] + acc[6]) + (acc[3] + acc[7]));
 }
 int main(int argc, char **argv) {
@@ -83,31 +99,110 @@ int main(int argc, char **argv) {
     strata::core::ModelArtifact artifact(argv[1]);
     const auto &model = strata::vulkan::checked_model(artifact);
     fast::Device dev(software ? "llvmpipe" : "", 1ULL << 30, software);
+    if (dev.fp64_expert_scale()) {
+      std::mt19937_64 rng(65271);
+      std::vector<uint64_t> patterns;
+      for (uint32_t i = 0; i < 8192; ++i) {
+        const uint32_t exponent = i % 4 == 0 ? uint32_t(rng() % 2048) : i % 4 == 1 ? 873 + i % 25 :
+                                  i % 4 == 2 ? 897 + i % 254 : 1149 + i % 4;
+        patterns.push_back((rng() & 0x800fffffffffffffULL) | (uint64_t(exponent) << 52));
+      }
+      for (uint32_t i = 0; i < 512; ++i) {
+        uint32_t bits = uint32_t(rng() % 0x7f7ffffeu), next_bits = bits + 1;
+        float a, b;
+        std::memcpy(&a, &bits, 4); std::memcpy(&b, &next_bits, 4);
+        const double middle = (double(a) + double(b)) * 0.5;
+        uint64_t raw;
+        std::memcpy(&raw, &middle, 8);
+        const uint64_t sign = (i & 1) ? 0x8000000000000000ULL : 0;
+        patterns.push_back(sign | (raw - 1)); patterns.push_back(sign | raw); patterns.push_back(sign | (raw + 1));
+      }
+      for (uint64_t bits : {0ULL, 0x8000000000000000ULL, 0x7ff0000000000000ULL, 0xfff0000000000000ULL,
+                            0x7ff8000000000001ULL, 1ULL, 0x3690000000000000ULL, 0x36a0000000000000ULL})
+        patterns.push_back(bits);
+      auto input = dev.buffer(patterns.size() * 8, fast::Memory::Host);
+      auto output = dev.buffer(patterns.size() * 4, fast::Memory::Host);
+      for (size_t i = 0; i < patterns.size(); ++i) {
+        input->as<uint32_t>()[2 * i] = uint32_t(patterns[i]);
+        input->as<uint32_t>()[2 * i + 1] = uint32_t(patterns[i] >> 32);
+      }
+      dev.run([&](fast::Recorder &r) {
+        r.dispatch("round_fp64_oracle", {fast::View(*input), fast::View(*output)},
+                   std::array<uint32_t, 1>{uint32_t(patterns.size())}, uint32_t((patterns.size() + 255) / 256));
+        r.host_visible();
+      });
+      uint32_t mismatches = 0;
+      for (size_t i = 0; i < patterns.size(); ++i) {
+        double x;
+        std::memcpy(&x, &patterns[i], 8);
+        volatile double source = x;
+        const float ref = float(source);
+        uint32_t bits;
+        std::memcpy(&bits, &ref, 4);
+        float got;
+        std::memcpy(&got, output->as<uint32_t>() + i, 4);
+        mismatches += std::isnan(ref) ? !std::isnan(got) : bits != output->as<uint32_t>()[i];
+      }
+      std::cout << "{\"fp64_to_f32_cases\":" << patterns.size() << ",\"mismatches\":" << mismatches
+                << ",\"nan_comparison\":\"classification\",\"finite_comparison\":\"all_bits\"}\n";
+      if (mismatches) throw std::runtime_error("explicit FP64toFP32 rounding differs from CPU conversion");
+    }
     {
-      constexpr uint32_t count = 512;
+      const uint32_t count = dev.fp64_expert_scale() ? 1792u : 512u;
       auto input = dev.buffer(count * 16, fast::Memory::Host);
       auto output = dev.buffer(count * 16, fast::Memory::Host);
       std::mt19937 probe(733); std::uniform_real_distribution<float> fraction(0.5f, 2.f);
       for (uint32_t i = 0; i < count; ++i) {
         const float a = fraction(probe), b = fraction(probe);
         input->as<float>()[4 * i] = a; input->as<float>()[4 * i + 1] = b;
-        input->as<float>()[4 * i + 2] = -float(a * b);
+        input->as<float>()[4 * i + 2] = i < 512 ? -float(a * b) : i < 1024 ? fraction(probe) - 1.25f : 0.f;
+        if (i >= 1536) {
+          const int index = int(i - 1536), q = index % 17 - 8, exponent = index % 81 - 40;
+          const float sign = index & 1 ? -1.f : 1.f;
+          input->as<float>()[4 * i] = sign * std::ldexp(0x1.000002p0f, q);
+          input->as<float>()[4 * i + 1] = std::ldexp(0x1.fffffcp-1f, exponent - q - 24);
+          input->as<float>()[4 * i + 2] = sign * std::ldexp(0x1.000002p0f, exponent);
+        }
       }
       dev.run([&](fast::Recorder &r) {
-        r.dispatch("fma_oracle", {fast::View(*input), fast::View(*output)},
+        r.dispatch(dev.fp64_expert_scale() ? "fma_oracle_fp64_scale" : "fma_oracle", {fast::View(*input), fast::View(*output)},
                    std::array<uint32_t, 1>{count}, count / 256);
         r.host_visible();
       });
-      uint32_t ordinary = 0, precise = 0, separate = 0;
+      uint32_t ordinary = 0, precise = 0, separate = 0, wide = 0, wide_cancel = 0, wide_general = 0, multiply = 0;
+      uint32_t double_rounding_counterexamples = 0;
       for (uint32_t i = 0; i < count; ++i) {
         const float *v = input->as<float>() + 4 * i;
         const float ref = std::fma(v[0], v[1], v[2]);
         ordinary += output->as<float>()[4 * i] != ref;
         precise += output->as<float>()[4 * i + 1] != ref;
         separate += output->as<float>()[4 * i + 2] != ref;
+        if (dev.fp64_expert_scale()) {
+          const bool mismatch = output->as<float>()[4 * i + 3] != ref;
+          wide += mismatch;
+          if (i < 512) wide_cancel += mismatch;
+          else wide_general += mismatch;
+          if (i >= 1024 && i < 1536) {
+            volatile float product = v[0] * v[1];
+            multiply += output->as<float>()[4 * i + 2] != product;
+          }
+          if (i >= 1536) {
+            volatile double product = double(v[0]) * double(v[1]);
+            volatile double sum = product + double(v[2]);
+            double_rounding_counterexamples += float(sum) != ref;
+          }
+        }
       }
       std::cout << "{\"fma_probe_cases\":" << count << ",\"ordinary_mismatches\":" << ordinary
-                << ",\"precise_mismatches\":" << precise << ",\"separate_mismatches\":" << separate << "}\n";
+                << ",\"precise_mismatches\":" << precise << ",\"separate_mismatches\":" << separate;
+      if (dev.fp64_expert_scale()) std::cout << ",\"fp64_scale_mismatches\":" << wide
+          << ",\"fp64_cancel_mismatches\":" << wide_cancel << ",\"fp64_general_mismatches\":" << wide_general
+          << ",\"fp32_multiply_mismatches\":" << multiply
+          << ",\"cpu_double_rounding_counterexamples\":" << double_rounding_counterexamples;
+      std::cout << "}\n";
+      if (dev.fp64_expert_scale() && wide) throw std::runtime_error("FP64 scale diagnostic failed FMA cancellation screen");
+      if (dev.fp64_expert_scale() && double_rounding_counterexamples != 256)
+        throw std::runtime_error("CPU double-rounding negative controls failed");
     }
     const auto &G = artifact.at("blk.3.ffn_gate_exps.weight"), &U = artifact.at("blk.3.ffn_up_exps.weight"),
                &D = artifact.at("blk.3.ffn_down_exps.weight");
@@ -193,13 +288,46 @@ int main(int argc, char **argv) {
             changed += ref[i] != got[i];
           }
           std::cout << "{\"stage\":\"" << name << "\",\"rel_l2\":" << std::sqrt(e / std::max(n, 1e-30))
-                    << ",\"changed\":" << changed << "}\n";
+                    << ",\"changed\":" << changed
+                    << ",\"byte_identical\":" << (std::memcmp(ref.data(), got.data(), ref.size() * sizeof(float)) ? "false" : "true")
+                    << "}\n";
         };
         diagnostic("qinput", qinput, packed_trace.qinput);
         diagnostic("gate_up", gate_up, packed_trace.gate_up);
         diagnostic("hidden", expected_hidden, packed_trace.hidden);
         diagnostic("qhidden", qhidden, packed_trace.qhidden);
         cpu::native_quant_act(fmt, input.data(), act.data());
+        if (!packed_trace.gate_lane_prefix.empty()) {
+          uint32_t changed_lanes = 0, changed_reductions = 0;
+          for (uint32_t row = 0; row < 16; ++row) {
+            const auto ref = scalar_q2_lanes(gate + row * fmt.gu_row, act.data(), 4096);
+            std::array<float, 8> lanes{};
+            for (uint32_t lane = 0; lane < 8; ++lane) {
+              lanes[lane] = packed_trace.gate_lane_prefix[lane * 16 + row];
+              changed_lanes += lanes[lane] != ref[lane];
+            }
+            const float reduced = ((lanes[0] + lanes[4]) + (lanes[1] + lanes[5])) +
+                                  ((lanes[2] + lanes[6]) + (lanes[3] + lanes[7]));
+            changed_reductions += reduced != packed_trace.gate_up[row];
+          }
+          std::cout << "{\"gate_lane_prefix_values\":128,\"cpu_lane_mismatches\":" << changed_lanes
+                    << ",\"gpu_reduction_mismatches\":" << changed_reductions << "}\n";
+          std::vector<float> block_ref;
+          scalar_q2_lanes(gate, act.data(), 4096, &block_ref);
+          const auto &got = packed_trace.gate_block_scale;
+          if (got.size() != block_ref.size()) throw std::runtime_error("GPU block-scale trace size differs");
+          std::array<uint32_t, 8> differences{};
+          uint32_t min_fma = 0, scale_fma = 0;
+          for (size_t at = 0; at < got.size(); at += 8) {
+            for (size_t field = 0; field < 8; ++field) differences[field] += got[at + field] != block_ref[at + field];
+            min_fma += got[at + 3] != std::fma(got[at], got[at + 1], got[at + 2]);
+            scale_fma += got[at + 6] != std::fma(got[at + 4], got[at + 5], got[at + 3]);
+          }
+          std::cout << "{\"gate_block_scale_values\":" << got.size() << ",\"field_mismatches\":[";
+          for (size_t field = 0; field < 8; ++field) std::cout << (field ? "," : "") << differences[field];
+          std::cout << "],\"gpu_operands_min_fma_mismatches\":" << min_fma
+                    << ",\"gpu_operands_scale_fma_mismatches\":" << scale_fma << "}\n";
+        }
         for (uint32_t row = 0; row < 4; ++row) {
           const float scalar = scalar_q2(gate + row * fmt.gu_row, act.data(), 4096);
           if (scalar != gate_up[row]) throw std::runtime_error("CPU scalar canonical dot differs from CPU oracle");
@@ -213,9 +341,13 @@ int main(int argc, char **argv) {
           norm += double(expected[i]) * expected[i];
         }
         const double rel = std::sqrt(err / std::max(norm, 1e-30));
+        const bool cpu_bytes = !std::memcmp(actual.data(), expected.data(), actual.size() * sizeof(float));
         std::cout << "{\"expert\":" << expert << ",\"columns\":" << T
-                  << ",\"software\":" << software << ",\"rel_l2_cpu_canonical\":" << rel << "}\n" << std::flush;
+                  << ",\"software\":" << software << ",\"rel_l2_cpu_canonical\":" << rel
+                  << ",\"cpu_output_byte_identical\":" << (cpu_bytes ? "true" : "false") << "}\n" << std::flush;
         if (!(rel < 2e-4)) throw std::runtime_error("streamed expert canonical parity failed");
+        if (dev.fp64_expert_math() && !cpu_bytes)
+          throw std::runtime_error("FP64 expert math differs from canonical CPU output bytes");
         if (replay) {
           const auto fixed = actual;
           std::vector<float> control(actual.size());

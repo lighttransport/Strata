@@ -787,6 +787,52 @@ Restoring main GEMV arithmetic while retaining GPU experts passed only one
 of three. These completed failures are preserved with their original caps
 and oracles. Neither setting repairs the optimized candidate's quality.
 
+`STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL=8|16` optionally widens matched GEMV
+calls while retaining their K split and per-column reduction order. It
+requires large matched prefill, Q8 emulation off and 64-lane subgroups;
+the default remains four columns. Native controls cover 428 panel cases,
+including row and column tails, offsets, strides, heads and accumulation.
+All output and sentinel bytes match the original four-column calls, and the
+sampled FP64 screen retains its 2e-5 limit. Both Vulkan builds compile; all
+eight default GEMV shader comparisons remain byte-identical.
+
+On RX570, matched prefill with 512 repetitive input tokens measured 28.9645
+to 31.9936 tok/s median, using one prefill warmup and three measured trials
+per process. The first measured final vocabulary vector matches exactly;
+the 32-token full-model byte control also passes. This 10.5% gain preserves
+the existing matched arithmetic. It does not repair the optimized expert
+quality failures or qualify coding throughput, full HumanEval or 100 tok/s.
+Measurements and hashes are in
+`docs/benchmarks/glm_vulkan_gemv_panels_rx570_20261016.json`.
+
+`STRATA_VULKAN_FAST_EXPERT_FP64_MATH=1` optionally matches canonical CPU
+arithmetic in streamed GPU experts. It requires shaderFloat64 and 64-by-64
+expert tiles. The flag enables explicit nearest-even FP32 rounding after
+FP64 intermediates, with a residual correction for FMA double rounding,
+and applies it to block-scale FMAs, the existing activation polynomial and
+activation/Q8 divisions. `STRATA_VULKAN_FAST_EXPERT_FP64_SCALE=1` limits the
+diagnostic to block-scale FMAs; it alone does not restore whole-expert bytes.
+Both flags default off and affect only the fast Vulkan engine.
+
+On RX570, the full mode matches all CPU output bytes for two experts at
+1, 5, 17, 33, 65 and 129 columns. Both Vulkan builds pass the same cases
+with lavapipe. The conversion oracle passes 9,736 cases; the FMA oracle
+passes 1,792, including 256 double-rounding counterexamples. NaNs use a
+classification check; other conversion results and expert outputs compare
+all bits. These finite checks do not establish correctness for every input.
+All 24 checked default GEMV, expert, activation and quantization shader
+binaries remain unchanged across the two builds.
+
+With matched 16-column GEMV panels, the full mode passes all three unchanged
+training oracles. All 1,038 generated token IDs match the frozen original
+reference (161, 425 and 452 tokens). Warmed 512-token repetitive prefill
+measured 22.7984 tok/s median across three trials, compared with 31.9936
+for the earlier panel candidate without this precision mode. The timing
+guards passed, but full HumanEval, coding throughput, 100+ prefill and
+combined decode/quality qualification remain pending for this executable.
+Measurements, source hashes and the excluded stale-binary experiment are in
+`docs/benchmarks/glm_vulkan_expert_fp64_math_rx570_20261016.json`.
+
 `STRATA_VULKAN_FAST_PREFILL_GPU_MTILE=32|64` selects the expert row tile.
 The 32-row variant halves each workgroup's row accumulators and weight
 scratch while retaining the dot and scale-operation order. Four software
