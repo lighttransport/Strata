@@ -95,7 +95,7 @@ needs a calibration run tens of times longer; the diagonal rows are the reliable
 ## Reproduce
 
 ```sh
-B=/mnt/nvme01/models/glm53f/quant-study; PY=/home/syoyo/venvs/gsq/bin/python   # numpy + torch (cu128) + GSQ deps
+B=/mnt/nvme01/models/glm53f/quant-study; PY=$HOME/venvs/gsq/bin/python   # numpy + torch (cu128) + GSQ deps
 python3 tools/quant_study/fetch_bf16_experts.py --layer 20 --experts 21,29,... --shared --out $B
 build-glm-release/strata-glm-exl3-dequant /mnt/nvme01/models/glm53f/glm53f-exl 20 21,29,... $B/exl3-layer20.safetensors
 # tools: $B/bin/ggml_quant (tools/quant_study/ggml_quant.cpp, libggml-base), $B/bin/llvq_layer

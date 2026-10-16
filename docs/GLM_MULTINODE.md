@@ -31,8 +31,8 @@ rate 40 (4x QDR):
 | `ib_write_bw -b`, both ways at once | 48.0 Gb/s peak, 43.3 average (about 2.7 GB/s each way; the B550's x4 slot is the likely limit) |
 | `ib_send_lat`, one way | 1.3 us up to 128 B; 5.2 us at 4 KB, 6.4 us at 8 KB, 14.7 us at 32 KB, 24.7 us at 64 KB |
 
-Through the engine's own transport (`tools/ucomm/build/ucomm_bench -b ib`, RC queue pairs, IPoIB bootstrap on
-10.10.10.x; TR16 rank 0, load average 2.5):
+Through the engine's own transport (`tools/ucomm/build/ucomm_bench -b ib`, RC queue pairs, IPoIB bootstrap on the
+private InfiniBand subnet; TR16 rank 0, load average 2.5):
 
 | `ucomm_bench` | 2026-10-16, full QDR | 2026-10-06, degraded link |
 |---|---|---|
