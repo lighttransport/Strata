@@ -817,6 +817,24 @@ __global__ void index_reduce(const float *dots, const float *w, float *scores, i
         sum += w[q * heads + h] * fmaxf(dots[(q * heads + h) * pools + p] * rsqrtf((float)dim), 0.f);
     scores[i] = sum * rsqrtf((float)heads);
 }
+__global__ void index_reduce_block(const float *dots, const float *w, float *scores, int heads, int ld, int first,
+                                   int count, int pools_total, int queries, int pos, int pool, int dim,
+                                   const int *device_pos, int offset) {
+    if (device_pos) pos = *device_pos + offset;
+    int i = blockIdx.x * 256 + threadIdx.x;
+    if (i >= count * queries)
+        return;
+    int q = i / count, j = i % count, p = first + j;
+    float *out = scores + (size_t)q * pools_total + p;
+    if (p >= (pos + q + 1) / pool) {
+        *out = -INFINITY;
+        return;
+    }
+    float sum = 0;
+    for (int h = 0; h < heads; ++h)
+        sum += w[q * heads + h] * fmaxf(dots[(size_t)(q * heads + h) * ld + j] * rsqrtf((float)dim), 0.f);
+    *out = sum * rsqrtf((float)heads);
+}
 __device__ unsigned long long score_key(float score, int index) {
     unsigned bits = __float_as_uint(score == 0 ? 0.f : score),
              ordered = bits & 0x80000000u ? ~bits : bits ^ 0x80000000u;
@@ -1522,6 +1540,17 @@ void glm_index_reduce(const float *d, const float *w, float *out, int h, int poo
     if (pools)
         index_reduce<<<(pools * q + 255) / 256, 256, 0, (cudaStream_t)s>>>(d, w, out, h, pools, q, pos, pool,
                                                                            dim, device_pos, offset);
+    check();
+}
+void glm_index_reduce_block(const float *d, const float *w, float *out, int h, int ld, int first, int count,
+                            int pools_total, int q, int pos, int pool, int dim, void *s, const int *device_pos,
+                            int offset) {
+    if (count < 0 || ld < count || first < 0 || first + count > pools_total)
+        throw std::invalid_argument("GLM: invalid index reduce block");
+    if (count && q)
+        index_reduce_block<<<(count * q + 255) / 256, 256, 0, (cudaStream_t)s>>>(d, w, out, h, ld, first, count,
+                                                                                pools_total, q, pos, pool, dim,
+                                                                                device_pos, offset);
     check();
 }
 void glm_index_select_batch(const float *scores, int *ids, int *counts, int pools, int pos, int queries,

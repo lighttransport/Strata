@@ -50,6 +50,49 @@ static void report_gpu_devices(std::ostream &out) {
     }
     out << "]\n";
 }
+// Opt-in VRAM pre-allocation (STRATA_GLM_VRAM_PREALLOC=1), as llama.cpp does: on first use of a device the process
+// takes all free memory except a small margin for the driver and libraries (STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB,
+// default 256) in one allocation, and every Device buffer is carved from it. Memory cannot be lost to other clients
+// later, and the 1 GiB budget reserve and the 512-2048 MiB physical headroom guard no longer apply. Off by default.
+struct DevicePool {
+    char *base = nullptr;
+    size_t bytes = 0;
+    std::map<size_t, size_t> free_blocks;   // offset -> size, coalesced
+    std::mutex mutex;
+    static constexpr size_t align = 256;
+    size_t largest() {
+        std::lock_guard lock(mutex);
+        size_t best = 0;
+        for (const auto &[offset, size] : free_blocks) best = std::max(best, size);
+        return best;
+    }
+    void *take(size_t n) {
+        n = std::max<size_t>(n, 1);
+        n = (n + align - 1) / align * align;
+        std::lock_guard lock(mutex);
+        auto best = free_blocks.end();
+        for (auto it = free_blocks.begin(); it != free_blocks.end(); ++it)
+            if (it->second >= n && (best == free_blocks.end() || it->second < best->second)) best = it;
+        if (best == free_blocks.end()) return nullptr;
+        const size_t offset = best->first, size = best->second;
+        free_blocks.erase(best);
+        if (size > n) free_blocks.emplace(offset + n, size - n);
+        return base + offset;
+    }
+    void give(void *ptr, size_t n) {
+        n = std::max<size_t>(n, 1);
+        n = (n + align - 1) / align * align;
+        std::lock_guard lock(mutex);
+        size_t offset = static_cast<char *>(ptr) - base;
+        auto next = free_blocks.lower_bound(offset);
+        if (next != free_blocks.end() && offset + n == next->first) { n += next->second; next = free_blocks.erase(next); }
+        if (next != free_blocks.begin()) {
+            auto prev = std::prev(next);
+            if (prev->first + prev->second == offset) { prev->second += n; return; }
+        }
+        free_blocks.emplace(offset, n);
+    }
+};
 struct DeviceAccount {
     size_t live = 0, peak = 0, limit = SIZE_MAX;
     std::map<std::string, size_t> by_tag;   // live bytes per allocation category, for GPU_LIVE
@@ -69,7 +112,63 @@ struct Device {
     static size_t &live() { return account().live; }
     static size_t &peak() { return account().peak; }
     static size_t &limit() { return account().limit; }
+    static bool prealloc() {
+        static const bool on = [] {
+            const char *value = std::getenv("STRATA_GLM_VRAM_PREALLOC");
+            if (!value || std::string(value) == "0") return false;
+            if (std::string(value) != "1") throw std::invalid_argument("GLM: STRATA_GLM_VRAM_PREALLOC must be 0 or 1");
+            return true;
+        }();
+        return on;
+    }
+    static inline std::array<std::unique_ptr<DevicePool>, 64> pools;
+    static inline std::mutex pools_mutex;
+    // The current device's pool, created on first use; nullptr unless pre-allocation is on.
+    static DevicePool *pool() {
+        if (!prealloc()) return nullptr;
+        int device;
+        check(cudaGetDevice(&device));
+        std::lock_guard lock(pools_mutex);
+        auto &slot = pools.at(device);
+        if (!slot) {
+            static const size_t margin = [] {
+                const char *value = std::getenv("STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB");
+                if (!value) return size_t(256);
+                size_t used = 0;
+                const size_t n = std::stoull(value, &used);
+                if (value[used] || n < 64 || n > 4096)
+                    throw std::invalid_argument("GLM: VRAM pre-allocation margin must be 64..4096 MiB");
+                return n;
+            }() * 1024 * 1024;
+            size_t free_bytes = 0, total_bytes = 0;
+            check(cudaMemGetInfo(&free_bytes, &total_bytes));
+            const size_t granule = 64 * 1024 * 1024;
+            const size_t bytes = (free_bytes > margin ? free_bytes - margin : 0) / granule * granule;
+            if (bytes < size_t(1024) * 1024 * 1024)
+                throw std::runtime_error("GLM: VRAM pre-allocation found less than 1 GiB free: device=" +
+                                         std::to_string(device) + " free_MiB=" + std::to_string(free_bytes >> 20));
+            auto pool = std::make_unique<DevicePool>();
+            check(cudaMalloc((void **)&pool->base, bytes));
+            pool->bytes = bytes;
+            pool->free_blocks.emplace(0, bytes);
+            auto &a = accounts.at(device);
+            a.limit = std::min(a.limit, bytes);
+            std::cerr << "VRAM_PREALLOC device=" << device << " pool_MiB=" << (bytes >> 20)
+                      << " free_MiB=" << (free_bytes >> 20) << " total_MiB=" << (total_bytes >> 20)
+                      << " margin_MiB=" << (margin >> 20) << '\n';
+            slot = std::move(pool);
+        }
+        return slot.get();
+    }
+    // cudaMemGetInfo, except that with pre-allocation "free" is the largest free block of the current device's pool.
+    static cudaError_t mem_info(size_t *free_bytes, size_t *total_bytes) {
+        const cudaError_t status = cudaMemGetInfo(free_bytes, total_bytes);
+        if (status == cudaSuccess)
+            if (DevicePool *p = pool()) *free_bytes = p->largest();
+        return status;
+    }
     static size_t budget_reserve() {
+        if (prealloc()) return 0;   // driver and library allocations come from the margin outside the pool
         // CUDA allocations outside Device (driver, graphs, library internals)
         // count against a capacity simulation too. Keep 1 GiB by default; the
         // opt-in 512 MiB reserve must be checked against actual process usage.
@@ -85,6 +184,7 @@ struct Device {
         return mib * 1024 * 1024;
     }
     static size_t physical_reserve() {
+        if (prealloc()) return 0;   // the pool already owns the memory; nothing to leave for other clients
         // STRATA_GLM_GPU_RESERVE_MIB: free device memory to leave for other clients, instead of the defaults below.
         static const long configured = [] {
             const char *value = std::getenv("STRATA_GLM_GPU_RESERVE_MIB");
@@ -103,6 +203,7 @@ struct Device {
     size_t bytes;
     int owner = 0;
     bool owned = true;
+    DevicePool *from_pool = nullptr;
     Device(void *view, size_t bytes) : p(view), bytes(bytes), owned(false) { check(cudaGetDevice(&owner)); }
     explicit Device(size_t n, bool zero = false) : bytes(n) {
         check(cudaGetDevice(&owner));
@@ -112,6 +213,15 @@ struct Device {
                 " request_MiB=" + std::to_string(n / double(1024 * 1024)) +
                 " live_MiB=" + std::to_string(a.live / double(1024 * 1024)) +
                 " limit_MiB=" + std::to_string(a.limit / double(1024 * 1024)));
+        if (DevicePool *pool_ = pool()) {
+            p = pool_->take(n);
+            if (!p)
+                throw std::runtime_error("GLM: VRAM pool exhausted: device=" + std::to_string(owner) +
+                    " request_MiB=" + std::to_string(n / double(1024 * 1024)) +
+                    " largest_free_MiB=" + std::to_string(pool_->largest() / double(1024 * 1024)) +
+                    " pool_MiB=" + std::to_string(pool_->bytes / double(1024 * 1024)));
+            from_pool = pool_;
+        } else {
         size_t free_bytes = 0, total_bytes = 0;
         check(cudaMemGetInfo(&free_bytes, &total_bytes));
         // Headless compute cards can use their capacity; display GPUs retain 2 GiB.
@@ -121,13 +231,15 @@ struct Device {
                 std::to_string(owner) + " request_MiB=" + std::to_string(n / double(1024 * 1024)) +
                 " free_MiB=" + std::to_string(free_bytes / double(1024 * 1024)));
         check(cudaMalloc(&p, n));
+        }
         a.live += n;
         a.peak = std::max(a.peak, a.live);
         { std::lock_guard<std::mutex> lock(a.tag_mutex); a.by_tag[category] += n; }
         if (zero) {
             auto status = cudaMemset(p, 0, n);
             if (status != cudaSuccess) {
-                cudaFree(p); p = nullptr; a.live -= n;
+                if (from_pool) from_pool->give(p, n); else cudaFree(p);
+                p = nullptr; a.live -= n;
                 check(status);
             }
         }
@@ -135,7 +247,7 @@ struct Device {
     ~Device() {
         if (owned) {
             DeviceScope scope(owner);
-            cudaFree(p);
+            if (from_pool) from_pool->give(p, bytes); else cudaFree(p);
             auto &a = accounts.at(owner);
             a.live -= bytes;
             std::lock_guard<std::mutex> lock(a.tag_mutex);

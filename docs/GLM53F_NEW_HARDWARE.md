@@ -70,6 +70,11 @@ Memory discipline, which every published number used and which the benchmark too
   memory limit below RAM, e.g. 56-60 GiB on a 64 GB box);
 - never force kernel memory compaction while the model is mapped;
 - a VRAM reserve: `STRATA_GLM_GPU_RESERVE_MIB=1024` and `STRATA_GLM_BUDGET_RESERVE_MIB=1024`;
+- or, opt-in on a card that nothing else uses (no display, no other GPU jobs): `STRATA_GLM_VRAM_PREALLOC=1`.
+  On first use of each GPU the process takes all free VRAM except `STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB`
+  (default 256, for the driver and libraries) in one allocation and carves every buffer from it, as llama.cpp
+  does. Both reserves above are then ignored, so set `gpu_budget_mib` to the card's size (16384 for a 16 GB card).
+  Other processes cannot take that memory while the runner lives;
 - a quiet machine for timing: no builds, downloads or other GPU jobs (`tools/glm_q2_run_guard.py` checks
   for interference and refuses or records it).
 

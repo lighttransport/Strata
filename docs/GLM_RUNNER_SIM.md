@@ -60,6 +60,17 @@ Tests: `PYTHONPATH=tools python3 -m unittest tools.test_glm_runner_sim` (no GPU 
 one worker request per slot, calibration recovers planted constants, validate refuses a holdout miss, sweep
 is monotone and excludes lossy levers by default, prefill F16 halves the exchange bytes).
 
+## Two nodes
+
+`multinode` puts the worker GPU on a second host behind a network link (`--links gbe ib-qdr ib 10gbe` or
+`rtt_us,gbps,exposed_us`; presets in `tools/sim/hw.py` `LINKS`) and prints decode and prefill per link next to the
+primary alone and the one-host pair, searching the worker's expert slots, an optional CPU lane on the worker node
+(`--cpu-shares`) and the prefill fraction. `--anchor-decode` / `--anchor-prefill` scale every row to a measured
+primary-alone number. The configuration and the TR16 + B550 results are in [GLM_MULTINODE.md](GLM_MULTINODE.md).
+`split-model` prices a model larger than one node's RAM (`--expert-scale`, `--node-a-weights-gb`): one node with
+enough RAM against two nodes where the bytes that do not fit live on node B and its CPU serves them
+(`two_node_hardware(..., gpu_on_b=False)`, per-layer shares from the coverage priors).
+
 ## Calibration record
 
 Fit on the cuda-primary and hip-primary 8K traces, the single-card 8K rows and the 8K prefill timelines;

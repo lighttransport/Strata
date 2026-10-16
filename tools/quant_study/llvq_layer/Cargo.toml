@@ -1,0 +1,12 @@
+[package]
+name = "llvq_layer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Quantize one GLM-5.3-Flash expert matrix with llvq's Leech/Tetra GPTQ (quantization study)"
+
+[dependencies]
+llvq-quant = { git = "https://github.com/pjmalandrino/llvq", rev = "ddecad3196f4f7fc872e03ca5c0499deb12c47e8", features = ["fast-linalg"] }
+
+[profile.release]
+opt-level = 3

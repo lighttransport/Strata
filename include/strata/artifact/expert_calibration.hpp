@@ -7,6 +7,7 @@
 #include <vector>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <stdexcept>
 #ifdef __linux__
 #include <sys/mman.h>
@@ -23,7 +24,7 @@ class ExpertCalibration final:public kernels::cpu::ExpertObserver {
     std::map<int,std::pair<std::vector<double>,std::vector<double>>> gates_;
     std::filesystem::path directory_;
     std::ofstream trace_;
-    int trace_positions_=24,first_position_=-1;
+    int trace_positions_=24,first_position_=-1,trace_layer_=-1;
     void add(int layer,int expert,const float* x,int n,bool down) {
         if(directory_.empty())return;
         if(layer<3||layer>44||expert<0||expert>=experts_||n!=(down?2048:4096))throw std::runtime_error("calibration geometry mismatch");
@@ -47,6 +48,15 @@ public:
         if(experts_<1||experts_>512)throw std::invalid_argument("calibration: invalid expert count");
         if(!directory_.empty())std::filesystem::create_directories(directory_);
         if(!trace.empty()){trace_.open(trace,std::ios::binary|std::ios::trunc);if(!trace_)throw std::runtime_error("cannot create expert activation trace");}
+        // Opt-in (quantization study): record more prompt positions, or only one MoE layer. Defaults unchanged.
+        if(const char* v=std::getenv("STRATA_GLM_ACTIVATION_TRACE_POSITIONS")) {
+            trace_positions_=std::atoi(v);
+            if(trace_positions_<1||trace_positions_>(1<<20))throw std::invalid_argument("activation trace positions must be 1..1048576");
+        }
+        if(const char* v=std::getenv("STRATA_GLM_ACTIVATION_TRACE_LAYER")) {
+            trace_layer_=std::atoi(v);
+            if(trace_layer_<3||trace_layer_>44)throw std::invalid_argument("activation trace layer must be 3..44");
+        }
     }
     // weights: the normalized routing weights next to ids (nt*topk), or nullptr when the caller has none.
     void input(int layer,int position,int nt,int n,int topk,const int* ids,const float* values,const float* weights=nullptr) {
@@ -56,7 +66,7 @@ public:
             for(int j=0;j<nt*topk;++j){const int e=ids[j];if(e<0||e>=experts_||!std::isfinite(weights[j]))throw std::runtime_error("calibration routing mismatch");g.first[e]+=weights[j];g.second[e]+=double(weights[j])*weights[j];}
         }
         if(first_position_<0)first_position_=position;
-        if(trace_.is_open()&&position-first_position_<trace_positions_) {
+        if(trace_.is_open()&&position-first_position_<trace_positions_&&(trace_layer_<0||layer==trace_layer_)) {
             const uint32_t header[]={0x31435247,uint32_t(layer),uint32_t(position),uint32_t(nt),uint32_t(n),uint32_t(topk)};
             trace_.write(reinterpret_cast<const char*>(header),sizeof header);
             trace_.write(reinterpret_cast<const char*>(ids),nt*topk*sizeof(int));trace_.write(reinterpret_cast<const char*>(values),nt*n*sizeof(float));

@@ -322,5 +322,86 @@ class DataFileTests(unittest.TestCase):
         self.assertEqual(len({l['name'] for l in levers}), len(levers))
 
 
+class TwoNodeTests(unittest.TestCase):
+    """The worker GPU on a second host (two_node_hardware); the one-host model is untouched."""
+    QDR = dict(name='ib-qdr', rtt_us=15.0, gbps=3.2, exposed_us=20.0)
+    GBE = dict(name='1gbe', rtt_us=401.0, gbps=0.117, exposed_us=80.0)
+
+    def setUp(self):
+        self.hw = hardware(); self.table = table()
+
+    def decode(self, hw, share=0.0):
+        topo = g.Topology(kind='A', primary='hip', worker='cuda', worker_cpu_share=share)
+        place = g.Placement(primary_slots=15, worker_slots=33)
+        wl = g.synthetic_workload(self.table, place, topo, rounds=1, shares=SHARES)
+        return g.simulate_decode(wl, self.table, place, topo, hw), wl, topo, place
+
+    def test_base_manifest_is_not_modified(self):
+        before = copy.deepcopy(self.hw)
+        g.two_node_hardware(self.hw, self.QDR)
+        self.assertEqual(before, self.hw)
+
+    def test_free_link_matches_one_host(self):
+        local = self.decode(self.hw)[0]['tok_s']
+        free = self.decode(g.two_node_hardware(self.hw, dict(name='free', rtt_us=0.0, gbps=1000.0, exposed_us=0.0),
+                                               node=dict(h2d_gb_s=7.2, d2h_gb_s=7.1, ram_gb_s=60.0, memcpy_gb_s=5.0)))[0]['tok_s']
+        self.assertAlmostEqual(free, local, delta=0.05 * local)
+
+    def test_gbe_slower_than_qdr(self):
+        qdr = self.decode(g.two_node_hardware(self.hw, self.QDR))[0]['tok_s']
+        gbe = self.decode(g.two_node_hardware(self.hw, self.GBE))[0]['tok_s']
+        self.assertLess(gbe, qdr)
+        self.assertLess(gbe, 0.85 * qdr)
+
+    def test_one_request_crosses_the_network_per_worker_slot(self):
+        hw = g.two_node_hardware(self.hw, self.QDR)
+        _, wl, topo, place = self.decode(hw)
+        b, _ = g.decode_round_events(wl[0], self.table, place, topo, hw)
+        requests = [e for e in b.events if '/request/' in e.name and e.work.get('net.ab')]
+        self.assertEqual(len(requests), sum(1 for s in wl[0].slots if s.worker_experts > 0))
+        self.assertTrue(all(e.work['net.ab'] == 2 * g.HIDDEN * 4 + 4096 for e in requests))
+
+    def test_node_b_cpu_share_moves_expert_bytes(self):
+        hw = g.two_node_hardware(self.hw, self.QDR)
+        _, wl, topo, place = self.decode(hw, share=0.5)
+        b, _ = g.decode_round_events(wl[0], self.table, place, topo, hw)
+        local = sum(e.work.get('cpu.flow0', 0) for e in b.events if '/draft' not in e.name)
+        remote = sum(e.work.get('b.cpu.flow', 0) for e in b.events)
+        slots = sum(s.cpu_bytes for s in wl[0].slots)
+        self.assertAlmostEqual(local + remote, slots, delta=1e-6 * slots)
+        self.assertGreater(remote, 0.4 * slots)
+
+    def test_prefill_streams_locally_and_exchanges_over_the_link(self):
+        hw = g.two_node_hardware(self.hw, self.QDR)
+        plan = g.PrefillPlan(primary='hip', worker='cuda', primary_fraction=0.5, exchange='f16', return_mode='partial')
+        b, _ = g.prefill_events(self.table, plan, hw)
+        streams = [e for e in b.events if '/cuda/stream' in e.name]
+        self.assertTrue(streams)
+        self.assertFalse(any(e.work.get('net.ab') or e.work.get('net.ba') for e in streams))
+        sent = sum(e.work.get('net.ab', 0) for e in b.events if '/exchange-in/' in e.name)
+        self.assertEqual(sent, len(g.MOE_LAYERS) * 8192 * g.HIDDEN * 2)
+        returned = sum(e.work.get('net.ba', 0) for e in b.events if '/return/' in e.name)
+        self.assertGreater(returned, 0)
+
+    def test_cpu_node_keeps_gpu_paths_local(self):
+        hw = g.two_node_hardware(self.hw, self.QDR, gpu_on_b=False)
+        self.assertEqual(hw['paths']['ram->cuda'], self.hw['paths']['ram->cuda'])
+        local = self.decode(self.hw)[0]['tok_s']
+        self.assertAlmostEqual(self.decode(hw)[0]['tok_s'], local, delta=1e-6 * local)   # no remote share: unchanged
+        r, wl, topo, place = self.decode(hw, share={l: 0.3 for l in g.MOE_LAYERS})
+        b, _ = g.decode_round_events(wl[0], self.table, place, topo, hw)
+        self.assertTrue(any(e.work.get('b.cpu.flow') for e in b.events))
+        self.assertFalse(any('/worker-input/' in e.name for e in b.events))
+
+    def test_expert_scale_restores_sizes(self):
+        before = dict(g.EXPERT_BYTES)
+        with g.expert_scale(1.75) as sc:
+            self.assertEqual(g.EXPERT_BYTES[3], int(before[3] * 1.75))
+            t = sc.table(self.table)
+            self.assertAlmostEqual(t['devices']['cuda']['decode']['resident_expert_ms']['2'],
+                                   1.75 * self.table['devices']['cuda']['decode']['resident_expert_ms']['2'])
+        self.assertEqual(g.EXPERT_BYTES, before)
+
+
 if __name__ == '__main__':
     unittest.main()

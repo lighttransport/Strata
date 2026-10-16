@@ -22,8 +22,11 @@ IQ3_XXS to Q3_K; this changes weight values and is neither a lossless repack nor
 a fine-tune. REAP-224 keeps 224 of 288 routed experts per layer; REAP-50 keeps
 144. Read the quality numbers below before choosing a model.
 
-The full reproduction guide, with build commands, run commands, measured
-speeds and quality, is `docs/GLM_RELEASE_Q2Q3.md` in the Strata fork.
+Current measurements, setup for one and two GPUs, and context-length limits are in
+[`docs/GLM53F_RELEASE.md`](https://github.com/lighttransport/Strata/blob/glm53f/docs/GLM53F_RELEASE.md)
+on the fork's `glm53f` branch; bringing it up on other hardware is described in
+[`docs/GLM53F_NEW_HARDWARE.md`](https://github.com/lighttransport/Strata/blob/glm53f/docs/GLM53F_NEW_HARDWARE.md).
+The conversion recipe is `docs/GLM_RELEASE_Q2Q3.md`.
 
 ## Choosing for output quality
 
@@ -41,14 +44,15 @@ isolated tests:
 | Full Q23, unchanged routing, strict MTP depth 2, canonical experts and adaptive GPU tier | 2026-10-07 | 156/164 (95.12%) |
 | Full Q23, unchanged routing, strict MTP depth 1 | 2026-10-09 | 154/164 (93.90%) |
 | Full Q23, routing affinity 0.08, strict MTP depth 1 | 2026-10-09 | 153/164 (93.29%) |
-| REAP-224 Q23, tuned profile, local release candidate | 2026-10-13 | 150/164 (91.46%) |
+| REAP-224 Q23, tuned profile (RTX 5060 Ti), first run | 2026-10-13 | 152/164 (92.68%) |
+| REAP-224 Q23, tuned profile, rerun | 2026-10-13 | 150/164 (91.46%) |
+| REAP-224 Q23, two GPUs (RTX 5060 Ti + RX 9070 XT), affinity 0.14, soft MTP acceptance | 2026-10-16 | 146/164 (89.02%) |
 
 These runs use different builds and settings; their score differences do not
-isolate pruning or speculative depth. The latest REAP-224 run completed all
-164 tasks but missed its 152-pass release floor. It had no test timeouts or new
-capped tasks. Shared CPU/GPU activity was allowed, so it supports no performance
-claim. An earlier version of the tuned profile scored 152/164; that historical
-result does not qualify the current candidate.
+isolate pruning or speculative depth. The fork's release floor is 152/164 plus a
+corpus gate (perplexity within +6%, KL within +0.08, top-1 within 3 points of the
+unpruned Q23 model). The REAP-224 tuned profile sits at that floor (152, then 150 on
+a rerun); the faster two-GPU configuration passes the corpus gate but not HumanEval.
 
 For quality priority, keep routing unchanged and use strict MTP acceptance.
 Depth 2 has the highest recorded score above, but depth 1 was faster in a later
@@ -91,16 +95,23 @@ has no such check.
 
 ## Measured results
 
-| Machine | Weights | Decode tok/s | Prefill tok/s | Quality |
-|---|---|---:|---:|---|
-| 128 GB, Threadripper 1950X, RTX 5060 Ti 16 GB (PCIe 3.0 x8) | shards + `experts-q23.gguf`, affinity 0.08, MTP depth 1 (`configs/experimental/glm53f-q23-tr16-aff08.json`) | 23.1 (2K prompt), 23.0 (8K) | 131 (2K), 428 (8K single pass) | vs unchanged Q23: perplexity +2.07%, KL +0.018, top-1 −0.29 pt; HumanEval 153/164 (baseline 154) |
-| same | shards + `experts-q22.gguf`, Q4_K dense, MTP depth 3 soft acceptance, affinity 0.14, top-k 6, repetition guard (research binary) | 36.2 (2K), 38.1 (8K) | 143 (2K) | perplexity +8.45%, KL +0.100, top-1 −3.6 pt; not qualified |
-| 64 GB, Ryzen 3950X, RX 9070 XT 16 GB (ROCm) | `reap50/…assembled.gguf`, default service config | 10.2 | 230 | vs original UD-Q2_K_XL: perplexity 11.12 vs 8.57 (+29.8%), KL 0.587, top-1 69.8% |
-| same | affinity 0.06 profile | 16.5 | 229 | passes the fork's C++ review coding task; higher affinity did not |
+Single-stream decode and prompt (prefill) rates, tokens per second. Full trials and conditions:
+`docs/GLM53F_RELEASE.md` in the fork.
 
-Speeds are medians of three timed 512-token (128 for the B550 default)
-continuations after a warm-up, measured under a quiet-machine guard. They are
-not promises for other hardware.
+| Machine | Weights and configuration | Decode | Prefill | Quality |
+|---|---|---:|---:|---|
+| Threadripper 1950X, 128 GB, RTX 5060 Ti 16 GB | `reap224/…assembled.gguf`, tuned profile, MTP depth 3 | 29.0 (2K), 31.6 (8K) | 168 (2K), 496 (8K) | HumanEval 152/164 (150 on rerun); perplexity +4.9%, KL 0.064 vs unpruned Q23 |
+| same, RX 9070 XT 16 GB alone (ROCm) | `reap224/…`, affinity 0.14 | 34.1 (8K) | 561 (8K) | not separately gated |
+| same, RTX 5060 Ti + RX 9070 XT (expert worker on the second card) | `reap224/…`, affinity 0.14 | 40-44 (1K-8K) | 465 (8K); 870 with the HIP card as primary | corpus gate passed; HumanEval 146/164, below the floor |
+| same, RTX 5060 Ti | `GLM-5.3-Flash-Q23-assembled.gguf` (full), affinity 0.08, MTP depth 1 | 23.1 (2K), 23.0 (8K) | 131 (2K), 428 (8K) | HumanEval 153/164; perplexity +2.07%, KL +0.018 vs unchanged routing |
+| Ryzen 9 3950X, 64 GB, RX 9070 XT 16 GB (ROCm) | `reap50/…assembled.gguf`, default service config | 10.2 | 230 | vs original UD-Q2_K_XL: perplexity 11.12 vs 8.57 (+29.8%), KL 0.587, top-1 69.8% |
+| same | `reap50/…`, affinity 0.06 | 16.5 | 229-250 | passes the fork's C++ review task |
+| Ryzen 9 3950X, 64 GB DDR4-2666, RTX 3070 8 GB | `reap50/…`, presets per context | 19.5 (2K), 16.9 (4K), 17.6 (8K) | 464-506 | matched perplexity +5.7 to +8.9%; 30-task HumanEval subset passed |
+
+Speeds are medians of timed 128-512-token continuations after a warm-up, with swap disabled, on the
+machines named; they are not promises for other hardware. Context length: about 26 MB of VRAM per 1K tokens
+on the primary GPU, taken from the GPU expert cache; roughly 128K is practical on a 16 GB card (see the
+fork's release notes).
 
 ## Reproduce the conversions
 
@@ -137,14 +148,17 @@ needs the same revision, corpus, settings and toolchain.
 
 ## Run
 
-128 GB machine: pass the first Unsloth shard as the model and add
-`--expert-pack=/path/to/experts-q23.gguf`; the measured profile is
-`configs/experimental/glm53f-q23-tr16-aff08.json` (also usable with
-`python3 -m serve.server --engine glm --config …`). 64 GB machine: use the
+128 GB machine: use an assembled file as the model. Profiles in the fork:
+`configs/experimental/glm53f-q23-reap224-tr16-tuned.json` (REAP-224, one GPU),
+`configs/experimental/glm53f-reap224-tr16-two-gpu-decode.json` and `…-prefill.json` (two GPUs, run through
+`tools/glm_mixed_run.py`), and `configs/experimental/glm53f-q23-tr16-aff08.json` (full model; with the
+sidecars instead, pass the first Unsloth shard and `--expert-pack=/path/to/experts-q23.gguf`). Profiles work with
+`python3 -m serve.server --engine glm --config …`. 64 GB machine: use the
 assembled file as the model with
 `configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json` via
-`tools/glm_b550_60g.sh start`, inside the 60 GiB memory cgroup it sets up. Full
-command lines are in `docs/GLM_RELEASE_Q2Q3.md`.
+`tools/glm_b550_60g.sh start`, inside the 60 GiB memory cgroup it sets up; with an 8 GB card, the
+`configs/glm53f-reap50-q23-64g-rtx3070-*.json` presets. Full command lines are in `docs/GLM53F_RELEASE.md`
+and `docs/GLM_RELEASE_Q2Q3.md`.
 
 ## License and attribution
 

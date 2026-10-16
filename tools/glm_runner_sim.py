@@ -245,6 +245,140 @@ def cmd_probe_plan(args):
         print(f"{i}. {what}\n   command: {command}\n   receipt: {receipt} [{'present' if exists else 'missing'}]")
 
 
+def link_from(text):
+    from sim import hw as hwmod
+    l = hwmod.parse_link(text)
+    return dict(name=l.name, rtt_us=l.rtt_us, gbps=l.gbps, exposed_us=l.exposed_us)
+
+
+def cmd_multinode(args):
+    """TR16 (primary GPU, model, CPU lane) + a second node holding the worker GPU (and optionally a CPU lane) over
+    a network link. Searches the worker's expert slots and node-B CPU share for decode, the prefill fraction for
+    prefill (1.0 = the worker is not used in prefill), and prints raw and anchored predictions per link."""
+    base = g.load_json(args.hardware); table = load_table(args)
+    shares = parse_shares(args.shares)
+
+    def decode(hw, worker, slots, cpu_share=0.0):
+        topo = g.Topology(primary=args.primary, worker=worker, context_tokens=args.context, worker_cpu_share=cpu_share)
+        place = g.Placement(primary_slots=args.primary_slots, worker_slots=slots if worker else 0.0)
+        wl = g.synthetic_workload(table, place, topo, rounds=1, accepted_per_round=args.accepted, shares=shares)
+        r = g.simulate_decode(wl, table, place, topo, hw)
+        return dict(tok_s=r['tok_s'], ms_per_round=r['ms_per_round'], worker_slots=slots if worker else 0.0,
+                    worker_cpu_share=cpu_share, scopes={k: round(v, 2) for k, v in r['scopes'].items()})
+
+    def prefill(hw, worker, fraction):
+        plan = g.PrefillPlan(tokens=args.tokens, primary=args.primary, worker=worker if fraction < 1 else '',
+                             primary_fraction=fraction, exchange='f16', return_mode='partial', stream_overlap='mixer')
+        r = g.simulate_prefill(table, plan, hw)
+        return dict(tok_s=r['tok_s'], fraction=fraction)
+
+    rows = []
+    single_d = decode(base, '', 0.0)
+    single_p = prefill(base, '', 1.0)
+    rows.append(dict(config=f'{args.primary} alone (node A)', link='-', decode=single_d, prefill=single_p))
+    local_d = max((decode(base, args.worker, sl) for sl in args.slots), key=lambda x: x['tok_s'])
+    local_p = max((prefill(base, args.worker, f) for f in args.fractions), key=lambda x: x['tok_s'])
+    rows.append(dict(config=f'{args.primary} + {args.worker}, one host', link='pcie', decode=local_d, prefill=local_p))
+    for text in args.links:
+        link = link_from(text)
+        hw = g.two_node_hardware(base, link, worker=args.worker)
+        gpu = [decode(hw, args.worker, sl) for sl in args.slots]
+        both = [decode(hw, args.worker, sl, cs) for sl in args.slots for cs in args.cpu_shares if cs > 0]
+        pre = [prefill(hw, args.worker, f) for f in args.fractions + [1.0]]
+        forced = max(gpu, key=lambda x: x['tok_s'])
+        rows.append(dict(config=f'{args.primary} (A) + {args.worker} on node B', link=link['name'],
+                         decode=max([forced, single_d], key=lambda x: x['tok_s']), prefill=max(pre, key=lambda x: x['tok_s']),
+                         decode_with_worker=forced, link_constants=link))
+        if both:
+            rows.append(dict(config=f'... + node-B CPU lane', link=link['name'], decode=max(both, key=lambda x: x['tok_s']),
+                             prefill=None, link_constants=link))
+    anchor_d = args.anchor_decode / single_d['tok_s'] if args.anchor_decode else None
+    anchor_p = args.anchor_prefill / single_p['tok_s'] if args.anchor_prefill else None
+    print('decode: best of no worker / worker GPU with the listed slots; slots 0 = the worker is not used.')
+    print('prefill: best of the listed fractions; frac 1.00 = the worker is not used. anch. = scaled to the measured')
+    print('primary-alone numbers (--anchor-decode/--anchor-prefill).')
+    print(f"{'configuration':<38}{'link':<24}{'decode':>8}{'anch.':>8}{'slots':>7}{'cpuB':>6}{'prefill':>9}{'anch.':>8}{'frac':>6}{'forced':>8}")
+    for r in rows:
+        d, pf = r['decode'], r['prefill']
+        print(f"{r['config']:<38}{r['link']:<24}{d['tok_s']:>8.1f}"
+              f"{(d['tok_s'] * anchor_d if anchor_d else float('nan')):>8.1f}{d['worker_slots']:>7.0f}{d['worker_cpu_share']:>6.2f}"
+              + (f"{pf['tok_s']:>9.0f}{(pf['tok_s'] * anchor_p if anchor_p else float('nan')):>8.0f}{pf['fraction']:>6.2f}" if pf else ' ' * 23)
+              + (f"{r['decode_with_worker']['tok_s']:>8.1f}" if 'decode_with_worker' in r else ''))
+    write(args, dict(rows=rows, anchor_decode=args.anchor_decode, anchor_prefill=args.anchor_prefill,
+                     provenance=provenance(args.kernels, args.params, args.hardware),
+                     scope='Throughput model; node-B PCIe and IB QDR constants are estimates; no quality prediction'))
+
+
+def cmd_split_model(args):
+    """A model larger than one node's RAM: the same hardware as one 192 GB node, or as two nodes where the coldest
+    experts (the bytes that do not fit node A) live only on node B and are served by its CPU over the link."""
+    base = g.load_json(args.hardware); table0 = load_table(args)
+    gib = 2 ** 30
+    expert_gb = len(g.MOE_LAYERS) * args.experts * g.EXPERT_BYTES[3] * args.expert_scale / 1e9
+    model_gb = expert_gb + args.dense_gb
+    b_bytes_share = max(0.0, (model_gb - args.node_a_weights_gb) / expert_gb)
+    rows = []
+    with g.expert_scale(args.expert_scale) as sc:
+        table = sc.table(table0)
+
+        def run(hw, worker, primary_slots, worker_slots, b_route_share=0.0):
+            topo = g.Topology(primary=args.primary, worker=worker, context_tokens=args.context)
+            place = g.Placement(primary_slots=primary_slots, worker_slots=worker_slots if worker else 0.0,
+                                experts_per_layer=args.experts)
+            cpu_share = g.route_shares(place, table)['cpu']
+            if isinstance(b_route_share, dict):
+                topo.worker_cpu_share = {l: min(1.0, v / cpu_share) for l, v in b_route_share.items()}
+            else:
+                topo.worker_cpu_share = min(1.0, b_route_share / cpu_share) if b_route_share else 0.0
+            wl = g.synthetic_workload(table, place, topo, rounds=1, accepted_per_round=args.accepted)
+            r = g.simulate_decode(wl, table, place, topo, hw)
+            return dict(tok_s=r['tok_s'], cpu_share=cpu_share, node_b_cpu_share=topo.worker_cpu_share,
+                        cpu_gb_per_token=r['cpu_gb_per_output'])
+
+        ps, ws = args.primary_slots / args.expert_scale, args.worker_slots / args.expert_scale
+        per_layer, balanced = {}, {}
+        if args.coverage and pathlib.Path(args.coverage).exists():
+            # Measured routing counts: the share of each layer's routes that hit its coldest experts (node B's bytes).
+            for proj in g.load_json(args.coverage)['projections']:
+                if not proj['name'].endswith('.gu'):
+                    continue
+                layer = int(proj['name'].split('.')[1])
+                c = sorted(proj['counts'])
+                per_layer[layer] = sum(c[:round(len(c) * b_bytes_share)]) / sum(c)
+            # Balanced: node B may hold warmer experts too (same bytes), up to its bandwidth share of the CPU lanes.
+            place = g.Placement(primary_slots=ps, worker_slots=ws, experts_per_layer=args.experts)
+            lanes = get_lane = table['cpu']['lanes']['single15']['gb_s']
+            ideal = g.route_shares(place, table)['cpu'] * args.node_b_flow / (lanes + args.node_b_flow)
+            balanced = {l: max(v, ideal) for l, v in per_layer.items()}
+        rows.append(('one node, 192 GB RAM, both GPUs', '-', run(base, args.worker, ps, ws)))
+        rows.append(('one node, 192 GB RAM, primary GPU only', '-', run(base, '', ps, 0)))
+        for text in args.links:
+            link = link_from(text)
+            for share in args.route_shares:
+                hw = g.two_node_hardware(base, link, worker=args.worker, gpu_on_b=False)
+                rows.append((f'two nodes: GPUs on A, cold experts on B ({share:.0%} of routes)', link['name'],
+                             run(hw, args.worker, ps, ws, share)))
+            if per_layer:
+                hw = g.two_node_hardware(base, link, worker=args.worker, gpu_on_b=False)
+                rows.append((f'two nodes: GPUs on A, coldest {b_bytes_share:.0%} per layer on B', link['name'],
+                             run(hw, args.worker, ps, ws, per_layer)))
+                rows.append(('two nodes: GPUs on A, B share balanced per layer', link['name'],
+                             run(hw, args.worker, ps, ws, balanced)))
+            hw = g.two_node_hardware(base, link, worker=args.worker)
+            share = args.route_shares[len(args.route_shares) // 2]
+            rows.append((f'two nodes: {args.worker} on B, cold experts on B ({share:.0%} of routes)', link['name'],
+                         run(hw, args.worker, ps, ws, share)))
+    anchor = args.anchor_decode / args.anchor_sim if args.anchor_decode and args.anchor_sim else None
+    print(f'model: {model_gb:.0f} GB ({expert_gb:.0f} GB experts at {args.expert_scale}x Q23, {args.experts} per layer); '
+          f'node A holds {args.node_a_weights_gb:.0f} GB, so {b_bytes_share:.0%} of expert bytes live only on node B')
+    print(f"{'configuration':<62}{'link':<24}{'decode':>8}{'anch.':>8}{'CPU GB/tok':>11}")
+    for name, link, r in rows:
+        print(f"{name:<62}{link:<24}{r['tok_s']:>8.1f}{(r['tok_s'] * anchor if anchor else float('nan')):>8.1f}{r['cpu_gb_per_token']:>11.2f}")
+    write(args, dict(model_gb=model_gb, expert_gb=expert_gb, node_b_bytes_share=b_bytes_share,
+                     rows=[dict(config=n, link=l, **r) for n, l, r in rows], anchor=anchor,
+                     scope='Throughput model; expert sizes scaled from Q23; no quality prediction'))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='command', required=True)
@@ -268,6 +402,43 @@ def main(argv=None):
     common(p); p.add_argument('--results', required=True); p.add_argument('--holdout', action='store_true'); p.add_argument('--merge-into')
     p.set_defaults(func=cmd_records_from_bench)
     p = sub.add_parser('probe-plan'); common(p); p.set_defaults(func=cmd_probe_plan)
+    p = sub.add_parser('multinode', help='worker GPU on a second node over a network link (gbe, ib-qdr, ib, 10gbe, rtt_us,gbps,exposed_us)')
+    common(p)
+    p.add_argument('--links', nargs='+', default=['gbe', 'ib-qdr', 'ib'])
+    p.add_argument('--primary', choices=('cuda', 'hip'), default='hip')
+    p.add_argument('--worker', choices=('cuda', 'hip'), default='cuda')
+    p.add_argument('--context', type=int, default=8192)
+    p.add_argument('--tokens', type=int, default=8192, help='prefill prompt tokens')
+    p.add_argument('--primary-slots', type=float, default=15.0)
+    p.add_argument('--slots', type=float, nargs='+', default=[11.0, 22.0, 33.0, 36.0], help='worker expert slots per layer to try (33 = the measured 12 GB worker cache; 36 = a headless 16 GB card)')
+    p.add_argument('--cpu-shares', type=float, nargs='+', default=[0.15, 0.3, 0.45], help="node-B CPU shares of the CPU lane's experts to try")
+    p.add_argument('--fractions', type=float, nargs='+', default=[0.5, 0.67, 0.79, 0.9], help='prefill primary fractions to try')
+    p.add_argument('--accepted', type=float)
+    p.add_argument('--shares')
+    p.add_argument('--anchor-decode', type=float, help='measured decode tok/s of the primary alone; scales every row')
+    p.add_argument('--anchor-prefill', type=float, help='measured prefill tok/s of the primary alone')
+    p.set_defaults(func=cmd_multinode)
+    p = sub.add_parser('split-model', help='a model larger than one node: one big node vs cold experts on a second node')
+    common(p)
+    p.add_argument('--links', nargs='+', default=['ib-qdr', 'gbe'])
+    p.add_argument('--primary', choices=('cuda', 'hip'), default='hip')
+    p.add_argument('--worker', choices=('cuda', 'hip'), default='cuda')
+    p.add_argument('--context', type=int, default=8192)
+    p.add_argument('--experts', type=int, default=224, help='routed experts per layer')
+    p.add_argument('--expert-scale', type=float, default=1.75, help='expert bytes relative to Q23 (1.75 ~ Q4_K)')
+    p.add_argument('--dense-gb', type=float, default=9.8)
+    p.add_argument('--node-a-weights-gb', type=float, default=112.0, help="weights node A's RAM can hold")
+    p.add_argument('--route-shares', type=float, nargs='+', default=[0.05, 0.10, 0.23],
+                   help="share of all routes that hit node B's cold experts (coverage priors: coldest 32%% = 5-23%%, mean 10%%)")
+    p.add_argument('--primary-slots', type=float, default=15.0, help='Q23-sized slots; divided by --expert-scale')
+    p.add_argument('--worker-slots', type=float, default=33.0)
+    p.add_argument('--accepted', type=float)
+    p.add_argument('--anchor-decode', type=float, help='measured tok/s of a reference configuration')
+    p.add_argument('--anchor-sim', type=float, help='simulated tok/s of that same configuration')
+    p.add_argument('--coverage', default='/mnt/nvme01/models/glm53f/prune/coverage-keep224.json',
+                   help='routing counts per expert (coverage prior); per-layer node-B shares come from it')
+    p.add_argument('--node-b-flow', type=float, default=26.0, help="node B's expert-row rate, GB/s")
+    p.set_defaults(func=cmd_split_model)
     args = ap.parse_args(argv)
     return args.func(args) or 0
 

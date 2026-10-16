@@ -29,7 +29,7 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 | TR16, RTX 5060 Ti alone | REAP-224 Q23, tuned profile (`configs/experimental/glm53f-q23-reap224-tr16-tuned.json`) | 29.0 (2K), 31.6 (8K) | 168 (2K), 496 (8K) | HumanEval 152/164 (a later rerun scored 150/164); corpus perplexity +4.9%, KL 0.064, top-1 -1.9 pp vs unpruned Q23 |
 | TR16, RX 9070 XT alone | REAP-224 Q23, affinity 0.14 | 34.1 (8K), 35.0 (8K chat) | 561 (8K) | same profile family; no HumanEval or corpus run on this card |
 | TR16, two GPUs (decode) | REAP-224 Q23, CUDA primary + HIP expert worker, affinity 0.14, fused publish, tier inflight 4 (`configs/experimental/glm53f-reap224-tr16-two-gpu-decode.json`) | 43.6 / 41.9 / 43.8 (8K, 512 tokens), 44.1 / 41.3 / 40.2 (1K, 256) | 465 (8K, this orientation) | corpus gate `tr16-35` passed (KL 0.210, top-1 0.853, perplexity 5.08 against limits 0.253 / 0.839 / 5.21); **HumanEval 146/164, below the 152/164 floor** |
-| TR16, two GPUs (prefill) | REAP-224 Q23, HIP primary + CUDA expert worker, fraction 0.79 (`configs/experimental/glm53f-reap224-tr16-two-gpu-prefill.json`) | about 37 (short samples) | 870-875 (8K) | lossy F16 attention and F16 partial return; not gated separately |
+| TR16, two GPUs (prefill) | REAP-224 Q23, HIP primary + CUDA expert worker, fraction 0.79 (`configs/experimental/glm53f-reap224-tr16-two-gpu-prefill.json`) | about 37 (short samples) | 870-875 (8K) | lossy F16 attention and F16 partial return; prefill path passes the corpus gate (below) |
 | TR16, two GPUs, fastest | as the decode row with affinity 0.30 | 49.0 (1K), 46.1 (8K) | 510 (8K) | fails the corpus gate (KL 0.310, top-1 0.817); not a release configuration |
 | TR16, RTX 5060 Ti, full model | full Q23 (288 experts), affinity 0.08, MTP depth 1 | 23.1 (2K), 23.0 (8K) | 131 (2K), 428 (8K) | HumanEval 153/164 |
 | B550, RX 9070 XT, 16 GB VRAM | REAP-50 Q23, default service, 60 GiB RAM cap | 10.2 (2K) | 230 (2K) | vs UD-Q2_K_XL: perplexity 11.12 vs 8.57, KL 0.587, top-1 69.8%; no HumanEval |
@@ -53,6 +53,12 @@ floor. It is published as an experimental speed result. The highest-scoring conf
 REAP-224 profile (152/164) and the full Q23 model (153/164). Lower routing affinity (0.08) is the next candidate
 to qualify.
 
+**Lower routing affinity on the RX 9070 XT.** Affinity 0.08 instead of 0.14 on the single-card profile costs about
+4 tok/s on the 4K C++ request (28.4 / 32.5 / 27.3 against 31.8 / 33.5 / 35.6) and all three of its C++ answers pass
+the 400,532-case oracle (two of three at 0.14). Its HumanEval score is 145/164, below the floor, so lowering
+affinity alone does not qualify a configuration; the next candidate is the strict draft acceptance of the
+qualified profile (margin 4, top-k 6).
+
 Notes on the two-GPU rows. The decode and prefill configurations have opposite primaries and cannot run in one
 process at these speeds; a server picks one. The decode row's quality gate is the one agreed for this work
 (perplexity within +6%, KL within +0.08, top-1 within 3 pp of the unpruned Q23 run, plus HumanEval at or above
@@ -61,6 +67,53 @@ so the speed comes from gate-tested approximations: routing affinity 0.14, soft 
 top-k 8), no adaptive worker-cache refresh and the fused worker return. The full measurement history, the
 profiles and what did not work are in [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (sections 12-15) and
 the simulator that ranked the work in [GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md).
+
+### Two-GPU prefill: corpus gate (2026-10-16)
+
+`tools/glm_tr16_quality.py --quality-gate tr16-35 --eval-prefill` scores the logits of the batched prefill path itself.
+Candidate: the two-GPU prefill configuration's switches (HIP primary + CUDA worker, fraction 0.79, F16 MLA, absorb and
+indexer products, 256-token MLA tile, F16 exchange, half-precision partial) with the release routing affinity 0.14;
+baseline: the same weights with strict settings on the RX 9070 XT alone. The decode expert cache is off in both
+(`--eval-prefill` requires it). Receipts: `build-glm-release/release-decode/corpus-prefill-2gpu/`,
+`build-glm-release/mixed-validation/quality-opt7/same-weight-baseline-prefill/`.
+
+| run | KL | top-1 | perplexity | gate |
+|---|---:|---:|---:|---|
+| strict baseline, RX 9070 XT | 0.1711 | 0.8649 | 4.927 | - |
+| two-GPU prefill configuration | 0.1705 | 0.8645 | 4.926 | pass |
+
+The lossy prefill switches cost nothing measurable on this corpus.
+
+## Context length
+
+The model allows 1,048,576 tokens; the runner allocates the context given by `context` in the profile up front.
+Only the 11 MLA attention layers and the MTP draft layer grow with context: 2,048 bytes of compressed KV cache plus
+128 bytes of indexer keys per token per layer, **26.1 KB per token (about 26 MB per 1K tokens)**. The 34 KDA
+linear-attention layers hold a fixed 146 MiB. All of it lives on the primary GPU; the expert worker in the
+two-GPU setup holds no context state, and host RAM is not the limit.
+
+Everything else on the primary GPU is fixed (dense weights, draft bank, verify history: about 8 GB), so a longer
+context takes VRAM from the GPU-resident expert tier, about 3 expert slots per 1K tokens, and decode slows as the
+tier shrinks. Selecting the attended keys also scans all pooled keys, which grows linearly with context.
+
+| | RX 9070 XT alone | two GPUs (RTX 5060 Ti primary) |
+|---|---:|---:|
+| expert tier at 12K context | 4.86 GB (559 slots) | 3.42 GB (394 slots) |
+| at 64K | ~3.5 GB (~400 slots) | ~2.1 GB (~240 slots) |
+| at 128K | ~1.9 GB (~225 slots) | ~0.5 GB (~60 slots) |
+| largest context with no tier | ~198K | ~143K |
+| same, draft experts on the CPU | ~270K | ~215K |
+| estimated decode at 128K | 22-27 tok/s | 25-30 tok/s |
+
+Estimated from the allocation sizes in the code and the memory records of the 12K-context runs; the measured
+32K / 64K / 128K results replace this table when they are in. Further limits:
+
+- Prefill holds the expert staging ring (4.6 GB at 8K batches) and a scratch area that grows with context at the
+  same time as the state; on the RX 9070 XT this is about 11.2 GB at 12K and about 14.6 GB at 128K against a 15.36 GB
+  budget. Beyond ~128K, reduce `STRATA_GLM_PREFETCH_GROUPS` (slower prefill). The prefill profile's 256-token MLA
+  tile (`STRATA_GLM_MLA_TILE=256`) makes the scratch grow four times faster; keep that profile at 64K or below.
+- The two-GPU runner exchanges at most 8,192 prompt tokens per call; longer prompts are processed in 8K passes.
+- Measured so far: up to 12K context on TR16 (16K as two 8K passes); the V100 server ran a 131,072-token context.
 
 ## Weights
 
@@ -221,7 +274,7 @@ with the gated Q23 REAP-224 configuration. Quantization, quality measure, VRAM a
 
 ## Documents
 
-Current: this page, [TODO.md](TODO.md) (open work), [GLM_VULKAN.md](GLM_VULKAN.md) (Vulkan runner), [GLM53F_NEW_HARDWARE.md](GLM53F_NEW_HARDWARE.md) (new-machine guide and benchmark protocol), [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (two-GPU work, sections 12-15 are
+Current: this page, [TODO.md](TODO.md) (open work), [GLM_QUANT_RESEARCH.md](GLM_QUANT_RESEARCH.md) (quantization options), [GLM_VULKAN.md](GLM_VULKAN.md) (Vulkan runner), [GLM53F_NEW_HARDWARE.md](GLM53F_NEW_HARDWARE.md) (new-machine guide and benchmark protocol), [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (two-GPU work, sections 12-15 are
 the release-phase measurements), [GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md), [MULTI_GPU.md](MULTI_GPU.md),
 [GLM_RELEASE_Q2Q3.md](GLM_RELEASE_Q2Q3.md) (full-model and sidecar recipes), [GLM_PRUNE_224.md](GLM_PRUNE_224.md),
 [GLM_B550_REAP50.md](GLM_B550_REAP50.md), [GLM53_V100.md](GLM53_V100.md), [GLM_TESTS.md](GLM_TESTS.md).
