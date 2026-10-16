@@ -118,6 +118,29 @@ checked against actual GPU capacity. Existing CUDA/HIP defaults are unchanged.
 `--combine=native` is an additional CUDA/CUDA experiment; `strict` remains the
 launcher's default. Changing arithmetic requires a fresh quality comparison.
 
+For serving through `tools/glm_mixed_decode.py`, set the same placement in the
+server config's `env` block:
+
+| Environment variable | Launcher option |
+| --- | --- |
+| `STRATA_GLM_MIXED_PRIMARY_DEVICE` | `--primary-device` |
+| `STRATA_GLM_MIXED_WORKER_DEVICE` | `--worker-device` |
+| `STRATA_GLM_MIXED_PRIMARY_CPUS` | `--primary-cpus` |
+| `STRATA_GLM_MIXED_WORKER_CPUS` | `--worker-cpus` |
+
+GPU values are allocation-visible ordinals. CPU values are comma-separated
+IDs or ranges, such as `0-15,32-47`; choose them from the actual topology and
+allowed cpuset. The adapter forwards these settings to the same launcher
+checks. Unset variables retain the existing placement behavior.
+
+On dedicated cards, [VRAM preallocation](GLM_KV_OFFLOAD.md) also allows a
+numeric primary `decode_cache_mib` above 12,288 MiB, within `gpu_budget_mib`.
+Set `STRATA_GLM_MIXED_WORKER_CACHE_MIB` and
+`STRATA_GLM_MIXED_WORKER_GPU_BUDGET_MIB` separately for the worker. Both
+processes inherit the preallocation switch. Check each process's admitted
+cache and live allocations as well as total GPU memory use: reserving a pool
+alone does not populate it with useful expert weights.
+
 `tools/glm_v100_optimize.py` runs a frozen, resumable 8K/512-token matrix.
 Screening, diagnostics, and final timing eligibility are separate. Final
 eligibility requires full warmups and validations, stable streams, no observed

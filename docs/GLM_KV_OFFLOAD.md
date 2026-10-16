@@ -9,6 +9,19 @@ default path is unchanged.
 | `STRATA_GLM_INDEX_BLOCK_POOLS=<n>` | prefill computes the indexer's per-head dot products in blocks of `n` pooled keys (4 tokens each; multiple of 64, at least 512) instead of over the whole context at once |
 | `STRATA_GLM_VRAM_PREALLOC=1` | on first use of a GPU, take all free VRAM except `STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB` (default 256) in one allocation and carve every buffer from it; the 1 GiB budget reserve and the free-memory headroom guard no longer apply. Set `gpu_budget_mib` to the card's size |
 
+With preallocation enabled, the CLI and Python server accept a numeric
+`decode_cache_mib` above the ordinary 12,288 MiB ceiling, up to the GPU budget.
+The admitted cache still depends on available space after dense weights, MTP
+state and workspace reserves. Requesting the card's nominal capacity does not
+guarantee that many MiB of expert weights. Use a numeric cache request for CLI
+MTP runs; automatic cache sizing with MTP remains unsupported there.
+
+The pool is rounded down in 64 MiB steps, and CUDA can report less usable
+memory than the card's nominal size. `VRAM_PREALLOC` reports the pool and
+usable capacity. Compare those with `DECODE_CACHE`, worker cache occupancy,
+`GPU_LIVE` and sampled `nvidia-smi` memory use. Keep the driver/library margin;
+increase it if the measured workload needs more space outside the pool.
+
 ## Why the KV cache can leave the GPU cheaply
 
 GLM-5.3-Flash uses sparse attention. For each new token and MLA layer, the indexer scores all pooled keys (128 bytes
