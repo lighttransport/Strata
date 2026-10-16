@@ -1,0 +1,1899 @@
+{
+  "schema": "strata.v100s.affinity-comparison.v1",
+  "date_jst": "2026-10-16",
+  "hardware": "v100s node",
+  "model": {
+    "label": "GLM-5.3-Flash REAP-224 Q23",
+    "bytes": 95538419872,
+    "sha256": "3ef5726ae4a9768fa8311453927674401f3958a8c3884effddac92fc41262003"
+  },
+  "quality_qualified": false,
+  "protocol": {
+    "prompt_tokens": 8192,
+    "decode_tokens": 512,
+    "prefill_timed_trials": 3,
+    "decode_full_warmups": 1,
+    "decode_timed_trials": 3,
+    "adaptive_cache_learning_continues": true,
+    "strict_identical_output_gate_met": false,
+    "same_allocation": true,
+    "comparison_variable": "STRATA_GLM_ROUTE_AFFINITY",
+    "repeat_guard": 3,
+    "order": [
+      "affinity-014-guard3-train-code-512",
+      "affinity-008-guard3-train-code-512",
+      "affinity-008-guard3-holdout-code-512",
+      "affinity-014-guard3-holdout-code-512",
+      "affinity-014-guard3-holdout-chat-512",
+      "affinity-008-guard3-holdout-chat-512"
+    ]
+  },
+  "source_states": {
+    "7da57372985344e8acf590d4791e5fd229eb61c64c54665b022543a2b38f31e8": {
+      "base_commit": "6e4277070684cc20a1663cd7981c7fce6eadec80",
+      "patch_sha256": "5d0fd6974205e1624e07e40983377de22f0a059ff809dd37f26c75d914ec582c",
+      "changes": [
+        "worker honors ordered prefill scatter",
+        "opt-in worker direct expert upload",
+        "opt-in batched RMS norm/Q8 reuse with 80 bit-parity cases",
+        "opt-in per-token-independent decode operations in a token grid",
+        "opt-in socket-owned lazy mapped expert row scheduling",
+        "socket-local task completion counters; independent unowned CPU oracle",
+        "opt-in batched convolution with exact per-token rollback history",
+        "opt-in one/two-token canonical Q23 expert kernels",
+        "register disjoint worker source pages once; omit unused direct-mode copy threads and staging"
+      ],
+      "files": {
+        "src/program/glm_decode.cpp": {
+          "before_sha256": "6ccfb2f63ffc90ede8e3c48e5c99cbb391c5b29a7c05eb5efe23c97706d4e0d1",
+          "previous_sha256": "980c1e5237b8c5eb2f2796f0ab96f7e6346e3bf2bcfacfcf1ef21e4bfc89e8dd",
+          "after_sha256": "e47c76fea78350d747311a319bfa9f24dc015c7782b563ac72e87ac19b9acd6c"
+        },
+        "src/program/glm_gpu_worker.cpp": {
+          "before_sha256": "d31cd6b4d08f2c9a205967c259997ac46a755e796aa308fee8c2252a7e4307f7",
+          "previous_sha256": "dbb78627d0e9a1265851aff37ae545a5e707d162ae110e26031319ff0464a32d",
+          "after_sha256": "ed72c85687a26c77ea191281cb1cb1551149b7995d5796a3dc7407453509bc2e"
+        },
+        "src/kernels/glm_q8_test.cpp": {
+          "before_sha256": "a3f0963cef5782635598a7f084fa62a7c61525732398425c8a6edac188502438",
+          "previous_sha256": "ef09884ccd3c366be71bef677db1add614c6851c7185974876518e624043be7d",
+          "after_sha256": "ef09884ccd3c366be71bef677db1add614c6851c7185974876518e624043be7d"
+        },
+        "include/strata/kernels/glm_q8.hpp": {
+          "before_sha256": "7fd796c9a9f56feea3256c8dd2d4b37a46ffb55d06eeb83b3df707f3e804f950",
+          "previous_sha256": "68374e9ae45584b565e86afc80865f8136725f6ebecff2bc6a181d6c25bb25d5",
+          "after_sha256": "68374e9ae45584b565e86afc80865f8136725f6ebecff2bc6a181d6c25bb25d5"
+        },
+        "src/kernels/cuda/glm_q8.cu": {
+          "before_sha256": "f3273733bff0e570c55241927534ea41bbebf25be13bd310f726eb1db1b41dd0",
+          "previous_sha256": "b253a444c0991d54d5664b4aa87914a35756a8f5cd2b3f7e4f07474cb16c12c6",
+          "after_sha256": "b253a444c0991d54d5664b4aa87914a35756a8f5cd2b3f7e4f07474cb16c12c6"
+        },
+        "src/kernels/cpu/pool.cpp": {
+          "before_sha256": "0a3e56b12b630ccb9ba0a930f23045a12ca6da7199a7050b7cecabc8fa5964b3",
+          "previous_sha256": "09283bc5c28a79061d2a4fc9cfac75098c4904723d27c1e614a6049441f25d77",
+          "after_sha256": "09283bc5c28a79061d2a4fc9cfac75098c4904723d27c1e614a6049441f25d77"
+        },
+        "include/strata/kernels/cpu/pool.hpp": {
+          "before_sha256": "8ddf382a80d68f7f289d735e575f6d0f3d38c0c9b1dfa6fa20b70c3ddf3847a6",
+          "previous_sha256": "950352b3ddea9eaa21fb9fb78ced558cd6afb5bbe67f0c74753debfb973d67ea",
+          "after_sha256": "950352b3ddea9eaa21fb9fb78ced558cd6afb5bbe67f0c74753debfb973d67ea"
+        },
+        "src/kernels/cpu/pool_affinity_linux.hpp": {
+          "before_sha256": "36c373feffae439f7f18cba37a9c6313ef07794357aca0c684a6ebfe32cdd4c0",
+          "previous_sha256": "e33144b944473ceb8e01bb7045a0174c6c9c0e67bfd038c9f8410c308118642f",
+          "after_sha256": "e33144b944473ceb8e01bb7045a0174c6c9c0e67bfd038c9f8410c308118642f"
+        },
+        "src/kernels/cpu/pool_affinity_linux_test.cpp": {
+          "before_sha256": "33305144a4d15b4bd74027f42d0a7daee05aeac01053b377fe02f848f90de465",
+          "previous_sha256": "9a120f513b87ff18cbef6f96965742571a9bf50f4cfd96b64914558c6bcadf08",
+          "after_sha256": "9a120f513b87ff18cbef6f96965742571a9bf50f4cfd96b64914558c6bcadf08"
+        },
+        "src/kernels/cpu/flow_pool_test.cpp": {
+          "before_sha256": "1ca78dc2214a48de86c429bad9d37ff832d723773bec2d34bbe1ce22ce276202",
+          "previous_sha256": "dfd7259473fd84fed517457238d3de4685cb27e63ddb87d4353c19ef7eb2eb28",
+          "after_sha256": "dfd7259473fd84fed517457238d3de4685cb27e63ddb87d4353c19ef7eb2eb28"
+        },
+        "include/strata/kernels/glm_prefill.hpp": {
+          "before_sha256": "1a361306422b84bfc211827e7e1a55bddca25688ad977a51b37b35a0acf10c00",
+          "previous_sha256": "cc005b2ce25bcb09651fcb9455a407571fda3ae162e1e13ffb68294feff705ef",
+          "after_sha256": "cc005b2ce25bcb09651fcb9455a407571fda3ae162e1e13ffb68294feff705ef"
+        },
+        "src/kernels/cuda/glm_prefill.cu": {
+          "before_sha256": "c777ad900a98d74f96aef520246ecda07dce795a27a78e44df3bc049bc6bf1a3",
+          "previous_sha256": "30e8f95bf0102b8d3f67c463375883dc8259834bdd4acc3e5a61ab7f40c504c7",
+          "after_sha256": "30e8f95bf0102b8d3f67c463375883dc8259834bdd4acc3e5a61ab7f40c504c7"
+        },
+        "src/kernels/cuda/glm_q23.cu": {
+          "before_sha256": "03fed6121edae36d78f75787d7024480ac9cfa64032e9e9503842a9eafe4b0b8",
+          "previous_sha256": "71ddf9dc5474df685d3f7637c7ef7da396db40ed94a4f36c8cd1e028c46cacb6",
+          "after_sha256": "71ddf9dc5474df685d3f7637c7ef7da396db40ed94a4f36c8cd1e028c46cacb6"
+        }
+      }
+    }
+  },
+  "results": [
+    {
+      "case": {
+        "id": "affinity-014-guard3-train-code-512",
+        "profile": "prefill",
+        "tokens": 512,
+        "trials": 3,
+        "prefill_trials": 3,
+        "prefetch_groups": 14,
+        "cache_mib": 2048,
+        "worker_cache_mib": 28672,
+        "prompt": "train-code",
+        "env": {
+          "STRATA_GLM_SOCKET_ROWS": "1",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_POINTWISE_BATCH": "1",
+          "STRATA_GLM_NORM_Q8_FUSED_BATCH": "1",
+          "STRATA_GLM_MIXED_DIRECT_UPLOAD": "1",
+          "STRATA_GLM_FUSE_ROUTE_BATCH": "1",
+          "STRATA_GLM_TIER_INFLIGHT": "4",
+          "STRATA_GLM_CONV_BATCH_HISTORY": "1",
+          "STRATA_GLM_Q23_SMALL_BATCH": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.14",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "3"
+        }
+      },
+      "model_placement": {
+        "numa_pages": {
+          "0": 5831595,
+          "1": 5831010,
+          "2": 5830810,
+          "3": 5831395
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ]
+      },
+      "source_state_id": "7da57372985344e8acf590d4791e5fd229eb61c64c54665b022543a2b38f31e8",
+      "decoder_sha256": "5be2ac3d85a7fa849ea257366308ff4edb08463fbcbf3b8a0715554b82c57063",
+      "worker_sha256": "9faeb1b7adc41503add2b87d0cb3ae298a03a3b1e2ead386a468cdd141983f6c",
+      "prompt_sha256": "ee107b233a67fa875900053f72ca0b58d887a4a96f1621af54d91e7c5935c8a1",
+      "validation_passed": null,
+      "parity_with_reference": null,
+      "complete": true,
+      "returncode": 0,
+      "stream_healthy": true,
+      "instrumented": false,
+      "complete_warm_trial": true,
+      "strict_timing_eligible": false,
+      "quality_qualified": false,
+      "median_decode_tok_s": 50.1858,
+      "median_prefill_tok_s": 856.209,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9567.67,
+            "tokens_per_second": 856.217
+          },
+          {
+            "trial": 1,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9567.76,
+            "tokens_per_second": 856.209
+          },
+          {
+            "trial": 2,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9581.16,
+            "tokens_per_second": 855.011
+          }
+        ],
+        "decode": [
+          {
+            "tokens": 512,
+            "milliseconds": 12196.1,
+            "tokens_per_second": 41.8985
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10194.7,
+            "tokens_per_second": 50.1241
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10182.2,
+            "tokens_per_second": 50.1858
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10169.6,
+            "tokens_per_second": 50.2476
+          }
+        ]
+      },
+      "prefill_repeats": [
+        {
+          "trial": 0,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 1,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 2,
+          "logits_identical": true,
+          "routes_identical": true
+        }
+      ],
+      "repetitions_identical": false,
+      "raw_log_sha256": "76e9d65f1b0319eb8cf0771620071b3a4fc5e36d1681c64c0c0364e25cfcfc03",
+      "raw_tokens_sha256": "524d0dbed674bd221600959b761a9e3101d2da65b654a413cef3729e9bcfce89",
+      "trial_token_sha256": [
+        "da472132466b7ae4d73b879a86cf26d1b892aec31c9350e00893e0898754f3b6",
+        "ec820c51e3ad8d66c00d341b2dbc474ad03ddbd60eff4445b778fae769fe832c",
+        "89e5188cccec3209f70f2f0e2670eb25e1be1f9b33f2f765baad97958f68b9ca",
+        "48d694da8ecb15f1acec6fe553a734fbfd0e6d255c61064d4b5a83d128b97822"
+      ],
+      "primary_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "worker_cpus": [
+        35
+      ],
+      "stream_health": [
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9155206286836935,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.862475442043222,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9194499017681729,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9410609037328095,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        }
+      ],
+      "profile": "v100s_affinity_014",
+      "raw_record_sha256": "08399765901a719fa0c1e68a6b00a41527302996553b1fa517bec6227934411d",
+      "elapsed_seconds": 221.96005320601398
+    },
+    {
+      "case": {
+        "id": "affinity-008-guard3-train-code-512",
+        "profile": "prefill",
+        "tokens": 512,
+        "trials": 3,
+        "prefill_trials": 3,
+        "prefetch_groups": 14,
+        "cache_mib": 2048,
+        "worker_cache_mib": 28672,
+        "prompt": "train-code",
+        "env": {
+          "STRATA_GLM_SOCKET_ROWS": "1",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_POINTWISE_BATCH": "1",
+          "STRATA_GLM_NORM_Q8_FUSED_BATCH": "1",
+          "STRATA_GLM_MIXED_DIRECT_UPLOAD": "1",
+          "STRATA_GLM_FUSE_ROUTE_BATCH": "1",
+          "STRATA_GLM_TIER_INFLIGHT": "4",
+          "STRATA_GLM_CONV_BATCH_HISTORY": "1",
+          "STRATA_GLM_Q23_SMALL_BATCH": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "3"
+        }
+      },
+      "model_placement": {
+        "numa_pages": {
+          "0": 5831595,
+          "1": 5831010,
+          "2": 5830810,
+          "3": 5831395
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ]
+      },
+      "source_state_id": "7da57372985344e8acf590d4791e5fd229eb61c64c54665b022543a2b38f31e8",
+      "decoder_sha256": "5be2ac3d85a7fa849ea257366308ff4edb08463fbcbf3b8a0715554b82c57063",
+      "worker_sha256": "9faeb1b7adc41503add2b87d0cb3ae298a03a3b1e2ead386a468cdd141983f6c",
+      "prompt_sha256": "ee107b233a67fa875900053f72ca0b58d887a4a96f1621af54d91e7c5935c8a1",
+      "validation_passed": null,
+      "parity_with_reference": null,
+      "complete": true,
+      "returncode": 0,
+      "stream_healthy": true,
+      "instrumented": false,
+      "complete_warm_trial": true,
+      "strict_timing_eligible": false,
+      "quality_qualified": false,
+      "median_decode_tok_s": 49.6759,
+      "median_prefill_tok_s": 852.568,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9607.54,
+            "tokens_per_second": 852.664
+          },
+          {
+            "trial": 1,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9608.61,
+            "tokens_per_second": 852.568
+          },
+          {
+            "trial": 2,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9616.92,
+            "tokens_per_second": 851.832
+          }
+        ],
+        "decode": [
+          {
+            "tokens": 512,
+            "milliseconds": 12096.4,
+            "tokens_per_second": 42.2441
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 9995.78,
+            "tokens_per_second": 51.1215
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10424.6,
+            "tokens_per_second": 49.0185
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10286.7,
+            "tokens_per_second": 49.6759
+          }
+        ]
+      },
+      "prefill_repeats": [
+        {
+          "trial": 0,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 1,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 2,
+          "logits_identical": true,
+          "routes_identical": true
+        }
+      ],
+      "repetitions_identical": false,
+      "raw_log_sha256": "3ef5254bef6b70b8ec2fcf5d0504463ba56b5fa60e404bf01e2859cf2504c713",
+      "raw_tokens_sha256": "eeb428137ce7f9421f05578e30de94106dcb34f61da46d2734f1bcbd9f4e25da",
+      "trial_token_sha256": [
+        "cd36ffba1b07dcbfdc1ccd16f45a62116509262a2d46201dd4b01ce3e311cdfd",
+        "7ed8cb326c29659070698c09e681f2a59c6f737388f480f573087f2304d9fbcd",
+        "3ef0ffa11630e778d6f4db08a36bd2cb3960d1cf5045bb69d8ecef034484b110",
+        "be78deb4982b106d0c284041c53ca13fefc835b9fc560109a8e8655b8e915cc1"
+      ],
+      "primary_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "worker_cpus": [
+        35
+      ],
+      "stream_health": [
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.8585461689587426,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9587426326129665,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9332023575638507,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9607072691552063,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        }
+      ],
+      "profile": "v100s_affinity_008",
+      "raw_record_sha256": "285dd97216a8b85d588e2e9b6c9c36f2d60954ebc2505631451376c5aa432fde",
+      "elapsed_seconds": 210.43739659100538
+    },
+    {
+      "case": {
+        "id": "affinity-008-guard3-holdout-code-512",
+        "profile": "prefill",
+        "tokens": 512,
+        "trials": 3,
+        "prefill_trials": 3,
+        "prefetch_groups": 14,
+        "cache_mib": 2048,
+        "worker_cache_mib": 28672,
+        "prompt": "holdout-code",
+        "env": {
+          "STRATA_GLM_SOCKET_ROWS": "1",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_POINTWISE_BATCH": "1",
+          "STRATA_GLM_NORM_Q8_FUSED_BATCH": "1",
+          "STRATA_GLM_MIXED_DIRECT_UPLOAD": "1",
+          "STRATA_GLM_FUSE_ROUTE_BATCH": "1",
+          "STRATA_GLM_TIER_INFLIGHT": "4",
+          "STRATA_GLM_CONV_BATCH_HISTORY": "1",
+          "STRATA_GLM_Q23_SMALL_BATCH": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "3"
+        }
+      },
+      "model_placement": {
+        "numa_pages": {
+          "0": 5831595,
+          "1": 5831010,
+          "2": 5830810,
+          "3": 5831395
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ]
+      },
+      "source_state_id": "7da57372985344e8acf590d4791e5fd229eb61c64c54665b022543a2b38f31e8",
+      "decoder_sha256": "5be2ac3d85a7fa849ea257366308ff4edb08463fbcbf3b8a0715554b82c57063",
+      "worker_sha256": "9faeb1b7adc41503add2b87d0cb3ae298a03a3b1e2ead386a468cdd141983f6c",
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "validation_passed": null,
+      "parity_with_reference": null,
+      "complete": true,
+      "returncode": 0,
+      "stream_healthy": true,
+      "instrumented": false,
+      "complete_warm_trial": true,
+      "strict_timing_eligible": false,
+      "quality_qualified": false,
+      "median_decode_tok_s": 50.036,
+      "median_prefill_tok_s": 854.747,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9584.12,
+            "tokens_per_second": 854.747
+          },
+          {
+            "trial": 1,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9573.49,
+            "tokens_per_second": 855.696
+          },
+          {
+            "trial": 2,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9587.34,
+            "tokens_per_second": 854.46
+          }
+        ],
+        "decode": [
+          {
+            "tokens": 512,
+            "milliseconds": 12553.4,
+            "tokens_per_second": 40.7062
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10212.6,
+            "tokens_per_second": 50.036
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10175.2,
+            "tokens_per_second": 50.22
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10546.1,
+            "tokens_per_second": 48.454
+          }
+        ]
+      },
+      "prefill_repeats": [
+        {
+          "trial": 0,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 1,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 2,
+          "logits_identical": true,
+          "routes_identical": true
+        }
+      ],
+      "repetitions_identical": false,
+      "raw_log_sha256": "f86a8490e2f186f571afa1b5f24bf2db89c04a07e18a5d1a74d8889b74553ca8",
+      "raw_tokens_sha256": "c5c2ca387c75438e22cd5afa68ba48ad9a6177547ad5742fddb479632d39d0fe",
+      "trial_token_sha256": [
+        "a5f6cfc42747cb7adc3d4c80db1eadad28e18563c797310333ed316be6df5b34",
+        "a20f26be35f2344e72574d0e78aa4a7c9803e7bf9c219d25976ac5540836ba1d",
+        "1953612606ffb0a0425878245e44f01cbccc3332a5da56f612de3b27b44fac07",
+        "9662bb7a60a046254903e6dc775a6baccd38629565ce436f69ec7e007b5ea2a2"
+      ],
+      "primary_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "worker_cpus": [
+        35
+      ],
+      "stream_health": [
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9587426326129665,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.8762278978388998,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9685658153241651,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9783889980353635,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        }
+      ],
+      "profile": "v100s_affinity_008",
+      "raw_record_sha256": "ccdc35e3ba7f162a68a7d6106198980781636cbf97b8842f7d0f28420875d5b2",
+      "elapsed_seconds": 210.6515640449943
+    },
+    {
+      "case": {
+        "id": "affinity-014-guard3-holdout-code-512",
+        "profile": "prefill",
+        "tokens": 512,
+        "trials": 3,
+        "prefill_trials": 3,
+        "prefetch_groups": 14,
+        "cache_mib": 2048,
+        "worker_cache_mib": 28672,
+        "prompt": "holdout-code",
+        "env": {
+          "STRATA_GLM_SOCKET_ROWS": "1",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_POINTWISE_BATCH": "1",
+          "STRATA_GLM_NORM_Q8_FUSED_BATCH": "1",
+          "STRATA_GLM_MIXED_DIRECT_UPLOAD": "1",
+          "STRATA_GLM_FUSE_ROUTE_BATCH": "1",
+          "STRATA_GLM_TIER_INFLIGHT": "4",
+          "STRATA_GLM_CONV_BATCH_HISTORY": "1",
+          "STRATA_GLM_Q23_SMALL_BATCH": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.14",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "3"
+        }
+      },
+      "model_placement": {
+        "numa_pages": {
+          "0": 5831595,
+          "1": 5831010,
+          "2": 5830810,
+          "3": 5831395
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ]
+      },
+      "source_state_id": "7da57372985344e8acf590d4791e5fd229eb61c64c54665b022543a2b38f31e8",
+      "decoder_sha256": "5be2ac3d85a7fa849ea257366308ff4edb08463fbcbf3b8a0715554b82c57063",
+      "worker_sha256": "9faeb1b7adc41503add2b87d0cb3ae298a03a3b1e2ead386a468cdd141983f6c",
+      "prompt_sha256": "d454e6ced0fea0efca60f4717418a96d70fb08c9e1a1fbd5221035d7a9faeb49",
+      "validation_passed": null,
+      "parity_with_reference": null,
+      "complete": true,
+      "returncode": 0,
+      "stream_healthy": true,
+      "instrumented": false,
+      "complete_warm_trial": true,
+      "strict_timing_eligible": false,
+      "quality_qualified": false,
+      "median_decode_tok_s": 49.9529,
+      "median_prefill_tok_s": 854.02,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9576.19,
+            "tokens_per_second": 855.455
+          },
+          {
+            "trial": 1,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9592.28,
+            "tokens_per_second": 854.02
+          },
+          {
+            "trial": 2,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9597.64,
+            "tokens_per_second": 853.543
+          }
+        ],
+        "decode": [
+          {
+            "tokens": 512,
+            "milliseconds": 12789.2,
+            "tokens_per_second": 39.9557
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10229.6,
+            "tokens_per_second": 49.9529
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10397.2,
+            "tokens_per_second": 49.148
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 10153.8,
+            "tokens_per_second": 50.3259
+          }
+        ]
+      },
+      "prefill_repeats": [
+        {
+          "trial": 0,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 1,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 2,
+          "logits_identical": true,
+          "routes_identical": true
+        }
+      ],
+      "repetitions_identical": false,
+      "raw_log_sha256": "63d7c20b47b894e75c6bd12487bdb3e6b5df3818c38512abbc2d68e32adf0489",
+      "raw_tokens_sha256": "8ef8f8441728c8612e74b5e615ce08417ead74bb7aa366c5e43f8c831b75d618",
+      "trial_token_sha256": [
+        "c5c2cdad96fbf067b39552a62058e53950c89463274253222059265c996eea94",
+        "c310027f5c901a022fff6d67883ba9c4b99b49eea4cc38c75b9d35089533c512",
+        "de76feefde498c2d4defb93f6cbc5674e6087f3eaf4087d5e3f3ed53d12afe61",
+        "dc82bbe1ee5de9fbf2634582f8259ed355fd259da65c7976d968946e468bce4b"
+      ],
+      "primary_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "worker_cpus": [
+        35
+      ],
+      "stream_health": [
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9882121807465619,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9666011787819253,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9292730844793713,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9862475442043221,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        }
+      ],
+      "profile": "v100s_affinity_014",
+      "raw_record_sha256": "ed215b54ed319b0054fd50f8224bd2fcff91a6762b8883460ea11c047e76d036",
+      "elapsed_seconds": 210.79307170998072
+    },
+    {
+      "case": {
+        "id": "affinity-014-guard3-holdout-chat-512",
+        "profile": "prefill",
+        "tokens": 512,
+        "trials": 3,
+        "prefill_trials": 3,
+        "prefetch_groups": 14,
+        "cache_mib": 2048,
+        "worker_cache_mib": 28672,
+        "prompt": "holdout-chat",
+        "env": {
+          "STRATA_GLM_SOCKET_ROWS": "1",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_POINTWISE_BATCH": "1",
+          "STRATA_GLM_NORM_Q8_FUSED_BATCH": "1",
+          "STRATA_GLM_MIXED_DIRECT_UPLOAD": "1",
+          "STRATA_GLM_FUSE_ROUTE_BATCH": "1",
+          "STRATA_GLM_TIER_INFLIGHT": "4",
+          "STRATA_GLM_CONV_BATCH_HISTORY": "1",
+          "STRATA_GLM_Q23_SMALL_BATCH": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.14",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "3"
+        }
+      },
+      "model_placement": {
+        "numa_pages": {
+          "0": 5831595,
+          "1": 5831010,
+          "2": 5830810,
+          "3": 5831395
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ]
+      },
+      "source_state_id": "7da57372985344e8acf590d4791e5fd229eb61c64c54665b022543a2b38f31e8",
+      "decoder_sha256": "5be2ac3d85a7fa849ea257366308ff4edb08463fbcbf3b8a0715554b82c57063",
+      "worker_sha256": "9faeb1b7adc41503add2b87d0cb3ae298a03a3b1e2ead386a468cdd141983f6c",
+      "prompt_sha256": "f6288088302044a43ea85cd1d3f7f71f2fce7d017ba3671cdce264a443d0d07b",
+      "validation_passed": null,
+      "parity_with_reference": null,
+      "complete": true,
+      "returncode": 0,
+      "stream_healthy": true,
+      "instrumented": false,
+      "complete_warm_trial": true,
+      "strict_timing_eligible": false,
+      "quality_qualified": false,
+      "median_decode_tok_s": 52.4433,
+      "median_prefill_tok_s": 853.083,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9601.51,
+            "tokens_per_second": 853.199
+          },
+          {
+            "trial": 1,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9602.82,
+            "tokens_per_second": 853.083
+          },
+          {
+            "trial": 2,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9613.28,
+            "tokens_per_second": 852.155
+          }
+        ],
+        "decode": [
+          {
+            "tokens": 512,
+            "milliseconds": 12092.2,
+            "tokens_per_second": 42.2585
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 9706.69,
+            "tokens_per_second": 52.6441
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 9832.81,
+            "tokens_per_second": 51.9689
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 9743.85,
+            "tokens_per_second": 52.4433
+          }
+        ]
+      },
+      "prefill_repeats": [
+        {
+          "trial": 0,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 1,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 2,
+          "logits_identical": true,
+          "routes_identical": true
+        }
+      ],
+      "repetitions_identical": false,
+      "raw_log_sha256": "10a84f1985fe175913db95d0841c7b16ddacc413d8f42f3396a7e435a416ed3b",
+      "raw_tokens_sha256": "b11cc160c454fd56ea37a718f3c995967b11232731cdd2b021df59c0986d5fed",
+      "trial_token_sha256": [
+        "71fe9dd038ebf576f90eb9403f46b914a2b793b7fd5c4c88d9dde5b4d4c67f7b",
+        "9ab1f45a27799e480de956ece55184092fd9dbf89e045bb90ab061951ffea48b",
+        "b9ded649d1835b61e9ed26678d0a57ec6d747b5e6c153b96972128df1c8894b1",
+        "71356917d8bad508864551ad2a8e3c83d583aaf90067ca65097178e2dd2ee3f6"
+      ],
+      "primary_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "worker_cpus": [
+        35
+      ],
+      "stream_health": [
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9489194499017681,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 1.0,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9921414538310412,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9823182711198428,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        }
+      ],
+      "profile": "v100s_affinity_014",
+      "raw_record_sha256": "9d67a642391b3cfdadb2fdc4291c4c3a9303058500e91c88d0c8b26144824afa",
+      "elapsed_seconds": 208.63656385202194
+    },
+    {
+      "case": {
+        "id": "affinity-008-guard3-holdout-chat-512",
+        "profile": "prefill",
+        "tokens": 512,
+        "trials": 3,
+        "prefill_trials": 3,
+        "prefetch_groups": 14,
+        "cache_mib": 2048,
+        "worker_cache_mib": 28672,
+        "prompt": "holdout-chat",
+        "env": {
+          "STRATA_GLM_SOCKET_ROWS": "1",
+          "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
+          "STRATA_GLM_POINTWISE_BATCH": "1",
+          "STRATA_GLM_NORM_Q8_FUSED_BATCH": "1",
+          "STRATA_GLM_MIXED_DIRECT_UPLOAD": "1",
+          "STRATA_GLM_FUSE_ROUTE_BATCH": "1",
+          "STRATA_GLM_TIER_INFLIGHT": "4",
+          "STRATA_GLM_CONV_BATCH_HISTORY": "1",
+          "STRATA_GLM_Q23_SMALL_BATCH": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_GLM_MTP_REPEAT_GUARD": "3"
+        }
+      },
+      "model_placement": {
+        "numa_pages": {
+          "0": 5831595,
+          "1": 5831010,
+          "2": 5830810,
+          "3": 5831395
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ]
+      },
+      "source_state_id": "7da57372985344e8acf590d4791e5fd229eb61c64c54665b022543a2b38f31e8",
+      "decoder_sha256": "5be2ac3d85a7fa849ea257366308ff4edb08463fbcbf3b8a0715554b82c57063",
+      "worker_sha256": "9faeb1b7adc41503add2b87d0cb3ae298a03a3b1e2ead386a468cdd141983f6c",
+      "prompt_sha256": "f6288088302044a43ea85cd1d3f7f71f2fce7d017ba3671cdce264a443d0d07b",
+      "validation_passed": null,
+      "parity_with_reference": null,
+      "complete": true,
+      "returncode": 0,
+      "stream_healthy": true,
+      "instrumented": false,
+      "complete_warm_trial": true,
+      "strict_timing_eligible": false,
+      "quality_qualified": false,
+      "median_decode_tok_s": 52.3209,
+      "median_prefill_tok_s": 852.182,
+      "measurements": {
+        "prefill": [
+          {
+            "trial": 0,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9586.75,
+            "tokens_per_second": 854.513
+          },
+          {
+            "trial": 1,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9624.8,
+            "tokens_per_second": 851.134
+          },
+          {
+            "trial": 2,
+            "tokens": 8192,
+            "batch": 8192,
+            "milliseconds": 9612.97,
+            "tokens_per_second": 852.182
+          }
+        ],
+        "decode": [
+          {
+            "tokens": 512,
+            "milliseconds": 12069.6,
+            "tokens_per_second": 42.3378
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 9766.66,
+            "tokens_per_second": 52.3209
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 9985.91,
+            "tokens_per_second": 51.1721
+          },
+          {
+            "tokens": 512,
+            "milliseconds": 9602.1,
+            "tokens_per_second": 53.2175
+          }
+        ]
+      },
+      "prefill_repeats": [
+        {
+          "trial": 0,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 1,
+          "logits_identical": true,
+          "routes_identical": true
+        },
+        {
+          "trial": 2,
+          "logits_identical": true,
+          "routes_identical": true
+        }
+      ],
+      "repetitions_identical": false,
+      "raw_log_sha256": "85dd991361c05375566c15ddb3f2fba2a0f98df38eeb5b2a4eac52445377b930",
+      "raw_tokens_sha256": "b791008b4cd1d95752df3f59158d1e08a61fce659bcec631640efb85be67dba1",
+      "trial_token_sha256": [
+        "d017a01dace27f98f15d6a17a05eef41e404daf163550ae1b26de9741ecbae39",
+        "4183501d7ee90f367aadca4dff0054048b8bf8e3018c06e8026d9c358a4889a0",
+        "3d07b4217e4b0021f9c206213dfc0445df0c661ebb97c77602adb5275a42671d",
+        "0d321094efed1032e00514eb80985f6cbdf08f0e2e3780fecb378363318694db"
+      ],
+      "primary_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34
+      ],
+      "worker_cpus": [
+        35
+      ],
+      "stream_health": [
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9960707269155207,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9960707269155207,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 0.9941060903732809,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        },
+        {
+          "tokens": 512,
+          "distinct_4gram_fraction": 1.0,
+          "max_32gram_occurrences": 1,
+          "consecutive_cycle": null,
+          "first_stop": null
+        }
+      ],
+      "profile": "v100s_affinity_008",
+      "raw_record_sha256": "99973a8da5baa1527569d20eeb8ca5e37b892153b8c99e1bee613d4b5665bced",
+      "elapsed_seconds": 208.7890964410035
+    }
+  ]
+}

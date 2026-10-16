@@ -1,0 +1,73 @@
+{
+  "schema": "strata.v100s.affinity-validation.v1",
+  "hardware": "v100s node",
+  "optimization_code_commit": "0c1598183878b989e50b540b2625a78f8b355829",
+  "inference_source_files_match_code_commit": 13,
+  "same_allocation": true,
+  "matched_variable": "STRATA_GLM_ROUTE_AFFINITY",
+  "affinities": [
+    0.08,
+    0.14
+  ],
+  "cases_complete": 6,
+  "profiles_match_recorded_environment": true,
+  "profile_path_mapping": "The expert prior uses its repository-relative artifact path.",
+  "model_full_sha256_verified": true,
+  "model_bytes": 95538419872,
+  "resident_seals": 15,
+  "socket_nodes": [
+    [
+      0,
+      1
+    ],
+    [
+      2,
+      3
+    ]
+  ],
+  "sampled_panels_socket_local": 10,
+  "decode_streams_complete": 24,
+  "stream_health_passes": 24,
+  "prefill_repeat_logit_and_route_passes": 18,
+  "timed_decode_trials": 18,
+  "timed_prefill_trials": 18,
+  "medians_recomputed": true,
+  "raw_log_and_token_hashes_verified": true,
+  "identical_decode_repeats": false,
+  "strict_timing_gate_met": false,
+  "quality": {
+    "HumanEval": "not run",
+    "cpp_coding_task": "not run",
+    "qualified": false
+  },
+  "local_resident_model_tests": {
+    "passed": 6,
+    "failed": 0
+  },
+  "backend_builds": "Not repeated: inference sources and binary hashes match the previously validated code.",
+  "privacy_review": {
+    "pattern_scan_findings": 0,
+    "manual_review": "No private connection settings or machine paths in these report files.",
+    "gitleaks": {
+      "raw_findings": 6,
+      "credential_findings": 0,
+      "classification": "All six findings are raw_tokens_sha256 checksums verified against frozen generated-token files."
+    },
+    "trufflehog": {
+      "findings": 0,
+      "verification": false,
+      "update_check": false
+    }
+  },
+  "shutdown": {
+    "session_phase": "STOPPED",
+    "owner_exit": 0,
+    "driver_exit": 0
+  },
+  "snapshot_sha256": "2c6f670e09a148fb518d3bc19cc239f40a05f4c1389b743143d970a56ae57270",
+  "artifact_sha256": {
+    "README.md": "39c09351ac080852df4233c617780cf7a40df28f334b7c5c922975721576e0dd",
+    "profiles.json": "88eee3a40035e3bfbb4e74696aaa319e74fd248e24a04b93eea1623490792d14",
+    "results.json": "a730d691896e3abb97b39cb729b9d8fda8616292b0424bd9d15474e63cb14f20"
+  }
+}
