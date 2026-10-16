@@ -183,12 +183,39 @@ mistakes, as negative controls (`STRATA_MUSE_CONTROL`), fail the matched check: 
 (13 of 88 layer-1 routes differ, block output cos 0.962, argmax 7 of 11) and the router bias left out of the choice
 (32-35 routes per layer differ, every stage after layer 0's router fails).
 
+### The GPU trunk, first cut (2026-10-16)
+
+`strata::muse::GpuTrunk` (`include/strata/muse/gpu_trunk.hpp`, `src/muse/gpu_trunk.cu`) runs a block's trunk on one
+card, one decode token at a time and synchronously: the projections through the existing `native_mmvq` (Q6_K / Q8_0
+against Q8_1 activations), the router through `glm_router` (the same sigmoid + selection-bias rule), and Muse's own
+kernels in `src/kernels/cuda/muse.cu`: the norms in their four shapes, RoPE on the sliding-window layers, the f16 KV
+cache (a 2048-slot ring on those layers), GQA decode attention (128 / 16 heads of 64, chunked online softmax), the
+head norm times sigmoid gate, the alpha/beta residual, the router's F32 GEMV and the logit softcap. The routed experts
+run between the two halves on the CPU lane (`NativeFmt::iq1s_rows` on the GGUF's own expert tensors).
+
+`muse_gpu_trunk_check` runs the two-layer slice's 11 tokens through it on the RX 9070 XT (HIP, ROCm 10.1) and the
+RTX 5060 Ti (CUDA, sm_120, while another job shared the card; correctness only), and through `reference.hpp` rounded the way this path rounds (Q8_1 into the projections, Q8_K into the experts, f16 K
+and V; the F32 router and the attention's query and softmax weights unrounded on both):
+
+| stage (max over 11 tokens) | HIP vs rounded reference | CUDA vs rounded reference | HIP vs the f32 reference |
+|---|---:|---:|---:|
+| layer 0 attention output / residual | 2.5e-4 / 1.7e-4 | 5.0e-5 / 4.1e-5 | 5.0e-3 |
+| layer 0 / layer 1 routes | 88 / 88 of 88 | 88 / 88 of 88 | |
+| layer 0 MoE output / block output | 1.4e-3 / 1.3e-3 | 1.3e-3 / 1.1e-3 | |
+| layer 1 block output | 3.2e-3 | 1.8e-3 | 1.2e-2 |
+| logits | 7.3e-3, argmax 11 of 11 | 5.3e-3, argmax 11 of 11 | 1.5e-2, argmax 10 of 11 |
+
+Against llama.cpp's own logits (CPU, Q8_K activations) the argmax agrees at 10 of 11 positions: a near tie that the
+two activation formats break differently. Not done yet: speed (nothing is timed; every call synchronizes), graph
+capture, fusion, the two-card layer split, and an attention for long contexts that does not read every key per
+query head serially.
+
 Next, in order (each with a parity test against `reference.hpp` before it is timed):
 
-1. **The GPU trunk** (CUDA and HIP): the GLM runner's dense GEMVs (Q6_K, Q8_0) for q/k/v/gate/o and the latent
-   projections; a GQA decode attention with a 2048-position ring for the 46 sliding-window layers and a full cache for
-   the 16 others (64 KB per token at f16); the router (sigmoid + bias top-8) on the GPU as GLM's; CUDA graphs per layer
-   range. The trunk is split by layer across the two cards (32/30 for decode).
+1. **The GPU trunk, fast** (CUDA and HIP): the first cut above is the parity baseline. Next: one stream with no
+   host syncs inside a layer, CUDA/HIP graphs per layer range, the q/k/v/gate projections sharing one Q8_1
+   quantization (today each projection quantizes its input again) and one launch, a split-K attention for long contexts, and the trunk split by layer across
+   the two cards (32/30 for decode); then time it against the forecast's GPU chain (57 ms per token).
 2. **The CPU expert lane**: the existing `ExpertPool` with `NativeFmt::iq1s_rows` on 4096-wide latents; the GPU-resident
    hot experts need an IQ1_S tier kernel (llama.cpp's MMVQ IQ1_S is the reference).
 3. **Two nodes**: extend the remote TP worker (`glm_tp_worker.cpp`, ucomm over IB) for the row split. A request is the

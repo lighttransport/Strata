@@ -227,8 +227,8 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
     // IQ1_S where the caller asks (NativeFmt::iq1s_rows): the AVX-2 kernel at every width, so a token's rows are the
     // same alone and in a group (#152).  ggml-cpu's IQ1_S dot is 13x slower on Zen 2 (B550 3950X, 16 threads,
     // 1 GiB of rows: 1.33 GB/s with its pdep decode, 17.4 GB/s here; Zen 1 TR16: 1.6 / 20.6 at 15 threads).
-    if (f.gu_type == 19 && avx2 && iq1s_rows_on(f) && !separate_up && f.swiglu_limit == 0) {
-        iq256_gu_rows(f.gu_type, blob, f.gu_row, f.up_off, (int) f.n_embd, act, nt, ff, r0, r1);
+    if (f.gu_type == 19 && avx2 && iq1s_rows_on(f) && f.swiglu_limit == 0) {   // separate_up: GGUF's own up tensor
+        iq256_gu_rows_clamped(f.gu_type, blob, f.gu_row, f.up_off, (int) f.n_embd, act, nt, ff, r0, r1, 0.f, separate_up);
         return;
     }
     const int mt_min = native_gu_mt_min(f.gu_type);   // #152

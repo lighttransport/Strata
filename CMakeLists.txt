@@ -455,6 +455,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/native_rope.cu
                           src/kernels/cuda/native_ple_postops.cu
                           src/kernels/cuda/native_flash_attn.cu
+                          src/kernels/cuda/muse.cu
                           src/kernels/cuda/native_qsa_indexer.cu
                           src/kernels/cuda/native_qsa_score.cu
                           src/kernels/cuda/ple.cu
@@ -535,6 +536,15 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
   endif()
   # plan v0.3 P6: llama.cpp's block layouts and codebook grids for the i-quant formats (MIT, third_party/ggml)
   target_include_directories(strata_kernels PRIVATE third_party/ggml)
+  # Muse Spark Open: the block trunk on one GPU (docs/MUSE_SPARK.md); its parity tool needs a layer slice of the
+  # release (tools/muse_layer_slice.py), so it is a tool, not a test
+  add_library(strata_muse STATIC src/muse/gpu_trunk.cu)
+  target_link_libraries(strata_muse PUBLIC strata_kernels)
+  if(STRATA_NATIVE_EXPERTS)
+    add_executable(muse_gpu_trunk_check EXCLUDE_FROM_ALL tools/muse_gpu_trunk_check.cpp)
+    target_link_libraries(muse_gpu_trunk_check PRIVATE strata_muse strata_kernels_cpu strata_artifact strata_host ggml-base)
+    target_compile_features(muse_gpu_trunk_check PRIVATE cxx_std_20)
+  endif()
   # Match the pinned llama.cpp CUDA arithmetic contract for this adapter only.
   if(STRATA_ENABLE_CUDA)
     set_source_files_properties(src/kernels/cuda/native_mmvq.cu src/kernels/cuda/native_bf16.cu
