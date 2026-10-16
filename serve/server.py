@@ -6799,8 +6799,12 @@ def main() -> int:
             ap.error("GLM lookup_depth must be 0..7")
         dcache = cfg.get("decode_cache_mib", 0)
         if isinstance(dcache, bool) or not (isinstance(dcache, int) and dcache >= 0 or dcache in ("auto", "extend")):
-            ap.error('GLM decode_cache_mib must be a whole number of MiB (0..12288), "auto" or "extend"')
-        cache_limit = int(cfg.get("gpu_budget_mib", 12288)) if cfg.get("gpu_layout") == "layer" else 12288
+            ap.error('GLM decode_cache_mib must be a nonnegative whole number of MiB, "auto" or "extend"')
+        preallocate = str((cfg.get("env") or {}).get(
+            "STRATA_GLM_VRAM_PREALLOC", os.environ.get("STRATA_GLM_VRAM_PREALLOC", "0"))) == "1"
+        cache_limit = 12288
+        if cfg.get("gpu_layout") == "layer" or preallocate:
+            cache_limit = int(cfg.get("gpu_budget_mib", 12288))
         if isinstance(dcache, int) and dcache > cache_limit:
             ap.error(f"GLM decode_cache_mib must be at most {cache_limit}")
         gpu_decode = cfg.get("decode_experts", "cpu") == "gpu"

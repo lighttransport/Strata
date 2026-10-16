@@ -10617,6 +10617,12 @@ static void preflight_gpu_budget(size_t budget) {
         throw std::invalid_argument("GPU budget exceeds the selected device capacity");
     Device::limit() = std::min(budget, total) - Device::budget_reserve();
 }
+static size_t decode_cache_budget_limit() {
+    // Dedicated-card preallocation owns the usable device capacity. Admission
+    // still leaves the configured MTP/workspace reserve and checks each allocation.
+    // Preserve the established cache ceiling for ordinary allocation mode.
+    return Device::prealloc() ? Device::limit() : 12288 * MiB;
+}
 static std::vector<int> configure_devices(const std::string &text, size_t budget, size_t max_devices = 2) {
     std::vector<int> devices;
     std::istringstream input(text);
@@ -10735,7 +10741,7 @@ static int serve(int argc, char **argv) {
     const std::string decode_cache_setting = argc > 20 ? argv[20] : "0";
     const bool decode_cache_extend = decode_cache_setting == "extend";
     const auto [decode_cache_bytes, decode_cache_auto] = cache_setting(decode_cache_extend ? "auto" : decode_cache_setting);
-    if (decode_cache_bytes > 12288 * MiB || ((decode_cache_bytes || decode_cache_auto) &&
+    if (decode_cache_bytes > decode_cache_budget_limit() || ((decode_cache_bytes || decode_cache_auto) &&
         (stream_decode || lookup_depth || experts || cpu_prepack_mib)))
         throw std::invalid_argument("GLM: serve decode cache requires single-token unpacked CPU target experts");
     // With a decode cache the draft block's experts stay on the CPU; the cache owns the spare device memory.
@@ -11216,9 +11222,9 @@ int main(int argc, char **argv) {
             throw std::invalid_argument("GPU prefill/decode requires expert-cache-mib=0");
         if (decode_cache_auto && use_mtp)
             throw std::invalid_argument("GLM: automatic decode cache currently requires single-token decoding");
-        if (decode_cache_mib < 0 || decode_cache_mib > 12288 ||
+        if (decode_cache_mib < 0 || size_t(decode_cache_mib) * MiB > decode_cache_budget_limit() ||
             ((decode_cache_mib || decode_cache_auto) && ((use_mtp && !mtp_cpu_experts && !strata_env_truthy_one("STRATA_GLM_MTP_GPU_CACHE")) || (lookup_depth && (!cached_lookup_enabled() || decode_cache_auto)) || stream_decode || expert_mib || cpu_prepack_mib)))
-            throw std::invalid_argument("decode-cache-mib requires CPU target experts, single or CPU-draft MTP, no prepacking, and 0..12288 MiB");
+            throw std::invalid_argument("decode-cache-mib requires CPU target experts, compatible MTP, no prepacking, and a cache within the allocation-mode GPU budget");
         if (lookup_depth && decode_cache_mib) {
             const char *canonical = std::getenv("STRATA_GLM_CANON"), *pipeline = std::getenv("STRATA_GLM_STEP_PIPELINE");
             if (!canonical || std::string(canonical) != "1" || !pipeline || std::string(pipeline) != "1")

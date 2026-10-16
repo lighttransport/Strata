@@ -23,7 +23,11 @@ if __name__ == '__main__':
     sys.argv = [sys.argv[0], '--combine', os.environ.get('STRATA_GLM_CANON_COMBINE','strict'), '--primary', primary, '--worker', worker, '--model', model]
     for variable,option in [('STRATA_GLM_MIXED_WORKER_CACHE_MIB','--worker-cache-mib'),
                             ('STRATA_GLM_MIXED_WORKER_GPU_BUDGET_MIB','--worker-gpu-budget-mib'),
-                            ('STRATA_GLM_MIXED_WORKER_NUMA_NODE','--worker-numa-node')]:
+                            ('STRATA_GLM_MIXED_WORKER_NUMA_NODE','--worker-numa-node'),
+                            ('STRATA_GLM_MIXED_PRIMARY_DEVICE','--primary-device'),
+                            ('STRATA_GLM_MIXED_WORKER_DEVICE','--worker-device'),
+                            ('STRATA_GLM_MIXED_PRIMARY_CPUS','--primary-cpus'),
+                            ('STRATA_GLM_MIXED_WORKER_CPUS','--worker-cpus')]:
         if variable in os.environ: sys.argv += [option,os.environ[variable]]
     if worker_mode:
         sys.argv += ['--primary-worker-mode']
