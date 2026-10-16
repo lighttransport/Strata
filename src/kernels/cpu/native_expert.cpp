@@ -55,6 +55,14 @@ bool iq256_supported(int type) noexcept {
 
 bool kq256_supported(int type) noexcept { return type == 12 || type == 7 || type == 8; }
 
+namespace {
+// NativeFmt::iq1s_rows, or STRATA_IQ1S_256=1 for every model's IQ1_S experts
+bool iq1s_rows_on(const NativeFmt& f) {
+    static const bool env = [] { const char* v = std::getenv("STRATA_IQ1S_256"); return v != nullptr && std::atoi(v) != 0; }();
+    return f.iq1s_rows || env;
+}
+}  // namespace
+
 bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt& f, std::string& err) {
     init_once();
     if (gu_type < 0 || gu_type >= GGML_TYPE_COUNT || d_type < 0 || d_type >= GGML_TYPE_COUNT ||
@@ -216,6 +224,13 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
     // as the AVX-2 kernels, and STRATA_IQ_MT_MIN=1 takes the kernel for one token too (its rows are then
     // independent of the drafting: iq_avx1_parity checks every width bit for bit).
     static const bool avx1 = !cpu_avx2_ok() && cpu_avx1_ok() && std::getenv("STRATA_NO_IQ128") == nullptr;
+    // IQ1_S where the caller asks (NativeFmt::iq1s_rows): the AVX-2 kernel at every width, so a token's rows are the
+    // same alone and in a group (#152).  ggml-cpu's IQ1_S dot is 13x slower on Zen 2 (B550 3950X, 16 threads,
+    // 1 GiB of rows: 1.33 GB/s with its pdep decode, 17.4 GB/s here; Zen 1 TR16: 1.6 / 20.6 at 15 threads).
+    if (f.gu_type == 19 && avx2 && iq1s_rows_on(f) && !separate_up && f.swiglu_limit == 0) {
+        iq256_gu_rows(f.gu_type, blob, f.gu_row, f.up_off, (int) f.n_embd, act, nt, ff, r0, r1);
+        return;
+    }
     const int mt_min = native_gu_mt_min(f.gu_type);   // #152
     // Unsloth UD-Q4_K_XL's Q4_K gate/up: the multi-token kernel is bit-exact against ggml's per-token dot (any group
     // size, no #152 rule).  Opt-in, STRATA_KQ256=1: measured no faster in the engine (a window's expert groups hold
@@ -310,6 +325,10 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
     }
     if (cpu_avx2_ok() && nt >= mt_min && f.d_type == 20 && iq4nl_mt) {   // #152: the same rule as the gate/up rows
         iq4nl256_down_rows((separate_down ? separate_down : blob + f.down_off), f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);
+        return;
+    }
+    if (f.d_type == 19 && cpu_avx2_ok() && std::getenv("STRATA_NO_IQ256") == nullptr && iq1s_rows_on(f)) {   // see native_gu_rows
+        iq256_rows(f.d_type, (separate_down ? separate_down : blob + f.down_off), f.d_row, (int) f.n_ff, hq, nt, out, r0, r1);
         return;
     }
     if (f.swiglu_limit > 0 && cpu_avx2_ok() && std::getenv("STRATA_NO_IQ256") == nullptr && iq256_supported(f.d_type)) {

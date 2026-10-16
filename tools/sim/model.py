@@ -17,6 +17,7 @@ BLOCK_BYTES = {
     "F32": (1, 4), "F16": (1, 2), "BF16": (1, 2),
     "Q8_0": (32, 34), "Q4_K": (256, 144), "Q5_K": (256, 176), "Q6_K": (256, 210),
     "Q2_K": (256, 84), "Q3_K": (256, 110), "IQ2_XS": (256, 74), "IQ3_XXS": (256, 98), "IQ4_XS": (256, 136),
+    "IQ1_S": (256, 50), "IQ1_M": (256, 56), "IQ2_XXS": (256, 66), "IQ2_S": (256, 82),
     "EXL3": (1, 0.25153),  # 6.035 MiB per expert / 3 x 4096 x 2048 elements (bytes-only format)
 }
 
@@ -26,6 +27,9 @@ BLOCK_BYTES = {
 KERNEL_EFFICIENCY = {
     "Q2_K": 0.63, "Q3_K": 0.63, "Q4_K": 0.63, "Q5_K": 0.6, "Q6_K": 0.6, "Q8_0": 0.7,
     "IQ2_XS": 0.30, "IQ3_XXS": 0.31, "IQ4_XS": 0.45, "EXL3": 0.0,
+    # IQ1_S: ggml's AVX2 kernel without the BMI2 pdep path, 89 GMAC/s on 16 Zen 2 cores (B550, 2026-10-16) of a
+    # 16 x 3.5 x 8 = 448 GMAC/s peak (tools/sim/muse.py); with pdep (microcoded on Zen 1/2) it is 6.8 GMAC/s.
+    "IQ1_S": 0.20, "IQ1_M": 0.14, "IQ2_XXS": 0.15,
 }
 
 
@@ -47,6 +51,11 @@ class Geometry:
     vocab: int = 154880
     mla_layers: tuple = (3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43)
     mtp_layers: int = 1
+    expert_hidden: int = 0           # input/output width of a routed expert; 0 = hidden (Muse Spark: 4096 latent)
+
+    @property
+    def expert_in(self):
+        return self.expert_hidden or self.hidden
 
     @property
     def moe_layers(self):
@@ -56,7 +65,7 @@ class Geometry:
         return list(range(self.dense_layers, self.layers))
 
     def expert_elements(self):
-        return 3 * self.hidden * self.expert_ff
+        return 3 * self.expert_in * self.expert_ff
 
     def expert_macs(self):
         """Multiply-adds of one expert on one token."""
@@ -112,7 +121,7 @@ class Pack:
     def expert_bytes(self, layer):
         g = self.geometry
         gate, up, down = self.formats[layer]
-        n = g.hidden * g.expert_ff
+        n = g.expert_in * g.expert_ff
         return tensor_bytes(n, gate) + tensor_bytes(n, up) + tensor_bytes(n, down)
 
     def mean_expert_bytes(self):
@@ -132,7 +141,7 @@ class Pack:
     def kernel_efficiency(self, layer):
         """Weighted by bytes: the compute efficiency of the mix of formats in this layer's expert."""
         g = self.geometry
-        n = g.hidden * g.expert_ff
+        n = g.expert_in * g.expert_ff
         parts = [(tensor_bytes(n, f), KERNEL_EFFICIENCY[f]) for f in self.formats[layer]]
         total = sum(b for b, _ in parts)
         return sum(b * e for b, e in parts) / total
@@ -191,6 +200,8 @@ def from_census(path):
 
 
 for _path in sorted((pathlib.Path(__file__).parent / "data").glob("census-*.json")):
+    if _path.name.startswith("census-muse-"):
+        continue                    # Muse Spark census (strata.muse.census.v1), loaded below
     _pack = from_census(_path)
     PACKS[_pack.name] = _pack
 
@@ -358,6 +369,60 @@ MIMO_PACKS.update(_register("mimo_pro", MIMO_PRO_GEOMETRY, _attention_params(614
 MIMO_PACKS.update(_register("mimo_flash", MIMO_FLASH_GEOMETRY, _attention_params(4096, 64, 4, 192, 128), 3 * 4096 * 16384,
                             3 * (_attention_params(4096, 64, 4, 192, 128) + 2 * 4096 * 4096),
                             9 * 4 * 320 * 2, "mimof", ((256, ""), (192, "_reap25"), (128, "_reap50")), "MiMo-V2.6-Flash"))
+
+# ---------------------------------------------------------------------------------------------------------------
+# Muse Spark Open 816B-A42B (`muse-spark`, Meta): 62 layers, all MoE, no dense layer, no shared expert, no MTP head.
+# Gated GQA (128 q / 16 kv heads of 64, sigmoid output gate, QK-norm), 2048-token sliding window on 46 layers (full
+# attention on 1, 5, ..., 61). The MoE runs in a 4096-wide latent: ffn_latent_down 8192 -> 4096, 256 experts of
+# 4096 -> 4096 -> 4096 (top-8, sigmoid router on the 8192 input), ffn_latent_up 4096 -> 8192. Sizes come from the
+# GGUF census (tools/muse_gguf_census.py, data/census-muse-spark-*.json); `mla_layers` lists the full-attention
+# layers so the generic tables have a long-context set. The two-node model is tools/sim/muse.py.
+MUSE_GEOMETRY = Geometry(layers=62, dense_layers=0, hidden=8192, dense_ff=16384, expert_ff=4096, experts=256, top_k=8,
+                         shared_experts=0, vocab=202048, mla_layers=tuple(range(1, 62, 4)), mtp_layers=0,
+                         expert_hidden=4096)
+
+
+def muse_census(path):
+    """(pack, fixed-weight table, VRAM table, dense formats) from a strata.muse.census.v1 file."""
+    data = json.loads(pathlib.Path(path).read_text())
+    k = data["kinds"]
+    layers = MUSE_GEOMETRY.layers
+    expert_total = sum(v["bytes"] for name, v in k.items() if "_exps" in name)
+    per_layer = sum(v["bytes"] for name, v in k.items() if v["count"] == layers and "_exps" not in name)
+    lm = k["output.weight"]["bytes"]
+    fixed = dict(total=data["bytes"] - expert_total, token_embd=k["token_embd.weight"]["bytes"], dense_layer=0,
+                 kda_moe_layer=per_layer // layers, mla_layer=per_layer // layers, blk11_extra=0, shared_expert=0,
+                 router=k["ffn_gate_inp.weight"]["bytes"] // layers, mtp_dense=0, lm_head=lm)
+    dense_mib = (per_layer + lm) / 2 ** 20
+    # q4: GPU copies of the Q6_K/Q8_0 trunk re-quantized to Q4_K (lossy), bytes from the census mix
+    q4 = sum(v["elements"] * 4.5 / 8 for name, v in k.items()
+             if name != "token_embd.weight" and "_exps" not in name and v["formats"].keys() - {"F32"})
+    q4_scale = q4 / sum(v["bytes"] for name, v in k.items()
+                        if name != "token_embd.weight" and "_exps" not in name and v["formats"].keys() - {"F32"})
+    dense = dict(orig=dict(vram_mib=dense_mib, bytes_scale=1.0, lossless=True),
+                 q8=dict(vram_mib=dense_mib, bytes_scale=1.0, lossless=True),
+                 q4=dict(vram_mib=dense_mib * q4_scale, bytes_scale=q4_scale, lossless=False))
+    full = len(data["full_attention_layers"])
+    kv_per_token = data["hyperparameters"]["attention.head_count_kv"] * 64 * 2 * 2 * full     # f16 K and V
+    vram = dict(dense_q8=dense_mib, dense=dense_mib, mtp_dense_q8=0.0, mtp_dense=0.0, draft_bank=0,
+                state_fixed=(layers - full) * data["hyperparameters"]["attention.sliding_window"] * 4096 / 2 ** 20,
+                state_per_token=kv_per_token / 2 ** 20, verify_slot=16.0, staging_slot=219, staging_slots=2,
+                prefetch_group=150, misc=635, exl3_dense=dense_mib)
+    formats = {int(l): tuple(f) for l, f in data["expert_formats"].items()}
+    result = Pack(f"muse_{data['name'].replace('-', '_')}", experts=MUSE_GEOMETRY.experts, formats=formats,
+                  description=f"Muse Spark Open {data['name']} ({data['bytes'] / 1e9:.1f} GB), GGUF census",
+                  dense_vram_mib=dense_mib, geometry=MUSE_GEOMETRY)
+    if result.routed_total_bytes() != expert_total:
+        raise ValueError("Muse census does not match the expert block geometry")
+    return result, fixed, vram, dense
+
+
+MUSE_PACKS = {}
+for _path in sorted((pathlib.Path(__file__).parent / "data").glob("census-muse-spark-*.json")):
+    _pack, _fixed, _vram, _dense = muse_census(_path)
+    MUSE_PACKS[_pack.name] = _pack
+if MUSE_PACKS:
+    MODELS["muse"] = dict(geometry=MUSE_GEOMETRY, fixed=_fixed, vram=_vram, dense=_dense, packs=MUSE_PACKS)
 
 
 ACTIVE_MODEL = "flash"

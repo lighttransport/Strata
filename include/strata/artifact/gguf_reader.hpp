@@ -205,6 +205,10 @@ inline bool block_geometry(uint32_t t, int& elems, int& bytes) {
         elems = 256;
         bytes = 136;
         return true;
+    case 19:   // IQ1_S: d, qs[32], qh[8] (Muse Spark Open's UD-IQ1_S experts)
+        elems = 256;
+        bytes = 50;
+        return true;
     case 29:   // IQ1_M
         elems = 256;
         bytes = 56;
