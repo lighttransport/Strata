@@ -29,7 +29,7 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 | TR16, RTX 5060 Ti alone | REAP-224 Q23, tuned profile (`configs/experimental/glm53f-q23-reap224-tr16-tuned.json`) | 29.0 (2K), 31.6 (8K) | 168 (2K), 496 (8K) | HumanEval 152/164 (a later rerun scored 150/164); corpus perplexity +4.9%, KL 0.064, top-1 -1.9 pp vs unpruned Q23 |
 | TR16, RX 9070 XT alone | REAP-224 Q23, affinity 0.14 | 34.1 (8K), 35.0 (8K chat) | 561 (8K) | same profile family; no HumanEval or corpus run on this card |
 | TR16, two GPUs (decode) | REAP-224 Q23, CUDA primary + HIP expert worker, affinity 0.14, fused publish, tier inflight 4 (`configs/experimental/glm53f-reap224-tr16-two-gpu-decode.json`) | 43.6 / 41.9 / 43.8 (8K, 512 tokens), 44.1 / 41.3 / 40.2 (1K, 256) | 465 (8K, this orientation) | corpus gate `tr16-35` passed (KL 0.210, top-1 0.853, perplexity 5.08 against limits 0.253 / 0.839 / 5.21); **HumanEval 146/164, below the 152/164 floor** |
-| TR16, two GPUs (prefill) | REAP-224 Q23, HIP primary + CUDA expert worker, fraction 0.79 (`configs/experimental/glm53f-reap224-tr16-two-gpu-prefill.json`) | about 37 (short samples) | 870-875 (8K) | lossy F16 attention and F16 partial return; not gated separately |
+| TR16, two GPUs (prefill) | REAP-224 Q23, HIP primary + CUDA expert worker, fraction 0.79 (`configs/experimental/glm53f-reap224-tr16-two-gpu-prefill.json`) | about 37 (short samples) | 870-875 (8K) | lossy F16 attention and F16 partial return; prefill path passes the corpus gate (below) |
 | TR16, two GPUs, fastest | as the decode row with affinity 0.30 | 49.0 (1K), 46.1 (8K) | 510 (8K) | fails the corpus gate (KL 0.310, top-1 0.817); not a release configuration |
 | TR16, RTX 5060 Ti, full model | full Q23 (288 experts), affinity 0.08, MTP depth 1 | 23.1 (2K), 23.0 (8K) | 131 (2K), 428 (8K) | HumanEval 153/164 |
 | B550, RX 9070 XT, 16 GB VRAM | REAP-50 Q23, default service, 60 GiB RAM cap | 10.2 (2K) | 230 (2K) | vs UD-Q2_K_XL: perplexity 11.12 vs 8.57, KL 0.587, top-1 69.8%; no HumanEval |
@@ -67,6 +67,22 @@ so the speed comes from gate-tested approximations: routing affinity 0.14, soft 
 top-k 8), no adaptive worker-cache refresh and the fused worker return. The full measurement history, the
 profiles and what did not work are in [GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md) (sections 12-15) and
 the simulator that ranked the work in [GLM_RUNNER_SIM.md](GLM_RUNNER_SIM.md).
+
+### Two-GPU prefill: corpus gate (2026-10-16)
+
+`tools/glm_tr16_quality.py --quality-gate tr16-35 --eval-prefill` scores the logits of the batched prefill path itself.
+Candidate: the two-GPU prefill configuration's switches (HIP primary + CUDA worker, fraction 0.79, F16 MLA, absorb and
+indexer products, 256-token MLA tile, F16 exchange, half-precision partial) with the release routing affinity 0.14;
+baseline: the same weights with strict settings on the RX 9070 XT alone. The decode expert cache is off in both
+(`--eval-prefill` requires it). Receipts: `build-glm-release/release-decode/corpus-prefill-2gpu/`,
+`build-glm-release/mixed-validation/quality-opt7/same-weight-baseline-prefill/`.
+
+| run | KL | top-1 | perplexity | gate |
+|---|---:|---:|---:|---|
+| strict baseline, RX 9070 XT | 0.1711 | 0.8649 | 4.927 | - |
+| two-GPU prefill configuration | 0.1705 | 0.8645 | 4.926 | pass |
+
+The lossy prefill switches cost nothing measurable on this corpus.
 
 ## Context length
 

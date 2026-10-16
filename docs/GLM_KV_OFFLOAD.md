@@ -61,7 +61,24 @@ RX 9070 XT alone, REAP-224 Q23, 8K holdout code prompt, 512 tokens, 3 timed tria
 | `STRATA_GLM_VRAM_PREALLOC=1`, budget 16384 | 33.6, 35.7, 34.1 | 565 |
 
 At 8K the cache is small (24 MiB per layer), so host KV shows only its cost; the gain (the cache's VRAM returned to
-the expert tier) grows with context. Runs at 64K, 128K and 256K are in progress.
+the expert tier) grows with context.
+
+Long code prompts (repository sources, `build-glm-release/runner-sim/ctx-20261016/`), RX 9070 XT alone, 512 tokens,
+budget 16384 MiB:
+
+| context | configuration | prefill tok/s | decode tok/s (trials) | GPU expert slots |
+|---|---|---:|---|---:|
+| 64K | default (14 prefetch groups) | refused: VRAM budget | - | - |
+| 64K | default, 8 prefetch groups | 536 | 28.4, 34.3, 34.9 | - |
+| 64K | `VRAM_PREALLOC` | 516 | 34.1, 34.8, 37.6 | - |
+| 128K | default, any prefetch setting tried | refused: VRAM budget | - | - |
+| 128K | `VRAM_PREALLOC` alone | refused: the pool (15,936 MiB) is full | - | - |
+| 128K | `KV_HOST` + `VRAM_PREALLOC` + `INDEX_BLOCK_POOLS=8192` | 511 | 24.5, 30.4, 32.5 | 1,065 |
+| 256K | same | 428 | 20.6, 27.8, 31.2 | 1,043 |
+
+The first decode trial runs while the tier is still learning the prompt's experts. With the cache in host memory
+the tier keeps about 1,050 slots (9.1 GB) at 128K and 256K, so long-context decode stays near the 8K speed; the
+pinned cache took 3.1 GB (128K) and 6.3 GB (256K) of host RAM.
 
 Correctness: two default runs with identical settings (strict routing, fixed 4 GB tier) already produced different
 token streams, so token identity cannot show equivalence here. The host-KV path reads the same floats through the
