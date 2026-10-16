@@ -1,6 +1,6 @@
 {
-  "exe": "/home/syoyo/work/Strata/build-hip/strata-glm-decode",
-  "model": "/mnt/disk01/models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
+  "exe": "build-hip/strata-glm-decode",
+  "model": "models/glm53f-reap/GLM-5.3-Flash-REAP50-Q23-assembled.gguf",
   "model_name": "glm53f-reap50-q22-b550-fit4-experimental",
   "context": 4096,
   "dense_cache_mib": 4096,
@@ -48,7 +48,7 @@
     "STRATA_GLM_Q2_NUMA_WEIGHTS": "1",
     "STRATA_GLM_PACK_FUSE_QUANT": "0",
     "STRATA_GLM_CANON": "1",
-    "STRATA_GLM_EXPERT_PRIOR": "/mnt/disk01/models/glm53f-reap/reap50-coverage.json",
+    "STRATA_GLM_EXPERT_PRIOR": "models/glm53f-reap/reap50-coverage.json",
     "STRATA_GLM_FLOATING_Q8": "all",
     "GLIBC_TUNABLES": "glibc.cpu.x86_non_temporal_threshold=1048576",
     "STRATA_GLM_TIER_RUNTIME_RESERVE_MIB": "512",
@@ -61,13 +61,13 @@
     "STRATA_GLM_TIER_LOOKUP_ONCE": "1",
     "STRATA_GLM_DEFER_EXPERTS": "1",
     "STRATA_GLM_DEFER_ROUTES": "2",
-    "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "/home/syoyo/work/Strata/docs/fixtures/glm_b550_levers_20261010/prof-fit4.json"
+    "STRATA_GLM_ROUTE_AFFINITY_PROFILE": "docs/fixtures/glm_b550_levers_20261010/prof-fit4.json"
   },
-  "log": "/home/syoyo/work/Strata/docs/fixtures/glm_b550_levers_20261010/q22-fit4-engine.log",
+  "log": "logs/q22-fit4-engine.log",
   "backend": "hip",
   "weight_pages": "4k",
   "prefill_experts": "mmq",
   "warm_expert_pages": true,
   "decode_checks": [],
-  "expert_pack": "/mnt/disk01/models/glm53f-reap/REAP50-Q22-down-only-experimental.gguf"
+  "expert_pack": "models/glm53f-reap/REAP50-Q22-down-only-experimental.gguf"
 }
