@@ -61,6 +61,11 @@
      "path": "primary_slots",
      "op": "add",
      "value": -5.8
+    },
+    {
+     "target": "placement",
+     "path": "draft_bank_slots",
+     "value": 5.8
     }
    ]
   },
@@ -556,6 +561,112 @@
      "path": "devices.cuda.decode.mla_ms.2",
      "op": "scale",
      "value": 0.7
+    }
+   ]
+  },
+  {
+   "name": "mtp_window_2_3",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "--draft-depth=4 with split verify (groups 2+3: A is the first half rounded down)",
+   "required_measurement": "MTP_POSITION index 3 (0.75 is extrapolated); depth 4/5 measured worse on single-GPU TR16 on 2026-10-10, re-measure on the two-GPU runner; width-3 kernel times (priced as the width-2 fit times the microbench ratio)",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "groups",
+     "value": [
+      2,
+      3
+     ]
+    }
+   ]
+  },
+  {
+   "name": "mtp_window_1_2",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "--draft-depth=2 with split verify (groups 1+2)",
+   "required_measurement": "MTP_POSITION and ms per step at depth 2 on >=512-token runs",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "groups",
+     "value": [
+      1,
+      2
+     ]
+    }
+   ]
+  },
+  {
+   "name": "mtp_index_share",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "new: draft steps 1..k-1 reuse step 0 indexer top-k (index_share_for_mtp_iteration, llama.cpp #27917)",
+   "required_measurement": "draft_ms per step at 1K/8K/32K and MTP_POSITION with and without the share; confirm index_share_for_mtp_iteration in the HF config.json",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "draft_index_share",
+     "value": true
+    }
+   ]
+  },
+  {
+   "name": "mtp_q4_full_head",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "new: --mtp-gguf overlay with a full 288-expert Q4_0 NextN head (ggml-org mtp-GLM-5.3-Flash-Q4_0.gguf)",
+   "required_measurement": "MTP_POSITION with the overlay (prior: llama.cpp #27917 curve 0.924/0.880/0.738/0.735/0.789); draft_ms per step; VRAM for a GPU bank (4.1 GB = 10.7 slots/layer)",
+   "edits": [
+    {
+     "target": "placement",
+     "path": "draft_quant",
+     "value": "q4_0"
+    }
+   ]
+  },
+  {
+   "name": "mtp_prime_batched",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_MTP_BATCHED=1 (mtp_prime_batch inside the prefill pass)",
+   "required_measurement": "MTP_PRIME ms with and without the knob at 2K/8K; prefill tok/s change",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "mtp_prime",
+     "value": "batched"
+    }
+   ]
+  },
+  {
+   "name": "mtp_prime_crop",
+   "applies_to": "prefill",
+   "lossless": true,
+   "engine_knob": "new: mtp_prime_batch state only (mla_gpu state_only, no MoE/head; llama.cpp #29928 crop_before_nextn)",
+   "required_measurement": "MTP_PRIME ms; identical draft proposals (--check-verify) against the uncropped priming",
+   "edits": [
+    {
+     "target": "plan",
+     "path": "mtp_prime",
+     "value": "crop"
+    }
+   ]
+  },
+  {
+   "name": "mtp_unsplit_4",
+   "applies_to": "decode",
+   "lossless": true,
+   "engine_knob": "STRATA_GLM_SPLIT_VERIFY=0 (one verify group of 4 per layer; verify graphs cover width 4)",
+   "required_measurement": "decode tok/s split vs unsplit on the two-GPU runner; the calibration has split (2,2) records only, so this forecast is outside the fit",
+   "edits": [
+    {
+     "target": "topology",
+     "path": "groups",
+     "value": [
+      4
+     ]
     }
    ]
   }

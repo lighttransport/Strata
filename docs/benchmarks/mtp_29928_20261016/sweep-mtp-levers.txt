@@ -1,0 +1,20 @@
+base: decode 28.39 tok/s, prefill 424.5 tok/s
++ mtp_unsplit_4: decode 34.02, prefill 424.5
++ mtp_prime_crop: decode 34.02, prefill 523.0
++ mtp_q4_full_head: decode 34.85, prefill 523.0
++ mtp_index_share: decode 34.97, prefill 523.0
+{
+ "base": {
+  "decode_tok_s": 28.392049669315657,
+  "prefill_tok_s": 424.5021589213243
+ },
+ "final": {
+  "decode_tok_s": 34.973269892188945,
+  "prefill_tok_s": 522.9888288378793
+ },
+ "reaches": {
+  "decode": false,
+  "prefill": false
+ },
+ "excluded_lossy": []
+}

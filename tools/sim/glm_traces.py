@@ -89,6 +89,13 @@ def timed_trial(log):
     return dict(trials[-1])
 
 
+def acceptance_by_position(trial):
+    """Conditional draft acceptance per position from the trial's MTP_POSITION lines: accepted / opportunities, where an
+    opportunity is a round that reached that position (every earlier draft accepted). Indexes without one are omitted."""
+    rows = sorted(trial.get('mtp_position') or [], key=lambda v: v.get('index', 0))
+    return [round(v['accepted'] / v['opportunities'], 4) for v in rows if v.get('opportunities')]
+
+
 def round_scopes(trial):
     """Per verify-step milliseconds of each host scope, as the STEP_TRACE partition defines them.
 
@@ -216,7 +223,8 @@ def records_from_bench(results_path, expert_bytes=9109504, experts_per_layer=224
         shares = dict(cpu=round(cpu_share, 4), worker=round(worker_share, 4), primary=round(max(0.0, 1 - cpu_share - worker_share), 4))
         out.append(dict(name=name, kind='decode', split='fit', fit=True, measured_tok_s=scopes['accepted_per_round'] * 1000 / scopes['round_ms'],
                         scopes=dict(head=scopes['head'], cpu_service=scopes['cpu_service'], between=scopes['between'], tail=scopes['tail'], draft=scopes['draft']) if instrumented else {},
-                        accepted_per_round=scopes['accepted_per_round'], shares=shares,
+                        accepted_per_round=scopes['accepted_per_round'], acceptance_by_position=acceptance_by_position(trial),
+                        shares=shares,
                         topology=dict(kind='A', primary=primary, worker=worker, groups=[2, 2], context_tokens=tokens),
                         placement=dict(primary_slots=round(primary_slots, 1), worker_slots=round(worker_slots, 1) if worker else 0.0, experts_per_layer=experts_per_layer),
                         source=dict(log=str(log_path), sha256=log['sha256'], speculative_tok_s=trial['speculative']['tok_s'], other_ms=scopes['other'], resync_ms=scopes['resync']),

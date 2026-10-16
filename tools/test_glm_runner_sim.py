@@ -268,6 +268,102 @@ class SweepTests(unittest.TestCase):
             g.apply_lever(self.state, dict(name='bad', edits=[dict(target='nowhere', path='x', value=1)]))
 
 
+class MtpTests(unittest.TestCase):
+    """Acceptance curve, verify-width union, draft cost terms and priming (llama.cpp #29928 study)."""
+    def setUp(self):
+        self.hw = hardware(); self.table = table()
+
+    def run_decode(self, topo, place=None, accepted=None):
+        place = place or g.Placement()
+        wl = g.synthetic_workload(self.table, place, topo, rounds=1, accepted_per_round=accepted, shares=SHARES)
+        return g.simulate_decode(wl, self.table, place, topo, self.hw)
+
+    def test_default_curve_reproduces_the_reference_constant(self):
+        topo = g.Topology(kind='A', primary='hip', worker='cuda')
+        self.assertAlmostEqual(g.accepted_per_round_for(self.table, topo, g.Placement()),
+                               g.get(self.table, 'model.accepted_per_round'), delta=0.02)
+
+    def test_acceptance_rises_with_depth_and_saturates(self):
+        values = [g.accepted_per_round_for(self.table, g.Topology(groups=w), g.Placement())
+                  for w in ((1,), (2,), (2, 1), (2, 2), (3, 2), (3, 3))]
+        self.assertEqual(values[0], 1.0)
+        self.assertTrue(all(b > a for a, b in zip(values, values[1:])))
+        gains = [b - a for a, b in zip(values, values[1:])]
+        self.assertTrue(all(b < a for a, b in zip(gains, gains[1:])))
+        self.assertEqual(g.acceptance_curve(self.table, '0.9,0.5'), [0.9, 0.5])
+        self.assertEqual(g.acceptance_curve(self.table, draft_quant='q4_0'),
+                         g.get(self.table, 'model.acceptance_profiles.llamacpp_q4_full288.conditional'))
+        with self.assertRaises(KeyError):
+            g.acceptance_curve(self.table, 'nope')
+
+    def test_explicit_accepted_overrides_the_curve(self):
+        topo = g.Topology(kind='A', primary='hip', worker='cuda', groups=(3, 2))
+        self.assertAlmostEqual(self.run_decode(topo, accepted=3.2)['accepted_per_round'], 3.2)
+
+    def test_union_keeps_width_two_and_discounts_wider_groups(self):
+        unique = g.get(self.table, 'model.unique_experts_per_route')
+        self.assertAlmostEqual(g.experts_per_slot(self.table, 2, 224), unique * 2 * g.TOP_K)
+        self.assertEqual(g.experts_per_slot(self.table, 1, 224), g.TOP_K)
+        self.assertLess(g.experts_per_slot(self.table, 3, 224), 1.5 * g.experts_per_slot(self.table, 2, 224))
+        self.assertLess(g.experts_per_slot(self.table, 4, 224), 4 * g.TOP_K)
+
+    def test_other_widths_scale_the_fitted_width_two_entry(self):
+        d = dict(kda_ms={'1': 0.36, '2': 0.17, '4': 0.45}, width_ratio=dict(kda_ms={'1': 0.9, '2': 1.0, '4': 1.2}))
+        self.assertAlmostEqual(g.per_width(d, 'kda_ms', 2), 0.17)
+        self.assertAlmostEqual(g.per_width(d, 'kda_ms', 1), 0.17 * 0.9)
+        self.assertAlmostEqual(g.per_width(d, 'kda_ms', 3), 0.17 * 1.1)
+        self.assertAlmostEqual(g.per_width(dict(kda_ms=d['kda_ms']), 'kda_ms', 3), (0.17 + 0.45) / 2)
+        self.assertAlmostEqual(g.width_value({'1': 1.0, '4': 4.0}, 8), 4.0)
+
+    def test_index_share_saves_more_at_long_context_and_needs_depth(self):
+        def draft(ctx, share, groups=(2, 2)):
+            return self.run_decode(g.Topology(kind='A', primary='hip', worker='cuda', groups=groups, context_tokens=ctx,
+                                              draft_index_share=share))['scopes']['draft']
+        short, long_ = draft(1024, False) - draft(1024, True), draft(32768, False) - draft(32768, True)
+        self.assertGreater(short, 0); self.assertGreater(long_, 3 * short)
+        self.assertAlmostEqual(draft(8192, False, (2,)), draft(8192, True, (2,)))  # one draft step: nothing to share
+        self.assertGreater(draft(32768, False), draft(1024, False))
+
+    def test_draft_format_scales_cpu_bytes_and_bank_slots(self):
+        topo = g.Topology(kind='A', primary='hip', worker='cuda')
+        base = self.run_decode(topo, g.Placement())
+        q4 = self.run_decode(topo, g.Placement(draft_quant='q4_0'))
+        self.assertGreater(q4['cpu_gb_per_output'] * q4['accepted_per_round'], base['cpu_gb_per_output'] * base['accepted_per_round'])
+        bank = g.Placement(draft_bank='primary', draft_bank_slots=5.8, draft_quant='q4_0')
+        self.assertAlmostEqual(g.bank_placement(bank).primary_slots, 15 - 5.8 * (g.DRAFT_FORMATS['q4_0'][0] * 288 / 224 - 1))
+        self.assertEqual(g.bank_placement(g.Placement(draft_quant='q4_0')).primary_slots, 15)
+
+    def test_priming_modes_only_change_time_to_first_token(self):
+        rows = {m: g.simulate_prefill(self.table, g.PrefillPlan(primary='hip', worker='cuda', mtp_prime=m), self.hw)
+                for m in ('serial', 'batched', 'crop', 'none')}
+        self.assertEqual(len({round(r['tok_s'], 9) for r in rows.values()}), 1)
+        self.assertGreater(rows['serial']['mtp_prime_ms'], rows['batched']['mtp_prime_ms'])
+        self.assertGreater(rows['batched']['mtp_prime_ms'], rows['crop']['mtp_prime_ms'])
+        self.assertEqual(rows['none']['mtp_prime_ms'], 0.0); self.assertAlmostEqual(rows['none']['ttft_tok_s'], rows['none']['tok_s'])
+
+    def test_mtp_sweep_and_levers(self):
+        topo = g.Topology(kind='A', primary='hip', worker='cuda')
+        result = g.mtp_sweep(self.table, topo, g.Placement(), self.hw, contexts=(8192,), windows=((2, 2), (2, 1)),
+                             quants=('base', 'q4_0'), banks=('cpu',), shares=(False,))
+        self.assertEqual(len(result['rows']), 4)
+        for key, best in result['best'].items():
+            self.assertEqual(best['tok_s'], max(r['tok_s'] for r in result['rows'] if f"{r['context']}/{r['acceptance']}" == key))
+        levers = {l['name']: l for l in json.loads((DATA / 'glm_levers.json').read_text())['levers']}
+        state = dict(table=self.table, topology=topo, placement=g.Placement(), plan=g.PrefillPlan(primary='hip', worker='cuda'),
+                     accepted_per_round=None)
+        crop = g.sweep_levers([levers['mtp_prime_crop']], state, self.hw, log=lambda *_: None, prefill_metric='ttft_tok_s')
+        self.assertEqual([p['lever'] for p in crop['path']], ['mtp_prime_crop'])
+        self.assertEqual(g.sweep_levers([levers['mtp_prime_crop']], state, self.hw, log=lambda *_: None)['path'], [])
+        share = g.apply_lever(state, levers['mtp_index_share'])
+        self.assertTrue(share['topology'].draft_index_share)
+
+    def test_trace_acceptance_by_position(self):
+        trial = dict(mtp_position=[dict(index=1, proposed=80, opportunities=80, accepted=60),
+                                   dict(index=0, proposed=100, opportunities=100, accepted=90),
+                                   dict(index=2, proposed=0, opportunities=0, accepted=0)])
+        self.assertEqual(glm_traces.acceptance_by_position(trial), [0.9, 0.75])
+
+
 class TraceReaderTests(unittest.TestCase):
     def test_log_and_timeline_readers(self):
         with tempfile.TemporaryDirectory() as d:

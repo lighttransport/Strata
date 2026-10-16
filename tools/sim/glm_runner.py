@@ -17,6 +17,7 @@ import math
 from pathlib import Path
 
 from sim.heterogeneous import Event, schedule, transfer_events
+from sim.routing import tokens_per_round, union_ratio
 
 DATA = Path(__file__).resolve().parent / 'data'
 LAYERS = 45
@@ -31,6 +32,13 @@ EXPERT_BYTES = {l: 9109504 for l in MOE_LAYERS}
 EXPERT_BYTES.update({11: 10878976, 12: 9961472, 44: 9961472})
 ROW_BYTES = HIDDEN * 4
 RESIDUAL_BYTES = 4 * HIDDEN * 4  # mHC: 4 streams of hidden floats per token
+# Draft (blk.45) formats: (expert bytes relative to the shipped draft experts, experts kept). The shipped head is the
+# REAP-224 one (~Q23 like layer 44, 9.96 MB per expert; GLM_PRUNE_224.md drops 64 draft experts by router bias); the
+# others are full 288-expert heads such as ggml-org's mtp-GLM-5.3-Flash-Q4_0.gguf. An expert is 3 x 4096 x 2048 =
+# 25.2 M weights: Q4_0 (4.5 bpw) 14.2 MB, Q8_0 (8.5 bpw) 26.7 MB, BF16 50.3 MB.
+DRAFT_FORMATS = {'base': (1.0, 224), 'q4_0': (14155776 / 9961472, 288), 'q8_0': (26738688 / 9961472, 288),
+                 'bf16': (50331648 / 9961472, 288)}
+DRAFT_QUANT_RATIO = {k: v[0] for k, v in DRAFT_FORMATS.items()}
 
 
 def mixer_kind(layer):
@@ -65,13 +73,17 @@ def load_json(path):
 
 
 def width_value(mapping, width):
-    """Per-width tables are keyed by strings; the largest key not above the width applies."""
+    """Per-width tables are keyed by strings. A measured width applies as is; a width between two measured ones is
+    interpolated linearly (width 3 between 2 and 4); outside the range the nearest key not above it applies."""
     keys = sorted(int(k) for k in mapping)
-    chosen = keys[0]
-    for k in keys:
-        if k <= width:
-            chosen = k
-    return mapping[str(chosen)]
+    if str(width) in mapping:
+        return mapping[str(width)]
+    lower = [k for k in keys if k < width]
+    upper = [k for k in keys if k > width]
+    if lower and upper:
+        a, b = lower[-1], upper[0]
+        return mapping[str(a)] + (mapping[str(b)] - mapping[str(a)]) * (width - a) / (b - a)
+    return mapping[str(lower[-1] if lower else keys[0])]
 
 
 def interpolate(points, x):
@@ -115,6 +127,7 @@ class Placement:
     policy: str = 'lru'           # lru | lfu (curve policy factor) | recorded
     draft_bank: str = 'cpu'       # cpu | primary | worker
     draft_bank_slots: float = 0.0  # expert slots taken from that device for the MTP layer
+    draft_quant: str = 'base'      # draft expert format (DRAFT_QUANT_RATIO); a larger bank costs more slots
 
 
 @dataclasses.dataclass
@@ -133,6 +146,50 @@ class Topology:
     context_tokens: int = 8192       # MLA attention reads the latent cache of this many positions
     residents: str = 'chain'         # chain (resident experts on the mixer stream) | side (own stream, overlapped)
     worker_cpu_share: float = 0.0    # two nodes: share of the CPU-lane experts served by the worker node's CPU (or {layer: share})
+    acceptance: str = ''             # draft acceptance profile name or comma list of per-position probabilities ('' = default)
+    draft_index_share: bool = False  # draft steps after the first reuse the first step's indexer selection
+
+
+def acceptance_curve(table, profile='', draft_quant='base'):
+    """Conditional draft acceptance per position: P(draft i accepted | drafts before it accepted).
+
+    profile: a name under model.acceptance_profiles or a comma list of probabilities; '' picks the draft format's
+    profile (model.draft_quant_profiles) and falls back to model.acceptance_by_position (measured + extrapolated)."""
+    if profile and any(c.isdigit() for c in profile.split(',')[0]):
+        return [float(x) for x in profile.split(',')]
+    profiles = get(table, 'model.acceptance_profiles', {})
+    name = profile or get(table, 'model.draft_quant_profiles', {}).get(draft_quant, '')
+    if name:
+        if name not in profiles:
+            raise KeyError('unknown acceptance profile ' + name)
+        return list(profiles[name]['conditional'])
+    a = get(table, 'model.acceptance_by_position')
+    return list(a['measured']) + list(a.get('extrapolated', []))
+
+
+def accepted_per_round_for(table, topology, placement):
+    """Tokens one round delivers with a draft depth of window - 1: the anchor plus the expected accepted prefix."""
+    return tokens_per_round(sum(topology.groups) - 1, acceptance_curve(table, topology.acceptance, placement.draft_quant))
+
+
+def experts_per_slot(table, width, experts_per_layer):
+    """Distinct routed experts a verify group of `width` consecutive tokens touches in one layer. The union curve
+    (sim.routing.union_ratio) is scaled so width 2 keeps the fitted model.unique_experts_per_route."""
+    unique = get(table, 'model.unique_experts_per_route')
+    if width <= 1:
+        return float(TOP_K)
+    scale = unique * 2 / union_ratio(2, experts=experts_per_layer)
+    return TOP_K * min(width, union_ratio(width, experts=experts_per_layer) * scale)
+
+
+def bank_placement(placement):
+    """A draft bank larger than the shipped one takes the extra expert slots from the device that holds it."""
+    ratio, experts = DRAFT_FORMATS[placement.draft_quant]
+    extra = placement.draft_bank_slots * (ratio * experts / DRAFT_FORMATS['base'][1] - 1)
+    if placement.draft_bank == 'cpu' or not extra:
+        return placement
+    field = 'primary_slots' if placement.draft_bank == 'primary' else 'worker_slots'
+    return dataclasses.replace(placement, **{field: max(0.0, getattr(placement, field) - extra)})
 
 
 def route_shares(placement, table):
@@ -148,23 +205,26 @@ def route_shares(placement, table):
 
 
 def synthetic_workload(table, placement, topology, rounds=1, accepted_per_round=None, shares=None):
-    """Average slots per round. `shares` (primary/worker/cpu) overrides the placement curve."""
-    shares = shares or route_shares(placement, table)
+    """Average slots per round. `shares` (primary/worker/cpu) overrides the placement curve. Without an explicit
+    `accepted_per_round` the acceptance curve and the draft depth (window - 1) give the tokens per round."""
+    shares = shares or route_shares(bank_placement(placement), table)
     unique = get(table, 'model.unique_experts_per_route')
     depth = sum(topology.groups) - 1
-    accepted = accepted_per_round or get(table, 'model.accepted_per_round')
+    accepted = accepted_per_round or accepted_per_round_for(table, topology, placement)
     draft_cpu = 0.0 if placement.draft_bank != 'cpu' else TOP_K * unique
+    rows_w2 = shares.get('rows_per_worker_expert', get(table, 'model.rows_per_worker_expert'))
     out = []
     for _ in range(rounds):
         slots = []
         for layer in MOE_LAYERS:
             for g, width in enumerate(topology.groups):
-                experts = unique * width * TOP_K
+                experts = experts_per_slot(table, width, placement.experts_per_layer)
                 cpu = experts * shares['cpu']
                 worker = experts * shares['worker'] if topology.kind == 'A' else 0.0
                 primary = experts - cpu - worker
-                slots.append(Slot(layer, g, width, cpu, worker, primary, cpu * EXPERT_BYTES[layer],
-                                  worker * shares.get('rows_per_worker_expert', get(table, 'model.rows_per_worker_expert'))))
+                # Rows do not merge: rows per distinct expert grow as the union saturates (fitted at width 2).
+                rows_per_expert = rows_w2 * (width * TOP_K / experts) / (2 * TOP_K / experts_per_slot(table, 2, placement.experts_per_layer))
+                slots.append(Slot(layer, g, width, cpu, worker, primary, cpu * EXPERT_BYTES[layer], worker * rows_per_expert))
         out.append(Round(slots, accepted, depth, draft_cpu))
     return out
 
@@ -325,17 +385,33 @@ def resources_for(hardware, table, topology):
     return r
 
 
+def per_width(d, key, width):
+    """Per-width cost. Calibration fits only the width-2 entry (the verify groups of every record); when the table has
+    `width_ratio.<key>` (raw microbench cost relative to width 2) other widths scale the fitted width-2 value by it, so a
+    fitted and an unfitted entry are never compared directly."""
+    ratio = d.get('width_ratio', {}).get(key)
+    if ratio and width != 2:
+        return d[key]['2'] * width_value(ratio, width)
+    return width_value(d[key], width)
+
+
 def _device_costs(table, device, kind, width, context_tokens=8192):
     d = get(table, f'devices.{device}.decode')
     mixer = 0.0
     if kind == 'kda':
-        mixer = width_value(d['kda_ms'], width)
+        mixer = per_width(d, 'kda_ms', width)
     elif kind == 'mla':
-        mixer = width_value(d['mla_ms'], width) + d['mla_kv_ms_per_ktoken'] * context_tokens / 1024
+        mixer = per_width(d, 'mla_ms', width) + d['mla_kv_ms_per_ktoken'] * context_tokens / 1024
+    # The draft block is a sparse MLA layer with its own indexer over the whole context: draft_step_ms holds the step
+    # at model.draft_step_reference_tokens, the context part moves at the MLA per-ktoken rate unless set separately.
+    draft_rate = d.get('draft_context_ms_per_ktoken', d['mla_kv_ms_per_ktoken'])
+    reference = get(table, 'model.draft_step_reference_tokens', 8192)
+    draft_context = draft_rate * context_tokens / 1024
     return dict(mixer=mixer,
                 publish=d['publish_ms'], resident_fixed=d['resident_fixed_ms'],
-                resident_expert=width_value(d['resident_expert_ms'], width), launch=d['launch_ms'],
-                combine=d['combine_ms'], draft=width_value(d['draft_step_ms'], 1), head=d['head_ms'], tail=d['tail_ms'],
+                resident_expert=per_width(d, 'resident_expert_ms', width), launch=d['launch_ms'],
+                combine=d['combine_ms'], draft=width_value(d['draft_step_ms'], 1) - draft_rate * reference / 1024 + draft_context,
+                draft_context=draft_context, head=d['head_ms'], tail=d['tail_ms'],
                 vram=get(table, f'devices.{device}.decode.vram_gb_s') * 1e6)
 
 
@@ -441,7 +517,7 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
                     submit = b.add(tag + '/submit', {'host': w_t['submit_host_ms']}, submit_dep, 'worker', minimum_ms=submit_ms / 2)
                     up = submit
                 wd = get(table, f'devices.{worker}.decode')
-                exec_ms = wd['worker_request_fixed_ms'] + s.worker_experts * width_value(wd['resident_expert_ms'], s.width)
+                exec_ms = wd['worker_request_fixed_ms'] + s.worker_experts * per_width(wd, 'resident_expert_ms', s.width)
                 run = b.add(tag + '/worker', {f'{worker}.compute': exec_ms}, up, 'worker')
                 ret = b.transfer(tag + '/worker-rows', s.worker_rows * ROW_BYTES, worker, 'ram', hardware, run)
                 copy_rate = (remote['node']['memcpy_gb_s'] if gpu_remote else w_t['memcpy_gb_s']) * 1e6
@@ -497,19 +573,22 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
                                        'handoff', minimum_ms=w_t['bounce_latency_ms'])
     # Tail: final wait-adds, output norm, logits, readback and sampling on the last stage's device.
     last_dev = stages[-1]['device']
-    cl = _device_costs(table, last_dev, 'dense', 1)
+    cl = _device_costs(table, last_dev, 'dense', 1, topology.context_tokens)
     tail_dep = [last_gpu[last_dev]] + [markers['finish'][k] for k in markers['finish'] if k[0] == len(stages) - 1 and k[1] == stages[-1]['layers'][-1]]
     tail = b.add(f'{prefix}/tail', {f'{last_dev}.compute': cl['tail']}, tail_dep, 'tail')
     markers['verify_end'] = tail
     prev = tail
-    # Draft chain: depth sequential MTP steps; CPU draft experts go through the last stage's lane.
+    # Draft chain: depth sequential MTP steps; CPU draft experts go through the last stage's lane. With a shared
+    # indexer selection only the first step scores the context; the draft expert format scales the expert bytes.
     lane = stages[-1]['lane']
+    ratio = DRAFT_QUANT_RATIO[placement.draft_quant]
     for d in range(round_.draft_steps):
-        gpu = b.add(f'{prefix}/draft{d}/gpu', {f'{last_dev}.compute': cl['draft']}, prev, 'draft')
+        step_ms = cl['draft'] - (cl['draft_context'] if topology.draft_index_share and d > 0 else 0.0)
+        gpu = b.add(f'{prefix}/draft{d}/gpu', {f'{last_dev}.compute': step_ms}, prev, 'draft')
         if round_.draft_cpu_experts > 0:
             cpu = b.add(f'{prefix}/draft{d}/cpu', {f'cpu.lane{lane}': cpu_t['slot_fixed_ms'] + cpu_t['quant_ms_per_token'] +
                                                    round_.draft_cpu_experts * cpu_t['expert_fixed_ms'],
-                                                   f'cpu.flow{lane}': round_.draft_cpu_experts * EXPERT_BYTES[44]},
+                                                   f'cpu.flow{lane}': round_.draft_cpu_experts * EXPERT_BYTES[44] * ratio},
                         [gpu, lane_tail[lane]], 'draft', minimum_ms=cpu_t['mailbox_latency_ms'])
             lane_tail[lane] = cpu
             rows = b.transfer(f'{prefix}/draft{d}/rows', TOP_K * ROW_BYTES, 'ram', last_dev, hardware, cpu)
@@ -517,7 +596,7 @@ def decode_round_events(round_, table, placement, topology, hardware, prefix='r'
         else:
             bank_dev = topology.primary if placement.draft_bank == 'primary' else (topology.worker if placement.draft_bank == 'worker' else last_dev)
             bank = b.add(f'{prefix}/draft{d}/bank', {f'{bank_dev}.compute': get(table, f'devices.{bank_dev}.decode.resident_fixed_ms') +
-                                                     TOP_K * width_value(get(table, f'devices.{bank_dev}.decode.resident_expert_ms'), 1)},
+                                                     TOP_K * ratio * per_width(get(table, f'devices.{bank_dev}.decode'), 'resident_expert_ms', 1)},
                          gpu, 'draft')
             if bank_dev != last_dev:
                 bank = b.transfer(f'{prefix}/draft{d}/bank-rows', TOP_K * ROW_BYTES, bank_dev, last_dev, hardware, bank)
@@ -563,7 +642,8 @@ def simulate_decode(workload, table, placement, topology, hardware, rounds=None)
             totals[k] += s[k]
         lower += result['lower_bound_ms']
         accepted += r.accepted
-        counters['cpu_bytes'] += sum(x.cpu_bytes for x in r.slots) + r.draft_steps * r.draft_cpu_experts * EXPERT_BYTES[44]
+        counters['cpu_bytes'] += sum(x.cpu_bytes for x in r.slots) + \
+            r.draft_steps * r.draft_cpu_experts * EXPERT_BYTES[44] * DRAFT_QUANT_RATIO[placement.draft_quant]
         counters['worker_rows'] += sum(x.worker_rows for x in r.slots)
         counters['slots'] += len(r.slots)
     n = len(sample)
@@ -595,6 +675,27 @@ class PrefillPlan:
     groups_per_layer: int = 14
     stream_overlap: str = 'mixer'  # none (streams after the mixer) | mixer (during this layer's mixer, STAGE_PREFETCH) | layer (one layer ahead)
     worker_stream_overlap: str = 'mixer'  # the worker preloads its next layer's groups after its reply (MIXED_PREFETCH_NEXT)
+    # Draft-layer priming over the prompt, after the prefill pass (time to first token, not prefill tok/s):
+    # serial  - prepare_mtp's sync_mtp: one state-only draft step per prompt token (no STRATA_GLM_MTP_BATCHED)
+    # batched - mtp_prime_batch inside the prefill: one more MLA layer plus a full MoE layer over every row
+    # crop    - batched, state only (llama.cpp #29928 crop_before_nextn): the latent and indexer keys only
+    # none    - no MTP
+    mtp_prime: str = 'serial'
+
+
+def mtp_prime_ms(table, plan, mixer_chain_ms, exposed_ffn_ms):
+    """Time the draft layer's priming over the prompt adds before the first token (see PrefillPlan.mtp_prime)."""
+    if plan.mtp_prime == 'none':
+        return 0.0
+    if plan.mtp_prime == 'serial':
+        # Per token, the same state-only draft step the decode resync runs (host.resync_ms per reference round).
+        return plan.tokens * get(table, 'host.resync_ms') / get(table, 'model.accepted_per_round')
+    mla = get(table, f'devices.{plan.primary}.prefill.mixer_ms')[str(max(MLA_LAYERS))] * plan.tokens / 8192 / plan.mixer_speedup
+    if plan.mtp_prime == 'batched':
+        return mla + exposed_ffn_ms / len(MOE_LAYERS)
+    if plan.mtp_prime == 'crop':
+        return mla * get(table, 'model.mtp_prime_state_fraction')
+    raise ValueError('unknown mtp_prime ' + plan.mtp_prime)
 
 
 def prefill_events(table, plan, hardware):
@@ -703,8 +804,11 @@ def simulate_prefill(table, plan, hardware):
     t = {e['name']: e for e in result['events']}
     mixer_chain = sum(t[f'l{l}/mixer']['end_ms'] - t[f'l{l}/mixer']['start_ms'] for l in range(LAYERS))
     ms = result['milliseconds']
+    exposed = ms - mixer_chain - t['load']['end_ms']
+    prime = mtp_prime_ms(table, plan, mixer_chain, exposed)
     return dict(tok_s=plan.tokens * 1000 / ms, milliseconds=ms, lower_bound_ms=result['lower_bound_ms'],
-                mixer_chain_ms=mixer_chain, exposed_ffn_ms=ms - mixer_chain - t['load']['end_ms'],
+                mixer_chain_ms=mixer_chain, exposed_ffn_ms=exposed, mtp_prime_ms=prime,
+                ttft_tok_s=plan.tokens * 1000 / (ms + prime),
                 resource_service_ms=result['resource_service_ms'], plan=dataclasses.asdict(plan),
                 quality_qualified=False, scope='Prefill phase model at measured per-layer costs; no quality prediction')
 
@@ -860,14 +964,16 @@ def score_state(state, hardware, want_decode=True, want_prefill=True):
     return out
 
 
-def sweep_levers(levers, state, hardware, target_decode=50.0, target_prefill=1000.0, allow_lossy=False, log=print):
-    """Greedy forward selection: each step adds the lever with the largest marginal gain on its metric."""
+def sweep_levers(levers, state, hardware, target_decode=50.0, target_prefill=1000.0, allow_lossy=False, log=print,
+                 prefill_metric='tok_s'):
+    """Greedy forward selection: each step adds the lever with the largest marginal gain on its metric.
+    prefill_metric: 'tok_s' (the prefill pass) or 'ttft_tok_s' (prompt tokens over prefill plus MTP priming)."""
     remaining = [l for l in levers if allow_lossy or l.get('lossless', False)]
     excluded = [l['name'] for l in levers if l not in remaining]
     base = score_state(state, hardware)
     path = []
     current = dict(state)
-    dec = base.get('decode', {}).get('tok_s'); pre = base.get('prefill', {}).get('tok_s')
+    dec = base.get('decode', {}).get('tok_s'); pre = base.get('prefill', {}).get(prefill_metric)
     log(f'base: decode {dec and round(dec, 2)} tok/s, prefill {pre and round(pre, 1)} tok/s')
     while remaining:
         best = None
@@ -879,7 +985,7 @@ def sweep_levers(levers, state, hardware, target_decode=50.0, target_prefill=100
             if 'decode' in s and dec:
                 gain += (s['decode']['tok_s'] - dec) / target_decode
             if 'prefill' in s and pre:
-                gain += (s['prefill']['tok_s'] - pre) / target_prefill
+                gain += (s['prefill'][prefill_metric] - pre) / target_prefill
             if best is None or gain > best[0]:
                 best = (gain, lever, trial, s)
         gain, lever, trial, s = best
@@ -887,15 +993,54 @@ def sweep_levers(levers, state, hardware, target_decode=50.0, target_prefill=100
             break
         current = trial
         dec = s['decode']['tok_s'] if 'decode' in s else dec
-        pre = s['prefill']['tok_s'] if 'prefill' in s else pre
+        pre = s['prefill'][prefill_metric] if 'prefill' in s else pre
         remaining.remove(lever)
         path.append(dict(lever=lever['name'], lossless=lever.get('lossless', False), decode_tok_s=dec, prefill_tok_s=pre,
                          engine_knob=lever.get('engine_knob'), required_measurement=lever.get('required_measurement')))
         log(f'+ {lever["name"]}: decode {dec and round(dec, 2)}, prefill {pre and round(pre, 1)}')
         if (dec or 0) >= target_decode and (pre or 0) >= target_prefill:
             break
-    return dict(base=dict(decode_tok_s=base.get('decode', {}).get('tok_s'), prefill_tok_s=base.get('prefill', {}).get('tok_s')),
+    return dict(base=dict(decode_tok_s=base.get('decode', {}).get('tok_s'), prefill_tok_s=base.get('prefill', {}).get(prefill_metric)),
                 path=path, final=dict(decode_tok_s=dec, prefill_tok_s=pre),
                 reaches=dict(decode=(dec or 0) >= target_decode, prefill=(pre or 0) >= target_prefill),
-                excluded_lossy=excluded, targets=dict(decode=target_decode, prefill=target_prefill),
+                excluded_lossy=excluded, targets=dict(decode=target_decode, prefill=target_prefill), prefill_metric=prefill_metric,
                 scope='Greedy lever path on the calibrated model; gains are conditional on each lever delivering its edited constant')
+
+
+# Engine shapes: split verify runs group A = first half rounded down, B = the rest (GLM_Q2_DECODE_REDESIGN.md); (w,) is unsplit.
+MTP_WINDOWS = ((1,), (2,), (3,), (4,), (5,), (1, 2), (2, 2), (2, 3), (3, 3))
+
+
+def mtp_sweep(table, topology, placement, hardware, contexts=(1024, 8192, 32768), windows=MTP_WINDOWS,
+              profiles=('',), quants=('base',), banks=('cpu',), shares=(False, True)):
+    """Every verify window (draft depth = window - 1) x acceptance profile x draft format x draft bank x indexer share
+    at each context. Rows carry tok/s, accepted tokens per round and the draft chain ms; `best` is the argmax per
+    context and acceptance profile ('' = the format's own profile)."""
+    rows = []
+    for ctx in contexts:
+        for window in windows:
+            for profile in profiles:
+                for quant in quants:
+                    for bank in banks:
+                        for share in shares:
+                            topo = dataclasses.replace(topology, groups=tuple(window), context_tokens=ctx,
+                                                       acceptance=profile, draft_index_share=share)
+                            place = dataclasses.replace(placement, draft_quant=quant, draft_bank=bank,
+                                                        draft_bank_slots=placement.draft_bank_slots or (5.8 if bank != 'cpu' else 0.0))
+                            if bank != 'cpu' and not placement.draft_bank_slots:
+                                field = 'primary_slots' if bank == 'primary' else 'worker_slots'
+                                place = dataclasses.replace(place, **{field: max(0.0, getattr(place, field) - 5.8)})
+                            wl = synthetic_workload(table, place, topo, rounds=1)
+                            r = simulate_decode(wl, table, place, topo, hardware)
+                            rows.append(dict(context=ctx, window=list(window), depth=sum(window) - 1, acceptance=profile or quant,
+                                             draft_quant=quant, draft_bank=bank, index_share=share, tok_s=r['tok_s'],
+                                             accepted_per_round=r['accepted_per_round'], ms_per_round=r['ms_per_round'],
+                                             draft_ms=r['scopes']['draft']))
+    best = {}
+    for row in rows:
+        key = f"{row['context']}/{row['acceptance']}"
+        if key not in best or row['tok_s'] > best[key]['tok_s']:
+            best[key] = row
+    return dict(rows=rows, best=best, quality_qualified=False,
+                scope='Greedy verify: draft depth, format and indexer share change acceptance and speed, not outputs. '
+                      'Acceptance curves other than the measured TR16 one are imported (llama.cpp #27917) and need an A/B.')

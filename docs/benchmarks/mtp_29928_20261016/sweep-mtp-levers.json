@@ -1,0 +1,122 @@
+{
+ "base": {
+  "decode_tok_s": 28.392049669315657,
+  "prefill_tok_s": 424.5021589213243
+ },
+ "path": [
+  {
+   "lever": "mtp_unsplit_4",
+   "lossless": true,
+   "decode_tok_s": 34.01588421373171,
+   "prefill_tok_s": 424.5021589213243,
+   "engine_knob": "STRATA_GLM_SPLIT_VERIFY=0 (one verify group of 4 per layer; verify graphs cover width 4)",
+   "required_measurement": "decode tok/s split vs unsplit on the two-GPU runner; the calibration has split (2,2) records only, so this forecast is outside the fit"
+  },
+  {
+   "lever": "mtp_prime_crop",
+   "lossless": true,
+   "decode_tok_s": 34.01588421373171,
+   "prefill_tok_s": 522.9888288378793,
+   "engine_knob": "new: mtp_prime_batch state only (mla_gpu state_only, no MoE/head; llama.cpp #29928 crop_before_nextn)",
+   "required_measurement": "MTP_PRIME ms; identical draft proposals (--check-verify) against the uncropped priming"
+  },
+  {
+   "lever": "mtp_q4_full_head",
+   "lossless": true,
+   "decode_tok_s": 34.85316819380048,
+   "prefill_tok_s": 522.9888288378793,
+   "engine_knob": "new: --mtp-gguf overlay with a full 288-expert Q4_0 NextN head (ggml-org mtp-GLM-5.3-Flash-Q4_0.gguf)",
+   "required_measurement": "MTP_POSITION with the overlay (prior: llama.cpp #27917 curve 0.924/0.880/0.738/0.735/0.789); draft_ms per step; VRAM for a GPU bank (4.1 GB = 10.7 slots/layer)"
+  },
+  {
+   "lever": "mtp_index_share",
+   "lossless": true,
+   "decode_tok_s": 34.973269892188945,
+   "prefill_tok_s": 522.9888288378793,
+   "engine_knob": "new: draft steps 1..k-1 reuse step 0 indexer top-k (index_share_for_mtp_iteration, llama.cpp #27917)",
+   "required_measurement": "draft_ms per step at 1K/8K/32K and MTP_POSITION with and without the share; confirm index_share_for_mtp_iteration in the HF config.json"
+  }
+ ],
+ "final": {
+  "decode_tok_s": 34.973269892188945,
+  "prefill_tok_s": 522.9888288378793
+ },
+ "reaches": {
+  "decode": false,
+  "prefill": false
+ },
+ "excluded_lossy": [],
+ "targets": {
+  "decode": 50.0,
+  "prefill": 1000.0
+ },
+ "prefill_metric": "ttft_tok_s",
+ "scope": "Greedy lever path on the calibrated model; gains are conditional on each lever delivering its edited constant",
+ "base_state": {
+  "topology": {
+   "kind": "A",
+   "primary": "hip",
+   "worker": "cuda",
+   "groups": [
+    2,
+    2
+   ],
+   "combine": "strict",
+   "dispatch": "socket",
+   "ownership": "blocking",
+   "cpu_lanes": "single15",
+   "split_layer": 24,
+   "stage_order": "pipeline",
+   "head_hidden_fraction": 0.0,
+   "context_tokens": 8192,
+   "residents": "chain",
+   "worker_cpu_share": 0.0,
+   "acceptance": "",
+   "draft_index_share": false
+  },
+  "placement": {
+   "primary_slots": 15.0,
+   "worker_slots": 33.0,
+   "experts_per_layer": 224,
+   "policy": "lru",
+   "draft_bank": "cpu",
+   "draft_bank_slots": 0.0,
+   "draft_quant": "base"
+  },
+  "plan": {
+   "tokens": 8192,
+   "primary": "hip",
+   "worker": "cuda",
+   "primary_fraction": 0.5,
+   "exchange": "f32",
+   "return_mode": "chunks",
+   "prefetch_layers": 1,
+   "resident_groups": 0.0,
+   "mixer_speedup": 1.0,
+   "gemm_speedup": 1.0,
+   "cpu_groups": 0.0,
+   "groups_per_layer": 14,
+   "stream_overlap": "mixer",
+   "worker_stream_overlap": "mixer",
+   "mtp_prime": "serial"
+  }
+ },
+ "provenance": [
+  {
+   "path": "tools/sim/data/glm_kernels_tr16.json",
+   "sha256": "9f4ec0a91126667af2993acf62bc8a0d6e90fb5b1554ae9cfb3d10f71e77fe2c"
+  },
+  {
+   "path": "tools/sim/data/glm_runner_params_tr16.json",
+   "sha256": "ae32359cf301b96bab89714f1e7ad4d57fabc4e5131e6170beefdeddb696d61a"
+  },
+  {
+   "path": "tools/sim/data/glm_levers.json",
+   "sha256": "e7717ee154f653c4c8ca41c64f949e493b57b690b6433a24a6a4d8b26b4ee2f9"
+  },
+  {
+   "path": "tools/sim/data/hw_tr16_runner.json",
+   "sha256": "439559c186d1a7915e803b6ec926656a501f2d34da603f6c24788c7d67bf636c"
+  }
+ ]
+}

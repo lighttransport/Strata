@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """GLM runner simulator for TR16 (RTX 5060 Ti + RX 9070 XT + Threadripper 1950X).
 
-Subcommands: calibrate, validate, decode, prefill, sweep, manifest, probe-plan.
+Subcommands: calibrate, validate, decode, prefill, sweep, mtp, manifest, probe-plan, records-from-bench, multinode,
+split-model.
 Every number comes from tools/sim/data/glm_kernels_tr16.json (measured constants plus the
 fitted ones written by `calibrate`) and tools/sim/data/hw_tr16_runner.json. No quality claim.
 
@@ -98,18 +99,24 @@ def topology_args(p):
     p.add_argument('--policy', choices=('lru', 'lfu'), default='lru')
     p.add_argument('--draft-bank', choices=('cpu', 'primary', 'worker'), default='cpu')
     p.add_argument('--shares', help='cpu=0.22,worker=0.46,primary=0.32 (overrides the hit curve)')
-    p.add_argument('--accepted', type=float, help='accepted tokens per verify step (default: table)')
+    p.add_argument('--accepted', type=float, help='accepted tokens per verify step (default: acceptance curve and draft depth)')
+    p.add_argument('--acceptance', default='', help='acceptance profile (model.acceptance_profiles) or comma list of '
+                   'per-position probabilities; default: the draft format\'s profile')
+    p.add_argument('--draft-quant', choices=tuple(g.DRAFT_FORMATS), default='base', help='draft expert format')
+    p.add_argument('--draft-index-share', action='store_true', help='draft steps after the first reuse its indexer selection')
 
 
 def build_topology(args):
     return g.Topology(kind=args.topology, primary=args.primary, worker=args.worker, groups=tuple(int(x) for x in args.groups.split(',')),
                       combine=args.combine, dispatch=args.dispatch, ownership=args.ownership, cpu_lanes=args.cpu_lanes,
-                      split_layer=args.split_layer, stage_order=args.stage_order, context_tokens=args.context)
+                      split_layer=args.split_layer, stage_order=args.stage_order, context_tokens=args.context,
+                      acceptance=args.acceptance, draft_index_share=args.draft_index_share)
 
 
 def build_placement(args):
     return g.Placement(primary_slots=args.primary_slots, worker_slots=args.worker_slots if args.worker else 0.0,
-                       policy=args.policy, draft_bank=args.draft_bank)
+                       policy=args.policy, draft_bank=args.draft_bank, draft_quant=args.draft_quant,
+                       draft_bank_slots=5.8 if args.draft_bank != 'cpu' else 0.0)
 
 
 def parse_shares(text):
@@ -139,19 +146,21 @@ def plan_args(p):
     p.add_argument('--mixer-speedup', type=float, default=1.0)
     p.add_argument('--gemm-speedup', type=float, default=1.0)
     p.add_argument('--cpu-groups', type=float, default=0.0)
+    p.add_argument('--mtp-prime', choices=('serial', 'batched', 'crop', 'none'), default='serial')
 
 
 def build_plan(args):
     return g.PrefillPlan(tokens=args.tokens, primary=args.primary, worker=args.worker, primary_fraction=args.fraction,
                          exchange=args.exchange, return_mode=args.return_mode, stream_overlap=args.stream_overlap,
                          resident_groups=args.resident_groups, mixer_speedup=args.mixer_speedup, gemm_speedup=args.gemm_speedup,
-                         cpu_groups=args.cpu_groups)
+                         cpu_groups=args.cpu_groups, mtp_prime=args.mtp_prime)
 
 
 def cmd_prefill(args):
     hw = g.load_json(args.hardware); table = load_table(args)
     result = g.simulate_prefill(table, build_plan(args), hw)
-    print(json.dumps({k: result[k] for k in ('tok_s', 'milliseconds', 'lower_bound_ms', 'mixer_chain_ms', 'exposed_ffn_ms')}, indent=1))
+    print(json.dumps({k: result[k] for k in ('tok_s', 'milliseconds', 'lower_bound_ms', 'mixer_chain_ms', 'exposed_ffn_ms',
+                                             'mtp_prime_ms', 'ttft_tok_s')}, indent=1))
     write(args, result)
 
 
@@ -166,11 +175,37 @@ def cmd_sweep(args):
         levers = [l for l in levers if l['name'] not in unwanted]
     state = dict(table=table, topology=build_topology(args), placement=build_placement(args), plan=build_plan(args),
                  accepted_per_round=args.accepted)
-    result = g.sweep_levers(levers, state, hw, args.target_decode, args.target_prefill, args.allow_lossy)
+    result = g.sweep_levers(levers, state, hw, args.target_decode, args.target_prefill, args.allow_lossy,
+                            prefill_metric=args.prefill_metric)
     result['base_state'] = dict(topology=dataclasses.asdict(state['topology']), placement=dataclasses.asdict(state['placement']),
                                 plan=dataclasses.asdict(state['plan']))
     result['provenance'] = provenance(args.kernels, args.params, args.levers, args.hardware)
     print(json.dumps(dict(base=result['base'], final=result['final'], reaches=result['reaches'], excluded_lossy=result['excluded_lossy']), indent=1))
+    write(args, result)
+
+
+def cmd_mtp(args):
+    """Draft depth / verify window x acceptance profile x draft format x bank x indexer share, per context."""
+    hw = g.load_json(args.hardware); table = load_table(args)
+    windows = [tuple(int(x) for x in w.split(',')) for w in args.windows] if args.windows else g.MTP_WINDOWS
+    result = g.mtp_sweep(table, build_topology(args), build_placement(args), hw, contexts=args.contexts, windows=windows,
+                         profiles=args.profiles, quants=args.quants, banks=args.banks,
+                         shares=dict(off=(False,), on=(True,), both=(False, True))[args.index_share])
+    plans = {}
+    for tokens in args.contexts:
+        for mode in ('serial', 'batched', 'crop'):
+            r = g.simulate_prefill(table, dataclasses.replace(build_plan(args), tokens=tokens, mtp_prime=mode), hw)
+            plans[f'{tokens}/{mode}'] = dict(prefill_tok_s=r['tok_s'], mtp_prime_ms=r['mtp_prime_ms'], ttft_tok_s=r['ttft_tok_s'])
+    result['prefill_priming'] = plans
+    result['provenance'] = provenance(args.kernels, args.params, args.hardware)
+    print(f"{'ctx':>6} {'window':<9}{'depth':>5} {'acceptance':<20}{'quant':<6}{'bank':<8}{'share':<6}{'tok/s':>7}{'acc/rnd':>8}{'draft ms':>9}")
+    for r in sorted(result['rows'], key=lambda r: (r['context'], r['acceptance'], -r['tok_s'])):
+        best = result['best'][f"{r['context']}/{r['acceptance']}"] is r
+        print(f"{r['context']:>6} {','.join(map(str, r['window'])):<9}{r['depth']:>5} {r['acceptance']:<20}{r['draft_quant']:<6}"
+              f"{r['draft_bank']:<8}{str(r['index_share']):<6}{r['tok_s']:>7.2f}{r['accepted_per_round']:>8.3f}{r['draft_ms']:>9.2f}"
+              + ('  <- best' if best else ''))
+    for k, v in plans.items():
+        print(f"prefill {k:<14} pass {v['prefill_tok_s']:7.1f} tok/s  priming {v['mtp_prime_ms']:8.1f} ms  ttft {v['ttft_tok_s']:7.1f} tok/s")
     write(args, result)
 
 
@@ -394,9 +429,27 @@ def main(argv=None):
     p.add_argument('--stream-overlap', choices=('none', 'mixer', 'layer'), default='none'); p.add_argument('--resident-groups', type=float, default=0.0)
     p.add_argument('--mixer-speedup', type=float, default=1.0); p.add_argument('--gemm-speedup', type=float, default=1.0)
     p.add_argument('--cpu-groups', type=float, default=0.0)
+    p.add_argument('--mtp-prime', choices=('serial', 'batched', 'crop', 'none'), default='serial')
+    p.add_argument('--prefill-metric', choices=('tok_s', 'ttft_tok_s'), default='tok_s',
+                   help='prefill pass alone, or prompt tokens over prefill plus MTP priming')
     p.add_argument('--levers', default=str(DATA / 'glm_levers.json')); p.add_argument('--only'); p.add_argument('--exclude')
     p.add_argument('--target-decode', type=float, default=50.0); p.add_argument('--target-prefill', type=float, default=1000.0)
     p.add_argument('--allow-lossy', action='store_true'); p.set_defaults(func=cmd_sweep)
+    p = sub.add_parser('mtp', help='MTP draft depth / format / bank / indexer-share sweep per context, plus priming modes')
+    common(p); topology_args(p)
+    p.add_argument('--fraction', type=float, default=0.5); p.add_argument('--tokens', type=int, default=8192)
+    p.add_argument('--exchange', choices=('f32', 'f16'), default='f32'); p.add_argument('--return-mode', choices=('chunks', 'partial'), default='chunks')
+    p.add_argument('--stream-overlap', choices=('none', 'mixer', 'layer'), default='none'); p.add_argument('--resident-groups', type=float, default=0.0)
+    p.add_argument('--mixer-speedup', type=float, default=1.0); p.add_argument('--gemm-speedup', type=float, default=1.0)
+    p.add_argument('--cpu-groups', type=float, default=0.0)
+    p.add_argument('--mtp-prime', choices=('serial', 'batched', 'crop', 'none'), default='serial')
+    p.add_argument('--contexts', type=int, nargs='+', default=[1024, 8192, 32768])
+    p.add_argument('--windows', nargs='+', help='verify windows as comma lists, e.g. 2,2 3,2 (default: g.MTP_WINDOWS)')
+    p.add_argument('--profiles', nargs='+', default=[''], help="acceptance profiles ('' = each draft format's own)")
+    p.add_argument('--quants', nargs='+', default=['base', 'q4_0'], choices=tuple(g.DRAFT_FORMATS))
+    p.add_argument('--banks', nargs='+', default=['cpu', 'primary'], choices=('cpu', 'primary', 'worker'))
+    p.add_argument('--index-share', choices=('off', 'on', 'both'), default='both', help='draft indexer selection share')
+    p.set_defaults(func=cmd_mtp)
     p = sub.add_parser('manifest'); common(p); topology_args(p); p.set_defaults(func=cmd_manifest)
     p = sub.add_parser('records-from-bench', help='simulator records from an instrumented glm_mixed_bench results.json')
     common(p); p.add_argument('--results', required=True); p.add_argument('--holdout', action='store_true'); p.add_argument('--merge-into')

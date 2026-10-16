@@ -400,7 +400,44 @@
    },
    "rows_per_worker_expert": 1.07,
    "note_rows": "MIXED_CLIENT decode_rows/requests = 7.3 rows per request at width 2 against ~6.9 worker experts: most experts are routed by one of the two tokens",
-   "experts_per_layer": 224
+   "experts_per_layer": 224,
+   "acceptance_profiles": {
+    "tr16_8k": {
+     "conditional": [
+      0.931,
+      0.784,
+      0.75,
+      0.75,
+      0.7
+     ],
+     "source": "MTP_POSITION of the timed cuda-hip 8K holdout-code trial (REAP-224 draft head, shipped format); positions 3-4 extrapolated. Same numbers as acceptance_by_position."
+    },
+    "llamacpp_q4_full288": {
+     "conditional": [
+      0.924,
+      0.8799,
+      0.738,
+      0.735,
+      0.7891
+     ],
+     "unconditional": [
+      0.924,
+      0.813,
+      0.6,
+      0.441,
+      0.348
+     ],
+     "source": "llama.cpp PR #27917 (superseded by #29928): full 288-expert NextN head at Q4, 3474/4664 drafts accepted, mean length 4.13, CPU-offloaded setup; prompt mix unknown, so this is a prior for the A/B, not a TR16 measurement"
+    }
+   },
+   "draft_quant_profiles": {
+    "base": "tr16_8k",
+    "q4_0": "llamacpp_q4_full288"
+   },
+   "draft_step_reference_tokens": 8192,
+   "draft_step_reference_note": "draft_step_ms was fitted on 8K traces; the context part moves at mla_kv_ms_per_ktoken (the draft block is a sparse MLA layer with its own indexer) unless draft_context_ms_per_ktoken is set per device",
+   "mtp_prime_state_fraction": 0.35,
+   "mtp_prime_state_note": "assumption: a state-only MLA pass (latent kv + indexer keys, no queries, attention, output, MoE or head) costs ~35% of the prefill MLA mixer; replace with MTP_PRIME ms once measured"
   },
   "cpu": {
    "lanes": {
@@ -481,7 +518,25 @@
      "worker_request_fixed_ms": 0.037,
      "vram_gb_s": 448.0,
      "mla_kv_ms_per_ktoken": 0.03779136,
-     "ownership_ms": 13.4
+     "ownership_ms": 13.4,
+     "width_ratio": {
+      "kda_ms": {
+       "1": 0.9,
+       "2": 1.0,
+       "4": 1.125
+      },
+      "mla_ms": {
+       "1": 0.9,
+       "2": 1.0,
+       "4": 1.125
+      },
+      "resident_expert_ms": {
+       "1": 1.0,
+       "2": 1.0,
+       "4": 1.3004
+      },
+      "note": "raw (unfitted) per-width microbench cost / width-2 cost from glm_kernels_tr16.json; calibration fits only width 2, other widths scale the fitted width-2 entry by this (width 3 interpolated)"
+     }
     },
     "prefill": {
      "mixer_ms": {
@@ -573,7 +628,25 @@
      "worker_request_fixed_ms": 0.1007,
      "vram_gb_s": 640.0,
      "mla_kv_ms_per_ktoken": 0.020550024,
-     "ownership_ms": 7.0
+     "ownership_ms": 7.0,
+     "width_ratio": {
+      "kda_ms": {
+       "1": 0.9118,
+       "2": 1.0,
+       "4": 1.1176
+      },
+      "mla_ms": {
+       "1": 0.9118,
+       "2": 1.0,
+       "4": 1.1176
+      },
+      "resident_expert_ms": {
+       "1": 1.0,
+       "2": 1.0,
+       "4": 1.3019
+      },
+      "note": "raw (unfitted) per-width microbench cost / width-2 cost from glm_kernels_tr16.json; calibration fits only width 2, other widths scale the fitted width-2 entry by this (width 3 interpolated)"
+     }
     },
     "prefill": {
      "mixer_ms": {

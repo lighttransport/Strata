@@ -46,7 +46,8 @@ this desktop (plan section 11) and is kept opt-in for two-socket, same-vendor se
 | `calibrate` | coordinate descent over the free constants (per-slot overhead, worker request and round trip, publish and combine, MLA context term, memcpy rate, ack cost) against the fit records; writes the params file with source hashes |
 | `validate` | holdout gate: decode rows within 10%, prefill within 15%, each STEP_TRACE scope within 15%; exit 1 on a miss |
 | `decode`, `prefill` | one prediction with the scopes (head, CPU service, exposed wait, tail, draft, resync, other) defined like the engine's `STEP_TRACE` |
-| `sweep` | greedy forward selection over the levers in `tools/sim/data/glm_levers.json` (lossless by default, `--allow-lossy` adds the rest); prints the ranked path with cumulative tok/s and whether the targets are reached |
+| `sweep` | greedy forward selection over the levers in `tools/sim/data/glm_levers.json` (lossless by default, `--allow-lossy` adds the rest); prints the ranked path with cumulative tok/s and whether the targets are reached; `--prefill-metric ttft_tok_s` scores prefill with the MTP priming included |
+| `mtp` | verify window (draft depth) x acceptance profile x draft format x draft bank x indexer share at each `--contexts`, plus the three priming modes; see "MTP model" |
 | `records-from-bench` | turns an instrumented `tools/glm_mixed_bench.py` run (`STRATA_GLM_STEP_TRACE=2`) into fit or holdout records |
 | `manifest` | emits a `strata.heterogeneous.v1` manifest that `glm_sim.py heterogeneous` reproduces, used by the tests |
 | `probe-plan` | lists the measurements still missing for the table, with the commands that take them |
@@ -56,9 +57,52 @@ measured hit shares of a run), `--accepted` (tokens per verify step), `--draft-b
 `--fraction` (prefill expert share on the primary), `--exclude lever,lever` for levers already built or
 removed, `--target-decode`, `--target-prefill`.
 
-Tests: `PYTHONPATH=tools python3 -m unittest tools.test_glm_runner_sim` (no GPU or model; scope conservation,
-one worker request per slot, calibration recovers planted constants, validate refuses a holdout miss, sweep
-is monotone and excludes lossy levers by default, prefill F16 halves the exchange bytes).
+Tests: `PYTHONPATH=tools python3 -m unittest tools.test_glm_runner_sim`. They need no GPU or model and cover:
+- scope conservation
+- one worker request per slot
+- calibration recovers planted constants
+- validate refuses a holdout miss
+- the sweep is monotone and excludes lossy levers by default
+- prefill F16 halves the exchange bytes
+- the MTP model terms below
+
+## MTP model
+
+Added for the llama.cpp #29928 study ([GLM_MTP_LLAMACPP_29928.md](GLM_MTP_LLAMACPP_29928.md)).
+
+- **Tokens per round.** They come from an acceptance curve and the draft depth (verify window − 1), via
+  `sim.routing.tokens_per_round`. The default curve is the measured TR16 one (`model.acceptance_by_position`,
+  3.21 tokens at depth 3).
+  - Other curves live in `model.acceptance_profiles` (`--acceptance NAME|p0,p1,...`).
+  - Each draft format maps to a profile through `model.draft_quant_profiles`.
+  - An explicit `--accepted`, or a record's own `accepted_per_round`, still overrides the curve. Calibration
+    and `validate` therefore use the measured value, as before.
+- **Experts touched by a verify group.** This follows the measured union curve (`sim.routing.union_ratio`),
+  scaled so width 2 keeps the fitted `unique_experts_per_route`. Rows per distinct expert rise as the union
+  saturates.
+- **Kernel costs at other widths.** Calibration fits only width 2, the shape of every record. Widths 1, 3 and 4
+  scale the fitted width-2 entry by the raw microbench ratio (`devices.*.decode.width_ratio`), with width 3
+  interpolated. Unsplit and wider windows are therefore outside the fit.
+- **Draft step cost.** `draft_step_ms` holds the cost at `model.draft_step_reference_tokens` (8K). Its context
+  part moves at the MLA per-ktoken rate, since the draft is a sparse MLA layer with its own indexer.
+  `Topology.draft_index_share` charges that part to the first draft step only.
+- **Draft formats.** `Placement.draft_quant` (`base`, `q4_0`, `q8_0`, `bf16`; table `DRAFT_FORMATS`) scales the
+  CPU draft expert bytes and the bank kernel. With a GPU bank (`draft_bank_slots`), a larger or unpruned head
+  takes more expert slots.
+- **Priming.** `PrefillPlan.mtp_prime` prices the draft priming over the prompt:
+  - `serial`: per-token state-only steps (today's default).
+  - `batched`: one MLA layer plus one MoE layer in the prefill.
+  - `crop`: a state-only MLA pass.
+  - `none`.
+
+  The cost is reported as `mtp_prime_ms` and `ttft_tok_s`; the calibrated prefill `tok_s` is unchanged.
+
+Compared with the scalar model:
+- Record predictions (measured acceptance) at 8K are identical.
+- The default curve gives 3.208 tokens per round instead of 3.2 (+0.26%).
+- At 2K and 1K, decode rises by 0.3-0.8%, because the draft context term is smaller there.
+- The same holdout rows miss as before: the 2K mixed prefill rows and the cuda-hip decode rows (the 2K one goes
+  from +24.1% to +25.1%).
 
 ## Two nodes
 
