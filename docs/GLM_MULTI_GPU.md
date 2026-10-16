@@ -141,6 +141,15 @@ processes inherit the preallocation switch. Check each process's admitted
 cache and live allocations as well as total GPU memory use: reserving a pool
 alone does not populate it with useful expert weights.
 
+The [full UD-Q3_K_XL quality report](benchmarks/v100s_q3_20261017/README.md)
+uses the original 288 experts on the v100s node: two V100 PCIe 32 GB GPUs,
+two Xeon Gold 6240 sockets and a 160 GiB allocation. The 137.4 GiB shared
+model passed full SHA and socket-placement checks. Greedy decoding scored
+154/164 HumanEval and 24/24 C++; affinity 0.08/MTP3 scored 153/164 and 21/24,
+failing the held-out C++ criterion. Use its greedy profile as the Q3 quality
+reference. Both cards reached nearly full VRAM use, with no observed process
+swap. These are quality and memory checks; Q3 throughput was not measured.
+
 `tools/glm_v100_optimize.py` runs a frozen, resumable 8K/512-token matrix.
 Screening, diagnostics, and final timing eligibility are separate. Final
 eligibility requires full warmups and validations, stable streams, no observed

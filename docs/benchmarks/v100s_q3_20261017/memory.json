@@ -1,0 +1,106 @@
+{
+  "allocations": {
+    "allocation-01": {
+      "samples": 831,
+      "peak_sampled_cgroup_memory_bytes": 163719335936,
+      "cgroup_limits_observed": [
+        "9223372036854771712"
+      ],
+      "peak_owner_rss_bytes": 147595591680,
+      "peak_descendant_process_swap_bytes": 0,
+      "peak_cgroup_swap_bytes": 0,
+      "raw_resources_sha256": "35946412395353c75a97c6e0568d76439a42f3c4c6fa9e1a38915a2b7ab179f7"
+    },
+    "allocation-02": {
+      "samples": 1523,
+      "peak_sampled_cgroup_memory_bytes": 163624902656,
+      "cgroup_limits_observed": [
+        "9223372036854771712"
+      ],
+      "peak_owner_rss_bytes": 147596840960,
+      "peak_descendant_process_swap_bytes": 0,
+      "peak_cgroup_swap_bytes": 0,
+      "raw_resources_sha256": "10f43f628fa30097c746d30323086c1acc869c6eb2fc80afc2ae33fd2312d5bb"
+    }
+  },
+  "gpu_observations": [
+    {
+      "gpu_index": 0,
+      "nominal_total_mib": 32768,
+      "peak_used_mib": 32356,
+      "minimum_free_mib": 139,
+      "samples": 2354
+    },
+    {
+      "gpu_index": 1,
+      "nominal_total_mib": 32768,
+      "peak_used_mib": 32484,
+      "minimum_free_mib": 11,
+      "samples": 2354
+    }
+  ],
+  "cache_preflight": {
+    "greedy": {
+      "pools": [
+        {
+          "visible_device": 0,
+          "pool_mib": 31616,
+          "free_before_mib": 32182,
+          "cuda_total_mib": 32494,
+          "margin_mib": 512
+        },
+        {
+          "visible_device": 0,
+          "pool_mib": 31616,
+          "free_before_mib": 32182,
+          "cuda_total_mib": 32494,
+          "margin_mib": 512
+        }
+      ],
+      "primary_cache_observations": [
+        {
+          "slots": 2074,
+          "mib": 22025.4
+        }
+      ],
+      "worker_cache_mib_observations": [
+        29183.9,
+        29183.9,
+        29183.9,
+        29183.9
+      ],
+      "raw_preflight_log_sha256": "52fb624ead5b2d368182d6a9e7bfd08a7c9db309f5751dc7b932f55c50463da0"
+    },
+    "fast": {
+      "pools": [
+        {
+          "visible_device": 0,
+          "pool_mib": 31616,
+          "free_before_mib": 32182,
+          "cuda_total_mib": 32494,
+          "margin_mib": 512
+        },
+        {
+          "visible_device": 0,
+          "pool_mib": 31616,
+          "free_before_mib": 32182,
+          "cuda_total_mib": 32494,
+          "margin_mib": 512
+        }
+      ],
+      "primary_cache_observations": [
+        {
+          "slots": 1723,
+          "mib": 18304.6
+        }
+      ],
+      "worker_cache_mib_observations": [
+        29145.8,
+        29145.8,
+        29145.8
+      ],
+      "raw_preflight_log_sha256": "d8d0a7b49a803d8605aa3383f71c22a19842aa6cd0e0b0fdf93f27baa8ca0376"
+    }
+  },
+  "measurement_scope": "Cgroup includes shared model once, workspace and reclaimable file cache; owner RSS is not added to child RSS. NVML allocation and pool reservation do not equal useful cached weight bytes. Each isolated child sees its own GPU as visible ordinal0; the recorded parent placement maps primary toGPU0 and worker toGPU1, so pool log order is not a role identifier."
+}

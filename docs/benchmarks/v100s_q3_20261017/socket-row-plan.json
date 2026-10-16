@@ -1,0 +1,781 @@
+{
+  "schema": "strata.socket-row-plan.v1",
+  "model_bytes": 147535921504,
+  "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+  "row_halves": [
+    {
+      "tensor": "blk.3.ffn_down_exps.weight",
+      "offset": 2252639584,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.3.ffn_gate_exps.weight",
+      "offset": 3545009504,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.3.ffn_up_exps.weight",
+      "offset": 4483501408,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.4.ffn_down_exps.weight",
+      "offset": 5569044192,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.4.ffn_gate_exps.weight",
+      "offset": 6861414112,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.4.ffn_up_exps.weight",
+      "offset": 7799906016,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.5.ffn_down_exps.weight",
+      "offset": 8881170272,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.5.ffn_gate_exps.weight",
+      "offset": 10173540192,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.5.ffn_up_exps.weight",
+      "offset": 11112032096,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.6.ffn_down_exps.weight",
+      "offset": 12193296352,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.6.ffn_gate_exps.weight",
+      "offset": 13485666272,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.6.ffn_up_exps.weight",
+      "offset": 14424158176,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.7.ffn_down_exps.weight",
+      "offset": 15487604832,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.7.ffn_gate_exps.weight",
+      "offset": 16779974752,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.7.ffn_up_exps.weight",
+      "offset": 17718466656,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.8.ffn_down_exps.weight",
+      "offset": 18804009440,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.8.ffn_gate_exps.weight",
+      "offset": 20096379360,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.8.ffn_up_exps.weight",
+      "offset": 21034871264,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.9.ffn_down_exps.weight",
+      "offset": 22116135520,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.9.ffn_gate_exps.weight",
+      "offset": 23408505440,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.9.ffn_up_exps.weight",
+      "offset": 24346997344,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.10.ffn_down_exps.weight",
+      "offset": 25428261600,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.10.ffn_gate_exps.weight",
+      "offset": 26720631520,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.10.ffn_up_exps.weight",
+      "offset": 27659123424,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.11.ffn_down_exps.weight",
+      "offset": 28722570080,
+      "bytes_per_half": 3440640,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.11.ffn_gate_exps.weight",
+      "offset": 30713291616,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.11.ffn_up_exps.weight",
+      "offset": 32010396512,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.12.ffn_down_exps.weight",
+      "offset": 33454552288,
+      "bytes_per_half": 3440640,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.12.ffn_gate_exps.weight",
+      "offset": 35445273824,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.12.ffn_up_exps.weight",
+      "offset": 36383765728,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.13.ffn_down_exps.weight",
+      "offset": 37465029984,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.13.ffn_gate_exps.weight",
+      "offset": 38757399904,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.13.ffn_up_exps.weight",
+      "offset": 39695891808,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.14.ffn_down_exps.weight",
+      "offset": 40777156064,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.14.ffn_gate_exps.weight",
+      "offset": 42069525984,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.14.ffn_up_exps.weight",
+      "offset": 43008017888,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.15.ffn_down_exps.weight",
+      "offset": 44071464544,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.15.ffn_gate_exps.weight",
+      "offset": 45363834464,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.15.ffn_up_exps.weight",
+      "offset": 46302326368,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.16.ffn_down_exps.weight",
+      "offset": 47387869152,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.16.ffn_gate_exps.weight",
+      "offset": 48680239072,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.16.ffn_up_exps.weight",
+      "offset": 49618730976,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.17.ffn_down_exps.weight",
+      "offset": 50699995232,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.17.ffn_gate_exps.weight",
+      "offset": 51992365152,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.17.ffn_up_exps.weight",
+      "offset": 52930857056,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.18.ffn_down_exps.weight",
+      "offset": 54012121312,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.18.ffn_gate_exps.weight",
+      "offset": 55304491232,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.18.ffn_up_exps.weight",
+      "offset": 56242983136,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.19.ffn_down_exps.weight",
+      "offset": 57306429792,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.19.ffn_gate_exps.weight",
+      "offset": 58598799712,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.19.ffn_up_exps.weight",
+      "offset": 59537291616,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.20.ffn_down_exps.weight",
+      "offset": 60622834400,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.20.ffn_gate_exps.weight",
+      "offset": 61915204320,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.20.ffn_up_exps.weight",
+      "offset": 62853696224,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.21.ffn_down_exps.weight",
+      "offset": 63934960480,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.21.ffn_gate_exps.weight",
+      "offset": 65227330400,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.21.ffn_up_exps.weight",
+      "offset": 66165822304,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.22.ffn_down_exps.weight",
+      "offset": 67247086560,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.22.ffn_gate_exps.weight",
+      "offset": 68539456480,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.22.ffn_up_exps.weight",
+      "offset": 69477948384,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.23.ffn_down_exps.weight",
+      "offset": 70541395040,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.23.ffn_gate_exps.weight",
+      "offset": 71833764960,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.23.ffn_up_exps.weight",
+      "offset": 72772256864,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.24.ffn_down_exps.weight",
+      "offset": 73857799648,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.24.ffn_gate_exps.weight",
+      "offset": 75150169568,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.24.ffn_up_exps.weight",
+      "offset": 76088661472,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.25.ffn_down_exps.weight",
+      "offset": 77169925728,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.25.ffn_gate_exps.weight",
+      "offset": 78462295648,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.25.ffn_up_exps.weight",
+      "offset": 79400787552,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.26.ffn_down_exps.weight",
+      "offset": 80482051808,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.26.ffn_gate_exps.weight",
+      "offset": 81774421728,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.26.ffn_up_exps.weight",
+      "offset": 82712913632,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.27.ffn_down_exps.weight",
+      "offset": 83776360288,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.27.ffn_gate_exps.weight",
+      "offset": 85068730208,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.27.ffn_up_exps.weight",
+      "offset": 86007222112,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.28.ffn_down_exps.weight",
+      "offset": 87092764896,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.28.ffn_gate_exps.weight",
+      "offset": 88385134816,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.28.ffn_up_exps.weight",
+      "offset": 89323626720,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.29.ffn_down_exps.weight",
+      "offset": 90404890976,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.29.ffn_gate_exps.weight",
+      "offset": 91697260896,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.29.ffn_up_exps.weight",
+      "offset": 92635752800,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.30.ffn_down_exps.weight",
+      "offset": 93717017056,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.30.ffn_gate_exps.weight",
+      "offset": 95009386976,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.30.ffn_up_exps.weight",
+      "offset": 95947878880,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.31.ffn_down_exps.weight",
+      "offset": 97011325536,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.31.ffn_gate_exps.weight",
+      "offset": 98303695456,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.31.ffn_up_exps.weight",
+      "offset": 99242187360,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.32.ffn_down_exps.weight",
+      "offset": 100327730144,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.32.ffn_gate_exps.weight",
+      "offset": 101620100064,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.32.ffn_up_exps.weight",
+      "offset": 102558591968,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.33.ffn_down_exps.weight",
+      "offset": 103639856224,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.33.ffn_gate_exps.weight",
+      "offset": 104932226144,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.33.ffn_up_exps.weight",
+      "offset": 105870718048,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.34.ffn_down_exps.weight",
+      "offset": 106951982304,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.34.ffn_gate_exps.weight",
+      "offset": 108244352224,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.34.ffn_up_exps.weight",
+      "offset": 109182844128,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.35.ffn_down_exps.weight",
+      "offset": 110246290784,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.35.ffn_gate_exps.weight",
+      "offset": 111538660704,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.35.ffn_up_exps.weight",
+      "offset": 112477152608,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.36.ffn_down_exps.weight",
+      "offset": 113562695392,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.36.ffn_gate_exps.weight",
+      "offset": 114855065312,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.36.ffn_up_exps.weight",
+      "offset": 115793557216,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.37.ffn_down_exps.weight",
+      "offset": 116874821472,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.37.ffn_gate_exps.weight",
+      "offset": 118167191392,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.37.ffn_up_exps.weight",
+      "offset": 119105683296,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.38.ffn_down_exps.weight",
+      "offset": 120186947552,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.38.ffn_gate_exps.weight",
+      "offset": 121479317472,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.38.ffn_up_exps.weight",
+      "offset": 122417809376,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.39.ffn_down_exps.weight",
+      "offset": 123481256032,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.39.ffn_gate_exps.weight",
+      "offset": 124773625952,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.39.ffn_up_exps.weight",
+      "offset": 125712117856,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.40.ffn_down_exps.weight",
+      "offset": 126797660640,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.40.ffn_gate_exps.weight",
+      "offset": 128090030560,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.40.ffn_up_exps.weight",
+      "offset": 129028522464,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.41.ffn_down_exps.weight",
+      "offset": 130109786720,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.41.ffn_gate_exps.weight",
+      "offset": 131402156640,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.41.ffn_up_exps.weight",
+      "offset": 132340648544,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.42.ffn_down_exps.weight",
+      "offset": 133421912800,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.42.ffn_gate_exps.weight",
+      "offset": 134714282720,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.42.ffn_up_exps.weight",
+      "offset": 135652774624,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.43.ffn_down_exps.weight",
+      "offset": 136716221280,
+      "bytes_per_half": 2228224,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.43.ffn_gate_exps.weight",
+      "offset": 138008591200,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.43.ffn_up_exps.weight",
+      "offset": 138947083104,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.44.ffn_down_exps.weight",
+      "offset": 140032625888,
+      "bytes_per_half": 3440640,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.44.ffn_gate_exps.weight",
+      "offset": 142023347424,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.44.ffn_up_exps.weight",
+      "offset": 142961839328,
+      "bytes_per_half": 1605632,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.45.ffn_down_exps.weight",
+      "offset": 144025285984,
+      "bytes_per_half": 2359296,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.45.ffn_gate_exps.weight",
+      "offset": 145393153376,
+      "bytes_per_half": 1802240,
+      "slices": 288
+    },
+    {
+      "tensor": "blk.45.ffn_up_exps.weight",
+      "offset": 146444891488,
+      "bytes_per_half": 1802240,
+      "slices": 288
+    }
+  ]
+}
