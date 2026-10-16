@@ -153,26 +153,51 @@ Done in this change (all without the weights, no GPU needed for the tests):
 | geometry from the keys, tensor directory check, footprint, row-split plan | `include/strata/artifact/muse_model.hpp`, `strata-muse-inspect` | `muse_model_test` (synthetic file; `STRATA_MUSE_HEADERS=dir` adds the real headers) |
 | IQ1_S in the reader's block table | `include/strata/artifact/gguf_reader.hpp` | `muse_model_test` |
 | IQ1_S CPU expert kernel, opt-in | `iq_avx2.cpp` `Fmt32<19>`, `native_expert.cpp` (`NativeFmt::iq1s_rows`), `kNativeFF` 4096 | `iq1s_expert_parity`, `iq_avx2_parity` |
-| the block's arithmetic as an f32 reference | `include/strata/muse/reference.hpp` | `muse_reference_test` |
+| the block's arithmetic as an f32 reference | `include/strata/muse/reference.hpp` | `muse_reference_test`; against llama.cpp on real weights below |
+| a few-layer slice of the release by HTTP range | `tools/muse_layer_slice.py` | `strata-muse-inspect` on the slice; llama.cpp loads it |
+
+### The reference against llama.cpp on real weights (2026-10-16)
+
+`tools/muse_layer_slice.py` cut layers 0 and 1 of the UD-IQ1_S release (layer 0 sliding-window with RoPE, layer 1 full
+attention without) into a 7.9 GB two-layer `muse-spark` GGUF: 2.8 GB per layer (2.52 GB of experts, 279 MB of
+trunk) plus the embedding and the head. llama.cpp master (a30fb49, CPU, f16 KV cache, no flash attention) ran an
+11-token prompt through it with `tools/muse_llama_dump.cpp` dumping every stage; `muse_reference_check` ran the same
+tokens through `reference.hpp` with the weights dequantized by ggml's `to_float`:
+
+| stage (max over 11 tokens) | reference in f32 | reference with ggml-cpu's rounding (`--like-llama`) |
+|---|---:|---:|
+| embd_norm | rel 0 | rel 0 |
+| layer 0 attention output / residual | 1.2e-2 / 8.1e-3 | 1.2e-4 / 1.1e-4 |
+| layer 0 routes (8 x 11) | 87 of 88 | 88 of 88 |
+| layer 0 MoE output / block output | 5.1e-2 / 2.1e-2 | 9.5e-4 / 7.2e-4 |
+| layer 1 attention output | 2.0e-2 | 4.7e-3 |
+| layer 1 routes | 87 of 88 | 88 of 88 |
+| layer 1 block output | 2.4e-2 | 2.7e-3 |
+| logits | 3.0e-2 (cos 0.99956), argmax 9 of 11 | 9.0e-3 (cos 0.99996), argmax 11 of 11 |
+
+`--like-llama` rounds each quantized matmul's input the way ggml-cpu does before its dot (Q8_K for the Q6_K, Q4_K and
+IQ1_S weights, Q8_0 for the Q8_0 ones), and K, V, the query and the attention weights to f16. ggml's quantized dot
+equals the dequantized weight times that rounded input, so the remainder (1e-4 in the first block, 3e-3 after two)
+is summation order; in f32 the two argmax misses at near-ties are llama.cpp's activation rounding. Two plausible
+mistakes, as negative controls (`STRATA_MUSE_CONTROL`), fail the matched check: RoPE on the full-attention layer
+(13 of 88 layer-1 routes differ, block output cos 0.962, argmax 7 of 11) and the router bias left out of the choice
+(32-35 routes per layer differ, every stage after layer 0's router fails).
 
 Next, in order (each with a parity test against `reference.hpp` before it is timed):
 
-1. **One layer for real.** Fetch one layer's tensors by HTTP range (about 750 MB: the trunk plus three expert tensors)
-   and check `reference.hpp` with dequantized weights against llama.cpp's `muse-spark` graph on the same input
-   (`llama-eval-callback` dumps), so the reference is checked against the original before anything is built on it.
-2. **The GPU trunk** (CUDA and HIP): the GLM runner's dense GEMVs (Q6_K, Q8_0) for q/k/v/gate/o and the latent
+1. **The GPU trunk** (CUDA and HIP): the GLM runner's dense GEMVs (Q6_K, Q8_0) for q/k/v/gate/o and the latent
    projections; a GQA decode attention with a 2048-position ring for the 46 sliding-window layers and a full cache for
    the 16 others (64 KB per token at f16); the router (sigmoid + bias top-8) on the GPU as GLM's; CUDA graphs per layer
    range. The trunk is split by layer across the two cards (32/30 for decode).
-3. **The CPU expert lane**: the existing `ExpertPool` with `NativeFmt::iq1s_rows` on 4096-wide latents; the GPU-resident
+2. **The CPU expert lane**: the existing `ExpertPool` with `NativeFmt::iq1s_rows` on 4096-wide latents; the GPU-resident
    hot experts need an IQ1_S tier kernel (llama.cpp's MMVQ IQ1_S is the reference).
-4. **Two nodes**: extend the remote TP worker (`glm_tp_worker.cpp`, ucomm over IB) for the row split. A request is the
+3. **Two nodes**: extend the remote TP worker (`glm_tp_worker.cpp`, ucomm over IB) for the row split. A request is the
    latent (16 KB f32) and the routes; because `ffn_post_exp_norm` normalizes each expert's whole output, the worker
    returns one partial latent per (token, expert), about 88 KB per layer, and the node that owns the layer adds the
    partials per expert before the norm and the router weight. With split-gpus the layer owner alternates between the
    nodes (layers 0-31 on TR16's card, 32-61 on the B550's): the hidden state crosses the link twice per token.
-5. **Prefill**: chunks of 4-8K, each node's card streaming the experts its node holds; activations over IB.
-6. **Levers**, ranked by the forecast: a faster IQ1_S CPU kernel (up to 9.1 tok/s if it reached DRAM speed), Q4_K trunk
+4. **Prefill**: chunks of 4-8K, each node's card streaming the experts its node holds; activations over IB.
+5. **Levers**, ranked by the forecast: a faster IQ1_S CPU kernel (up to 9.1 tok/s if it reached DRAM speed), Q4_K trunk
    copies (+1.3 tok/s, lossy), top-6 routing (+1.1, lossy).
 
 ## Reproduce
@@ -184,4 +209,12 @@ strata-muse-inspect s1.gguf h2.gguf h3.gguf h4.gguf h5.gguf
 python3 tools/muse_sim.py report
 python3 tools/muse_sim.py decode --gpu-layers 32,30 --set b550.cpu_gmacs.iq256=20
 iq1s_expert_parity && iq1s_expert_parity --bench --threads 15 --mb 1024 --nt 1,2,4
+
+# the reference against llama.cpp: a two-layer slice (7.9 GB by HTTP range), llama.cpp's stages, the comparison
+python3 tools/muse_layer_slice.py --headers s1.gguf h2.gguf h3.gguf h4.gguf h5.gguf \
+    --url https://huggingface.co/unsloth/Muse-Spark-Open-816B-A42B-GGUF/resolve/main/UD-IQ1_S/Muse-Spark-Open-816B-A42B-UD-IQ1_S-{n:05d}-of-00005.gguf \
+    --layers 0,1 --cache parts --output muse-2layer.gguf
+muse_llama_dump muse-2layer.gguf dump "The quick brown fox jumps over the lazy dog because"   # built against llama.cpp
+ninja muse_reference_check && muse_reference_check muse-2layer.gguf dump --like-llama
+STRATA_MUSE_CONTROL=rope_full muse_reference_check muse-2layer.gguf dump --like-llama        # must fail
 ```

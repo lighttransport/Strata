@@ -29,7 +29,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
+#include <functional>
 #include <numeric>
 #include <vector>
 
@@ -40,6 +40,12 @@ struct Dims {
     int window = 0;
     float rms_eps = 1e-5f, post_eps = 1e-8f, rope_base = 500000.f, expert_weights_scale = 1.f;
     bool expert_weights_norm = true;
+    /// Optional: rounds an activation in place where the engine (or llama.cpp) would lose precision, so a check can
+    /// reproduce another implementation's arithmetic instead of exact f32.  Sites: the weight a matvec's input feeds
+    /// ("attn_q", "attn_k", "attn_v", "attn_gate", "attn_output", "ffn_latent_down", "ffn_gate_inp", "ffn_gate_exps",
+    /// "ffn_up_exps", "ffn_down_exps", "ffn_latent_up"), and in attention "cache_k" / "cache_v" (the stored K and V),
+    /// "kq_q" (the query against the cache) and "kq" (the softmax weights against V).
+    std::function<void(const char* site, float* x, int n)> round;
 };
 
 struct Block {
@@ -48,6 +54,9 @@ struct Block {
     std::vector<float> ffn_norm, latent_down, pre_exp_norm, router, router_bias, post_exp_norm, latent_up, post_ffw_norm;
     std::vector<float> ffn_alpha, ffn_beta;
     std::vector<float> gate_exps, up_exps, down_exps;   // [expert][ff][latent], [expert][ff][latent], [expert][latent][ff]
+    /// Instead of the three vectors above: one expert's gate [ff][latent], up [ff][latent] and down [latent][ff] on
+    /// demand (a real layer's 256 experts are 51 GB as f32; a check dequantizes only the routed ones).
+    std::function<void(int expert, std::vector<float>& gate, std::vector<float>& up, std::vector<float>& down)> expert;
 };
 
 /// One block's K and V of every position since `first_pos`, [position - first_pos][kv_heads * head_dim].
@@ -57,10 +66,12 @@ struct KvCache {
     int positions = 0;   // one past the last cached position
 };
 
-/// What the router chose for the last token of a block (for tests and route traces).
+/// What the router chose for the last token of a block, and the block's intermediate streams (for checks against
+/// llama.cpp's named tensors: attn_post_norm, ffn_inp, ffn_moe_out, ffn_post_norm).
 struct Routes {
     std::vector<int> experts;
     std::vector<float> weights;
+    std::vector<float> attn_post_norm, ffn_inp, moe_out, ffn_post_norm;
 };
 
 inline void rms_norm(float* x, int n, float eps, const float* w = nullptr) {
@@ -77,6 +88,19 @@ inline void matvec(const std::vector<float>& w, const float* x, int rows, int co
         for (int c = 0; c < cols; ++c) acc += (double) row[c] * x[c];
         y[r] = (float) acc;
     }
+}
+
+/// matvec of a copy of x rounded for `site` (Dims::round), or of x itself.
+inline void mv(const Dims& d, const char* site, const std::vector<float>& w, const float* x, int rows, int cols, float* y,
+               size_t offset = 0) {
+    if (!d.round) return matvec(w, x, rows, cols, y, offset);
+    std::vector<float> r(x, x + cols);
+    d.round(site, r.data(), cols);
+    matvec(w, r.data(), rows, cols, y, offset);
+}
+
+inline void round_at(const Dims& d, const char* site, float* x, int n) {
+    if (d.round) d.round(site, x, n);
 }
 
 inline float sigmoid(float v) { return 1.f / (1.f + std::exp(-v)); }
@@ -98,10 +122,10 @@ inline void block_step(const Dims& d, const Block& b, KvCache& kv, int pos, std:
     std::vector<float> h(x);
     rms_norm(h.data(), H, d.rms_eps, b.attn_norm.data());
     std::vector<float> q(QD), k(KD), v(KD), g(QD);
-    matvec(b.wq, h.data(), QD, H, q.data());
-    matvec(b.wk, h.data(), KD, H, k.data());
-    matvec(b.wv, h.data(), KD, H, v.data());
-    matvec(b.wgate, h.data(), QD, H, g.data());
+    mv(d, "attn_q", b.wq, h.data(), QD, H, q.data());
+    mv(d, "attn_k", b.wk, h.data(), KD, H, k.data());
+    mv(d, "attn_v", b.wv, h.data(), KD, H, v.data());
+    mv(d, "attn_gate", b.wgate, h.data(), QD, H, g.data());
     for (int hh = 0; hh < d.q_heads; ++hh) {
         rms_norm(&q[(size_t) hh * HD], HD, d.rms_eps, b.q_norm.data());
         if (b.swa) rope_norm(&q[(size_t) hh * HD], HD, pos, d.rope_base);
@@ -110,8 +134,11 @@ inline void block_step(const Dims& d, const Block& b, KvCache& kv, int pos, std:
         rms_norm(&k[(size_t) hh * HD], HD, d.rms_eps, b.k_norm.data());
         if (b.swa) rope_norm(&k[(size_t) hh * HD], HD, pos, d.rope_base);
     }
+    round_at(d, "cache_k", k.data(), KD);
+    round_at(d, "cache_v", v.data(), KD);
     kv.k.insert(kv.k.end(), k.begin(), k.end());
     kv.v.insert(kv.v.end(), v.begin(), v.end());
+    round_at(d, "kq_q", q.data(), QD);
     if (kv.positions == 0) kv.first_pos = pos;
     kv.positions = pos + 1;
     const int first = b.swa ? std::max(kv.first_pos, pos - d.window + 1) : kv.first_pos;
@@ -130,8 +157,10 @@ inline void block_step(const Dims& d, const Block& b, KvCache& kv, int pos, std:
         }
         double sum = 0;
         for (float& e : s) { e = std::exp(e - mx); sum += e; }
+        for (float& e : s) e = (float) (e / sum);
+        round_at(d, "kq", s.data(), (int) s.size());
         for (int p = first; p <= pos; ++p) {
-            const float w = (float) (s[(size_t) (p - first)] / sum);
+            const float w = s[(size_t) (p - first)];
             const size_t row = (size_t) (p - kv.first_pos) * KD + (size_t) kvh * HD;
             for (int i = 0; i < HD; ++i) a[(size_t) hh * HD + i] += w * kv.v[row + i];
         }
@@ -139,17 +168,21 @@ inline void block_step(const Dims& d, const Block& b, KvCache& kv, int pos, std:
     }
     for (int i = 0; i < QD; ++i) a[(size_t) i] *= sigmoid(g[(size_t) i]);
     std::vector<float> o(H);
-    matvec(b.wo, a.data(), H, QD, o.data());
+    mv(d, "attn_output", b.wo, a.data(), H, QD, o.data());
     rms_norm(o.data(), H, d.post_eps);
     for (int i = 0; i < H; ++i) x[(size_t) i] = b.attn_alpha[(size_t) i] * x[(size_t) i] + b.attn_beta[(size_t) i] * o[(size_t) i];
+    if (routes) {
+        routes->attn_post_norm = o;
+        routes->ffn_inp = x;
+    }
 
     const int L = d.latent, FF = d.expert_ff, E = d.experts;
     h = x;
     rms_norm(h.data(), H, d.rms_eps, b.ffn_norm.data());
     std::vector<float> z(L), p(E);
-    matvec(b.latent_down, h.data(), L, H, z.data());
+    mv(d, "ffn_latent_down", b.latent_down, h.data(), L, H, z.data());
     rms_norm(z.data(), L, d.rms_eps, b.pre_exp_norm.data());
-    matvec(b.router, h.data(), E, H, p.data());
+    mv(d, "ffn_gate_inp", b.router, h.data(), E, H, p.data());
     for (float& e : p) e = sigmoid(e);
     std::vector<int> order((size_t) E);
     std::iota(order.begin(), order.end(), 0);
@@ -162,24 +195,34 @@ inline void block_step(const Dims& d, const Block& b, KvCache& kv, int pos, std:
     for (int i = 0; i < d.top_k; ++i) wsum += (w[(size_t) i] = p[(size_t) order[(size_t) i]]);
     for (float& e : w) e = (d.expert_weights_norm ? e / wsum : e) * d.expert_weights_scale;
     std::vector<float> y(L, 0.f), gt(FF), up(FF), out(L);
+    std::vector<float> eg, eu, ed;
     for (int i = 0; i < d.top_k; ++i) {
         const int e = order[(size_t) i];
-        matvec(b.gate_exps, z.data(), FF, L, gt.data(), (size_t) e * FF * L);
-        matvec(b.up_exps, z.data(), FF, L, up.data(), (size_t) e * FF * L);
+        if (b.expert) {
+            b.expert(e, eg, eu, ed);
+            mv(d, "ffn_gate_exps", eg, z.data(), FF, L, gt.data());
+            mv(d, "ffn_up_exps", eu, z.data(), FF, L, up.data());
+        } else {
+            mv(d, "ffn_gate_exps", b.gate_exps, z.data(), FF, L, gt.data(), (size_t) e * FF * L);
+            mv(d, "ffn_up_exps", b.up_exps, z.data(), FF, L, up.data(), (size_t) e * FF * L);
+        }
         for (int j = 0; j < FF; ++j) gt[(size_t) j] = gt[(size_t) j] * sigmoid(gt[(size_t) j]) * up[(size_t) j];
-        matvec(b.down_exps, gt.data(), L, FF, out.data(), (size_t) e * L * FF);
+        if (b.expert) mv(d, "ffn_down_exps", ed, gt.data(), L, FF, out.data());
+        else mv(d, "ffn_down_exps", b.down_exps, gt.data(), L, FF, out.data(), (size_t) e * L * FF);
         for (int j = 0; j < L; ++j) out[(size_t) j] *= b.post_exp_norm[(size_t) j];
         rms_norm(out.data(), L, d.post_eps);
         for (int j = 0; j < L; ++j) y[(size_t) j] += w[(size_t) i] * out[(size_t) j];
     }
     std::vector<float> f(H);
-    matvec(b.latent_up, y.data(), H, L, f.data());
+    mv(d, "ffn_latent_up", b.latent_up, y.data(), H, L, f.data());
     for (int i = 0; i < H; ++i) f[(size_t) i] *= b.post_ffw_norm[(size_t) i];
     rms_norm(f.data(), H, d.post_eps);
     for (int i = 0; i < H; ++i) x[(size_t) i] = b.ffn_alpha[(size_t) i] * x[(size_t) i] + b.ffn_beta[(size_t) i] * f[(size_t) i];
     if (routes) {
         routes->experts = order;
         routes->weights = w;
+        routes->moe_out = y;
+        routes->ffn_post_norm = f;
     }
 }
 

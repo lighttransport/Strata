@@ -1549,6 +1549,11 @@ if(STRATA_NATIVE_EXPERTS)
     add_test(NAME iq_avx2_parity_iq3s_mt1 COMMAND ${CMAKE_COMMAND} -E env STRATA_IQ3S_MT1=1 $<TARGET_FILE:iq_avx2_parity>)
     add_test(NAME iq1s_expert_parity COMMAND iq1s_expert_parity)
   endif()
+  # Muse Spark: include/strata/muse/reference.hpp against llama.cpp's tensors on a real layer slice (docs/MUSE_SPARK.md);
+  # needs the slice (tools/muse_layer_slice.py) and a dump (tools/muse_llama_dump.cpp), so it is a tool, not a test
+  add_executable(muse_reference_check EXCLUDE_FROM_ALL tools/muse_reference_check.cpp)
+  target_link_libraries(muse_reference_check PRIVATE strata_artifact strata_host ggml-base)
+  target_compile_features(muse_reference_check PRIVATE cxx_std_20)
   # the older CPUs' AVX1 expert rows (iq_avx1.cpp) against ggml-cpu's dots and against their own one-token
   # rows at every width; --bench: ms per expert, the weights streamed from DRAM.  Runs on any AVX CPU:
   # on an AVX2 machine it checks the older-CPU path as an AVX-only machine would run it.
