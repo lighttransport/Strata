@@ -1,8 +1,11 @@
 // tools/muse_gpu_trunk_check.cpp - the GPU block trunk (strata/muse/gpu_trunk.hpp) with the CPU IQ1_S expert lane,
 // against strata/muse/reference.hpp, on a few-layer slice of the release (tools/muse_layer_slice.py).
 //
-//     muse_gpu_trunk_check MODEL.gguf DUMPDIR [--f32]
+//     muse_gpu_trunk_check MODEL.gguf DUMPDIR [--f32] [--graphs] [--splits N] [--bench N]
 //
+// --graphs replays each layer as captured graphs (TrunkConfig::graphs); the check is the same.  --bench N then decodes
+// N more tokens (the last token repeated) with no reference and no traces, and prints the GPU calls' wall time per
+// token apart from the CPU expert lane's.
 // DUMPDIR/tokens.txt gives the tokens (tools/muse_llama_dump.cpp writes it; its result_output.bin, when present, is
 // compared too).  The reference rounds its activations as this path does unless --f32: the GPU projections' inputs to
 // Q8_1, the experts' to Q8_K (the CPU lane: native_quant_act / native_quant_h), K and V to f16; the router (F32
@@ -12,6 +15,7 @@
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/muse/gpu_trunk.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
@@ -34,11 +38,20 @@ strata::muse::HostTensor host(const Model& M, const std::string& name) {
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: muse_gpu_trunk_check MODEL.gguf DUMPDIR [--f32]\n");
+        std::fprintf(stderr, "usage: muse_gpu_trunk_check MODEL.gguf DUMPDIR [--f32] [--graphs] [--splits N] [--bench N]\n");
         return 2;
     }
     const std::string dir = argv[2];
-    const bool f32 = argc > 3 && std::string(argv[3]) == "--f32";
+    bool f32 = false, graphs = false;
+    int bench = 0, splits = 1;
+    for (int i = 3; i < argc; ++i) {
+        const std::string a = argv[i];
+        if (a == "--f32") f32 = true;
+        else if (a == "--graphs") graphs = true;
+        else if (a == "--bench" && i + 1 < argc) bench = std::atoi(argv[++i]);
+        else if (a == "--splits" && i + 1 < argc) splits = std::atoi(argv[++i]);
+        else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); return 2; }
+    }
     const strata::GgufModel gm(std::vector<std::string>{argv[1]});
     strata::muse::MuseConfig c;
     const std::string err = strata::muse::read_config(gm.meta(), c);
@@ -57,10 +70,12 @@ int main(int argc, char** argv) {
     // ---- the GPU trunk
     strata::muse::TrunkConfig tc;
     tc.hidden = H; tc.latent = L; tc.experts = (int) c.experts; tc.top_k = c.top_k; tc.q_heads = (int) c.q_heads;
-    tc.kv_heads = (int) c.kv_heads; tc.head_dim = (int) c.head_dim; tc.window = (int) c.window; tc.context = std::max(T, 256);
+    tc.kv_heads = (int) c.kv_heads; tc.head_dim = (int) c.head_dim; tc.window = (int) c.window; tc.context = std::max(T + bench, 256);
     tc.rms_eps = (float) c.rms_eps; tc.post_eps = (float) c.post_eps; tc.rope_base = (float) c.rope_base_swa;
     tc.expert_weights_scale = (float) c.expert_weights_scale; tc.logit_scale = (float) c.logit_scale;
     tc.softcap = (float) c.softcap;
+    tc.graphs = graphs;
+    tc.attention_splits = splits;
     std::vector<strata::muse::TrunkLayerHost> lh((size_t) c.layers);
     for (int l = 0; l < c.layers; ++l) {
         auto n = [&](const char* s) { return host(M, "blk." + std::to_string(l) + "." + s); };
@@ -210,6 +225,30 @@ int main(int argc, char** argv) {
     std::printf("  %-22s argmax agrees at %d of %d positions  %s\n", "logits", agree, T, agree == T ? "ok" : "FAIL");
     failures += agree != T;
     if (llama.ok()) std::printf("  %-22s argmax agrees with llama.cpp at %d of %d positions\n", "logits", agree_llama, T);
+    if (bench > 0) {
+        using clk = std::chrono::steady_clock;
+        double gpu_s = 0, lane_s = 0;
+        std::vector<float> x;
+        for (int i = 0; i < bench; ++i) {
+            M.rows("token_embd.weight", tokens.back(), 1, x);
+            ref::rms_norm(x.data(), H, d.rms_eps);
+            auto t0 = clk::now();
+            gpu.begin(x.data(), T + i);
+            for (int l = 0; l < c.layers; ++l) {
+                gpu.attention_and_route(l);
+                const auto t1 = clk::now();
+                gpu_s += std::chrono::duration<double>(t1 - t0).count();
+                const std::vector<float> y = expert_lane(l, gpu.z(), gpu.ids(), gpu.weights());
+                t0 = clk::now();
+                lane_s += std::chrono::duration<double>(t0 - t1).count();
+                gpu.finish_moe(l, y.data());
+            }
+            gpu.head(logits_gpu);
+            gpu_s += std::chrono::duration<double>(clk::now() - t0).count();
+        }
+        std::printf("bench %d tokens%s: GPU trunk %.3f ms per token (%d layers + head), CPU expert lane %.3f ms\n", bench,
+                    graphs ? " (graphs)" : "", 1e3 * gpu_s / bench, c.layers, 1e3 * lane_s / bench);
+    }
     std::printf("muse_gpu_trunk_check: %d failures\n", failures);
     return failures == 0 ? 0 : 1;
 }

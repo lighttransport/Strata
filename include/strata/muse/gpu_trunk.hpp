@@ -10,6 +10,11 @@
 //
 // The arithmetic is strata/muse/reference.hpp's with the GPU's precision: projections take Q8_1 activations
 // (native_mmvq), K and V are stored as f16.  No CUDA or HIP type appears here, so host tools include it as C++.
+//
+// One stream, host transfers through pinned buffers.  Only attention_and_route (z, ids and weights are needed on the
+// host), head and trace wait for the device; begin and finish_moe enqueue and return.  The calls must alternate as
+// begin, then per layer attention_and_route and finish_moe, then head: the pinned input buffers are reused once the
+// next waiting call has returned.  The results do not depend on TrunkConfig::graphs.
 #pragma once
 
 #include <cstddef>
@@ -39,6 +44,8 @@ struct TrunkConfig {
     int context = 0;   // positions the full-attention layers' caches hold
     float rms_eps = 1e-5f, post_eps = 1e-8f, rope_base = 500000.f, expert_weights_scale = 1.f;
     float logit_scale = 1.f, softcap = 0.f;
+    bool graphs = false;   // replay each layer's two halves and the head as captured graphs (opt-in)
+    int attention_splits = 1;   // split-K decode attention (kernels/muse.hpp muse_attention); 1: one block per head
 };
 
 /// Snapshots of a block's intermediate streams for parity checks (copied as the block runs).

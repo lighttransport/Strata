@@ -206,16 +206,40 @@ and V; the F32 router and the attention's query and softmax weights unrounded on
 | logits | 7.3e-3, argmax 11 of 11 | 5.3e-3, argmax 11 of 11 | 1.5e-2, argmax 10 of 11 |
 
 Against llama.cpp's own logits (CPU, Q8_K activations) the argmax agrees at 10 of 11 positions: a near tie that the
-two activation formats break differently. Not done yet: speed (nothing is timed; every call synchronizes), graph
-capture, fusion, the two-card layer split, and an attention for long contexts that does not read every key per
-query head serially.
+two activation formats break differently.
+
+Second pass, same day (all opt-in except the first two, which change no result):
+
+- q, k, v and the gate share one Q8_1 quantization of the normed stream (it was quantized four times).
+- Host transfers go through pinned buffers. The host waits only in `attention_and_route` (the CPU lane needs z, the
+  routes and their weights), `head` and `trace`; `begin` and `finish_moe` enqueue and return.
+- `TrunkConfig::graphs` (`--graphs`): each layer's two halves and the head are captured once and replayed. The
+  position is read from device memory and every host copy uses a fixed pinned buffer, so one graph serves every token.
+- `TrunkConfig::attention_splits` (`--splits N`): split-K decode attention. Each head's keys are cut into N ranges of
+  whole 256-key chunks, sized from the device position so the launch shape is fixed, then combined.
+
+`muse_attention_test` (synthetic caches up to 40,000 keys, full and ring layers) checks both attentions against a double
+reference:
+
+| keys | one block per head | split-K 16 |
+|---:|---:|---:|
+| 11 | 3.3e-7 | 3.3e-7 |
+| 5,000 | 2.1e-6 | 6.2e-7 |
+| 40,000 | 6.8e-6 | 9.2e-7 |
+| 2,048 (ring, pos 4,999) | 1.5e-6 | 5.2e-7 |
+
+A graph captured at position 11 and replayed at 11, 700 and 9,000 equals the direct call bit for bit, with and without
+split-K. `muse_gpu_trunk_check` on the RX 9070 XT gives the same results with `--graphs` and with `--graphs --splits 16`
+as in the table above (176/176 routes, argmax 11 of 11, logits 7.3e-3); without split-K the sync and graph runs print
+identical output. The CUDA build compiles; it was not run (no NVIDIA card in TR16 after 2026-10-16). Not timed yet:
+the GPU was running other jobs. `--bench N` prints the GPU calls' time per token apart from the CPU lane's. Not done:
+one launch for the four projections, the two-card layer split.
 
 Next, in order (each with a parity test against `reference.hpp` before it is timed):
 
-1. **The GPU trunk, fast** (CUDA and HIP): the first cut above is the parity baseline. Next: one stream with no
-   host syncs inside a layer, CUDA/HIP graphs per layer range, the q/k/v/gate projections sharing one Q8_1
-   quantization (today each projection quantizes its input again) and one launch, a split-K attention for long contexts, and the trunk split by layer across
-   the two cards (32/30 for decode); then time it against the forecast's GPU chain (57 ms per token).
+1. **The GPU trunk, fast** (CUDA and HIP): done except one launch for q/k/v/gate and the trunk split by layer across
+   the two cards (32/30 for decode). Next: time `--bench` on an idle RX 9070 XT, with and without graphs and split-K,
+   against the forecast's GPU chain (57 ms per token; the slice has 2 of 62 layers).
 2. **The CPU expert lane**: the existing `ExpertPool` with `NativeFmt::iq1s_rows` on 4096-wide latents; the GPU-resident
    hot experts need an IQ1_S tier kernel (llama.cpp's MMVQ IQ1_S is the reference).
 3. **Two nodes**: extend the remote TP worker (`glm_tp_worker.cpp`, ucomm over IB) for the row split. A request is the

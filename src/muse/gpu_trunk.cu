@@ -1,5 +1,7 @@
-// src/muse/gpu_trunk.cu - the Muse Spark block trunk on one GPU (strata/muse/gpu_trunk.hpp).  Synchronous and naive:
-// the parity baseline the graph-captured, two-card runner will be checked against.
+// src/muse/gpu_trunk.cu - the Muse Spark block trunk on one GPU (strata/muse/gpu_trunk.hpp).  One stream; the host
+// waits only where it needs the device's results.  With TrunkConfig::graphs each layer's two halves and the head are
+// captured once and replayed: positions are read from device memory, and every host transfer goes through a fixed
+// pinned buffer, so a captured graph is valid for every token.
 #include "strata/muse/gpu_trunk.hpp"
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/muse.hpp"
@@ -8,6 +10,8 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <cstring>
+#include <functional>
 #include <cmath>
 #include <stdexcept>
 #include <string>
@@ -42,9 +46,43 @@ struct GpuTrunk::Impl {
     DevTensor out_norm, out;
     float *x, *h, *q, *kk, *v, *g, *a, *o, *z, *logits, *w, *y, *f, *t_attn, *t_ffn_inp, *head_logits;
     int32_t *ids, *pos;
+    float* attn_part = nullptr;   // split-K partials
     void* q8;
     size_t bytes = 0;
     std::vector<void*> allocs;
+    // pinned host staging: the stream in, the router's results out
+    float *hx = nullptr, *hy = nullptr, *hz = nullptr, *hw = nullptr;
+    int32_t *hids = nullptr, *hpos = nullptr;
+    std::vector<void*> pinned;
+    std::vector<cudaGraphExec_t> g_attn, g_finish;
+    cudaGraphExec_t g_head = nullptr;
+
+    template <class T> T* host_buf(size_t n) {
+        void* p = nullptr;
+        ck(cudaMallocHost(&p, n * sizeof(T)), "cudaMallocHost");
+        pinned.push_back(p);
+        return (T*) p;
+    }
+    // enqueue directly, or capture the work once into `exec` and replay it
+    void run(cudaGraphExec_t& exec, const std::function<void()>& enqueue) {
+        if (!c.graphs) { enqueue(); return; }
+        if (!exec) {
+            cudaGraph_t graph = nullptr;
+            ck(cudaStreamBeginCapture(s, cudaStreamCaptureModeThreadLocal), "begin capture");
+            try { enqueue(); }
+            catch (...) {
+                cudaGraph_t invalid = nullptr;
+                cudaStreamEndCapture(s, &invalid);
+                if (invalid) cudaGraphDestroy(invalid);
+                throw;
+            }
+            ck(cudaStreamEndCapture(s, &graph), "end capture");
+            const cudaError_t e = cudaGraphInstantiate(&exec, graph, nullptr, nullptr, 0);
+            cudaGraphDestroy(graph);
+            ck(e, "instantiate");
+        }
+        ck(cudaGraphLaunch(exec, s), "graph launch");
+    }
 
     void* alloc(size_t n) {
         void* p = nullptr;
@@ -70,6 +108,11 @@ struct GpuTrunk::Impl {
             return;
         }
         k::native_quantize_q8_1(xin, q8, (int) w.ne0, 1, s);
+        mmvq(w, yout);
+    }
+    // y = W q8, the activation quantized by the previous native_quantize_q8_1 (shared by projections of one input)
+    void mmvq(const DevTensor& w, float* yout) {
+        if (w.type == 0) throw std::logic_error("muse gpu trunk: an F32 weight takes no Q8_1 input");
         k::native_mmvq(w.type, w.p, q8, yout, (int) w.ne0, (int) w.ne1, 1, s);
     }
     const float* fp(const DevTensor& t) const { return (const float*) t.p; }
@@ -107,9 +150,15 @@ GpuTrunk::GpuTrunk(const TrunkConfig& c, const std::vector<TrunkLayerHost>& laye
     I.a = I.fbuf(QD); I.o = I.fbuf(H); I.z = I.fbuf(c.latent); I.logits = I.fbuf(c.experts); I.w = I.fbuf(c.top_k);
     I.y = I.fbuf(c.latent); I.f = I.fbuf(H); I.t_attn = I.fbuf(H); I.t_ffn_inp = I.fbuf(H);
     I.head_logits = output ? I.fbuf((size_t) output->ne1) : nullptr;
+    if (const size_t n = k::muse_attention_scratch_floats(c.q_heads, c.head_dim, c.attention_splits)) I.attn_part = I.fbuf(n);
     I.ids = (int32_t*) I.alloc(sizeof(int32_t) * c.top_k);
     I.pos = (int32_t*) I.alloc(sizeof(int32_t));
     I.q8 = I.alloc(k::native_q8_1_bytes(std::max(H, std::max(QD, c.latent)), 1));
+    I.hx = I.host_buf<float>((size_t) H); I.hy = I.host_buf<float>((size_t) c.latent);
+    I.hz = I.host_buf<float>((size_t) c.latent); I.hw = I.host_buf<float>((size_t) c.top_k);
+    I.hids = I.host_buf<int32_t>((size_t) c.top_k); I.hpos = I.host_buf<int32_t>(1);
+    I.g_attn.assign(layers.size(), nullptr);
+    I.g_finish.assign(layers.size(), nullptr);
     z_.resize((size_t) c.latent);
     w_.resize((size_t) c.top_k);
     ids_.resize((size_t) c.top_k);
@@ -117,6 +166,12 @@ GpuTrunk::GpuTrunk(const TrunkConfig& c, const std::vector<TrunkLayerHost>& laye
 
 GpuTrunk::~GpuTrunk() {
     if (!impl_) return;
+    if (impl_->s) cudaStreamSynchronize(impl_->s);
+    for (auto* v : {&impl_->g_attn, &impl_->g_finish})
+        for (cudaGraphExec_t e : *v)
+            if (e) cudaGraphExecDestroy(e);
+    if (impl_->g_head) cudaGraphExecDestroy(impl_->g_head);
+    for (void* p : impl_->pinned) cudaFreeHost(p);
     for (void* p : impl_->allocs) cudaFree(p);
     if (impl_->s) cudaStreamDestroy(impl_->s);
 }
@@ -125,10 +180,11 @@ size_t GpuTrunk::device_bytes() const { return impl_->bytes; }
 
 void GpuTrunk::begin(const float* x, int pos) {
     Impl& I = *impl_;
-    ck(cudaMemcpyAsync(I.x, x, sizeof(float) * I.c.hidden, cudaMemcpyHostToDevice, I.s), "begin x");
-    const int32_t p = pos;
-    ck(cudaMemcpyAsync(I.pos, &p, sizeof p, cudaMemcpyHostToDevice, I.s), "begin pos");
-    ck(cudaStreamSynchronize(I.s), "begin sync");
+    // the staging is free: the previous head() waited for the stream
+    std::memcpy(I.hx, x, sizeof(float) * I.c.hidden);
+    I.hpos[0] = pos;
+    ck(cudaMemcpyAsync(I.x, I.hx, sizeof(float) * I.c.hidden, cudaMemcpyHostToDevice, I.s), "begin x");
+    ck(cudaMemcpyAsync(I.pos, I.hpos, sizeof(int32_t), cudaMemcpyHostToDevice, I.s), "begin pos");
 }
 
 void GpuTrunk::attention_and_route(int layer) {
@@ -137,35 +193,41 @@ void GpuTrunk::attention_and_route(int layer) {
     const Impl::Layer& L = I.layers.at((size_t) layer);
     const int H = c.hidden, KD = c.kv_heads * c.head_dim;
     void* s = I.s;
-    k::muse_rms_norm(I.x, nullptr, I.fp(L.attn_norm), I.h, 1, H, c.rms_eps, s);
-    I.proj(L.attn_q, I.h, I.q);
-    I.proj(L.attn_k, I.h, I.kk);
-    I.proj(L.attn_v, I.h, I.v);
-    I.proj(L.attn_gate, I.h, I.g);
-    k::muse_rms_norm(I.q, nullptr, I.fp(L.attn_q_norm), I.q, c.q_heads, c.head_dim, c.rms_eps, s);
-    k::muse_rms_norm(I.kk, nullptr, I.fp(L.attn_k_norm), I.kk, c.kv_heads, c.head_dim, c.rms_eps, s);
-    if (L.swa) {
-        k::muse_rope(I.q, c.q_heads, c.head_dim, I.pos, c.rope_base, s);
-        k::muse_rope(I.kk, c.kv_heads, c.head_dim, I.pos, c.rope_base, s);
-    }
-    k::muse_kv_append(I.kk, I.v, L.kc, L.vc, KD, I.pos, L.ring, s);
-    k::muse_attention(I.q, L.kc, L.vc, I.a, c.q_heads, c.kv_heads, c.head_dim, I.pos, L.ring,
-                      1.f / std::sqrt((float) c.head_dim), s);
-    k::muse_head_norm_gate(I.a, I.g, c.q_heads, c.head_dim, c.rms_eps, s);
-    I.proj(L.attn_output, I.a, I.o);
-    k::muse_rms_norm(I.o, nullptr, nullptr, I.o, 1, H, c.post_eps, s);
-    ck(cudaMemcpyAsync(I.t_attn, I.o, sizeof(float) * H, cudaMemcpyDeviceToDevice, I.s), "trace");
-    k::muse_residual(I.x, I.o, I.fp(L.attn_alpha), I.fp(L.attn_beta), H, s);
-    ck(cudaMemcpyAsync(I.t_ffn_inp, I.x, sizeof(float) * H, cudaMemcpyDeviceToDevice, I.s), "trace");
-    k::muse_rms_norm(I.x, nullptr, I.fp(L.ffn_norm), I.h, 1, H, c.rms_eps, s);
-    I.proj(L.latent_down, I.h, I.z);
-    k::muse_rms_norm(I.z, nullptr, I.fp(L.pre_exp_norm), I.z, 1, c.latent, c.rms_eps, s);
-    I.proj(L.router, I.h, I.logits);
-    k::glm_router(I.logits, I.fp(L.router_bias), I.ids, I.w, c.experts, c.top_k, c.expert_weights_scale, s);
-    ck(cudaMemcpyAsync(z_.data(), I.z, sizeof(float) * c.latent, cudaMemcpyDeviceToHost, I.s), "z");
-    ck(cudaMemcpyAsync(ids_.data(), I.ids, sizeof(int32_t) * c.top_k, cudaMemcpyDeviceToHost, I.s), "ids");
-    ck(cudaMemcpyAsync(w_.data(), I.w, sizeof(float) * c.top_k, cudaMemcpyDeviceToHost, I.s), "weights");
+    I.run(I.g_attn.at((size_t) layer), [&] {
+        k::muse_rms_norm(I.x, nullptr, I.fp(L.attn_norm), I.h, 1, H, c.rms_eps, s);
+        k::native_quantize_q8_1(I.h, I.q8, H, 1, s);   // one Q8_1 copy of h for q, k, v and the gate
+        I.mmvq(L.attn_q, I.q);
+        I.mmvq(L.attn_k, I.kk);
+        I.mmvq(L.attn_v, I.v);
+        I.mmvq(L.attn_gate, I.g);
+        k::muse_rms_norm(I.q, nullptr, I.fp(L.attn_q_norm), I.q, c.q_heads, c.head_dim, c.rms_eps, s);
+        k::muse_rms_norm(I.kk, nullptr, I.fp(L.attn_k_norm), I.kk, c.kv_heads, c.head_dim, c.rms_eps, s);
+        if (L.swa) {
+            k::muse_rope(I.q, c.q_heads, c.head_dim, I.pos, c.rope_base, s);
+            k::muse_rope(I.kk, c.kv_heads, c.head_dim, I.pos, c.rope_base, s);
+        }
+        k::muse_kv_append(I.kk, I.v, L.kc, L.vc, KD, I.pos, L.ring, s);
+        k::muse_attention(I.q, L.kc, L.vc, I.a, c.q_heads, c.kv_heads, c.head_dim, I.pos, L.ring,
+                          1.f / std::sqrt((float) c.head_dim), s, c.attention_splits, I.attn_part);
+        k::muse_head_norm_gate(I.a, I.g, c.q_heads, c.head_dim, c.rms_eps, s);
+        I.proj(L.attn_output, I.a, I.o);
+        k::muse_rms_norm(I.o, nullptr, nullptr, I.o, 1, H, c.post_eps, s);
+        ck(cudaMemcpyAsync(I.t_attn, I.o, sizeof(float) * H, cudaMemcpyDeviceToDevice, I.s), "trace");
+        k::muse_residual(I.x, I.o, I.fp(L.attn_alpha), I.fp(L.attn_beta), H, s);
+        ck(cudaMemcpyAsync(I.t_ffn_inp, I.x, sizeof(float) * H, cudaMemcpyDeviceToDevice, I.s), "trace");
+        k::muse_rms_norm(I.x, nullptr, I.fp(L.ffn_norm), I.h, 1, H, c.rms_eps, s);
+        I.proj(L.latent_down, I.h, I.z);
+        k::muse_rms_norm(I.z, nullptr, I.fp(L.pre_exp_norm), I.z, 1, c.latent, c.rms_eps, s);
+        I.proj(L.router, I.h, I.logits);
+        k::glm_router(I.logits, I.fp(L.router_bias), I.ids, I.w, c.experts, c.top_k, c.expert_weights_scale, s);
+        ck(cudaMemcpyAsync(I.hz, I.z, sizeof(float) * c.latent, cudaMemcpyDeviceToHost, I.s), "z");
+        ck(cudaMemcpyAsync(I.hids, I.ids, sizeof(int32_t) * c.top_k, cudaMemcpyDeviceToHost, I.s), "ids");
+        ck(cudaMemcpyAsync(I.hw, I.w, sizeof(float) * c.top_k, cudaMemcpyDeviceToHost, I.s), "weights");
+    });
     ck(cudaStreamSynchronize(I.s), "attention sync");
+    std::memcpy(z_.data(), I.hz, sizeof(float) * c.latent);
+    std::memcpy(ids_.data(), I.hids, sizeof(int32_t) * c.top_k);
+    std::memcpy(w_.data(), I.hw, sizeof(float) * c.top_k);
 }
 
 void GpuTrunk::finish_moe(int layer, const float* y) {
@@ -173,19 +235,24 @@ void GpuTrunk::finish_moe(int layer, const float* y) {
     const TrunkConfig& c = I.c;
     const Impl::Layer& L = I.layers.at((size_t) layer);
     void* s = I.s;
-    ck(cudaMemcpyAsync(I.y, y, sizeof(float) * c.latent, cudaMemcpyHostToDevice, I.s), "y");
-    I.proj(L.latent_up, I.y, I.f);
-    k::muse_rms_norm(I.f, I.fp(L.post_ffw_norm), nullptr, I.f, 1, c.hidden, c.post_eps, s);
-    k::muse_residual(I.x, I.f, I.fp(L.ffn_alpha), I.fp(L.ffn_beta), c.hidden, s);
-    ck(cudaStreamSynchronize(I.s), "finish sync");
+    // the staging is free: attention_and_route waited for the stream
+    std::memcpy(I.hy, y, sizeof(float) * c.latent);
+    I.run(I.g_finish.at((size_t) layer), [&] {
+        ck(cudaMemcpyAsync(I.y, I.hy, sizeof(float) * c.latent, cudaMemcpyHostToDevice, I.s), "y");
+        I.proj(L.latent_up, I.y, I.f);
+        k::muse_rms_norm(I.f, I.fp(L.post_ffw_norm), nullptr, I.f, 1, c.hidden, c.post_eps, s);
+        k::muse_residual(I.x, I.f, I.fp(L.ffn_alpha), I.fp(L.ffn_beta), c.hidden, s);
+    });
 }
 
 void GpuTrunk::head(std::vector<float>& logits) {
     Impl& I = *impl_;
     if (!I.out.p) throw std::logic_error("muse gpu trunk: built without the head");
-    k::muse_rms_norm(I.x, nullptr, I.fp(I.out_norm), I.h, 1, I.c.hidden, I.c.rms_eps, I.s);
-    I.proj(I.out, I.h, I.head_logits);
-    k::muse_logit_cap(I.head_logits, (int) I.out.ne1, I.c.logit_scale, I.c.softcap, I.s);
+    I.run(I.g_head, [&] {
+        k::muse_rms_norm(I.x, nullptr, I.fp(I.out_norm), I.h, 1, I.c.hidden, I.c.rms_eps, I.s);
+        I.proj(I.out, I.h, I.head_logits);
+        k::muse_logit_cap(I.head_logits, (int) I.out.ne1, I.c.logit_scale, I.c.softcap, I.s);
+    });
     logits.resize((size_t) I.out.ne1);
     ck(cudaMemcpyAsync(logits.data(), I.head_logits, sizeof(float) * logits.size(), cudaMemcpyDeviceToHost, I.s), "logits");
     ck(cudaStreamSynchronize(I.s), "head sync");
@@ -198,7 +265,8 @@ void GpuTrunk::trace(TrunkTrace which, std::vector<float>& out) const {
                      : which == TrunkTrace::FfnPostNorm ? I.f
                                                         : I.x;
     out.resize((size_t) I.c.hidden);
-    ck(cudaMemcpy(out.data(), src, sizeof(float) * out.size(), cudaMemcpyDeviceToHost), "trace");
+    ck(cudaMemcpyAsync(out.data(), src, sizeof(float) * out.size(), cudaMemcpyDeviceToHost, I.s), "trace");
+    ck(cudaStreamSynchronize(I.s), "trace sync");
 }
 
 }  // namespace strata::muse

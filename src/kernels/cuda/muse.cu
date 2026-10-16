@@ -111,6 +111,70 @@ __global__ void attention_k(const float* q, const uint16_t* kc, const uint16_t* 
     if (threadIdx.x < HD) out[(size_t) h * HD + threadIdx.x] = acc / l;
 }
 
+// Split-K: block (h, split) runs the same online softmax over its share of the n cached keys, about n / splits
+// rounded up to whole 256-key chunks and computed from the device position, so the launch shape is fixed and a
+// captured graph replays for every token.  It writes (max, sum, acc[64]) to part[h][split]; a split with no keys
+// writes (-inf, 0, 0).
+__global__ void attention_split_k(const float* q, const uint16_t* kc, const uint16_t* vc, float* part, int q_heads,
+                                  int kv_heads, const int32_t* pos, int ring, float scale) {
+    constexpr int HD = 64;
+    __shared__ float qs[HD];
+    __shared__ float p[kThreads];
+    __shared__ float red[kThreads / 32];
+    const int h = blockIdx.x, split = blockIdx.y, splits = gridDim.y, kvh = h / (q_heads / kv_heads),
+              width = kv_heads * HD;
+    if (threadIdx.x < HD) qs[threadIdx.x] = q[(size_t) h * HD + threadIdx.x];
+    __syncthreads();
+    const int n = ring ? min(pos[0] + 1, ring) : pos[0] + 1;
+    const int chunks = (n + kThreads - 1) / kThreads, per = (chunks + splits - 1) / splits;
+    const int j0 = min(n, split * per * kThreads), j1 = min(n, (split + 1) * per * kThreads);
+    float m = -INFINITY, l = 0, acc = 0;
+    for (int c0 = j0; c0 < j1; c0 += kThreads) {
+        const int j = c0 + (int) threadIdx.x;
+        float s = -INFINITY;
+        if (j < j1) {
+            const uint16_t* kr = kc + (size_t) j * width + kvh * HD;
+            float d = 0;
+            for (int i = 0; i < HD; ++i) d += qs[i] * f32_from_f16(kr[i]);
+            s = d * scale;
+        }
+        const float m_new = fmaxf(m, block_max(s, red));
+        const float e = j < j1 ? expf(s - m_new) : 0.f;
+        const float factor = expf(m - m_new);
+        l = l * factor + block_sum(e, red);
+        p[threadIdx.x] = e;
+        __syncthreads();
+        if (threadIdx.x < HD) {
+            acc *= factor;
+            const int count = min(kThreads, j1 - c0);
+            for (int t = 0; t < count; ++t) acc += p[t] * f32_from_f16(vc[(size_t) (c0 + t) * width + kvh * HD + threadIdx.x]);
+        }
+        m = m_new;
+        __syncthreads();
+    }
+    float* o = part + ((size_t) h * splits + split) * (HD + 2);
+    if (threadIdx.x < HD) o[2 + threadIdx.x] = acc;
+    if (threadIdx.x == 0) { o[0] = m; o[1] = l; }
+}
+
+// out[h] = sum_s acc_s e^(m_s - M) / sum_s l_s e^(m_s - M), M the largest m_s; one block of 64 threads per head.
+__global__ void attention_combine_k(const float* part, float* out, int splits) {
+    constexpr int HD = 64;
+    const int h = blockIdx.x, i = threadIdx.x;
+    const float* ph = part + (size_t) h * splits * (HD + 2);
+    float M = -INFINITY;
+    for (int s = 0; s < splits; ++s) M = fmaxf(M, ph[(size_t) s * (HD + 2)]);
+    float l = 0, acc = 0;
+    for (int s = 0; s < splits; ++s) {
+        const float* o = ph + (size_t) s * (HD + 2);
+        if (o[1] == 0.f) continue;   // no keys
+        const float f = expf(o[0] - M);
+        l += o[1] * f;
+        acc += o[2 + i] * f;
+    }
+    out[(size_t) h * HD + i] = acc / l;
+}
+
 __global__ void head_norm_gate_k(float* a, const float* gate, int head_dim, float eps) {
     __shared__ float red[kThreads / 32];
     float* ah = a + (size_t) blockIdx.x * head_dim;
@@ -162,9 +226,20 @@ void muse_kv_append(const float* k, const float* v, uint16_t* k_cache, uint16_t*
 }
 
 void muse_attention(const float* q, const uint16_t* k_cache, const uint16_t* v_cache, float* out, int q_heads,
-                    int kv_heads, int head_dim, const int32_t* pos, int ring, float scale, void* stream) {
+                    int kv_heads, int head_dim, const int32_t* pos, int ring, float scale, void* stream, int splits,
+                    float* scratch) {
     (void) head_dim;   // 64 (the kernel's constant; the caller checks the model's)
-    attention_k<<<q_heads, kThreads, 0, st(stream)>>>(q, k_cache, v_cache, out, q_heads, kv_heads, pos, ring, scale);
+    if (splits <= 1) {
+        attention_k<<<q_heads, kThreads, 0, st(stream)>>>(q, k_cache, v_cache, out, q_heads, kv_heads, pos, ring, scale);
+        return;
+    }
+    attention_split_k<<<dim3(q_heads, splits), kThreads, 0, st(stream)>>>(q, k_cache, v_cache, scratch, q_heads,
+                                                                         kv_heads, pos, ring, scale);
+    attention_combine_k<<<q_heads, 64, 0, st(stream)>>>(scratch, out, splits);
+}
+
+size_t muse_attention_scratch_floats(int q_heads, int head_dim, int splits) {
+    return splits <= 1 ? 0 : (size_t) q_heads * splits * (head_dim + 2);
 }
 
 void muse_head_norm_gate(float* a, const float* gate, int heads, int head_dim, float eps, void* stream) {

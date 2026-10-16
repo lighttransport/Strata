@@ -11,6 +11,7 @@
 // pointers; every call enqueues on the given non-null stream, with no allocation and no synchronization.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace strata::kernels {
@@ -32,8 +33,13 @@ void muse_kv_append(const float* k, const float* v, uint16_t* k_cache, uint16_t*
 /// One query token's GQA attention over the cached positions: full layers 0 .. pos, ring layers the last
 /// min(pos + 1, ring) slots (softmax does not depend on the order).  q: [q_heads][head_dim], out the same; the caches
 /// [slot][kv_heads][head_dim] f16.  head_dim must be 64.
+/// splits <= 1: one block per head reads every key.  splits > 1 (split-K): each head's keys are cut into `splits`
+/// ranges of whole 256-key chunks that run in parallel, then combined; `scratch` holds
+/// muse_attention_scratch_floats() floats.  The two differ in summation order only.
 void muse_attention(const float* q, const uint16_t* k_cache, const uint16_t* v_cache, float* out, int q_heads,
-                    int kv_heads, int head_dim, const int32_t* pos, int ring, float scale, void* stream);
+                    int kv_heads, int head_dim, const int32_t* pos, int ring, float scale, void* stream,
+                    int splits = 1, float* scratch = nullptr);
+size_t muse_attention_scratch_floats(int q_heads, int head_dim, int splits);
 
 /// a[h] = rms_norm(a[h]) * sigmoid(gate[h]) per head (weightless, eps), in place.
 void muse_head_norm_gate(float* a, const float* gate, int heads, int head_dim, float eps, void* stream);
