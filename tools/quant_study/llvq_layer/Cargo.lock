@@ -499,7 +499,9 @@ dependencies = [
 name = "llvq_layer"
 version = "0.1.0"
 dependencies = [
+ "llvq-core",
  "llvq-quant",
+ "llvq-search",
 ]
 
 [[package]]

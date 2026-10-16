@@ -429,6 +429,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/gr.cu
                           src/kernels/cuda/gdn.cu
                           src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_mailbox.cu src/kernels/cuda/glm_q23.cu src/kernels/cuda/glm_q8.cu src/kernels/cuda/exl3.cu
+                          src/kernels/cuda/llvq_tetra.cu
                           src/kernels/cuda/qsa.cu
                           src/kernels/cuda/elementwise.cu
                           src/kernels/cuda/bf16_gemv.cu
@@ -550,7 +551,12 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
     # a contracted bias addition can change a code at a half-integer boundary.
     set_source_files_properties(src/kernels/cuda/elementwise.cu src/kernels/cuda/quantize_act.cu
       src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_q23.cu
+      src/kernels/cuda/llvq_tetra.cu
       PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+  endif()
+  # The llvq Tetra encoder's f64 words are bit-identical to llvq's only without multiply-add contraction.
+  if(STRATA_ENABLE_CUDA)
+    set_source_files_properties(src/kernels/cuda/llvq_tetra.cu PROPERTIES COMPILE_OPTIONS "-fmad=false")
   endif()
 
   set(STRATA_ORACLE_SOURCE_DIR "" CACHE PATH "Pinned llama.cpp source for independent CUDA parity tests")
@@ -1977,6 +1983,43 @@ if(STRATA_BUILD_TESTS)
     target_link_libraries(exl3_gpu_tiled_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
     add_test(NAME exl3_gpu_tiled_test COMMAND exl3_gpu_tiled_test)
     set_tests_properties(exl3_gpu_tiled_test PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
+endif()
+# llvq Tetra (Leech-lattice) encoder: bit-identical to llvq's f64 encoder only without floating-point contraction.
+add_executable(strata-glm-llvq-encode tools/glm_llvq_encode.cpp)
+target_include_directories(strata-glm-llvq-encode PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(strata-glm-llvq-encode PRIVATE -ffp-contract=off)
+target_link_libraries(strata-glm-llvq-encode PRIVATE Threads::Threads)
+if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
+  target_compile_definitions(strata-glm-llvq-encode PRIVATE STRATA_LLVQ_GPU=1)
+  target_include_directories(strata-glm-llvq-encode PRIVATE ${_strata_gpu_include_directories})
+  target_link_libraries(strata-glm-llvq-encode PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+endif()
+if(STRATA_BUILD_TESTS)
+  add_executable(llvq_tetra_test tests/llvq/tetra_test.cpp)
+  target_include_directories(llvq_tetra_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_compile_options(llvq_tetra_test PRIVATE -ffp-contract=off)
+  target_link_libraries(llvq_tetra_test PRIVATE Threads::Threads)
+  add_test(NAME llvq_tetra_test COMMAND llvq_tetra_test)
+  add_executable(llvq_tetra_decode_test tests/llvq/tetra_decode_test.cpp)
+  target_include_directories(llvq_tetra_decode_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(llvq_tetra_decode_test PRIVATE Threads::Threads)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    target_compile_options(llvq_tetra_decode_test PRIVATE -mavx2 -mfma)
+  endif()
+  if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
+    target_compile_definitions(llvq_tetra_decode_test PRIVATE STRATA_LLVQ_GPU=1)
+    target_include_directories(llvq_tetra_decode_test PRIVATE ${_strata_gpu_include_directories})
+    target_link_libraries(llvq_tetra_decode_test PRIVATE strata_kernels ${_strata_gpu_runtime_target})
+  endif()
+  add_test(NAME llvq_tetra_decode_test COMMAND llvq_tetra_decode_test 512 4096)
+  if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
+    add_executable(llvq_tetra_gpu_test tests/llvq/tetra_gpu_test.cpp)
+    target_include_directories(llvq_tetra_gpu_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${_strata_gpu_include_directories})
+    target_compile_options(llvq_tetra_gpu_test PRIVATE -ffp-contract=off)
+    target_link_libraries(llvq_tetra_gpu_test PRIVATE strata_kernels Threads::Threads ${_strata_gpu_runtime_target})
+    add_test(NAME llvq_tetra_gpu_test COMMAND llvq_tetra_gpu_test)
+    set_tests_properties(llvq_tetra_gpu_test PROPERTIES SKIP_RETURN_CODE 77)
   endif()
 endif()
 if(STRATA_BUILD_TESTS)

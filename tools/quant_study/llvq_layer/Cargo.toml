@@ -7,6 +7,16 @@ description = "Quantize one GLM-5.3-Flash expert matrix with llvq's Leech/Tetra 
 
 [dependencies]
 llvq-quant = { git = "https://github.com/pjmalandrino/llvq", rev = "ddecad3196f4f7fc872e03ca5c0499deb12c47e8", features = ["fast-linalg"] }
+llvq-search = { git = "https://github.com/pjmalandrino/llvq", rev = "ddecad3196f4f7fc872e03ca5c0499deb12c47e8" }
+llvq-core = { git = "https://github.com/pjmalandrino/llvq", rev = "ddecad3196f4f7fc872e03ca5c0499deb12c47e8" }
 
 [profile.release]
 opt-level = 3
+
+[[bin]]
+name = "llvq_layer"
+path = "src/main.rs"
+
+[[bin]]
+name = "llvq_dump"
+path = "src/dump.rs"

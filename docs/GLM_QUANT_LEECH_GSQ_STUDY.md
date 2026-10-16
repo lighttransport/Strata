@@ -75,13 +75,15 @@ needs a calibration run tens of times longer; the diagonal rows are the reliable
    2.1% (down), on the same kernels and at the same size. Requantizing from the FP8 release (now downloading to
    `/mnt/nvme01/models/glm53f/fp8`) is the first step.
 2. **IQ2_S is the best 2.5-bit option of the existing types** (output error 0.048 at 2.56 bpw against Q2_K's 0.055 at
-   2.625). The CPU expert lane runs IQ types through ggml-cpu already; the GPU tier, the worker and the canonical sum
-   would need IQ2_S paths (CUDA and HIP).
+   2.625). IQ2_S already runs in the CPU expert lane, the GPU tier, the decode cache and the mixed worker (CUDA and
+   HIP, non-canonical); only the canonical sum (`STRATA_GLM_CANON`) is Q2_K/Q3_K only. `strata-glm-q2-pack --fp8=DIR
+   --gate-type=iq2_s --down-type=iq2_s` now writes IQ2_S (or any of the IQ/K types) straight from the FP8 release
+   (layer 10 with the calibration importance: normalized MSE 0.062 gate/up, 0.045 down; 4.4 min per layer on 14
+   threads).
 3. **llvq** reaches IQ2_XS-level quality at 2.06 bpw (0.25 bits less) but trails EXL3 K2 at the same rate in the
-   settings that could be calibrated here. Applying it to GLM would need: CPU (AVX2) and HIP decoders for the Tetra
-   trellis words (only CUDA and Metal exist), and encoding at 0.65 ms per 24-weight block per thread on the 1950X
-   (19 s per expert matrix on 12 threads), about 4.6 days for the routed experts of REAP-224 on 16 threads. Not worth it before the full-Hessian
-   question is answered on a larger calibration set.
+   settings that could be calibrated here. The native port in [GLM_LLVQ.md](GLM_LLVQ.md) (2026-10-16) is bit-exact with
+   the Rust encoder and encodes 153,800 blocks/s on the RX 9070 XT (Rust: ~25,000 on 16 threads), with AVX2, CUDA and
+   HIP decoders; the full-Hessian question is still open (it costs ~1.5 PFLOP for all experts).
 4. **GSQ** as released cannot be applied end to end: no GLM model wrapper, no GGUF K-quant projection in the code (the
    README's GGUF results are not reproducible from it), and its gains come from end-to-end block training with
    activations on multi-GPU nodes. Its layer-wise loop (reproduced here with its own quantizer and hyper-parameters)
