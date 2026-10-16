@@ -9,6 +9,10 @@ quality at the same size. This note reviews recent methods for fit with this eng
 the CPU from RAM (any ggml type through `native_fmt` in `src/kernels/cpu/native_expert.cpp`) and the GPU-resident
 tier, the expert worker and the canonical CPU/GPU sum handle Q2_K/Q3_K only.
 
+Measured follow-up (2026-10-16): [GLM_QUANT_LEECH_GSQ_STUDY.md](GLM_QUANT_LEECH_GSQ_STUDY.md) runs llvq, GSQ and the
+GGUF types on 16 experts against the original weights. The shipped Q23 experts carry 12% error against the original
+(they were requantized from a 2-bit model); a requantization from the FP8 release on the same types is the first step.
+
 ## Methods reviewed
 
 ### GSQ: Gumbel-Softmax scalar quantization (IST DASLab)
