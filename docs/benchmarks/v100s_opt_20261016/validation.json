@@ -1,0 +1,730 @@
+{
+  "architecture": "sm70",
+  "cuda": "12.9",
+  "model_geometry": [
+    4096,
+    2048
+  ],
+  "resources": [
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 11,
+      "max_tokens": 8,
+      "registers_per_thread": 109,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 18688
+    },
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 10,
+      "max_tokens": 8,
+      "registers_per_thread": 80,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 18688
+    },
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 11,
+      "max_tokens": 4,
+      "registers_per_thread": 75,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 9344
+    },
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 10,
+      "max_tokens": 4,
+      "registers_per_thread": 64,
+      "stack_bytes": 8,
+      "dynamic_shared_bytes_model_geometry": 9344
+    },
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 11,
+      "max_tokens": 2,
+      "registers_per_thread": 64,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 4672
+    },
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 10,
+      "max_tokens": 2,
+      "registers_per_thread": 61,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 4672
+    },
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 11,
+      "max_tokens": 1,
+      "registers_per_thread": 58,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 2336
+    },
+    {
+      "kernel": "down_kernel",
+      "ggml_type": 10,
+      "max_tokens": 1,
+      "registers_per_thread": 48,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 2336
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 11,
+      "max_tokens": 8,
+      "registers_per_thread": 128,
+      "stack_bytes": 8,
+      "dynamic_shared_bytes_model_geometry": 37376
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 10,
+      "max_tokens": 8,
+      "registers_per_thread": 128,
+      "stack_bytes": 8,
+      "dynamic_shared_bytes_model_geometry": 37376
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 11,
+      "max_tokens": 4,
+      "registers_per_thread": 98,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 18688
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 10,
+      "max_tokens": 4,
+      "registers_per_thread": 121,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 18688
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 11,
+      "max_tokens": 2,
+      "registers_per_thread": 89,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 9344
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 10,
+      "max_tokens": 2,
+      "registers_per_thread": 90,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 9344
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 11,
+      "max_tokens": 1,
+      "registers_per_thread": 71,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 4672
+    },
+    {
+      "kernel": "gu_kernel",
+      "ggml_type": 10,
+      "max_tokens": 1,
+      "registers_per_thread": 76,
+      "stack_bytes": 0,
+      "dynamic_shared_bytes_model_geometry": 4672
+    }
+  ],
+  "schema": "strata.v100s.validation.v1",
+  "source_sha256": {
+    "src/kernels/cuda/glm_q23.cu": "71ddf9dc5474df685d3f7637c7ef7da396db40ed94a4f36c8cd1e028c46cacb6",
+    "src/kernels/cuda/glm_q8.cu": "b253a444c0991d54d5664b4aa87914a35756a8f5cd2b3f7e4f07474cb16c12c6",
+    "src/kernels/cuda/glm_prefill.cu": "30e8f95bf0102b8d3f67c463375883dc8259834bdd4acc3e5a61ab7f40c504c7",
+    "src/kernels/cpu/pool.cpp": "09283bc5c28a79061d2a4fc9cfac75098c4904723d27c1e614a6049441f25d77",
+    "tools/glm_resident_model.py": "da2b089d674e2b52611a694d21e0184523afa89f2119b63c0953ed0b7e526137",
+    "tools/glm_socket_placement.py": "a836c61012e9691ca0c602f0eadf26688ff76feddb29943598fd3a8af742c61b"
+  },
+  "builds": {
+    "cuda_sm70": "passed",
+    "hip_gfx1201": "passed",
+    "vulkan": "passed",
+    "sycl": "unavailable compiler"
+  },
+  "local_tests": {
+    "selected_host_tests_passed": 9,
+    "resident_tests_passed": 6,
+    "pool_stress": "skipped: unavailable AVX-512 features"
+  },
+  "v100_checks": {
+    "norm_q8_bitwise_cases": 80,
+    "pointwise_bitwise_and_guard_comparisons": 80,
+    "strided_head_bitwise_and_guard_comparisons": 20,
+    "convolution_history_bitwise_and_guard_cases": 180,
+    "socket_flow_runs_with_host": 588,
+    "socket_flow_runs_without_host_and_spin_zero": 588,
+    "public_socket_copy_fixture_bytes": 67108864,
+    "public_full_model_placement_sampled_panels": 10,
+    "public_full_model_copy_tested": false,
+    "canonical_q23_control_and_small_batch_cpu_oracle": "passed, 28 cases each including benchmarks"
+  },
+  "limits": [
+    "No AMD GPU execution",
+    "No SYCL compiler",
+    "No complete coding or long-context quality qualification"
+  ],
+  "hardware": "v100s node",
+  "placement_probe": {
+    "fixture": {
+      "sha256": "355cff2b05f48202f37d7c32f380927a67526783f44b30ae40c76621e13ab956",
+      "seals": 15,
+      "socket_nodes": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "socket_row_samples": [
+        {
+          "tensor": "fixture",
+          "side": 0,
+          "pages": {
+            "0": 2048,
+            "1": 2048
+          },
+          "local": true
+        },
+        {
+          "tensor": "fixture",
+          "side": 1,
+          "pages": {
+            "2": 2048,
+            "3": 2048
+          },
+          "local": true
+        }
+      ],
+      "bytes": 67108864
+    },
+    "full_model_sample_count": 10,
+    "full_model_all_sampled_panels_socket_local": true,
+    "full_model_samples": [
+      {
+        "tensor": "blk.10.ffn_down_exps.weight",
+        "side": 0,
+        "pages": {
+          "0": 219,
+          "1": 220
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.10.ffn_down_exps.weight",
+        "side": 1,
+        "pages": {
+          "2": 219,
+          "3": 220
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.20.ffn_up_exps.weight",
+        "side": 0,
+        "pages": {
+          "0": 168,
+          "1": 167
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.20.ffn_up_exps.weight",
+        "side": 1,
+        "pages": {
+          "2": 168,
+          "3": 167
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.30.ffn_gate_exps.weight",
+        "side": 0,
+        "pages": {
+          "0": 167,
+          "1": 168
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.30.ffn_gate_exps.weight",
+        "side": 1,
+        "pages": {
+          "2": 167,
+          "3": 168
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.40.ffn_down_exps.weight",
+        "side": 0,
+        "pages": {
+          "0": 219,
+          "1": 220
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.40.ffn_down_exps.weight",
+        "side": 1,
+        "pages": {
+          "2": 219,
+          "3": 220
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.9.ffn_up_exps.weight",
+        "side": 0,
+        "pages": {
+          "0": 168,
+          "1": 167
+        },
+        "local": true
+      },
+      {
+        "tensor": "blk.9.ffn_up_exps.weight",
+        "side": 1,
+        "pages": {
+          "2": 168,
+          "3": 167
+        },
+        "local": true
+      }
+    ],
+    "tested_helper_sha256": {
+      "glm_resident_model.py": "da2b089d674e2b52611a694d21e0184523afa89f2119b63c0953ed0b7e526137",
+      "glm_socket_placement.py": "a836c61012e9691ca0c602f0eadf26688ff76feddb29943598fd3a8af742c61b"
+    }
+  },
+  "socket_plan_file_sha256": "ee3d6e62ef8897a6386f0900233ed08416337d9cb92a10ff6e81efe285b164ab",
+  "canonical_q23_benchmark_protocol": {
+    "rounds_per_case": 50,
+    "timer": "host steady_clock across 50 queued calls, then cudaDeviceSynchronize",
+    "independent_timing_repeats": 1,
+    "bitwise_cpu_oracle_cases_per_variant": 28,
+    "instrumented_microbenchmark_only": true
+  },
+  "canonical_q23_microbenchmarks": {
+    "control": {
+      "raw_log_sha256": "f6a97f2c54de8db3fad6c122f615ee68b5e44bea0cd0c6fb5f74e91b6d27fbc1",
+      "measurements": [
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 1,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 32768,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.182,
+          "expert_bytes_gb_s": 399.6
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 2,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 65536,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.199,
+          "expert_bytes_gb_s": 366.0
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 2,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 196608,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.514,
+          "expert_bytes_gb_s": 425.7
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 3,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 98304,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.213,
+          "expert_bytes_gb_s": 342.4
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 262144,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.443,
+          "expert_bytes_gb_s": 164.5
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 786432,
+          "nonfinite": 0,
+          "milliseconds_per_call": 1.195,
+          "expert_bytes_gb_s": 183.0
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 8,
+          "different_outputs": 0,
+          "outputs": 786432,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.807,
+          "expert_bytes_gb_s": 270.9
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 2,
+          "different_outputs": 0,
+          "outputs": 786432,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.482,
+          "expert_bytes_gb_s": 453.6
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 1,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 98304,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.471,
+          "expert_bytes_gb_s": 463.8
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 1,
+          "tokens": 1,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 4096,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.046,
+          "expert_bytes_gb_s": 196.1
+        }
+      ]
+    },
+    "small": {
+      "raw_log_sha256": "d580a31ef753627b7fdf884d68068b39bc96106180534a4bdcdf9868f9cfef39",
+      "measurements": [
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 1,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 32768,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.17,
+          "expert_bytes_gb_s": 427.8
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 2,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 65536,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.19,
+          "expert_bytes_gb_s": 383.7
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 2,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 196608,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.482,
+          "expert_bytes_gb_s": 453.7
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 3,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 98304,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.212,
+          "expert_bytes_gb_s": 343.1
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 8,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 262144,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.443,
+          "expert_bytes_gb_s": 164.4
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 786432,
+          "nonfinite": 0,
+          "milliseconds_per_call": 1.195,
+          "expert_bytes_gb_s": 182.9
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 8,
+          "different_outputs": 0,
+          "outputs": 786432,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.8,
+          "expert_bytes_gb_s": 273.4
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 8,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 2,
+          "different_outputs": 0,
+          "outputs": 786432,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.504,
+          "expert_bytes_gb_s": 433.5
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 24,
+          "tokens": 1,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 98304,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.429,
+          "expert_bytes_gb_s": 509.4
+        },
+        {
+          "gate_up_type": 10,
+          "down_type": 11,
+          "hidden": 4096,
+          "ff": 2048,
+          "experts": 1,
+          "tokens": 1,
+          "limit": 10.0,
+          "skip": 0.0,
+          "ragged": 0,
+          "different_outputs": 0,
+          "outputs": 4096,
+          "nonfinite": 0,
+          "milliseconds_per_call": 0.044,
+          "expert_bytes_gb_s": 206.0
+        }
+      ]
+    }
+  },
+  "paired_full_stream_checks": [
+    {
+      "left_case": "combined-primary2-worker28-512",
+      "right_case": "combined-small-q23-cache2-worker28-512",
+      "corresponding_trial_token_hashes_equal": true,
+      "trial_count": 4,
+      "within_case_identical_output_gate_met": false
+    },
+    {
+      "left_case": "combined-q23-cache2-worker28-control512",
+      "right_case": "combined-small-q23-cache2-worker28-512",
+      "corresponding_trial_token_hashes_equal": true,
+      "trial_count": 4,
+      "within_case_identical_output_gate_met": false
+    }
+  ],
+  "final_default_output_check": {
+    "case": "parity-default-v10",
+    "reference": "parity-baseline-v2",
+    "generated_tokens": 16,
+    "logit_arrays": 2,
+    "floats_per_array": 154880,
+    "tokens_and_both_arrays_byte_identical": true
+  },
+  "optimization_code_commit": "0c1598183878b989e50b540b2625a78f8b355829",
+  "measured_inference_source_verified_against_code_commit": true,
+  "measured_inference_source_file_count": 13,
+  "resource_usage_scope": "Local CUDA 12.9 sm70 ELF, compile-only; canonical microbenchmarks executed on v100s node.",
+  "selected_profile": {
+    "profile": "v100s",
+    "repeat_guard": 3,
+    "source_commit": "0c1598183878b989e50b540b2625a78f8b355829",
+    "cases": [
+      {
+        "case": "combined-final-cache2-guard3-train-code512",
+        "median_decode_tok_s": 50.3616,
+        "median_prefill_tok_s": 850.218,
+        "decode_warmup_tok_s": 42.1182,
+        "decode_timed_trials": [
+          50.1444,
+          50.3616,
+          50.4059
+        ],
+        "all_four_streams_healthy": true,
+        "prefill_repeats_all_logits_and_routes_equal": true,
+        "strict_identical_output_gate_met": false
+      },
+      {
+        "case": "combined-final-cache2-guard3-code512",
+        "median_decode_tok_s": 49.9607,
+        "median_prefill_tok_s": 850.874,
+        "decode_warmup_tok_s": 39.8934,
+        "decode_timed_trials": [
+          49.9607,
+          48.997,
+          50.2079
+        ],
+        "all_four_streams_healthy": true,
+        "prefill_repeats_all_logits_and_routes_equal": true,
+        "strict_identical_output_gate_met": false
+      },
+      {
+        "case": "combined-final-cache2-guard3-holdout-chat512",
+        "median_decode_tok_s": 52.3375,
+        "median_prefill_tok_s": 850.753,
+        "decode_warmup_tok_s": 42.103,
+        "decode_timed_trials": [
+          52.6884,
+          51.3667,
+          52.3375
+        ],
+        "all_four_streams_healthy": true,
+        "prefill_repeats_all_logits_and_routes_equal": true,
+        "strict_identical_output_gate_met": false
+      }
+    ],
+    "total_checked_streams": 12,
+    "quality_qualified": false
+  }
+}
