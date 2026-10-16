@@ -1,3 +1,8 @@
+#ifdef NATIVE_FMA
+#extension GL_EXT_spirv_intrinsics : require
+spirv_instruction(extensions = ["SPV_KHR_fma"], capabilities = [6030], id = 4427)
+float native_fp32_fma(float a, float b, float c);
+#endif
 // Explicit IEEE binary64 -> binary32 round-to-nearest-even. Keeping the
 // intermediate value as integer bits prevents a later FP64 operation from
 // retaining precision across the required FP32 rounding boundary.
@@ -44,6 +49,9 @@ bool fp64_at_fp32_midpoint(uvec2 bits) {
 }
 
 float fp32_fma_rne(float a, float b, float c) {
+#ifdef NATIVE_FMA
+  return native_fp32_fma(a, b, c);
+#else
   // The FP32 product is exact in FP64. Recover a rounded FP64 sum's residual
   // only when it lands exactly on an FP32 midpoint; otherwise another FP32
   // rounding cannot cross a midpoint. This handles double-rounding cases.
@@ -63,4 +71,5 @@ float fp32_fma_rne(float a, float b, float c) {
     }
   }
   return round_fp64_to_fp32(packDouble2x32(bits));
+#endif
 }

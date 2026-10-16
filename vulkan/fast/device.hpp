@@ -162,6 +162,7 @@ public:
   bool shared_heap_large() const { return shared_large_; }
   bool fp64_expert_scale() const { return fp64_expert_scale_; }
   bool fp64_expert_math() const { return fp64_expert_math_; }
+  bool native_expert_fma() const { return native_expert_fma_; }
   uint32_t max_groups_x() const { return max_groups_x_; }
   VkQueryPool queries() const { return queries_; }
   static constexpr uint32_t query_capacity = 4096;
@@ -171,6 +172,7 @@ private:
   friend class Recorder;
   bool fp64_expert_scale_ = false;
   bool fp64_expert_math_ = false;
+  bool native_expert_fma_ = false;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkPhysicalDevice physical_ = VK_NULL_HANDLE;
   VkDevice device_ = VK_NULL_HANDLE;

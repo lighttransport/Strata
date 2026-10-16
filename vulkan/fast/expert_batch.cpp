@@ -108,7 +108,8 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
                                  (vector_weights_ ? "_vector" : "") +
                                  (tile_columns_ == 64 ? "" : "_" + std::to_string(tile_columns_)) +
                                  (tile_rows_ == 64 ? "" : "_m32") +
-                                 (device_.fp64_expert_scale() ? "_fp64_scale" : "");
+                                 (device_.fp64_expert_scale() ? "_fp64_scale" : "") +
+                                 (device_.native_expert_fma() ? "_native_fma" : "");
       const std::array<uint32_t, 5> push{w.k(), w.m(), w.layout.mp, count, uint32_t(w.layout.chunk_bytes())};
       if (lane_trace && w.layout.type == Q2_K)
         r.dispatch(kernel + "_trace", {View(*w.data), View(codes), View(metadata), View(*partial_), View(*gate_block_scale_)},
@@ -130,7 +131,9 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
       r.dispatch(round_kernel, {View(*input_), View(*qinput_), View(*hits_), View(*input_meta_)},
                  std::array<uint32_t, 4>{count * 4096, 0, 0, count}, count * 4096 / 256);
     product(gu_weights_, *qinput_, *input_meta_, *gu_);
-    r.dispatch(device_.fp64_expert_math() ? "expert_mix_fp64_math" : "expert_mix_canon",
+    const std::string mix_kernel = device_.fp64_expert_math() ?
+        std::string("expert_mix_fp64_math") + (device_.native_expert_fma() ? "_native_fma" : "") : "expert_mix_canon";
+    r.dispatch(mix_kernel,
                {View(*gu_), View(*hidden_), View(*hits_)}, swiglu, count * 2048 / 256);
     r.dispatch(round_kernel, {View(*hidden_), View(*qhidden_), View(*hits_), View(*hidden_meta_)},
                std::array<uint32_t, 4>{count * 2048, 0, 0, count}, count * 2048 / 256);

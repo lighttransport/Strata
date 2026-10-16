@@ -165,7 +165,9 @@ int main(int argc, char **argv) {
         }
       }
       dev.run([&](fast::Recorder &r) {
-        r.dispatch(dev.fp64_expert_scale() ? "fma_oracle_fp64_scale" : "fma_oracle", {fast::View(*input), fast::View(*output)},
+        const std::string oracle = dev.fp64_expert_scale() ?
+            std::string("fma_oracle_fp64_scale") + (dev.native_expert_fma() ? "_native_fma" : "") : "fma_oracle";
+        r.dispatch(oracle, {fast::View(*input), fast::View(*output)},
                    std::array<uint32_t, 1>{count}, count / 256);
         r.host_visible();
       });
@@ -199,6 +201,7 @@ int main(int argc, char **argv) {
           << ",\"fp64_cancel_mismatches\":" << wide_cancel << ",\"fp64_general_mismatches\":" << wide_general
           << ",\"fp32_multiply_mismatches\":" << multiply
           << ",\"cpu_double_rounding_counterexamples\":" << double_rounding_counterexamples;
+      if (dev.native_expert_fma()) std::cout << ",\"fma_implementation\":\"VK_KHR_shader_fma\"";
       std::cout << "}\n";
       if (dev.fp64_expert_scale() && wide) throw std::runtime_error("FP64 scale diagnostic failed FMA cancellation screen");
       if (dev.fp64_expert_scale() && double_rounding_counterexamples != 256)

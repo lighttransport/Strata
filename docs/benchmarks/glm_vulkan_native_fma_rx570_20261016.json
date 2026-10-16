@@ -1,0 +1,199 @@
+{
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Locally built Mesa 26.2.0 RADV with local libdrm 2.4.133; no system installation",
+    "cpu": "Ryzen9 3950X",
+    "ram": "64GiB DDR4-2666"
+  },
+  "feature": {
+    "build_option": "STRATA_VULKAN_NATIVE_FMA=ON; default OFF",
+    "runtime": "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA=1, requires STRATA_VULKAN_FAST_EXPERT_FP64_MATH=1",
+    "requirements": "VK_KHR_shader_fma and shaderFmaFloat32 explicitly queried and enabled",
+    "operation": "OpFmaKHR for block-scale FMAs and existing canonical polynomial; FP64/RNE divisions and conversions retained"
+  },
+  "driver": {
+    "source_archive_sha256": "efd4bb08cdb7c365a812cd4e6c9202ab55b2f22cdcd13c7d6c4f9647b799a4ef",
+    "libdrm_archive_sha256": "fc68f9d0ba2ea63c9432a299e14fea09fad7a8a66e8039fcd7802ca59f77b4f5",
+    "driver_binary_sha256": "d405cae7dd5fc5adf685e44158d1406b540422ba7561e937e8ac538881e3201c",
+    "feature_query_log_sha256": "a5d5ef7b29920d13c288c6d58bc48e516ae85ccb9942e008d0ca8e6cbe07ba25",
+    "official_release_notes": "https://docs.mesa3d.org/relnotes/26.2.0.html",
+    "system_install_performed": false
+  },
+  "primitive": {
+    "run": "expert-native-fma-local-v22",
+    "expert_cases": 12,
+    "all_cpu_output_and_stage_bytes_identical": true,
+    "conversion_oracle": {
+      "fp64_to_f32_cases": 9736,
+      "mismatches": 0,
+      "nan_comparison": "classification",
+      "finite_comparison": "all_bits"
+    },
+    "fma_oracle": {
+      "fma_probe_cases": 1792,
+      "ordinary_mismatches": 888,
+      "precise_mismatches": 888,
+      "separate_mismatches": 888,
+      "fp64_scale_mismatches": 0,
+      "fp64_cancel_mismatches": 0,
+      "fp64_general_mismatches": 0,
+      "fp32_multiply_mismatches": 0,
+      "cpu_double_rounding_counterexamples": 256,
+      "fma_implementation": "VK_KHR_shader_fma"
+    },
+    "guard_passed": true,
+    "faults": [],
+    "guard_sha256": "aaf096ec538fb35105bead6f7e5b952d3dd265a2be9dc7f12c69e81b070c2c4c",
+    "log_sha256": "6da9c99ee012107fd3c12b002f651d954b4fbfa8427b0738a6b361aec8b0921c"
+  },
+  "compiled_source_manifest_sha256": "37a498dba66252ca9d55c5fe26dacb738ecdeac3b0871c48511f156e97fea1b4",
+  "executable_sha256": {
+    "strata-glm-vulkan-native-fma-v22": "c6e436c7859c0ba0003e9bd503b5e3b6e1532ec4c0dc3916f2db46db6cfe602d",
+    "expert-check-native-fma-v22": "9f019448b97410237a0eb86aa7567051d902f22290db611f0440a787a6ab9b70",
+    "expert-check-default-fma-build-v22": "2a734d1c0784727e0114f77fe8e78fe99cc293568f89466a80c53dc8478596ca"
+  },
+  "default_shader_byte_comparisons_passed": 24,
+  "native_build_option": "ON",
+  "portable_build_option": "OFF",
+  "unsupported_build_and_driver_rejection_controls_passed": true,
+  "model_512": [
+    {
+      "run": "gpu512-native-fma-v22-max10-f32match16-lut-local-fp64-perf-run",
+      "native_fma": false,
+      "max_gpu_experts": 10,
+      "prefill_tok_s": [
+        35.9063,
+        35.8022,
+        35.8259
+      ],
+      "median_prefill_tok_s": 35.8259,
+      "config_sha256": "cd28ce49922d1ec7634eb147005e30a71da79f6e7d9a896b39a789f797d62734",
+      "guard_sha256": "a24a2ed177273375a58b43c5f2d49a6d08efc0b96962bb6afc55158787049183",
+      "log_sha256": "aa1d0e724df9202a64152ab2f11b1fc8864a937a36f4f727404ebaa1321603a8",
+      "first_measured_final_vocab_logits_sha256": "acd99889830a5120e59fea53cba6ac1c75b62cc49f542c947d9d93953f1d1d51",
+      "performance_qualified": true,
+      "faults": [],
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902"
+    },
+    {
+      "run": "gpu512-native-fma-v22-max10-f32match16-lut-local-native-perf-run",
+      "native_fma": true,
+      "max_gpu_experts": 10,
+      "prefill_tok_s": [
+        39.7692,
+        38.8712,
+        39.3292
+      ],
+      "median_prefill_tok_s": 39.3292,
+      "config_sha256": "90cb296108f024b569bba7400d991699781430173ad2d03baf93bd6e937c6122",
+      "guard_sha256": "15c60e65223195154848edc6bb038b4a8fad2145a66887429508f0792b8f1974",
+      "log_sha256": "24eba2ba45962b5047aaf1e874dd1a51e59efa373f6bc38f3bbc97b38cb1adc5",
+      "first_measured_final_vocab_logits_sha256": "acd99889830a5120e59fea53cba6ac1c75b62cc49f542c947d9d93953f1d1d51",
+      "performance_qualified": true,
+      "faults": [],
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902"
+    },
+    {
+      "run": "gpu512-native-fma-v22-max16-f32match16-lut-local-native-perf-run",
+      "native_fma": true,
+      "max_gpu_experts": 16,
+      "prefill_tok_s": [
+        41.3824,
+        41.4266,
+        41.1058
+      ],
+      "median_prefill_tok_s": 41.3824,
+      "config_sha256": "e3838a9dc094d0478af6dfdb72816566d71470cce490d67ff39f42491d972b83",
+      "guard_sha256": "8aac0398bf4e6b69cbbd046d43362b2c3968bf6bc45df69b5bb9312a3eef01de",
+      "log_sha256": "d7218265b4b5feb04e409ba13d69f5abacd29c6878f3886dafadeef12a3272dd",
+      "first_measured_final_vocab_logits_sha256": "acd99889830a5120e59fea53cba6ac1c75b62cc49f542c947d9d93953f1d1d51",
+      "performance_qualified": true,
+      "faults": [],
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902"
+    }
+  ],
+  "full_humaneval_qualified": false,
+  "combined_quality_throughput_qualified": false,
+  "limitations": [
+    "The twelve expert cases cover two experts and selected column counts, not every possible input.",
+    "Native FMA and FP64-emulated FMA match the same-local-driver first measured final vocabulary vector. Updating the userspace driver changes bytes compared with the host-driver baseline, so quality must be requalified.",
+    "Repetitive 512-token timing does not establish coding throughput or 100+ prefill.",
+    "Three fixed training passes do not qualify full HumanEval or the combined decode and quality targets; training timings were unqualified.",
+    "Conversion NaNs compare classification; all other conversion results and expert outputs compare all bits."
+  ],
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "model_protocol": "512 repetitive tokens, 2 outputs, one untimed prefill warmup and 3 measured trials per process, 12 host threads, F32-only matched 16-column panels and CPU Q2 LUT. Same frozen executable and local driver. First two controls use 10 GPU experts and differ only in the native-FMA toggle; the third raises the native-FMA expert limit to 16. Separate processes, not randomized paired cohorts.",
+  "native_vs_fp64_same_driver_model_bytes_identical": true,
+  "model_settings": {
+    "context": 4096,
+    "threads": 12,
+    "dense_cache_mib": 8192,
+    "gpu_budget_mib": 15360,
+    "speculative": "none",
+    "decode_cache_mib": 0
+  },
+  "original_fp64_shader_byte_comparisons_passed": 16,
+  "original_fp64_shader_comparison_sha256": "88873d190795dfb2d78817bf2fe4b2b49d2b5f9484ced3b845e9efa3f37def98",
+  "builds": {
+    "native_all_targets": "passed; STRATA_VULKAN_NATIVE_FMA=ON",
+    "portable_all_targets": "passed; STRATA_VULKAN_NATIVE_FMA=OFF",
+    "non_vulkan_backends": "No common CUDA, HIP or SYCL source changed; not rebuilt for this Vulkan-only change."
+  },
+  "default_runtime_expert_cpu_byte_cases": {
+    "native_build_explicit_lavapipe": 12,
+    "portable_build_explicit_lavapipe": 12,
+    "native_fma_enabled": false,
+    "all_cpu_output_and_stage_bytes_identical": true
+  },
+  "training": {
+    "gpu_experts_per_layer": 16,
+    "requested": 3,
+    "passed": 3,
+    "cases": [
+      {
+        "case": "parse_u64",
+        "generated": 161,
+        "passed": true,
+        "stop_terminated": true,
+        "oracle_passed": true,
+        "guard_passed": true,
+        "faults": [],
+        "guard_sha256": "91b0934269bfc9a9177c49be7d2b88f8d24a82db8399f3a430a7f169bcc650cd",
+        "output_record_sha256": "28d711f3420e132ef91eda753b469b4c6c28534cf221c84305697921c88a8a43"
+      },
+      {
+        "case": "checked_slice",
+        "generated": 1070,
+        "passed": true,
+        "stop_terminated": true,
+        "oracle_passed": true,
+        "guard_passed": true,
+        "faults": [],
+        "guard_sha256": "dbbc75cc6a0be1621fdc02ee7cedf962e7db61360fd46c8896a2027429941d2f",
+        "output_record_sha256": "f60f6aad790ae6f6e19f80fc0a1ce71424b2c6daa3d4eec43db4646f7742cfe4"
+      },
+      {
+        "case": "reduce_routed",
+        "generated": 679,
+        "passed": true,
+        "stop_terminated": true,
+        "oracle_passed": true,
+        "guard_passed": true,
+        "faults": [],
+        "guard_sha256": "ce1c99c10b4a629d5c6161a2130fa14c0cac228d79ba68a33e9365b1f7a82137",
+        "output_record_sha256": "04ffab3af70611425b36ab7005001d2ad4c7754e01dd5f68c25908953982d360"
+      }
+    ],
+    "unchanged_prompts_oracles_caps": true,
+    "max_tokens_per_case": 1536,
+    "candidate_sha256": "0ada5bd3cce25f2bcda84668203344d7dbd6f3e612f4b52220b2b20a2bb4a8f5",
+    "fixture_manifest_sha256": "6288ee92355b817b385005a18ca9c61ab9c3ed8d1f31e6429e35f36df557bb2d",
+    "score_summary_sha256": "42dbdae0e0b81ea9b4dda87335ce1ca382b8499c96f3f21cb9b36b367bb269e6",
+    "timings_qualified": false,
+    "output_ids_identical_to_host_driver_control": false,
+    "speculative": "mtp",
+    "draft_depth": 3,
+    "decode_cache_mib": 9216
+  }
+}

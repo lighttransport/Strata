@@ -138,13 +138,41 @@ Device::Device(const std::string &filter, size_t budget, bool allow_cpu) : budge
     const bool robust = strata_env_is_one("STRATA_VULKAN_FAST_ROBUST_BUFFERS");
     require(!robust || f2.features.robustBufferAccess, "Vulkan robust buffer access unavailable");
     e2.features.robustBufferAccess = robust ? VK_TRUE : VK_FALSE;
-    const char *extensions[] = {VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME};
+    const char *extensions[] = {VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, nullptr};
+    uint32_t enabled_extensions = 1;
+    native_expert_fma_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA");
+    require(!native_expert_fma_ || fp64_expert_math_, "Native expert FMA requires full FP64 expert math mode");
+#if defined(STRATA_VULKAN_NATIVE_FMA) && defined(VK_KHR_shader_fma)
+    VkPhysicalDeviceShaderFmaFeaturesKHR efma{};
+    efma.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FMA_FEATURES_KHR;
+    if (native_expert_fma_) {
+      uint32_t count = 0;
+      check(vkEnumerateDeviceExtensionProperties(physical_, nullptr, &count, nullptr), "count device extensions");
+      std::vector<VkExtensionProperties> supported(count);
+      check(vkEnumerateDeviceExtensionProperties(physical_, nullptr, &count, supported.data()), "device extensions");
+      require(std::any_of(supported.begin(), supported.end(), [](const auto &extension) {
+                return std::strcmp(extension.extensionName, VK_KHR_SHADER_FMA_EXTENSION_NAME) == 0;
+              }), "VK_KHR_shader_fma unavailable on selected Vulkan driver");
+      VkPhysicalDeviceFeatures2 queried{};
+      queried.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+      queried.pNext = &efma;
+      vkGetPhysicalDeviceFeatures2(physical_, &queried);
+      require(efma.shaderFmaFloat32, "Vulkan driver lacks guaranteed FP32 FMA");
+      efma.shaderFmaFloat16 = VK_FALSE;
+      efma.shaderFmaFloat64 = VK_FALSE;
+      efma.pNext = e2.pNext;
+      e2.pNext = &efma;
+      extensions[enabled_extensions++] = VK_KHR_SHADER_FMA_EXTENSION_NAME;
+    }
+#else
+    require(!native_expert_fma_, "Native expert FMA unavailable in this build; enable STRATA_VULKAN_NATIVE_FMA with a supported SDK");
+#endif
     VkDeviceCreateInfo di{};
     di.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     di.pNext = &e2;
     di.queueCreateInfoCount = 1;
     di.pQueueCreateInfos = &qi;
-    di.enabledExtensionCount = 1;
+    di.enabledExtensionCount = enabled_extensions;
     di.ppEnabledExtensionNames = extensions;
     check(vkCreateDevice(physical_, &di, nullptr, &device_), "create device");
     vkGetDeviceQueue(device_, family_, 0, &queue_);

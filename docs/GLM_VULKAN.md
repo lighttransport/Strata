@@ -833,6 +833,44 @@ combined decode/quality qualification remain pending for this executable.
 Measurements, source hashes and the excluded stale-binary experiment are in
 `docs/benchmarks/glm_vulkan_expert_fp64_math_rx570_20261016.json`.
 
+Further RX570 controls retained the expert precision mode and matched only
+the main FP32 projections. This passed all three unchanged training oracles
+(159, 343 and 397 output tokens); these outputs differ from the original
+reference. With 512 repetitive input tokens, one prefill warmup and three
+trials, median prefill rose from 22.7984 to 26.4635 tok/s. Limiting GPU experts
+to 12 per layer measured 33.0058 tok/s with identical final vocabulary bytes.
+The existing `STRATA_Q2K_LUT=1` CPU option plus a ten-expert limit measured
+35.4167 tok/s. Its three training outputs reproduce all 899 tokens from the
+passing FP32-matched control. Both timing and quality guards passed without
+recorded faults. These controls do not establish full HumanEval, coding
+throughput, 100+ prefill or combined decode/quality qualification. Counts,
+protocol and hashes are in
+`docs/benchmarks/glm_vulkan_prefill_precision_balance_rx570_20261016.json`.
+
+`STRATA_VULKAN_NATIVE_FMA=ON` is an optional CMake build setting, off by
+default. It builds expert variants for `VK_KHR_shader_fma` and needs a shader
+compiler that supports `SPV_KHR_fma`. At runtime, set
+`STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA=1` together with
+`STRATA_VULKAN_FAST_EXPERT_FP64_MATH=1`. The engine requires and enables
+`VK_KHR_shader_fma` and `shaderFmaFloat32`; unsupported builds or drivers
+reject the request before shader execution. This replaces the expert
+block-scale and canonical activation FMAs with `OpFmaKHR`, retaining the
+precision mode's FP64 divisions and explicit rounding. With the runtime
+option off, 24 default shader comparisons and 16 comparisons of the original
+FP64 variants remained byte-identical in the native and portable builds.
+
+On the same RX570, an isolated Mesa 26.2.0 RADV build passed all 1,792 FMA
+oracle cases, 9,736 conversion cases and 12 expert CPU byte comparisons.
+With ten GPU experts, the same-driver 512-token control measured 35.8259
+tok/s with emulated FMA and 39.3292 tok/s with native FMA. Sixteen GPU experts
+measured 41.3824 tok/s; the three controls' final vocabulary bytes matched.
+All three unchanged training oracles passed with sixteen GPU experts.
+The local driver changed output bytes relative to the system Mesa 26.0.8
+baseline, so the original full HumanEval score does not qualify this
+candidate. No system driver was installed. Full HumanEval, 100+ prefill and
+combined decode/quality qualification remain pending. Protocol and hashes
+are in `docs/benchmarks/glm_vulkan_native_fma_rx570_20261016.json`.
+
 `STRATA_VULKAN_FAST_PREFILL_GPU_MTILE=32|64` selects the expert row tile.
 The 32-row variant halves each workgroup's row accumulators and weight
 scratch while retaining the dot and scale-operation order. Four software
