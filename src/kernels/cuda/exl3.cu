@@ -2,6 +2,7 @@
 #include "strata/kernels/exl3.hpp"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <algorithm>
 namespace strata::kernels {
 __device__ float dense_q6_value(const unsigned char* b,unsigned lane) {
     unsigned byte=lane*6/8,shift=lane*6%8,value=b[2+byte];
@@ -81,6 +82,68 @@ __global__ void packed_mv(const uint32_t* packed,const float* x,float* y,int in,
 }
 void exl3_packed_gemv(const uint8_t* packed,const float* x,float* y,int in,int out,void* stream) {
     packed_mv<<<(out+7)/8,256,0,(cudaStream_t)stream>>>((const uint32_t*)packed,x,y,in,out);
+}
+// Each tile read and decoded once: one CTA per 16-row output tile, each thread whole input tiles (four 16-byte
+// loads), the 256 weights decoded in registers with compile-time word indices and shifts, 16 outputs per token
+// accumulated per thread, then a warp and shared-memory reduction. The same weights as packed_mv; the sum order
+// differs.
+template<int NT>
+__global__ void __launch_bounds__(256) tiled_mv(const uint4* __restrict__ packed,const float* __restrict__ x,float* __restrict__ y,int in,int out) {
+    const int ot=blockIdx.x,tiles=in/16,lane=threadIdx.x%32,warp=threadIdx.x/32,warps=blockDim.x/32;
+    float acc[NT][16];
+#pragma unroll
+    for(int k=0;k<NT;++k)
+#pragma unroll
+        for(int c=0;c<16;++c)acc[k][c]=0.f;
+    for(int it=threadIdx.x;it<tiles;it+=blockDim.x) {
+        const uint4* q=packed+(size_t(ot)*tiles+it)*4;
+        const uint4 a0=q[0],a1=q[1],a2=q[2],a3=q[3];
+        const uint32_t p[16]={a0.x,a0.y,a0.z,a0.w,a1.x,a1.y,a1.z,a1.w,a2.x,a2.y,a2.z,a2.w,a3.x,a3.y,a3.z,a3.w};
+        float xr[NT][16];
+#pragma unroll
+        for(int k=0;k<NT;++k) {
+            const float4* x4=reinterpret_cast<const float4*>(x+size_t(k)*in+it*16);
+#pragma unroll
+            for(int v=0;v<4;++v){float4 t=x4[v];xr[k][4*v]=t.x;xr[k][4*v+1]=t.y;xr[k][4*v+2]=t.z;xr[k][4*v+3]=t.w;}
+        }
+#pragma unroll
+        for(int r=0;r<16;++r)
+#pragma unroll
+            for(int c=0;c<16;++c) {
+                const unsigned end=(offset(r,c)+257)*2,start=end-16,shift=31-((end-1)&31);
+                const uint32_t state=uint32_t(((uint64_t(p[(start/32)%16])<<32)|p[((end-1)/32)%16])>>shift)&65535u;
+                const unsigned bits=(state*0xcbac1fedu & 0x8fff8fffu)^0x3b603b60u;
+                const float w=__half2float(__hadd(__ushort_as_half((unsigned short)(bits&65535)),__ushort_as_half((unsigned short)(bits>>16))));
+#pragma unroll
+                for(int k=0;k<NT;++k)acc[k][c]+=xr[k][r]*w;
+            }
+    }
+    __shared__ float red[NT][16][8];
+#pragma unroll
+    for(int k=0;k<NT;++k)
+#pragma unroll
+        for(int c=0;c<16;++c) {
+            float v=acc[k][c];
+            for(int d=16;d;d/=2)v+=__shfl_xor_sync(0xffffffff,v,d);
+            if(!lane)red[k][c][warp]=v;
+        }
+    __syncthreads();
+    for(int i=threadIdx.x;i<NT*16;i+=blockDim.x) {
+        const int k=i/16,c=i%16;float v=0;
+        for(int w=0;w<warps;++w)v+=red[k][c][w];
+        y[size_t(k)*out+ot*16+c]=v;
+    }
+}
+void exl3_packed_gemv_tiled(const uint8_t* packed,const float* x,float* y,int in,int out,int tokens,void* stream) {
+    const int threads=std::max(32,std::min(256,(in/16+31)/32*32));
+    auto s=(cudaStream_t)stream;auto q=(const uint4*)packed;
+    switch(tokens) {
+    case 1: tiled_mv<1><<<out/16,threads,0,s>>>(q,x,y,in,out);break;
+    case 2: tiled_mv<2><<<out/16,threads,0,s>>>(q,x,y,in,out);break;
+    case 4: tiled_mv<4><<<out/16,threads,0,s>>>(q,x,y,in,out);break;
+    default:
+        for(int k=0;k<tokens;++k)tiled_mv<1><<<out/16,threads,0,s>>>(q,x+size_t(k)*in,y+size_t(k)*out,in,out);
+    }
 }
 __global__ void reconstruct(const uint32_t* p,float* w,int in,int out) {
     int tile=blockIdx.x,it=tile%(in/16),ot=tile/(in/16),r=threadIdx.x/16,c=threadIdx.x%16;

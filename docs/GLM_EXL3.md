@@ -311,3 +311,58 @@ use the CLI decode-step rates above for throughput comparisons.
 The newer Q2 work on this 128 GB two-node system is documented in the
 [Q2 NUMA decode report](GLM_Q2_NUMA_DECODE.md), including its separate ordinary
 and speculative rates, unchanged packed-weight placement, and graph checks.
+
+## Register-computed MCG and tile-once GPU GEMV (2026-10-16, opt-in)
+
+The AVX2 K2 kernel above looks each weight up in a 256 KiB table: 32 gathers per 16x16 tile, slow on Zen1/Zen2.
+`STRATA_EXL3_FAST=1` (AVX2, FMA and F16C) computes the codebook in registers instead
+(`include/strata/kernels/cpu/exl3/mcg_avx2.hpp`):
+
+- A row half's eight 16-bit windows are one immediate-shift pair on the even/odd word vectors, and both halves pack
+  into 16 lanes.
+- The MCG product splits into 16-bit multiplies: lo16 = mullo(s, 0x1fed), hi16 = mulhi(s, 0x1fed) + mullo(s, 0xcbac).
+- After the mask and xor, both halves are normal FP16 with exponents 12-15. F16C converts them, their FP32 sum is
+  exact, and F16C rounds it to FP16, as `half_round` does.
+
+Every weight equals `codebook(state, 0)` bit for bit (4,096 random tiles in `exl3_cpu_test`). FMA and the token loop
+change the sum order: tests compare within 1e-5 of a double reference. Up to four tokens share one decode of a tile.
+`Pool::expert_tokens` runs gate, up, SwiGLU and down for all tokens routed to one expert in one pool epoch. Output
+tiles of 16 rows are spread evenly over the workers, and three spin barriers separate the 128-wide Hadamard steps;
+the 128-row partition left one of 15 workers with twice the gate/up rows. `moe_exl3` groups each expert's tokens.
+
+`strata-glm-exl3-kernel-bench /mnt/nvme01/models/glm53f/glm53f-exl 336 2 15` (2 GiB of real expert rows, 15
+workers, TR16):
+
+| Mode | ms per 336 experts | Packed GB/s | Expert tokens/s |
+| --- | ---: | ---: | ---: |
+| mcg_fp32 (table gathers, default) | 1644-1694 | 1.25-1.29 | 0.59-0.61 |
+| mcg_fast, 1 token | 489-499 | 4.24-4.32 | 2.00-2.04 |
+| mcg_fast, 4 tokens | 1056-1128 | 1.87-2.00 | 3.55-3.79 |
+| mcg_fast, 8 tokens | 1954-2042 | 1.04-1.08 | 3.92-4.09 |
+
+One thread, one cached tile row: 126 ns per tile on Zen1 (the decode alone 159 ns), 66 ns on Zen2 (Ryzen 9 3950X);
+the table-gather `tile_dot_avx2` takes 226 ns per tile on Zen2. On Zen1, F16C converts and rounds 16 weights in
+eight instructions on 128-bit units; that is the limit. The plan's 10x over 1.44 GB/s was not reached: 3.4x at one
+token, 6.9x in tokens per second at eight.
+
+`STRATA_EXL3_GPU_TILED=1` replaces `exl3_packed_gemv` in the native GPU expert cache with
+`exl3_packed_gemv_tiled`. `packed_mv` runs one warp per output row, so each 64-byte tile is read by 16 warps in
+4-byte pieces. The tiled kernel runs one CTA per 16-row output tile. Each thread reads whole tiles with four 16-byte
+loads and decodes all 256 weights in registers, with compile-time word indices and shifts. Each thread accumulates 16
+outputs per token, followed by a warp and shared-memory reduction. Same weights, different sum order
+(`exl3_gpu_tiled_test`, CUDA and HIP: within 1.1e-7 of a double reference).
+
+| Matrix (in x out) | packed_mv | tiled, 1 token | tiled, 2 tokens | tiled, 4 tokens |
+| --- | ---: | ---: | ---: | ---: |
+| RX 9070 XT, 4096x2048 | 43.5 us | 14.2 us (148 GB/s) | 16.4 us | 21.3 us |
+| RX 9070 XT, 2048x4096 | 42.9 us | 14.4 us (145 GB/s) | 17.9 us | 24.2 us |
+| RTX 5060 Ti (shared with a GPU job at 100%), 4096x2048 | 105.0 us | 51.3 us | 49.1 us | 70.0 us |
+
+A 2,048-row, 4,096-column EXL3 K2 matrix is 2 MiB. The tiled kernel reaches 23% of the RX 9070 XT's bandwidth: the
+per-weight decode bounds it.
+
+End-to-end decode with either switch was not run. From 2026-10-07 (861e1f92) until 2026-10-16 the native EXL3 model
+failed at load in the `Decoder` constructor with `model: missing tensor blk.3.ffn_down_exps.weight`. The cause was the
+prefill slot sizing, which looked up the GGUF expert tensors of every MoE layer, and EXL3 has none. That loop now skips
+EXL3. With the fix, the HIP build loads the model and decodes 4 tokens on the RX 9070 XT. That run was not timed: the
+experts load lazily from disk, and another CPU job was running.

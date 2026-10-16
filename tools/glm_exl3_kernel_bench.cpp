@@ -1,4 +1,9 @@
 // Cold-cache, full-token-size CPU kernel probe; never treats MCG weights as mul1 inference.
+//   strata-glm-exl3-kernel-bench MODEL_DIR [experts=336] [rounds=3]
+//   strata-glm-exl3-kernel-bench --synthetic [experts=336] [rounds=3] [threads=15]
+// --synthetic: random trellis bytes at GLM-5.3-Flash expert shapes (4096 -> 2048 -> 4096); kernel time does not
+// depend on the weights. Modes: mcg_fp32 (Pool::apply, gather table), the mul1 integer probes, and the fast path
+// (STRATA_EXL3_FAST: register MCG, FMA, one epoch per expert) at 1, 4 and 8 tokens per expert.
 #include "strata/kernels/cpu/exl3/pool.hpp"
 #include "strata/kernels/cpu/exl3/mul1_probe.hpp"
 #include <chrono>
@@ -21,25 +26,41 @@ void probe(Pool& pool,const Pool::Matrix& m,const float* x,float* y,bool wide) {
     });
 }
 int main(int argc,char** argv){try{
-    if(argc<2)throw std::runtime_error("usage: strata-glm-exl3-kernel-bench MODEL_DIR [experts=336] [rounds=3]");
-    size_t experts=argc>2?std::stoul(argv[2]):336,rounds=argc>3?std::stoul(argv[3]):3;
+    if(argc<2)throw std::runtime_error("usage: strata-glm-exl3-kernel-bench MODEL_DIR|--synthetic [experts=336] [rounds=3] [threads=15]");
+    const bool synthetic=std::string(argv[1])=="--synthetic";
+    size_t experts=argc>2?std::stoul(argv[2]):336,rounds=argc>3?std::stoul(argv[3]):3,threads=argc>4?std::stoul(argv[4]):15;
     if(!experts||experts>336||!rounds||rounds>20)throw std::runtime_error("invalid benchmark extent");
     std::mt19937 rng(42);for(unsigned test=0;test<256;++test){uint8_t p[64];int8_t x[16];int32_t a[16]={},b[16]={};for(auto&v:p)v=rng();for(auto&v:x)v=int(rng()%255)-127;
         for(unsigned r=0;r<16;++r)for(unsigned c=0;c<16;++c)a[c]+=int32_t(mul1_bytesum(state(p,exl3_offsets[r*16+c])))*x[r];
         mul1_tile_dot(p,x,b);for(unsigned c=0;c<16;++c)if(a[c]!=b[c])throw std::runtime_error("integer tile parity failed");}
     std::cout<<"integer_tile_parity=256_PASS scope=synthetic_mul1_codebook_no_model_quality_claim\n";
-    strata::artifact::GlmExl3 model(argv[1]);Pool pool(15,true);
+    Pool pool(threads,true);
     struct Expert{Pool::Matrix gate,up,down;};std::vector<Expert> corpus;size_t bytes=0;
-    for(size_t e=0;e<experts;++e){Expert x{pool.load(model,3,17,"gate_proj"),pool.load(model,3,17,"up_proj"),pool.load(model,3,17,"down_proj")};for(auto* m:{&x.gate,&x.up,&x.down})bytes+=m->in*m->out/4;corpus.push_back(std::move(x));}
-    std::cout<<"experts="<<experts<<" packed_bytes="<<bytes<<" workers=15 source=replicated_real_expert_shapes first_touch=worker_local\n";
-    std::vector<float>x(4096),g(2048),u(2048),y(4096);for(size_t i=0;i<x.size();++i)x[i]=std::sin(float(i)*.017f);
+    std::unique_ptr<strata::artifact::GlmExl3> model;if(!synthetic)model=std::make_unique<strata::artifact::GlmExl3>(argv[1]);
+    auto random_matrix=[&](size_t in,size_t out) {
+        std::vector<uint8_t> t(in*out/4);for(auto& v:t)v=uint8_t(rng());
+        std::vector<uint16_t> suh(in),svh(out);for(auto& v:suh)v=half_round(rng()&1?1.f:-1.f);for(auto& v:svh)v=half_round(0.01f*(1+rng()%100));
+        return pool.pack(in,out,t.data(),std::move(suh),std::move(svh));
+    };
+    for(size_t e=0;e<experts;++e){
+        Expert x=synthetic?Expert{random_matrix(4096,2048),random_matrix(4096,2048),random_matrix(2048,4096)}
+                          :Expert{pool.load(*model,3,17,"gate_proj"),pool.load(*model,3,17,"up_proj"),pool.load(*model,3,17,"down_proj")};
+        for(auto* m:{&x.gate,&x.up,&x.down})bytes+=m->in*m->out/4;corpus.push_back(std::move(x));}
+    std::cout<<"experts="<<experts<<" packed_bytes="<<bytes<<" workers="<<threads<<" source="<<(synthetic?"synthetic_random_trellis":"replicated_real_expert_shapes")<<" first_touch=worker_local\n";
+    std::vector<float>x(8*4096),g(2048),u(2048),y(8*4096);for(size_t i=0;i<x.size();++i)x[i]=std::sin(float(i)*.017f);
+    const bool fast=mcg_avx2_supported();
+    const int modes=fast?6:3;
     // Alternate order across rounds to expose drift. Each corpus is ~2 GiB at full size.
-    for(size_t round=0;round<rounds;++round)for(int order=0;order<3;++order){int mode=(order+round)%3;auto start=Clock::now();double checksum=0;
-        for(auto& e:corpus){if(!mode){pool.apply(e.gate,x.data(),g.data());pool.apply(e.up,x.data(),u.data());}else{probe(pool,e.gate,x.data(),g.data(),mode==2);probe(pool,e.up,x.data(),u.data(),mode==2);}
+    for(size_t round=0;round<rounds;++round)for(int order=0;order<modes;++order){int mode=(order+round)%modes;auto start=Clock::now();double checksum=0;
+        const size_t ntok=mode==3?1:mode==4?4:mode==5?8:1;
+        for(auto& e:corpus){
+            if(mode>=3){pool.expert_tokens(e.gate,e.up,e.down,x.data(),ntok,7.f,y.data());for(size_t i=0;i<ntok*4096;++i)checksum+=y[i];continue;}
+            if(!mode){pool.apply(e.gate,x.data(),g.data());pool.apply(e.up,x.data(),u.data());}else{probe(pool,e.gate,x.data(),g.data(),mode==2);probe(pool,e.up,x.data(),u.data(),mode==2);}
             for(size_t i=0;i<g.size();++i){float a=std::min(g[i],10.f),b=std::clamp(u[i],-10.f,10.f);g[i]=a/(1+std::exp(-a))*b;}
             if(!mode)pool.apply(e.down,g.data(),y.data());else probe(pool,e.down,g.data(),y.data(),mode==2);
-            for(float v:y){if(!std::isfinite(v))throw std::runtime_error("nonfinite benchmark output");checksum+=v;}}
+            for(size_t i=0;i<4096;++i){if(!std::isfinite(y[i]))throw std::runtime_error("nonfinite benchmark output");checksum+=y[i];}}
         double ms=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
-        std::cout<<"mode="<<(mode==0?"mcg_fp32":mode==1?"mul1_int8_probe":"mul1_wide_probe")<<" round="<<round<<" ms="<<ms<<" equivalent_packed_GB_s="<<bytes/ms/1e6<<" expert_only_tok_s="<<1000/ms<<" checksum="<<checksum<<'\n';
+        const char* name=mode==0?"mcg_fp32":mode==1?"mul1_int8_probe":mode==2?"mul1_wide_probe":mode==3?"mcg_fast_t1":mode==4?"mcg_fast_t4":"mcg_fast_t8";
+        std::cout<<"mode="<<name<<" round="<<round<<" ms="<<ms<<" equivalent_packed_GB_s="<<bytes/ms/1e6<<" expert_only_tok_s="<<ntok*1000/ms<<" checksum="<<checksum<<'\n';
     }
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

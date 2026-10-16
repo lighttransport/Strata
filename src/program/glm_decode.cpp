@@ -2377,7 +2377,10 @@ class Decoder {
         const auto* data=static_cast<const uint8_t*>(e.data->p);const int in=e.in[projection],out=e.out[projection];
         auto& h=buf("native_expert_h",std::max(in,out));
         k::exl3_hadamard(x,h.f(),reinterpret_cast<const uint16_t*>(data+e.suh[projection]),in,1,true,stream);
-        k::exl3_packed_gemv(data+e.packed[projection],h.f(),y,in,out,stream);
+        // STRATA_EXL3_GPU_TILED: decode each tile once (same weights; the sum order differs).
+        static const bool tiled=std::getenv("STRATA_EXL3_GPU_TILED")!=nullptr;
+        if(tiled)k::exl3_packed_gemv_tiled(data+e.packed[projection],h.f(),y,in,out,1,stream);
+        else k::exl3_packed_gemv(data+e.packed[projection],h.f(),y,in,out,stream);
         k::exl3_hadamard(y,y,reinterpret_cast<const uint16_t*>(data+e.svh[projection]),out,1,false,stream);
     }
     void moe_exl3_gpu_decode(int layer,const float* x,float* out,const strata::core::LayerDescriptor& desc) {
@@ -2407,6 +2410,27 @@ class Decoder {
             auto it=exl_matrices.find(key);if(it==exl_matrices.end())it=exl_matrices.emplace(key,exl_pool->load(artifact.exl3(),l,expert,projection)).first;
             return it->second;
         };
+        // STRATA_EXL3_FAST (AVX2+FMA+F16C): the tokens routed to one expert in one call and one pool epoch, MCG
+        // weights computed in registers (strata/kernels/cpu/exl3/mcg_avx2.hpp). Same weights; the sum order differs.
+        static const bool fast=std::getenv("STRATA_EXL3_FAST")!=nullptr && strata::cpu::exl3::mcg_avx2_supported();
+        if(fast) {
+            std::map<int,std::vector<std::pair<int,float>>> routes;
+            for(int t=0;t<nt;++t)for(int j=0;j<m.top_k;++j) {
+                int e=ids[t*m.top_k+j];if(e<0||e>=m.experts)throw std::runtime_error("EXL3: invalid route");
+                routes[e].push_back({t,routing[t*m.top_k+j]});
+            }
+            std::vector<float> xs,ys;
+            for(const auto& [e,list]:routes) {
+                check_stop();const size_t n=list.size();
+                xs.resize(n*m.hidden);ys.resize(n*m.hidden);
+                for(size_t i=0;i<n;++i)std::copy_n(activation+size_t(list[i].first)*m.hidden,m.hidden,xs.data()+i*m.hidden);
+                exl_pool->expert_tokens(matrix(e,"gate_proj"),matrix(e,"up_proj"),matrix(e,"down_proj"),xs.data(),n,layer.swiglu_limit,ys.data());
+                for(size_t i=0;i<n;++i)for(int h=0;h<m.hidden;++h)sum[size_t(list[i].first)*m.hidden+h]+=list[i].second*ys[i*m.hidden+h];
+            }
+            auto& routed=buf("moe_sum",sum.size());routed.put(sum.data(),sum.size()*4);const float one=1;
+            check(cublasSaxpy(blas,sum.size(),&one,routed.f(),1,out,1));
+            return;
+        }
         for(int t=0;t<nt;++t)for(int j=0;j<m.top_k;++j) {
             check_stop();int e=ids[t*m.top_k+j];if(e<0||e>=m.experts)throw std::runtime_error("EXL3: invalid route");
             exl_pool->apply(matrix(e,"gate_proj"),activation+t*m.hidden,gate.data());
@@ -6959,7 +6983,8 @@ class Decoder {
             GpuPrefill::prefetch_bytes = 0;
             std::cerr << "PREFETCH_REAP experts=" << m.experts << " maximum_groups=" << prefill_expert_groups << '\n';
         }
-        for (size_t l = 0; l < m.layers.size(); ++l) {
+        // EXL3 has no GGUF expert tensors; its prefill reconstructs projections in its own scratch.
+        for (size_t l = 0; l < m.layers.size() && !artifact.is_exl3(); ++l) {
             if (!owns_layer(l)) continue;
             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
             const auto p = "blk." + std::to_string(l) + ".";

@@ -6,6 +6,8 @@ void exl3_dense_q6_to_float(const void* w,float* out,int count,void* stream);
 void exl3_dense_q8_gemv(const void* w,const float* x,float* y,int in,int out,void* stream);
 void exl3_dense_q8_to_float(const void* w,float* out,int count,void* stream);
 void exl3_packed_gemv(const uint8_t* packed,const float* x,float* y,int in,int out,void* stream);
+// Tile-once GEMV (STRATA_EXL3_GPU_TILED): x tokens x in, y tokens x out; same weights, different sum order.
+void exl3_packed_gemv_tiled(const uint8_t* packed,const float* x,float* y,int in,int out,int tokens,void* stream);
 void exl3_bf16_gemv(const uint16_t* w,const float* x,float* y,int in,int out,void* stream);
 void exl3_bf16_to_float(const uint16_t* w,float* out,int count,void* stream);
 // Packed tiles in output-tile-major order; reconstructed matrix is [out,in].
