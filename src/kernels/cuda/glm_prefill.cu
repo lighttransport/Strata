@@ -3,6 +3,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <cmath>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -227,6 +228,29 @@ __global__ void conv_history(const float *x, float *history, int n, int kernel, 
         int t = tokens - (kernel - 1) + j;
         history[c * (kernel - 1) + j] = t < 0 ? history[c * (kernel - 1) + t + kernel - 1] : x[t * n + c];
     }
+}
+// Read only the original history; updating it is a separate ordered launch.
+// A snapshot is the exact shift/copy that the serial convolution made after t.
+__global__ void convolution_snapshots(const float *x, const float *w, const float *history, float *y,
+                                      int n, int kernel, int tokens, float *snapshots,
+                                      long long snapshot_stride, int snapshot_tokens) {
+    const int i = blockIdx.x * 256 + threadIdx.x;
+    if (i >= n * tokens) return;
+    const int t = i / n, c = i % n;
+    float sum = x[i] * w[c * kernel + kernel - 1];
+    for (int j = 0; j < kernel - 1; ++j) {
+        const int previous = t - (kernel - 1) + j;
+        const float v = previous < 0 ? history[c * (kernel - 1) + previous + kernel - 1]
+                                     : x[previous * n + c];
+        sum += v * w[c * kernel + j];
+    }
+    y[i] = sum * sigmoid(sum);
+    if (t < snapshot_tokens)
+        for (int j = 0; j < kernel - 1; ++j) {
+            const int previous = t + 1 - (kernel - 1) + j;
+            snapshots[t * snapshot_stride + c * (kernel - 1) + j] = previous < 0
+                ? history[c * (kernel - 1) + previous + kernel - 1] : x[previous * n + c];
+        }
 }
 __global__ void routing(const float *l, const float *bias, int *ids, float *w, int ne, int top, float scale,
                         const float *bonus) {
@@ -1280,6 +1304,20 @@ void glm_conv_batch(const float *x, const float *w, float *h, float *y, int n, i
                     void *s) {
     convolution<<<(n * tokens + 255) / 256, 256, 0, (cudaStream_t)s>>>(x, w, h, y, n, kernel, tokens);
     conv_history<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(x, h, n, kernel, tokens);
+    check();
+}
+void glm_conv_batch_history(const float *x, const float *w, float *h, float *y, int n, int kernel,
+                            int tokens, float *snapshots, long long snapshot_stride, int snapshot_tokens,
+                            void *s) {
+    if (n < 1 || tokens < 1 || tokens > 8 || kernel < 1 || kernel > 32 ||
+        n > (INT_MAX - 255) / tokens || n > (INT_MAX - 255) / kernel ||
+        snapshot_tokens < 0 || snapshot_tokens > tokens ||
+        (snapshot_tokens && (!snapshots || snapshot_stride < (long long)n * (kernel - 1))))
+        throw std::invalid_argument("GLM: invalid convolution history geometry");
+    convolution_snapshots<<<(n * tokens + 255LL) / 256, 256, 0, (cudaStream_t)s>>>(
+        x, w, h, y, n, kernel, tokens, snapshots, snapshot_stride, snapshot_tokens);
+    check();
+    conv_history<<<(n + 255LL) / 256, 256, 0, (cudaStream_t)s>>>(x, h, n, kernel, tokens);
     check();
 }
 void glm_route_batch(const float *l, const float *b, int *ids, float *w, int ne, int top, float scale,

@@ -75,6 +75,43 @@ public:
         return future;
     }
 };
+// Read-only model pages stay mapped until after this object drains their DMA.
+class DirectExpertSources {
+    std::map<int,bool> layers;
+    std::map<uintptr_t,uintptr_t> ranges;
+public:
+    void prepare(int layer, const strata::core::ArtifactTensor &gate,
+                 const strata::core::ArtifactTensor &up, const strata::core::ArtifactTensor &down) {
+        if (layers.count(layer)) return;
+        constexpr uintptr_t page=4096;
+        for (const auto *tensor : {&gate,&up,&down}) {
+            const uintptr_t first=uintptr_t(tensor->data())/page*page;
+            const uintptr_t last=(uintptr_t(tensor->data())+tensor->bytes+page-1)/page*page;
+            // Tensor order need not be contiguous. Register only uncovered
+            // pages, including when two tensors share an end page.
+            std::vector<std::pair<uintptr_t,uintptr_t>> gaps;
+            uintptr_t cursor=first;
+            for (const auto &[begin,end] : ranges) {
+                if (end<=cursor) continue;
+                if (begin>=last) break;
+                if (cursor<begin) gaps.emplace_back(cursor,begin);
+                cursor=std::max(cursor,end);
+            }
+            if (cursor<last) gaps.emplace_back(cursor,last);
+            for (const auto &[begin,end] : gaps) {
+                check(cudaHostRegister(reinterpret_cast<void *>(begin),end-begin,
+                                       cudaHostRegisterReadOnly|cudaHostRegisterPortable));
+                ranges.emplace(begin,end);
+            }
+        }
+        layers.emplace(layer,true);
+    }
+    ~DirectExpertSources() {
+        if (ranges.empty()) return;
+        (void)cudaDeviceSynchronize();
+        for (const auto &[begin,end] : ranges) (void)cudaHostUnregister(reinterpret_cast<void *>(begin));
+    }
+};
 }
 
 int main(int argc, char **argv) {
@@ -169,6 +206,8 @@ int main(int argc, char **argv) {
             registration=std::make_unique<HostMappingRegistration>(transport.buffer,transport.layout.bytes,"worker");
         const bool registered_transport=registration && registration->registered;
         strata::core::ModelArtifact artifact(argv[1]);
+        DirectExpertSources direct_sources;
+        const bool direct_upload=strata_env_truthy_one("STRATA_GLM_MIXED_DIRECT_UPLOAD");
         const auto &m = artifact.descriptor();
         if (m.hidden != 4096 || m.top_k != 8 || m.experts > 288 ||
             std::any_of(m.layers.begin(),m.layers.end(),[](const auto &l){return l.ffn==strata::core::FfnKind::Moe && l.intermediate!=2048;})) throw std::runtime_error("mixed worker unsupported geometry");
@@ -204,6 +243,7 @@ int main(int argc, char **argv) {
         const bool profile_prefill=strata_env_truthy_one("STRATA_GLM_MIXED_PROFILE");
         const bool async_panels=strata_env_truthy_one("STRATA_GLM_MIXED_ASYNC_PANELS");
         const bool single_gemm=strata_env_truthy_one("STRATA_GLM_MIXED_SINGLE_GEMM");
+        const bool ordered_scatter=strata_env_truthy_one("STRATA_GLM_PREFILL_ORDERED_SCATTER");
         Device px(STRATA_MIXED_TOKENS * 4096ULL * sizeof(float)), hx(panel_capacity * 4096 * 2), gu(panel_capacity * 4096 * sizeof(float));
         Device hidden(panel_capacity * 2048 * sizeof(float)), hh(panel_capacity * 2048 * 2), py(panel_capacity * 4096 * sizeof(float));
         Pinned input(STRATA_MIXED_TOKENS * 4096ULL * sizeof(float)), output(panel_capacity * 4096 * sizeof(float));
@@ -233,7 +273,7 @@ int main(int argc, char **argv) {
         const char *copy_value=std::getenv("STRATA_GLM_MIXED_UPLOAD_THREADS");
         const int copy_threads=copy_value ? std::stoi(copy_value) : 0;
         if (copy_threads!=0 && copy_threads!=2 && copy_threads!=4) throw std::invalid_argument("mixed upload threads must be 0, 2 or 4");
-        CopyPool copy_pool(copy_threads);
+        CopyPool copy_pool(direct_upload ? 0 : copy_threads);
         struct UploadSlot {
             std::unique_ptr<Pinned> host;
             std::future<void> copied;
@@ -277,7 +317,7 @@ int main(int argc, char **argv) {
             all_layers_bytes += charges.at(bytes);
         }
         size_t largest=0; for (const auto &[bytes,charge]:charges) largest=std::max(largest,bytes);
-        for (auto &slot: uploads) {
+        if (!direct_upload) for (auto &slot: uploads) {
             slot.host=std::make_unique<Pinned>(largest);
             check(cudaEventCreateWithFlags(&slot.ready,cudaEventDisableTiming));
         }
@@ -365,6 +405,23 @@ int main(int argc, char **argv) {
                         occupied -= victim->second.charged; cache.erase(victim);
                     }
                     if (!weights) weights=std::make_unique<Device>(layout.bytes);
+                    if (direct_upload) {
+                        direct_sources.prepare(layer_id,G,U,D);
+                        const auto upload_stream=copy_channel.stream ? copy_channel.stream : stream;
+                        auto completion=copy_channel.stream ? std::make_shared<CopyReady>() : nullptr;
+                        auto *destination=static_cast<char *>(weights->p);
+                        check(cudaMemcpyAsync(destination,G.data()+size_t(e)*layout.up_off,
+                                              layout.up_off,cudaMemcpyHostToDevice,upload_stream));
+                        check(cudaMemcpyAsync(destination+layout.up_off,U.data()+size_t(e)*layout.up_off,
+                                              layout.up_off,cudaMemcpyHostToDevice,upload_stream));
+                        check(cudaMemcpyAsync(destination+layout.down_off,D.data()+size_t(e)*(layout.bytes-layout.down_off),
+                                              layout.bytes-layout.down_off,cudaMemcpyHostToDevice,upload_stream));
+                        if (completion) check(cudaEventRecord(completion->event,upload_stream));
+                        upload_bytes+=layout.bytes;
+                        occupied+=charges.at(layout.bytes);
+                        cache.emplace(key,Entry{std::move(weights),++clock,charges.at(layout.bytes),std::move(completion)});
+                        continue;
+                    }
                     auto &upload=uploads[upload_cursor++ % uploads.size()];
                     drain_upload(upload);
                     if (upload.busy) check(cudaEventSynchronize(upload.ready));
@@ -616,7 +673,11 @@ int main(int argc, char **argv) {
                                          static_cast<uint16_t *>(down_dense.p)+size_t(group)*4096*F,
                                          py.f()+size_t(group)*rows*4096,rows,4096,F);
                             else gemm.f16_batched(static_cast<uint16_t *>(hh.p),static_cast<uint16_t *>(down_dense.p),py.f(),rows,4096,F,batches);
-                            if (partial) k::glm_scatter_expert_weighted(py.f(),partial_result->f(),partial_weights->f(),
+                            // Match the primary's opt-in ordering: experts sharing a token must not race
+                            // to add their products into the worker's partial result.
+                            if (partial && ordered_scatter) k::glm_scatter_expert_weighted_ordered(py.f(),partial_result->f(),partial_weights->f(),
+                                static_cast<int *>(bounds.p),static_cast<int *>(partial_dest->p),0,batches,offset,rows,4096,8,stream);
+                            else if (partial) k::glm_scatter_expert_weighted(py.f(),partial_result->f(),partial_weights->f(),
                                 static_cast<int *>(bounds.p),static_cast<int *>(partial_dest->p),0,batches,offset,rows,4096,8,stream);
                             if (!partial || check_rows)
                                 check(cudaMemcpyAsync(output.p,py.p,size_t(all_rows)*4096*sizeof(float),cudaMemcpyDeviceToHost,stream));

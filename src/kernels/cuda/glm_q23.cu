@@ -5,6 +5,7 @@
 #include "strata/kernels/glm_q23.hpp"
 #include "strata/kernels/canon_expert.hpp"
 #include "strata/kernels/quantize_act.hpp"
+#include "strata/host/glm_env.h"
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <cstdio>
@@ -227,9 +228,9 @@ __global__ void __launch_bounds__(256) gu_kernel(const unsigned long long* __res
         };
         switch (cn) {
             case 1: pass(std::integral_constant<int, 1>{}); break;
-            case 2: pass(std::integral_constant<int, 2>{}); break;
-            case 3: pass(std::integral_constant<int, 3>{}); break;
-            case 4: pass(std::integral_constant<int, 4>{}); break;
+            case 2: if constexpr (kMaxTok >= 2) pass(std::integral_constant<int, 2>{}); break;
+            case 3: if constexpr (kMaxTok >= 4) pass(std::integral_constant<int, 3>{}); break;
+            case 4: if constexpr (kMaxTok >= 4) pass(std::integral_constant<int, 4>{}); break;
             case 5: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 5>{}); break;
             case 6: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 6>{}); break;
             case 7: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 7>{}); break;
@@ -289,9 +290,9 @@ __global__ void __launch_bounds__(256) down_kernel(const unsigned long long* __r
         };
         switch (cn) {
             case 1: pass(std::integral_constant<int, 1>{}); break;
-            case 2: pass(std::integral_constant<int, 2>{}); break;
-            case 3: pass(std::integral_constant<int, 3>{}); break;
-            case 4: pass(std::integral_constant<int, 4>{}); break;
+            case 2: if constexpr (kMaxTok >= 2) pass(std::integral_constant<int, 2>{}); break;
+            case 3: if constexpr (kMaxTok >= 4) pass(std::integral_constant<int, 3>{}); break;
+            case 4: if constexpr (kMaxTok >= 4) pass(std::integral_constant<int, 4>{}); break;
             case 5: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 5>{}); break;
             case 6: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 6>{}); break;
             case 7: if constexpr (kMaxTok >= 8) pass(std::integral_constant<int, 7>{}); break;
@@ -361,11 +362,20 @@ void glm_q23_expert_grouped(const NativeExpertLayout& L, const unsigned long lon
     };
     const auto four = std::integral_constant<int, 4>{};
     const auto eight = std::integral_constant<int, 8>{};
-    if (wide == 2 && tokens > 4) { gate_up(four, 1); gate_up(eight, 2); }
+    // Split verification commonly submits one or two tokens. Reserve only their
+    // activation storage and omit the wider accumulator paths in those kernels.
+    static const bool small_batch = strata_env_is_one("STRATA_GLM_Q23_SMALL_BATCH");
+    const auto one = std::integral_constant<int, 1>{};
+    const auto two = std::integral_constant<int, 2>{};
+    if (small_batch && tokens == 1) gate_up(one, 0);
+    else if (small_batch && tokens == 2) gate_up(two, 0);
+    else if (wide == 2 && tokens > 4) { gate_up(four, 1); gate_up(eight, 2); }
     else if (wide && tokens > 4) gate_up(eight, 0);
     else gate_up(four, 0);
     quantize(h, hq, cap_entries * L.n_ff, s);
-    if (wide == 2 && tokens > 4) { down(four, 1); down(eight, 2); }
+    if (small_batch && tokens == 1) down(one, 0);
+    else if (small_batch && tokens == 2) down(two, 0);
+    else if (wide == 2 && tokens > 4) { down(four, 1); down(eight, 2); }
     else if (wide && tokens > 4) down(eight, 0);
     else down(four, 0);
     check("glm_q23_expert_grouped/down");

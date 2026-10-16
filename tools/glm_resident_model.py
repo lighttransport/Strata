@@ -4,9 +4,15 @@ Run the owner under the intended NUMA policy, for example numactl
 --interleave=all. Children open ``path`` while this context is alive. Use the
 decoder's --warm-weights option: --lock-weights creates private COW copies and
 would defeat sharing. No GPU runtime is initialized by this module.
+
+socket_row_plan optionally first-touches frozen byte ranges on their CPU
+socket, interleaving within that socket's NUMA domains. Its model size and
+SHA-256 must match. Other bytes inherit the owner's policy. Sampled whole
+pages are checked before a child can use the sealed model.
 """
 import ctypes
 import hashlib
+import json
 import mmap
 import os
 from pathlib import Path
@@ -19,7 +25,7 @@ if sys.platform == 'linux':
 
 
 class ResidentModel:
-    def __init__(self, source, expected_sha256, *, max_bytes):
+    def __init__(self, source, expected_sha256, *, max_bytes, socket_row_plan=None):
         if sys.platform != 'linux':
             raise RuntimeError('resident model staging requires Linux memfd seals')
         self.fd = -1
@@ -50,21 +56,26 @@ class ResidentModel:
             self.fd = os.memfd_create('strata-resident-model', os.MFD_ALLOW_SEALING | os.MFD_CLOEXEC)
             os.ftruncate(self.fd, self.size)
             start = time.monotonic()
-            copied = 0
-            with source.open('rb') as reader:
-                while chunk := reader.read(16 * 1024 * 1024):
-                    if copied + len(chunk) > self.size:
-                        raise ValueError('model grew during staging')
-                    view = memoryview(chunk)
-                    while view:
-                        count = os.write(self.fd, view)
-                        if not count:
-                            raise OSError('short write staging the model')
-                        copied += count
-                        view = view[count:]
-                    view.release()
-            if copied != self.size:
-                raise ValueError('model changed size during staging')
+            placement = None
+            if socket_row_plan is not None:
+                from glm_socket_placement import copy_socket_rows, verify_socket_rows
+                placement = copy_socket_rows(source, self.fd, self.size, expected_sha256, socket_row_plan)
+            else:
+                copied = 0
+                with source.open('rb') as reader:
+                    while chunk := reader.read(16 * 1024 * 1024):
+                        if copied + len(chunk) > self.size:
+                            raise ValueError('model grew during staging')
+                        view = memoryview(chunk)
+                        while view:
+                            count = os.write(self.fd, view)
+                            if not count:
+                                raise OSError('short write staging the model')
+                            copied += count
+                            view = view[count:]
+                        view.release()
+                if copied != self.size:
+                    raise ValueError('model changed size during staging')
             seals = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
             fcntl.fcntl(self.fd, fcntl.F_ADD_SEALS, seals)
             # Older kernels reject shared mappings of a sealed memfd opened
@@ -97,6 +108,12 @@ class ResidentModel:
                                  seals=fcntl.fcntl(self.fd, fcntl.F_GET_SEALS),
                                  numa_pages=self._numa_pages(),
                                  scope='One sealed shared RAM copy, locked by its owner; child mappings share these pages')
+            if placement is not None:
+                groups, panels = placement
+                self.identity.update(socket_nodes=[sorted(g['nodes']) for g in groups],
+                                     socket_row_samples=verify_socket_rows(self.fd, groups, panels),
+                                     socket_row_plan_sha256=hashlib.sha256(json.dumps(
+                                         socket_row_plan, sort_keys=True).encode()).hexdigest())
         except BaseException:
             self.close()
             raise

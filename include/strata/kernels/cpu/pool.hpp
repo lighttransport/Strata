@@ -166,7 +166,7 @@ public:
     /// asserted - the counter it moves is `pool phases ... drain`, which is host-side and needs no profiler.
     explicit ExpertPool(int n_workers = 0, bool pin = true, bool host_works = true,
                         PoolAffinity affinity = PoolAffinity::All, int tasks = 0,
-                        const CpuTopology *placement = nullptr);
+                        const CpuTopology *placement = nullptr, bool socket_rows = false);
     /// Batched row phases: 0 keeps three tasks per participating thread; explicit counts are capped by rows.
     static constexpr int kMaxTasks = 4096;
     /// The watchdog's view of the pool (issue #31): the batch, the counters, every thread's state.
@@ -177,6 +177,7 @@ public:
 
     int workers() const { return n_; }
     bool numa_rows_available()const {return numa_rows_available_;}
+    bool socket_rows() const { return socket_rows_; }
     std::array<int,2> numa_cores()const {return numa_cores_;}
     /// Whether the host thread also drains.  Reported at startup, because "the engine adapts to the machine it
     /// is on" is only true if the engine says which adaptation it took.
@@ -291,6 +292,8 @@ private:
     void prepare_native_local_tasks(int n_tasks);
     /// Publish the batch whose description the caller has just written: reset `done`, then `head`, then the epoch.
     uint32_t begin_batch(int n);
+    uint32_t completed_tasks() const;
+    void complete_task(int node);
     /// The host's waits, bounded by `kStall`.
     void wait_parked(const char* what);
     void wait_done(int n);
@@ -306,6 +309,7 @@ private:
     std::atomic<bool> native_local_phase_{false};
     std::atomic<bool> native_owned_phase_{false};
     bool numa_rows_available_=false;
+    bool socket_rows_=false;
     int native_owned_parts_=1;
     std::array<int,2> numa_cores_{{-1,-1}};
     bool native_local_reported_ = false;
@@ -343,6 +347,10 @@ private:
     std::atomic<int64_t> hstate_ms_{0};
     alignas(64) std::atomic<uint64_t> head_{0};   // epoch << 32 | njobs << 16 | next index (issue #29)
     alignas(64) std::atomic<uint32_t> done_{0};
+    // The opt-in socket scheduler keeps its hot completion writes local. The
+    // host acquires both release sequences before it reads any result rows.
+    alignas(64) std::atomic<uint32_t> socket_done0_{0};
+    alignas(64) std::atomic<uint32_t> socket_done1_{0};
     alignas(64) std::atomic<uint32_t> parked_{0};
     alignas(64) std::atomic<uint32_t> epoch_{0};
     alignas(64) std::atomic<bool> stop_{false};

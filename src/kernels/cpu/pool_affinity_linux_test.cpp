@@ -251,6 +251,16 @@ static bool failed_pin_preserves_affinity() {
 }
 
 int main(int argc, char** argv) {
+    {
+        const auto groups = cpu::detail::two_socket_row_groups({7, -1, 3, 7, 3, -1});
+        if (groups != std::vector<int>({1, -1, 0, 1, 0, -1})) return 1;
+        for (const auto& packages : {std::vector<int>{}, std::vector<int>{3, 3}, std::vector<int>{0, 2, 4}}) {
+            bool rejected = false;
+            try { (void)cpu::detail::two_socket_row_groups(packages); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            if (!rejected) return 1;
+        }
+    }
     bool require_high = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--require-high-cpu") == 0) require_high = true;

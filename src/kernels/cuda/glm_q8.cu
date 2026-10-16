@@ -40,7 +40,13 @@ __global__ void heads_gemv(const uint8_t *w, const float *x, float *y, int in, i
 // One token (STRATA_GLM_HEADS_BLOCKS=1): a thread per Q8_0 block reads it with sixteen 2-byte loads, and the
 // `blocks` consecutive threads of a row (a power of two up to 32) reduce with shuffles. The one-warp-per-row
 // kernel above reads one byte per lane per block; its rows here are only 8 or 16 blocks long.
-__global__ void heads_gemv_blocks(const uint8_t *w, const float *x, float *y, int in, int out, int rows) {
+template <bool parallel_tokens = false>
+__global__ void heads_gemv_blocks(const uint8_t *w, const float *x, float *y, int in, int out, int rows,
+                                 int ld_x = 0, int ld_y = 0) {
+    if constexpr (parallel_tokens) {
+        x += (size_t)blockIdx.y * ld_x;
+        y += (size_t)blockIdx.y * ld_y;
+    }
     const int blocks = in / 32;
     const size_t id = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     const size_t row = id / blocks;
@@ -133,7 +139,12 @@ __global__ void dequant(const uint8_t *w, float *y, long long values) {
 // so the Q8 projection runs on the raw residual streams and the scale is applied to its 24 outputs: blocks
 // (rows, 32 slices) as rows_partial, plus one extra row of blocks that sums the squares of its input slice.
 __device__ float hc_sig(float x) { return 1.f / (1.f + expf(-x)); }
+template <bool parallel_tokens = false>
 __global__ void hc_partial_sumsq(const uint8_t *w, const float *r, float *partial, int in, int rows) {
+    if constexpr (parallel_tokens) {
+        r += (size_t)blockIdx.z * in;
+        partial += (size_t)blockIdx.z * (rows + 1) * 32;
+    }
     const int row = blockIdx.x, slice = blockIdx.y, lane = threadIdx.x & 31, warp = threadIdx.x / 32;
     const int blocks = in / 32, per = blocks / 32, first = slice * per;
     float acc = 0.f;
@@ -160,8 +171,15 @@ __global__ void hc_partial_sumsq(const uint8_t *w, const float *r, float *partia
 // Every block reduces the 24 projections and the sum of squares, applies the norm scale, evaluates the 4x4
 // Sinkhorn coefficients (mhc_coeff_warp's arithmetic) and mixes its slice of the residual streams; block 0 also
 // stores the coefficients for hc_write.
+template <bool parallel_tokens = false>
 __global__ void hc_read_fused(const float *partial, const float *r, const float *base, const float *scl, float *c_out,
                               float *x, int n, int iters, float eps, float rms_eps) {
+    if constexpr (parallel_tokens) {
+        partial += (size_t)blockIdx.y * 25 * 32;
+        r += (size_t)blockIdx.y * 4 * n;
+        c_out += (size_t)blockIdx.y * 24;
+        x += (size_t)blockIdx.y * n;
+    }
     __shared__ float p[25], coef[24];
     const int lane = threadIdx.x & 31;
     if (threadIdx.x < 32) {
@@ -216,7 +234,7 @@ void launch_rows(const void *w, const float *x, float *scratch, int rows, int in
 } // namespace
 
 void glm_q8_heads_gemv(const void *w, const float *x, float *y, int heads, int in, int out, int tokens, int ld_x,
-                       int ld_y, void *stream) {
+                       int ld_y, void *stream, bool parallel_tokens) {
     if (heads < 1 || out < 1 || in < 32 || in % 32 || tokens < 1 || tokens > 8)
         throw std::invalid_argument("GLM Q8_0 heads GEMV: invalid geometry");
     auto s = (cudaStream_t)stream;
@@ -233,8 +251,14 @@ void glm_q8_heads_gemv(const void *w, const float *x, float *y, int heads, int i
         if (tokens > 1 && (ld_x < (int64_t)heads * in || ld_y < (int64_t)heads * out))
             throw std::invalid_argument("GLM Q8_0 heads batch strides overlap token rows");
         const size_t threads = (size_t)rows * blocks;
+        if (parallel_tokens && tokens > 1) {
+            heads_gemv_blocks<true><<<dim3((unsigned)((threads + 255) / 256), tokens), 256, 0, s>>>(
+                (const uint8_t *)w, x, y, in, out, rows, ld_x, ld_y);
+            ok(cudaGetLastError(), "heads GEMV token grid");
+            return;
+        }
         for (int token = 0; token < tokens; ++token) {
-            heads_gemv_blocks<<<(unsigned)((threads + 255) / 256), 256, 0, s>>>(
+            heads_gemv_blocks<false><<<(unsigned)((threads + 255) / 256), 256, 0, s>>>(
                 (const uint8_t *)w, x + (size_t)token * ld_x, y + (size_t)token * ld_y, in, out, rows);
             ok(cudaGetLastError(), "heads GEMV");
         }
@@ -255,10 +279,23 @@ void glm_hc_read_fused(const void *w, const float *r, const float *base, const f
     const int in = 4 * n;
     if (n < 256 || in % 1024) throw std::invalid_argument("GLM fused mHC read: invalid geometry");
     auto s = (cudaStream_t)stream;
-    hc_partial_sumsq<<<dim3(25, 32), 256, 0, s>>>((const uint8_t *)w, r, scratch, in, 24);
+    hc_partial_sumsq<false><<<dim3(25, 32), 256, 0, s>>>((const uint8_t *)w, r, scratch, in, 24);
     ok(cudaGetLastError(), "fused mHC partial");
-    hc_read_fused<<<(n + 255) / 256, 256, 0, s>>>(scratch, r, base, scale_w, c, x, n, iters, eps, rms_eps);
+    hc_read_fused<false><<<(n + 255) / 256, 256, 0, s>>>(scratch, r, base, scale_w, c, x, n, iters, eps, rms_eps);
     ok(cudaGetLastError(), "fused mHC read");
+}
+
+void glm_hc_read_fused_tokens(const void *w, const float *r, const float *base, const float *scale_w, float *c,
+                              float *x, float *scratch, int n, int iters, float eps, float rms_eps,
+                              int tokens, void *stream) {
+    if (n < 256 || n % 256 || tokens < 1 || tokens > 8)
+        throw std::invalid_argument("GLM fused mHC token grid: invalid geometry");
+    auto s = (cudaStream_t)stream;
+    hc_partial_sumsq<true><<<dim3(25, 32, tokens), 256, 0, s>>>((const uint8_t *)w, r, scratch, 4 * n, 24);
+    ok(cudaGetLastError(), "fused mHC token partial");
+    hc_read_fused<true><<<dim3((n + 255) / 256, tokens), 256, 0, s>>>(
+        scratch, r, base, scale_w, c, x, n, iters, eps, rms_eps);
+    ok(cudaGetLastError(), "fused mHC token read");
 }
 
 void glm_q8_rows_gemv(const void *w, const float *x, float *y, float *scratch, int rows, int in, int tokens,

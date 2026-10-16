@@ -8,7 +8,7 @@ namespace strata::kernels {
 // Per-head rows: y[t * ld_y + r] = W[r] . x[t * ld_x + (r / out) * in + 0..in), for r < heads * out.
 // in must be a multiple of 32; tokens 1..8.
 void glm_q8_heads_gemv(const void *w, const float *x, float *y, int heads, int in, int out, int tokens, int ld_x,
-                       int ld_y, void *stream);
+                       int ld_y, void *stream, bool parallel_tokens = false);
 
 // Few long rows (the 24-row mHC projection): y[t * rows + r] = W[r] . x[t * in + 0..in). Split over 32 slices
 // with a fixed-order second pass; scratch holds rows * tokens * 32 floats. in must be a multiple of 32 * 32.
@@ -16,6 +16,10 @@ void glm_q8_heads_gemv(const void *w, const float *x, float *y, int heads, int i
 // then RMS scale, 4x4 Sinkhorn coefficients (written to c[24]) and x = sum_i c[i] r[i]. scratch holds 25 x 32 floats.
 void glm_hc_read_fused(const void *w, const float *r, const float *base, const float *scale, float *c, float *x,
                        float *scratch, int n, int iters, float eps, float rms_eps, void *stream);
+// Same per-token arithmetic in two launches for tokens 1..8. Scratch holds tokens * 25 * 32 floats.
+void glm_hc_read_fused_tokens(const void *w, const float *r, const float *base, const float *scale, float *c,
+                              float *x, float *scratch, int n, int iters, float eps, float rms_eps,
+                              int tokens, void *stream);
 void glm_q8_rows_gemv(const void *w, const float *x, float *y, float *scratch, int rows, int in, int tokens,
                       void *stream);
 

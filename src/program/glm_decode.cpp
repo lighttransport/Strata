@@ -1755,6 +1755,9 @@ class Decoder {
         if (std::string(v) == "1") return true;
         throw std::invalid_argument("GLM: norm Q8 fused must be 0 or 1");
     }();
+    const bool norm_q8_fused_batch = strata_env_is_one("STRATA_GLM_NORM_Q8_FUSED_BATCH");
+    const bool pointwise_batch = strata_env_is_one("STRATA_GLM_POINTWISE_BATCH");
+    const bool conv_batch_history = strata_env_is_one("STRATA_GLM_CONV_BATCH_HISTORY");
     const bool mhc_save_fused = [] {
         const char *v = std::getenv("STRATA_GLM_MHC_SAVE_FUSED");
         if (!v || std::string(v) == "0") return false;
@@ -3097,11 +3100,12 @@ class Decoder {
     }
     void norm(const std::string &name, const float *x, float *y, int width) {
         auto &W = weight(name);
-        if (norm_q8_fused && q8_decode && quant_once && !fast && batch_tokens == 1 &&
+        if (norm_q8_fused && q8_decode && quant_once && !fast && batch_tokens <= cpu::MAXT &&
+            (batch_tokens == 1 || norm_q8_fused_batch) &&
             width == m.hidden && norm_quant) {
-            k::glm_rms_norm_rows_q8(x, W.f(), y, norm_quant->p, width, 1, m.rms_epsilon, stream);
+            k::glm_rms_norm_rows_q8(x, W.f(), y, norm_quant->p, width, batch_tokens, m.rms_epsilon, stream);
             shared_quant = norm_quant.get(); shared_quant_src = y;
-            shared_quant_in = width; shared_quant_nt = 1;
+            shared_quant_in = width; shared_quant_nt = batch_tokens;
             return;
         }
         if (norm_q8_fused && width == m.hidden) end_share_quant();
@@ -3121,7 +3125,12 @@ class Decoder {
             auto &fb = weight(p + "hc_" + kind + "_base.weight");
             auto &fs = weight(p + "hc_" + kind + "_scale.weight");
             auto &qw = weight(p + "hc_" + kind + "_fn.weight");
-            auto &partial = buf("hc_fused_partial", 25 * 32);
+            auto &partial = buf("hc_fused_partial", 25 * 32 * (pointwise_batch ? cpu::MAXT : 1));
+            if (pointwise_batch && batch_tokens > 1) {
+                k::glm_hc_read_fused_tokens(qw.p, r, fb.f(), fs.f(), c, x, partial.f(), m.hidden,
+                    m.sinkhorn_iterations, m.hc_epsilon, m.rms_epsilon, batch_tokens, stream);
+                return;
+            }
             // The single-row fusion deliberately applies normalization after
             // projection. Reuse exactly that arithmetic for each verify row;
             // scratch reuse is ordered on the same stream.
@@ -5930,6 +5939,18 @@ class Decoder {
             if (fast)
                 k::glm_conv_batch(tmp.f(), W.f(), hist[i]->f(), dest[i], n, m.conv_kernel, batch_tokens,
                                   stream);
+            else if (conv_batch_history && batch_tokens > 1 && row_sequences.empty()) {
+                float *snapshots = nullptr;
+                int count = 0;
+                if (capturing_history && history_token_offset < history_slots)
+                    if (auto it = history_offsets.find(hist[i]); it != history_offsets.end()) {
+                        snapshots = (float *)((char *)verify_history->p + history_base_bytes + it->second +
+                                              (size_t)history_token_offset * history_stride);
+                        count = std::min(batch_tokens, history_slots - history_token_offset);
+                    }
+                k::glm_conv_batch_history(tmp.f(), W.f(), hist[i]->f(), dest[i], n, m.conv_kernel,
+                    batch_tokens, snapshots, history_stride / sizeof(float), count, stream);
+            }
             else
                 for (int t = 0; t < batch_tokens; ++t) {
                     Device *history = hist[i];
@@ -5948,7 +5969,7 @@ class Decoder {
         mat(p + "ssm_f_b.weight", low.f(), tmp.f());
         auto &dt = weight(p + "ssm_dt.bias");
         auto &a = weight(p + "ssm_a");
-        if (fast)
+        if (fast || pointwise_batch)
             k::glm_kda_gate_batch(tmp.f(), dt.f(), a.f(), decay.f(), heads, dim, m.gate_lower_bound,
                                   batch_tokens, stream);
         else
@@ -6019,7 +6040,7 @@ class Decoder {
         mat(p + "ssm_g_a.weight", x, low.f());
         mat(p + "ssm_g_b.weight", low.f(), tmp.f());
         auto &W = weight(p + "ssm_norm.weight");
-        if (fast)
+        if (fast || pointwise_batch)
             k::glm_kda_output_batch(y.f(), tmp.f(), W.f(), q.f(), heads, dim, m.rms_epsilon, batch_tokens,
                                     stream);
         else
@@ -6215,7 +6236,7 @@ class Decoder {
             const bool hoisted = d.aq_all && d.av_all && d.wk8 && d.wv8 && !d.gemm && !d.back;
             if (hoisted)
                 k::glm_q8_heads_gemv(d.wk8, d.q, d.aq_all, (int)kb.shape[2], (int)kb.shape[0], (int)kb.shape[1],
-                                     d.tokens, heads * dim, heads * latent, d.stream);
+                                     d.tokens, heads * dim, heads * latent, d.stream, pointwise_batch);
             for (int t = 0; t < d.tokens; t += tile) {
                 if (stoppable) check_stop();
                 const int count = std::min(tile, d.tokens - t);
@@ -6377,7 +6398,7 @@ class Decoder {
             }
             if (hoisted)
                 k::glm_q8_heads_gemv(d.wv8, d.av_all, d.value, (int)vb.shape[2], (int)vb.shape[0], (int)vb.shape[1],
-                                     d.tokens, heads * latent, heads * dim, d.stream);
+                                     d.tokens, heads * latent, heads * dim, d.stream, pointwise_batch);
             (void)B;
         };
         const bool q8_mla = !fast && floating_q8_weight(p + "attn_k_b.weight") && floating_q8_weight(p + "attn_v_b.weight");
@@ -6720,8 +6741,12 @@ class Decoder {
             const cpu::CpuTopology *placement = nullptr)
         : artifact_owner(shared ? shared : std::make_shared<strata::core::ModelArtifact>(path)),
           artifact(*artifact_owner), layer_stage(bool(shared)), owned_layer_first(first),
-          owned_layer_last(last == SIZE_MAX ? artifact.descriptor().layers.size() : last), m(artifact.descriptor()), pool(artifact.is_exl3()?1:threads, artifact.is_exl3()?false:pin_cpu, true, cpu::PoolAffinity::All, 0, placement), capacity(ctx),
+          owned_layer_last(last == SIZE_MAX ? artifact.descriptor().layers.size() : last), m(artifact.descriptor()),
+          pool(artifact.is_exl3()?1:threads, artifact.is_exl3()?false:pin_cpu, true,
+               cpu::PoolAffinity::All, 0, placement, strata_env_is_one("STRATA_GLM_SOCKET_ROWS")), capacity(ctx),
           budget(cache_bytes) {
+        if (layer_stage && pool.socket_rows())
+            throw std::invalid_argument("socket rows do not support the layer pipeline");
         if (owned_layer_first >= owned_layer_last || owned_layer_last > m.layers.size()) throw std::invalid_argument("GLM: invalid stage layer range");
 #ifdef __linux__
         if (const char *memory = std::getenv("STRATA_GLM_MIXED_MEMORY_FD")) {
@@ -7097,8 +7122,9 @@ class Decoder {
                       << " minimum_tokens=" << prefill_kda_min_tokens << '\n';
         if (norm_q8_fused) {
             end_share_quant();
-            if (q8_decode && quant_once && !fast && nt == 1 && m.hidden % 32 == 0 && !norm_quant)
-                norm_quant = std::make_unique<Device>(k::native_q8_1_bytes(m.hidden, 1));
+            if (q8_decode && quant_once && !fast && nt <= cpu::MAXT && (nt == 1 || norm_q8_fused_batch) &&
+                m.hidden % 32 == 0 && !norm_quant)
+                norm_quant = std::make_unique<Device>(k::native_q8_1_bytes(m.hidden, norm_q8_fused_batch ? cpu::MAXT : 1));
         }
         if (cached_decode) cached_decode->lookup_preloaded = false;
         if (cached_decode_b) cached_decode_b->lookup_preloaded = false;
@@ -7883,6 +7909,8 @@ class Decoder {
     void prepare_numa_weights() {
         if (layer_stage) return; // the shared mapping is owned and locked once by the layer coordinator
         const char* enabled=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS");
+        if (pool.socket_rows() && (!enabled || std::string(enabled) != "1"))
+            throw std::invalid_argument("socket rows require STRATA_GLM_Q2_NUMA_WEIGHTS=1");
         if(!numa_experts.empty())return;
         if(!artifact.has_expert_pack()&&(!enabled||std::string(enabled)=="0"))return;
         if(enabled&&std::string(enabled)!="1"&&std::string(enabled)!="0")throw std::invalid_argument("STRATA_GLM_Q2_NUMA_WEIGHTS must be 0 or 1");
@@ -7899,6 +7927,8 @@ class Decoder {
         const bool mapped_lazy = !remote_tp && std::getenv("STRATA_GLM_MAPPED_OWNED") &&
             std::string(std::getenv("STRATA_GLM_MAPPED_OWNED")) == "1" &&
             std::getenv("STRATA_GLM_MAPPED_LAZY") && std::string(std::getenv("STRATA_GLM_MAPPED_LAZY")) == "1";
+        if (pool.socket_rows() && !mapped_lazy)
+            throw std::invalid_argument("socket rows require lazy mapped experts with externally placed pages");
         if (!pool.numa_rows_available() && mapped_lazy) {
             if (artifact.is_exl3() || secondary || !prepared_experts.empty() || direct_upload_enabled() ||
                 q23_layout || packed_huge_pages || std::getenv("STRATA_GLM_PREFER_RESIDENT_MIB"))
@@ -8723,6 +8753,8 @@ class Decoder {
         if (!value || std::string(value) == "0" || numa_relocated_after_prefill) return;
         if (std::string(value) != "1")
             throw std::invalid_argument("GLM: NUMA after prefill must be 0 or 1");
+        if (pool.socket_rows())
+            throw std::invalid_argument("socket rows require externally placed pages and NUMA after prefill disabled");
         const char *mapped = std::getenv("STRATA_GLM_MAPPED_OWNED");
         if (!gpu || !lazy_experts || !mapped || std::string(mapped) != "1" ||
             numa_experts.empty() || remote_tp || ram_tier)
