@@ -23,23 +23,35 @@ __global__ void __launch_bounds__(128) k_peak(float* out, int iters) {
                              : "+r"(ci[k][0]), "+r"(ci[k][1]), "+r"(ci[k][2]), "+r"(ci[k][3])
                              : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
             else if constexpr (OP == 1)
+#ifndef FP4_AMPERE
                 asm volatile("mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};"
                              : "+f"(c[k][0]), "+f"(c[k][1]), "+f"(c[k][2]), "+f"(c[k][3])
                              : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+#else
+                asm volatile("trap;");
+#endif
             else if constexpr (OP == 2)
                 asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};"
                              : "+f"(c[k][0]), "+f"(c[k][1]), "+f"(c[k][2]), "+f"(c[k][3])
                              : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
             else if constexpr (OP == 3)
+#ifndef FP4_AMPERE
                 asm volatile("mma.sync.aligned.m16n8k32.row.col.kind::mxf8f6f4.block_scale.scale_vec::1X.f32.e2m1.e4m3.f32.ue8m0 "
                              "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3}, %10, {0, 0}, %10, {0, 0};"
                              : "+f"(c[k][0]), "+f"(c[k][1]), "+f"(c[k][2]), "+f"(c[k][3])
                              : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]), "r"(sc));
+#else
+                asm volatile("trap;");
+#endif
             else if constexpr (OP == 4)
+#ifndef FP4_AMPERE
                 asm volatile("mma.sync.aligned.kind::mxf4.block_scale.scale_vec::2X.m16n8k64.row.col.f32.e2m1.e2m1.f32.ue8m0 "
                              "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3}, %10, {0, 0}, %10, {0, 0};"
                              : "+f"(c[k][0]), "+f"(c[k][1]), "+f"(c[k][2]), "+f"(c[k][3])
                              : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]), "r"(sc));
+#else
+                asm volatile("trap;");
+#endif
             else if constexpr (OP == 5) {  // f16 inputs, f16 accumulate (2 regs of half2)
                 uint32_t* h = (uint32_t*)c[k];
                 asm volatile("mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0,%1}, {%2,%3,%4,%5}, {%6,%7}, {%0,%1};"
@@ -50,9 +62,13 @@ __global__ void __launch_bounds__(128) k_peak(float* out, int iters) {
                              : "+f"(c[k][0]), "+f"(c[k][1]), "+f"(c[k][2]), "+f"(c[k][3])
                              : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
             else if constexpr (OP == 7)  // e2m1 x e2m1 through the f8f6f4 path (no block scale)
+#ifndef FP4_AMPERE
                 asm volatile("mma.sync.aligned.kind::f8f6f4.m16n8k32.row.col.f32.e2m1.e2m1.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};"
                              : "+f"(c[k][0]), "+f"(c[k][1]), "+f"(c[k][2]), "+f"(c[k][3])
                              : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
+#else
+                asm volatile("trap;");
+#endif
         }
     }
     float s = 0;
@@ -96,13 +112,21 @@ std::vector<PeakResult> measure_mma_peaks(int sms) {
         res.push_back({name, ops / (best * 1e-3) / 1e12});
     };
     run("s8 m16n8k32 (int8 -> s32)", k_peak<0>, 16 * 8 * 32);
+#ifndef FP4_AMPERE
     run("e4m3 m16n8k32 (fp8 -> f32)", k_peak<1>, 16 * 8 * 32);
+#endif
     run("f16 m16n8k16 (-> f32 acc)", k_peak<2>, 16 * 8 * 16);
     run("f16 m16n8k16 (-> f16 acc)", k_peak<5>, 16 * 8 * 16);
     run("bf16 m16n8k16 (-> f32 acc)", k_peak<6>, 16 * 8 * 16);
+#ifndef FP4_AMPERE
     run("f8f6f4 e2m1 m16n8k32 (no scale)", k_peak<7>, 16 * 8 * 32);
+#endif
+#ifndef FP4_AMPERE
     run("mxf8f6f4 e2m1xe4m3 m16n8k32 1X", k_peak<3>, 16 * 8 * 32);
+#endif
+#ifndef FP4_AMPERE
     run("mxf4 e2m1 m16n8k64 2X ue8m0", k_peak<4>, 16 * 8 * 64);
+#endif
     cudaFree(out);
     return res;
 }
