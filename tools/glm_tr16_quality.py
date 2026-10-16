@@ -86,11 +86,12 @@ def compare(result, baseline):
     return check_quality(result['metrics'], baseline['metrics'], QUALITY_GATES[gate])
 
 
-def quality_guard(output, command, record_cpu_interference=False, shared_model=False, allow_desktop=False):
+def quality_guard(output, command, record_cpu_interference=False, shared_model=False, allow_desktop=False, max_swap_mib=0, shared_gpu=False):
     """CPU contention may be recorded for scoring, never for timing claims."""
     return [sys.executable, str(ROOT / 'tools/glm_q2_run_guard.py'), '--output', str(output / 'eval'),
-            '--min-gpu-free-mib', '512', '--require-gpu-idle',
+            '--min-gpu-free-mib', '512', *([] if shared_gpu else ['--require-gpu-idle']),
             '--record-interference' if record_cpu_interference else '--require-idle',
+            *(['--max-swap-mib', str(max_swap_mib)] if max_swap_mib else []),
             *(['--memory-metric=pss'] if shared_model else []), *(['--allow-desktop-gpu'] if allow_desktop else []), '--', *command]
 
 
@@ -105,9 +106,18 @@ def main():
     ap.add_argument('--eval-prefill', action='store_true', help='score the batched prefill path as well as its final state')
     ap.add_argument('--regression-config', type=Path, default=ROOT / 'tests/glm/regression.json')
     ap.add_argument('--wait-idle-seconds', type=int, default=1800)
+    ap.add_argument('--max-swap-mib', type=int, default=0,
+                    help='swap the run may use before the guard rejects it (default 0); recorded in the manifest. '
+                         'Quality only: a machine with a full page cache can swap a few MiB of a 100 GB mapped model')
+    ap.add_argument('--allow-shared-gpu', action='store_true',
+                    help='quality only: do not wait for or require an idle GPU and CPU; other processes may use them while '
+                         'the evaluation runs (the 512 MiB free-VRAM floor and the swap limit stay). The evaluation is '
+                         'deterministic, so this does not change KL or perplexity, but the run is never a timing result. '
+                         'Implies --record-cpu-interference')
     ap.add_argument('--record-cpu-interference', action='store_true',
                     help='record CPU contention without aborting quality scoring; no timing comparison')
     args = ap.parse_args()
+    if args.allow_shared_gpu: args.record_cpu_interference = True
     c = json.loads(args.config.read_text())
     prefill_batch = evaluation_prefill(c, args.prefill_batch)
     width = evaluation_width(c)
@@ -143,6 +153,7 @@ def main():
                   quality_gate=args.quality_gate, quality_tolerance=QUALITY_GATES[args.quality_gate],
                   prefill_batch=prefill_batch, eval_prefill=args.eval_prefill, complete=False, qualified=False,
                   cpu_interference_policy='record' if args.record_cpu_interference else 'reject',
+                  max_swap_mib=args.max_swap_mib, shared_gpu=args.allow_shared_gpu,
                   performance_comparable=False)
     if args.baseline:
         result['baseline_result'] = str(args.baseline.resolve())
@@ -152,10 +163,10 @@ def main():
     if args.allow_desktop_gpu:
         from glm_mixed_bench import wait_mixed_idle
         result['desktop_gpu_contexts']=wait_mixed_idle(args.wait_idle_seconds,True)
-    else: wait_idle(args.wait_idle_seconds)
+    elif not args.allow_shared_gpu: wait_idle(args.wait_idle_seconds)
     env = {k: v for k, v in os.environ.items() if not k.startswith('STRATA_')}
     env.update(c['env'])
-    guard = quality_guard(output, cmd, args.record_cpu_interference, bool(c['env'].get('STRATA_GLM_MIXED_PRIMARY')),args.allow_desktop_gpu)
+    guard = quality_guard(output, cmd, args.record_cpu_interference, bool(c['env'].get('STRATA_GLM_MIXED_PRIMARY')),args.allow_desktop_gpu,args.max_swap_mib,args.allow_shared_gpu)
     with (output / 'guard.log').open('w') as log:
         proc = subprocess.run(guard, env=env, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
     stdout = (output / 'eval.stdout').read_text() if (output / 'eval.stdout').exists() else ''

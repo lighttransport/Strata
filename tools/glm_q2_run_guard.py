@@ -24,20 +24,49 @@ def process_cpu_snapshot():
     return time.monotonic(), rows
 
 
+def _nvidia(args):
+    """nvidia-smi's output, or None on a machine without an NVIDIA device (then the AMD fallbacks below apply)."""
+    try:
+        return subprocess.check_output(['nvidia-smi'] + args, text=True, timeout=3, stderr=subprocess.STDOUT)
+    except FileNotFoundError:
+        return None
+    except subprocess.CalledProcessError as e:
+        if 'No devices were found' in (e.output or '') or e.returncode == 9: return None
+        raise
+
+def _amd_compute_processes():
+    """ROCm clients: processes holding /dev/kfd open (the display uses the render node, not kfd)."""
+    found = []
+    for fd_dir in pathlib.Path('/proc').glob('[0-9]*/fd'):
+        try:
+            if any(os.readlink(f) == '/dev/kfd' for f in fd_dir.iterdir()):
+                pid = int(fd_dir.parent.name)
+                found.append((pid, (fd_dir.parent / 'comm').read_text().strip()))
+        except OSError:
+            continue
+    return found
+
+def _amd_vram(index):
+    cards = sorted(p for p in pathlib.Path('/sys/class/drm').glob('card[0-9]*/device') if (p / 'mem_info_vram_total').exists())
+    if index >= len(cards): raise ValueError('no GPU %d (nvidia-smi or amdgpu sysfs)' % index)
+    return cards[index]
+
 def gpu_compute_processes(index, allow_desktop=False):
-    """CUDA clients, excluding the desktop's small compute context."""
-    value = subprocess.check_output(['nvidia-smi', '--id=' + str(index),
-        '--query-compute-apps=pid,process_name', '--format=csv,noheader'], text=True, timeout=3,
-        stderr=subprocess.STDOUT)
+    """CUDA clients, excluding the desktop's small compute context; without an NVIDIA device, ROCm clients."""
+    value = _nvidia(['--id=' + str(index), '--query-compute-apps=pid,process_name', '--format=csv,noheader'])
+    if value is None:
+        _amd_vram(index)
+        return [(pid, name) for pid, name in _amd_compute_processes() if pid != os.getpid()]
     return [(int(pid.strip()), name.strip()) for pid, name in csv.reader(value.splitlines())
             if pathlib.Path(name.strip()).name != 'gnome-remote-desktop-daemon'
             and not (allow_desktop and name.strip().split() and pathlib.Path(name.strip().split()[0]).name in {'chrome','chromium','chromium-browser'})]
 
 def gpu_free_mib(index):
-    value = subprocess.check_output(["nvidia-smi", "--id=" + str(index),
-        "--query-gpu=memory.free", "--format=csv,noheader,nounits"], text=True, timeout=3,
-        stderr=subprocess.STDOUT).strip()
-    free = int(value)
+    value = _nvidia(["--id=" + str(index), "--query-gpu=memory.free", "--format=csv,noheader,nounits"])
+    if value is None:
+        card = _amd_vram(index)
+        value = str((int((card / 'mem_info_vram_total').read_text()) - int((card / 'mem_info_vram_used').read_text())) // (1 << 20))
+    free = int(value.strip())
     if free < 0:
         raise ValueError("negative GPU free-memory reading")
     return free

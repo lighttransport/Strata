@@ -12,6 +12,75 @@ IQ2_XS gate/up becomes Q2_K, and IQ3_XXS down becomes Q3_K. Layer 11's
 IQ3 gate/up and IQ4_XS down exceptions keep their original representation.
 Dense, attention, router and MTP weights stay in the original files.
 
+`--fp8=DIR` converts every routed layer in range from the FP8 release
+(zai-org/GLM-5.3-Flash, `strata/artifact/fp8_experts.hpp`: E4M3 times the 128x128
+`weight_scale_inv`, rounded to f32) instead of requantizing the GGUF's own 2-bit
+experts. With it, `--gate-type` (gate and up) and `--down-type` take any of
+q2_k, q3_k, q4_k, iq2_xxs, iq2_xs, iq2_s, iq3_xxs, iq3_s and iq4_xs; sizes come
+from `ggml_row_size`. The pack carries `strata.expert_pack.fp8`, and only for
+such packs the loader accepts every type with native kernels in place of the
+GGUF's expert types. Without `--fp8` the conversion and the accepted types are
+unchanged. Layer 10 to IQ2_S with the calibration importance (`--calibration`) took
+4.4 min on 14 threads; importance-weighted normalized MSE against FP8: gate/up
+0.062, down 0.045. IQ2_S experts run on the non-canonical CPU, GPU-tier and worker
+paths; the canonical sum (`STRATA_GLM_CANON`) is Q2_K/Q3_K only.
+
+`--resume` continues an interrupted conversion. Each finished projection is recorded in `OUTPUT.partial.progress`
+(name, checksum, error terms) after its payload is synced. A resumed run must have the same plan: source
+fingerprint, options and layout. It rewrites only the projections that are not recorded. A layer-10 IQ2_S pack killed
+with SIGKILL during its second projection and resumed was byte-identical to an uninterrupted one. Without `--resume`
+a partial file is refused, as before.
+
+### Full IQ2_S pack from FP8 (TR16, 2026-10-16)
+
+All routed layers 3-44, gate/up and down IQ2_S, with the calibration importance:
+
+```
+build-glm-release/strata-glm-q2-pack GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf experts-iq2s.gguf \
+  --calibration=prune/calibration --fp8=fp8 --gate-type=iq2_s --down-type=iq2_s --threads=14
+build-glm-release/strata-glm-q2-pack --verify GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf experts-iq2s.gguf
+```
+
+The pack has 126 projections of 773,849,088 bytes each, 97.5 GB in total, against 111 GB for Q23 (Q2_K gate/up, Q3_K
+down). It took 2.7 h on 14 threads, with the llvq GPU encoder running beside it. `--verify` read all 126
+projections back and checked their checksums in 3 minutes.
+
+Importance-weighted normalized MSE against FP8, per projection over the 42 layers:
+
+| Projection | Mean | Min | Max |
+|---|---:|---:|---:|
+| gate | 0.0613 | 0.0590 (layer 44) | 0.0617 (layer 6) |
+| up | 0.0613 | 0.0590 (layer 44) | 0.0617 (layer 5) |
+| down | 0.0466 | 0.0142 (layer 19) | 0.0576 (layer 23) |
+
+Gate and up are uniform across layers. Down varies by layer: the lowest values are layers 19, 3, 12, 16 and 27
+(0.014-0.031), and most layers are 0.045-0.058.
+
+Corpus gate (`tools/glm_tr16_quality.py --eval-prefill`, 16 held-out sequences, 8,192 tokens), run on the
+RX 9070 XT with the same non-canonical settings for both models:
+
+| Model | Experts | Perplexity | KL | Top-1 |
+|---|---|---:|---:|---:|
+| UD-Q2_K_XL (the reference itself) | unsloth's | 4.645 | 0 | 100% |
+| Q23, assembled | Q2_K/Q3_K from the UD-Q2_K_XL experts | 4.850 | 0.1471 | 86.99% |
+| IQ2_S | from FP8 | 4.673 | 0.1750 | 86.19% |
+
+IQ2_S passes the `tr16-35` gate against Q23 (perplexity within +6%, KL within +0.08, top-1 within 3 points): its
+perplexity is 3.7% lower than Q23's and 0.6% above the reference model's, with KL 0.028 higher and top-1 0.8 points
+lower. The Q23 run was repeated after a GPU reset and gave the same values to every printed digit (the evaluation is
+deterministic).
+
+KL and top-1 are measured against the original UD-Q2_K_XL model, not against FP8. A pack that is closer to the
+original weights than UD-Q2_K_XL still shows a KL against that reference, so perplexity is the direct quality
+comparison. The 64-sequence reference from 2026-10-06 (CUDA build) was deleted. It was regenerated for these 16
+sequences with the HIP build, using the same arguments, so these numbers are not bit-comparable with the
+2026-10-09 baseline (KL 0.1367).
+
+The runs used `--allow-shared-gpu` and `--max-swap-mib 1024` (new, opt-in options of `tools/glm_tr16_quality.py`):
+another job used the GPU part of the time, and with a full page cache the kernel swapped a few MiB of the mapped
+model. Neither changes the evaluation's numbers, but these runs are not timing results. HumanEval and decode speed
+for the IQ2_S pack were not measured.
+
 The loader checks the source identity, names, shapes, paired gate/up formats,
 payload bounds and per-tensor checksums. Source identity is an FNV-64 fingerprint
 of shard sizes, modification times and headers; it is not a cryptographic hash

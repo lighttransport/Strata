@@ -5,7 +5,7 @@
 // fresh read from DRAM.  Prints the weight bytes per second against the --ram-gbs given (a separate read test).
 //
 //     kq_cpu_bench [--pairs q4_K/q5_1,q5_K/q8_0,q6_K/q8_0,q8_0/q8_0,iq3_s/iq4_nl] [--threads 1,8,16,32] [--nt 1,2,4]
-//                  [--mb 4096] [--reps 3] [--ram-gbs N]
+//                  [--mb 4096] [--reps 3] [--ram-gbs N] [--hidden 2560 --ff 640]
 #include "strata/kernels/cpu/expert_layout.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
 
@@ -29,7 +29,7 @@ namespace cpu = strata::kernels::cpu;
 
 namespace {
 
-constexpr int64_t kH = 2560, kFF = 640;
+int64_t kH = 2560, kFF = 640;  // --hidden / --ff (GLM-5.3-Flash experts: 4096 / 2048)
 constexpr int kMaxT = 8;
 
 int type_of(const std::string& s) {
@@ -59,13 +59,20 @@ void make_blob(const cpu::NativeFmt& f, uint8_t* blob, std::mt19937& rng) {
     std::vector<float> row((size_t) std::max(kH, kFF));
     const auto* tg = ggml_get_type_traits_cpu((ggml_type) f.gu_type);
     const auto* td = ggml_get_type_traits_cpu((ggml_type) f.d_type);
+    // Types without a CPU from_float (IQ2_S, IQ2_XS, ...) go through ggml_quantize_chunk (no importance matrix).
+    // (IQ2_XS/IQ2_XXS require one: a uniform importance).
+    static const std::vector<float> ones((size_t) std::max(kH, kFF), 1.0f);
+    auto quantize = [](int type, const ggml_type_traits_cpu* t, const float* x, uint8_t* dst, int64_t n) {
+        if (t->from_float) t->from_float(x, dst, n);
+        else ggml_quantize_chunk((ggml_type) type, x, dst, 0, 1, n, ones.data());
+    };
     for (int64_t r = 0; r < 2 * kFF; ++r) {
         for (int64_t i = 0; i < kH; ++i) row[(size_t) i] = nd(rng);
-        tg->from_float(row.data(), blob + (size_t) r * f.gu_row, kH);
+        quantize(f.gu_type, tg, row.data(), blob + (size_t) r * f.gu_row, kH);
     }
     for (int64_t r = 0; r < kH; ++r) {
         for (int64_t i = 0; i < kFF; ++i) row[(size_t) i] = nd(rng);
-        td->from_float(row.data(), blob + f.down_off + (size_t) r * f.d_row, kFF);
+        quantize(f.d_type, td, row.data(), blob + f.down_off + (size_t) r * f.d_row, kFF);
     }
 }
 
@@ -87,8 +94,10 @@ int main(int argc, char** argv) {
         else if (a == "--mb" && more) mb = std::atoi(argv[++i]);
         else if (a == "--reps" && more) reps = std::max(1, std::atoi(argv[++i]));
         else if (a == "--ram-gbs" && more) ram = std::atof(argv[++i]);
+        else if (a == "--hidden" && more) kH = std::atoll(argv[++i]);
+        else if (a == "--ff" && more) kFF = std::atoll(argv[++i]);
         else {
-            std::fprintf(stderr, "usage: kq_cpu_bench [--pairs a/b,...] [--threads 1,8] [--nt 1,2,4] [--mb 4096] [--reps 3] [--ram-gbs N]\n");
+            std::fprintf(stderr, "usage: kq_cpu_bench [--pairs a/b,...] [--threads 1,8] [--nt 1,2,4] [--mb 4096] [--reps 3] [--ram-gbs N] [--hidden H --ff F]\n");
             return 2;
         }
     }
