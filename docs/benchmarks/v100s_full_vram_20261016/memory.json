@@ -1,0 +1,72 @@
+{
+  "preallocated_pools": [
+    {
+      "visible_device": 0,
+      "pool_mib": 31616,
+      "free_before_mib": 32182,
+      "cuda_total_mib": 32494,
+      "margin_mib": 512
+    },
+    {
+      "visible_device": 0,
+      "pool_mib": 31616,
+      "free_before_mib": 32182,
+      "cuda_total_mib": 32494,
+      "margin_mib": 512
+    }
+  ],
+  "primary_expert_cache_mib": 22952.4,
+  "primary_expert_cache_slots": 2642,
+  "worker_expert_cache_mib": 29488.4,
+  "worker_cache_admission_budget_mib": 30676.2,
+  "worker_slots_per_layer": 83,
+  "worker_runtime_reserve_mib": 512.0,
+  "probe_raw_log_sha256": "20627e5bc90e88bf0133b9a33eac211a01f0ea5f0e47a52b2eb50176a15e5949",
+  "probe_nvml_csv_sha256": "cf5114983397ceba601677a6497cf27be56836ae79d58d4a243769acadda32ab",
+  "nvml": [
+    {
+      "gpu_index": 0,
+      "nominal_total_mib": 32768,
+      "peak_used_mib": 32112,
+      "minimum_free_mib": 383,
+      "samples": 162
+    },
+    {
+      "gpu_index": 1,
+      "nominal_total_mib": 32768,
+      "peak_used_mib": 32280,
+      "minimum_free_mib": 215,
+      "samples": 162
+    }
+  ],
+  "timing_resource_observations": {
+    "whole-conservative-train-code-512": {
+      "shared_mapping_bytes": 269275496,
+      "peak_combined_pss_bytes": 48269134848,
+      "peak_combined_swap_bytes": 0,
+      "pss_sampling": "setup only, before first worker request; not a full-run peak",
+      "raw_summary_sha256": "d335b50d189f42499863ed0fc1554dc781f53f276027d0e32764c817de2c9aa2"
+    },
+    "whole-vram-m512-train-code-512": {
+      "shared_mapping_bytes": 269275496,
+      "peak_combined_pss_bytes": 45257080832,
+      "peak_combined_swap_bytes": 0,
+      "pss_sampling": "setup only, before first worker request; not a full-run peak",
+      "raw_summary_sha256": "1afb4a5fc9c0ecc8d09e4bf688747c01e7074b68950d5d605c7de6bccf630340"
+    },
+    "whole-vram-m512-holdout-code-512": {
+      "shared_mapping_bytes": 269275496,
+      "peak_combined_pss_bytes": 45066483712,
+      "peak_combined_swap_bytes": 0,
+      "pss_sampling": "setup only, before first worker request; not a full-run peak",
+      "raw_summary_sha256": "7fb475051fada0bf9c77d0b6185c1568a34f724c89e4fb096698d78209ec4a20"
+    },
+    "whole-vram-m512-holdout-chat-512": {
+      "shared_mapping_bytes": 269275496,
+      "peak_combined_pss_bytes": 45291080704,
+      "peak_combined_swap_bytes": 0,
+      "pss_sampling": "setup only, before first worker request; not a full-run peak",
+      "raw_summary_sha256": "2765172e226df0f2cbac09675d7773f542d960443637d31a8e006021f9bfd9ca"
+    }
+  }
+}

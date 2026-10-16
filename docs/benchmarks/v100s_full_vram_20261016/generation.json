@@ -1,0 +1,1550 @@
+{
+  "allocations": 2,
+  "engine_starts": [
+    {
+      "engine": 1,
+      "profile": "fast",
+      "allocation": "allocation_1",
+      "invocation_record_sha256": "785a07df7294c7e9043cf25a7a292490ee14542cae75eb9388c2698849d452ab",
+      "samples": [
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/0"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/1"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/2"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/3"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/4"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/5"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/6"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/7"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/8"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/9"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/10"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/11"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/12"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/13"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/14"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/15"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/16"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/17"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/18"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/19"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/20"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/21"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/22"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/23"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/24"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/25"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/26"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/27"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/28"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/29"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/30"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/31"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/32"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/33"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/34"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/35"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/36"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/37"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/38"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/39"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/40"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/41"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/42"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/43"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/44"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/45"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/46"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/47"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/48"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/49"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/50"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/51"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/52"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/53"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/54"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/55"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/56"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/57"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/58"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/59"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/60"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/61"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/62"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/63"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/64"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/65"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/66"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/67"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/68"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/69"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/70"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/71"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/72"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/73"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/74"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/75"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/76"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/77"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/78"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/79"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/80"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/81"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/82"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/83"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/84"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/85"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/86"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/87"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/88"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/89"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/90"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/91"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/92"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/93"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/94"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/95"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/96"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/97"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/98"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/99"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/100"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/101"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/102"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/103"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/104"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/105"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/106"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/107"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/108"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/109"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/110"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/111"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/112"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/113"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/114"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/115"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/116"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/117"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/118"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/119"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/120"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/121"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/122"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/123"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/124"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/125"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/126"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/127"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/128"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/129"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/130"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/131"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/132"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/133"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/134"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/135"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/136"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/137"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/138"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/139"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/140"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/141"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/142"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/143"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/144"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/145"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/146"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/147"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/148"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/149"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/150"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/151"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/152"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/153"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/154"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/155"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/156"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/157"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/158"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/159"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/160"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/161"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/162"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/163"
+        }
+      ]
+    },
+    {
+      "engine": 2,
+      "profile": "fast",
+      "allocation": "allocation_1",
+      "invocation_record_sha256": "785a07df7294c7e9043cf25a7a292490ee14542cae75eb9388c2698849d452ab",
+      "samples": [
+        {
+          "kind": "cpp",
+          "task": "parse_u64"
+        },
+        {
+          "kind": "cpp",
+          "task": "checked_slice"
+        },
+        {
+          "kind": "cpp",
+          "task": "reduce_routed"
+        },
+        {
+          "kind": "cpp",
+          "task": "add_i64"
+        },
+        {
+          "kind": "cpp",
+          "task": "add_u64"
+        },
+        {
+          "kind": "cpp",
+          "task": "mul_i64"
+        },
+        {
+          "kind": "cpp",
+          "task": "mul_u64"
+        },
+        {
+          "kind": "cpp",
+          "task": "parse_i64"
+        },
+        {
+          "kind": "cpp",
+          "task": "parse_hex"
+        },
+        {
+          "kind": "cpp",
+          "task": "lower_index"
+        },
+        {
+          "kind": "cpp",
+          "task": "upper_index"
+        },
+        {
+          "kind": "cpp",
+          "task": "stable_unique"
+        },
+        {
+          "kind": "cpp",
+          "task": "sorted_unique"
+        },
+        {
+          "kind": "cpp",
+          "task": "rotate_left"
+        },
+        {
+          "kind": "cpp",
+          "task": "rotate_right"
+        },
+        {
+          "kind": "cpp",
+          "task": "replace_all"
+        },
+        {
+          "kind": "cpp",
+          "task": "remove_all"
+        },
+        {
+          "kind": "cpp",
+          "task": "merge_overlap"
+        },
+        {
+          "kind": "cpp",
+          "task": "merge_touching"
+        },
+        {
+          "kind": "cpp",
+          "task": "hex_lower"
+        },
+        {
+          "kind": "cpp",
+          "task": "hex_upper"
+        },
+        {
+          "kind": "cpp",
+          "task": "fnv1a32"
+        },
+        {
+          "kind": "cpp",
+          "task": "adler32"
+        },
+        {
+          "kind": "cpp",
+          "task": "parse_u64_4k"
+        }
+      ]
+    },
+    {
+      "engine": 3,
+      "profile": "greedy",
+      "allocation": "allocation_1",
+      "invocation_record_sha256": "28ae254ed1d0f0ef4590d43a527032c0ca36fab053b66e3d6553d60727007978",
+      "samples": [
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/0"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/1"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/2"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/3"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/4"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/5"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/6"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/7"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/8"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/9"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/10"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/11"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/12"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/13"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/14"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/15"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/16"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/17"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/18"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/19"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/20"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/21"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/22"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/23"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/24"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/25"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/26"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/27"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/28"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/29"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/30"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/31"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/32"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/33"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/34"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/35"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/36"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/37"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/38"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/39"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/40"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/41"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/42"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/43"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/44"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/45"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/46"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/47"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/48"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/49"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/50"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/51"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/52"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/53"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/54"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/55"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/56"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/57"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/58"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/59"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/60"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/61"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/62"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/63"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/64"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/65"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/66"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/67"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/68"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/69"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/70"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/71"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/72"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/73"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/74"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/75"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/76"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/77"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/78"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/79"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/80"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/81"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/82"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/83"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/84"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/85"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/86"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/87"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/88"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/89"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/90"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/91"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/92"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/93"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/94"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/95"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/96"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/97"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/98"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/99"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/100"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/101"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/102"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/103"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/104"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/105"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/106"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/107"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/108"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/109"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/110"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/111"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/112"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/113"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/114"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/115"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/116"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/117"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/118"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/119"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/120"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/121"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/122"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/123"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/124"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/125"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/126"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/127"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/128"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/129"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/130"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/131"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/132"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/133"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/134"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/135"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/136"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/137"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/138"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/139"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/140"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/141"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/142"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/143"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/144"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/145"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/146"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/147"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/148"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/149"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/150"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/151"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/152"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/153"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/154"
+        }
+      ]
+    },
+    {
+      "engine": 4,
+      "profile": "greedy",
+      "allocation": "allocation_2",
+      "invocation_record_sha256": "8a4ab3e2f6fd73464993d098be4971a306d81038c6737e7040323ad6629f6bf0",
+      "samples": [
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/155"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/156"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/157"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/158"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/159"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/160"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/161"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/162"
+        },
+        {
+          "kind": "humaneval",
+          "task": "HumanEval/163"
+        }
+      ]
+    },
+    {
+      "engine": 5,
+      "profile": "greedy",
+      "allocation": "allocation_2",
+      "invocation_record_sha256": "8a4ab3e2f6fd73464993d098be4971a306d81038c6737e7040323ad6629f6bf0",
+      "samples": [
+        {
+          "kind": "cpp",
+          "task": "parse_u64"
+        },
+        {
+          "kind": "cpp",
+          "task": "checked_slice"
+        },
+        {
+          "kind": "cpp",
+          "task": "reduce_routed"
+        },
+        {
+          "kind": "cpp",
+          "task": "add_i64"
+        },
+        {
+          "kind": "cpp",
+          "task": "add_u64"
+        },
+        {
+          "kind": "cpp",
+          "task": "mul_i64"
+        },
+        {
+          "kind": "cpp",
+          "task": "mul_u64"
+        },
+        {
+          "kind": "cpp",
+          "task": "parse_i64"
+        },
+        {
+          "kind": "cpp",
+          "task": "parse_hex"
+        },
+        {
+          "kind": "cpp",
+          "task": "lower_index"
+        },
+        {
+          "kind": "cpp",
+          "task": "upper_index"
+        },
+        {
+          "kind": "cpp",
+          "task": "stable_unique"
+        },
+        {
+          "kind": "cpp",
+          "task": "sorted_unique"
+        },
+        {
+          "kind": "cpp",
+          "task": "rotate_left"
+        },
+        {
+          "kind": "cpp",
+          "task": "rotate_right"
+        },
+        {
+          "kind": "cpp",
+          "task": "replace_all"
+        },
+        {
+          "kind": "cpp",
+          "task": "remove_all"
+        },
+        {
+          "kind": "cpp",
+          "task": "merge_overlap"
+        },
+        {
+          "kind": "cpp",
+          "task": "merge_touching"
+        },
+        {
+          "kind": "cpp",
+          "task": "hex_lower"
+        },
+        {
+          "kind": "cpp",
+          "task": "hex_upper"
+        },
+        {
+          "kind": "cpp",
+          "task": "fnv1a32"
+        },
+        {
+          "kind": "cpp",
+          "task": "adler32"
+        },
+        {
+          "kind": "cpp",
+          "task": "parse_u64_4k"
+        }
+      ]
+    }
+  ],
+  "scope": "Derived from immutable output mtimes and recorded engine invocation times; greedy HumanEval resumes before task155."
+}
