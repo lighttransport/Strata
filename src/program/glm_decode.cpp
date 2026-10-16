@@ -9391,7 +9391,8 @@ class Decoder {
             // fallback still needs the original MMQ capability check.
             auto supported = [this, tensor_experts](int type) {
                 return mmq::supported(type) ||
-                       (tensor_experts && !f16_prefill_min_tokens && k::dequant_bf16_supported(type));
+                       (tensor_experts && mmq::built() && !f16_prefill_min_tokens &&
+                        k::dequant_bf16_supported(type));
             };
             if (!supported(artifact.at(p + "ffn_gate_exps.weight").tensor->type) ||
                 !supported(artifact.at(p + "ffn_down_exps.weight").tensor->type))
