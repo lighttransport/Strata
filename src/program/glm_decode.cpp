@@ -7953,7 +7953,10 @@ class Decoder {
         size_t budget_mib=artifact.has_expert_pack()?114688:98304;
         if(const char* value=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHT_MIB")) {
             size_t used=0;budget_mib=std::stoull(value,&used);
-            if(used!=std::strlen(value)||budget_mib>131072)throw std::invalid_argument("invalid NUMA weight MiB budget");
+            // Shared lazy views do not allocate another copy of the expert bytes.
+            // A full UD-Q3_K_XL needs 131454 MiB, just above the copied-weight cap.
+            const size_t maximum_mib = mapped_lazy ? 1048576 : 131072;
+            if(used!=std::strlen(value)||budget_mib>maximum_mib)throw std::invalid_argument("invalid NUMA weight MiB budget");
         }
         if(required>budget_mib*MiB)throw std::runtime_error("Q2 NUMA weights exceed configured packed-byte budget");
         // STRATA_GLM_MAPPED_OWNED=1: node-owned scheduling over the file mapping (pages moved, not copied).
@@ -9344,7 +9347,8 @@ class Decoder {
             std::cerr << "SEQUENCE_PARITY windows=2x3 logits=bitwise_equal\n";
         }
     }
-    int enable_gpu(int requested, size_t total_budget, bool reserve_checkpoint = false) {
+    int enable_gpu(int requested, size_t total_budget, bool reserve_checkpoint = false,
+                   bool tensor_experts = false) {
         if(artifact.is_exl3()) {
             if(gpu)return gpu->chunk;
             int width=requested?requested:256;
@@ -9382,8 +9386,15 @@ class Decoder {
         for (size_t l = 3; l < m.layers.size(); ++l) {
             if (!owns_layer(l)) continue;
             auto p = "blk." + std::to_string(l) + ".";
-            if (!mmq::supported(artifact.at(p + "ffn_gate_exps.weight").tensor->type) ||
-                !mmq::supported(artifact.at(p + "ffn_down_exps.weight").tensor->type))
+            // Tensor prefill dequantizes these blocks directly; it does not need
+            // the optional K-quant MMQ library. A configured small-row MMQ
+            // fallback still needs the original MMQ capability check.
+            auto supported = [this, tensor_experts](int type) {
+                return mmq::supported(type) ||
+                       (tensor_experts && !f16_prefill_min_tokens && k::dequant_bf16_supported(type));
+            };
+            if (!supported(artifact.at(p + "ffn_gate_exps.weight").tensor->type) ||
+                !supported(artifact.at(p + "ffn_down_exps.weight").tensor->type))
                 throw std::invalid_argument("GLM: unsupported prefill expert quantization");
         }
         if (total_budget <= std::max(1024 * MiB, Device::budget_reserve()))
@@ -10720,14 +10731,14 @@ static int serve(int argc, char **argv) {
             throw std::invalid_argument("GLM: batching requires one GPU, GGUF, and CPU routed experts");
         decoder.enable_sequences(parallel);
     }
-    if (width == 0 || width > cpu::MAXT || stream_decode || use_mtp || parallel)
-        width = decoder.enable_gpu(width, gpu_budget, lookup_depth > 0);
-    if (direct_upload_enabled()) decoder.warm_weights(true, devices);
     const bool tensor_bf16 = argc > 24 && std::string(argv[24]) == "bf16-batched";
     const bool tensor_batches = tensor_bf16 || (argc > 24 && std::string(argv[24]) == "f16-batched");
     const bool tensor_experts = tensor_batches || (argc > 24 && std::string(argv[24]) == "f16");
     if (argc > 24 && !tensor_experts && std::string(argv[24]) != "mmq")
         throw std::invalid_argument("GLM: prefill experts must be mmq, f16, f16-batched or bf16-batched");
+    if (width == 0 || width > cpu::MAXT || stream_decode || use_mtp || parallel)
+        width = decoder.enable_gpu(width, gpu_budget, lookup_depth > 0, tensor_experts);
+    if (direct_upload_enabled()) decoder.warm_weights(true, devices);
     // A decode cache keeps the draft experts on the CPU: no device reserve for them, only the draft state,
     // which must exist before the cache allowance is measured.
     const bool mtp_device_experts = use_mtp && (!(argc > 20 && std::string(argv[20]) != "0") || strata_env_truthy_one("STRATA_GLM_MTP_GPU_CACHE"));
@@ -11262,7 +11273,8 @@ int main(int argc, char **argv) {
         }
         task_trace("gpu_setup_begin", 0, prefill_batch);
         if (prefill_batch == 0 || prefill_batch > cpu::MAXT || force_gpu)
-            prefill_batch = decoder.enable_gpu(prefill_batch, gpu_budget, lookup_depth > 0 || check_verify || check_decode_graphs);
+            prefill_batch = decoder.enable_gpu(prefill_batch, gpu_budget,
+                lookup_depth > 0 || check_verify || check_decode_graphs, tensor_experts);
         if (direct_upload_enabled()) decoder.warm_weights(true, devices);
         decoder.configure_prefill(devices, gpu_budget, prefill_cache_bytes, prefill_cache_auto, use_mtp, tensor_experts, tensor_batches, tensor_bf16);
         task_trace("gpu_setup_complete", 0, prefill_batch);

@@ -1640,9 +1640,10 @@ if(STRATA_NATIVE_EXPERTS)
       endif()
       set_target_properties(strata_kq PROPERTIES CUDA_RUNTIME_LIBRARY Static POSITION_INDEPENDENT_CODE ON
                             CXX_VISIBILITY_PRESET hidden CUDA_VISIBILITY_PRESET hidden)
-      # ggml-base is static: position-independent so a shared library can hold it (the same code otherwise)
-      set_target_properties(ggml-base PROPERTIES POSITION_INDEPENDENT_CODE ON)
-      target_link_libraries(strata_kq PRIVATE ggml-base)
+      # Both static libraries are linked into this optional shared library.
+      # ggml_cuda_host.cu also calls the common C11 environment helpers.
+      set_target_properties(ggml-base strata_host PROPERTIES POSITION_INDEPENDENT_CODE ON)
+      target_link_libraries(strata_kq PRIVATE ggml-base strata_host)
       if(TARGET CUDA::cuda_driver)
         target_link_libraries(strata_kq PRIVATE CUDA::cuda_driver)
       endif()

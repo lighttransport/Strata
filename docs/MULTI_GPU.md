@@ -417,6 +417,22 @@ and 128 rows per expert per panel by default.
 chunks still contain at most 512 rows. Gate, up and down weights are
 dequantized once per group and reused across its panels. Buffers remain bounded.
 
+For externally placed shared expert pages, set `STRATA_GLM_Q2_NUMA_WEIGHTS=1`,
+`STRATA_GLM_MAPPED_OWNED=1` and `STRATA_GLM_MAPPED_LAZY=1`. The explicit
+`STRATA_GLM_Q2_NUMA_WEIGHT_MIB` budget then accepts up to 1 TiB of mapped
+expert bytes; copied expert arenas retain their 128 GiB limit. The existing
+default budget is unchanged. For example, the full 288-expert UD-Q3_K_XL
+headers describe 131454 MiB of routed experts, requiring an explicit budget
+such as `140000`. This is a view limit, not a RAM reservation: the shared
+model, host staging and inference workspace must still fit the allocation.
+Use the model's native quantized arithmetic for its retained IQ tensors
+(`--combine native` on an explicitly placed CUDA pair); assembling shards
+does not require converting those weights to Q2/Q3 canonical packs.
+Tensor expert prefill validates the existing FP16/BF16 dequantizers, so retained
+K-quant tensors do not require the optional MMQ library. Selecting MMQ, or a
+small-row MMQ fallback, still requires its kernels. The optional CUDA K-quant
+library links the same C11 environment helpers as the engine.
+
 Requests validate protocol version, geometry, expert IDs, destination rows,
 sequence, and ownership generation. There is one outstanding buffer lease.
 MTP requests carry no worker recurrent state. A stale reply or worker failure
