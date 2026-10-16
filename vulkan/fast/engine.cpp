@@ -1,11 +1,14 @@
 #include "fast/engine.hpp"
 #include "fast/expert_batch.hpp"
+#include "fast/mla_prefill.hpp"
+#include "fast/prefill_schedule.hpp"
 #include "strata/kernels/glm_reference.hpp"
 #include "strata/host/glm_env.h"
 #include "strata/artifact/json.hpp"
 #include <algorithm>
 #include <bit>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -15,6 +18,7 @@
 #include <iostream>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 namespace kcpu = strata::kernels::cpu;
 namespace strata::vulkan::fast {
 namespace {
@@ -64,6 +68,41 @@ struct Engine::PrefillHost {
   std::vector<kcpu::ExpertJobMulti> jobs;
 };
 
+// A stable coordinator for the existing persistent CPU pool. The ticket joins
+// on exceptions too, before the layer's captured job storage can be released.
+struct Engine::PrefillWorker {
+  struct Ticket {
+    std::future<void> future;
+    explicit Ticket(std::future<void> f) : future(std::move(f)) {}
+    Ticket(Ticket &&) = default;
+    ~Ticket() {if (future.valid()) future.wait();}
+    void get() {future.get();}
+  };
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::packaged_task<void()> task;
+  bool stop = false;
+  std::thread worker;
+  PrefillWorker() : worker([this] {
+    for (;;) {
+      std::packaged_task<void()> next;
+      {std::unique_lock lock(mutex); cv.wait(lock, [&] {return stop || task.valid();});
+       if (stop) return; next = std::move(task);}
+      next();
+    }
+  }) {}
+  ~PrefillWorker() {
+    {std::lock_guard lock(mutex); stop = true;}
+    cv.notify_one(); worker.join();
+  }
+  Ticket submit(std::function<void()> work) {
+    std::packaged_task<void()> next(std::move(work));
+    auto future = next.get_future();
+    {std::lock_guard lock(mutex); require(!task.valid(), "prefill worker already has queued work"); task = std::move(next);}
+    cv.notify_one(); return Ticket(std::move(future));
+  }
+};
+
 Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, const EngineOptions &o)
     : artifact_(artifact), m_(m), options_(o), dev_(o.device, o.budget), pool_(o.threads, true, true) {
   require(m.hidden == H && m.streams == 4 && m.linear_heads * m.linear_dim == KDA_N && m.linear_dim == 128 &&
@@ -75,7 +114,29 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   if (const char *dir = std::getenv("STRATA_GLM_STATE_TRACE_DIR"); dir && *dir) trace_dir_ = dir;
   trace_position_ = strata_env_int_or("STRATA_VULKAN_FAST_TRACE_POSITION", 0);
   prefill_chunk_ = strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_CHUNK", 4);
-  require(prefill_chunk_ >= 1 && prefill_chunk_ <= 2048, "STRATA_VULKAN_FAST_PREFILL_CHUNK must be 1..2048");
+  prefill_pipeline_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_PIPELINE");
+  require(strata_env_int_or("STRATA_VULKAN_FAST_PREFILL_CPU_PANEL", 0) == 0,
+          "CPU prefill panel prototype failed its numerical gate; use the canonical CPU executor");
+  prefill_balance_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_BALANCE");
+  if (prefill_balance_) {
+    require(prefill_pipeline_, "prefill balance requires pipeline");
+    prefill_cpu_route_us_ = strata_env_value_double("STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US", 0);
+    prefill_gpu_route_us_ = strata_env_value_double("STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US", 0);
+    prefill_upload_us_ = strata_env_value_double("STRATA_VULKAN_FAST_PREFILL_UPLOAD_US", 0);
+    prefill_shared_us_ = strata_env_value_double("STRATA_VULKAN_FAST_PREFILL_SHARED_US_PER_TOKEN", 0);
+    schedule_prefill({}, 144, 1, {prefill_cpu_route_us_, prefill_gpu_route_us_, prefill_upload_us_, prefill_shared_us_});
+  }
+  prefill_expand_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS");
+  prefill_expert_expand_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND");
+  require(!prefill_expert_expand_ || prefill_pipeline_, "expert expansion requires pipeline");
+  prefill_mla_gemm_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_MLA_GEMM");
+  require(!prefill_mla_gemm_ || prefill_pipeline_, "MLA GEMM requires pipeline");
+  prefill_tiled_mla_ = strata_env_is_one("STRATA_VULKAN_FAST_PREFILL_TILED_MLA");
+  require(!prefill_tiled_mla_ || prefill_pipeline_, "tiled MLA requires pipeline");
+  require(!(prefill_tiled_mla_ && prefill_mla_gemm_), "select only one experimental MLA implementation");
+  require(!prefill_expand_ || prefill_pipeline_, "prefill weight expansion requires pipeline");
+  require(prefill_chunk_ >= 1 && prefill_chunk_ <= (prefill_pipeline_ ? 8192 : 2048),
+          "prefill chunk must be 1..2048, or 1..8192 with the pipeline");
   if (prefill_chunk_ > int(NT)) hidden_slots_ = uint32_t(prefill_chunk_) + NT;
   q8_emulate_ = strata_env_is_one("STRATA_VULKAN_FAST_Q8_EMULATE");
   expert_q8_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_Q8");
@@ -125,7 +186,18 @@ Engine::Engine(core::ModelArtifact &artifact, const core::ModelDescriptor &m, co
   require(!prefill_reuse_expert_ || prefill_gpu_, "Vulkan expert scratch reuse requires streamed prefill GPU experts");
   require(!dev_.fp64_expert_scale() || (prefill_gpu_ && prefill_gpu_tile_ == 64 && prefill_gpu_rows_ == 64),
           "Vulkan FP64 expert diagnostics require streamed GPU experts with 64x64 tiles");
+  require(!dev_.fp32_expert_math() || (prefill_gpu_ && prefill_gpu_tile_ == 64 && prefill_gpu_rows_ == 64),
+          "Vulkan FP32 expert math requires streamed GPU experts with 64x64 tiles");
   if (canonical_sum_) mailbox_stride_ = MB_OUT + 8 * H;
+  require(!prefill_pipeline_ || (prefill_chunk_ > int(NT) && canonical_sum_ && !q8_emulate_ &&
+              trace_dir_.empty() && prefill_split_prefix_ && prefill_submit_limit_ms_ <= 500),
+          "pipeline requires large canonical prefill, split prefix, limit <=500ms, no Q8 emulation or state trace");
+  require(!prefill_pipeline_ || !prefill_gpu_ ||
+              (prefill_gpu_pack_ && prefill_gpu_tile_ == 64 && prefill_gpu_rows_ == 64),
+          "pipeline GPU experts require GPU packing and 64x64 tiles");
+  require(!prefill_balance_ || prefill_gpu_, "prefill balance requires GPU experts");
+  require(!prefill_expert_expand_ || (prefill_gpu_ && dev_.fp32_expert_math() && dev_.native_expert_fma()),
+          "expanded experts require FP32 native-FMA GPU experts");
   // Lossy, opt-in: the HIP path's routing affinity and min-share switches.
   auto fraction = [](const char *name, float hi) {
     const char *v = std::getenv(name);
@@ -373,6 +445,40 @@ void Engine::allocate() {
 // Quantized single-head products optionally see Q8_1-rounded activations, the
 // strict runner's numerics (diagnostic; the fast engine keeps FP32 by default).
 void Engine::mv(Recorder &r, const Matrix &w, View x, View y, GemvArgs a) {
+  if (prefill_expand_ && recording_prefill_ && a.columns >= 256 && w.layout.type == Q4_K &&
+      size_t(w.k()) * w.m() * w.heads * 4 <= (512ULL << 20)) {
+    auto &expanded = prefill_expanded_;
+    expanded.layout = layout_for(F32, w.k(), w.m()); expanded.heads = w.heads;
+    if (!expanded.data || expanded.data->size < expanded.bytes()) {
+      expanded.data.reset(); expanded.data = dev_.buffer(expanded.bytes(), Memory::Device);
+    }
+    for (uint32_t first = 0; first < w.m(); first += 256) {
+      const std::array<uint32_t, 14> push{w.k(), w.m(), w.layout.mp, 0, 0, 0, 0, first, 0,
+          uint32_t(w.layout.head_bytes()), 0, 0, uint32_t(w.layout.chunk_bytes()), 1};
+      r.dispatch("expand_q4k", {View(*w.data), View(*dummy_), View(*expanded.data)}, push,
+                 (w.k() + 255) / 256, std::min(256u, w.m() - first), w.heads);
+    }
+    mv(r, expanded, x, y, a);
+    return;
+  }
+  if (prefill_pipeline_ && recording_prefill_ && a.columns > 256) {
+    const uint32_t xs = a.xs ? a.xs : w.k() * w.heads, ys = a.ys ? a.ys : w.m() * w.heads;
+    // Keep the logical window's split-K reduction order when slicing N.
+    if (w.layout.type == F32 && w.heads == 1 && w.m() <= 256) {
+      a.scratch = View(*part_);
+      a.kparts = 1;
+      const uint32_t tile = prefill_tile_ ? prefill_tile_ : 128;
+      while ((w.m() + 63) / 64 * ((a.columns + tile - 1) / tile) * a.kparts < 128 &&
+             a.kparts < 16 && w.k() >= a.kparts * 64) a.kparts *= 2;
+    }
+    for (uint32_t first = 0; first < a.columns; first += 256) {
+      auto panel = a; panel.columns = std::min(256u, a.columns - first);
+      panel.xofs += first * xs; panel.yofs += first * ys;
+      mv(r, w, x, y, panel);
+      r.barrier();
+    }
+    return;
+  }
   if (a.columns > NT && (prefill_match_gemv_ || (prefill_match_f32_ && w.layout.type == F32))) {
     const uint32_t xs = a.xs ? a.xs : w.k() * w.heads, ys = a.ys ? a.ys : w.m() * w.heads;
     for (uint32_t first = 0; first < a.columns; first += prefill_gemv_panel_) {
@@ -388,7 +494,7 @@ void Engine::mv(Recorder &r, const Matrix &w, View x, View y, GemvArgs a) {
   }
   if (a.columns > NT && w.layout.type == F32 && w.m() <= 256) a.scratch = View(*part_);
   if (!q8_emulate_ || w.layout.type == F32 || w.heads > 1) {
-    if (a.columns > NT) gemm(r, w, x, y, a, prefill_tile_ ? prefill_tile_ : a.columns >= 128 ? 128 : 64);
+    if (a.columns > NT) gemm(r, w, x, y, a, prefill_tile_ ? prefill_tile_ : a.columns >= 128 ? 128 : 64, prefill_pipeline_ && recording_prefill_);
     else gemv(r, w, x, y, a);
     return;
   }
@@ -399,7 +505,7 @@ void Engine::mv(Recorder &r, const Matrix &w, View x, View y, GemvArgs a) {
   r.barrier();
   a.xofs = 0;
   a.xs = w.k();
-  if (a.columns > NT) gemm(r, w, View(*qx_, offset), y, a, prefill_tile_ ? prefill_tile_ : a.columns >= 128 ? 128 : 64);
+  if (a.columns > NT) gemm(r, w, View(*qx_, offset), y, a, prefill_tile_ ? prefill_tile_ : a.columns >= 128 ? 128 : 64, prefill_pipeline_ && recording_prefill_);
   else gemv(r, w, View(*qx_, offset), y, a);
 }
 
@@ -570,9 +676,14 @@ void Engine::record_attention(Recorder &r, int l, uint32_t T) {
       uint32_t qk_stride, v_stride, d_stride, g_stride, y_stride, snapshot;
     } kp{64, uint32_t(m_.conv_kernel), T, 2 * KDA_N + 256, m_.gate_lower_bound, m_.rms_epsilon, L.qk.m(),
          KDA_N, KDA_N, KDA_N, KDA_N, T > 1 && !recording_prefill_ ? 1u : 0u};
-    r.dispatch("kda_step", {View(*L.state), View(*s_), View(*v_), View(*d_), View(*g_), View(*L.kda_params),
-                            View(*k_), View(*L.history)},
-               kp, 64);
+    const uint32_t panel = prefill_pipeline_ && recording_prefill_ ? 128 : T;
+    for (uint32_t first = 0; first < T; first += panel) {
+      kp.tokens = std::min(panel, T - first);
+      r.dispatch("kda_step", {View(*L.state), View(*s_, size_t(first) * L.qk.m() * 4),
+                 View(*v_, size_t(first) * KDA_N * 4), View(*d_, size_t(first) * KDA_N * 4),
+                 View(*g_, size_t(first) * KDA_N * 4), View(*L.kda_params),
+                 View(*k_, size_t(first) * KDA_N * 4), View(*L.history)}, kp, 64);
+    }
     mv(r, L.out, View(*k_), View(*y_), cols);
   } else
     record_mla(r, L, T, *step_);
@@ -594,7 +705,11 @@ void Engine::record_mla(Recorder &r, const Layer &L, uint32_t T, const Buffer &s
                  NormPush{Q_RANK, 0, uint32_t(L.q_norm), 0, 1, m_.rms_epsilon, MLA_INIT, Q_RANK}, 1, T);
     r.dispatch("rmsnorm", {View(*m0_), View(*constants_), View(*L.cache), View(step)},
                NormPush{KV_RANK, Q_RANK, uint32_t(L.kv_norm), 0, 1 | 4, m_.rms_epsilon, MLA_INIT, 0}, 1, T);
-    r.dispatch("index_key", {View(*m0_), View(*mg_), View(*constants_), View(*L.ring), View(*L.pooled), View(step), View(*L.ring_history)},
+    if (prefill_pipeline_ && recording_prefill_) {
+      for (uint32_t first = 0; first < T; first += 256)
+        r.dispatch("index_key_panel", {View(*m0_), View(*mg_), View(*constants_), View(*L.ring), View(*L.pooled), View(step), View(*L.ring_history)},
+                   std::array<uint32_t, 8>{128, 4, IDX_KEY, uint32_t(L.idx_par), std::min(256u, T-first), MLA_INIT, 0, first}, 1);
+    } else r.dispatch("index_key", {View(*m0_), View(*mg_), View(*constants_), View(*L.ring), View(*L.pooled), View(step), View(*L.ring_history)},
                std::array<uint32_t, 7>{128, 4, IDX_KEY, uint32_t(L.idx_par), T, MLA_INIT,
                                       !recording_prefill_ && &step == step_.get() && T > 1 ? 1u : 0u}, 1);
     r.end_concurrent();
@@ -604,7 +719,12 @@ void Engine::record_mla(Recorder &r, const Layer &L, uint32_t T, const Buffer &s
     mv(r, L.iqb, View(*mq_), View(*miq_), cols);
     r.end_concurrent();
     r.begin_concurrent();
-    r.dispatch("index_scores_step", {View(*L.pooled), View(*miq_), View(*m0_), View(*scores_), View(step)},
+    if (prefill_pipeline_ && recording_prefill_) {
+      for (uint32_t first = 0; first < T; first += 256)
+        r.dispatch("index_scores_step_panel", {View(*L.pooled), View(*miq_), View(*m0_), View(*scores_), View(step)},
+                   std::array<uint32_t, 9>{32, 128, 4, 0, IDX_PROJ, 32*128, MLA_INIT, score_stride_, first},
+                   (uint32_t(options_.capacity) / 4 + 7) / 8, std::min(256u, T-first));
+    } else r.dispatch("index_scores_step", {View(*L.pooled), View(*miq_), View(*m0_), View(*scores_), View(step)},
                std::array<uint32_t, 8>{32, 128, 4, 0, IDX_PROJ, 32 * 128, MLA_INIT, score_stride_},
                (uint32_t(options_.capacity) / 4 + 7) / 8, T);
     GemvArgs heads = cols;
@@ -619,7 +739,17 @@ void Engine::record_mla(Recorder &r, const Layer &L, uint32_t T, const Buffer &s
       float scale;
       uint32_t istride;
     } mp{64, KV_RANK, L.mla_scale, IDS_STRIDE};
-    r.dispatch("mla_step", {View(*L.cache), View(*maq_), View(*ids_), View(*mav_)}, mp, 64, T);
+    if (prefill_mla_gemm_ && recording_prefill_) {
+      if (!prefill_mla_) prefill_mla_ = std::make_unique<MlaPrefill>(dev_);
+      prefill_mla_->run(r, View(*L.cache), View(*maq_), View(*ids_), View(*mav_), T, uint32_t(position_), L.mla_scale);
+    } else {
+    const uint32_t panel = prefill_pipeline_ && recording_prefill_ ? 256 : T;
+    for (uint32_t first = 0; first < T; first += panel)
+      r.dispatch(prefill_tiled_mla_ && recording_prefill_ ? "mla_prefill_tiled" : "mla_step",
+                 {View(*L.cache), View(*maq_, size_t(first) * 64 * KV_RANK * 4),
+                 View(*ids_, size_t(first) * IDS_STRIDE * 4), View(*mav_, size_t(first) * 64 * KV_RANK * 4)},
+                 mp, prefill_tiled_mla_ && recording_prefill_ ? 16 : 64, std::min(panel, T - first));
+    }
     GemvArgs vheads = cols;
     vheads.xs = 64 * KV_RANK;
     vheads.ys = 64 * 256;
@@ -666,7 +796,10 @@ void Engine::record_shared(Recorder &r, const Layer &L, uint32_t T) {
   cols.columns = T;
   mv(r, L.gu, View(*xn_), View(*gu_), cols);
   const uint32_t n = L.gu.m() / 2;
-  swiglu(r, View(*gu_), View(*h_), n, T, L.limit);
+  const uint32_t panel = prefill_pipeline_ && recording_prefill_ ? 256 : T;
+  for (uint32_t first = 0; first < T; first += panel)
+    swiglu(r, View(*gu_, size_t(first) * 2 * n * 4), View(*h_, size_t(first) * n * 4),
+           n, std::min(panel, T - first), L.limit);
   mv(r, L.down, View(*h_), View(*f_), cols);
 }
 
@@ -973,11 +1106,15 @@ void Engine::release_prefill() {
     for (const auto &segment : segments) dev_.free_command(segment.command);
   prefill_segments_.clear();
   prefill_expert_batch_.reset();
+  for (auto &slot : prefill_pipeline_slots_) slot.reset();
+  prefill_worker_.reset();
+  prefill_expanded_.data.reset();
+  prefill_mla_.reset();
   prefill_host_.reset();
   prefill_buffers_.clear();
 }
 
-void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
+void Engine::cpu_experts_prefill(const Layer &L, uint32_t T, Recorder *shared) {
   const auto prepare_started = Clock::now();
   const int top = int(m_.top_k);
   PrefillHost local;
@@ -1030,6 +1167,76 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
   }
   std::stable_sort(jobs.begin(), jobs.end(), [](const auto &a, const auto &b) { return a.expert_id < b.expert_id; });
   const double prepare_ms = ms_since(prepare_started);
+  if (prefill_pipeline_ && prefill_gpu_ && L.resident_eligible) {
+    std::array<std::vector<const uint8_t *>, 144> inputs;
+    std::array<std::vector<float *>, 144> outputs;
+    for (const auto &job : jobs)
+      for (int j = 0; j < job.nt; ++j) {
+        inputs[job.expert_id].push_back(static_cast<const uint8_t *>(job.nact[j]));
+        outputs[job.expert_id].push_back(job.out[j]);
+      }
+    std::array<int, 144> order{};
+    for (int e = 0; e < 144; ++e) order[e] = e;
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {return inputs[a].size() > inputs[b].size();});
+    std::vector<int> selected;
+    std::array<bool, 144> on_gpu{};
+    for (int e : order) {
+      if (selected.size() >= size_t(prefill_gpu_max_experts_) || inputs[e].size() < size_t(prefill_gpu_min_tokens_)) break;
+      selected.push_back(e); on_gpu[e] = true;
+    }
+    if (prefill_balance_) {
+      std::array<uint32_t,144> counts{};
+      for (int e=0;e<144;++e) counts[e]=uint32_t(inputs[e].size());
+      const auto assignment=schedule_prefill(counts,uint32_t(prefill_gpu_max_experts_),uint32_t(prefill_gpu_min_tokens_),
+          {prefill_cpu_route_us_,prefill_gpu_route_us_,prefill_upload_us_,prefill_shared_us_*T});
+      selected=assignment.gpu;on_gpu.fill(false);
+      for(int e:selected)on_gpu[e]=true;
+      std::cerr<<"PREFILL_PIPELINE_SCHEDULE layer="<<L.index<<" predicted_cpu_ms="<<assignment.cpu_ms
+               <<" predicted_gpu_ms="<<assignment.gpu_ms<<" gpu_experts="<<selected.size()<<'\n';
+    }
+    std::vector<kcpu::ExpertJobMulti> cpu_jobs;
+    for (const auto &job : jobs) if (!on_gpu[job.expert_id]) cpu_jobs.push_back(job);
+    if (!selected.empty())
+      for (auto &slot : prefill_pipeline_slots_)
+        if (!slot) slot = std::make_unique<ExpertBatch>(dev_, 256, false, true, prefill_gpu_vector_, 64, true, 64, prefill_expert_expand_);
+    double cpu_ms = 0;
+    if (!prefill_worker_) prefill_worker_ = std::make_unique<PrefillWorker>();
+    std::optional<PrefillWorker::Ticket> cpu;
+    if (!cpu_jobs.empty()) cpu.emplace(prefill_worker_->submit([&] {
+      const auto began = Clock::now();
+      pool_.run_split_multi_native(L.fmt, cpu_jobs.data(), int(cpu_jobs.size()));
+      cpu_ms = ms_since(began);
+    }));
+    double shared_ms = 0;
+    if (shared) {
+      const double before = shared->submission_ms;
+      record_shared(*shared, L, T); shared->flush();
+      shared_ms = shared->submission_ms - before;
+    }
+    auto prepare = [&](size_t i) {
+      const int e = selected[i];
+      prefill_pipeline_slots_[i % 2]->prepare_weights_async(L.gate + size_t(e) * L.gate_stride,
+          L.up + size_t(e) * L.gate_stride, L.down_experts + size_t(e) * L.down_stride);
+    };
+    const auto gpu_begin = Clock::now();
+    size_t gpu_routes = 0;
+    if (!selected.empty()) prepare(0);
+    for (size_t i = 0; i < selected.size(); ++i) {
+      if (i + 1 < selected.size()) prepare(i + 1);
+      const int e = selected[i];
+      prefill_pipeline_slots_[i % 2]->run_quantized_panels(L.gate + size_t(e) * L.gate_stride,
+          L.up + size_t(e) * L.gate_stride, L.down_experts + size_t(e) * L.down_stride,
+          inputs[e], outputs[e], L.fmt.swiglu_limit, true);
+      gpu_routes += inputs[e].size();
+    }
+    const double gpu_ms = ms_since(gpu_begin);
+    if (cpu) cpu->get();
+    std::cerr << "PREFILL_PIPELINE_EXPERT layer=" << L.index << " tokens=" << T
+              << " gpu_experts=" << selected.size() << " gpu_routes=" << gpu_routes
+              << " prepare_ms=" << prepare_ms << " cpu_work_ms=" << cpu_ms << " gpu_branch_ms=" << gpu_ms
+              << " shared_submission_ms=" << shared_ms
+              << " weight_bytes=" << selected.size() * (2 * L.gate_stride + L.down_stride) << '\n';
+  } else
   if (prefill_gpu_ && L.resident_eligible) {
     std::array<int, 144> counts{};
     std::array<bool, 144> on_gpu{};
@@ -1110,6 +1317,9 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
                 << " queued_work_ms=" << stats.queued_work_ms - before.queued_work_ms << '\n';
     } else pool_.run_split_multi_native(L.fmt, jobs.data(), int(jobs.size()));
   } else pool_.run_split_multi_native(L.fmt, jobs.data(), int(jobs.size()));
+  if (shared && !(prefill_pipeline_ && prefill_gpu_ && L.resident_eligible)) {
+    record_shared(*shared, L, T); shared->flush();
+  }
   if (canonical_sum_ && L.fmt.canon) {
     // Use the same GPU reduction as small windows. GLSL fma is not required
     // to round like CPU std::fma; switching devices here can change later Q8
@@ -1126,7 +1336,77 @@ void Engine::cpu_experts_prefill(const Layer &L, uint32_t T) {
   }
 }
 
+std::vector<float> Engine::forward_prefill_pipeline(std::span<const int> tokens) {
+  const uint32_t T = uint32_t(tokens.size());
+  require(T > NT && T <= uint32_t(prefill_chunk_) && position_ + int(T) <= options_.capacity && !tier_ready_,
+          "Vulkan pipeline window/context invalid");
+  allocate_prefill();
+  struct Swap {
+    Engine &e;
+    explicit Swap(Engine &engine) : e(engine) {
+      for (auto &[original, alternate] : e.prefill_buffers_) original->swap(alternate);
+      e.running_prefill_ = e.recording_prefill_ = true;
+    }
+    ~Swap() {
+      for (auto &[original, alternate] : e.prefill_buffers_) original->swap(alternate);
+      e.running_prefill_ = e.recording_prefill_ = false;
+    }
+  } swap(*this);
+  const auto start = Clock::now();
+  const auto &embedding = artifact_.at("token_embd.weight");
+  for (uint32_t t = 0; t < T; ++t) {
+    require(tokens[t] >= 0 && tokens[t] < m_.vocab, "pipeline embedding token out of range");
+    const auto *src = embedding.data() + size_t(tokens[t]) * embedding.bytes / m_.vocab;
+    float *out = embed_->as<float>() + size_t(t) * H;
+    if (embedding.tensor->type == F32) std::memcpy(out, src, H * 4);
+    else ggml_get_type_traits(ggml_type(embedding.tensor->type))->to_float(src, out, H);
+  }
+  step_->as<uint32_t>()[0] = uint32_t(position_);
+  auto command = dev_.allocate_command();
+  try {
+    dev_.begin(command);
+    Recorder r(dev_, command);
+    r.bounded(prefill_submit_limit_ms_, profile_);
+    r.begin_concurrent();
+    for (uint32_t t = 0; t < T; ++t)
+      for (uint32_t stream = 0; stream < 4; ++stream)
+        r.copy(View(*embed_, size_t(t) * H * 4), View(*r_, (size_t(t) * 4 + stream) * H * 4), H * 4);
+    r.end_concurrent(); r.flush();
+    for (size_t l = 0; l < layers_.size(); ++l) {
+      const auto began = Clock::now();
+      const double gpu_before = r.submission_ms;
+      record_attention(r, int(l), T);
+      record_ffn_head(r, int(l), T);
+      r.flush(); // router host visibility before gathering expert jobs
+      if (layers_[l]->moe) {
+        const auto cpu = Clock::now();
+        cpu_experts_prefill(*layers_[l], T, &r);
+        cpu_expert_ms_ += ms_since(cpu);
+        record_ffn_tail(r, int(l), T);
+        r.flush();
+      }
+      std::cerr << "PREFILL_PIPELINE_LAYER layer=" << l << " tokens=" << T
+                << " wall_ms=" << ms_since(began) << " main_submission_ms=" << r.submission_ms - gpu_before << '\n';
+    }
+    record_head(r, T); r.flush();
+    dev_.end(command);
+    // The last flush leaves an empty recording, with no in-flight work.
+    wait_ms_ += r.submission_ms;
+    std::cerr << "PREFILL_PIPELINE tokens=" << T << " submissions=" << r.submissions
+              << " main_submission_ms=" << r.submission_ms
+              << " max_submission_ms=" << r.maximum_submission_ms << '\n';
+    for (const auto &[name, ms] : r.kernel_ms)
+      std::cerr << "PREFILL_PIPELINE_KERNEL name=" << name << " tokens=" << T << " gpu_ms=" << ms << '\n';
+  } catch (...) {dev_.free_command(command); throw;}
+  dev_.free_command(command);
+  for (int i = 0; i < m_.vocab; ++i)
+    require(std::isfinite(logits_->as<float>()[i]), "nonfinite pipeline prefill logit");
+  position_ += int(T); steps_ += T; step_ms_ += ms_since(start);
+  return {logits_->as<float>(), logits_->as<float>() + m_.vocab};
+}
+
 std::vector<float> Engine::forward_prefill(std::span<const int> tokens) {
+  if (prefill_pipeline_) return forward_prefill_pipeline(tokens);
   const uint32_t T = uint32_t(tokens.size());
   require(T > NT && T <= uint32_t(prefill_chunk_) && position_ + int(T) <= options_.capacity && !tier_ready_,
           "Vulkan large prefill window/context invalid");

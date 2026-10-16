@@ -9,12 +9,21 @@ layout(binding = 3, std430) buffer Ring { float ring[]; };               // keys
 layout(binding = 4, std430) buffer Pooled { float pooled[]; };
 layout(binding = 5, std430) readonly buffer Step { uint pos; } step;
 layout(binding = 6, std430) writeonly buffer History { float history[]; };
-layout(push_constant) uniform P { uint dim, pool, kofs, pofs, tokens, kstride, snapshot; } p;  // tokens in order
+layout(push_constant) uniform P { uint dim, pool, kofs, pofs, tokens, kstride, snapshot;
+#ifdef TOKEN_OFFSET
+ uint first;
+#endif
+} p;  // tokens in order
 shared float red[128];
 shared float mean_value, inv_value;
 void main() {
   const uint d = gl_LocalInvocationID.x;
+#ifdef TOKEN_OFFSET
+  for (uint local_tok = 0; local_tok < p.tokens; local_tok++) {
+    const uint tok = p.first + local_tok;
+#else
   for (uint tok = 0; tok < p.tokens; tok++) {
+#endif
     const uint pos = step.pos + tok, tail = pos % p.pool, tokens = pos + 1;
     const float v = d < p.dim ? stack[p.kofs + tok * p.kstride + d] : 0.0;
     red[d] = v;

@@ -3,7 +3,9 @@
 // iscale=-127/max, nearest-even codes, float scale=1/iscale (no half conversion).
 #extension GL_GOOGLE_include_directive : require
 #include "common.glsl"
-#ifdef FP64_MATH
+#ifdef FP32_MATH
+#include "fp32_native.glsl"
+#elif defined(FP64_MATH)
 #extension GL_ARB_gpu_shader_fp64 : require
 #include "fp64_round.glsl"
 #endif
@@ -69,7 +71,9 @@ void main() {
     return;
   }
   const float signed_max = x[gl_WorkGroupID.x * 256u + first];
-#ifdef FP64_MATH
+#ifdef FP32_MATH
+  precise float iscale = largest == 0 ? 0 : corrected_fp32_div(-127.0, signed_max);
+#elif defined(FP64_MATH)
   precise float iscale = largest == 0 ? 0 : round_fp64_to_fp32(double(-127.0) / double(signed_max));
 #else
   precise float iscale = largest == 0 ? 0 : -127.0 / signed_max;
@@ -77,7 +81,9 @@ void main() {
   precise float scaled = iscale * value;
   precise float rounded = scaled + 12582912.0;
   const int code = min(127, int(floatBitsToUint(rounded) & 0x007fffffu) - 0x00400000);
-#ifdef FP64_MATH
+#ifdef FP32_MATH
+  const float d = largest == 0 ? 0 : corrected_fp32_div(1.0, iscale);
+#elif defined(FP64_MATH)
   const float d = largest == 0 ? 0 : round_fp64_to_fp32(double(1.0) / double(iscale));
 #else
   const float d = largest == 0 ? 0 : 1.0 / iscale;

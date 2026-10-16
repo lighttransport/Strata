@@ -4,7 +4,10 @@
 // mode 1: out[t][d] = sum_u w[u][t] * y[(u*T+t)][d] (workgroup y = token).
 #extension GL_GOOGLE_include_directive : require
 #include "common.glsl"
-#ifdef FP64_MATH
+#ifdef FP32_MATH
+#include "fp32_native.glsl"
+#define CANON_FMA(A, B, C) native_fp32_fma(A, B, C)
+#elif defined(FP64_MATH)
 #extension GL_ARB_gpu_shader_fp64 : require
 #include "fp64_round.glsl"
 #define CANON_FMA(A, B, C) fp32_fma_rne(A, B, C)
@@ -43,7 +46,9 @@ void main() {
     if (p.limit > 0) { g = min(g, p.limit); u = clamp(u, -p.limit, p.limit); }
 #ifdef CANON_SWIGLU
     precise float denom = 1.0 + canonical_exp(-g);
-#ifdef FP64_MATH
+#ifdef FP32_MATH
+    precise float silu = corrected_fp32_div(g, denom);
+#elif defined(FP64_MATH)
     precise float silu = round_fp64_to_fp32(double(g) / double(denom));
 #else
     precise float silu = g / denom;

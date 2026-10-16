@@ -7,8 +7,8 @@
 #include <ggml.h>
 #include <stdexcept>
 namespace strata::vulkan::fast {
-ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool gpu_pack, bool vector_weights, uint32_t tile_columns, bool replay, uint32_t tile_rows)
-    : device_(device), capacity_(capacity), tile_columns_(tile_columns), tile_rows_(tile_rows), portable_rounding_(portable), gpu_pack_(gpu_pack), vector_weights_(vector_weights), replay_(replay) {
+ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool gpu_pack, bool vector_weights, uint32_t tile_columns, bool replay, uint32_t tile_rows, bool expanded_weights)
+    : device_(device), capacity_(capacity), tile_columns_(tile_columns), tile_rows_(tile_rows), portable_rounding_(portable), gpu_pack_(gpu_pack), vector_weights_(vector_weights), replay_(replay), expanded_weights_(expanded_weights) {
   if (!capacity || capacity > 2048) throw std::invalid_argument("expert batch capacity must be 1..2048");
   if (tile_columns != 16 && tile_columns != 32 && tile_columns != 64)
     throw std::invalid_argument("expert batch column tile must be 16, 32 or 64");
@@ -16,6 +16,10 @@ ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool 
     throw std::invalid_argument("expert batch row tile must be 32 or 64");
   if (device.fp64_expert_scale() && (tile_columns != 64 || tile_rows != 64))
     throw std::invalid_argument("FP64 expert scale diagnostic requires 64x64 tiles");
+  if (device.fp32_expert_math() && (tile_columns != 64 || tile_rows != 64))
+    throw std::invalid_argument("FP32 expert math requires 64x64 tiles");
+  if (expanded_weights_ && (!gpu_pack_ || !device.fp32_expert_math() || !device.native_expert_fma()))
+    throw std::invalid_argument("expanded expert weights require GPU packing and native FP32 math");
   quantized_row_bytes_ = ggml_row_size(GGML_TYPE_Q8_K, 4096);
   if (ggml_row_size(GGML_TYPE_Q8_K, 256) != 292)
     throw std::invalid_argument("streamed expert shader requires 292-byte Q8_K blocks");
@@ -42,6 +46,8 @@ ExpertBatch::ExpertBatch(Device &device, uint32_t capacity, bool portable, bool 
 }
 
 ExpertBatch::~ExpertBatch() {
+  finish_upload();
+  if (upload_ready_) device_.destroy(upload_ready_);
   // run_impl waits on each command's fence before returning. Drop commands
   // before their descriptor buffers are destroyed.
   for (const auto &[key, command] : commands_) device_.free_command(command);
@@ -50,16 +56,18 @@ ExpertBatch::~ExpertBatch() {
 void ExpertBatch::run(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
                       std::span<const float *const> inputs, std::span<float *const> outputs, float limit,
                       ExpertBatchTrace *trace) {
+  if (expanded_weights_) throw std::invalid_argument("expanded expert weights require panel execution");
   run_impl(gate, up, down, inputs, {}, outputs, limit, trace);
 }
 void ExpertBatch::run_quantized(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
                                 std::span<const uint8_t *const> inputs, std::span<float *const> outputs,
                                 float limit, ExpertBatchTrace *trace) {
+  if (expanded_weights_) throw std::invalid_argument("expanded expert weights require panel execution");
   run_impl(gate, up, down, {}, inputs, outputs, limit, trace);
 }
 void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
                            std::span<const float *const> inputs, std::span<const uint8_t *const> quantized,
-                           std::span<float *const> outputs, float limit, ExpertBatchTrace *trace) {
+                           std::span<float *const> outputs, float limit, ExpertBatchTrace *trace, bool upload_weights, uint32_t completed_limit_ms) {
   const size_t size = outputs.size();
   const bool packed_input = !quantized.empty();
   if (!size || size > capacity_ || (packed_input ? quantized.size() != size || !inputs.empty() : inputs.size() != size))
@@ -78,12 +86,12 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
   auto elapsed = [&] { return std::chrono::duration<double, std::milli>(Clock::now() - started).count(); };
   // Read the separate GGUF row ranges directly into their combined block
   // planes. Concatenating already-repacked matrices would order them wrongly.
-  if (gpu_pack_) {
+  if (upload_weights && gpu_pack_) {
     const size_t gate_bytes = row_bytes(Q2_K, 4096) * 2048;
     device_.upload(*raw_gu_, gate, gate_bytes);
     device_.upload(*raw_gu_, up, gate_bytes, gate_bytes);
     device_.upload(*raw_down_, down, row_bytes(Q3_K, 2048) * 4096);
-  } else {
+  } else if (upload_weights) {
     repack_pair_streamed(gu_weights_.layout, gate, gu_weights_.m() / 2, up, packed_.data());
     stats_.pack_ms += elapsed(); started = Clock::now();
     device_.upload(*gu_weights_.data, packed_.data(), gu_weights_.bytes());
@@ -94,10 +102,10 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
   }
   stats_.upload_ms += elapsed(); started = Clock::now();
   const std::string round_kernel = std::string(portable_rounding_ ? "q8k_codes_portable" : "q8k_codes") +
-                                   (device_.fp64_expert_math() ? "_fp64_math" : "");
+                                   (device_.fp64_expert_math() ? "_fp64_math" : device_.fp32_expert_math() ? "_fp32_math" : "");
   struct {uint32_t mode, n, uofs, tokens; float limit;} swiglu{0, 2048, 0, count, limit};
   auto record = [&](Recorder &r) {
-    if (gpu_pack_) {
+    if (gpu_pack_ && !expanded_weights_) {
       r.begin_concurrent();
       repack_gpu(r, gu_weights_.layout, View(*raw_gu_), View(*gu_weights_.data));
       repack_gpu(r, down_layout_, View(*raw_down_), View(*down_weights_.data));
@@ -109,10 +117,15 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
                                  (tile_columns_ == 64 ? "" : "_" + std::to_string(tile_columns_)) +
                                  (tile_rows_ == 64 ? "" : "_m32") +
                                  (device_.fp64_expert_scale() ? "_fp64_scale" : "") +
+                                 (device_.fp32_expert_math() ? "_fp32_math" : "") +
                                  (device_.native_expert_fma() ? "_native_fma" : "");
       const std::array<uint32_t, 5> push{w.k(), w.m(), w.layout.mp, count, uint32_t(w.layout.chunk_bytes())};
       if (lane_trace && w.layout.type == Q2_K)
         r.dispatch(kernel + "_trace", {View(*w.data), View(codes), View(metadata), View(*partial_), View(*gate_block_scale_)},
+                   push, (w.m() + tile_rows_ - 1) / tile_rows_, (count + tile_columns_ - 1) / tile_columns_, 8);
+      else if (expanded_weights_)
+        r.dispatch(kernel + "_expanded", {View(*w.data), View(codes), View(metadata), View(*partial_),
+                   View(w.layout.type == Q2_K ? *expanded_gu_ : *expanded_down_)},
                    push, (w.m() + tile_rows_ - 1) / tile_rows_, (count + tile_columns_ - 1) / tile_columns_, 8);
       else
         r.dispatch(kernel, {View(*w.data), View(codes), View(metadata), View(*partial_)},
@@ -131,7 +144,7 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
       r.dispatch(round_kernel, {View(*input_), View(*qinput_), View(*hits_), View(*input_meta_)},
                  std::array<uint32_t, 4>{count * 4096, 0, 0, count}, count * 4096 / 256);
     product(gu_weights_, *qinput_, *input_meta_, *gu_);
-    const std::string mix_kernel = device_.fp64_expert_math() ?
+    const std::string mix_kernel = device_.fp32_expert_math() ? "expert_mix_fp32_math_native_fma" : device_.fp64_expert_math() ?
         std::string("expert_mix_fp64_math") + (device_.native_expert_fma() ? "_native_fma" : "") : "expert_mix_canon";
     r.dispatch(mix_kernel,
                {View(*gu_), View(*hidden_), View(*hits_)}, swiglu, count * 2048 / 256);
@@ -168,6 +181,8 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
   catch (...) {if (!retained) device_.free_command(command); throw;}
   stats_.submit_wait_ms += std::chrono::duration<double, std::milli>(Clock::now() - submitted).count();
   if (!retained) device_.free_command(command);
+  if (completed_limit_ms && std::chrono::duration<double, std::milli>(Clock::now() - submitted).count() > completed_limit_ms)
+    throw std::runtime_error("expert panel exceeded completed submission limit");
   stats_.queued_work_ms += elapsed();
   if (trace) {
     auto capture = [&](const Buffer &buffer, std::vector<float> &values, size_t size) {
@@ -190,5 +205,68 @@ void ExpertBatch::run_impl(const uint8_t *gate, const uint8_t *up, const uint8_t
     dequantize(trace->qhidden, *hidden_meta_);
   }
   for (uint32_t t = 0; t < count; ++t) std::memcpy(outputs[t], output_->as<float>() + size_t(t) * 4096, 4096 * 4);
+}
+void ExpertBatch::run_quantized_panels(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
+                                      std::span<const uint8_t *const> inputs, std::span<float *const> outputs,
+                                      float limit, bool prepared) {
+  if (inputs.size() != outputs.size() || capacity_ > 256)
+    throw std::invalid_argument("bounded experts require matching rows and capacity <=256");
+  if (expanded_weights_ && !prepared) throw std::invalid_argument("expanded experts require prepared weights");
+  if (prepared) {
+    if (!upload_command_) throw std::invalid_argument("expert weights were not prepared");
+    finish_upload();
+    const Wait ready{upload_ready_, upload_value_};
+    // Both queues belong to the same family. The semaphore supplies the
+    // transfer-write -> compute-read memory dependency across queues.
+    device_.submit(VK_NULL_HANDLE, std::span(&ready, 1), {});
+  }
+  if (expanded_weights_) {
+    if (!expanded_gu_) expanded_gu_ = device_.buffer(size_t(4096) * 4096 * 4, Memory::Device);
+    if (!expanded_down_) expanded_down_ = device_.buffer(size_t(2048) * 4096 * 4, Memory::Device);
+    device_.run([&](Recorder &r) {
+      r.bounded(500);
+      repack_gpu(r, gu_weights_.layout, View(*raw_gu_), View(*gu_weights_.data));
+      repack_gpu(r, down_layout_, View(*raw_down_), View(*down_weights_.data));
+      for (const Matrix *w : {&gu_weights_, &down_weights_}) {
+        r.dispatch(w->layout.type == Q2_K ? "expert_expand_q2k" : "expert_expand_q3k",
+          {View(*w->data), {}, {}, View(w->layout.type == Q2_K ? *expanded_gu_ : *expanded_down_)},
+          std::array<uint32_t, 5>{w->k(), w->m(), w->layout.mp, 0, uint32_t(w->layout.chunk_bytes())},
+          (w->layout.mp + 255) / 256, w->k());
+      }
+    });
+  }
+  for (size_t first = 0; first < inputs.size(); first += capacity_) {
+    const size_t n = std::min<size_t>(capacity_, inputs.size() - first);
+    run_impl(gate, up, down, {}, inputs.subspan(first, n), outputs.subspan(first, n), limit, nullptr, !prepared && first == 0, 500);
+  }
+}
+void ExpertBatch::finish_upload() {
+  if (!upload_command_) return;
+  if (!device_.wait(upload_ready_, upload_value_)) fatal("expert staging upload timed out");
+  device_.free_command(upload_command_, true);
+  upload_command_ = VK_NULL_HANDLE;
+}
+void ExpertBatch::prepare_weights_async(const uint8_t *gate, const uint8_t *up, const uint8_t *down) {
+  if (!gpu_pack_ || upload_command_) throw std::invalid_argument("expert staging slot unavailable");
+  const auto started = std::chrono::steady_clock::now();
+  const size_t gu = row_bytes(Q2_K, 4096) * 2048, dn = row_bytes(Q3_K, 2048) * 4096;
+  if (!upload_staging_) upload_staging_ = device_.buffer(2 * gu + dn, Memory::Host);
+  if (!upload_ready_) upload_ready_ = device_.timeline();
+  auto *dst = upload_staging_->as<uint8_t>();
+  std::memcpy(dst, gate, gu); std::memcpy(dst + gu, up, gu); std::memcpy(dst + 2 * gu, down, dn);
+  auto command = device_.allocate_command(true);
+  try {
+    device_.begin(command);
+    Recorder r(device_, command);
+    r.begin_concurrent();
+    r.copy(View(*upload_staging_), View(*raw_gu_), 2 * gu);
+    r.copy(View(*upload_staging_, 2 * gu), View(*raw_down_), dn);
+    r.end_concurrent();
+    device_.end(command);
+  } catch (...) {device_.free_command(command, true); throw;}
+  const Wait ready{upload_ready_, ++upload_value_};
+  device_.submit(command, {}, std::span(&ready, 1), true);
+  upload_command_ = command;
+  stats_.upload_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
 }
 } // namespace strata::vulkan::fast

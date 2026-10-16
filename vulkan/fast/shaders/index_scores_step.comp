@@ -9,10 +9,18 @@ layout(binding = 1, std430) readonly buffer Q { float q[]; };       // heads*dim
 layout(binding = 2, std430) readonly buffer W { float w[]; };       // heads at wofs
 layout(binding = 3, std430) writeonly buffer Scores { float scores[]; };
 layout(binding = 4, std430) readonly buffer Step { uint pos; } step;
-layout(push_constant) uniform P { uint heads, dim, pool, qofs, wofs, qstride, wstride, sstride; } p;  // heads == 32, dim == 128; token = workgroup y
+layout(push_constant) uniform P { uint heads, dim, pool, qofs, wofs, qstride, wstride, sstride;
+#ifdef TOKEN_OFFSET
+ uint first;
+#endif
+} p;  // heads == 32, dim == 128; token = workgroup y
 shared vec4 qs[32 * 32];
 void main() {
+#ifdef TOKEN_OFFSET
+  const uint t = gl_LocalInvocationID.x, tok = p.first + gl_WorkGroupID.y, pools = (step.pos + tok + 1) / p.pool;
+#else
   const uint t = gl_LocalInvocationID.x, tok = gl_WorkGroupID.y, pools = (step.pos + tok + 1) / p.pool;
+#endif
   const uint qo = p.qofs + tok * p.qstride, wo = p.wofs + tok * p.wstride, so = tok * p.sstride;
   if (gl_WorkGroupID.x * 8 >= pools) return;
   for (uint i = t; i < 32 * 32; i += 256)

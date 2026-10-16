@@ -1,5 +1,8 @@
 #version 450
-#ifdef FP64_SCALE
+#ifdef FP32_MATH
+#extension GL_GOOGLE_include_directive : require
+#include "fp32_native.glsl"
+#elif defined(FP64_SCALE)
 #extension GL_ARB_gpu_shader_fp64 : require
 #extension GL_GOOGLE_include_directive : require
 #include "fp64_round.glsl"
@@ -15,6 +18,9 @@ layout(binding = 0, std430) readonly buffer WeightVectors { uvec4 w4[]; };
 layout(binding = 1, std430) readonly buffer Codes { float x[]; };
 layout(binding = 2, std430) readonly buffer Metadata { float meta[]; };
 layout(binding = 3, std430) writeonly buffer Partial { float part[]; };
+#ifdef EXPANDED_WEIGHTS
+layout(binding = 4, std430) readonly buffer Expanded { float expanded[]; };
+#endif
 #ifdef TRACE_BLOCK_SCALE
 layout(binding = 4, std430) writeonly buffer BlockTrace { float block_trace[]; };
 #endif
@@ -49,7 +55,10 @@ layout(push_constant) uniform P {uint K, M, Mp, N, side;} p;
 #else
 #error Unsupported expert column tile
 #endif
-#ifdef FP64_SCALE
+#if defined(FP64_SCALE) || defined(FP32_MATH)
+#ifdef FP32_MATH
+#define fp32_fma_rne native_fp32_fma
+#endif
 Panel scale_fma(Panel a, Panel b, Panel c) {
   return Panel(fp32_fma_rne(a.x, b.x, c.x), fp32_fma_rne(a.y, b.y, c.y),
                fp32_fma_rne(a.z, b.z, c.z), fp32_fma_rne(a.w, b.w, c.w));
@@ -101,6 +110,12 @@ float decoded_integer(uint s, uint dot_lane, uvec4 header, uint q0, uint q1, uin
 #endif
 }
 #endif
+#ifdef EXPAND_INTEGER
+void main() {
+  const uint row = gl_GlobalInvocationID.x, k = gl_WorkGroupID.y;
+  if (row < p.Mp) part[k * p.Mp + row] = row < p.M ? integer_weight(k / 256u, row, k % 256u) : 0;
+}
+#else
 shared float wt[32][MTILE], xt[NTILE][33];
 shared float wd[MTILE], wm[MTILE], min0[MTILE], min1[MTILE];
 shared float xd[64], sum0[64], sum1[64];
@@ -122,7 +137,10 @@ void main() {
     if (t < 128u) {
 #endif
     const uint row = row0 + t % ROW_STEP;
-#ifdef VECTOR_WEIGHT_LOADS
+#if defined(EXPANDED_WEIGHTS)
+    for (uint k = t / ROW_STEP; k < 32u; k += 4u)
+      wt[k][t % ROW_STEP] = expanded[(b * 256u + (k / 4u) * 32u + 4u * lane + k % 4u) * p.Mp + row];
+#elif defined(VECTOR_WEIGHT_LOADS)
     if (row < p.M) {
       // All eight K subblocks reuse these metadata and payload words.
       // Each wave selects one byte of the same four-byte dot-lane group.
@@ -267,3 +285,5 @@ void main() {
     }
   }
 }
+
+#endif // EXPAND_INTEGER

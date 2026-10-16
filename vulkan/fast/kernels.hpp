@@ -62,7 +62,8 @@ size_t gemv_scratch_floats(const Matrix &, uint32_t columns);
 // the K split and per-column arithmetic while reusing decoded weight blocks.
 void gemv(Recorder &, const Matrix &, View x, View y, const GemvArgs & = {}, uint32_t panel_columns = 4);
 // Tiled matrix product for larger prefill batches, with the same strides.
-void gemm(Recorder &, const Matrix &, View x, View y, const GemvArgs &, uint32_t tile_columns = 64);
+// transposed_f32 reads physical [K][M] weights with the logical [M][K] layout.
+void gemm(Recorder &, const Matrix &, View x, View y, const GemvArgs &, uint32_t tile_columns = 64, bool coalesced_f32 = false, bool transposed_f32 = false);
 // Keep dense activation dispatches and bound views within a 1024-token slice.
 // The original shader and single dispatch are retained at smaller widths.
 void swiglu(Recorder &, View gate_up, View hidden, uint32_t units, uint32_t tokens, float limit);

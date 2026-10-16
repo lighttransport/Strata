@@ -100,6 +100,9 @@ endforeach()
 option(STRATA_VULKAN_NATIVE_FMA "Build optional VK_KHR_shader_fma expert variants" OFF)
 if(STRATA_VULKAN_NATIVE_FMA)
   list(APPEND _glm_vk_fast_shaders
+    "expert_mix_fp32_math_native_fma|expert_mix|-DCANON_SWIGLU -DFP32_MATH"
+    "q8k_codes_fp32_math|q8k_round|-DCODES_AND_SUMS -DFP32_MATH"
+    "q8k_codes_portable_fp32_math|q8k_round|-DCODES_AND_SUMS -DPORTABLE_REDUCTION -DFP32_MATH"
     "fma_oracle_fp64_scale_native_fma|fma_oracle|-DFP64_SCALE -DNATIVE_FMA"
     "expert_mix_fp64_math_native_fma|expert_mix|-DCANON_SWIGLU -DFP64_MATH -DNATIVE_FMA")
   foreach(_type IN ITEMS q2k q3k)
@@ -110,6 +113,8 @@ if(STRATA_VULKAN_NATIVE_FMA)
         set(_loader_define "-DVECTOR_WEIGHT_LOADS")
       endif()
       list(APPEND _glm_vk_fast_shaders
+        "expert_gemm_${_type}_canon${_loader}_fp32_math_native_fma_expanded|expert_gemm_canon|-DTYPE_${_type_define} -DFP32_MATH -DEXPANDED_WEIGHTS ${_loader_define}"
+        "expert_gemm_${_type}_canon${_loader}_fp32_math_native_fma|expert_gemm_canon|-DTYPE_${_type_define} -DFP32_MATH ${_loader_define}"
         "expert_gemm_${_type}_canon${_loader}_fp64_scale_native_fma|expert_gemm_canon|-DTYPE_${_type_define} -DFP64_SCALE -DNATIVE_FMA ${_loader_define}")
       if(_type STREQUAL "q2k")
         list(APPEND _glm_vk_fast_shaders
@@ -141,6 +146,24 @@ foreach(_type IN ITEMS q2k q3k)
     "expert_gemm_${_type}_canon_fp64_scale|expert_gemm_canon|-DTYPE_${_type_define} -DFP64_SCALE"
     "expert_gemm_${_type}_canon_vector_fp64_scale|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DFP64_SCALE")
 endforeach()
+foreach(_type IN ITEMS q4k q6k q50)
+  string(TOUPPER "${_type}" _define)
+  list(APPEND _glm_vk_fast_shaders "expand_${_type}|gemm_tiled|-DTYPE_${_define} -DEXPAND_WEIGHTS")
+endforeach()
+list(APPEND _glm_vk_fast_shaders "mla_prefill_tiled|mla_prefill_tiled|")
+list(APPEND _glm_vk_fast_shaders "mla_gather|mla_gather|" "mla_softmax|mla_softmax|")
+list(APPEND _glm_vk_fast_shaders
+  "expert_expand_q2k|expert_gemm_canon|-DTYPE_Q2K -DEXPAND_INTEGER"
+  "expert_expand_q3k|expert_gemm_canon|-DTYPE_Q3K -DEXPAND_INTEGER")
+list(APPEND _glm_vk_fast_shaders
+  "gemm_f32_coalesced|gemm_tiled|-DTYPE_F32 -DCOALESCED_F32"
+  "gemm_f32_wide_coalesced|gemm_tiled|-DTYPE_F32 -DCOALESCED_F32 -DNTILE=128"
+  "gemm_f32_wider_coalesced|gemm_tiled|-DTYPE_F32 -DCOALESCED_F32 -DNTILE=256"
+  "index_key_panel|index_key|-DTOKEN_OFFSET"
+  "index_scores_step_panel|index_scores_step|-DTOKEN_OFFSET"
+  "gemm_f32_transposed|gemm_tiled|-DTYPE_F32 -DTRANSPOSED_F32"
+  "gemm_f32_wide_transposed|gemm_tiled|-DTYPE_F32 -DTRANSPOSED_F32 -DNTILE=128"
+  "gemm_f32_wider_transposed|gemm_tiled|-DTYPE_F32 -DTRANSPOSED_F32 -DNTILE=256")
 set(_fast_outputs)
 set(_fast_registry "#pragma once\n#include <span>\n#include <string>\n")
 set(_fast_lookup "inline std::span<const unsigned char> fast_shader(const std::string &name) {\n")
@@ -157,6 +180,7 @@ foreach(_entry IN LISTS _glm_vk_fast_shaders)
     COMMAND ${CMAKE_COMMAND} -DINPUT=${_spv} -DOUTPUT=${_hdr} -DNAME=fast_${_name} -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/${_source}.comp ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/common.glsl
             ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/fp64_round.glsl
+            ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/fp32_native.glsl
             ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake VERBATIM)
   list(APPEND _fast_outputs ${_hdr})
   string(APPEND _fast_registry "#include \"fast_${_name}_spv.hpp\"\n")
@@ -201,3 +225,19 @@ target_link_libraries(glm_vulkan_fast_window_check PRIVATE strata_glm_vulkan_fas
 add_executable(glm_vulkan_fast_ref fast/reference.cpp)
 target_link_libraries(glm_vulkan_fast_ref PRIVATE strata_artifact ggml strata_kernels_cpu)
 target_include_directories(glm_vulkan_fast_ref PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(glm_vulkan_fast_mla_prefill_check fast/mla_prefill_check.cpp)
+target_link_libraries(glm_vulkan_fast_mla_prefill_check PRIVATE strata_glm_vulkan_fast)
+
+target_sources(strata_glm_vulkan_fast PRIVATE fast/mla_prefill.cpp)
+
+# The rejected CPU panel prototype is available only to the numerical check.
+add_executable(glm_vulkan_fast_prefill_expert_check fast/prefill_expert_check.cpp fast/cpu_prefill.cpp)
+target_link_libraries(glm_vulkan_fast_prefill_expert_check PRIVATE strata_glm_vulkan_fast strata_kernels_cpu)
+
+add_executable(glm_vulkan_fast_prefill_schedule_check fast/prefill_schedule_check.cpp)
+target_include_directories(glm_vulkan_fast_prefill_schedule_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(STRATA_BUILD_TESTS)
+  add_test(NAME glm_vulkan_fast_prefill_schedule_check COMMAND glm_vulkan_fast_prefill_schedule_check)
+  set_tests_properties(glm_vulkan_fast_prefill_schedule_check PROPERTIES LABELS "glm;vulkan;cpu")
+endif()

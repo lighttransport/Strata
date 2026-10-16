@@ -56,6 +56,13 @@ class Device;
 class Recorder {
 public:
   Recorder(Device &, VkCommandBuffer);
+  // Immediate, bounded prefill recording. Each dispatch completes before the
+  // command buffer is reset; copies are drained at the next dispatch or flush.
+  void bounded(uint32_t limit_ms, bool profile = false) { completed_limit_ms_ = limit_ms; bounded_profile_ = profile; }
+  void flush();
+  double submission_ms = 0, maximum_submission_ms = 0;
+  uint64_t submissions = 0;
+  std::map<std::string, double> kernel_ms;
   void dispatch(const std::string &kernel, std::initializer_list<View> bindings,
                 const void *push, uint32_t push_bytes, uint32_t gx,
                 uint32_t gy = 1, uint32_t gz = 1);
@@ -84,6 +91,8 @@ private:
   Device &device_;
   VkCommandBuffer command_;
   bool concurrent_ = false, pending_ = false;
+  uint32_t completed_limit_ms_ = 0;
+  bool bounded_profile_ = false;
 };
 
 struct Wait {
@@ -162,6 +171,7 @@ public:
   bool shared_heap_large() const { return shared_large_; }
   bool fp64_expert_scale() const { return fp64_expert_scale_; }
   bool fp64_expert_math() const { return fp64_expert_math_; }
+  bool fp32_expert_math() const { return fp32_expert_math_; }
   bool native_expert_fma() const { return native_expert_fma_; }
   uint32_t max_groups_x() const { return max_groups_x_; }
   VkQueryPool queries() const { return queries_; }
@@ -172,6 +182,7 @@ private:
   friend class Recorder;
   bool fp64_expert_scale_ = false;
   bool fp64_expert_math_ = false;
+  bool fp32_expert_math_ = false;
   bool native_expert_fma_ = false;
   VkInstance instance_ = VK_NULL_HANDLE;
   VkPhysicalDevice physical_ = VK_NULL_HANDLE;

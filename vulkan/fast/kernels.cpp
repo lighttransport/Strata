@@ -253,7 +253,8 @@ void gemv(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a, uint3
 }
 size_t gemv_scratch_floats(const Matrix &w, uint32_t columns) { return size_t(16) * w.m() * columns; }
 
-void gemm(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a, uint32_t tile_columns) {
+void gemm(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a, uint32_t tile_columns, bool coalesced_f32, bool transposed_f32) {
+  require(!transposed_f32 || w.layout.type == F32, "transposed GEMM requires FP32 weights");
   require(tile_columns == 64 || tile_columns == 128 || tile_columns == 256, "Vulkan fast GEMM tile width invalid");
   require(a.columns >= 1 && a.columns <= 4096, "Vulkan fast GEMM column count invalid");
   const uint32_t xs = a.xs ? a.xs : w.k() * w.heads, ys = a.ys ? a.ys : w.m() * w.heads;
@@ -279,8 +280,11 @@ void gemm(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a, uint3
   case Q3_K: kernel = "gemm_q3k"; break;
   default: throw std::invalid_argument("Vulkan fast GEMM type unsupported");
   }
-  uint32_t kparts = 1;
-  if (w.layout.type == F32 && w.heads == 1 && a.scratch.buffer)
+  uint32_t kparts = a.kparts ? a.kparts : 1;
+  require(kparts <= 16 && (kparts & (kparts - 1)) == 0 &&
+              (kparts == 1 || (w.layout.type == F32 && w.heads == 1 && a.scratch.buffer)),
+          "Vulkan GEMM K split invalid");
+  if (!a.kparts && w.layout.type == F32 && w.heads == 1 && a.scratch.buffer)
     while ((w.m() + 63) / 64 * ((a.columns + tile_columns - 1) / tile_columns) * kparts < 128 &&
             kparts < 16 && w.k() >= kparts * 64) kparts *= 2;
   View part = kparts > 1 ? a.scratch : y;
@@ -289,7 +293,8 @@ void gemm(Recorder &r, const Matrix &w, View x, View y, const GemvArgs &a, uint3
     uint32_t K, M, Mp, N, xs, ys, xofs, yofs, accumulate, hb, hx, hy, side, kparts;
   } push{w.k(), w.m(), w.layout.mp, a.columns, xs, ys, a.xofs, a.yofs, a.accumulate ? 1u : 0u,
          uint32_t(w.layout.head_bytes()), hx, hy, uint32_t(w.layout.chunk_bytes()), kparts};
-  r.dispatch(std::string(kernel) + (tile_columns == 256 ? "_wider" : tile_columns == 128 ? "_wide" : ""), {View(*w.data), x, y, part}, push,
+  r.dispatch(std::string(kernel) + (tile_columns == 256 ? "_wider" : tile_columns == 128 ? "_wide" : "") +
+             (transposed_f32 ? "_transposed" : coalesced_f32 && w.layout.type == F32 ? "_coalesced" : ""), {View(*w.data), x, y, part}, push,
              (w.m() + 63) / 64, (a.columns + tile_columns - 1) / tile_columns, w.heads * kparts);
   if (kparts > 1) {
     struct {uint32_t M, N, ys, yofs, parts, accumulate;} reduce{w.m(), a.columns, ys, a.yofs, kparts, a.accumulate ? 1u : 0u};

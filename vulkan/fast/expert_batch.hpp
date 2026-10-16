@@ -25,7 +25,7 @@ struct ExpertBatchStats {
 class ExpertBatch {
 public:
   ExpertBatch(Device &, uint32_t capacity, bool portable_rounding = false, bool gpu_pack = false,
-              bool vector_weights = false, uint32_t tile_columns = 64, bool replay = false, uint32_t tile_rows = 64);
+              bool vector_weights = false, uint32_t tile_columns = 64, bool replay = false, uint32_t tile_rows = 64, bool expanded_weights = false);
   ~ExpertBatch();
   void run(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
            std::span<const float *const> inputs, std::span<float *const> outputs,
@@ -35,13 +35,18 @@ public:
   void run_quantized(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
                      std::span<const uint8_t *const> inputs, std::span<float *const> outputs,
                      float swiglu_limit, ExpertBatchTrace *trace = nullptr);
+  void run_quantized_panels(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
+                            std::span<const uint8_t *const> inputs, std::span<float *const> outputs,
+                            float swiglu_limit, bool prepared = false);
+  void prepare_weights_async(const uint8_t *gate, const uint8_t *up, const uint8_t *down);
   const ExpertBatchStats &stats() const { return stats_; }
   uint32_t capacity() const { return capacity_; }
 private:
   Device &device_;
   uint32_t capacity_;
   uint32_t tile_columns_, tile_rows_;
-  bool portable_rounding_, gpu_pack_, vector_weights_, replay_;
+  bool portable_rounding_, gpu_pack_, vector_weights_, replay_, expanded_weights_;
+  std::unique_ptr<Buffer> expanded_gu_, expanded_down_;
   using CommandKey = std::tuple<uint32_t, uint32_t, bool>;
   std::map<CommandKey, VkCommandBuffer> commands_;
   ExpertBatchStats stats_;
@@ -54,8 +59,13 @@ private:
   std::unique_ptr<Buffer> input_, qinput_, gu_, hidden_, qhidden_, output_, hits_;
   std::unique_ptr<Buffer> input_meta_, hidden_meta_, partial_;
   std::unique_ptr<Buffer> raw_gu_, raw_down_;
+  std::unique_ptr<Buffer> upload_staging_;
+  VkCommandBuffer upload_command_ = VK_NULL_HANDLE;
+  VkSemaphore upload_ready_ = VK_NULL_HANDLE;
+  uint64_t upload_value_ = 0;
+  void finish_upload();
   void run_impl(const uint8_t *, const uint8_t *, const uint8_t *,
                 std::span<const float *const>, std::span<const uint8_t *const>,
-                std::span<float *const>, float, ExpertBatchTrace *);
+                std::span<float *const>, float, ExpertBatchTrace *, bool upload_weights = true, uint32_t completed_limit_ms = 0);
 };
 } // namespace strata::vulkan::fast

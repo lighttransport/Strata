@@ -2,6 +2,7 @@
 #include "fast_shaders.hpp"
 #include "strata/host/glm_env.h"
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -133,6 +134,8 @@ Device::Device(const std::string &filter, size_t budget, bool allow_cpu) : budge
     e2.features.shaderInt64 = f2.features.shaderInt64;
     fp64_expert_math_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_FP64_MATH");
     fp64_expert_scale_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_FP64_SCALE") || fp64_expert_math_;
+    fp32_expert_math_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_FP32_MATH");
+    require(!fp32_expert_math_ || !fp64_expert_scale_, "FP32 expert math cannot be combined with FP64 expert modes");
     require(!fp64_expert_scale_ || f2.features.shaderFloat64, "Vulkan FP64 expert scale diagnostic unavailable");
     e2.features.shaderFloat64 = fp64_expert_scale_ ? VK_TRUE : VK_FALSE;
     const bool robust = strata_env_is_one("STRATA_VULKAN_FAST_ROBUST_BUFFERS");
@@ -141,7 +144,8 @@ Device::Device(const std::string &filter, size_t budget, bool allow_cpu) : budge
     const char *extensions[] = {VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, nullptr};
     uint32_t enabled_extensions = 1;
     native_expert_fma_ = strata_env_is_one("STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA");
-    require(!native_expert_fma_ || fp64_expert_math_, "Native expert FMA requires full FP64 expert math mode");
+    require(!native_expert_fma_ || fp64_expert_math_ || fp32_expert_math_, "Native expert FMA requires FP64 or FP32 expert math mode");
+    require(!fp32_expert_math_ || native_expert_fma_, "FP32 expert math requires native expert FMA");
 #if defined(STRATA_VULKAN_NATIVE_FMA) && defined(VK_KHR_shader_fma)
     VkPhysicalDeviceShaderFmaFeaturesKHR efma{};
     efma.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FMA_FEATURES_KHR;
@@ -539,6 +543,22 @@ const Pipeline &Device::pipeline(const std::string &name) {
 }
 
 Recorder::Recorder(Device &d, VkCommandBuffer c) : device_(d), command_(c) {}
+void Recorder::flush() {
+  require(completed_limit_ms_ > 0, "flush requires bounded recording");
+  barrier();
+  host_visible();
+  device_.end(command_);
+  const auto start = std::chrono::steady_clock::now();
+  device_.submit_wait(command_);
+  const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+  submission_ms += ms; maximum_submission_ms = std::max(maximum_submission_ms, ms); ++submissions;
+  // A completed slow command is safe to release. This is not preemption.
+  if (ms > completed_limit_ms_)
+    throw std::runtime_error("bounded prefill submission exceeded completed-time limit: " + std::to_string(ms) + " ms");
+  // begin() resets the completed command buffer before starting recording.
+  device_.begin(command_);
+  barrier();
+}
 void Recorder::dispatch(const std::string &kernel, std::initializer_list<View> bindings, const void *push,
                         uint32_t push_bytes, uint32_t gx, uint32_t gy, uint32_t gz) {
   require(bindings.size() <= 8 && push_bytes <= 128 && gx > 0 && gy > 0 && gz > 0 &&
@@ -569,13 +589,26 @@ void Recorder::dispatch(const std::string &kernel, std::initializer_list<View> b
   }
   if (n) device_.push_descriptors_(command_, VK_PIPELINE_BIND_POINT_COMPUTE, device_.layout_, 0, n, writes.data());
   if (push_bytes) vkCmdPushConstants(command_, device_.layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0, push_bytes, push);
+  if (bounded_profile_) {
+    device_.host_reset_queries(0, 2);
+    vkCmdWriteTimestamp(command_, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, device_.queries_, 0);
+  }
   vkCmdDispatch(command_, gx, gy, gz);
+  if (bounded_profile_) vkCmdWriteTimestamp(command_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, device_.queries_, 1);
   pending_ = true;
   if (names && next) {
     require(*next < Device::query_capacity, "Vulkan profile timestamp capacity exceeded");
     if (!concurrent_) barrier();
     vkCmdWriteTimestamp(command_, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, device_.queries_, (*next)++);
     names->push_back(kernel);
+  }
+  if (completed_limit_ms_) {
+    try {flush();}
+    catch (const std::exception &e) {throw std::runtime_error(kernel + ": " + e.what());}
+  }
+  if (bounded_profile_) {
+    const auto times = device_.read_timestamps(0, 2);
+    kernel_ms[kernel] += (times[1] - times[0]) / 1e6;
   }
 }
 void Recorder::begin_concurrent() {

@@ -871,6 +871,32 @@ candidate. No system driver was installed. Full HumanEval, 100+ prefill and
 combined decode/quality qualification remain pending. Protocol and hashes
 are in `docs/benchmarks/glm_vulkan_native_fma_rx570_20261016.json`.
 
+`STRATA_VULKAN_FAST_EXPERT_FP32_MATH=1` is an experimental alternative to
+the FP64 expert modes. It requires the native-FMA build option above,
+`STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA=1`, streamed GPU experts and 64x64
+expert tiles. Clear both `STRATA_VULKAN_FAST_EXPERT_FP64_MATH` and
+`STRATA_VULKAN_FAST_EXPERT_FP64_SCALE` when selecting it. The seven new
+expert shaders contain no FP64 types: block FMAs use `OpFmaKHR`, and divisions
+use FP32 with one FMA residual correction. This division is approximate;
+it does not promise correctly rounded results for every IEEE input.
+Both build configurations passed, and 234 pre-existing SPIR-V files across
+the native and portable builds remained byte-identical.
+The retained executable passed twelve whole-expert CPU byte comparisons and
+all three unchanged training oracles (159, 267 and 456 generated tokens).
+With regular 64-column main GEMM, sixteen GPU experts and the CPU Q2 LUT,
+the same executable measured 43.6616, 43.4264 and 43.6587 tok/s on the warmed
+512-token repetitive prompt (median 43.6587). These checks do not qualify its
+full HumanEval score or coding throughput.
+
+RX570 experiments also tried INT8 activation/INT16 weight storage with
+INT32 expert accumulation, packed Q4/INT8 main GEMM, approximate FP32 expert
+GEMM and wider FP32 tiles. All were slower than the 64-column FP32 main-GEMM
+control, so their production edits were removed. The driver reported no
+FP16 arithmetic support or accelerated integer dot products. These results
+do not establish 100+ prefill or full HumanEval qualification. Measurements,
+numerical errors, rejected variants and source hashes are recorded in
+`docs/benchmarks/glm_vulkan_integer_prefill_rx570_20261016.json`.
+
 `STRATA_VULKAN_FAST_PREFILL_GPU_MTILE=32|64` selects the expert row tile.
 The 32-row variant halves each workgroup's row accumulators and weight
 scratch while retaining the dot and scale-operation order. Four software
@@ -1025,3 +1051,89 @@ These passes did not reproduce a memory or arithmetic error in the tested
 workloads. The earlier model timeout's cause and inference quality remain
 unresolved. Compact counts and hashes are in
 `docs/benchmarks/glm_vulkan_hw_diag_rx570_20261016.json`.
+
+### Experimental long-window FP32 prefill
+
+`STRATA_VULKAN_FAST_PREFILL_PIPELINE=1` enables a separate prefill executor
+with logical chunks up to 8192 tokens. It requires canonical expert summation,
+split-prefix prefill, and a chunk larger than four tokens. It keeps projection
+and expert token panels at 256 and recurrent KDA panels at 128. Each main
+dispatch is submitted separately; a completed submission above the configured
+limit fails the run. The limit cannot exceed 500 ms. This does not preempt a
+stalled shader or replace the external fault guard.
+
+The executor retains a CPU coordinator, overlaps CPU experts with the shared
+FFN, and alternates two expert upload slots. Expert outputs still return through
+the host mailbox for canonical merging. Full-window activation buffers remain
+allocated; accepting an 8192-token setting does not establish that every GPU
+budget can hold it. The normal executor and decode path remain the defaults.
+
+The following switches require the pipeline and default to off:
+
+| Switch suffix after `STRATA_VULKAN_FAST_` | Experimental behavior |
+| --- | --- |
+| `PREFILL_MLA_GEMM=1` | Gather eight queries and compute attention with two FP32 GEMMs and softmax. The value GEMM reads transposed weights without a second cache copy. Changes reduction order. |
+| `PREFILL_TILED_MLA=1` | Share key tiles across four heads with online softmax. Mutually exclusive with MLA GEMM. |
+| `PREFILL_EXPAND_WEIGHTS=1` | Expand Q4 projection matrices into reusable FP32 scratch before token panels. |
+| `PREFILL_EXPERT_EXPAND=1` | Expand expert integer weight codes into exact FP32 tables while retaining canonical scaling and summation. Requires the native-FMA build and driver support. |
+| `PREFILL_BALANCE=1` | Choose a deterministic prefix of experts ordered by route count using supplied CPU, GPU, upload, and shared-FFN costs. |
+
+Balancing requires positive `PREFILL_CPU_ROUTE_US` and `PREFILL_GPU_ROUTE_US`
+under the same prefix. `PREFILL_UPLOAD_US` and
+`PREFILL_SHARED_US_PER_TOKEN` are nonnegative and default to zero. These are
+cost-model inputs, not automatically calibrated hardware specifications. The
+existing GPU minimum-token and maximum-expert settings still bound assignment.
+Calibrate with training prompts before freezing the candidate for holdouts.
+
+The CPU panel prototype failed the retained relative-L2 gate of `2e-4` and
+cannot be selected by the engine. It is linked only into
+`glm_vulkan_fast_prefill_expert_check` for investigation. The GPU expanded
+expert path passed 14 byte-exact cases spanning two experts and 1–257 tokens,
+including a panel boundary. MLA primitives passed comparison with the original
+GPU kernel and an independent CPU oracle, but primitive agreement alone does
+not qualify whole-model quality after changing reduction order.
+
+`tools/glm_vulkan_prefill_fixtures.py` freezes implementation, debugging, and
+repository-completion prompts at approximately 2K, 4K, and 8K tokens, using
+repository source without repeated padding or HumanEval inputs. Its manifest
+records exact lengths and source/prompt hashes. Keep generated prompts, model
+outputs, and local driver configuration in an ignored benchmark directory.
+Run them sequentially through `tools/glm_guarded_run.py`; qualify performance
+with a warmup and three measured trials. Neither an 80 tok/s result nor a
+140/164 HumanEval score has been established for this pipeline.
+
+On the RX570 16 GiB / Ryzen 9 3950X, the final experimental kernel set completed
+an 8192-token implementation prompt in 237565 ms (34.4832 tok/s), with no
+recorded GPU faults and a largest main submission of 94.9469 ms. This was a
+cold correctness run, not a qualified throughput measurement. The earlier
+8K attempt stopped at the unchanged 500 ms completed-time limit; token panels
+were then added to index-key and index-score processing. The repeated 4K run
+of an earlier prototype observed 34.5203 tok/s median but was disqualified
+by background compiler activity. These results do not meet the target, and
+the executor remains opt-in. Compact evidence and rejected experiments are in
+`docs/benchmarks/glm_vulkan_pipeline_prefill_rx570_20261016.json`.
+
+The reordered-MLA candidate subsequently passed only two of three frozen
+training tasks: `reduce_routed` emitted C++ that failed compilation. It was
+rejected before the HumanEval holdout. Keep `PREFILL_MLA_GEMM` and
+`PREFILL_TILED_MLA` off for the scheduling-only fallback; passing primitive
+error checks is insufficient to promote either changed attention algorithm.
+The fallback passed all three frozen training tasks, with generated token IDs
+identical to the retained FP32 V23 baseline in each case. This is a training
+regression check, not a full HumanEval score or long-context quality result.
+
+The original-MLA fallback completed the following cold resource/fault checks
+with no recorded GPU faults. Timings are unqualified; the 2K debugging prompt
+differs from the implementation prompts used at 4K and 8K.
+
+| Prompt tokens | Observed tok/s | Largest main submission (ms) |
+| ---: | ---: | ---: |
+| 2048 | 27.7126 | 354.039 |
+| 4096 | 27.6012 | 384.101 |
+| 8192 | 26.5081 | 388.345 |
+
+These long checks used cost-based CPU/GPU assignment, no speculative decoding,
+and no decode cache. Training used the retained 512-token chunk, fixed maximum
+of 16 GPU experts, and the existing MTP/cache protocol. Neither the full
+HumanEval gate nor the decode-performance regression gate was run for a new
+performance-qualified candidate. The retained executor remains the default.

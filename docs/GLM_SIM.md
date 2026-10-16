@@ -357,3 +357,137 @@ config, kernel parameters are the Flash TR16 calibration; see
 `--model mimo_flash` and `--model mimo_pro` add MiMo-V2.6 Flash (309B, 47 MoE layers,
 256 experts, hidden 4096) and Pro (1T, 69 MoE layers, 384 experts, hidden 6144) with
 `mimof*` / `mimop*` packs; see `docs/MIMO_V26_TR16_B550.md`. Same caveats as GLM-5.3.
+
+## RX570 FP32 prefill recalibration (2026-10-16)
+
+The retained Vulkan FP32 candidate measures **43.6587 tok/s** on the 512-token
+repetitive prompt (43.6616 / 43.4264 / 43.6587, one untimed warmup, three measured
+trials). Hardware: modified RX570 16 GiB, Ryzen 9 3950X, 64 GiB DDR4-2666,
+12 CPU workers; isolated RADV 26.2. The candidate uses 16 streamed GPU experts
+per MoE layer, CPU Q2 LUT, FP32 expert math/native FMA and main GEMM64.
+The source and quality evidence are in
+[the experiment record](benchmarks/glm_vulkan_integer_prefill_rx570_20261016.json).
+FP32 implementation is retained; this recalibration changes no engine behavior.
+
+The old `rx570_vulkan_calibration_20261014.json` describes sequential prefill
+and is preserved as historical evidence. It must not forecast this batched path.
+The new input is `tools/sim/data/rx570_vulkan_prefill_fp32_20261016.json`;
+[scenario outputs](benchmarks/glm_vulkan_prefill_forecast_rx570_20261016.json)
+are reproducible without a GPU or model:
+
+```bash
+python3 tools/sim/vulkan.py prefill \
+  --calibration tools/sim/data/rx570_vulkan_prefill_fp32_20261016.json
+python3 tools/sim/vulkan.py prefill \
+  --calibration tools/sim/data/rx570_vulkan_prefill_fp32_20261016.json \
+  --gpu-speedup 1.5 --cpu-speedup 1.5
+```
+
+To rebuild the calibration from local frozen evidence, use `calibrate-prefill
+--prefix build-vulkan-rx570-native/integer-prefill-20261016/gpu512-fp32-v23-selected-run
+--output <new-file.json>`. It requires completed, performance-qualified evidence,
+checks the three result/log trial timings, excludes warmup, and records evidence,
+executable, configuration and prompt SHA256 hashes. Raw logs are kept locally.
+
+### Measured phase costs and overlap
+
+Median costs in milliseconds per input token:
+
+| Component | ms/token | Accounting |
+|---|---:|---|
+| Attention, dense prefix, head | 9.9684 | Serial GPU component |
+| CPU expert jobs | 10.8734 | Overlaps streamed GPU expert branch |
+| GPU expert upload/staging | 3.1323 | Serial within GPU expert branch |
+| GPU expert queued work | 7.1709 | Includes submission, packing and waits |
+| Expert preparation | 0.6760 | Before overlapped branches |
+| Shared FFN GPU segments | 1.0161 | Concurrent; not added again |
+| Full measured prefill | 22.9049 | 43.6587 tok/s |
+
+For each trial, the simulator uses:
+
+```
+wall/token = serial_GPU / GPU_speedup + fixed_residual
+           + sum_layers(prepare + max(CPU / CPU_speedup,
+                                      upload / upload_speedup + queued_GPU / GPU_speedup)) / 512
+```
+
+Residual is fitted separately for each trial, about 1 ms/token. It absorbs
+unattributed host, copy, scheduling and synchronization costs. Shared FFN is
+submitted concurrently with expert processing and is already reflected in
+branch wall times; adding it again double-counts that work. Per-layer maxima
+preserve imbalance. GPU queued work is a wall timer, not a shader-only timer;
+scaling all of it is optimistic. Residual/preparation costs remain fixed.
+This is an Amdahl sensitivity model fitted on three repeats, not independent
+validation or a new hardware benchmark. It does not predict other chunk sizes,
+route assignments, CPU/GPU splits or context lengths.
+
+| Hypothetical improvement | Predicted prefill tok/s |
+|---|---:|
+| Current measured fit | 43.66 |
+| GPU compute 1.5x, CPU unchanged | 52.15 |
+| CPU and GPU compute 1.25x, uploads unchanged | 52.66 |
+| CPU and GPU compute 1.5x, uploads unchanged | 60.63 |
+| CPU and GPU compute 2x, uploads unchanged | 74.30 |
+| CPU and GPU compute 3x, uploads unchanged | 95.10 |
+| CPU and GPU compute 3.297x, uploads unchanged | 100.00 |
+| CPU, GPU compute and uploads all 3x | 114.14 |
+| GPU compute time approaches zero, CPU/uploads unchanged | 79.75 |
+
+**Planning estimate:** roughly 50–60 tok/s is a conditional incremental target
+if both compute branches improve 25–50%; 70–80 requires much larger gains.
+100+ is a substantial algorithm/scheduling target, not supported as an
+incremental kernel-only forecast. These ranges are engineering judgments based
+on the table, not confidence intervals or measured achievements.
+
+### Hardware arithmetic and its limits
+
+[AMD specifies](https://www.amd.com/en/support/downloads/drivers.html/graphics/radeon-600-500-400/radeon-rx-500-series/radeon-rx-570.html)
+2048 stream processors, up to 5.1 TFLOP/s FP32 and 224 GB/s with a 256-bit GDDR5
+bus. That specification covers stock cards; this card has modified 16 GiB VRAM.
+Recorded run-wide telemetry has 61/65 GPU clock samples at 1041 MHz, giving an
+ideal FP32 arithmetic peak of `2048 * 2 * 1.041 GHz = 4.264 TFLOP/s` at that
+clock. Memory clock samples: 1000 MHz (43), 1750 MHz (11), 300 MHz (11).
+Their GDDR5 bus ceilings are 128, 224 and 38.4 GB/s respectively. Samples include
+loading, warmup and decode, so they are not prefill averages or measured bandwidth.
+No clocks or power settings were changed for this report.
+
+Each routed expert needs `6 * 4096 * 2048 = 50.332M` useful FLOPs per routed
+input. Across 42 layers and top-8 routing that is **16.911 GFLOP/input token**.
+If all routed experts alone ran on the GPU at ideal FP32 peak, the arithmetic
+ceiling would be **252 tok/s at 1041 MHz**, or **302 tok/s at nominal 5.1 TFLOP/s**.
+These are *expert-only, all-GPU counterfactual ceilings*: they omit attention,
+dense/shared projections, quantization, memory access and host costs. They are
+not end-to-end ceilings for the current hybrid CPU/GPU placement.
+
+The measured assignment sends 152.0098 of 336 routes per token to the GPU
+(45.24%), or 7.651 GFLOP/token. Its 7.171 ms/token queued expert work corresponds
+to about **1.067 useful TFLOP/s**, roughly 25% of the 1041 MHz ideal peak.
+This includes quantization and synchronization overhead and does not imply the
+remaining 75% can be recovered. ShaderFloat16 and accelerated integer dot are
+unavailable on the queried device; tensor-core throughput from other simulator
+presets must not be substituted here.
+
+Q2_K gate/up and Q3_K down total 9,109,504 weight bytes per expert. Streaming
+16 experts over 42 layers transfers 6.122 GB per 512-token chunk before activation
+traffic, equivalent to 11.956 MB/input token. Dividing by the measured upload
+wall time gives about **3.82 GB/s effective weight staging/upload throughput**,
+not a pure PCIe link measurement. At the old microbenchmark H2D rate of 9.07 GB/s,
+those weights alone would still take 1.32 ms/token. CPU compute, uploads, and GPU
+work must improve together; nominal VRAM bandwidth alone cannot yield 100 tok/s.
+
+Quality remains separate: the FP32 candidate passed 12 physical expert parity
+cases and 3/3 coding training tasks. No full HumanEval rerun qualifies it at 140+.
+Coding prompts can have much worse route reuse than this repetitive benchmark;
+the existing reduce_routed training run reported about 12.23 prefill tok/s,
+but its timing was not performance-qualified. No 50–100 tok/s general coding
+claim follows from this calibration. Decode is not recalibrated by this report.
+
+The importer also accepts the experimental pipeline's complete single-window
+traces at up to 8192 tokens. These must contain `shared_submission_ms` for every
+MoE layer, so shared FFN time is subtracted from serial GPU time and included in
+the overlapping expert branch exactly once. Pipeline uploads remain inside
+that branch: upload-only speedup forecasts are rejected until uploads are
+measured independently. Three completed, performance-qualified trials are
+still required. Runs rejected for background CPU activity, interrupted runs,
+and correctness-only timings cannot replace the qualified calibration above.
+Forecasts remain scoped to the measured prompt, window, and route assignment.
