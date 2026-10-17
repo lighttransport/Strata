@@ -26,6 +26,14 @@ python3 tools/sim/glm_sim.py hw --hw tr16 > my-pc.json     # edit, then --hw my-
 python3 -m unittest tools.test_sim
 ```
 
+## A64FX nodes
+
+`tools/sim/a64fx.py` with the CLI `tools/glm_a64fx_sim.py` is a separate analytic model for GPU-less A64FX nodes
+(48 SVE cores, 32 GiB HBM2, Tofu-D), calibrated on the native 12-node runner of the gemm repository (35.46 decode /
+412.27 prefill tok/s, 13 rows within 5 %) and the uTofu micro-benchmarks. It scores 6 and 12 nodes, expert slicing
+layouts, 4 ranks per node, MTP, and two efficiency profiles (the runner as it is, and the proposed redesign). Report:
+[GLM_A64FX_PLAN.md](GLM_A64FX_PLAN.md); tests `python3 -m unittest tools.test_sim_a64fx`.
+
 ## Hardware input
 
 A hardware config (`tools/sim/hw.py`) has: CPU cores, clock, NUMA nodes, SIMD width (FP32 FMA peak is derived

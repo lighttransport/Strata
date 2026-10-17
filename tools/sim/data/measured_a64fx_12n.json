@@ -1,0 +1,318 @@
+{
+ "machine": "A64FX, 12 nodes 2x3x2, one MPI rank per node, 47 OpenMP threads; gemm a64fx/glm5 native GLM-5.3-Flash runner (TP12, UD-Q4_K_XL experts, Q8_0 trunk)",
+ "notes": "Records copied from the gemm repository (a64fx/glm5/GLM53F_STRATA.md and handoff-decode100-*.md). 'profile' selects the simulator profile; 'profile_set' overrides fitted constants for rows measured on another binary (binary_scale 1.0 = the BEST-512 option set at 28.0 ms/token). Stage splits are in ms per token.",
+ "records": [
+  {
+   "name": "TP12 Q4 plain decode, 8K context (qualified capacity4096)",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "GLM53F_STRATA.md:447,502 (35.462134 tok/s, 5 trials)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 8192
+   },
+   "measured": {
+    "tok_s": 35.46
+   }
+  },
+  {
+   "name": "TP12 Q4 plain decode, 128-token prompt",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "GLM53F_STRATA.md:504 (39.901375)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 128
+   },
+   "measured": {
+    "tok_s": 39.9
+   }
+  },
+  {
+   "name": "TP12 Q4 plain decode, repeated 32K",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "GLM53F_STRATA.md:505 (31.700983)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 32196
+   },
+   "measured": {
+    "tok_s": 31.7
+   }
+  },
+  {
+   "name": "TP12 Q4 plain decode, 512 context, BEST option set (stage split)",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "handoff-decode100-resume-20261004.md:11,78-85 (~28 ms/token; mHC 6.6 KDA 7.1 MoE 8.0 sparse 4.5 head 0.9)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 512
+   },
+   "profile_set": {
+    "binary_scale": 1.0
+   },
+   "measured": {
+    "tok_s": 35.7,
+    "stages": {
+     "mhc": 6.6,
+     "kda": 7.1,
+     "moe": 8.0,
+     "sparse": 4.5,
+     "head": 0.9
+    }
+   }
+  },
+  {
+   "name": "TP12 Q4 MTP depth 2, 512 context, BEST option set",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "handoff-decode100-resume-20261004.md:11 (53.35 tok/s; acceptance 42/43; verify 92 % of MTP time)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 512,
+    "mtp_depth": 2,
+    "acceptance": "a64fx_best512"
+   },
+   "profile_set": {
+    "binary_scale": 1.0,
+    "width_slope": 0.15,
+    "width_slope2": 0.13
+   },
+   "measured": {
+    "tok_s": 53.35
+   }
+  },
+  {
+   "name": "TP12 Q4 MTP depth 3, 512 context, BEST option set",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "handoff-decode100-resume-20261004.md:88 (47/51 accepted at d3; ~47 tok/s)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 512,
+    "mtp_depth": 3,
+    "acceptance": "a64fx_best512"
+   },
+   "profile_set": {
+    "binary_scale": 1.0,
+    "width_slope": 0.15,
+    "width_slope2": 0.13
+   },
+   "measured": {
+    "tok_s": 47.07
+   }
+  },
+  {
+   "name": "TP12 Q4 MTP depth 1, legacy sweep binary",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "GLM53F_STRATA.md:1025 (28.99 vs 30.685 plain, 768 tokens)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 768,
+    "mtp_depth": 1,
+    "acceptance": "a64fx_sweep768"
+   },
+   "profile_set": {
+    "binary_scale": 1.1595,
+    "width_slope": 0.75,
+    "width_slope2": 0.0
+   },
+   "measured": {
+    "tok_s": 28.99
+   }
+  },
+  {
+   "name": "TP12 Q4 MTP depth 2, legacy sweep binary",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "GLM53F_STRATA.md:1025 (26.20)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 768,
+    "mtp_depth": 2,
+    "acceptance": "a64fx_sweep768"
+   },
+   "profile_set": {
+    "binary_scale": 1.1595,
+    "width_slope": 0.75,
+    "width_slope2": 0.0
+   },
+   "measured": {
+    "tok_s": 26.2
+   }
+  },
+  {
+   "name": "TP12 Q4 MTP depth 3, legacy sweep binary",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "GLM53F_STRATA.md:1025 (22.00)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 768,
+    "mtp_depth": 3,
+    "acceptance": "a64fx_sweep768"
+   },
+   "profile_set": {
+    "binary_scale": 1.1595,
+    "width_slope": 0.75,
+    "width_slope2": 0.0
+   },
+   "measured": {
+    "tok_s": 22.0
+   }
+  },
+  {
+   "name": "TP12 Q4 MTP depth 4, legacy sweep binary",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "GLM53F_STRATA.md:1025 (17.90)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 768,
+    "mtp_depth": 4,
+    "acceptance": "a64fx_sweep768"
+   },
+   "profile_set": {
+    "binary_scale": 1.1595,
+    "width_slope": 0.75,
+    "width_slope2": 0.0
+   },
+   "measured": {
+    "tok_s": 17.9
+   }
+  },
+  {
+   "name": "TP12 prefill 8K, chunk 4096 (qualified)",
+   "kind": "prefill",
+   "prompt": 8192,
+   "tolerance": 0.15,
+   "source": "GLM53F_STRATA.md:502 (412.273634)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 8192,
+    "prefill_chunk": 4096
+   },
+   "measured": {
+    "tok_s": 412.27
+   }
+  },
+  {
+   "name": "TP12 prefill 128 tokens",
+   "kind": "prefill",
+   "prompt": 128,
+   "tolerance": 0.15,
+   "source": "GLM53F_STRATA.md:504 (285.306876)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 128,
+    "prefill_chunk": 4096
+   },
+   "measured": {
+    "tok_s": 285.31
+   }
+  },
+  {
+   "name": "TP12 prefill repeated 32K, chunk 4096",
+   "kind": "prefill",
+   "prompt": 32196,
+   "tolerance": 0.15,
+   "source": "GLM53F_STRATA.md:505 (372.389918)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 32196,
+    "prefill_chunk": 4096
+   },
+   "measured": {
+    "tok_s": 372.39
+   }
+  }
+ ],
+ "collectives": {
+  "tree_allreduce_16kib_fp32_us": 23.47,
+  "tree_allreduce_16kib_bf16_us": 13.61,
+  "dispatch_combine_b1_us": 34.6,
+  "rsag_8mib_12n_ms": 5.7,
+  "moe_combine_8mib_mpi_ms": 3.4,
+  "source": "a64fx/utofu-tests/summary.md:109,183,379-422; a64fx/glm5/README.md:25-28"
+ },
+ "cross_check": {
+  "name": "GLM-5.2 Q2 EP12 decode, ctx 640",
+  "tok_s": 16.1,
+  "stages_ms": {
+   "route_ar": 14.6,
+   "qa_kva": 7.6,
+   "experts": 9.6,
+   "attn": 6.1
+  },
+  "source": "GLM52_Q2_12N.md:470-478",
+  "note": "a different model and runner; used to sanity-check the EP skew term, not fitted"
+ }
+}
