@@ -1,0 +1,1031 @@
+{
+  "base_commit": "84e5b9f3832787b8f474cf9d9b9d7b0d36785941",
+  "node": "v100s node",
+  "runtime_source_sha256": {
+    "src/kernels/cuda/iq_kernels.cu": "6dc3707a22ace941ca93f07769c1444968fe143d9e45ad817934706cdd1194d5",
+    "src/kernels/native_expert_bench.cpp": "85ea69c0d7ed5ebb9249c066853f33f824d519820887dfcbda6dc5e0ed54eb7b",
+    "src/kernels/glm_native_expert_parity.cpp": "fe70f9ac1c2787c365784162cf49dcb187007df56ff8d7d7a7a22db58f6364c0",
+    "include/strata/kernels/cpu/iq_avx512.hpp": "98bc6ee4d852f0c47a9c69bd8952aa98174ec79f4a0d1d9c7b17c2c658ddbde5",
+    "src/kernels/cpu/iq_avx512.cpp": "74124beff11240cc6c1f5df211b9b557e28eac47ba6e37c289712a9804868ca1",
+    "src/kernels/cpu/iq_avx512_rows.inl": "0f4e190b06b48d36ba716e5dc08c1268c31277f8e868ecab91a7a5a49605a378",
+    "src/kernels/cpu/iq_avx512_clamp.cpp": "88c46fe2784887115189a6106777cd84d27c89dcffd4ee76a0b47231c0661c3e",
+    "src/kernels/cpu/native_expert.cpp": "413ac751ff041ce2525ad76bdf7b723d9523984ef25dc5465c1a661c9ffba1a0",
+    "include/strata/kernels/cpu/iq_even_signs.hpp": "a695ea4c518da339ab2980514621f1b63d1d84365bf7fb6b54189ad23ae1635b"
+  },
+  "measured_cmake_sha256": "43b89dbc430a3b5de5f2648ceaba989dbef606ff42f3d931efefe4ff7ef04173",
+  "binaries": {
+    "strata-glm-decode": "45a6f9b8e72a805089f704af569b932eec293367c698ac4b226848f6e644bc89",
+    "strata-glm-gpu-worker": "025c76fcbe5ae18f9a7f7139db47e497dc53641b9769b1acebb68c0601935d9f",
+    "native_expert_bench": "ea47aef1ff99eb18c986c44ba22b2f73175b457eb092aa26eb945f5c9fc6b408",
+    "glm_native_expert_parity": "d59f69df1ae0550b804c3c71094551eec62bbab33375dab3c2b208495f04073c",
+    "iq_avx512_clamp_test": "ebc2d8d7b158642cd9fbbec3f2c37890e3ee8a19bf37c0dc857544e515a1dcf4",
+    "libstrata_kq.so": "299ea26aacdb9994e3013e2c5c82bd98694a7b5e25a4a9558f5ac2afbccf0a06"
+  },
+  "compiler_identification": [
+    "The CXX compiler identification is GNU 12.2.1",
+    "The CUDA compiler identification is NVIDIA 12.9.86",
+    "The C compiler identification is GNU 12.2.1"
+  ],
+  "build": {
+    "backend": "CUDA",
+    "architecture": "sm_70",
+    "type": "Release",
+    "native_experts": true,
+    "q6k_experts": true,
+    "kquant_mmq": true,
+    "parallel_jobs": 4
+  },
+  "incremental_build": {
+    "method": "All CPU objects rebuilt with the frozen CMake compile commands; unchanged CUDA, GGML, host and program objects reused and hashed; executables relinked; kquant DSO copied byte-identically",
+    "cpu_objects": {
+      "expert.cpp.o": "dd43137bf621f8875a8f64b387c8fafd7b3eb078d03cf826b4ff99a26c843395",
+      "pool.cpp.o": "4796b24c2b628141e0bcca402a7b2e72f098ad7d55f41ee51269b65830cf71f9",
+      "expert_layout.cpp.o": "df2075268de15852753a9d8e16814a396647ad77224f673161d36035c304678c",
+      "q2_avx2.cpp.o": "16a5b54a5301221a3764db64e15d7fa65a22940b95be683f15b2cc37fe7f561f",
+      "canon_expert.cpp.o": "8f2c09c7602b476ecb1ea86843bc0b84bcffd10283cff7e081d9730c7348821d",
+      "native_expert.cpp.o": "1b33379b513cbdbdfe8b7311d05f83bcbe74479db75f97a61481fd6951d0f940",
+      "iq_avx512.cpp.o": "dedc03f6a49b87a37ce99bc1f7f65e1139f50d68f028e3687cfede801cdcd7bf",
+      "iq_avx512_clamp.cpp.o": "9c87deed4e739accb8a270b8577c984c92fb0859a240cbc16274927222997355",
+      "iq_avx2.cpp.o": "058b3531ff18bf795a3e5c80efdd075200c7c1cf45db9766ae7e61e1391a5fd7",
+      "kq_avx2.cpp.o": "8a4f3578883c101be4a94816f3ae8d5d2e79c245155e7264f30082df7d5db660",
+      "q23_avx2.cpp.o": "ec2287f655ef6b1a139f5c714a5043a162ea42c63e6b73b7340809a56ab70897",
+      "q23_packed.cpp.o": "34da5c27929ea52f6272fa07c50666d386def0b501be7ede497ae63c1367a3e6",
+      "kq_avx1.cpp.o": "fb473380c40844ef4557eb33288ce9fa538be507f8eca9b41119c511d93226ba",
+      "q2_avx1.cpp.o": "361f7480108534ada88a04cf0c54854c85bbb37a98d87be6beeab03181157486",
+      "iq_avx1.cpp.o": "6484dfcd6ac53a70fd6584b3e98ccd9ea6600d37f7d439b66adf7673fa55fa12",
+      "nvfp4_avx512.cpp.o": "e98aad6a6a4525afc6d254d6323e93678259bca1e4dcd31b90b527c90c42fbb4",
+      "nvfp4_avx2.cpp.o": "247b1f6fd40a5de0283c00769bc2dd499c64c1f2d747b59f11adf1584a161a88"
+    },
+    "reused_artifacts": {
+      "CMakeFiles/strata-glm-decode.dir/src/program/glm_decode.cpp.o": "a5b2e66df084dab26e8a07092d051fda6a8096dde8ae7bc29fe741e7d9c76603",
+      "libstrata_engine.a": "209f3cde0debb743f6ffc8a8d5320f03d39a1185484d1a749a775706191276f3",
+      "libstrata_spec.a": "7f7a123824d34f476c2fe23b9afd90e85c1c3434fbc61763c175e8e1b02c5e98",
+      "libstrata_prefill.a": "6a9a744de7b0a082bda19e145b0b987157d4f5221e5cedef6657be0dea45b4df",
+      "libstrata_kernels.a": "e25bf3d73a9bfe2bc235555bbd83ecc0622bb371d766520ec979e4e85cc92f4a",
+      "libstrata_ucomm.a": "000355bbacc0ab645951403d4b1010b505c56f5aa58a8e7f6b27b4c0cb3c7f20",
+      "libcudart.so": "256e6409e4f06f618e1fb53d4844a6b81cdded1013afa8ade40c22f99eb133b7",
+      "libcublas.so": "d63456d94f1b8e2408a8a9538c8740eb474c9eba48a84f420b15e2e10fbcd048",
+      "ggml/src/libggml-cpu.a": "1b85d2450bc01de5c5da7cfbbc72415cd0dae77f1ba67d2a37dc8b23c63f2b58",
+      "libstrata_core.a": "71d3dc39cab479ed599673f043b43e4c54125d766138c401a9ed918caac39cd1",
+      "libcublasLt.so": "96ddf4891ca4f4ed1475966783a9185df2abd64a81c3cc713b96d036696fc541",
+      "libculibos.a": "5d40c715335829f8c3564255169433efad83802ce456d67821308cbc92bd2122",
+      "libstrata_mmq.a": "9e514af6d1018c2262f35e47f0600a20991802b6b4706d225d1943f20f64b234",
+      "libstrata_host.a": "719695704b9b1ff1613d1ec1713117fa471371d29982ba2adb6f859a650d58d0",
+      "libstrata_mmq_w4a4.a": "a756ea1062a3f758fb63a9ef49b710aa828776c55010ef225ae6340ff4b5772c",
+      "ggml/src/libggml-base.a": "82e17cf6415800c3f50ca02f74270daf5ae83cb5a3985e83655347cf4804e300",
+      "libcuda.so": "dcdf334aeb177c95b3385b797c9b871d03a287895713c6d107f79096b0985aa9",
+      "CMakeFiles/strata-glm-gpu-worker.dir/src/program/glm_gpu_worker.cpp.o": "87a811ae425caa2b675ddd7d3139e24aad3bb067ca2fa7f4356a39d599d683cf",
+      "CMakeFiles/native_expert_bench.dir/src/kernels/native_expert_bench.cpp.o": "7e2b75dc0423219ca13418346e1d82d3586284e919ea7742141192da67d13314",
+      "CMakeFiles/glm_native_expert_parity.dir/src/kernels/glm_native_expert_parity.cpp.o": "cbf69f68e998ddf5eb7b6654ff1594f105b79466ad45f8db4a45a92e37a5a03a"
+    },
+    "parent_build_manifest_sha256": "5968e20d4ba4824e71fed405d99cff2fc7eae3a019f94b85ab59eded058d6080",
+    "runtime_build_manifest_sha256": "2ad32a7c38396c5fc8a44d7950eff456715a1038b8036ef02c25e05b925baae8",
+    "parent_fresh_cuda_build": "CUDA sm70 Release; all affected targets compiled before the CPU-only rebuild"
+  },
+  "historical_test_only_correction": {
+    "files": {
+      "src/kernels/cpu/iq_avx512_clamp_test.cpp": "4af23a15ec7915858b29036930ffa198f6eb4cc3a5853750a2b85cb49782e1df",
+      "CMakeLists.txt": "fe89d9044200c4e21dce87143ee0649fa719a07466d7b7d258f170f49b62da10"
+    },
+    "change": "Test-only independent dequantized double reference with propagated floating-point error intervals; runtime kernel sources unchanged from candidate v4"
+  },
+  "original_failed_reference": {
+    "log_sha256": "f25706e0f5abb006ed7230f1b8cf4ed85836e9be080d7152bbb6f1438f9cea28",
+    "cause": "Output-relative tolerance on large synthetic inputs rejected valid cancellation-sensitive reductions in IQ3_S and IQ2_S",
+    "affected_comparisons": 4,
+    "runtime_kernels_changed": false
+  },
+  "actual_xeon_validation": {
+    "host_tests": 3,
+    "clamped_iq_tests": [
+      {
+        "name": "portable-signs",
+        "environment": {},
+        "returncode": 0
+      },
+      {
+        "name": "0",
+        "environment": {
+          "STRATA_GLM_IQ512_CLAMP": "0"
+        },
+        "returncode": 0
+      },
+      {
+        "name": "1",
+        "environment": {
+          "STRATA_GLM_IQ512_CLAMP": "1"
+        },
+        "returncode": 0
+      },
+      {
+        "name": "2",
+        "environment": {
+          "STRATA_GLM_IQ512_CLAMP": "2"
+        },
+        "returncode": 0
+      },
+      {
+        "name": "fallback",
+        "environment": {
+          "STRATA_GLM_IQ512_CLAMP": "1",
+          "STRATA_NO_IQ512": "1"
+        },
+        "returncode": 0
+      },
+      {
+        "name": "isa-cap",
+        "environment": {
+          "STRATA_GLM_IQ512_CLAMP": "1",
+          "STRATA_FORCE_ISA": "avx2"
+        },
+        "returncode": 0
+      },
+      {
+        "name": "gather",
+        "environment": {
+          "STRATA_GLM_IQ512_CLAMP": "1",
+          "STRATA_IQ_GATHER": "1",
+          "STRATA_IQ256_GATHER": "1"
+        },
+        "returncode": 0
+      }
+    ],
+    "validated_test_binary_sha256": "ebc2d8d7b158642cd9fbbec3f2c37890e3ee8a19bf37c0dc857544e515a1dcf4",
+    "exact_sign_expansion": {
+      "canonical_table_indices": 128,
+      "packed_positions": 8,
+      "mixed_vectors": 1024,
+      "passed": true
+    },
+    "bitwise_sign_change_check": {
+      "passed": true,
+      "results": {
+        "cpu-bits-baseline": {
+          "tokens": {
+            "bytes": 74,
+            "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee"
+          },
+          "prefill.f32": {
+            "bytes": 619520,
+            "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1"
+          },
+          "final.f32": {
+            "bytes": 619520,
+            "sha256": "0a949f6968536f58de9e6c62d1317142b452ed1c2b791e93fa56dd3d7fc6caff"
+          }
+        },
+        "cpu-bits-candidate": {
+          "tokens": {
+            "bytes": 74,
+            "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee"
+          },
+          "prefill.f32": {
+            "bytes": 619520,
+            "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1"
+          },
+          "final.f32": {
+            "bytes": 619520,
+            "sha256": "0a949f6968536f58de9e6c62d1317142b452ed1c2b791e93fa56dd3d7fc6caff"
+          }
+        }
+      },
+      "decoder_sha256": "45a6f9b8e72a805089f704af569b932eec293367c698ac4b226848f6e644bc89"
+    },
+    "independent_reference": "ggml-dequantized weights and actual Q8_K activations, double accumulation; bounded float dot errors propagated through asymmetric SwiGLU; exact width/mapping/dispatch checks"
+  },
+  "default_output": {
+    "passed": true,
+    "results": {
+      "default-baseline": {
+        "tokens": {
+          "bytes": 74,
+          "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee"
+        },
+        "prefill.f32": {
+          "bytes": 619520,
+          "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1"
+        },
+        "final.f32": {
+          "bytes": 619520,
+          "sha256": "acf75d02e632586202a4b31bd39f8088785c4971e158d8fa80aaded4e4f7b8bd"
+        }
+      },
+      "default-candidate": {
+        "tokens": {
+          "bytes": 74,
+          "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee"
+        },
+        "prefill.f32": {
+          "bytes": 619520,
+          "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1"
+        },
+        "final.f32": {
+          "bytes": 619520,
+          "sha256": "acf75d02e632586202a4b31bd39f8088785c4971e158d8fa80aaded4e4f7b8bd"
+        }
+      }
+    },
+    "prompt_tokens": 64,
+    "generated_tokens": 16,
+    "logit_array_floats": 154880,
+    "scope": "Same sealed full Q3 model, single GPU, all STRATA environment switches unset; tokens and both full arrays byte-identical",
+    "protocol": {
+      "fixture": "Frozen 64-token default-output input used in the previous Q3 release validation",
+      "prompt_file_sha256": "225fc963aecb4bd40ee74de98912ad8e6065ce0282de266916b4dafd20302cf1",
+      "normalized_ids_sha256": "225fc963aecb4bd40ee74de98912ad8e6065ce0282de266916b4dafd20302cf1",
+      "input_tokens": 64,
+      "generated_tokens": 16,
+      "context": 1024,
+      "threads": 34,
+      "prefill_batch": 64,
+      "decode_cache_mib": 0,
+      "decode_experts": "cpu",
+      "prefill_experts": "f16-batched",
+      "prefill_expert_cache_mib": 0,
+      "gpu_budget_mib": 30720,
+      "gpu_devices": "0",
+      "decode_graphs": true,
+      "speculative": "none",
+      "all_strata_switches_unset": true
+    }
+  },
+  "gpu_clamp": {
+    "positive": {
+      "passed": true,
+      "cases": [
+        {
+          "name": "kernel-gpu0-scale1-t1",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 1
+        },
+        {
+          "name": "kernel-gpu0-scale1-t2",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 2
+        },
+        {
+          "name": "kernel-gpu0-scale1-t3",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 3
+        },
+        {
+          "name": "kernel-gpu0-scale1-t4",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 4
+        },
+        {
+          "name": "kernel-gpu0-scale64-t1",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 1
+        },
+        {
+          "name": "kernel-gpu0-scale64-t2",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 2
+        },
+        {
+          "name": "kernel-gpu0-scale64-t3",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 3
+        },
+        {
+          "name": "kernel-gpu0-scale64-t4",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 4
+        },
+        {
+          "name": "kernel-gpu1-scale1-t1",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 1
+        },
+        {
+          "name": "kernel-gpu1-scale1-t2",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 2
+        },
+        {
+          "name": "kernel-gpu1-scale1-t3",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 3
+        },
+        {
+          "name": "kernel-gpu1-scale1-t4",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 4
+        },
+        {
+          "name": "kernel-gpu1-scale64-t1",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 1
+        },
+        {
+          "name": "kernel-gpu1-scale64-t2",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 2
+        },
+        {
+          "name": "kernel-gpu1-scale64-t3",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 3
+        },
+        {
+          "name": "kernel-gpu1-scale64-t4",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 4
+        }
+      ]
+    },
+    "wide_positive": {
+      "passed": true,
+      "cases": [
+        {
+          "name": "kernel-gpu0-scale1-t5",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 5
+        },
+        {
+          "name": "kernel-gpu0-scale1-t6",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 6
+        },
+        {
+          "name": "kernel-gpu0-scale1-t7",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 7
+        },
+        {
+          "name": "kernel-gpu0-scale1-t8",
+          "device_ordinal": 0,
+          "scale": 1,
+          "tokens": 8
+        },
+        {
+          "name": "kernel-gpu0-scale64-t5",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 5
+        },
+        {
+          "name": "kernel-gpu0-scale64-t6",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 6
+        },
+        {
+          "name": "kernel-gpu0-scale64-t7",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 7
+        },
+        {
+          "name": "kernel-gpu0-scale64-t8",
+          "device_ordinal": 0,
+          "scale": 64,
+          "tokens": 8
+        },
+        {
+          "name": "kernel-gpu1-scale1-t5",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 5
+        },
+        {
+          "name": "kernel-gpu1-scale1-t6",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 6
+        },
+        {
+          "name": "kernel-gpu1-scale1-t7",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 7
+        },
+        {
+          "name": "kernel-gpu1-scale1-t8",
+          "device_ordinal": 1,
+          "scale": 1,
+          "tokens": 8
+        },
+        {
+          "name": "kernel-gpu1-scale64-t5",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 5
+        },
+        {
+          "name": "kernel-gpu1-scale64-t6",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 6
+        },
+        {
+          "name": "kernel-gpu1-scale64-t7",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 7
+        },
+        {
+          "name": "kernel-gpu1-scale64-t8",
+          "device_ordinal": 1,
+          "scale": 64,
+          "tokens": 8
+        }
+      ]
+    },
+    "layer_comparisons": 128,
+    "cuda_library_sha256": "e25bf3d73a9bfe2bc235555bbd83ecc0622bb371d766520ec979e4e85cc92f4a",
+    "scope": "Mode 8 versus mode 0, both with STRATA_GLM_FUSED_CLAMP=1; identical unchanged GPU library reused in current runtime",
+    "groups": 8,
+    "layers": [
+      3,
+      11,
+      44,
+      45
+    ],
+    "negative": {
+      "expected_mismatch_observed": true,
+      "returncode": 1,
+      "differing_layers": 3,
+      "activation_scale": 64,
+      "fused_clamp": "1"
+    }
+  },
+  "model_cpu_parity": {
+    "passed": true,
+    "raw_log_sha256": "8fd6be07de095b29928a55b3f159ee5d5a29192555251e4192514e0e9038cd80",
+    "gather_raw_log_sha256": "9d11adb2a3e880e5a9e4e96e9e6bef7888f95e33aa3c7ac1968f53f2f8e0aad2"
+  },
+  "local_validation": {
+    "python_tests": 60,
+    "CUDA_sm80": "compile passed",
+    "HIP_gfx1201": "compile passed",
+    "HIP_gfx906": "corrected GPU kernel compiled",
+    "host_tests_each_backend": 3,
+    "portable_sign_tests_each_backend": 1,
+    "local_clamped_iq_tests": "Five skipped per backend because local CPU lacks AVX512BW; all five, portable sign checks and an additional gather variant executed successfully on the target Xeons",
+    "SYCL": "Compiler unavailable; not built",
+    "Windows": "Not built or executed",
+    "python_test_receipt": {
+      "tests": 60,
+      "passed": true,
+      "command": "PYTHONPATH=tools python3 -m unittest test_glm_v100_profile_bench test_glm_v100_bench test_glm_v100_optimize test_glm_low_memory_bench test_glm_mixed_run",
+      "log_sha256": "ea0c7d33c7b48da59a2fe3abe667a58e13480d0a19aa807958f93af7c096278e"
+    }
+  },
+  "allocated_memory_bytes": 171798691840,
+  "ram_speed": "unavailable",
+  "maximum_allocation_minutes": 180,
+  "published_source_sha256": {
+    "CMakeLists.txt": "43b89dbc430a3b5de5f2648ceaba989dbef606ff42f3d931efefe4ff7ef04173",
+    "src/kernels/cuda/iq_kernels.cu": "6dc3707a22ace941ca93f07769c1444968fe143d9e45ad817934706cdd1194d5",
+    "src/kernels/native_expert_bench.cpp": "85ea69c0d7ed5ebb9249c066853f33f824d519820887dfcbda6dc5e0ed54eb7b",
+    "src/kernels/glm_native_expert_parity.cpp": "fe70f9ac1c2787c365784162cf49dcb187007df56ff8d7d7a7a22db58f6364c0",
+    "include/strata/kernels/cpu/iq_avx512.hpp": "98bc6ee4d852f0c47a9c69bd8952aa98174ec79f4a0d1d9c7b17c2c658ddbde5",
+    "src/kernels/cpu/iq_avx512.cpp": "74124beff11240cc6c1f5df211b9b557e28eac47ba6e37c289712a9804868ca1",
+    "src/kernels/cpu/iq_avx512_rows.inl": "e5802f4feee5b6916d253755c201488a75acd8699b910627f99e7b34feb00840",
+    "src/kernels/cpu/iq_avx512_clamp.cpp": "88c46fe2784887115189a6106777cd84d27c89dcffd4ee76a0b47231c0661c3e",
+    "src/kernels/cpu/native_expert.cpp": "413ac751ff041ce2525ad76bdf7b723d9523984ef25dc5465c1a661c9ffba1a0",
+    "src/kernels/cpu/iq_avx512_clamp_test.cpp": "22a42bc16f9e0b9e5eb442cc3bb2d5fe61d0884f69dcbbc60fdca6bab7ebc100",
+    "include/strata/kernels/cpu/iq_even_signs.hpp": "a695ea4c518da339ab2980514621f1b63d1d84365bf7fb6b54189ad23ae1635b"
+  },
+  "post_build_whitespace_cleanup": {
+    "path": "src/kernels/cpu/iq_avx512_rows.inl",
+    "change": "Remove one blank line at EOF only; preprocessor tokens and runtime arithmetic unchanged",
+    "compiled_source_sha256": "0f4e190b06b48d36ba716e5dc08c1268c31277f8e868ecab91a7a5a49605a378",
+    "published_source_sha256": "e5802f4feee5b6916d253755c201488a75acd8699b910627f99e7b34feb00840",
+    "object_comparisons": {
+      "cuda": {
+        "byte_identical": true,
+        "objects": {
+          "CMakeFiles/strata_kernels_cpu.dir/src/kernels/cpu/iq_avx512.cpp.o": "d55c3e62c46211c43a461bb3fb9de2d7010594c98e90487bb73d3f23a20071fa",
+          "CMakeFiles/strata_kernels_cpu.dir/src/kernels/cpu/iq_avx512_clamp.cpp.o": "8cb7845751bac89f8e675670f6a5b5f16294033eced3460f2eaa2c934571c940"
+        }
+      },
+      "hip": {
+        "byte_identical": true,
+        "objects": {
+          "CMakeFiles/strata_kernels_cpu.dir/src/kernels/cpu/iq_avx512.cpp.o": "a012f618fac8655e7371359c9b96aee2809cf185178024f33f8a7ba36e198fb3",
+          "CMakeFiles/strata_kernels_cpu.dir/src/kernels/cpu/iq_avx512_clamp.cpp.o": "8683140233fd78e081e9184c45102a77598dc9cb4b5dcab3b7ee6abb1d753b8b"
+        }
+      }
+    }
+  },
+  "implementation_commit": "1cfc6fb43233b00c1510ea0eec368221bfde1907",
+  "quality_grader_preflight": {
+    "humaneval_correct_function_accepted": true,
+    "humaneval_incorrect_function_rejected": true,
+    "cpp_correct_parser_accepted": true,
+    "cpp_oracle_cases": 400532,
+    "cpp_incorrect_parser_rejected": true,
+    "cpp_selftest_log_sha256": "d89838e0a8a31a6792a0e4222f43d8b0f5b30093fa93b597087bfac0ca969df7",
+    "cpp_grader_sha256": "76ce345a910336e8405e25381b55f077ddbed149fc551ee9fe7033e0ef82c298",
+    "cpp_oracle_sha256": {
+      "glm_coding_quality.py": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "glm_q2_coding_check.py": "3de89659fa9b7f2a548db5ae1cad63973022008393f56e35db97fddd8fc998b1",
+      "grade.py": "f9a1ead9eaea2823d995f9a09d1c05f21c2362abbc8fa29e516def9e36a95196",
+      "test_generated.cpp": "63eb791af526aee24807f8a702fe231656aa822d06964e74198840901a5b97de"
+    },
+    "humaneval_grader_sha256": "b99acf29d51ff9350dbeefa632088ae4692f0092ea142c4286d42a5fafbbb1eb",
+    "humaneval_isolated_runner_sha256": "645cceb473b134509d3514aeb709aa3c5e2ec7aebd7d6da8b68126922d252c39",
+    "local_cpp_compiler": "13.3.0",
+    "local_python": "3.12.3",
+    "isolation": "bubblewrap user, process, filesystem and network namespaces"
+  },
+  "grading_source_sha256": {
+    "humaneval": "b99acf29d51ff9350dbeefa632088ae4692f0092ea142c4286d42a5fafbbb1eb",
+    "humaneval_isolated_runner": "645cceb473b134509d3514aeb709aa3c5e2ec7aebd7d6da8b68126922d252c39",
+    "cpp_wrapper": "76ce345a910336e8405e25381b55f077ddbed149fc551ee9fe7033e0ef82c298",
+    "cpp_oracles": {
+      "glm_coding_quality.py": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "glm_q2_coding_check.py": "3de89659fa9b7f2a548db5ae1cad63973022008393f56e35db97fddd8fc998b1",
+      "grade.py": "f9a1ead9eaea2823d995f9a09d1c05f21c2362abbc8fa29e516def9e36a95196",
+      "test_generated.cpp": "63eb791af526aee24807f8a702fe231656aa822d06964e74198840901a5b97de"
+    }
+  },
+  "grading_isolation": {
+    "tool": "Bubblewrap",
+    "unshared": [
+      "user",
+      "process",
+      "filesystem",
+      "network"
+    ],
+    "read_only": "toolchain and unchanged oracles",
+    "writable": "temporary scratch only",
+    "model_home_network_access": false,
+    "humaneval_test_timeout_seconds": 5,
+    "cpp_compile_timeout_seconds": 60,
+    "cpp_run_timeout_seconds": 20,
+    "cpp_address_space_bytes": 3221225472
+  },
+  "humaneval_dataset": {
+    "dataset_revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+    "dataset_sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef"
+  },
+  "api_configuration_checks": {
+    "greedy": {
+      "passed": true,
+      "profile": "greedy",
+      "profile_sha256": "09026fba88478381d2ee563b7719ecdc9e91a2a29f8b2b795c41c6d2d120863b",
+      "frozen_profiles_sha256": "72d2f1835cf433b76b51bf329885059d57c3289bb4a11d40c46f9a96417721ea",
+      "public_functional_fields_identical_to_frozen": true,
+      "matched_non_model_stop_positional_fields": 22,
+      "implicit_weight_pages": "4k",
+      "all_configured_environment_fields_forwarded": 115,
+      "static_cache_and_fp32_decode_environment_preserved": true,
+      "complete_model_chat_stop_handling": true,
+      "model_and_engine_mocked": true,
+      "network_listener_mocked": true,
+      "gpu_http_smoke": false
+    },
+    "aff008-mtp3": {
+      "passed": true,
+      "profile": "aff008-mtp3",
+      "profile_sha256": "cf60d05f51dd2e9ee4cf88cc2ec15a28db5bd0cfbb218270f6e73bf9605a14fa",
+      "frozen_profiles_sha256": "72d2f1835cf433b76b51bf329885059d57c3289bb4a11d40c46f9a96417721ea",
+      "public_functional_fields_identical_to_frozen": true,
+      "matched_non_model_stop_positional_fields": 22,
+      "implicit_weight_pages": "4k",
+      "all_configured_environment_fields_forwarded": 117,
+      "static_cache_and_fp32_decode_environment_preserved": true,
+      "complete_model_chat_stop_handling": true,
+      "model_and_engine_mocked": true,
+      "network_listener_mocked": true,
+      "gpu_http_smoke": false
+    }
+  },
+  "api_configuration_check_setup": {
+    "attempts": 2,
+    "returncode": 2,
+    "phase": "Listener availability preflight before engine capture",
+    "reason": "Sandbox disallowed loopback bind; no model or GPU inference ran",
+    "previous_helper_sha256": "c4b164e07ab45b8ef5554e57c95a0d97938f50f5ac52fe792236df3bd9c39d85",
+    "correction": "Mock the listener in addition to the model and engine; check only configuration forwarding and positional protocol"
+  },
+  "profile_freeze": {
+    "frozen_before_heldout": true,
+    "training_only_selection": true,
+    "frozen_at_utc": "2026-10-17T03:26:06.521922+00:00",
+    "selection_note": "Highest complete healthy replay-stable decode median per mode in the final stable-combination sweep. Retain the measured common prefill setup: 11 of 18 primary groups, eight prefetch groups, batch 8192 and panel 512. No held-out timing or coding outputs used; all routing, MTP acceptance and precision settings remain fixed.",
+    "final_aggregation_protocol": "Median of six timed replays per prompt/build/mode (two fresh processes); geometric mean of the three prompt medians; require matching timed token hashes across both fresh processes for decode repeatability",
+    "selected_training": {
+      "greedy": {
+        "case": "greedy-stable-best-tasks",
+        "stage": "stable-sweep",
+        "benchmark_sha256": "d8033ed584114247fca65062081bdbc6cacb849e66e50960b6ca1ef5445f9e6c",
+        "record_sha256": "739829c255e965f0b7800d174933ae6a9a4c5002bde329794f9f4c46d7d26bf5",
+        "training_decode_tok_s": 22.120158780317823,
+        "training_prefill_tok_s": 563.175,
+        "training_decode_repeatable": true
+      },
+      "aff008-mtp3": {
+        "case": "aff008-mtp3-stable-control",
+        "stage": "stable-sweep",
+        "benchmark_sha256": "a33bbd66928f87b835d05d57a7e09d6c754b8224a36c0fde8424e73942adfaf5",
+        "record_sha256": "115f003d854d00177c41c49e5a2a37a711c4859912ed3196c03949df29fe3ae4",
+        "training_decode_tok_s": 44.356483772123994,
+        "training_prefill_tok_s": 561.334,
+        "training_decode_repeatable": true
+      }
+    },
+    "candidate_build_manifest_sha256": "2ad32a7c38396c5fc8a44d7950eff456715a1038b8036ef02c25e05b925baae8",
+    "sha256": "72d2f1835cf433b76b51bf329885059d57c3289bb4a11d40c46f9a96417721ea"
+  },
+  "final_timing_identity": {
+    "matrix_sha256": "cc7e5b0381e954430db9b64a5d33d216758c5341f29862e60ff1adc71ac1e284",
+    "decoder_sha256": "45a6f9b8e72a805089f704af569b932eec293367c698ac4b226848f6e644bc89",
+    "worker_sha256": "025c76fcbe5ae18f9a7f7139db47e497dc53641b9769b1acebb68c0601935d9f",
+    "baseline_sha256": "a52c18d02649fe7257d1a457444247d8a48936d12b5ebaecfa1d2816bbf31f89",
+    "baseline_worker_sha256": "c63282fd777e183e4682dfbb62bc09d78b4d18a7004cfb90184494e5347f5908",
+    "harness_sha256": {
+      "glm_v100_optimize.py": "4c38c6a33553a78a92869867f73c56ccb62f5cc6eac0bcf2c1d8f468797d9bdd",
+      "glm_v100_bench.py": "42dba90669f3404af4acc4f88d13a0b76a84de1eb6e56ce63ec3fb557768f869",
+      "glm_mixed_run.py": "a96bf26d2ccf5993e1a7d23d08dff73c5d84d6740bb80b39be4f21bb87a5c59e",
+      "glm_v100_profile_bench.py": "9fb885eb3442eabec4c41424e2c247a2f1729c63920e6a7f9dcd10f74bf15e93"
+    },
+    "model_bytes": 147535921504,
+    "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+    "socket_row_plan_sha256": "aa71071f89cae87e8c06a93e4373d9fcad1260f6ccc28508c6bc41a23ec3b1d1",
+    "profiles_sha256": {
+      "previous/glm53f-ud-q3-k-xl-v100s-greedy.json": "7d88fb7523050ddc170b8ce9bdd2c8d4e8584f9a787b30f4c275c74dafb9ba47",
+      "frozen/greedy.json": "024f8c0cfa0e0c22d2614eb9bc32b7c6b12015b2b18edc71bbc74c685d49efae",
+      "previous/glm53f-ud-q3-k-xl-v100s-aff008-mtp3.json": "494a5f17c42766eefe6ec0862b8003b945cfe37a4f10e1026c5e7d27d3b6668f",
+      "frozen/aff008-mtp3.json": "4b07a075ac41255fa298f064c312f8f05240a3afd8981843f455670bf0ff6146"
+    }
+  },
+  "raw_snapshot_archive_sha256": "c6559def3bfa5a9e6d0d2284f0786cc678a0d967f437531ed01d71c8b8bafeab",
+  "hardware_checks": [
+    {
+      "raw_hardware_sha256": "9334553c9f8b4acf106cb2a01111e2ab8f0baabd99d5e51e99bcb7bef74219a5",
+      "verified": true,
+      "cpu": {
+        "Architecture": "x86_64",
+        "CPU(s)": "72",
+        "Thread(s) per core": "2",
+        "Core(s) per socket": "18",
+        "Socket(s)": "2",
+        "NUMA node(s)": "4",
+        "Model name": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "gpus": [
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory_mib": 32768,
+          "driver": "580.178.04"
+        },
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory_mib": 32768,
+          "driver": "580.178.04"
+        }
+      ],
+      "gpu_numa_nodes": [
+        0,
+        2
+      ],
+      "allocated_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71
+      ]
+    },
+    {
+      "raw_hardware_sha256": "6dc1f905d14143ec0b785b9e32dab8065b399080120e52498dcf09911eb71c42",
+      "verified": true,
+      "cpu": {
+        "Architecture": "x86_64",
+        "CPU(s)": "72",
+        "Thread(s) per core": "2",
+        "Core(s) per socket": "18",
+        "Socket(s)": "2",
+        "NUMA node(s)": "4",
+        "Model name": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "gpus": [
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory_mib": 32768,
+          "driver": "580.178.04"
+        },
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory_mib": 32768,
+          "driver": "580.178.04"
+        }
+      ],
+      "gpu_numa_nodes": [
+        0,
+        2
+      ],
+      "allocated_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71
+      ]
+    },
+    {
+      "raw_hardware_sha256": "62081d5c77cc69630897a3f5fd9d65bf0cdb048f72163f8ce9a08d9bdb330feb",
+      "verified": true,
+      "cpu": {
+        "Architecture": "x86_64",
+        "CPU(s)": "72",
+        "Thread(s) per core": "2",
+        "Core(s) per socket": "18",
+        "Socket(s)": "2",
+        "NUMA node(s)": "4",
+        "Model name": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "gpus": [
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory_mib": 32768,
+          "driver": "580.178.04"
+        },
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory_mib": 32768,
+          "driver": "580.178.04"
+        }
+      ],
+      "gpu_numa_nodes": [
+        0,
+        2
+      ],
+      "allocated_cpus": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71
+      ]
+    }
+  ],
+  "shutdown": {
+    "checked_at_utc": "2026-10-17T08:15:13.506189+00:00",
+    "completed_generation_samples": 376,
+    "quality_step_returncode": 0,
+    "owned_session_phase": "STOPPED",
+    "owned_queued_or_running_jobs": 0,
+    "renewal_disabled": true,
+    "owner_and_step_controllers_stopped": true,
+    "stale_resident_descriptor_removed": true,
+    "gpu_allocation_cancelled": true,
+    "raw_session_metadata_sha256": "08089b253784df5cd5b4df2140a0dd029105a1eca0b40a7c1c203a011a9c99a3",
+    "frozen_profiles_sha256": "72d2f1835cf433b76b51bf329885059d57c3289bb4a11d40c46f9a96417721ea",
+    "final_quality_step_receipt_sha256": "af26820eab6de949fd109000f96938945224fd19ae0361b9829f2ecbb57b3137",
+    "scope": "Only the uniquely named owned experiment was stopped; shared weights and frozen raw evidence retained"
+  },
+  "local_quality_grading": {
+    "observer_exit_code": 0,
+    "all_suites_complete": true,
+    "total_tasks": 376,
+    "grades": {
+      "greedy-humaneval": {
+        "tasks": 164,
+        "passes": 153,
+        "grade_sha256": "1bb474b1e612a510c72f1fa5e4ab63e4c86a7b64da62562ed00abb1d92fb5827"
+      },
+      "greedy-cpp": {
+        "tasks": 24,
+        "passes": 24,
+        "grade_sha256": "897cfbccac4cb666de0ef7b952710ec5eca107af19e22e26df5d397ef83335e9"
+      },
+      "fast-humaneval": {
+        "tasks": 164,
+        "passes": 150,
+        "grade_sha256": "a5c65211de11bb30df7ca911e41369d8e0b3375e8e02eb2b2c665f85f03cbcaa"
+      },
+      "fast-cpp": {
+        "tasks": 24,
+        "passes": 21,
+        "grade_sha256": "19a2aedd4e68b548c374ac65efe5388e617de70e06007bbe5b34b1c2a59c7e1a"
+      }
+    },
+    "observer_log_sha256": "59deee18bc14a74f917c752d934254bdf6703ad5ba5217780769918b9acaab68"
+  }
+}

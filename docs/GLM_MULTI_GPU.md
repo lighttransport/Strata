@@ -148,7 +148,19 @@ model passed full SHA and socket-placement checks. Greedy decoding scored
 154/164 HumanEval and 24/24 C++; affinity 0.08/MTP3 scored 153/164 and 21/24,
 failing the held-out C++ criterion. Use its greedy profile as the Q3 quality
 reference. Both cards reached nearly full VRAM use, with no observed process
-swap. These are quality and memory checks; Q3 throughput was not measured.
+swap. That report measures quality and memory; it does not measure Q3 throughput.
+
+The [Q3 optimization report](benchmarks/v100s_q3_opt_20261017/README.md)
+measures the full model on the same hardware class with 8,192 input and 512
+output tokens. Across three prompts and two fresh processes per profile,
+the frozen candidates reach 22.97 decode / 563.20 prefill tok/s for greedy
+and 43.61 / 562.05 for affinity 0.08/MTP3. Timed output repeats across both
+processes. The paired old-build fast control measures 41.25 / 532.47 tok/s;
+the 50 / 700 targets are not reached. Coding scores are 153/164 HumanEval
+and 24/24 C++ for greedy, and 150/164 and 21/24 for fast. Both candidates
+fail the planned quality preservation checks; fast also loses previous
+passes on `checked_slice` and `mul_i64`. The new profiles remain experiments,
+and the previous greedy profile remains the Q3 quality reference.
 
 `tools/glm_v100_optimize.py` runs a frozen, resumable 8K/512-token matrix.
 Screening, diagnostics, and final timing eligibility are separate. Final
