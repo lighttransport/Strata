@@ -4,6 +4,7 @@
 // The shift/rebias decoder derives from LMDeploy/TurboMind (OpenMMLab,
 // Apache-2.0). Notices: third_party/licenses/v100-skinny.txt.
 #include "strata/kernels/glm_fp4.hpp"
+#include <algorithm>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <stdexcept>
@@ -223,6 +224,22 @@ __global__ void dequant_kernel(GlmPackedFormat format,const void* w,const void* 
     const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
     if(i<size_t(N)*K)y[i]=__float2half_rn(weight_value(format,w,scales,global,i/K,i%K,K));
 }
+// Reconstruct the exact operands used by the skinny SM70 decoder, including
+// both FP16 scale roundings. One lane expands sixteen weights, rather than
+// re-reading the packed fragment independently for every output value.
+__global__ void fp4_sm70_operands(const uint2* codes,const uint8_t* scales,float global,half* out,int N,int K) {
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=size_t(N)*(K/16))return;
+    const int lane=i%32,g=(i/32)%(K/16),tile=i/(32*(K/16));
+    const int row=tile*32+((lane>>2)&3)*8+(lane&3)+((lane&16)?4:0);
+    const uint2 q=codes[i];
+    const half2 scale=__hmul2(fp8e4m3_to_half2(scales[i]),__float2half2_rn(global*16384.f));
+    alignas(16) half2 values[8];
+    dequant8_tm(q.x,scale,values);dequant8_tm(q.y,scale,values+4);
+    auto* target=reinterpret_cast<uint4*>(out+size_t(row)*K+g*16);
+    target[0]=reinterpret_cast<const uint4*>(values)[0];
+    target[1]=reinterpret_cast<const uint4*>(values)[1];
+}
 __device__ __forceinline__ half2 fp8_pair(unsigned q) {
     unsigned bits=((q&0x80u)<<8)|((q&0x7fu)<<7)|
                   ((q&0x8000u)<<16)|((q&0x7f00u)<<15);
@@ -350,6 +367,21 @@ void scaled_gemm(const void* w,const void* scales,const half* x,float* y,float* 
         else small_gemm<FORMAT,8>(w,scales,x,y,partials,N,K,M,stream);
     }else scaled_qpn<FORMAT,8><<<(N+31)/32,256,0,stream>>>(w,scales,x,y,N,K,M);
 }
+__global__ void route_gather(const float* x,const int* routes,half* out,int count,int K,int stride) {
+    const int column=blockIdx.x*blockDim.x+threadIdx.x;
+    if(column>=K)return;
+    for(int row=blockIdx.y;row<count;row+=gridDim.y)
+        out[size_t(row)*K+column]=__float2half_rn(x[size_t(routes[row]/stride)*K+column]);
+}
+__global__ void route_scatter(const float* x,const int* routes,const float* weights,float* sum,int count,int K,int stride) {
+    const int column=blockIdx.x*blockDim.x+threadIdx.x;
+    if(column>=K)return;
+    for(int row=blockIdx.y;row<count;row+=gridDim.y) {
+        const int route=routes[row];const size_t target=size_t(route/stride)*K+column;
+        const float value=__fmul_rn(weights[route],x[size_t(row)*K+column]);
+        sum[target]=__fadd_rn(sum[target],value);
+    }
+}
 void valid(int N,int K,int M) {
     if(N<1||K<1||M<1||K%64)throw std::invalid_argument("GLM FP4: expected K%64=0 and positive N/M");
 }
@@ -403,12 +435,26 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* w,const void* scales,float 
     }
 }
 void glm_fp4_dequant_f16(GlmPackedFormat format,const void* w,const void* s,float global,
-                         uint16_t* out,int N,int K,void* stream) {
+                         uint16_t* out,int N,int K,void* stream,bool sm70) {
     valid(N,K,1);const size_t count=size_t(N)*K;
+    if(sm70&&format==GlmPackedFormat::Nvfp4) {
+        if(N%32)throw std::invalid_argument("SM70 FP4 operands require N%32=0");
+        fp4_sm70_operands<<<(count/16+255)/256,256,0,static_cast<cudaStream_t>(stream)>>>(
+            static_cast<const uint2*>(w),static_cast<const uint8_t*>(s),global,reinterpret_cast<half*>(out),N,K);
+        return;
+    }
     if(format==GlmPackedFormat::F16) {
         if(w!=out)cudaMemcpyAsync(out,w,count*2,cudaMemcpyDeviceToDevice,static_cast<cudaStream_t>(stream));
         return;
     }
     dequant_kernel<<<(count+255)/256,256,0,static_cast<cudaStream_t>(stream)>>>(format,w,s,global,reinterpret_cast<half*>(out),N,K);
+}
+void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* out,int count,int K,int stride,void* stream) {
+    if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route gather extent");
+    if(count)route_gather<<<dim3((K+255)/256,std::min(count,65535)),256,0,static_cast<cudaStream_t>(stream)>>>(x,routes,reinterpret_cast<half*>(out),count,K,stride);
+}
+void glm_fp4_route_scatter(const float* x,const int* routes,const float* weights,float* sum,int count,int K,int stride,void* stream) {
+    if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route scatter extent");
+    if(count)route_scatter<<<dim3((K+255)/256,std::min(count,65535)),256,0,static_cast<cudaStream_t>(stream)>>>(x,routes,weights,sum,count,K,stride);
 }
 } // namespace strata::kernels

@@ -1,5 +1,6 @@
 #pragma once
 #include "strata/core/expert_source.hpp"
+#include "strata/host/glm_env.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -15,6 +16,14 @@
 #endif
 
 namespace strata::core {
+inline uint64_t glm_fp4_cpu_scale_cache_bytes() {
+    const auto mib=strata_env_value_ll("STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB",2048);
+    if(mib<128 || mib>10240)throw std::invalid_argument("GLM FP4: CPU scale cache must be 128..10240 MiB");
+    return uint64_t(mib)*1024*1024;
+}
+inline uint64_t glm_fp4_host_reserve_bytes() {
+    return std::max<uint64_t>(6ULL*1024*1024*1024,glm_fp4_cpu_scale_cache_bytes()+4ULL*1024*1024*1024);
+}
 // The Slurm request remains an upper bound when the job's memory controller
 // is nested or not mounted in this process's namespace.
 inline uint64_t host_memory_allowance_bytes() {

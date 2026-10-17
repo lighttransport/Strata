@@ -698,6 +698,12 @@ struct GpuPrefill {
         arena = std::make_unique<Device>(experts_only ? (size_t)width * 320 * 1024 + 192 * MiB
                                                      : arena_bytes(width, capacity) + (native_exl ? 128 * MiB : 0));
         if(native_exl) {
+            if(strata_env_is_one("STRATA_GLM_FP4_TENSOR_ATTENTION")) {
+                blas_workspace=std::make_unique<Device>(4*MiB);
+                gemm=std::make_unique<strata::prefill::Gemm>();std::string error;
+                if(!gemm->init_external(stream,nullptr,0,blas_workspace->p,blas_workspace->bytes,error))
+                    throw std::runtime_error(error);
+            }
             std::cerr<<"EXL3 GPU prefill chunk="<<chunk<<" scratch_MiB="<<arena->bytes/double(MiB)<<'\n';
             return;
         }
@@ -4239,6 +4245,11 @@ class Decoder {
             mat(p+"ffn_gate_inp.weight",x,logits.f());
             auto& bias=weight(p+"exp_probs_b.bias");
             k::glm_router_tokens(logits.f(),bias.f(),static_cast<int*>(ids.p),routing.f(),m.experts,m.top_k,m.expert_scale,nt,stream);
+            if(routing_trace.is_open()) {
+                std::vector<int> selected(size_t(nt)*m.top_k);
+                check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*sizeof(int),cudaMemcpyDeviceToHost,stream));
+                check(cudaStreamSynchronize(stream));trace_routes(l,position,nt,m.top_k,selected.data());
+            }
             ffn(p,x,out,"_shexp",m.shared_intermediate,layer.shared_swiglu_limit);
             modelopt_gpu->routed(l,x,static_cast<const int*>(ids.p),routing.f(),out,nt,layer.swiglu_limit,stream);
             return;
@@ -6282,7 +6293,7 @@ class Decoder {
         auto &counts = buf("index_counts", ntile);
         auto &aq = buf("mla_absorbed_q", ntile * heads * latent);
         auto &av = buf("mla_absorbed_v", ntile * heads * latent);
-        const bool halves = tensor_mla && fast && gpu && gpu->gemm;
+        const bool halves = tensor_mla && fast && gpu && gpu->gemm && (!artifact.is_modelopt()||lossy_prefill());
         // Before top-k truncation every causal key is selected. A shared FP16
         // key matrix avoids one gathered copy per query. Key order and GEMM
         // shape change, so this remains an opt-in numerical experiment.
@@ -6972,8 +6983,9 @@ class Decoder {
             const uint64_t ram=artifact.is_modelopt()?strata::core::host_memory_allowance_bytes():uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
             const auto census=artifact.census();
             const uint64_t resident=artifact.is_modelopt()?artifact.exl3().tensors.file_bytes():(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;
-            if(artifact.is_modelopt())std::cerr<<"FP4_HOST_BUDGET weights_bytes="<<resident<<" reserve_bytes="<<6ULL*1024*MiB<<" limit_bytes="<<ram<<'\n';
-            if(resident>ram || 6ULL*1024*MiB>ram-resident)throw std::runtime_error(artifact.is_modelopt()?"GLM FP4: indexed files plus 6 GiB host reserve exceed the memory allowance":"EXL3: main weights plus 6 GiB host reserve exceed system RAM");
+            const uint64_t host_reserve=artifact.is_modelopt()?strata::core::glm_fp4_host_reserve_bytes():6ULL*1024*MiB;
+            if(artifact.is_modelopt())std::cerr<<"FP4_HOST_BUDGET weights_bytes="<<resident<<" reserve_bytes="<<host_reserve<<" limit_bytes="<<ram<<'\n';
+            if(resident>ram || host_reserve>ram-resident)throw std::runtime_error(artifact.is_modelopt()?"GLM FP4: indexed files plus runtime reserve exceed the memory allowance":"EXL3: main weights plus 6 GiB host reserve exceed system RAM");
 #endif
             if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
             exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu);
@@ -10121,7 +10133,7 @@ class Decoder {
         if (prefill_width_saved) {
             phase.clear(); scratch.clear(); gpu.reset(); mtp_experts.reset(); mtp_lookup.reset();
 #ifndef STRATA_USE_HIP
-            if(modelopt_gpu)modelopt_gpu->begin_prefill();
+            if(modelopt_gpu)modelopt_gpu->begin_prefill(GpuPrefill::arena_bytes(prefill_width_saved,capacity)+128*MiB);
 #endif
             if (prefill_dense_budget) begin_streaming_dense();
             for (auto it = weights.begin(); it != weights.end();) {

@@ -7,10 +7,49 @@
 #include <stdexcept>
 #include <vector>
 #include <cmath>
+#include <algorithm>
+#include <cstring>
 namespace k=strata::kernels;
 namespace a=strata::artifact;
 static void check(cudaError_t e){if(e!=cudaSuccess)throw std::runtime_error(cudaGetErrorString(e));}
 struct Buffer {void* p=nullptr;explicit Buffer(size_t bytes){check(cudaMalloc(&p,std::max<size_t>(bytes,1)));}~Buffer(){cudaFree(p);}};
+static void routing() {
+    constexpr int tokens=32,count=17,stride=8;
+    for(int columns:{37,4096}) {
+        std::vector<float> input(tokens*columns),values(count*columns),weights(tokens*stride),sum(tokens*columns),got(sum.size());
+        std::vector<int> routes(count);
+        for(size_t i=0;i<input.size();++i)input[i]=std::sin(float(i)*.13f)*(i%107==0?8000.f:1.f);
+        for(size_t i=0;i<values.size();++i)values[i]=std::cos(float(i)*.31f)*2.17f;
+        for(size_t i=0;i<weights.size();++i)weights[i]=i%13?std::cos(float(i)*.19f)*.7f:0.f;
+        for(size_t i=0;i<sum.size();++i)sum[i]=std::sin(float(i)*.17f);
+        for(int j=0;j<count;++j)routes[j]=((j*5)%tokens)*stride+j%stride;
+        Buffer x(input.size()*4),v(values.size()*4),w(weights.size()*4),s(sum.size()*4),r(routes.size()*4),half(values.size()*2);
+        check(cudaMemcpy(x.p,input.data(),input.size()*4,cudaMemcpyHostToDevice));
+        check(cudaMemcpy(v.p,values.data(),values.size()*4,cudaMemcpyHostToDevice));
+        check(cudaMemcpy(w.p,weights.data(),weights.size()*4,cudaMemcpyHostToDevice));
+        check(cudaMemcpy(s.p,sum.data(),sum.size()*4,cudaMemcpyHostToDevice));
+        for(int pass=0;pass<2;++pass) {
+            if(pass)std::reverse(routes.begin(),routes.end());
+            check(cudaMemcpy(r.p,routes.data(),routes.size()*4,cudaMemcpyHostToDevice));
+            k::glm_fp4_route_gather(static_cast<float*>(x.p),static_cast<int*>(r.p),static_cast<uint16_t*>(half.p),count,columns,stride,nullptr);
+            std::vector<uint16_t> gathered(count*columns);
+            check(cudaMemcpy(gathered.data(),half.p,gathered.size()*2,cudaMemcpyDeviceToHost));
+            for(int j=0;j<count;++j)for(int h=0;h<columns;++h)
+                if(gathered[j*columns+h]!=strata::cpu::exl3::half_round(input[(routes[j]/stride)*columns+h]))
+                    throw std::runtime_error("routed FP16 gather differs from host reference");
+            k::glm_fp4_route_scatter(static_cast<float*>(v.p),static_cast<int*>(r.p),static_cast<float*>(w.p),static_cast<float*>(s.p),count,columns,stride,nullptr);
+            for(int j=0;j<count;++j)for(int h=0;h<columns;++h) {
+                volatile float product=weights[routes[j]]*values[j*columns+h];
+                sum[(routes[j]/stride)*columns+h]+=product;
+            }
+        }
+        check(cudaMemcpy(got.data(),s.p,got.size()*4,cudaMemcpyDeviceToHost));
+        if(std::memcmp(sum.data(),got.data(),sum.size()*4))throw std::runtime_error("ordered GPU route sum differs from host reference");
+        k::glm_fp4_route_gather(nullptr,nullptr,nullptr,0,columns,stride,nullptr);
+        k::glm_fp4_route_scatter(nullptr,nullptr,nullptr,nullptr,0,columns,stride,nullptr);
+    }
+    std::cout<<"device routing gather and ordered sum PASS (bitwise, partial tiles, reversed routes)\n";
+}
 static void csf32() {
     // Independent encoder, including multiple exception pages and two
     // exceptions in every 32x2 block. Compare packed output byte for byte.
@@ -104,6 +143,17 @@ static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::
     k::glm_fp4_dequant_f16(fmt,w,s,h.global,static_cast<uint16_t*>(dh.p),N,K,nullptr);
     check(cudaMemcpy(actual_half.data(),dh.p,actual_half.size()*2,cudaMemcpyDeviceToHost));
     if(actual_half!=expected_half)throw std::runtime_error("FP4 native-format reconstruction differs");
+    if(fmt==k::GlmPackedFormat::Nvfp4) {
+        k::glm_fp4_dequant_f16(fmt,w,s,h.global,static_cast<uint16_t*>(dh.p),N,K,nullptr,true);
+        check(cudaMemcpy(actual_half.data(),dh.p,actual_half.size()*2,cudaMemcpyDeviceToHost));
+        const float global=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(h.global*16384.f));
+        for(int r=0;r<N;++r)for(int j=0;j<K;++j) {
+            const float scale=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(strata_fp4_e4m3(h.scales[size_t(r)*(K/16)+j/16])*global))/16384.f;
+            const unsigned q=(h.data()[size_t(r)*(K/2)+j/2]>>((j&1)*4))&15;
+            const auto want=strata::cpu::exl3::half_round(strata_fp4_e2m1(q)*scale);
+            if(actual_half[size_t(r)*K+j]!=want)throw std::runtime_error("SM70 prefill operand differs from skinny decoder");
+        }
+    }
     if(fmt==k::GlmPackedFormat::Bf16) {
         check(cudaMemcpy(packed.p,raw.p,bytes,cudaMemcpyDeviceToDevice));
         k::glm_fp4_dequant_f16(fmt,packed.p,nullptr,1,static_cast<uint16_t*>(packed.p),N,K,nullptr);
@@ -195,6 +245,8 @@ int main(int argc,char** argv) {
     cudaDeviceProp properties{};
     if(cudaGetDeviceProperties(&properties,0)!=cudaSuccess||properties.major<7)return 77;
     try {
+        routing();
+        if(argc==2 && std::string(argv[1])=="--routing-only")return 0;
         csf32();
         if(argc==3 || argc==4) {
             a::Safetensors tensors(argv[1],true);const auto cfg=a::read_json((std::filesystem::path(argv[1])/"config.json").string());

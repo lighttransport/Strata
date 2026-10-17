@@ -1,6 +1,7 @@
 #pragma once
 #include "strata/artifact/safetensors.hpp"
 #include "strata/artifact/glm_modelopt.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/exl3/math.hpp"
 namespace strata::artifact {
 // This reader accepts the inspected K2/MCG pack contract and, as a reference source, the FP8 release
@@ -15,7 +16,9 @@ public:
     std::vector<bool> token_ids;
     uint64_t experts_bytes=0, fixed_bytes=0, draft_bytes=0, vision_bytes=0;
     explicit GlmExl3(const std::filesystem::path& root):config(read_json((root/"config.json").string())),
-        tensors(root,config.at("quantization_config").at("quant_method").string()=="modelopt") {
+        tensors(root,config.at("quantization_config").at("quant_method").string()=="modelopt",
+                config.at("quantization_config").at("quant_method").string()=="modelopt"&&strata_env_is_one("STRATA_GLM_FP4_RAM_COPY"),
+                config.at("quantization_config").at("quant_method").string()=="modelopt"&&strata_env_is_one("STRATA_GLM_FP4_RAM_FDS")) {
         const auto& q=config.at("quantization_config");
         if(q.at("quant_method").string()=="modelopt") {
             if(q.at("quant_algo").string()!="MIXED_PRECISION")throw std::runtime_error("GLM ModelOpt: expected mixed precision checkpoint");

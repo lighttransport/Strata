@@ -18,9 +18,12 @@ class RequestDiagnostics(unittest.TestCase):
     def test_native_fp4_counters_keep_cumulative_scope(self):
         row, = request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=1\n"
             "FP4_CPU expert_groups=44 activation_format=f16 weight_format=native_nvfp4\n"
+            "FP4_CPU_SCALES hits=33 misses=11 bytes=123456\n"
             "FP4_ROUTES device=0 hits=11 misses=5 uploaded_bytes=100 cache_bytes=90 mma=12 reference=0 prefill=7\n"
             "FP4_ROUTES device=1 hits=9 misses=4 uploaded_bytes=80 cache_bytes=70 mma=10 reference=0 prefill=6\n")
         self.assertEqual(row["native_cpu_expert_groups"], 44)
+        self.assertEqual(row["native_cpu_scale_cache"], {"hits":33,"misses":11,"bytes":123456})
+        self.assertEqual(row["native_cpu_scale_cache_scope"], "cumulative since model load")
         self.assertEqual(row["native_devices"][1]["cache_bytes"], 70)
         self.assertEqual(row["native_counter_scope"], "cumulative since model load")
 

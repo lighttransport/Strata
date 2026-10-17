@@ -75,6 +75,7 @@ def diagnostic_environment(environment=None):
              "STRATA_GLM_ROUTING_EVENTS", "STRATA_GLM_STATE_TRACE_DIR", "STRATA_GLM_CHECK_RESIDENT_ROWS",
              "STRATA_GLM_MIXED_PROFILE", "STRATA_GLM_MIXED_DECODE_PROFILE",
              "STRATA_GLM_MIXED_PROFILE_DECODE", "STRATA_GLM_MTP_TIMING",
+             "STRATA_GLM_FP4_PROFILE",
              "STRATA_GLM_LAYER_VERIFY_CACHE")
     values = os.environ if environment is None else environment
     return [name for name in names if name in values]
@@ -142,6 +143,10 @@ def request_diagnostics(log):
             row["native_counter_scope"] = "cumulative since model load"
         cpu = re.findall(r"FP4_CPU expert_groups=(\d+)", section)
         if cpu: row["native_cpu_expert_groups"] = int(cpu[-1])
+        scales = re.findall(r"FP4_CPU_SCALES hits=(\d+) misses=(\d+) bytes=(\d+)", section)
+        if scales:
+            row["native_cpu_scale_cache"] = dict(zip(("hits", "misses", "bytes"), map(int, scales[-1])))
+            row["native_cpu_scale_cache_scope"] = "cumulative since model load"
         hits = re.search(r"resident expert entries=(\d+)/(\d+)", section)
         if hits:
             row["gpu_expert_hits"], row["expert_entries"] = map(int, hits.groups())
@@ -396,7 +401,7 @@ def main():
         def read():
             line = process.stdout.readline().strip()
             if not line:
-                raise RuntimeError(f"decoder exited; see {log_path}")
+                raise RuntimeError(f"decoder exited (code {process.poll()}); see {log_path}")
             if line.startswith("ERR "):
                 raise RuntimeError(line)
             return line
@@ -478,7 +483,9 @@ def main():
                     print(f"PREFILL_TRIAL {trial} tokens={len(extra_ids)} tok_s={row['prefill_tok_s']:.3f}", flush=True)
             process.stdin.write("QUIT\n")
             process.stdin.flush()
-            process.wait(timeout=30)
+            # Releasing a registered full checkpoint can unpin tens of
+            # millions of pages. It is outside the timed request interval.
+            process.wait(timeout=180 if modelopt and os.environ.get("STRATA_GLM_FP4_REGISTER_WEIGHTS")=="1" else 30)
             if process.returncode:
                 raise RuntimeError(f"decoder failed; see {log_path}")
             if sanitizer_path:
@@ -496,6 +503,7 @@ def main():
                 raise RuntimeError("validation prefix differs from repeated requests")
         except BaseException as error:
             result["error"] = str(error)
+            result["decoder_returncode"] = process.poll()
             save()
             raise
         finally:

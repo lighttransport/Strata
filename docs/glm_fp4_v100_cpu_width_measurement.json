@@ -1,0 +1,384 @@
+{
+  "date": "2026-10-18",
+  "scope": "isolated native FP4 CPU projection; not full-model throughput",
+  "hardware": {
+    "cpu": "Intel Xeon Gold 6240",
+    "sockets": 2,
+    "cores_per_socket": 18,
+    "logical_cpus": 72,
+    "numa_nodes": 4,
+    "allocated_logical_cpus": 36,
+    "allocated_physical_cores": 18,
+    "pool_workers": [
+      1,
+      17
+    ],
+    "placement": "pinned workers on one socket",
+    "ram_speed": "not available",
+    "cpu_clock_control": "not locked",
+    "other_workloads": "no other allocation on the node during this component run",
+    "execution_runs": [
+      {
+        "workers": [
+          1,
+          17
+        ],
+        "allocated_logical_cpus": 36,
+        "allocated_physical_cores": 18,
+        "placement": "one socket; workers pinned"
+      },
+      {
+        "workers": [
+          1,
+          35
+        ],
+        "allocated_logical_cpus": 72,
+        "allocated_physical_cores": 36,
+        "placement": "two sockets; workers pinned; single-thread first-touch matrix memory"
+      }
+    ]
+  },
+  "protocol": {
+    "rows": 2048,
+    "columns": 4096,
+    "widths": [
+      1,
+      3,
+      4,
+      7,
+      8
+    ],
+    "weight_format": "native row-major NVFP4 with logical group-16 E4M3 scales",
+    "arithmetic": "FP16-rounded weights and inputs; FP32 FMA",
+    "weight_table": "QPN scale arithmetic; per-projection global scale 0.00061",
+    "copies": 16,
+    "working_set_bytes": 75497472,
+    "repeats": 64,
+    "samples": 3,
+    "order": "baseline then candidate for samples 0 and 2; candidate then baseline for sample 1",
+    "timing": "includes pool wake and completion; excludes data construction, parity checks and weight-table construction",
+    "input": "FP16-rounded sin(i * .17), multiplied by 80 at indices divisible by 107",
+    "worker_comparison_limit": "Worker counts came from separate allocations and first-touch placement; compare baseline against candidate within each count."
+  },
+  "baseline": {
+    "commit": "df3f0443",
+    "cpu_source_sha256": "5c233076592e7fc400b8b65c54c0316f0be935ac4bbf74ccda44677c9bfde5c9",
+    "comparison_link": "Exported baseline functions were renamed to link both implementations in the same test process; arithmetic unchanged."
+  },
+  "candidate": {
+    "cpu_source_sha256": "b2a898b278c8e2f6db52ede2678404cf13c1891cc536d1b3dd0ad198126e0b4a",
+    "change": "specialize token width at dispatch; preserve row FMA and reduction order",
+    "component_measured_cpu_source_sha256": "f647e9120098276fdbe0179301fd49d9c944378d3dea3dab66dfcffa998020d4",
+    "source_difference": "The measured 17-worker source and current source differ only by a two-line explanatory comment."
+  },
+  "compiler": {
+    "name": "GCC",
+    "version": "12.2.1",
+    "flags": [
+      "-O3",
+      "-DNDEBUG",
+      "-std=c++20"
+    ],
+    "isa": "runtime AVX-512 on the measured node; AVX2 and scalar parity also executed"
+  },
+  "results": [
+    {
+      "workers": 1,
+      "width": 1,
+      "baseline_us": [
+        1500.34,
+        1497.61,
+        1497.42
+      ],
+      "candidate_us": [
+        1199.37,
+        1198.17,
+        1197.9
+      ],
+      "baseline_median_us": 1497.61,
+      "candidate_median_us": 1198.17,
+      "speedup": 1.249914452873966
+    },
+    {
+      "workers": 1,
+      "width": 3,
+      "baseline_us": [
+        2520.02,
+        2790.83,
+        2519.46
+      ],
+      "candidate_us": [
+        2290.35,
+        2288.82,
+        2292.15
+      ],
+      "baseline_median_us": 2520.02,
+      "candidate_median_us": 2290.35,
+      "speedup": 1.1002772502019342
+    },
+    {
+      "workers": 1,
+      "width": 4,
+      "baseline_us": [
+        3650.04,
+        3641.79,
+        3640.89
+      ],
+      "candidate_us": [
+        3183.53,
+        3183.77,
+        3185.6
+      ],
+      "baseline_median_us": 3641.79,
+      "candidate_median_us": 3183.77,
+      "speedup": 1.143860894474161
+    },
+    {
+      "workers": 1,
+      "width": 7,
+      "baseline_us": [
+        6176.19,
+        5886.89,
+        5886.03
+      ],
+      "candidate_us": [
+        5239.39,
+        5240.62,
+        5241.44
+      ],
+      "baseline_median_us": 5886.89,
+      "candidate_median_us": 5240.62,
+      "speedup": 1.1233193782415059
+    },
+    {
+      "workers": 1,
+      "width": 8,
+      "baseline_us": [
+        6751.47,
+        6750.64,
+        6752.63
+      ],
+      "candidate_us": [
+        6481.13,
+        6399.09,
+        6298.5
+      ],
+      "baseline_median_us": 6751.47,
+      "candidate_median_us": 6399.09,
+      "speedup": 1.0550672048681922
+    },
+    {
+      "workers": 17,
+      "width": 1,
+      "baseline_us": [
+        182.33,
+        148.475,
+        148.347
+      ],
+      "candidate_us": [
+        139.391,
+        138.187,
+        136.525
+      ],
+      "baseline_median_us": 148.475,
+      "candidate_median_us": 138.187,
+      "speedup": 1.0744498397099582
+    },
+    {
+      "workers": 17,
+      "width": 3,
+      "baseline_us": [
+        209.017,
+        207.934,
+        207.212
+      ],
+      "candidate_us": [
+        198.029,
+        196.271,
+        196.315
+      ],
+      "baseline_median_us": 207.934,
+      "candidate_median_us": 196.315,
+      "speedup": 1.0591854927030537
+    },
+    {
+      "workers": 17,
+      "width": 4,
+      "baseline_us": [
+        284.065,
+        284.415,
+        283.572
+      ],
+      "candidate_us": [
+        254.258,
+        254.431,
+        255.989
+      ],
+      "baseline_median_us": 284.065,
+      "candidate_median_us": 254.431,
+      "speedup": 1.1164716563626287
+    },
+    {
+      "workers": 17,
+      "width": 7,
+      "baseline_us": [
+        406.709,
+        407.897,
+        405.651
+      ],
+      "candidate_us": [
+        373.869,
+        373.82,
+        372.663
+      ],
+      "baseline_median_us": 406.709,
+      "candidate_median_us": 373.82,
+      "speedup": 1.0879808463966616
+    },
+    {
+      "workers": 17,
+      "width": 8,
+      "baseline_us": [
+        459.912,
+        458.058,
+        457.966
+      ],
+      "candidate_us": [
+        430.529,
+        430.993,
+        430.727
+      ],
+      "baseline_median_us": 458.058,
+      "candidate_median_us": 430.727,
+      "speedup": 1.063453184964026
+    },
+    {
+      "workers": 35,
+      "width": 1,
+      "baseline_us": [
+        330.813,
+        316.969,
+        317.991
+      ],
+      "candidate_us": [
+        304.936,
+        307.48,
+        317.19
+      ],
+      "baseline_median_us": 317.991,
+      "candidate_median_us": 307.48,
+      "speedup": 1.034184337192663
+    },
+    {
+      "workers": 35,
+      "width": 3,
+      "baseline_us": [
+        266.162,
+        270.507,
+        279.255
+      ],
+      "candidate_us": [
+        270.633,
+        265.215,
+        271.039
+      ],
+      "baseline_median_us": 270.507,
+      "candidate_median_us": 270.633,
+      "speedup": 0.999534424848411
+    },
+    {
+      "workers": 35,
+      "width": 4,
+      "baseline_us": [
+        315.946,
+        488.449,
+        306.66
+      ],
+      "candidate_us": [
+        302.034,
+        291.757,
+        292.199
+      ],
+      "baseline_median_us": 315.946,
+      "candidate_median_us": 292.199,
+      "speedup": 1.0812699564338002
+    },
+    {
+      "workers": 35,
+      "width": 7,
+      "baseline_us": [
+        305.133,
+        292.863,
+        297.424
+      ],
+      "candidate_us": [
+        282.377,
+        285.142,
+        285.595
+      ],
+      "baseline_median_us": 297.424,
+      "candidate_median_us": 285.142,
+      "speedup": 1.04307327577137
+    },
+    {
+      "workers": 35,
+      "width": 8,
+      "baseline_us": [
+        312.171,
+        315.355,
+        314.114
+      ],
+      "candidate_us": [
+        302.142,
+        303.155,
+        302.259
+      ],
+      "baseline_median_us": 314.114,
+      "candidate_median_us": 302.259,
+      "speedup": 1.0392213300513797
+    }
+  ],
+  "validation": {
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "baseline_candidate_output": "bitwise equal",
+    "first_row_across_widths": "bitwise equal",
+    "host_parity": [
+      "AVX-512",
+      "AVX2",
+      "scalar"
+    ],
+    "builds_passed": [
+      "CUDA SM70 candidate engine link",
+      "CUDA SM86 full engine",
+      "HIP gfx1201 full engine"
+    ],
+    "sycl": "CPU file is not used by the separate SYCL project"
+  },
+  "limitations": [
+    "No full-model speed, coding quality, or residency claim.",
+    "No RAM speed measurement or locked CPU clocks.",
+    "Synthetic projection and warm logical-scale planes; excludes CSF32 expansion, scale-cache misses, routing and GPU work.",
+    "The 35-worker width-3 medians were effectively unchanged; width-1 ranges overlap. Single-thread first-touch matrix allocation limits cross-socket scaling."
+  ],
+  "evidence_sha256": {
+    "single.log": "1c27e379d3cf3f2f8022cba1e176e3e43b4fcd7dde787bd67e9c57c0cedfb5c6",
+    "pool.log": "85297cbedc63326f9c719e4a1ba0e4429ee821d79d19f127011bd17e85655f18",
+    "parity.log": "30bf45258b7c154d4a513df6c04e26a376544d8e37486be71263e3043f97611a",
+    "cpu.txt": "b0a9e463edec85e4cc7e0c21860b69b4397e99bdf253fdeaba87f25553464d92",
+    "compiler.txt": "6b84ca4c4e093c7dd37d9c4d3ecef3dff4ce208c3b8b4d5be24c52443e89b2c6",
+    "pool-35.log": "b293ccff5f5dce7f1358ee286ff9badf31c65b49c1dc0846b0f3c2e17f575b47"
+  },
+  "engine_sha256": {
+    "build/strata-glm-decode": "f95859318a027c8360141971401b3060952bfc6fc899e854913f1282f604504d",
+    "build/strata-glm-decode-cpu-fixedwidth": "974228a65cd99a8199d15c3e789f817802ce54baca0f3810051c992e45d69149"
+  }
+}

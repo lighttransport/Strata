@@ -44,6 +44,38 @@ int main(int argc,char** argv){try {
         }
     }
     std::cout<<"FP4 CPU W4A16 PASS (1..8 tokens, disjoint rows, outliers, fixed weight scales)\n";
+    for(int groups:{16,128,256}) {
+        constexpr int rows=128;const int columns=groups*16;
+        std::vector<uint8_t> bases(rows),codes(size_t(rows)*groups/2),logical(size_t(rows)*groups),w(size_t(rows)*columns/2);
+        for(int i=0;i<rows;++i)bases[i]=30+i%20;
+        for(size_t i=0;i<codes.size();++i)codes[i]=uint8_t(i*59+19);
+        for(size_t i=0;i<w.size();++i)w[i]=uint8_t(i*53+7);
+        const size_t tiles=size_t(rows/128)*(groups/4),pages=(tiles+31)/32;
+        std::vector<uint16_t> offsets(size_t(rows/32)*(groups/2)+pages);
+        std::vector<uint32_t> page_bases(pages);
+        if(strata_fp4_csf32_decode(rows,groups,bases.data(),bases.size(),codes.data(),codes.size(),
+            offsets.data(),offsets.size(),page_bases.data(),pages,nullptr,0,logical.data(),logical.size()))
+            throw std::runtime_error("CSF32 test fixture failed host validation");
+        // Dense exception rows, empty rows and exceptions on mask boundaries.
+        for(int row=0;row<rows;++row)for(int group=0;group<groups;++group)
+            if(row%3==0||group==0||group==63||group==64||group==127)
+                logical[size_t(row)*groups+group]=uint8_t(8+(row+group*7)%110);
+        auto compact=strata::kernels::cpu::glm_fp4_csf32_rows(logical.data(),bases.data(),codes.data(),rows,groups);
+        std::fill(bases.begin(),bases.end(),0);std::fill(codes.begin(),codes.end(),0);
+        std::vector<float> input(size_t(columns)*8),expected(size_t(rows)*8),got(expected.size()),first;
+        for(size_t i=0;i<input.size();++i)input[i]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(std::sin(float(i)*.37f)));
+        alignas(64) float table[strata::kernels::cpu::glm_fp4_weight_table_floats];
+        strata::kernels::cpu::glm_fp4_weight_table(global,true,table);
+        for(int tokens=1;tokens<=8;++tokens) {
+            std::fill(expected.begin(),expected.end(),-777.f);std::fill(got.begin(),got.end(),-777.f);
+            strata::kernels::cpu::glm_fp4_rows_table(w.data(),logical.data(),table,input.data(),expected.data(),columns,rows,tokens,13,rows-1);
+            strata::kernels::cpu::glm_fp4_rows_csf32_table(w.data(),compact,table,input.data(),got.data(),columns,rows,tokens,13,rows-1);
+            if(std::memcmp(expected.data(),got.data(),got.size()*4))throw std::runtime_error("CSF32 CPU rows differ from logical scale planes");
+            if(tokens==1)first.assign(got.begin(),got.begin()+rows);
+            else if(std::memcmp(first.data(),got.data(),rows*4))throw std::runtime_error("CSF32 CPU first row changes with verification width");
+        }
+    }
+    std::cout<<"FP4 CPU CSF32 rows PASS (host codec, sparse/dense exceptions, mask boundaries, widths 1..8)\n";
     if(argc==2 && std::string(argv[1])=="--bench") {
         constexpr int rows=2048,columns=4096,copies=16,repeats=64;
         const size_t wb=size_t(rows)*columns/2,sb=size_t(rows)*columns/16;

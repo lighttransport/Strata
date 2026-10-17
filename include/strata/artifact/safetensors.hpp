@@ -1,8 +1,10 @@
 #pragma once
 // Indexed bounded reads follow gemm/common/glm53f_safetensors.h; no payload mapping at inspection.
 #include "strata/artifact/json.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -13,6 +15,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#ifdef __linux__
+#include <linux/magic.h>
+#include <sys/vfs.h>
+#include <sys/stat.h>
+#endif
 #endif
 
 namespace strata::artifact {
@@ -58,12 +65,43 @@ class Safetensors {
             if(!file.read(static_cast<char*>(destination),static_cast<std::streamsize>(bytes))) throw std::runtime_error("safetensors: failed read " + path.string());
 #endif
         }
+#ifndef _WIN32
+        const uint8_t* map(bool resident_copy) const {
+            std::lock_guard guard(mapping_mutex);
+            if(mapping!=MAP_FAILED)return static_cast<const uint8_t*>(mapping);
+            if(!resident_copy) {
+                mapping=::mmap(nullptr,size,PROT_READ,MAP_SHARED,fd,0);
+                if(mapping==MAP_FAILED)throw std::runtime_error("safetensors: cannot map shard");
+                return static_cast<const uint8_t*>(mapping);
+            }
+            // One immutable compressed copy shared by this process's workers.
+            // Read directly into the final mapping and release source cache
+            // pages in bounded chunks, rather than retaining two weight sets.
+            void* pages=::mmap(nullptr,size,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
+            if(pages==MAP_FAILED)throw std::runtime_error("safetensors: cannot allocate shared RAM weights");
+            try {
+                constexpr uint64_t chunk=4*1024*1024;
+                for(uint64_t offset=0;offset<size;offset+=chunk) {
+                    const size_t bytes=static_cast<size_t>(std::min(chunk,size-offset));
+                    read(offset,static_cast<uint8_t*>(pages)+offset,bytes);
+                    ::posix_fadvise(fd,static_cast<off_t>(offset),static_cast<off_t>(bytes),POSIX_FADV_DONTNEED);
+                }
+                if(::mprotect(pages,size,PROT_READ))throw std::runtime_error("safetensors: cannot protect shared RAM weights");
+            }catch(...) {::munmap(pages,size);throw;}
+            mapping=pages;
+            std::fprintf(stderr,"FP4_HOST_STAGE bytes=%llu backing=shared_ram readonly=1\n",static_cast<unsigned long long>(size));
+            return static_cast<const uint8_t*>(mapping);
+        }
+#endif
     };
     std::vector<std::unique_ptr<Shard>> shards_;
     std::map<std::string,TensorView> tensors_;
     uint64_t payload_=0, file_bytes_=0;
+    bool resident_copy_=false,ram_fds_=false;
 public:
-    explicit Safetensors(const std::filesystem::path& directory,bool indexed_subsets=false) {
+    explicit Safetensors(const std::filesystem::path& directory,bool indexed_subsets=false,bool resident_copy=false,bool ram_fds=false)
+        :resident_copy_(resident_copy),ram_fds_(ram_fds) {
+        if(resident_copy_&&ram_fds_)throw std::invalid_argument("safetensors: choose RAM copy or sealed RAM files");
         auto root=std::filesystem::canonical(directory);
         Json index=read_json((root/"model.safetensors.index.json").string());
         const auto& map=index.at("weight_map");
@@ -78,10 +116,14 @@ public:
         }
         if(paths.size()>1024) throw std::runtime_error("safetensors: too many shards");
         for(const auto& filename:paths) {
-            auto shard=std::make_unique<Shard>(); shard->path=std::filesystem::canonical(root/filename);
-            const auto relative=shard->path.lexically_relative(root);
-            if(relative.empty() || relative.is_absolute() || *relative.begin()==".." ||
-               (!indexed_subsets&&shard->path.parent_path()!=root))throw std::runtime_error("safetensors: shard escapes model directory");
+            auto shard=std::make_unique<Shard>();
+            if(ram_fds_)shard->path=root/filename;
+            else {
+                shard->path=std::filesystem::canonical(root/filename);
+                const auto relative=shard->path.lexically_relative(root);
+                if(relative.empty() || relative.is_absolute() || *relative.begin()==".." ||
+                   (!indexed_subsets&&shard->path.parent_path()!=root))throw std::runtime_error("safetensors: shard escapes model directory");
+            }
             shard->size=std::filesystem::file_size(shard->path);
             if(file_bytes_>UINT64_MAX-shard->size)throw std::runtime_error("safetensors: shard size sum overflow");
             file_bytes_+=shard->size;
@@ -89,7 +131,20 @@ public:
 #ifndef _WIN32
             shard->fd=::open(shard->path.c_str(),O_RDONLY|O_CLOEXEC);
             if(shard->fd<0) throw std::runtime_error("safetensors: cannot open shard");
+            if(ram_fds_) {
+#ifdef __linux__
+                struct stat st{};struct statfs fs{};
+                const int required=F_SEAL_WRITE|F_SEAL_GROW|F_SEAL_SHRINK|F_SEAL_SEAL;
+                const int seals=::fcntl(shard->fd,F_GET_SEALS);
+                if(::fstat(shard->fd,&st)||::fstatfs(shard->fd,&fs)||!S_ISREG(st.st_mode)||st.st_uid!=::geteuid()||
+                   uint64_t(st.st_size)!=shard->size||fs.f_type!=TMPFS_MAGIC||seals<0||(seals&required)!=required)
+                    throw std::runtime_error("safetensors: RAM shard must be an immutable sealed memfd owned by this user");
 #else
+                throw std::runtime_error("safetensors: sealed RAM files require Linux");
+#endif
+            }
+#else
+            if(ram_fds_)throw std::runtime_error("safetensors: sealed RAM files require Linux");
             shard->file.open(shard->path,std::ios::binary); if(!shard->file) throw std::runtime_error("safetensors: cannot open shard");
 #endif
             std::array<uint8_t,8> length{}; shard->read(0,length.data(),8); uint64_t n=0;
@@ -142,24 +197,32 @@ public:
     }
     void read(const TensorView& t,uint64_t offset,void* out,size_t bytes) const {
         if(offset>t.bytes || bytes>t.bytes-offset || (bytes && !out)) throw std::runtime_error("safetensors: read exceeds tensor " + t.name);
+        if((resident_copy_||ram_fds_) && bytes) {std::memcpy(out,data(t)+offset,bytes);return;}
         shards_.at(t.shard)->read(shards_[t.shard]->start+t.offset+offset,out,bytes);
     }
     void read(const std::string& name,uint64_t offset,void* out,size_t bytes) const { read(at(name),offset,out,bytes); }
-    // MAP_SHARED read-only pages are shared by all native workers. No anonymous
-    // copy or eager payload allocation; transformed small tensors remain owned
-    // by their binding. Mapping lifetime equals this reader's lifetime.
+    // Read-only pages are shared by all native workers. The default maps the
+    // source file; the opt-in RAM copy keeps its original compressed bytes.
+    // Mapping lifetime equals this reader's lifetime.
     const uint8_t* data(const TensorView& t) const {
 #ifndef _WIN32
         const auto& s=*shards_.at(t.shard);
-        std::lock_guard lock(s.mapping_mutex);
-        if(s.mapping==MAP_FAILED) {
-            s.mapping=::mmap(nullptr,s.size,PROT_READ,MAP_SHARED,s.fd,0);
-            if(s.mapping==MAP_FAILED) throw std::runtime_error("safetensors: cannot map shard");
-        }
-        return static_cast<const uint8_t*>(s.mapping)+s.start+t.offset;
+        return s.map(resident_copy_)+s.start+t.offset;
 #else
         (void)t;
         throw std::runtime_error("safetensors: shared native mappings require Linux");
+#endif
+    }
+    // Only immutable RAM-backed checkpoints may opt in to long-lived DMA
+    // registration. Returned mappings stay owned by this reader.
+    std::vector<std::pair<void*,size_t>> ram_mappings()const {
+        if(!resident_copy_&&!ram_fds_)throw std::runtime_error("safetensors: direct DMA requires RAM-backed shards");
+#ifndef _WIN32
+        std::vector<std::pair<void*,size_t>> result;
+        for(const auto& shard:shards_)result.emplace_back(const_cast<uint8_t*>(shard->map(resident_copy_)),shard->size);
+        return result;
+#else
+        throw std::runtime_error("safetensors: shared RAM mappings require Linux");
 #endif
     }
     const uint8_t* data(const std::string& name) const { return data(at(name)); }
@@ -168,18 +231,15 @@ public:
         uint64_t bytes=0;unsigned checksum=0;
         for(const auto& holder:shards_) {
             const auto& s=*holder;
+            s.map(resident_copy_);
             std::lock_guard guard(s.mapping_mutex);
-            if(s.mapping==MAP_FAILED) {
-                s.mapping=::mmap(nullptr,s.size,PROT_READ,MAP_SHARED,s.fd,0);
-                if(s.mapping==MAP_FAILED)throw std::runtime_error("safetensors: cannot map shard for warmup");
-            }
             if(lock && ::mlock(s.mapping,s.size))throw std::runtime_error("safetensors: cannot lock shared weight pages");
             const auto* p=static_cast<const volatile uint8_t*>(s.mapping);
             for(uint64_t offset=0;offset<s.size;offset+=4096)checksum^=p[offset];
             bytes+=s.size;
         }
-        std::fprintf(stderr,"FP4_HOST_WEIGHTS bytes=%llu locked=%d shared_readonly=1 checksum=%u\n",
-                     static_cast<unsigned long long>(bytes),int(lock),checksum);
+        std::fprintf(stderr,"FP4_HOST_WEIGHTS bytes=%llu locked=%d shared_readonly=1 checksum=%u backing=%s\n",
+                     static_cast<unsigned long long>(bytes),int(lock),checksum,ram_fds_?"sealed_ram":resident_copy_?"shared_ram":"source_file");
 #else
         (void)lock;throw std::runtime_error("safetensors: resident shared weights require Linux");
 #endif
@@ -187,6 +247,7 @@ public:
     // Drop a tensor's clean pages from the page cache (a hint; a weight set larger than RAM is streamed once per use).
     void drop(const TensorView& t) const {
 #ifndef _WIN32
+        if(resident_copy_||ram_fds_)return;
         const auto& s=*shards_.at(t.shard);
         ::posix_fadvise(s.fd,static_cast<off_t>(s.start+t.offset),static_cast<off_t>(t.bytes),POSIX_FADV_DONTNEED);
 #else

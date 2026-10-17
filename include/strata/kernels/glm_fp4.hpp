@@ -28,5 +28,12 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* weights,const void* scales,
 constexpr size_t glm_fp4_partial_bytes(int rows) {return size_t(64)*8*rows*sizeof(float);}
 // Bounded prefill reconstruction from the same resident compressed matrix.
 void glm_fp4_dequant_f16(GlmPackedFormat format,const void* weights,const void* scales,
-                         float global,uint16_t* output,int rows,int columns,void* stream);
+                         float global,uint16_t* output,int rows,int columns,void* stream,bool sm70=false);
+// Route indices address [token][route_stride]. Rows within one expert must
+// refer to distinct tokens. Scatter calls on one stream preserve expert order
+// and round multiply and add separately, matching the host accumulation.
+void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* output,
+                           int count,int columns,int route_stride,void* stream);
+void glm_fp4_route_scatter(const float* x,const int* routes,const float* weights,float* sum,
+                            int count,int columns,int route_stride,void* stream);
 }
