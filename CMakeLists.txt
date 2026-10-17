@@ -1506,7 +1506,7 @@ if(STRATA_NATIVE_EXPERTS)
   # loaded at run time, so neither side needs verbs headers. The worker is CPU only (no CUDA); the decoder streams
   # its rows of every expert at startup (or dummy weights for speed tests).
   add_library(strata_ucomm STATIC tools/ucomm/src/ucomm.c tools/ucomm/src/ucomm_boot.c tools/ucomm/src/ucomm_udp.c
-              tools/ucomm/src/ucomm_ib.c tools/ucomm/src/ibvew.c)
+              tools/ucomm/src/ucomm_ib.c tools/ucomm/src/ibvew.c tools/ucomm/src/ucomm_file.c)
   set_target_properties(strata_ucomm PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
   target_include_directories(strata_ucomm PUBLIC tools/ucomm/include)
   target_link_libraries(strata_ucomm PUBLIC ${CMAKE_DL_LIBS})

@@ -95,6 +95,83 @@ UDP backend, tr16 (rank 0) ↔ b550 (rank 1), 1 GbE, MTU 1500, default `UCOMM_UD
 | allreduce f32, 16 MiB, 2 ranks | 240 ms |
 | allreduce f32, 16 KiB / 16 MiB, 4 ranks (2 per host) | 1.5 ms / 599 ms |
 
-The **ib** backend builds and its probe and loader were tested (it falls back to udp when no HCA port is
-active), but it has **not been run on an HCA yet**: neither machine has one. Validate it with `make test` and
-`ucomm_bench -b ib` once ConnectX-3 cards are installed.
+The **ib** backend has since run on ConnectX-3 QDR between tr16 and b550; its numbers are in
+`docs/GLM_REMOTE_TP_COMM.md` (and the file transfer rates below).
+
+## File transfer: `ucomm_file` and `ucfile`
+
+`include/ucomm_file.h` moves a byte range of an open file between two ranks of a context:
+
+```c
+ucomm_file_opts o; ucomm_file_opts_default(&o);   /* 16 MiB chunks, 4 in flight */
+o.verify = UCOMM_FILE_VERIFY_CRC32C;                /* optional: per-chunk CRC32C, failed chunks re-sent (3 rounds) */
+ucomm_file_send(c, peer, tag, fd, offset, length, &o, &stats);        /* tag and tag + 1 are used */
+ucomm_file_recv(c, peer, tag, fd, 0, length, &o, have_bitmap, &stats); /* have_bitmap: chunks already held (resume) */
+```
+
+Chunks travel in registered buffers, so on **ib** the receiver RDMA-reads straight into them. There is no compression
+on any path. The receiver sends its bitmap first, so a resumed transfer moves only the missing chunks. The CRC32C uses
+the SSE4.2 instruction when available.
+
+`ucfile` (`build/ucfile`, Python wrapper `python/ucfile.py`) runs jobs on top of it:
+
+```sh
+ucfile agent --root /data [--root /dev/shm/x] [--name N]   # on each node: UDP discovery + TCP control on port 29610
+ucfile discover                                             # broadcast on every interface (Ethernet and IPoIB)
+ucfile run job.json [--dry-run] [-v]                        # plan, preflight, transfer
+ucfile df|ls|stat|rm|mkdir NODE [PATH...]                   # NODE: agent name or host[:port]
+```
+
+```json
+{"self": "nodeA", "verify": "crc32c", "chunk_mib": 16, "backend": "auto", "reserve_gib": 4,
+ "nodes": {"nodeA": {}, "nodeB": {"addr": "auto"}, "nodeC": {"addr": "192.0.2.3"}},
+ "transfers": [
+   {"src": "nodeA:/models/a.gguf", "dst": "nodeB:/data/a.gguf"},
+   {"src": "nodeA:/models/a.gguf", "dst": "nodeC:/data/a.tail", "offset": 1048576, "length": 4194304},
+   {"src": "nodeA:/models/b.gguf",
+    "shard": {"to": ["nodeB", "nodeC"], "weights": [2, 1], "dst": "{node}:/data/b.{index}",
+              "manifest": "/models/b.manifest.json"}}
+ ]}
+```
+
+| Field | Meaning |
+|---|---|
+| `self` | the node this coordinator runs on (default: the hostname); it is rank 0 and the bootstrap root |
+| `nodes.N.addr` | `auto` (discovery by name), `host` or `host:port` |
+| `backend` | `auto` (ib when every rank has an active HCA port, else udp), `ib`, `udp` |
+| `verify` | `none` or `crc32c` |
+| `overwrite` | replace existing destinations (default false: the preflight refuses) |
+| `reserve_gib` | free space left on each destination filesystem after the job (default 4) |
+| `root_addr`, `data_port` | bootstrap address (default: the local address that routes to the agents), port (agent port + 1) |
+| `discover`, `discover_ms` | extra discovery targets (`addr` or `addr:port`), wait |
+| `chunk_mib`, `depth`, `timeout_ms`, `keep_mtime` | transfer tuning |
+
+How it works:
+- **Discovery:** agents answer a UDP probe with their name, addresses, whether an HCA port is active, and their roots'
+  free space. A node that answers on several interfaces is reached through IPoIB.
+- **Preflight:** the coordinator checks that each source exists, that no destination exists (unless `overwrite`), and
+  that every destination filesystem holds its bytes plus `reserve_gib`. A resumable `.part` counts as allocated.
+- **Execution:** the agents get the expanded job, and every node runs one ucomm rank over the same item list. A node
+  that is both source and destination copies locally (`copy_file_range`).
+- **Writes:**
+  - Data goes to `DEST.part`, preallocated with `posix_fallocate`.
+  - `DEST.part.ucstate` holds the chunk bitmap and is synced every 32 chunks.
+  - A finished file is fsynced, renamed into place, and given the source's mtime.
+  - A rerun of the same job resumes from the state when the source size, mtime and range are unchanged.
+- **Agent jobs:** each job runs in its own process. If the coordinator disconnects, the agent stops the job at once and
+  keeps its resume state.
+- **Paths:** an agent touches only paths under its `--root` directories (no `..` escapes), and `rm` removes files or
+  empty directories, never a root.
+- **Shards:** contiguous 1 MiB-aligned ranges by weight. The coordinator writes the manifest (node, path, offset,
+  length per shard) when every shard arrived. `ucfile.py reassemble MANIFEST OUT` joins local shards back.
+
+Measured 2026-10-17, tr16 → b550, ConnectX-3 QDR, 1 GiB from tmpfs to tmpfs:
+
+| Backend | Verify | GB/s |
+|---|---|---:|
+| ib | none | 2.44 |
+| ib | crc32c | 1.65 (the CRC runs in the transfer loop on both sides) |
+| udp over 1 GbE | none | 0.11 (line rate) |
+
+To b550's disk, which was 99% full and under load, ib ran at 0.12 GB/s: the destination disk sets the rate there.
+`make test` adds `test_file`: whole ranges, CRC32C, resume and sub-ranges, also over udp with 2% induced loss.
