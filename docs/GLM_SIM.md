@@ -39,7 +39,7 @@ layouts, 4 ranks per node, MTP, and two efficiency profiles (the runner as it is
 `tools/sim/ds41f.py` with the CLI `tools/glm_ds41f_sim.py` models DeepSeek V4.1 Flash (552B backbone, 384 experts
 top-6, two 98 GB FP8 Engram tables read 48 rows per token from SSD) on TR16, TR16 + B550, the Xeon + 2x V100 box and
 A64FX nodes, and ranks expert packs from IQ1_S to native MXFP4 by memory fit and speed; the pack tool is
-`strata-ds41f-pack` (`tools/ds41f_pack.cpp`). Report: [DS41F_PLAN.md](DS41F_PLAN.md).
+`strata-ds41f-pack` (`tools/ds41f_pack.cpp`; the resumable xeon+tesla GPU-node job is in [DS41F_QUANT_JOB.md](DS41F_QUANT_JOB.md)). Report: [DS41F_PLAN.md](DS41F_PLAN.md).
 
 ## Hardware input
 

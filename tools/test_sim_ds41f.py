@@ -37,6 +37,22 @@ class CensusTest(unittest.TestCase):
         self.assertAlmostEqual(g.kv_bytes_per_token * 1_048_576 / 1e9, 0.93, delta=0.01)
 
 
+class ReleaseTest(unittest.TestCase):
+    def test_1017_config_facts(self):
+        g = ds41f.GEOMETRY
+        self.assertEqual(g.mtp_layers, 3)
+        self.assertEqual(len(g.compress_ratios), 43)
+        self.assertEqual(g.compress_ratios[:2] + g.compress_ratios[20:22] + g.compress_ratios[-3:], (0, 0, 1, 1, 0, 0, 0))
+        self.assertEqual(g.candidate_blocks * g.candidate_block, 16384)
+        self.assertIn("1017", g.release)
+
+    def test_xeon_tesla_engram_slower_than_tr16(self):
+        slow = ds41f.decode(ds41f.Plan(machine="xeon_tesla", pack="iq2xxs_q2k", trunk="q8", head="q8"))
+        fast = ds41f.decode(ds41f.Plan(machine="tr16", pack="iq1s"))
+        self.assertGreater(slow.engram_ms, fast.engram_ms)
+        self.assertGreater(slow.engram_exposed_ms, 0.0)
+
+
 class MemoryFitTest(unittest.TestCase):
     def test_tr16(self):
         self.assertTrue(ds41f.memory_fit(ds41f.Plan(machine="tr16", pack="iq1s"))["fits"])

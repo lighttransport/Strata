@@ -32,6 +32,19 @@ and a mixed Q4K/Q2 at 97.6 GB: PPL 5.82. The only V4.1 Q2 GGUF (IQ2_XXS gate/up 
 has no quality measurement. **Every sub-4-bit candidate below therefore needs the quality gate of section 5
 before it ships**; the numbers in the tables are speed, not quality.
 
+### The 1017 refresh (checked 2026-10-18)
+
+DeepSeek-V4.1-Flash-1017 is a weights-only update: its `config.json` is identical to V4.1-Flash's (hidden 5120, 40 layers,
+384 experts top-6 with `sqrtsoftplus`/`noaux_tc` and scale 1.5, intermediate 2304, sliding window 128,
+`compress_ratios` [0,0] + [2]x18 + [1]x20 + [0,0,0] for 40 layers + 3 MTP, KV sources [2,8,14,20], indexer sources
+[2,8,14,20,24,28,32,36] with 32 heads x 128 and top-512 over 2048 candidate blocks of 8 from layer 20, hc_mult 4 with 20
+Sinkhorn iterations, Engram layers [1,14] of 384,006,168 / 384,016,682 rows, 3 next-token-prediction layers, DSpark
+block 5, FP8 weight blocks [32,32] with UE8M0 scales, `expert_dtype: fp4`), and `model.safetensors.index.json` reports
+the same 510,286,023,000 bytes in 48 shards. The card calls it a minor update (reasoning, coding, agentic and visual
+gains, shorter outputs) and ships no Jinja chat template. Everything in this document applies unchanged; a pack made
+from 1017 carries a different source fingerprint. The simulator records these facts (`Geometry.mtp_layers`,
+`compress_ratios`, `candidate_blocks`, `release`).
+
 ## 2. What the simulator says
 
 The model is `tools/sim/ds41f.py` (CLI `tools/glm_ds41f_sim.py`). Per layer: GPU trunk GEMV (Strata's measured
@@ -228,7 +241,57 @@ Test without a model: `python3 tools/test_ds41f_pack.py --converter build-ds41f/
 checkpoint; exact-dequant check against NumPy, K-quant pack with a keep list, IQ1_S pack with a synthetic imatrix,
 trunk pack, corruption detection). Build: a CPU-only tree, `cmake --build build-ds41f --target strata-ds41f-pack`.
 
-## 7. Runner (phase 2, design)
+## 6b. Quantizing on the xeon+tesla GPU node
+
+The resumable, streamable pipeline (chunk directories, `--deadline`, self-requeueing Slurm job, resumable fetch that skips
+the Engram shards, rsync transfer to TR16) is in [DS41F_QUANT_JOB.md](DS41F_QUANT_JOB.md). Measured quantizer cost on
+TR16: IQ1_S 2.83 M weights per core-second (53 core-hours for the model), IQ2_XXS/Q2_K 2.38 M (63), Q2_K/Q3_K 4.94 M (30).
+Order: Q2_K/Q3_K full as the bring-up pack (no imatrix), then IQ1_S, IQ2_XXS/Q2_K and IQ1_M after the A64FX imatrix job.
+
+## 7. Kernels per machine (measured where possible, 2026-10-18)
+
+**TR16 / B550 CPU, IQ1_S.** The engine's IQ1_S kernel (`Fmt32<19>`, muse worktree only, unmerged) runs at 92 GMAC/s on
+15 TR16 threads = 18 GB/s, compute-bound. The hypothesis was that its codebook arithmetic (three `vpaddb`, magnitude and
+sign per token) was the cost, so `src/kernels/cpu/iq1s_w1a8_avx2.hpp` stores the grid as `g+1` bytes and computes the
+exact integer dot `8 (sum(u x) - B) + sign B` with one `vpmaddubsw` + `vpmaddwd` per 32 weights and a per-block
+correction from precomputed activation sums (the `hetero/ds4f` W4A8 identity). `iq1s_w1a8_bench` (parity against a
+double reference, rel 9e-8, and against the engine's decode in the same harness) measured on 8 threads **while another
+job held the CPU**, 2304 x 5120 experts streamed from DRAM:
+
+| kernel | width 1 | width 2 | width 4 |
+|---|---:|---:|---:|
+| engine decode (Fmt32<19>) | 51.2 GMAC/s, 10.0 GB/s | 87.8 | 127.2 |
+| W1A8 (+ load-pair grid build) | 57.2 GMAC/s, 11.2 GB/s | 94.8 | 132.2 |
+
+So the arithmetic was not the bottleneck: **both kernels sit at the same decode floor, about 6.5-7 GMAC/s per Zen 1 core
+at width 1, set by the four random 8-byte grid loads and the index extraction per 32 weights.** On 15 cores that is
+~100 GMAC/s at one token and ~250 at four. Consequences for TR16: plain decode with IQ1_S experts stays near 12 tok/s;
+DSpark windows of 3-4 tokens amortize the decode and are the real lever (the simulator's 22 tok/s row); a 1-bit format
+with a cheaper decode would need ternary values stored directly (2 bits per weight, 2.0+ bpw, 136+ GB, which does not fit
+TR16). Re-run `build-ds41f/iq1s_w1a8_bench --bench --threads 15` on an idle CPU before quoting absolute numbers.
+
+**TR16 / B550 GPU.** The dp4a IQ1_S tier kernel (worktree) needs measuring on 2304-wide experts; the `iq2xxs_q2k` pack
+needs Q2_K/IQ2_XXS added to the GPU down-format list (`iq_kernels.cu` `STRATA_D_FMTS`). Shape caps to lift for hidden
+5120: `kMaxBlocks` 16 -> 20 in `q23_avx2.cpp` and `glm_q23.cu`, `kMaxBlocks` 64 -> 80 in `nvfp4_*.cpp`, `kNativeFF`
+2048 -> 4096 (worktree has it). CSA2 attention: port `glm_index_score/select` + `glm_mla` (query 64 x 512 against the
+128-row FP32 window + 512 rows gathered from the FP4 compressed cache; indexer 32 x 128 FP4 keys over the 2048 candidate
+blocks of layer 20 with `qsa_select.hpp`'s radix top-k; KV written once per source layer, reused by 36). mHC via
+`glm_mhc_*` (hc_mult 4, 20 iterations). Engram: an `EngramTable` sibling of `PleTable` over `PleReader` (264 B rows,
+two tables, 24 rows each, the V4.1 hash from gemm `ds41f_engram.c` / `make_token_map.py`).
+
+**Xeon + 2x V100.** Cascade Lake has AVX-512 VNNI and non-microcoded gathers: the W1A8 scheme with `vpdpbusd` and a
+`vpgatherqq` grid fetch is the variant to try there (not measured). GPU: dp4a IQ tier and MMQ prefill as GLM on sm70,
+Q8_0 trunk over the two cards with the measured layer pipeline (Q23 20.3 -> 34.8 tok/s on GLM), FP16 WMMA prefill GEMMs.
+Engram from the node's storage needs its random-read latency measured first (`xeon_tesla` machine in the simulator
+assumes 2 ms per page: a 4 GB RAM row cache and issue-at-token-id with 13 layers of slack for the layer-14 table).
+
+**A64FX.** 12 nodes: gemm's MXFP4 SDOT path (FP4 -> exact integer grid via `svtbl_s8`, int8 group-32 activations, two
+`svdot_s32`, fused W1/W3 pair ~380 GMAC/s per node; quality cosine 0.988 is an activation-quantization question for the
+gate) inside the Strata A64FX port. 6/8 nodes: SVE Q2_K (ggml has it) and an SVE IQ2_XXS/IQ1_S kernel with the same
+integer scheme (`svtbl` over the `g+1` grid, `svdot_s32`); Engram as gemm does (owned rows per rank, prefetch thread,
+scale cache); CSA2 per gemm's `ds41f_attention.c`.
+
+## 8. Runner (phase 2, design)
 
 Strata has no DeepSeek-V4 support (the engine accepts `glm5next` and `qwen4exp` only). The port follows the GLM
 A64FX plan's shape (docs/GLM_A64FX_PLAN.md section 4) with a second architecture family `deepseek4`:
@@ -247,14 +310,15 @@ A64FX plan's shape (docs/GLM_A64FX_PLAN.md section 4) with a second architecture
    union ratio, so acceptance below ~0.9 per position does not pay).
 5. Two nodes over `expert_tp.hpp` / `ucomm`; A64FX through the GLM port (uTofu `ucomm` backend, 4-CMG pool).
 
-## 8. Next steps (in order)
+## 9. Next steps (in order)
 
-1. A64FX cluster, one 12-node allocation: exact reference logits on the eval corpus and the imatrix dump (`ds41f_run`).
-2. Build two packs where the source is: IQ1_S full and 2.25 bpw full; run the gate.
-3. Measure on TR16: Strata's IQ1_S kernel on this model's shapes (2304 x 5120) and a DRAM-speed variant; the Engram
-   page-read cost with a 1 GB row cache on the x4 NVMe.
-4. Decide staging per machine from section 4; clear SSD space first (TR16 needs ~320 GB).
-5. Phase 2: the `deepseek4` runner.
+1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;
+   run the Q2_K/Q3_K bring-up job (DS41F_QUANT_JOB.md). Record the Xeon's quantizer rate and the GPU node -> TR16 rate.
+2. A64FX, one 12-node allocation: exact reference logits on the eval corpus and the imatrix dump (`ds41f_run`).
+3. GPU node: IQ1_S full and IQ2_XXS/Q2_K full packs; the gate on each.
+4. TR16: `iq1s_w1a8_bench --threads 15` on an idle CPU; the Engram page-read cost with a 1 GB row cache on the x4 NVMe;
+   decide whether DSpark acceptance on this model justifies the width-4 path.
+5. Clear SSD space (TR16 needs ~320 GB) and transfer; phase 2: the `deepseek4` runner.
 
 Reproduce: `python3 tools/glm_ds41f_sim.py validate | report | packs --machine tr16 | a64fx --nodes 6 8 12`;
-`python3 -m unittest tools.test_sim_ds41f`; `python3 tools/test_ds41f_pack.py`.
+`python3 -m unittest tools.test_sim_ds41f`; `python3 tools/test_ds41f_pack.py`; `build-ds41f/iq1s_w1a8_bench [--bench]`.

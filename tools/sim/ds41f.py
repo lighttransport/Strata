@@ -64,6 +64,13 @@ class Geometry:
     head_bytes: float = 129_280 * 5120 * 2.0
     dspark_bytes: float = 7_932_874_632.0     # 3-stage drafter (ds41f.md:1425-1427)
     prefill_active_fraction: float = 1.0      # the card says 8B active in prefill vs 16B in decode; not exploited here (hypothesis)
+    # config.json (identical for DeepSeek-V4.1-Flash and -1017, checked 2026-10-18; total_size 510,286,023,000 B, 48 shards)
+    mtp_layers: int = 3                       # num_nextn_predict_layers: the DSpark drafter stages
+    compress_ratios: tuple = (0, 0) + (2,) * 18 + (1,) * 20 + (0, 0, 0)   # 40 layers + 3 MTP; KV sources 2, 8, 14, 20
+    candidate_blocks: int = 2048              # candidate_topk_blocks x candidate_block_size 8 from layer 20
+    candidate_block: int = 8
+    index_topk: int = 512
+    release: str = "DeepSeek-V4.1-Flash / -1017 (weights-only refresh, same config and size)"
 
     def expert_params(self):
         return 3 * self.hidden * self.expert_ff
@@ -235,7 +242,20 @@ def xeon_v100():
                          "RAM 181 GiB per the user (preset said 160); disk unmeasured 2 GB/s")
 
 
-MACHINES = dict(tr16=tr16, b550=b550, **{"tr16+b550": tr16_b550}, xeon_v100=xeon_v100)
+def xeon_tesla():
+    """The xeon+tesla GPU node seen through Slurm `gpu1` (36 CPUs, 2 GPUs, 180 min; memory limit 160 GiB observed,
+    181 per the user): shared storage at ~100 MB/s with no measured random-read latency, so the Engram term uses a
+    2 ms page latency hypothesis (what a 4 GB RAM row cache has to absorb) until the node is probed."""
+    m = xeon_v100()
+    m.name = "xeon_tesla"
+    m.disk_gbps = 0.1
+    m.page_us = 2000.0
+    m.notes = ("xeon+tesla GPU node, Slurm partition gpu1: 36 Xeon Gold 6240 cores, 2x V100 32 GB, Slurm limit 160 GiB (181 per the user: --set ram_gib=181), 180-minute jobs; "
+               "storage ~100 MB/s shared filesystem, random 4 KiB latency UNMEASURED (2 ms assumed)")
+    return m
+
+
+MACHINES = dict(tr16=tr16, b550=b550, **{"tr16+b550": tr16_b550}, xeon_v100=xeon_v100, xeon_tesla=xeon_tesla)
 
 
 @dataclasses.dataclass

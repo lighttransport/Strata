@@ -86,7 +86,8 @@ def run(converter, *args, expect_fail=None):
 
 
 def gguf_py():
-    for candidate in (os.environ.get("STRATA_GGUF_PY"), "the x4 NVMe work mount/work/llama.cpp/gguf-py"):
+    repo = pathlib.Path(__file__).resolve().parents[1]
+    for candidate in (os.environ.get("STRATA_GGUF_PY"), str(repo.parent / "llama.cpp" / "gguf-py"), str(repo / "build-tr16-goal-20261010" / "ggml-reference" / "gguf-py")):
         if candidate and pathlib.Path(candidate, "gguf").is_dir():
             sys.path.insert(0, candidate)
             try:
@@ -160,6 +161,34 @@ def main():
             iq1_report = "IQ1_S pack: " + ", ".join(f"{p['name'].split('.')[2]} nmse {p['normalized_mse']:.3f}" for p in q1["projections"])
         else:
             iq1_report = "IQ1_S pack skipped (gguf-py not found; set STRATA_GGUF_PY)"
+        # 3b. streamable chunk pipeline: stop after one layer (exit 3), resume, assemble == single-file output
+        cdir = root / "chunks"
+        r = subprocess.run([args.converter, "experts", str(ckpt), f"--chunk-dir={cdir}", "--gate=q2_k", "--up=q2_k", "--down=q3_k", "--uncalibrated",
+                            "--layers=0-1", f"--keep={root / 'keep.txt'}", "--threads=3", "--stop-after-layers=1"], capture_output=True, text=True)
+        assert r.returncode == 3, (r.returncode, r.stderr)
+        assert (cdir / "plan.json").exists() and (cdir / "blk.0.ffn_gate_exps.weight.chunk.json").exists() and not (cdir / "blk.1.ffn_gate_exps.weight.chunk.json").exists()
+        r = subprocess.run([args.converter, "assemble", str(cdir), "--check"], capture_output=True, text=True)
+        assert r.returncode == 3 and "missing" in r.stdout, r.stdout
+        stamp = (cdir / "blk.0.ffn_down_exps.weight.chunk").stat().st_mtime_ns
+        (cdir / "blk.1.ffn_up_exps.weight.chunk.partial").write_bytes(b"stale")      # an interrupted layer's leftover
+        run(args.converter, "experts", ckpt, f"--chunk-dir={cdir}", "--gate=q2_k", "--up=q2_k", "--down=q3_k", "--uncalibrated", "--layers=0-1", f"--keep={root / 'keep.txt'}", "--threads=3")
+        assert (cdir / "blk.0.ffn_down_exps.weight.chunk").stat().st_mtime_ns == stamp, "resume rewrote a finished layer"
+        assert not (cdir / "blk.1.ffn_up_exps.weight.chunk.partial").exists()
+        run(args.converter, "experts", ckpt, f"--chunk-dir={cdir}", "--gate=q2_k", "--up=q2_k", "--down=q2_k", "--uncalibrated", "--layers=0-1", expect_fail="plan mismatch")
+        assembled = root / "assembled.gguf"
+        run(args.converter, "assemble", cdir, assembled)
+        run(args.converter, "verify", assembled)                 # hashes only, no source
+        run(args.converter, "verify", ckpt, assembled)           # with the source identity
+        a, b = GGUFFile(assembled), GGUFFile(pack)
+        assert [(t.name, t.type_name, t.shape) for t in a.tensors] == [(t.name, t.type_name, t.shape) for t in b.tensors]
+        assert assembled.read_bytes()[a.data_start:] == pack.read_bytes()[b.data_start:], "assembled payload differs from the single-file pack"
+        # the identity ignores mtimes and the directory: a copied checkpoint still verifies
+        import shutil
+        copy = root / "ckpt-copy"
+        shutil.copytree(ckpt, copy)
+        for f in copy.iterdir():
+            os.utime(f, (1_600_000_000, 1_600_000_000))
+        run(args.converter, "verify", copy, assembled)
         # 4. trunk
         trunk = root / "trunk.gguf"
         run(args.converter, "trunk", ckpt, trunk, "--trunk=q4_k", "--head=q8_0")
@@ -175,7 +204,7 @@ def main():
         bad = root / "bad.gguf"
         bad.write_bytes(data)
         run(args.converter, "verify", ckpt, bad, expect_fail="payload checksum mismatch")
-        print("ds41f pack PASS: exact MXFP4 dequant, Q2_K/Q3_K pack + REAP keep + verify, trunk Q4_K/Q8_0 without Engram, corruption caught;", iq1_report)
+        print("ds41f pack PASS: exact MXFP4 dequant, Q2_K/Q3_K pack + REAP keep + verify, chunk pipeline stop/resume/plan-mismatch/assemble, mtime-independent identity, trunk Q4_K/Q8_0 without Engram, corruption caught;", iq1_report)
 
 
 if __name__ == "__main__":
