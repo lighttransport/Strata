@@ -4,6 +4,7 @@ import dataclasses
 import io
 import pathlib
 import sys
+import json
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "sim"))
@@ -68,10 +69,24 @@ class CollectiveTest(unittest.TestCase):
         self.assertLess(a64fx.tree_allreduce_us(self.tofu, 16384, 6), fp32)
 
     def test_dispatch_combine_b1(self):
-        twelve = a64fx.dispatch_combine_us(self.tofu, 8192, 1, 12)
-        six = a64fx.dispatch_combine_us(self.tofu, 8192, 1, 6)
-        self.assertAlmostEqual(twelve, 34.6, delta=34.6 * 0.15)
-        self.assertAlmostEqual(six, twelve, delta=twelve * 0.2)
+        # measured 2026-10-18 on GLM geometry (E=288, K=8, 8 KiB bf16 per token)
+        self.assertAlmostEqual(a64fx.dispatch_combine_us(self.tofu, 8192, 1, 12), 25.92, delta=0.01)
+        self.assertAlmostEqual(a64fx.dispatch_combine_us(self.tofu, 8192, 1, 8), 21.14, delta=0.01)
+        self.assertAlmostEqual(a64fx.dispatch_combine_us(self.tofu, 8192, 1, 6), 18.31, delta=0.01)
+        self.assertAlmostEqual(a64fx.dispatch_combine_us(self.tofu, 8192, 3, 12), 61.04, delta=0.01)
+        # the fallback model still reproduces gemm's original 12-rank anchor (34.6 us, E=256, hidden 6144)
+        bare = a64fx.TofuD(tree_measured_us={}, dc_measured_us={})
+        self.assertAlmostEqual(a64fx.dispatch_combine_us(bare, 8192, 1, 12), 34.6, delta=34.6 * 0.15)
+
+    def test_tree_measured_points(self):
+        for ranks, fp32, bf16 in ((6, 18.48, 11.70), (8, 12.50, 8.32), (12, 22.61, 14.27)):
+            self.assertAlmostEqual(a64fx.tree_allreduce_us(self.tofu, 16384, ranks), fp32, delta=0.01)
+            self.assertAlmostEqual(a64fx.tree_allreduce_us(self.tofu, 16384, ranks, bf16=True), bf16, delta=0.01)
+        self.assertAlmostEqual(a64fx.tree_allreduce_us(self.tofu, 3 * 16384, 12), 55.34, delta=0.01)
+        # the step model agrees with the measured 6- and 12-rank points within 5 %
+        bare = a64fx.TofuD(tree_measured_us={}, dc_measured_us={})
+        for ranks, meas in ((6, 18.48), (12, 22.61)):
+            self.assertAlmostEqual(a64fx.tree_allreduce_us(bare, 16384, ranks), meas, delta=meas * 0.05)
 
     def test_reduce_scatter_allgather(self):
         self.assertAlmostEqual(a64fx.reduce_scatter_allgather_ms(self.tofu, 512, 12), 5.7, delta=0.01)
@@ -188,6 +203,26 @@ class UntouchedTest(unittest.TestCase):
             code = glm_a64fx_sim.main(["validate"])
         self.assertEqual(code, 0)
         self.assertIn("13 of 13 rows within tolerance", out.getvalue())
+
+class MeasuredKernelTest(unittest.TestCase):
+    def test_redesign_q2_rate_is_the_measured_sdot_mix(self):
+        d = json.loads((a64fx.DATA / "measured_a64fx_kernels.json").read_text())["sdot_kernel"]["node48_gbps"]
+        q2, q3 = d["q2_K_2048x4096"][0], d["q3_K_4096x2048"][0]
+        mix = (2 * 84 + 110) / (2 * 84 / q2 + 110 / q3)        # gate + up Q2_K, down Q3_K, bytes per 256 weights
+        self.assertAlmostEqual(a64fx.redesign().expert_q2k_gbps, mix, delta=0.2)
+
+    def test_width_cost_grows_with_tokens(self):
+        prof, pk = a64fx.redesign(), a64fx.pack("q23_fp8")
+        costs = [a64fx._width_cost(prof, pk, w) for w in (1, 2, 3, 4)]
+        self.assertEqual(costs[0], 1.0)
+        self.assertTrue(all(b > a for a, b in zip(costs, costs[1:])))
+        self.assertEqual(a64fx._width_cost(prof, a64fx.pack("ud_q4kxl"), 3), 1.0)   # Q4 path: bandwidth-bound
+
+    def test_node_constants_measured(self):
+        node = a64fx.A64FXNode()
+        self.assertEqual(node.stream_gbps, 915.0)
+        self.assertAlmostEqual(node.stream_gbps * node.chain_efficiency, 504, delta=2)   # absolute chain rate unchanged
+        self.assertEqual(node.hw_barrier_us, 1.38)
 
 
 if __name__ == "__main__":

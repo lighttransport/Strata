@@ -16,16 +16,18 @@ if [ -d /local ]; then ROOT=/local/strata-a64fx-probe-${PJM_JOBID:-nojob}; else 
 LLAMA_BUILD=${LLAMA_BUILD:-$ROOT/ggml}
 OUT=${OUT:-$STRATA/tmp/a64fx-probe-${PJM_JOBID:-nojob}}
 JOBS=${JOBS:-16}
+STAGES=${STAGES:-"host ggml sdot node"}     # host: C11 tests; ggml: ggml vec_dot sweep; sdot: SDOT kernel vs ggml; node: barrier + stream
+has() { case " $STAGES " in *" $1 "*) return 0;; esac; return 1; }
 mkdir -p "$ROOT/tmp" "$OUT"; export TMPDIR=$ROOT/tmp
 CC=${A64FX_CC:-fcc}; CXX=${A64FX_CXX:-FCC}
 CFLAGS="-Nclang -O3 -fopenmp -march=armv8.2-a+sve"
 # FCC 4.12 (LLVM 7) crashes on auto-vectorized FP16 code in ggml-cpu's C++ files (gemm uses `#pragma clang optimize off`
 # for its diagnostic llama build). The quantized dot kernels this probe measures are C with explicit SVE intrinsics, so
-# only the C++ side gets the workaround: no auto-vectorization by default, or the gemm pragma with GGML_CXX_WORKAROUND=pragma.
+# only the C++ side gets the workaround. Measured: `novec` (-fno-vectorize) still crashes; `pragma` (disable_autovec.h) works.
 GGML_C_FLAGS="-Nclang -O3 -fopenmp"
-case "${GGML_CXX_WORKAROUND:-novec}" in
+case "${GGML_CXX_WORKAROUND:-pragma}" in
   novec)  GGML_CXX_FLAGS="-Nclang -O3 -fopenmp -fno-vectorize -fno-slp-vectorize" ;;
-  pragma) GGML_CXX_FLAGS="-Nclang -O3 -fopenmp -include $HOME/work/gemm/glm53f/a64fx/glm5/llama_a64fx_disable_vectorization.h" ;;
+  pragma) GGML_CXX_FLAGS="-Nclang -O3 -fopenmp -include $STRATA/tools/a64fx_probe/disable_autovec.h" ;;
   none)   GGML_CXX_FLAGS="-Nclang -O3 -fopenmp" ;;
 esac
 echo "A64FX_PROBE host=$(hostname) job=${PJM_JOBID:-none} cpus=$(nproc) strata=$STRATA llama=$LLAMA_SRC build=$LLAMA_BUILD out=$OUT"
@@ -50,6 +52,7 @@ export LD_LIBRARY_PATH=$LLAMA_BUILD/bin:$FJLIB:${LD_LIBRARY_PATH:-}   # libfjomp
 
 # ---- 2. strata_host (C11) and its tests
 cd "$STRATA"
+if has host; then
 HOST_SRC="src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_layer.c src/host/ds41f_names.c"
 for t in tests/host/glm_names_test.c tests/host/glm_env_test.c tests/host/glm_expert_pack_test.c; do
   [ -f "$t" ] || { echo "A64FX_HOST SKIP $t (absent)"; continue; }
@@ -57,13 +60,16 @@ for t in tests/host/glm_names_test.c tests/host/glm_env_test.c tests/host/glm_ex
   if $CC -Nclang -O2 -std=c11 -Iinclude $HOST_SRC "$t" -o "$ROOT/$n" > "$OUT/$n.build.log" 2>&1 && "$ROOT/$n" > "$OUT/$n.log" 2>&1; then
     echo "A64FX_HOST PASS $n"; else echo "A64FX_HOST FAIL $n"; tail -5 "$OUT/$n.build.log" "$OUT/$n.log" 2>/dev/null; fi
 done
+fi
 
-# ---- 3. the kernel bench
+export OMP_PROC_BIND=close OMP_PLACES=cores OMP_WAIT_POLICY=active
+export XOS_MMM_L_PAGING_POLICY=demand:demand:demand
+
+# ---- 3. ggml's kernels
+if has ggml; then
 $CXX $CFLAGS -std=c++17 -I"$LLAMA_SRC/ggml/include" tools/a64fx_probe/q23_sve_bench.cpp -L"$LLAMA_BUILD/bin" -lggml-cpu -lggml-base -o "$ROOT/q23_sve_bench" > "$OUT/bench.build.log" 2>&1 \
   || { tail -20 "$OUT/bench.build.log"; echo "A64FX_PROBE FAIL bench build"; exit 1; }
 echo "A64FX_BENCH_BUILD PASS"
-export OMP_PROC_BIND=close OMP_PLACES=cores OMP_WAIT_POLICY=active
-export XOS_MMM_L_PAGING_POLICY=demand:demand:demand
 B="$ROOT/q23_sve_bench"
 "$B" --check --threads 1 --mb 64 --reps 1 --rows 64 --cols 4096 "$@" | tee "$OUT/check.log"
 for th in 1 12 48; do
@@ -72,4 +78,31 @@ for th in 1 12 48; do
 done
 "$B" --threads 48 --mb 2048 --reps 3 --rows 2304 --cols 5120 --types q2_k,iq2_xxs,iq1_s --tokens 1 | tee "$OUT/bench-ds41f.log"
 "$B" --threads 48 --mb 2048 --reps 3 --rows 2304 --cols 5120 --types q2_k,iq2_xxs,iq1_s --tokens 4 | tee -a "$OUT/bench-ds41f.log"
+fi
+
+# ---- 4. the SVE SDOT Q2_K/Q3_K kernel against ggml (parity, then 1/12/48 threads x 1..4 tokens)
+if has sdot; then
+$CC -Nclang -O3 -march=armv8.2-a+sve -c tools/a64fx_probe/q23_sdot_sve.c -o "$ROOT/q23_sdot_sve.o" > "$OUT/sdot.build.log" 2>&1 \
+  && $CXX $CFLAGS -std=c++17 -I"$LLAMA_SRC/ggml/include" -Itools/a64fx_probe tools/a64fx_probe/q23_sdot_bench.cpp "$ROOT/q23_sdot_sve.o" \
+       -L"$LLAMA_BUILD/bin" -lggml-cpu -lggml-base -o "$ROOT/q23_sdot_bench" >> "$OUT/sdot.build.log" 2>&1 \
+  || { tail -30 "$OUT/sdot.build.log"; echo "A64FX_PROBE FAIL sdot build"; exit 1; }
+$CC -Nclang -O3 -march=armv8.2-a+sve tools/a64fx_probe/q23_sdot_test.c "$ROOT/q23_sdot_sve.o" -lm -o "$ROOT/q23_sdot_test" >> "$OUT/sdot.build.log" 2>&1 \
+  && "$ROOT/q23_sdot_test" | sed 's/^/A64FX_SDOT_TEST /' | tee "$OUT/sdot-test.log"
+S="$ROOT/q23_sdot_bench"
+"$S" --check --threads 1 --mb 16 --reps 1 --tokens 1 --kernels sdot | tee "$OUT/sdot-check.log"
+grep -q FAIL "$OUT/sdot-check.log" && { echo "A64FX_PROBE FAIL sdot parity"; exit 1; }
+for th in 1 12 48; do
+  "$S" --threads $th --mb $((th == 1 ? 256 : 2048)) --rows 2048 --cols 4096 | tee -a "$OUT/sdot-glm-gateup.log"
+  "$S" --threads $th --mb $((th == 1 ? 256 : 2048)) --rows 4096 --cols 2048 --types q3_k | tee -a "$OUT/sdot-glm-down.log"
+done
+"$S" --threads 48 --mb 2048 --rows 2304 --cols 5120 --types q2_k --tokens 1,4 | tee "$OUT/sdot-ds41f.log"
+fi
+
+# ---- 5. node constants: HBM stream, barriers, fork-join
+if has node; then
+HWB=""; [ -e /lib64/libhwb.so ] && HWB="-DHAVE_HWB -lhwb"
+$CC -Nclang -O3 -fopenmp -march=armv8.2-a+sve tools/a64fx_probe/node_probe.c -o "$ROOT/node_probe" $HWB > "$OUT/node.build.log" 2>&1 \
+  || { tail -20 "$OUT/node.build.log"; echo "A64FX_PROBE FAIL node build"; exit 1; }
+"$ROOT/node_probe" 256 | tee "$OUT/node.log"
+fi
 echo "A64FX_PROBE DONE out=$OUT"

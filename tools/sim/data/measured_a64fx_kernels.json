@@ -503,5 +503,74 @@
    "GBps_per_thread": 0.04,
    "ms_per_matrix": 1.121
   }
- ]
+ ],
+ "sdot_kernel": {
+  "what": "tools/a64fx_probe/q23_sdot_sve.c: Q2_K/Q3_K x Q8_K on int8 SDOT (activation permuted once per token into the 2-bit plane order, one SDOT per plane per token, per-16 scales as int32 lane multipliers, mins / -4 offset via the Q8_K bsums; Q3_K 6-bit scales unpacked with two svtbl). Parity: within 2.4e-7 of ggml vec_dot and of a scalar double reference at 1..4 tokens. Job 52428924, node 0 of a 12-node allocation, 2026-10-18, best of 3.",
+  "node48_gbps": {
+   "q2_K_2048x4096": [
+    198.4,
+    116.8,
+    83.5,
+    57.5
+   ],
+   "q3_K_2048x4096": [
+    159.0,
+    116.7,
+    88.3,
+    66.5
+   ],
+   "q3_K_4096x2048": [
+    137.3,
+    94.3,
+    70.9,
+    57.0
+   ],
+   "q2_K_2304x5120": [
+    208.1,
+    null,
+    null,
+    59.4
+   ]
+  },
+  "node48_gbps_note": "index = tokens 1..4 per call; GB/s of weight bytes (time per byte grows with tokens: the kernel is compute-bound)",
+  "ggml_same_run_node48_gbps": {
+   "q2_K_2048x4096": [
+    95.8,
+    47.9,
+    32.1,
+    23.3
+   ],
+   "q3_K_2048x4096": [
+    55.4,
+    27.7,
+    18.3,
+    13.8
+   ]
+  },
+  "first_q3k_version_node48_gbps": {
+   "q3_K_2048x4096": [
+    88.3,
+    84.2,
+    76.4,
+    56.3
+   ],
+   "note": "scalar 6-bit scale unpack through the stack; replaced"
+  }
+ },
+ "node": {
+  "what": "tools/a64fx_probe/node_probe.c, job 52428924 node 0, 2026-10-18",
+  "stream_read_gbps": {
+   "12_threads_one_cmg": 228.9,
+   "48_threads": 915.1
+  },
+  "omp_barrier_us": {
+   "12": 1.73,
+   "48": 5.29
+  },
+  "omp_fork_join_us_48": 5.24,
+  "libhwb_barrier_us": {
+   "12_one_cmg": 0.12,
+   "48_hierarchical": 1.38
+  }
+ }
 }

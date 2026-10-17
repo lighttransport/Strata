@@ -1,0 +1,63 @@
+{
+ "what": "gemm utofu-tests/moe_dispatch_bench.c (pure uTofu, multi-TNI dispatch+combine and recursive-doubling tree all-reduce), GLM-5.3-Flash geometry E=288 K=8 HID=4096, uniform routing seed 1, 2000 iters, relay/Bruck off; rank subsets of one 12-node 2x3x2 allocation (x-major order from (0,0,0)), job 52428924, 2026-10-18; two sweeps, mean shown, sweeps agree within 4 %. tools/a64fx_probe/run_comm.sh",
+ "tree_allreduce_us": {
+  "fp32": {
+   "6": [
+    18.48,
+    43.97
+   ],
+   "8": [
+    12.5,
+    27.6
+   ],
+   "12": [
+    22.61,
+    55.34
+   ]
+  },
+  "bf16": {
+   "6": [
+    11.7,
+    24.53
+   ],
+   "8": [
+    8.32,
+    15.8
+   ],
+   "12": [
+    14.27,
+    30.01
+   ]
+  }
+ },
+ "tree_note": "[B=1, B=3] tokens: payload 16 KiB / 48 KiB fp32, 8 / 24 KiB bf16",
+ "dispatch_combine_us_bf16": {
+  "6": [
+   18.31,
+   47.07
+  ],
+  "8": [
+   21.14,
+   76.92
+  ],
+  "12": [
+   25.92,
+   61.04
+  ]
+ },
+ "dispatch_combine_us_fp32": {
+  "6": [
+   33.91,
+   95.56
+  ],
+  "8": [
+   41.39,
+   153.22
+  ],
+  "12": [
+   50.82,
+   125.45
+  ]
+ },
+ "dc_note": "multi-TNI distinct-destination all-to-all, B=1 / B=3 tokens; one routing realization (the 8-rank B=3 point is slow for this seed, reproducible across sweeps)"
+}

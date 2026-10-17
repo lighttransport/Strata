@@ -28,6 +28,7 @@ import routing  # noqa: E402
 from model import GEOMETRY, FIXED_BYTES  # noqa: E402
 
 DATA = pathlib.Path(__file__).resolve().parent / "data"
+_COMM = json.loads((DATA / "measured_a64fx_comm.json").read_text())
 GIB = 2 ** 30
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -72,18 +73,23 @@ class A64FXNode:
     ghz: float = 2.0
     hbm_gib: float = 32.0
     usable_gib: float = 29.0           # after XOS and the runtime (handoff-decode100-resume:90 "29 GB free")
-    stream_gbps: float = 800.0         # node read stream, per-CMG local buffers: 807-915 measured (matvec.md:5, utofu summary:88)
+    stream_gbps: float = 915.0         # node read stream, SVE loads, per-thread first-touched 256 MiB: 915.1 GB/s at 48 threads,
+                                       # 228.9 per CMG (measured 2026-10-18, tools/a64fx_probe/node_probe.c)
     matvec_q8_gbps: float = 351.0      # standalone cold Q8 matvec, 11.8 MB (handoff-decode100-20261004.md:52)
-    chain_efficiency: float = 0.63     # one-node 270-stage decode chain 2.75 ms vs 1.74 ms roof (clair glm53f/STATUS.md:266-335)
+    chain_efficiency: float = 0.551    # one-node 270-stage decode chain: 2.75 ms vs a 1.74 ms roof at 800 GB/s = 504 GB/s absolute
+                                       # (clair glm53f/STATUS.md:266-335); expressed against the measured 915 GB/s stream
     q2k_core_gbps: float = 2.02        # ggml-cpu SVE Q2_K vec_dot, measured 2026-10-18 on one node (data/measured_a64fx_kernels.json);
                                        # Q3_K 1.16, Q4_K 1.6, IQ2_XXS 0.23, IQ1_S 0.17, Q8_0 9.0 GB/s per core; all compute-bound, linear in threads
     expert_q4_gbps: float = 88.0       # in-model Q4_K/Q5_K expert stream: 426 MB in 4.9 ms (the handoff's 107 includes the router)
     int8_tops_m: dict = dataclasses.field(default_factory=lambda: {8: 1.87, 16: 2.60, 32: 3.06, 64: 3.18})  # int8 SDOT GEMM Gop/s/1000 by M (CALIBRATION.md)
     fp_gemm_tflops: float = 1.1        # w8a16 FP GEMM at M=64 (26 % of the 3.07 TFLOPS fp32 FMA peak)
-    hw_barrier_us: float = 2.0         # FLIB hardware barrier, 48 threads (handoff-decode100:39; clair STATUS 1.34-1.42)
-    split_phase_barrier_us: float = 1.4
-    omp_barrier_us: float = 3.3        # 1482 OpenMP barriers = 4.9 ms master wait per token (handoff-decode100:29)
-    team_dispatch_us: float = 4.6      # 47-thread warm team dispatch (GLM53F_STRATA.md); 1.6 us at 12 threads
+    hw_barrier_us: float = 1.38        # libhwb hierarchical barrier (4 x per-CMG HW + leader combine), 48 threads: 1.38 us;
+                                       # 0.12 us inside one CMG (measured 2026-10-18, node_probe.c)
+    split_phase_barrier_us: float = 1.38  # = hw_barrier_us (the redesign's split-phase barrier is the libhwb one)
+    omp_barrier_us: float = 3.3        # in-model: 1482 OpenMP barriers = 4.9 ms master wait per token (handoff-decode100:29);
+                                       # bare flat OpenMP barrier measured 5.29 us at 48 threads, 1.73 at 12 (node_probe.c)
+    team_dispatch_us: float = 4.6      # 47-thread warm team dispatch (GLM53F_STRATA.md); 1.6 us at 12 threads;
+                                       # an empty `omp parallel` fork-join measures 5.24 us at 48 threads (node_probe.c)
     usable_per_cmg_gib: float = 7.0    # cmg-and-numa/README.md:66-69
 
     def q2k_core_rate(self):
@@ -118,6 +124,10 @@ class TofuD:
     rsag_8mib_ms: float = 5.7          # 8 MiB (512 tokens x 4096 fp32) mpi-rsag over 12 nodes, 32-token slabs (glm5/README.md:25)
     pp_hop_us: float = 3.2             # pipeline handoff per hop (summary:600)
     tni: int = 6
+    # measured 2026-10-18 at 6/8/12 ranks on GLM geometry (data/measured_a64fx_comm.json): [1 token, 3 tokens] in us.
+    # Used for those rank counts; other counts (24/48 ranks with 4 ranks per node) fall back to the step model.
+    tree_measured_us: dict = dataclasses.field(default_factory=lambda: _COMM["tree_allreduce_us"])
+    dc_measured_us: dict = dataclasses.field(default_factory=lambda: _COMM["dispatch_combine_us_bf16"])
 
     to_dict = lambda self: dataclasses.asdict(self)
 
@@ -132,10 +142,16 @@ def ar_steps(ranks):
 
 
 def tree_allreduce_us(tofu, nbytes, ranks, bf16=False, straggler_us=0.0):
-    """One allreduce of `nbytes` (fp32 payload size) over `ranks`: per-step cost measured at 16 KiB, scaled by
-    bytes above the 1.23 us fixed part, 0.58x for a bf16 payload, plus the in-model straggler wait."""
+    """One allreduce of `nbytes` (fp32 payload size) over `ranks`. At 6, 8 and 12 ranks: the measured 16 KiB and
+    48 KiB points, linear in bytes (floor: one Put per step). Elsewhere: per-step cost measured at 16 KiB, scaled by
+    bytes above the 1.23 us fixed part, 0.58x for a bf16 payload. Plus the in-model straggler wait."""
     if ranks <= 1:
         return 0.0
+    table = tofu.tree_measured_us.get("bf16" if bf16 else "fp32", {}).get(str(ranks)) if tofu.tree_measured_us else None
+    if table:
+        m = nbytes / 16384.0
+        us = table[0] + (table[1] - table[0]) * (m - 1) / 2
+        return max(us, ar_steps(ranks) * tofu.put_us) + straggler_us
     step = tofu.put_us + (tofu.tree_step_us - tofu.put_us) * (nbytes / 16384.0)
     if bf16:
         step *= tofu.bf16_step_factor
@@ -150,6 +166,10 @@ def distinct_owners(ranks, top_k=8):
 def dispatch_combine_us(tofu, bytes_per_token, width, ranks, skew=1.0, top_k=8):
     """EP dispatch (hidden to the owners) + combine (partials back) for `width` tokens: the measured B=1 fixed cost
     scaled by owners, plus wire time over the TNIs. 34.6 us measured at 12 ranks, B=1, 8 KB per token."""
+    table = tofu.dc_measured_us.get(str(ranks)) if tofu.dc_measured_us and bytes_per_token == HIDDEN_BYTES_BF16 else None
+    if table:   # measured at 1 and 3 tokens, uniform routing; linear in width, the wire term carries the skew factor
+        base = table[0] + (table[1] - table[0]) * (width - 1) / 2
+        return max(base, table[0]) * (1 + (skew - 1) * 0.5)
     owners = distinct_owners(ranks, top_k)
     rounds = max(1.0, owners / tofu.tni)
     wire_bytes = 2 * width * bytes_per_token * owners
@@ -263,6 +283,8 @@ class Profile:
     prefill_ctx_us_per_1k: float = 21.7  # per position per 1K of mean position (372.39 at 32K)
     prefill_collectives_per_layer: int = 2
     cmg_fixed_scale: float = 1.0       # 4 ranks per node: scale of the fixed per-phase costs (12-thread CMG-local teams)
+    expert_width_cost: tuple = ()      # Q2 experts: time per weight byte at 1..4 tokens per expert relative to 1 token (empty:
+                                       # bandwidth-bound, extra tokens are free)
     hypotheses: tuple = ("expert_q2k_gbps 78 GB/s is ggml's standalone SVE rate; the runner's in-model Q2 rate is not measured",
                          "context slope applied as one term on the sparse layers",
                          "6-node attention split: 64 heads / 6 is not integral (TP-6 needs a 60+4 or TP-4 split)")
@@ -287,21 +309,22 @@ def redesign():
         mhc_site_us=(23.0, 23.0),      # standalone local-gram mHC kernel (handoff: ~23 us vs 48 legacy)
         router_us=12.0, expert_fixed_us=3.0,
         expert_q4_gbps=400.0,          # Q4_K gate/up measured 156 GB/s standalone v0 kernel; chain-level streaming assumed
-        expert_q2k_gbps=250.0,         # HYPOTHESIS, a new kernel: ggml's SVE Q2_K/Q3_K measure 97/56 GB/s per node (compute-bound,
-                                       # 2.0/1.2 GB/s per core); 250 needs int8-SDOT tiles as gemm's MXFP4 path (~380 GMAC/s)
+        expert_q2k_gbps=168.7,         # measured 2026-10-18: the SDOT kernel (tools/a64fx_probe/q23_sdot_sve.c) streams Q2_K
+                                       # gate/up at 198.4 GB/s and Q3_K down at 137.3 per node -> 168.7 bytes-weighted (was a
+                                       # 250 hypothesis); standalone, the in-model rate is not measured
+        expert_width_cost=(1.0, 1.581, 2.162, 2.944),   # same kernel, 2/3/4 tokens per expert (compute-bound, measured)
         slice_penalty=0.04,            # HYPOTHESIS: 512-bit tiles keep narrow slices efficient
         moe_skew_frac=0.5, moe_collective="auto", head_fixed_ms=0.3,
-        phase_us=1.4 + 1.6, phases_per_moe_layer=8, phases_per_dense_layer=4,
+        phase_us=1.38 + 1.6, phases_per_moe_layer=8, phases_per_dense_layer=4,   # libhwb barrier (measured) + dispatch
         width_slope=-1.0, width_slope2=0.0,   # mechanistic (bytes x union ratio), see decode()
         stream_rate_mode="chain", sparse_front_sharded=True,
         prefill_int8_eff=0.70, prefill_layer_fixed_ms=0.3, prefill_ctx_us_per_1k=12.0,
         prefill_collectives_per_layer=1, cmg_fixed_scale=0.7,
-        hypotheses=("expert_q2k_gbps 250 GB/s needs a new SDOT-tile kernel: ggml's SVE Q2_K/Q3_K measured 97/56 GB/s per node (2026-10-18)",
+        hypotheses=("expert_q2k_gbps 168.7 GB/s and its width costs are the standalone SDOT kernel; in-model rate unmeasured",
                     "mHC 23 us per site in-model (standalone kernel time; the in-model cost was never reproduced)",
                     "KDA small steps 12 us as one full-team phase (today 82 us on 6 threads)",
                     "prefill int8 efficiency 0.70 (today 0.40 fitted; the 94 % CMG microkernel exists only standalone)",
-                    "EP dispatch+combine at 6 owners scaled from the 12-owner measurement",
-                    "4 ranks per node: collective costs scaled from 12-rank measurements to 24/48 ranks"),
+                    "4 ranks per node: collective costs scaled from the 6/8/12-rank measurements to 24/48 ranks"),
     )
 
 
@@ -357,6 +380,21 @@ def expert_bytes_per_rank(layout, pk, layer, width, profile):
 
 
 _LOAD_CACHE = {}
+
+
+def _width_cost(profile, pk, width):
+    """Compute-bound Q2 expert kernels: time per byte at `width / union` tokens per distinct expert, interpolated in the
+    measured 1..4-token table (linear extrapolation beyond 4)."""
+    costs = profile.expert_width_cost
+    if width <= 1 or not costs or pk.formats[3][0] == "Q4_K":
+        return 1.0
+    n = width / routing.union_ratio(width, pk.experts, GEOMETRY.top_k)
+    if n <= 1:
+        return 1.0
+    k = int(n)                                   # n in [k, k + 1]; costs[k - 1] is the k-token point
+    if k >= len(costs):
+        return costs[-1] + (costs[-1] - costs[-2]) * (n - len(costs))
+    return costs[k - 1] + (costs[k] - costs[k - 1]) * (n - k)
 
 
 def _load_ratio(ranks, top_k, parts):
@@ -436,7 +474,7 @@ def _step(layout, node, tofu, profile, pk, width):
         eb, ratio = expert_bytes_per_rank(layout, pk, layer, width, profile)
         load_ratio = ratio
         expert_bytes_total += eb
-        t_exp = eb / (exp_rate * 1e6) + profile.expert_fixed_us * 1e-3
+        t_exp = eb / (exp_rate * 1e6) * _width_cost(profile, pk, width) + profile.expert_fixed_us * 1e-3
         # the busiest rank finishes (ratio - 1) x the mean expert time later; everyone waits for it at the combine
         skew = profile.moe_skew_frac * max(0.0, ratio - 1) * t_exp * 1e3
         if profile.moe_collective == "allreduce" or owner_ranks >= R / 2:

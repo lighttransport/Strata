@@ -287,7 +287,9 @@ assumes 2 ms per page: a 4 GB RAM row cache and issue-at-token-id with 13 layers
 
 **A64FX.** 12 nodes: gemm's MXFP4 SDOT path (FP4 -> exact integer grid via `svtbl_s8`, int8 group-32 activations, two
 `svdot_s32`, fused W1/W3 pair ~380 GMAC/s per node; quality cosine 0.988 is an activation-quantization question for the
-gate) inside the Strata A64FX port. 6/8 nodes: SVE Q2_K (ggml has it: 97 GB/s = 296 GMAC/s per node, measured 2026-10-18,
+gate) inside the Strata A64FX port. 6/8 nodes: SVE Q2_K. Measured 2026-10-18: Strata's SDOT Q2_K/Q3_K kernel
+(`tools/a64fx_probe/q23_sdot_sve.c`, parity with ggml within 2.4e-7) streams 208 GB/s per node on the 2304 x 5120 gate/up
+shape and 137 on Q3_K down, twice ggml's (ggml: 97 GB/s = 296 GMAC/s per node,
 `tools/sim/data/measured_a64fx_kernels.json`; ggml's IQ2_XXS/IQ1_S manage only 11/8 GB/s per node, which is why the `current`
 A64FX rows for IQ packs are slow) and an SVE IQ2_XXS/IQ1_S kernel with the same
 integer scheme (`svtbl` over the `g+1` grid, `svdot_s32`); Engram as gemm does (owned rows per rank, prefetch thread,
