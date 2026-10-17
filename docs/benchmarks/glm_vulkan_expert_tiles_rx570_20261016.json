@@ -1,0 +1,304 @@
+{
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "scope": "Opt-in streamed canonical expert column tiles; whole-expert microbenchmark, not end-to-end inference throughput or quality qualification",
+  "native": {
+    "16": {
+      "passed": true,
+      "byte_cases": 6,
+      "timing_rows": [
+        {
+          "expert": 5,
+          "columns": 5,
+          "control": {
+            "run_wall_ms": 2.92394,
+            "upload_ms": 1.22971,
+            "queued_work_ms": 1.68666
+          },
+          "candidate": {
+            "run_wall_ms": 2.18172,
+            "upload_ms": 1.22,
+            "queued_work_ms": 0.954384
+          },
+          "queued_speedup": 1.7672760649801338,
+          "wall_speedup": 1.3401994756430706
+        },
+        {
+          "expert": 5,
+          "columns": 33,
+          "control": {
+            "run_wall_ms": 3.1886,
+            "upload_ms": 1.26579,
+            "queued_work_ms": 1.86929
+          },
+          "candidate": {
+            "run_wall_ms": 3.49403,
+            "upload_ms": 1.25571,
+            "queued_work_ms": 2.18773
+          },
+          "queued_speedup": 0.8544427328783716,
+          "wall_speedup": 0.9125851810087492
+        },
+        {
+          "expert": 5,
+          "columns": 129,
+          "control": {
+            "run_wall_ms": 6.9198,
+            "upload_ms": 1.41021,
+            "queued_work_ms": 5.27084
+          },
+          "candidate": {
+            "run_wall_ms": 7.76401,
+            "upload_ms": 1.39231,
+            "queued_work_ms": 6.11777
+          },
+          "queued_speedup": 0.8615623012960605,
+          "wall_speedup": 0.891266239997115
+        },
+        {
+          "expert": 77,
+          "columns": 5,
+          "control": {
+            "run_wall_ms": 2.81535,
+            "upload_ms": 1.20165,
+            "queued_work_ms": 1.61025
+          },
+          "candidate": {
+            "run_wall_ms": 2.08627,
+            "upload_ms": 1.19493,
+            "queued_work_ms": 0.885442
+          },
+          "queued_speedup": 1.8185832612412784,
+          "wall_speedup": 1.3494657930181617
+        },
+        {
+          "expert": 77,
+          "columns": 33,
+          "control": {
+            "run_wall_ms": 3.22627,
+            "upload_ms": 1.29551,
+            "queued_work_ms": 1.86404
+          },
+          "candidate": {
+            "run_wall_ms": 3.49736,
+            "upload_ms": 1.25435,
+            "queued_work_ms": 2.19027
+          },
+          "queued_speedup": 0.8510548927757765,
+          "wall_speedup": 0.9224872475238466
+        },
+        {
+          "expert": 77,
+          "columns": 129,
+          "control": {
+            "run_wall_ms": 7.01219,
+            "upload_ms": 1.46689,
+            "queued_work_ms": 5.28791
+          },
+          "candidate": {
+            "run_wall_ms": 7.90091,
+            "upload_ms": 1.50247,
+            "queued_work_ms": 6.14145
+          },
+          "queued_speedup": 0.8610197917429924,
+          "wall_speedup": 0.8875167543991769
+        }
+      ],
+      "executable_sha256": "72886712887a7229c6a8b2452e1ff4d067152156229e0823529a78700aac0bb3",
+      "protocol": "3 warmup pairs +5 measured pairs, alternating order; same GPU packing and vector loader; fresh guarded process per tile; microbenchmark only",
+      "faults": [],
+      "raw_sha256": {
+        "guard.json": "650e96d6e3d1e7395c592aadffb3011d1639904aa917c3149c9fa3a448c85066",
+        "log": "e8a1d41e1e9552b06b304bd5b53e9a84db12b79be50a428afa65d3862b99594a",
+        "kernel.log": "3652e1aab16ad0a54dea18d4d9f8d1c698eaac497ebb11da4d6e0dc967bf4734"
+      }
+    },
+    "32": {
+      "passed": true,
+      "byte_cases": 6,
+      "timing_rows": [
+        {
+          "expert": 5,
+          "columns": 5,
+          "control": {
+            "run_wall_ms": 2.92918,
+            "upload_ms": 1.23744,
+            "queued_work_ms": 1.67908
+          },
+          "candidate": {
+            "run_wall_ms": 2.43015,
+            "upload_ms": 1.27494,
+            "queued_work_ms": 1.15179
+          },
+          "queued_speedup": 1.457800467099037,
+          "wall_speedup": 1.2053494640248545
+        },
+        {
+          "expert": 5,
+          "columns": 33,
+          "control": {
+            "run_wall_ms": 3.28034,
+            "upload_ms": 1.26833,
+            "queued_work_ms": 1.97738
+          },
+          "candidate": {
+            "run_wall_ms": 3.36142,
+            "upload_ms": 1.27398,
+            "queued_work_ms": 2.02573
+          },
+          "queued_speedup": 0.9761320610347876,
+          "wall_speedup": 0.9758792415110281
+        },
+        {
+          "expert": 5,
+          "columns": 129,
+          "control": {
+            "run_wall_ms": 6.93855,
+            "upload_ms": 1.40465,
+            "queued_work_ms": 5.27223
+          },
+          "candidate": {
+            "run_wall_ms": 6.58653,
+            "upload_ms": 1.42254,
+            "queued_work_ms": 4.93694
+          },
+          "queued_speedup": 1.0679145381552138,
+          "wall_speedup": 1.0534454409226104
+        },
+        {
+          "expert": 77,
+          "columns": 5,
+          "control": {
+            "run_wall_ms": 2.88469,
+            "upload_ms": 1.21456,
+            "queued_work_ms": 1.67592
+          },
+          "candidate": {
+            "run_wall_ms": 2.37865,
+            "upload_ms": 1.22388,
+            "queued_work_ms": 1.14493
+          },
+          "queued_speedup": 1.463775077952364,
+          "wall_speedup": 1.2127425220187922
+        },
+        {
+          "expert": 77,
+          "columns": 33,
+          "control": {
+            "run_wall_ms": 3.31501,
+            "upload_ms": 1.31626,
+            "queued_work_ms": 1.9918
+          },
+          "candidate": {
+            "run_wall_ms": 3.43974,
+            "upload_ms": 1.26159,
+            "queued_work_ms": 2.02244
+          },
+          "queued_speedup": 0.9848499831886236,
+          "wall_speedup": 0.9637385383779007
+        },
+        {
+          "expert": 77,
+          "columns": 129,
+          "control": {
+            "run_wall_ms": 6.96847,
+            "upload_ms": 1.41435,
+            "queued_work_ms": 5.29098
+          },
+          "candidate": {
+            "run_wall_ms": 6.62831,
+            "upload_ms": 1.40555,
+            "queued_work_ms": 4.95015
+          },
+          "queued_speedup": 1.0688524590163935,
+          "wall_speedup": 1.0513192653934411
+        }
+      ],
+      "executable_sha256": "72886712887a7229c6a8b2452e1ff4d067152156229e0823529a78700aac0bb3",
+      "protocol": "3 warmup pairs +5 measured pairs, alternating order; same GPU packing and vector loader; fresh guarded process per tile; microbenchmark only",
+      "faults": [],
+      "raw_sha256": {
+        "guard.json": "4a833e44a49ed6df359fe7272a2119ba305eae58381e3cf0311b1c216fae6631",
+        "log": "0046b9cac0af25835afee93914633f7e319b1e1bc0d7408b409dfb5b482c275d",
+        "kernel.log": "384eeddb9a179404163956b592a8f6d4c1811db944740586c0906e88e8cd4b21"
+      }
+    }
+  },
+  "software": {
+    "driver": "explicit LVP",
+    "cases_per_mode": 6,
+    "modes": 4,
+    "all_passed": true
+  },
+  "default_spirv": {
+    "expert_gemm_q2k_canon": {
+      "original_sha256": "bd5a7168ba0fed770f2142c3ac6b57ee43bca26d7fbce40a37fe0c9a7a356ee0",
+      "current_sha256": "bd5a7168ba0fed770f2142c3ac6b57ee43bca26d7fbce40a37fe0c9a7a356ee0",
+      "byte_identical": true
+    },
+    "expert_gemm_q2k_canon_vector": {
+      "original_sha256": "3657d6d417a9f24ea0abf433cced5eda04e803d64fa7d7b84c804ed70796e188",
+      "current_sha256": "3657d6d417a9f24ea0abf433cced5eda04e803d64fa7d7b84c804ed70796e188",
+      "byte_identical": true
+    },
+    "expert_gemm_q3k_canon": {
+      "original_sha256": "2a512679ec0f0b8c3b84061b265c59f11cc434ecc7322513f999369171ca6b10",
+      "current_sha256": "2a512679ec0f0b8c3b84061b265c59f11cc434ecc7322513f999369171ca6b10",
+      "byte_identical": true
+    },
+    "expert_gemm_q3k_canon_vector": {
+      "original_sha256": "3ef05fe564d435aeda3f7f0b4399ec76d4be9efc7ae709e1aca38753f7dfc954",
+      "current_sha256": "3ef05fe564d435aeda3f7f0b4399ec76d4be9efc7ae709e1aca38753f7dfc954",
+      "byte_identical": true
+    }
+  },
+  "expanded_boundary_screen": {
+    "passed": false,
+    "columns": 17,
+    "expert": 5,
+    "relative_l2_cpu_canonical": 0.000224746,
+    "unchanged_relative_l2_limit": 0.0002,
+    "original_64_column_kernel_also_fails": true,
+    "narrow_tiles_match_original_bytes": true,
+    "raw_control_sha256": "c41afd48943748984fd0b3502e64627135706cbd4e7a23f3b40dd7555c8427a4",
+    "limitation": "Existing numeric discrepancy with this new input, not fixed or waived; retain failed raw evidence"
+  },
+  "compiled_source_sha256": {
+    "vulkan/fast/engine.cpp": "4b88d6d023aba50c1b916956aed43102d0c599d58103841525901d611217820c",
+    "vulkan/fast/engine.hpp": "38efcbbe3039ae52b1c02c70168d1fb166ca815a4a71365b0b9fb0438986ec80",
+    "vulkan/fast/expert_batch.cpp": "6b9ea9e93c3f3784147f4b6883d9e0575f3deb6f558ca6a35cae13221a452eef",
+    "vulkan/fast/expert_batch.hpp": "fc0ccfb1c6285597dd4f0ddb2f5ed38b0102cbe8fc5735a125488c59837b51c2",
+    "vulkan/fast/expert_batch_check.cpp": "19a46d4c787a9100183b997e08286eaf9016c010e231f7cb4be87d38a069e6fb",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "2fb70813dd4d0e692221bff25d739ac65ae75893aac039a8d9a79e61481521c7",
+    "vulkan/CMakeLists.txt": "032c4dd2fe4423007a2e07883ad0edb06dfdc72ebc124c0ab225edff8aeb4b8e",
+    "vulkan/fast/device.cpp": "dea6b1dc648cdcf5b3d5498e528c3953b6982becf3aaa7c453887ba9da713a41",
+    "vulkan/fast/device.hpp": "873f2ec3f7c46525a3d80fb6399ff76c39ed20c5deab23e725499df50862fef1",
+    "vulkan/fast/kernels.cpp": "f974db507479f804cea6992dd34b4dd1e223791cf2e5f003c5e2f7bd9d4db103",
+    "vulkan/fast/kernels.hpp": "41febcc2b7d700bf96573a2dc86df403d4dd20153060e865cc909db0fe8c43c0"
+  },
+  "frozen_executable_sha256": {
+    "strata-glm-vulkan": "24a15067abfba263e4ed1e468872b651a3903aa0f9543f19c5f8c13842a45cc4",
+    "expert-bench-native-v2": "72886712887a7229c6a8b2452e1ff4d067152156229e0823529a78700aac0bb3"
+  },
+  "prefix_submission_split": {
+    "opt_in": true,
+    "native_build_passed": true,
+    "portable_build_passed": true,
+    "physical_model_validated": false,
+    "completed_command_default_limit_ms": 500,
+    "driver_watchdog_changed": false
+  },
+  "defaults_changed": false,
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "limitations": [
+    "No 100+ prefill or coding throughput claim",
+    "No full-model validation of prefix splitting or narrow tiles yet",
+    "Original frozen HumanEval baseline still incomplete and uses a different immutable executable",
+    "Strict CPU parity and complete PPL/KL gates remain unresolved"
+  ]
+}

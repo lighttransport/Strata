@@ -1,0 +1,43 @@
+#version 450
+// Four heads share one 16-row latent cache tile. Online softmax avoids a
+// second global-cache traversal. Prefill only; FP32 reduction order changes.
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+#extension GL_KHR_shader_subgroup_ballot : require
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Cache { float cache[]; };
+layout(binding = 1, std430) readonly buffer Q { float q[]; };
+layout(binding = 2, std430) readonly buffer Ids { int ids[]; };
+layout(binding = 3, std430) writeonly buffer Y { float y[]; };
+layout(push_constant) uniform P { uint heads, latent; float scale; uint istride; } p;
+shared float kv[16][512];
+void main() {
+  const uint t = gl_LocalInvocationID.x, lane = gl_SubgroupInvocationID, wave = gl_SubgroupID;
+  const uint head = gl_WorkGroupID.x * 4u + wave, tok = gl_WorkGroupID.y;
+  const uint io = tok * p.istride, count = uint(ids[io]), qo = (tok * p.heads + head) * 512u;
+  float qv[8], acc[8];
+  for (uint k = 0; k < 8; ++k) {qv[k] = q[qo + lane + 64u * k]; acc[k] = 0;}
+  float maximum = -3.402823e38, total = 0;
+  for (uint first = 0; first < count; first += 16u) {
+    const uint rows = min(16u, count - first);
+    for (uint j = t; j < rows * 512u; j += 256u)
+      kv[j / 512u][j % 512u] = cache[uint(ids[io + 1u + first + j / 512u]) * 512u + j % 512u];
+    barrier();
+    for (uint row = 0; row < rows; ++row) {
+      float dot = 0;
+      for (uint k = 0; k < 8; ++k) dot += qv[k] * kv[row][lane + 64u * k];
+      dot = subgroupAdd(dot) * p.scale;
+      float alpha = 0, beta = 0;
+      if (lane == 0) {
+        float next = max(maximum, dot);
+        alpha = exp(maximum - next); beta = exp(dot - next);
+        total = total * alpha + beta; maximum = next;
+      }
+      alpha = subgroupBroadcastFirst(alpha); beta = subgroupBroadcastFirst(beta);
+      for (uint k = 0; k < 8; ++k) acc[k] = acc[k] * alpha + beta * kv[row][lane + 64u * k];
+    }
+    barrier();
+  }
+  const float denominator = subgroupBroadcastFirst(total);
+  for (uint k = 0; k < 8; ++k) y[qo + lane + 64u * k] = acc[k] / denominator;
+}

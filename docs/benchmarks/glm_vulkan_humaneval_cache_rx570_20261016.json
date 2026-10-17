@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "scope": "Completed original immutable cache-only HumanEval baseline; separate from the new large-prefill prototype",
+  "aggregate": {
+    "requested_cases": 164,
+    "completed_cases": 164,
+    "complete": true,
+    "passed_cases": 143,
+    "humaneval_requested": 164,
+    "humaneval_completed": 164,
+    "humaneval_passed": 145,
+    "humaneval_stop_and_oracle_passed": 143,
+    "full_humaneval_140_gate_passed": true,
+    "timings_qualified": false
+  },
+  "protocol": "one greedy chat sample, low reasoning, independent oracles",
+  "candidate_sha256": "0f4ef456380026af1424d8b3b48f3f6d2140938a05c11bb2573d8e44cf4e3bd2",
+  "executable_sha256": "53202494900d6ee3615ad4c3e29af5bfa0eb177c0287c37842cc4d4a2d0d24de",
+  "fixtures_sha256": "6288ee92355b817b385005a18ca9c61ab9c3ed8d1f31e6429e35f36df557bb2d",
+  "score_manifest_sha256": "856ff43e12abe00e09884b6b7063dbc75ab883d08889d3e0a6a332d10b290f48",
+  "score_summary_sha256": "05f10dc6fa28c55084682b20d6d0775a8533099726f29dd729344651570f58cc",
+  "all_164_run_identities_verified": true,
+  "all_frozen_prompt_oracle_hashes_verified": true,
+  "max_generated_tokens_per_case": 2048,
+  "timings_qualified": false,
+  "new_prefill_binary_qualified": false,
+  "raw_evidence": "build-vulkan-rx570-native/post-reboot-20261015/humaneval-full-cache-only",
+  "limitations": [
+    "One greedy sample per task, low reasoning, fixed 2048-token generation cap; no resampling or holdout-driven candidate changes.",
+    "145 isolated oracle passes include two valid solutions at the generation cap; 143 cases both stop-terminated and pass their oracle.",
+    "This result does not qualify the new row/column tiles, prefix splitting, scratch reuse, throughput, strict numeric parity or PPL/KL.",
+    "Cases ran across two boots, using the same frozen executable/configuration and all 164 fixture/oracle identities."
+  ]
+}

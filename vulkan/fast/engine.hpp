@@ -14,6 +14,9 @@
 #include <vector>
 namespace strata::vulkan::fast {
 
+class ExpertBatch;
+class MlaPrefill;
+
 struct EngineOptions {
   int threads = 12;
   int capacity = 4096;
@@ -52,6 +55,8 @@ public:
 
 private:
   struct Layer;
+  struct PrefillHost;
+  struct PrefillWorker;
   core::ModelArtifact &artifact_;
   const core::ModelDescriptor &m_;
   EngineOptions options_;
@@ -81,12 +86,26 @@ private:
   bool expert_q8_ = false;
   bool canonical_sum_ = false;
   bool prefill_gpu_ = false;
+  bool prefill_pipeline_ = false, prefill_expand_ = false, prefill_tiled_mla_ = false;
+  Matrix prefill_expanded_;
+  bool prefill_mla_gemm_ = false, prefill_expert_expand_ = false;
+  std::unique_ptr<MlaPrefill> prefill_mla_;
+  bool prefill_balance_ = false;
+  double prefill_cpu_route_us_ = 0, prefill_gpu_route_us_ = 0, prefill_upload_us_ = 0, prefill_shared_us_ = 0;
   bool prefill_gpu_pack_ = false;
   bool prefill_gpu_vector_ = false;
+  bool prefill_reuse_expert_ = false;
+  bool prefill_reuse_host_ = false;
   bool prefill_match_gemv_ = false;
+  bool prefill_match_f32_ = false;
+  uint32_t prefill_gemv_panel_ = 4;
   bool prefill_progress_ = false;
+  bool prefill_split_prefix_ = false;
+  uint32_t prefill_submit_limit_ms_ = 500;
   uint32_t prefill_tile_ = 0;
   int prefill_gpu_max_experts_ = 72, prefill_gpu_min_tokens_ = 32;
+  uint32_t prefill_gpu_tile_ = 64;
+  uint32_t prefill_gpu_rows_ = 64;
   uint32_t mailbox_stride_ = 8448;
   std::unique_ptr<Buffer> expert_x_, expert_h_;
   uint32_t q8_slot_ = 0;
@@ -95,6 +114,10 @@ private:
   bool recording_prefill_ = false, running_prefill_ = false;
   std::vector<std::pair<std::unique_ptr<Buffer> *, std::unique_ptr<Buffer>>> prefill_buffers_;
   std::map<uint32_t, std::vector<Submission>> prefill_segments_;
+  std::unique_ptr<ExpertBatch> prefill_expert_batch_;
+  std::unique_ptr<ExpertBatch> prefill_pipeline_slots_[2];
+  std::unique_ptr<PrefillHost> prefill_host_;
+  std::unique_ptr<PrefillWorker> prefill_worker_;
   uint64_t profiled_tokens_ = 0;
   std::vector<double> segment_gpu_ms_, segment_gap_ms_;
   std::vector<std::string> segment_names_, query_names_;
@@ -120,9 +143,10 @@ private:
   void record(uint32_t T);
   void record_window(uint32_t T, std::vector<Submission> &);
   void allocate_prefill();
+  std::vector<float> forward_prefill_pipeline(std::span<const int> tokens);
   void release_prefill();
   std::vector<float> forward_prefill(std::span<const int>);
-  void cpu_experts_prefill(const Layer &, uint32_t T);
+  void cpu_experts_prefill(const Layer &, uint32_t T, Recorder *shared = nullptr);
   void record_attention(Recorder &, int layer, uint32_t T);
   void record_ffn_head(Recorder &, int layer, uint32_t T);  // through the router (MoE) or the write (dense)
   void record_ffn_tail(Recorder &, int layer, uint32_t T);  // MoE: combine and write

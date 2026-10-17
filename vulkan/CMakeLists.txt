@@ -61,6 +61,9 @@ set(_glm_vk_fast_shaders
   "q8k_codes|q8k_round|-DCODES_AND_SUMS" "q8k_codes_portable|q8k_round|-DCODES_AND_SUMS -DPORTABLE_REDUCTION"
   "q8k_unpack|q8k_unpack|"
   "repack_expert_q2k|repack_expert|-DTYPE_Q2K" "repack_expert_q3k|repack_expert|-DTYPE_Q3K"
+  "repack_expert_q2k_checked|repack_expert|-DTYPE_Q2K -DCHECK_SOURCE_BOUNDS"
+  "repack_expert_q3k_checked|repack_expert|-DTYPE_Q3K -DCHECK_SOURCE_BOUNDS"
+  "repack_expert_q3k_checked_legacy|repack_expert|-DTYPE_Q3K -DCHECK_SOURCE_BOUNDS -DLEGACY_WIDE_SIDE"
   "fma_oracle|fma_oracle|"
   "expert_gemm_q2k_canon|expert_gemm_canon|-DTYPE_Q2K" "expert_gemm_q3k_canon|expert_gemm_canon|-DTYPE_Q3K"
   "expert_gemm_q2k_canon_vector|expert_gemm_canon|-DTYPE_Q2K -DVECTOR_WEIGHT_LOADS"
@@ -73,6 +76,94 @@ set(_glm_vk_fast_shaders
   "kda_step|kda_step|" "swiglu|swiglu|" "router|router|" "index_key|index_key|"
   "index_scores_step|index_scores_step|" "select_pools|select_pools|" "mla_step|mla_step|" "argmax|argmax|" "q8_round|q8_round|" "mhc_read|mhc_read|" "mhc_write|mhc_write|"
   "gemv_expert_q2k|gemv_expert|-DTYPE_Q2K" "gemv_expert_q3k|gemv_expert|-DTYPE_Q3K" "expert_mix|expert_mix|" "xsum16|xsum16|" "hits_union|hits_union|" "residual_add|residual_add|" "hidden_store|hidden_store|")
+foreach(_type IN ITEMS q2k q3k)
+  string(TOUPPER "${_type}" _type_define)
+  foreach(_columns IN ITEMS 16 32)
+    list(APPEND _glm_vk_fast_shaders
+      "expert_gemm_${_type}_canon_${_columns}|expert_gemm_canon|-DTYPE_${_type_define} -DNTILE=${_columns}"
+      "expert_gemm_${_type}_canon_vector_${_columns}|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DNTILE=${_columns}")
+  endforeach()
+endforeach()
+foreach(_type IN ITEMS q2k q3k)
+  string(TOUPPER "${_type}" _type_define)
+  foreach(_columns IN ITEMS 16 32 64)
+    if(_columns EQUAL 64)
+      set(_column_suffix "")
+    else()
+      set(_column_suffix "_${_columns}")
+    endif()
+    list(APPEND _glm_vk_fast_shaders
+      "expert_gemm_${_type}_canon${_column_suffix}_m32|expert_gemm_canon|-DTYPE_${_type_define} -DNTILE=${_columns} -DMTILE=32"
+      "expert_gemm_${_type}_canon_vector${_column_suffix}_m32|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DNTILE=${_columns} -DMTILE=32")
+  endforeach()
+endforeach()
+option(STRATA_VULKAN_NATIVE_FMA "Build optional VK_KHR_shader_fma expert variants" OFF)
+if(STRATA_VULKAN_NATIVE_FMA)
+  list(APPEND _glm_vk_fast_shaders
+    "expert_mix_fp32_math_native_fma|expert_mix|-DCANON_SWIGLU -DFP32_MATH"
+    "q8k_codes_fp32_math|q8k_round|-DCODES_AND_SUMS -DFP32_MATH"
+    "q8k_codes_portable_fp32_math|q8k_round|-DCODES_AND_SUMS -DPORTABLE_REDUCTION -DFP32_MATH"
+    "fma_oracle_fp64_scale_native_fma|fma_oracle|-DFP64_SCALE -DNATIVE_FMA"
+    "expert_mix_fp64_math_native_fma|expert_mix|-DCANON_SWIGLU -DFP64_MATH -DNATIVE_FMA")
+  foreach(_type IN ITEMS q2k q3k)
+    string(TOUPPER "${_type}" _type_define)
+    foreach(_loader IN ITEMS "" "_vector")
+      set(_loader_define "")
+      if(_loader STREQUAL "_vector")
+        set(_loader_define "-DVECTOR_WEIGHT_LOADS")
+      endif()
+      list(APPEND _glm_vk_fast_shaders
+        "expert_gemm_${_type}_canon${_loader}_fp32_math_native_fma_expanded|expert_gemm_canon|-DTYPE_${_type_define} -DFP32_MATH -DEXPANDED_WEIGHTS ${_loader_define}"
+        "expert_gemm_${_type}_canon${_loader}_fp32_math_native_fma|expert_gemm_canon|-DTYPE_${_type_define} -DFP32_MATH ${_loader_define}"
+        "expert_gemm_${_type}_canon${_loader}_fp64_scale_native_fma|expert_gemm_canon|-DTYPE_${_type_define} -DFP64_SCALE -DNATIVE_FMA ${_loader_define}")
+      if(_type STREQUAL "q2k")
+        list(APPEND _glm_vk_fast_shaders
+          "expert_gemm_${_type}_canon${_loader}_fp64_scale_native_fma_trace|expert_gemm_canon|-DTYPE_${_type_define} -DFP64_SCALE -DNATIVE_FMA -DTRACE_BLOCK_SCALE ${_loader_define}")
+      endif()
+    endforeach()
+  endforeach()
+endif()
+foreach(_columns IN ITEMS 8 16)
+  list(APPEND _glm_vk_fast_shaders "gemv_f32_n${_columns}|gemv_f32|-DNMAX=${_columns} -DRSMAX=2")
+  foreach(_type IN ITEMS q4k q6k q50)
+    string(TOUPPER "${_type}" _type_define)
+    list(APPEND _glm_vk_fast_shaders
+      "gemv_rows_${_type}_n${_columns}|gemv_rows|-DTYPE_${_type_define} -DNMAX=${_columns}")
+  endforeach()
+endforeach()
+list(APPEND _glm_vk_fast_shaders "fma_oracle_fp64_scale|fma_oracle|-DFP64_SCALE")
+list(APPEND _glm_vk_fast_shaders "round_fp64_oracle|round_fp64_oracle|")
+list(APPEND _glm_vk_fast_shaders
+  "expert_mix_fp64_math|expert_mix|-DCANON_SWIGLU -DFP64_MATH"
+  "q8k_codes_fp64_math|q8k_round|-DCODES_AND_SUMS -DFP64_MATH"
+  "q8k_codes_portable_fp64_math|q8k_round|-DCODES_AND_SUMS -DPORTABLE_REDUCTION -DFP64_MATH")
+list(APPEND _glm_vk_fast_shaders
+  "expert_gemm_q2k_canon_fp64_scale_trace|expert_gemm_canon|-DTYPE_Q2K -DFP64_SCALE -DTRACE_BLOCK_SCALE"
+  "expert_gemm_q2k_canon_vector_fp64_scale_trace|expert_gemm_canon|-DTYPE_Q2K -DVECTOR_WEIGHT_LOADS -DFP64_SCALE -DTRACE_BLOCK_SCALE")
+foreach(_type IN ITEMS q2k q3k)
+  string(TOUPPER "${_type}" _type_define)
+  list(APPEND _glm_vk_fast_shaders
+    "expert_gemm_${_type}_canon_fp64_scale|expert_gemm_canon|-DTYPE_${_type_define} -DFP64_SCALE"
+    "expert_gemm_${_type}_canon_vector_fp64_scale|expert_gemm_canon|-DTYPE_${_type_define} -DVECTOR_WEIGHT_LOADS -DFP64_SCALE")
+endforeach()
+foreach(_type IN ITEMS q4k q6k q50)
+  string(TOUPPER "${_type}" _define)
+  list(APPEND _glm_vk_fast_shaders "expand_${_type}|gemm_tiled|-DTYPE_${_define} -DEXPAND_WEIGHTS")
+endforeach()
+list(APPEND _glm_vk_fast_shaders "mla_prefill_tiled|mla_prefill_tiled|")
+list(APPEND _glm_vk_fast_shaders "mla_gather|mla_gather|" "mla_softmax|mla_softmax|")
+list(APPEND _glm_vk_fast_shaders
+  "expert_expand_q2k|expert_gemm_canon|-DTYPE_Q2K -DEXPAND_INTEGER"
+  "expert_expand_q3k|expert_gemm_canon|-DTYPE_Q3K -DEXPAND_INTEGER")
+list(APPEND _glm_vk_fast_shaders
+  "gemm_f32_coalesced|gemm_tiled|-DTYPE_F32 -DCOALESCED_F32"
+  "gemm_f32_wide_coalesced|gemm_tiled|-DTYPE_F32 -DCOALESCED_F32 -DNTILE=128"
+  "gemm_f32_wider_coalesced|gemm_tiled|-DTYPE_F32 -DCOALESCED_F32 -DNTILE=256"
+  "index_key_panel|index_key|-DTOKEN_OFFSET"
+  "index_scores_step_panel|index_scores_step|-DTOKEN_OFFSET"
+  "gemm_f32_transposed|gemm_tiled|-DTYPE_F32 -DTRANSPOSED_F32"
+  "gemm_f32_wide_transposed|gemm_tiled|-DTYPE_F32 -DTRANSPOSED_F32 -DNTILE=128"
+  "gemm_f32_wider_transposed|gemm_tiled|-DTYPE_F32 -DTRANSPOSED_F32 -DNTILE=256")
 set(_fast_outputs)
 set(_fast_registry "#pragma once\n#include <span>\n#include <string>\n")
 set(_fast_lookup "inline std::span<const unsigned char> fast_shader(const std::string &name) {\n")
@@ -88,6 +179,8 @@ foreach(_entry IN LISTS _glm_vk_fast_shaders)
     COMMAND Vulkan::glslc --target-env=vulkan1.2 -O ${_defines} ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/${_source}.comp -o ${_spv}
     COMMAND ${CMAKE_COMMAND} -DINPUT=${_spv} -DOUTPUT=${_hdr} -DNAME=fast_${_name} -P ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/${_source}.comp ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/common.glsl
+            ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/fp64_round.glsl
+            ${CMAKE_CURRENT_SOURCE_DIR}/fast/shaders/fp32_native.glsl
             ${CMAKE_CURRENT_SOURCE_DIR}/embed_spirv.cmake VERBATIM)
   list(APPEND _fast_outputs ${_hdr})
   string(APPEND _fast_registry "#include \"fast_${_name}_spv.hpp\"\n")
@@ -98,6 +191,9 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/fast_shaders.hpp.tmp "${_fast_registry}${
 configure_file(${CMAKE_CURRENT_BINARY_DIR}/fast_shaders.hpp.tmp ${CMAKE_CURRENT_BINARY_DIR}/fast_shaders.hpp COPYONLY)
 add_custom_target(glm_vulkan_fast_shaders DEPENDS ${_fast_outputs})
 add_library(strata_glm_vulkan_fast fast/device.cpp fast/kernels.cpp fast/expert_batch.cpp fast/engine.cpp)
+if(STRATA_VULKAN_NATIVE_FMA)
+  target_compile_definitions(strata_glm_vulkan_fast PRIVATE STRATA_VULKAN_NATIVE_FMA=1)
+endif()
 target_include_directories(strata_glm_vulkan_fast PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(strata_glm_vulkan_fast PUBLIC Vulkan::Vulkan strata_artifact ggml strata_kernels_cpu)
 add_dependencies(strata_glm_vulkan_fast glm_vulkan_fast_shaders)
@@ -111,6 +207,8 @@ target_link_libraries(glm_vulkan_fast_gemm_bench PRIVATE strata_glm_vulkan_fast 
 add_executable(glm_vulkan_fast_gemm_check fast/gemm_check.cpp)
 target_link_libraries(glm_vulkan_fast_gemm_check PRIVATE strata_glm_vulkan_fast ggml)
 add_executable(glm_vulkan_fast_repack_check fast/repack_check.cpp)
+add_executable(glm_vulkan_fast_gemv_panel_check fast/gemv_panel_check.cpp)
+target_link_libraries(glm_vulkan_fast_gemv_panel_check PRIVATE strata_glm_vulkan_fast ggml)
 target_link_libraries(glm_vulkan_fast_repack_check PRIVATE strata_glm_vulkan_fast)
 add_executable(glm_vulkan_fast_repack_gpu_check fast/repack_gpu_check.cpp)
 target_link_libraries(glm_vulkan_fast_repack_gpu_check PRIVATE strata_glm_vulkan_fast)
@@ -127,3 +225,19 @@ target_link_libraries(glm_vulkan_fast_window_check PRIVATE strata_glm_vulkan_fas
 add_executable(glm_vulkan_fast_ref fast/reference.cpp)
 target_link_libraries(glm_vulkan_fast_ref PRIVATE strata_artifact ggml strata_kernels_cpu)
 target_include_directories(glm_vulkan_fast_ref PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_executable(glm_vulkan_fast_mla_prefill_check fast/mla_prefill_check.cpp)
+target_link_libraries(glm_vulkan_fast_mla_prefill_check PRIVATE strata_glm_vulkan_fast)
+
+target_sources(strata_glm_vulkan_fast PRIVATE fast/mla_prefill.cpp)
+
+# The rejected CPU panel prototype is available only to the numerical check.
+add_executable(glm_vulkan_fast_prefill_expert_check fast/prefill_expert_check.cpp fast/cpu_prefill.cpp)
+target_link_libraries(glm_vulkan_fast_prefill_expert_check PRIVATE strata_glm_vulkan_fast strata_kernels_cpu)
+
+add_executable(glm_vulkan_fast_prefill_schedule_check fast/prefill_schedule_check.cpp)
+target_include_directories(glm_vulkan_fast_prefill_schedule_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(STRATA_BUILD_TESTS)
+  add_test(NAME glm_vulkan_fast_prefill_schedule_check COMMAND glm_vulkan_fast_prefill_schedule_check)
+  set_tests_properties(glm_vulkan_fast_prefill_schedule_check PROPERTIES LABELS "glm;vulkan;cpu")
+endif()

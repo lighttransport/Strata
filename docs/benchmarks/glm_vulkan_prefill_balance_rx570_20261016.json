@@ -1,0 +1,134 @@
+{
+  "runs": [
+    {
+      "run": "gpu512-host-v5-run",
+      "rates": [
+        37.2301,
+        37.0698,
+        37.0256
+      ],
+      "median": 37.0698,
+      "performance_qualified": true,
+      "phase_sums": [
+        {
+          "phase": "warmup",
+          "prepare_ms": 342.216,
+          "cpu_work_ms": 9149.059,
+          "upload_ms": 18080.861,
+          "queued_work_ms": 5646.624,
+          "gpu_routes": 130288.0,
+          "gpu_experts": 1761.0
+        },
+        {
+          "phase": "prefill",
+          "prepare_ms": 339.841,
+          "cpu_work_ms": 2867.976,
+          "upload_ms": 2875.988,
+          "queued_work_ms": 5453.253,
+          "gpu_routes": 130288.0,
+          "gpu_experts": 1761.0
+        },
+        {
+          "phase": "prefill",
+          "prepare_ms": 340.393,
+          "cpu_work_ms": 2797.137,
+          "upload_ms": 2904.155,
+          "queued_work_ms": 5479.913,
+          "gpu_routes": 130288.0,
+          "gpu_experts": 1761.0
+        },
+        {
+          "phase": "prefill",
+          "prepare_ms": 341.717,
+          "cpu_work_ms": 2808.119,
+          "upload_ms": 2896.411,
+          "queued_work_ms": 5481.255,
+          "gpu_routes": 130288.0,
+          "gpu_experts": 1761.0
+        }
+      ],
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "config_sha256": "ad520e14568e9c46851fa9f76c3f7edd2bd226e95b0922c2eecd790d93f7f70c",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "raw_log_sha256": "024d80aa48be2678133de7bdfa0bb2117593109282f6c51439a1f45a96ee5f1a",
+      "raw_guard_sha256": "aa7b0958195127009e30ec8cc4dc54baad2584afc9ded3794e28e8d0f15cfac4",
+      "faults": []
+    },
+    {
+      "run": "gpu512-host-v5-max20-run",
+      "rates": [
+        46.6153,
+        46.4556,
+        46.2955
+      ],
+      "median": 46.4556,
+      "performance_qualified": true,
+      "phase_sums": [
+        {
+          "phase": "warmup",
+          "prepare_ms": 343.126,
+          "cpu_work_ms": 12870.306,
+          "upload_ms": 12650.976,
+          "queued_work_ms": 3690.868,
+          "gpu_routes": 89002.0,
+          "gpu_experts": 840.0
+        },
+        {
+          "phase": "prefill",
+          "prepare_ms": 341.805,
+          "cpu_work_ms": 5379.73,
+          "upload_ms": 1795.109,
+          "queued_work_ms": 3597.356,
+          "gpu_routes": 89002.0,
+          "gpu_experts": 840.0
+        },
+        {
+          "phase": "prefill",
+          "prepare_ms": 336.709,
+          "cpu_work_ms": 5393.992,
+          "upload_ms": 1803.161,
+          "queued_work_ms": 3611.312,
+          "gpu_routes": 89002.0,
+          "gpu_experts": 840.0
+        },
+        {
+          "phase": "prefill",
+          "prepare_ms": 341.977,
+          "cpu_work_ms": 5328.203,
+          "upload_ms": 1852.014,
+          "queued_work_ms": 3624.177,
+          "gpu_routes": 89002.0,
+          "gpu_experts": 840.0
+        }
+      ],
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "config_sha256": "7929cd775acb67e50fd42e0a9e6139fef8841fd12cf1802bd7bd200b357acec8",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "raw_log_sha256": "99cc2004326e947e7a270101e2fca1da01f18cc5d8e75ade6c55fb36ce6cab64",
+      "raw_guard_sha256": "f929560abc5538b70d77afb1e6442afaf4d364f0b698cf8208d40ec31d4a06f4",
+      "faults": []
+    }
+  ],
+  "max20_vs_max72": {
+    "logits_byte_identical": false,
+    "top1_identical": true,
+    "kl_max72_to_max20": 0.002479123989283208,
+    "relative_l2": 0.2511824870755996
+  },
+  "throughput_gain": 1.2531926258032144,
+  "quality_qualified": false,
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "scope": "512 repetitive input tokens / 2 output tokens; 1 untimed warmup +3 measured trials in each process; control then candidate order",
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016/model-controls",
+  "defaults_changed": false,
+  "limitations": [
+    "Final-vocabulary logits change when CPU/GPU expert placement changes. This KL is one prompt against the unqualified MAX72 prefill candidate, not against the strict engine.",
+    "No coding throughput, new-candidate functional quality, PPL/KL or combined decode qualification."
+  ]
+}

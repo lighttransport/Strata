@@ -1,0 +1,1178 @@
+{
+  "schema": 1,
+  "date": "2026-10-16",
+  "status": "experimental; performance and full quality acceptance not met",
+  "target": {
+    "coding_prefill_tok_s": 80,
+    "prompt_lengths": [
+      4096,
+      8192
+    ],
+    "humaneval_minimum": 140,
+    "humaneval_total": 164
+  },
+  "hardware": {
+    "gpu": "RX570 modified 16 GiB",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB DDR4-2666",
+    "workers": 12,
+    "requested_fp32_tflops": 4.25,
+    "driver": "isolated RADV/Mesa 26.2 build; host driver unchanged",
+    "clock_changes": false,
+    "allocation_budget_mib": 15360
+  },
+  "retained_qualified_baseline": {
+    "name": "FP32 V23",
+    "prompt_tokens": 512,
+    "prompt_kind": "repetitive",
+    "median_prefill_tok_s": 43.6587,
+    "full_humaneval_qualified": false
+  },
+  "remaining_work": [
+    "Q4 projection and FP32 attention GEMM throughput",
+    "Device-resident expert result merge",
+    "Activation lifetime reuse across KDA/MLA/FFN scratch",
+    "Qualified same-day baseline and all nine coding-prompt performance trials",
+    "Full frozen HumanEval and decode regression on a performance-eligible candidate"
+  ],
+  "implementation": {
+    "default_enabled": false,
+    "logical_window_limit": 8192,
+    "projection_token_panel": 256,
+    "expert_token_panel": 256,
+    "kda_token_panel": 128,
+    "index_token_panel": 256,
+    "upload_slots": 2,
+    "cpu_coordinator": "persistent",
+    "gpu_expert_merge": "host mailbox with canonical GPU reduction",
+    "main_completed_submission_limit_ms": 500
+  },
+  "runs": [
+    {
+      "name": "p11-512-perf",
+      "guard_passed": true,
+      "performance_qualified": true,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        41.5864,
+        42.6118,
+        41.4148
+      ],
+      "median_prefill_tok_s": 41.5864,
+      "interference_process_names": {},
+      "executable_sha256": "9fbdc71889903e81191e3ac6b86420dbe2942e9c83e81c9f80bca4ef99cee36e",
+      "config_sha256": "a0d85dcf70861bf3adf0caa02c4fa0f00c54b5536a99785bcfc0f235392e4cd2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "evidence_sha256": {
+        "p11-512-perf.guard.json": "93ea01b54c03a3ed0d90afc59ea59683362ad37768dc704f073c657c8b1b3cea",
+        "p11-512-perf.result.json": "d4934e3aee7bdd5bd9baa9a11f8a9ca349d5c91a038f591d4271734b2959a8df",
+        "p11-512-perf.log": "c1d43741d5969de508182d44dda99906170cefd8fe1aa41a3d608a401b6f1105"
+      },
+      "largest_main_submission_ms": 32.1816,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 65,
+          "588": 1
+        },
+        "pp_dpm_mclk": {
+          "300": 12,
+          "1000": 50,
+          "1750": 5
+        }
+      },
+      "settings": {
+        "context": 4096,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "512",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "512",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "16",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "1"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 644.936,
+        "gemm_q4k": 3149.02,
+        "gemm_q50": 48.6285,
+        "gemm_q6k": 441.738,
+        "gemv_rows_q6k": 4.52384,
+        "index_key": 153.369,
+        "index_scores_step": 26.8347,
+        "kda_step": 290.014,
+        "mhc_read": 115.628,
+        "mhc_write": 124.516,
+        "mla_gather": 107.374,
+        "mla_softmax": 14.085,
+        "reduce_parts": 4.94928,
+        "rmsnorm": 1.91504,
+        "route_merge": 248.809,
+        "router": 3.63456,
+        "select_pools": 0.364,
+        "swiglu": 7.07472
+      }
+    },
+    {
+      "name": "p12-4096-balanced-perf",
+      "guard_passed": false,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        34.5433,
+        34.5203,
+        34.0883
+      ],
+      "median_prefill_tok_s": 34.5203,
+      "interference_process_names": {
+        "cc1plus": 213,
+        "attribute-polic": 76,
+        "kswapd0": 1
+      },
+      "executable_sha256": "849f2a67ab7b244c667434d27bce2d28ebf10f1618561f829f345f41dc178c0d",
+      "config_sha256": "470f7b24e92f7d91a5944b14b76de519e2cc0e1f045f195240e8d16048da7caf",
+      "prompt_sha256": "7b7ac028caa730082da8c8ad85fd9ccdffd9cf6556a907b3fd2e8fd14aac40db",
+      "evidence_sha256": {
+        "p12-4096-balanced-perf.guard.json": "7eab97d8af3b055d81ac36066dd1a59ce754cfa0d713e6661251deb5b732567f",
+        "p12-4096-balanced-perf.result.json": "8f8072e42f74d1a7d9928d3e73f563218ec0ace66a00da0e987b2aaaaa0617d0",
+        "p12-4096-balanced-perf.log": "ddac189bbaac0769b62004315d37aab8653451cd2b2958d1a36e255ab1366a81"
+      },
+      "largest_main_submission_ms": 136.698,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 384,
+          "588": 1,
+          "952": 103
+        },
+        "pp_dpm_mclk": {
+          "300": 48,
+          "1000": 158,
+          "1750": 283
+        }
+      },
+      "settings": {
+        "context": 4352,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "4096",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "4096",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "144",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "1",
+          "STRATA_VULKAN_FAST_PREFILL_BALANCE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US": "75.85",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US": "57.26"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 16483.0,
+        "gemm_q4k": 30045.7,
+        "gemm_q50": 465.594,
+        "gemm_q6k": 4217.04,
+        "gemv_rows_q6k": 3.5744,
+        "index_key": 1235.87,
+        "index_scores_step": 1484.31,
+        "kda_step": 2328.97,
+        "mhc_read": 337.465,
+        "mhc_write": 639.669,
+        "mla_gather": 9101.52,
+        "mla_softmax": 460.974,
+        "reduce_parts": 7.21776,
+        "rmsnorm": 13.7949,
+        "route_merge": 1995.17,
+        "router": 23.2211,
+        "select_pools": 24.651,
+        "swiglu": 56.6678
+      }
+    },
+    {
+      "name": "p13-512-expanded-check",
+      "guard_passed": true,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        7.50296
+      ],
+      "median_prefill_tok_s": 7.50296,
+      "interference_process_names": {
+        "cc1plus": 27,
+        "attribute-polic": 46
+      },
+      "executable_sha256": "364e958c370ef4a886c5e5220c6fad7efbc44c781204e0c60fed8c9a191c2637",
+      "config_sha256": "9f48ab72d7785641f0035972a44484a75a48b82e971945c01e546e7f87505a01",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "evidence_sha256": {
+        "p13-512-expanded-check.guard.json": "40bf4b7f72ed2206f635e7baa119ccf741fc634043c860e85bd14c9483ff9e08",
+        "p13-512-expanded-check.result.json": "21e8756753da0498375bef7715e7b69745ccb615d14afcb275b55ca5d49fce32",
+        "p13-512-expanded-check.log": "20a9a2215a99a454f52b0ac324867c85bc7d0f557ef3b615bb1bb24c6f075310"
+      },
+      "largest_main_submission_ms": 431.541,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 74,
+          "588": 1,
+          "952": 1
+        },
+        "pp_dpm_mclk": {
+          "300": 52,
+          "1750": 8,
+          "1000": 17
+        }
+      },
+      "settings": {
+        "context": 4096,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "512",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "512",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "16",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "1"
+        }
+      },
+      "last_window_kernel_ms": {
+        "expand_q4k": 1198.07,
+        "gemm_f32_coalesced": 52801.9,
+        "gemm_f32_transposed": 113.398,
+        "gemm_q50": 61.3805,
+        "gemm_q6k": 471.93,
+        "gemv_rows_q6k": 4.50832,
+        "index_key": 153.28,
+        "index_scores_step": 26.8248,
+        "kda_step": 307.017,
+        "mhc_read": 147.003,
+        "mhc_write": 158.158,
+        "mla_gather": 52.9918,
+        "mla_softmax": 14.9566,
+        "reduce_parts": 6.54704,
+        "rmsnorm": 1.84064,
+        "route_merge": 248.831,
+        "router": 3.73936,
+        "select_pools": 0.43136,
+        "swiglu": 24.6693
+      },
+      "last_window_serial_main_ms_per_token": 92.64307812499999
+    },
+    {
+      "name": "p13-default-512-check",
+      "guard_passed": true,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        24.1284
+      ],
+      "median_prefill_tok_s": 24.1284,
+      "interference_process_names": {},
+      "executable_sha256": "364e958c370ef4a886c5e5220c6fad7efbc44c781204e0c60fed8c9a191c2637",
+      "config_sha256": "51bdf684c28b1309dc393e9ae187110f4e9a905e84ddea92001a9f3f9af3b164",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "evidence_sha256": {
+        "p13-default-512-check.guard.json": "b98698245ce763d3337f095e85ae5dad5f376ae1611019acbcfb843f96257536",
+        "p13-default-512-check.result.json": "0f5883610d57745955e4911bf3e8cf9a1fd75450c6d06b5d7eabfee8f80c1c88",
+        "p13-default-512-check.log": "ae3cf41c87ba509e02881814773db0c7cbfec063d2e006453f6e8bcbd9231b60"
+      },
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 28,
+          "588": 2
+        },
+        "pp_dpm_mclk": {
+          "300": 10,
+          "1000": 20,
+          "1750": 1
+        }
+      },
+      "settings": {
+        "context": 4096,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "512",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "512",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "16",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "0",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "0"
+        }
+      },
+      "last_window_kernel_ms": {}
+    },
+    {
+      "name": "p13-8192-check",
+      "guard_passed": false,
+      "performance_qualified": false,
+      "exit_code": 1,
+      "fault_count": 0,
+      "prefill_tok_s": [],
+      "median_prefill_tok_s": null,
+      "interference_process_names": {
+        "attribute-polic": 5
+      },
+      "executable_sha256": "364e958c370ef4a886c5e5220c6fad7efbc44c781204e0c60fed8c9a191c2637",
+      "config_sha256": "2d4a61910d3f4109e51d42f27f7692c10ee1acc44f031ba00f80945d9bc22c42",
+      "prompt_sha256": "5b2ed8cf02685024498094e416e9c3de46e69bc5b189abb89b0e1d6d12352318",
+      "evidence_sha256": {
+        "p13-8192-check.guard.json": "f477467ba5be292cea8055b43b222e751797e736f2bee4d2f94c168c0b799b01",
+        "p13-8192-check.result.json": "cd5efc0dbbac32c4c1ef105ce85eeacf788d5ae1cba4c543d20bf760565d6735",
+        "p13-8192-check.log": "65a12fa15daf3b014e488fc5560d3ea937abf22b95de171ed411f57299372bd3"
+      },
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 11,
+          "952": 9
+        },
+        "pp_dpm_mclk": {
+          "300": 9,
+          "1000": 9,
+          "1750": 3
+        }
+      },
+      "settings": {
+        "context": 8448,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "8192",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "8192",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "144",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_BALANCE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US": "75.85",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US": "57.26",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "0"
+        }
+      },
+      "last_window_kernel_ms": {},
+      "errors": [
+        "VULKAN_ERROR bounded prefill submission exceeded completed-time limit"
+      ]
+    },
+    {
+      "name": "p14-512-perf",
+      "guard_passed": false,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        42.1782,
+        41.9682,
+        42.0571
+      ],
+      "median_prefill_tok_s": 42.0571,
+      "interference_process_names": {
+        "attribute-polic": 38
+      },
+      "executable_sha256": "188f549de9182031bb8210f91e81888475a1a0740ee55239c6b326ee23258dfd",
+      "config_sha256": "fc09e21522aa65ab6d7008eb76405a77cc625b00795d5b09cfb0d53c578e18f3",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "evidence_sha256": {
+        "p14-512-perf.guard.json": "ee2a048daa51c3743ec3f4849ca23d598a5898db0fbefd1e21d1bb799686b86a",
+        "p14-512-perf.result.json": "a9221739e0ca4a80001940c4cbae7a8b32416b4b29609e8ff84be2cb6a300d28",
+        "p14-512-perf.log": "4f40c31116e6a3f315e943b321b2cd25ddd1c609ff887393049cc0a28a5abdc7"
+      },
+      "largest_main_submission_ms": 32.9185,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 64,
+          "588": 2
+        },
+        "pp_dpm_mclk": {
+          "300": 12,
+          "1000": 47,
+          "1750": 8
+        }
+      },
+      "settings": {
+        "context": 4096,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "512",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "512",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "16",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "0"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 545.214,
+        "gemm_f32_transposed": 112.57,
+        "gemm_q4k": 3144.12,
+        "gemm_q50": 49.7003,
+        "gemm_q6k": 448.88,
+        "gemv_rows_q6k": 4.51152,
+        "index_key_panel": 153.463,
+        "index_scores_step_panel": 27.0262,
+        "kda_step": 291.357,
+        "mhc_read": 114.194,
+        "mhc_write": 125.174,
+        "mla_gather": 54.7454,
+        "mla_softmax": 15.1181,
+        "reduce_parts": 4.76624,
+        "rmsnorm": 1.92032,
+        "route_merge": 248.783,
+        "router": 3.6152,
+        "select_pools": 0.36592,
+        "swiglu": 7.11328
+      },
+      "last_window_serial_main_ms_per_token": 9.9767212890625
+    },
+    {
+      "name": "p14-8192-check",
+      "guard_passed": true,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        34.4832
+      ],
+      "median_prefill_tok_s": 34.4832,
+      "interference_process_names": {
+        "attribute-polic": 6
+      },
+      "executable_sha256": "188f549de9182031bb8210f91e81888475a1a0740ee55239c6b326ee23258dfd",
+      "config_sha256": "6fd4faad795059143bb8d8b309308a14d03bcae09a05e63dc009a514a17525ba",
+      "prompt_sha256": "5b2ed8cf02685024498094e416e9c3de46e69bc5b189abb89b0e1d6d12352318",
+      "evidence_sha256": {
+        "p14-8192-check.guard.json": "dbdde3eaa2c7fcedf49634efcbe648093b68884d907ca05eeb4e55f5ff85d112",
+        "p14-8192-check.result.json": "cd397dfb310e606d6b2ac3d43007de8b0b04b331ee459fa8b7b1e71af81e9190",
+        "p14-8192-check.log": "6bb180fd991a0df0b86ac67df2142ebab7e5092eaa8f231205457d08ead44db4"
+      },
+      "largest_main_submission_ms": 94.9469,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 184,
+          "952": 56,
+          "588": 2
+        },
+        "pp_dpm_mclk": {
+          "300": 58,
+          "1000": 79,
+          "1750": 106
+        }
+      },
+      "settings": {
+        "context": 8448,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "8192",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "8192",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "144",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_BALANCE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US": "75.85",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US": "57.26",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "0"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 36201.3,
+        "gemm_f32_transposed": 8624.28,
+        "gemm_q4k": 61465.7,
+        "gemm_q50": 940.064,
+        "gemm_q6k": 8683.09,
+        "gemv_rows_q6k": 3.57472,
+        "index_key_panel": 2484.19,
+        "index_scores_step_panel": 5829.54,
+        "kda_step": 4620.08,
+        "mhc_read": 1709.01,
+        "mhc_write": 1510.09,
+        "mla_gather": 3843.36,
+        "mla_softmax": 999.451,
+        "rmsnorm": 68.3072,
+        "route_merge": 3976.32,
+        "router": 45.0461,
+        "select_pools": 141.282,
+        "swiglu": 118.953
+      },
+      "last_window_serial_main_ms_per_token": 16.558346069335936
+    },
+    {
+      "name": "p14-2048-check",
+      "guard_passed": true,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        31.6779
+      ],
+      "median_prefill_tok_s": 31.6779,
+      "interference_process_names": {},
+      "executable_sha256": "188f549de9182031bb8210f91e81888475a1a0740ee55239c6b326ee23258dfd",
+      "config_sha256": "eb849bad355588922a1ad6b4e09d87428e214592b0e7359f3536529a8d0134d7",
+      "prompt_sha256": "94c57bcdea4b3894f046e851df77a4c4d008ae1df1bb79a2c14f71fd53d82ac9",
+      "evidence_sha256": {
+        "p14-2048-check.guard.json": "95436da55fc69b003538b0691c035d7e3eddd9eedb57ac9c1f95449fd3e9a8c3",
+        "p14-2048-check.result.json": "f699c097b111b8990fb068837564ec572d275c054a5a0cf858b78be8b8d35f6e",
+        "p14-2048-check.log": "b314ad4ccf898ec10ceb63cb2243f03e784ad8aaf8fef3634a2fd56ad2f3acac"
+      },
+      "largest_main_submission_ms": 38.5142,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 60,
+          "952": 12
+        },
+        "pp_dpm_mclk": {
+          "300": 10,
+          "1750": 25,
+          "1000": 38
+        }
+      },
+      "settings": {
+        "context": 4096,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "2048",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "2048",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "144",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_BALANCE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US": "75.85",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US": "57.26",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "0"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 4197.58,
+        "gemm_f32_transposed": 1303.74,
+        "gemm_q4k": 14114.9,
+        "gemm_q50": 302.923,
+        "gemm_q6k": 2086.68,
+        "gemv_rows_q6k": 3.56416,
+        "index_key_panel": 615.099,
+        "index_scores_step_panel": 376.751,
+        "kda_step": 1134.91,
+        "mhc_read": 170.351,
+        "mhc_write": 247.327,
+        "mla_gather": 593.075,
+        "mla_softmax": 138.326,
+        "reduce_parts": 6.9952,
+        "rmsnorm": 4.39232,
+        "route_merge": 994.094,
+        "router": 12.1917,
+        "select_pools": 1.93264,
+        "swiglu": 45.7958
+      },
+      "last_window_serial_main_ms_per_token": 12.280052099609374
+    },
+    {
+      "name": "p14-4096-original-mla-check",
+      "guard_passed": true,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        27.6012
+      ],
+      "median_prefill_tok_s": 27.6012,
+      "interference_process_names": {},
+      "executable_sha256": "188f549de9182031bb8210f91e81888475a1a0740ee55239c6b326ee23258dfd",
+      "config_sha256": "6dfe4fc916cba7828c586b36e6d8cc1df803a8008da615598674b0eb4f2e8dd8",
+      "prompt_sha256": "7b7ac028caa730082da8c8ad85fd9ccdffd9cf6556a907b3fd2e8fd14aac40db",
+      "evidence_sha256": {
+        "p14-4096-original-mla-check.guard.json": "0c568015527ac30558c53aa9cfb7d7beafa4176274d939d98e7ecbe21c9b3299",
+        "p14-4096-original-mla-check.result.json": "05cbb1c03cee15cec5b2194414f0c8cc23b5e0b9d4f537ce32aded089d825fb0",
+        "p14-4096-original-mla-check.log": "0cb797a5f9b4bf064c699c01f35cf10b21b312985974a0f8ac1eefb72aa861e2"
+      },
+      "largest_main_submission_ms": 384.101,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 129,
+          "588": 2,
+          "952": 24
+        },
+        "pp_dpm_mclk": {
+          "300": 25,
+          "1000": 42,
+          "1750": 89
+        }
+      },
+      "settings": {
+        "context": 4352,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "4096",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "4096",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "144",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "0",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_BALANCE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US": "75.85",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US": "57.26",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "0"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 5870.55,
+        "gemm_q4k": 30150.5,
+        "gemm_q50": 482.468,
+        "gemm_q6k": 4221.64,
+        "gemv_rows_q6k": 3.57296,
+        "index_key_panel": 1236.83,
+        "index_scores_step_panel": 1483.26,
+        "kda_step": 2308.5,
+        "mhc_read": 348.382,
+        "mhc_write": 780.719,
+        "mla_step": 42245.0,
+        "reduce_parts": 7.21888,
+        "rmsnorm": 13.8011,
+        "route_merge": 1992.62,
+        "router": 23.0979,
+        "select_pools": 24.699,
+        "swiglu": 56.6714
+      },
+      "last_window_serial_main_ms_per_token": 21.472143310546876
+    },
+    {
+      "name": "p14-8192-original-mla-check",
+      "guard_passed": true,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        26.5081
+      ],
+      "median_prefill_tok_s": 26.5081,
+      "interference_process_names": {},
+      "executable_sha256": "188f549de9182031bb8210f91e81888475a1a0740ee55239c6b326ee23258dfd",
+      "config_sha256": "11882f0383e08475df8380d11c00ce5a738dc298574641be3225366de2618c4d",
+      "prompt_sha256": "5b2ed8cf02685024498094e416e9c3de46e69bc5b189abb89b0e1d6d12352318",
+      "evidence_sha256": {
+        "p14-8192-original-mla-check.guard.json": "e207945e2c5bc082c92025324a0b8b85bff0211ea4a20bb50e9c06e92da44ec1",
+        "p14-8192-original-mla-check.result.json": "14ed80ed4f978900f56625ff6f4d62a52681170f13f05dd82ea93d74913a47a9",
+        "p14-8192-original-mla-check.log": "60a5ea586025c986a76c7a069f3dd775bcd7cded3a1247d7af5cba26cfca5a1d"
+      },
+      "largest_main_submission_ms": 388.345,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 259,
+          "952": 53
+        },
+        "pp_dpm_mclk": {
+          "300": 57,
+          "1000": 92,
+          "1750": 164
+        }
+      },
+      "settings": {
+        "context": 8448,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "8192",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "8192",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "144",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "0",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_BALANCE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US": "75.85",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US": "57.26",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "0"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 23833.6,
+        "gemm_q4k": 61470.5,
+        "gemm_q50": 921.015,
+        "gemm_q6k": 8661.59,
+        "gemv_rows_q6k": 3.57376,
+        "index_key_panel": 2484.02,
+        "index_scores_step_panel": 5820.15,
+        "kda_step": 4648.07,
+        "mhc_read": 1709.45,
+        "mhc_write": 1509.97,
+        "mla_step": 99586.7,
+        "rmsnorm": 68.2814,
+        "route_merge": 3975.82,
+        "router": 45.0155,
+        "select_pools": 140.333,
+        "swiglu": 117.321
+      },
+      "last_window_serial_main_ms_per_token": 25.373850952148437
+    },
+    {
+      "name": "p14-2048-original-mla-check",
+      "guard_passed": true,
+      "performance_qualified": false,
+      "exit_code": 0,
+      "fault_count": 0,
+      "prefill_tok_s": [
+        27.7126
+      ],
+      "median_prefill_tok_s": 27.7126,
+      "interference_process_names": {},
+      "executable_sha256": "188f549de9182031bb8210f91e81888475a1a0740ee55239c6b326ee23258dfd",
+      "config_sha256": "c2d373e05791bc2be5f5e1dbf271f784a4d662b183302f1448e5c7eb6b684ee0",
+      "prompt_sha256": "94c57bcdea4b3894f046e851df77a4c4d008ae1df1bb79a2c14f71fd53d82ac9",
+      "evidence_sha256": {
+        "p14-2048-original-mla-check.guard.json": "bc8d1716615b8af089f4785d15df994b61396d198093bda4f4b44919ec4d4182",
+        "p14-2048-original-mla-check.result.json": "48fbeb7333d08e84633a89ca828e4da8901f839f061ac5e050dbbeda08977b7f",
+        "p14-2048-original-mla-check.log": "66e17fb6a01997ae31878c46b2188a32b650c6b40dfeaafde1dd41792a1fb6fe"
+      },
+      "largest_main_submission_ms": 354.039,
+      "clock_samples_mhz_all_phases": {
+        "pp_dpm_sclk": {
+          "300": 1,
+          "1041": 68,
+          "588": 1,
+          "952": 12
+        },
+        "pp_dpm_mclk": {
+          "300": 16,
+          "1000": 39,
+          "1750": 27
+        }
+      },
+      "settings": {
+        "context": 4096,
+        "threads": 12,
+        "gpu_budget_mib": 15360,
+        "prefill_batch": 1,
+        "decode_cache_mib": 0,
+        "speculative": "none",
+        "env": {
+          "STRATA_VULKAN_FAST_EXPERT_Q8": "1",
+          "STRATA_GLM_ROUTE_AFFINITY": "0.08",
+          "STRATA_VULKAN_FAST_CANONICAL_SUM": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CHUNK": "2048",
+          "STRATA_VULKAN_FAST_PROFILE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_TILE": "64",
+          "STRATA_VULKAN_FAST_PROFILE_T": "2048",
+          "STRATA_VULKAN_FAST_PREFILL_GPU": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MIN_TOKENS": "32",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MAX_EXPERTS": "144",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_PACK": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_VECTOR": "1",
+          "STRATA_VULKAN_FAST_PREFILL_SPLIT_PREFIX": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PROGRESS": "1",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_EXPERT": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_MTILE": "64",
+          "STRATA_VULKAN_FAST_PREFILL_REUSE_HOST": "1",
+          "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL": "4",
+          "STRATA_VULKAN_FAST_PREFILL_MATCH_F32": "0",
+          "STRATA_Q2K_LUT": "1",
+          "STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA": "1",
+          "STRATA_VULKAN_FAST_EXPERT_FP32_MATH": "1",
+          "STRATA_VULKAN_FAST_PREFILL_PIPELINE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_MLA_GEMM": "0",
+          "STRATA_VULKAN_FAST_PREFILL_EXPERT_EXPAND": "0",
+          "STRATA_VULKAN_FAST_PREFILL_BALANCE": "1",
+          "STRATA_VULKAN_FAST_PREFILL_CPU_ROUTE_US": "75.85",
+          "STRATA_VULKAN_FAST_PREFILL_GPU_ROUTE_US": "57.26",
+          "STRATA_VULKAN_FAST_PREFILL_EXPAND_WEIGHTS": "0"
+        }
+      },
+      "last_window_kernel_ms": {
+        "gemm_f32_coalesced": 1654.54,
+        "gemm_q4k": 14186.1,
+        "gemm_q50": 301.173,
+        "gemm_q6k": 2082.21,
+        "gemv_rows_q6k": 4.51808,
+        "index_key_panel": 615.192,
+        "index_scores_step_panel": 376.773,
+        "kda_step": 1146.05,
+        "mhc_read": 171.292,
+        "mhc_write": 241.735,
+        "mla_step": 14173.2,
+        "reduce_parts": 6.82512,
+        "rmsnorm": 5.46272,
+        "route_merge": 994.096,
+        "router": 12.2706,
+        "select_pools": 1.93088,
+        "swiglu": 38.0378
+      },
+      "last_window_serial_main_ms_per_token": 16.802197119140626
+    }
+  ],
+  "validation": {
+    "native_build": "passed",
+    "portable_build": "passed",
+    "simulator_tests": 6,
+    "optimization_tests": 10,
+    "scheduler_checks": "passed in both builds",
+    "existing_spirv_files_byte_identical": 3252,
+    "default_final_logits_byte_identical_to_v23": 154880,
+    "expanded_expert_cases_byte_exact": 14,
+    "mla_key_counts": [
+      1,
+      15,
+      16,
+      17,
+      255,
+      2048,
+      2112
+    ],
+    "mla_max_relative_l2": 1.1382e-06,
+    "full_humaneval": "not run; no qualifying performance candidate",
+    "decode_regression": "not qualified; short decode samples are not the required regression protocol",
+    "reordered_mla_training": {
+      "requested_cases": 3,
+      "completed_cases": 3,
+      "complete": true,
+      "passed_cases": 2,
+      "full_humaneval_140_gate_passed": false,
+      "rows": [
+        {
+          "name": "parse_u64",
+          "generated": 187,
+          "stop_terminated": true,
+          "passed": true,
+          "oracle_passed": true
+        },
+        {
+          "name": "checked_slice",
+          "generated": 501,
+          "stop_terminated": true,
+          "passed": true,
+          "oracle_passed": true
+        },
+        {
+          "name": "reduce_routed",
+          "generated": 1001,
+          "stop_terminated": true,
+          "passed": false,
+          "oracle_passed": false
+        }
+      ],
+      "summary_sha256": "7e9519cf199544741b3bf6c445462fefe893a81f43f5596cab2c3aea328052ca",
+      "manifest_sha256": "4c559f0629002bce14bfab578b1a0bac4adb61afb8210d843ac1df2d0362f5fd"
+    },
+    "original_mla_training": {
+      "requested_cases": 3,
+      "completed_cases": 3,
+      "complete": true,
+      "passed_cases": 3,
+      "full_humaneval_140_gate_passed": false,
+      "rows": [
+        {
+          "name": "parse_u64",
+          "generated": 159,
+          "stop_terminated": true,
+          "passed": true,
+          "oracle_passed": true
+        },
+        {
+          "name": "checked_slice",
+          "generated": 267,
+          "stop_terminated": true,
+          "passed": true,
+          "oracle_passed": true
+        },
+        {
+          "name": "reduce_routed",
+          "generated": 456,
+          "stop_terminated": true,
+          "passed": true,
+          "oracle_passed": true
+        }
+      ],
+      "summary_sha256": "2bc234409559a55c3b646b1d333a4bb93ffcc010f364637c613359a8ea5d04a2",
+      "manifest_sha256": "e85feb5aab568b2e45e93d29da1dd313c33ebc7619bfcc3d579e3d1f8c35f209"
+    },
+    "fallback_training_output_parity": [
+      {
+        "name": "parse_u64",
+        "output_ids_equal": true
+      },
+      {
+        "name": "checked_slice",
+        "output_ids_equal": true
+      },
+      {
+        "name": "reduce_routed",
+        "output_ids_equal": true
+      }
+    ],
+    "final_range_check": {
+      "candidate": "p15",
+      "queries": 9,
+      "key_count_cases": 7,
+      "passed": true,
+      "description": "Explicit descriptor ranges cross the eight-query boundary; output sentinels retained."
+    },
+    "post_benchmark_change": "P15 only fixes explicit View range advancement in the rejected MLA-GEMM prototype and extends its numerical check. Reported model runs and training are frozen P14; original-MLA fallback source is unchanged.",
+    "ctest": "Build trees have STRATA_BUILD_TESTS disabled; scheduler checks were executed directly."
+  },
+  "rejected_options": [
+    {
+      "option": "CPU_PANEL=32 or 64",
+      "reason": "expert relative L2 reaches 0.000248511, above 0.0002 gate; test executable only"
+    },
+    {
+      "option": "EXPAND_WEIGHTS=1",
+      "reason": "512-token cold check fell to 7.50296 tok/s; excluded from selected experiments, longer-window benefit not established"
+    },
+    {
+      "option": "PREFILL_MLA_GEMM=1",
+      "reason": "2/3 training tasks passed; reduce_routed emitted C++ that failed compilation. No HumanEval holdout run."
+    }
+  ],
+  "limitations": [
+    "No 80 tok/s or 140/164 HumanEval claim.",
+    "Short repetitive prompts are not a proxy for long coding workloads.",
+    "Interference and correctness-only results are not qualified performance measurements.",
+    "Completed-time checks cannot preempt a stalled shader.",
+    "VRAM usage is logical allocation accounting, not a guarantee of physical residency."
+  ],
+  "coding_fixture_manifest_sha256": "c276c7268469f8ab40b137d607f1f958fdb4b1141ccc150200f8397a6b4cfd07",
+  "coding_fixture_count": 9,
+  "frozen_sources_sha256": {
+    "p11": "9a77371d5766b8e69a750ebc9377a9983a39701b984516ffc451df8f9a7aeca2",
+    "p12": "b4c5b1386b0a84202606a987b190fb4871df30077e7fe1419e43d0276bb6d754",
+    "p13": "2ac807ceadc7973dfa7529ff5e58d9a4aaa3f20ced45ebde04c875b1827e9d3b",
+    "p14": "df007ad8934ce07099130e5a1e91dfbebdeef7f549b00de306281a2703d5f44a",
+    "p15": "da84f08ddd3900c0c1d9144484d11cb0951a54053b00bfb45ac5a4d7f7fd3e7d"
+  },
+  "fallback": "Original MLA, Q4 expansion off, expert expansion off, CPU panels unavailable; pipeline remains opt-in."
+}

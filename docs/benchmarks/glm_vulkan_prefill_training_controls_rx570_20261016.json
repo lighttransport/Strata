@@ -1,0 +1,229 @@
+{
+  "date": "2026-10-16",
+  "scope": "Three fixed training fixtures and explicitly marked one-case diagnostic subsets; unchanged1536-token caps and independent C++ oracles; not164-case HumanEval",
+  "fixture_manifest_sha256": "6288ee92355b817b385005a18ca9c61ab9c3ed8d1f31e6429e35f36df557bb2d",
+  "original_training_cases_passed": 3,
+  "optimized_max20_training_cases_passed": 2,
+  "original_and_new_default_all452_token_ids_identical": true,
+  "large_window_full_GEMV_CPU_experts_all452_token_ids_identical": true,
+  "controls": [
+    {
+      "run": "training-host-v5-default-control",
+      "selected_training_cases": 1,
+      "generated": 452,
+      "stop_terminated": true,
+      "oracle_passed": true,
+      "resource_fault_guard_passed": true,
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "config_sha256": "8f51b3c74db53b6aa091525facd2038d3c1d17098d3c90f34ee9bdf242c6cb3d",
+      "prompt_sha256": "c06644a16bafa8aa04ac86a2617d6504bbc830a1566c5cce79f3a2e6a8dc0f76",
+      "score_summary_sha256": "8106221a4c0d6a5d50574cd7458a32195740c1285067319268ab94560139e84a"
+    },
+    {
+      "run": "training-host-v5-max0-control",
+      "selected_training_cases": 1,
+      "generated": 316,
+      "stop_terminated": true,
+      "oracle_passed": false,
+      "resource_fault_guard_passed": true,
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "config_sha256": "2c5c3b741f487626e2f4c29eacdb29de9eaa0c841b56113f2d1e06da0c8aeffc",
+      "prompt_sha256": "c06644a16bafa8aa04ac86a2617d6504bbc830a1566c5cce79f3a2e6a8dc0f76",
+      "score_summary_sha256": "1e7ed9a453b9cd5e981953be075a7444dd2e55ba6fc46ea354ccc80e83cfb366"
+    },
+    {
+      "run": "training-host-v5-max0-match-control",
+      "selected_training_cases": 1,
+      "generated": 452,
+      "stop_terminated": true,
+      "oracle_passed": true,
+      "resource_fault_guard_passed": true,
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "config_sha256": "f6a6c8e022954791829b58bc44c3dbdd1f991b1ec19d8f04f55b3aa6cf3125a7",
+      "prompt_sha256": "c06644a16bafa8aa04ac86a2617d6504bbc830a1566c5cce79f3a2e6a8dc0f76",
+      "score_summary_sha256": "8106221a4c0d6a5d50574cd7458a32195740c1285067319268ab94560139e84a"
+    },
+    {
+      "run": "training-f32-v6-reduce",
+      "selected_training_cases": 1,
+      "generated": 366,
+      "stop_terminated": true,
+      "oracle_passed": false,
+      "resource_fault_guard_passed": true,
+      "executable_sha256": "3af910aade0202c50a497b3ea0037f41773f48954c563fc8744ef028cfc58b0d",
+      "config_sha256": "6b653ca89078dbd5b238401c8978a881ace0babb298afb3074ef9d292dc6f22a",
+      "prompt_sha256": "c06644a16bafa8aa04ac86a2617d6504bbc830a1566c5cce79f3a2e6a8dc0f76",
+      "score_summary_sha256": "a74aa4a82e0b76fe320f4bf5ffdfc3adea7309beb30ab8380bbd592cb0669ab0"
+    },
+    {
+      "run": "training-f32-v6-max0",
+      "selected_training_cases": 1,
+      "generated": 397,
+      "stop_terminated": true,
+      "oracle_passed": true,
+      "resource_fault_guard_passed": true,
+      "executable_sha256": "3af910aade0202c50a497b3ea0037f41773f48954c563fc8744ef028cfc58b0d",
+      "config_sha256": "611a8c35260c8f1e40c62375cbc0b41e439caa57fbe7170774f4ba3f0b9f00ee",
+      "prompt_sha256": "c06644a16bafa8aa04ac86a2617d6504bbc830a1566c5cce79f3a2e6a8dc0f76",
+      "score_summary_sha256": "4209bc1437080c4c071159167b9df95fbe2d941e7f6e6608419c2a2ecf693a4c"
+    }
+  ],
+  "new_candidate_quality_qualified": false,
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "limitations": [
+    "These are training controls only; no individual holdout failure guided tuning.",
+    "F32-only matching passes the selected case with CPU experts but fails with GPU offload; it is not a qualified optimized candidate.",
+    "Global zero affinity passes2/3 training cases; original main GEMV with GPU experts passes1/3. No new-candidate full HumanEval or decode throughput qualification.",
+    "These historical GPU-packing runs predate the separately recorded bounded Q3_K tail-read fix; preserve their evidence and use the fixed executable for future runs."
+  ],
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "full_training_gates": [
+    {
+      "run": "training-host-v5-max20",
+      "selected_training_cases": 3,
+      "completed_training_cases": 3,
+      "passed_training_cases": 2,
+      "max_generated_tokens_per_case": 1536,
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "candidate_sha256": "792efc457cd1795144eb926844c347dbc24bb729a7a7bae7b85998ea74c096ff",
+      "score_manifest_sha256": "21bf1d4fb2f75f520ffc4fc790cb2624347a7c78524a6ccb6d379b5a8f77c795",
+      "score_summary_sha256": "87bbca84d9caaad96c90dbfbf74eb6d8eff1dcc2e559e35961e12ea8c9ed936f",
+      "rows": [
+        {
+          "name": "parse_u64",
+          "split": "training",
+          "generated": 185,
+          "stop_terminated": true,
+          "oracle": {
+            "passed": true,
+            "checks": 1
+          },
+          "passed": true
+        },
+        {
+          "name": "checked_slice",
+          "split": "training",
+          "generated": 253,
+          "stop_terminated": true,
+          "oracle": {
+            "passed": true,
+            "checks": 1
+          },
+          "passed": true
+        },
+        {
+          "name": "reduce_routed",
+          "split": "training",
+          "generated": 1536,
+          "stop_terminated": false,
+          "oracle": {
+            "passed": false,
+            "reason": "expected exactly one complete C++ code block"
+          },
+          "passed": false
+        }
+      ]
+    },
+    {
+      "run": "training-host-v5-max20-affinity0",
+      "selected_training_cases": 3,
+      "completed_training_cases": 3,
+      "passed_training_cases": 2,
+      "max_generated_tokens_per_case": 1536,
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "candidate_sha256": "82e4005803c6322512debafc58e81f1eca50389e3ea17744668a0a280c3265e0",
+      "score_manifest_sha256": "4fe78872bcb6ecd70a685240e263393a1c57b71dc5cbbeea048698f13f5f49bf",
+      "score_summary_sha256": "6c1aadcd60bc77be6bff5e62e1210494fe83a371f049fe295588df8071c5769c",
+      "rows": [
+        {
+          "name": "parse_u64",
+          "split": "training",
+          "generated": 476,
+          "stop_terminated": true,
+          "oracle": {
+            "passed": false,
+            "reason": "expected exactly one complete C++ code block"
+          },
+          "passed": false
+        },
+        {
+          "name": "checked_slice",
+          "split": "training",
+          "generated": 207,
+          "stop_terminated": true,
+          "oracle": {
+            "passed": true,
+            "checks": 1
+          },
+          "passed": true
+        },
+        {
+          "name": "reduce_routed",
+          "split": "training",
+          "generated": 214,
+          "stop_terminated": true,
+          "oracle": {
+            "passed": true,
+            "checks": 1
+          },
+          "passed": true
+        }
+      ]
+    },
+    {
+      "run": "training-host-v5-max20-match-full",
+      "selected_training_cases": 3,
+      "completed_training_cases": 3,
+      "passed_training_cases": 1,
+      "max_generated_tokens_per_case": 1536,
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "candidate_sha256": "34e7edcc9ad72186de97465a8cb130809c10a00c5cb6563f6d0704e2f90ac852",
+      "score_manifest_sha256": "b4af7552badd6cfe7c42b18336eb67c3357139b5684c82138cda6b833e0ec3d5",
+      "score_summary_sha256": "c232f0e08c1672f0b7e6f558d388cbb6d8d34ee0058febdd9c445a7bd6efae4b",
+      "rows": [
+        {
+          "name": "parse_u64",
+          "split": "training",
+          "generated": 417,
+          "stop_terminated": true,
+          "oracle": {
+            "passed": false,
+            "reason": "expected exactly one complete C++ code block"
+          },
+          "passed": false
+        },
+        {
+          "name": "checked_slice",
+          "split": "training",
+          "generated": 1536,
+          "stop_terminated": false,
+          "oracle": {
+            "passed": false,
+            "reason": "expected exactly one complete C++ code block"
+          },
+          "passed": false
+        },
+        {
+          "name": "reduce_routed",
+          "split": "training",
+          "generated": 415,
+          "stop_terminated": true,
+          "oracle": {
+            "passed": true,
+            "checks": 1
+          },
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "compiled_source_manifests": {
+    "source-host-v5.json": "ff2b5f1e059f07eb2a3d872363aa8559aa6ccece275f79f0863575bbe321011e",
+    "source-f32-v6.json": "9a506a90b016c9dfb36e4cf83cbe4cd2c4985eec18aae1f7699043f90114d945"
+  }
+}

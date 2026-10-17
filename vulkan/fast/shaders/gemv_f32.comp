@@ -9,8 +9,12 @@ layout(binding = 0, std430) readonly restrict buffer W4 { vec4 w4[]; };
 layout(binding = 1, std430) readonly restrict buffer X4 { vec4 x4[]; };
 layout(binding = 2, std430) restrict buffer Y { float y[]; };
 layout(push_constant) uniform P { uint K, M, N, xs, ys, RS, xofs, yofs, accumulate, pad0, pad1, pad2; } p;
+#ifndef RSMAX
 #define RSMAX 4
+#endif
+#ifndef NMAX
 #define NMAX 4
+#endif
 shared float partial[4][RSMAX * NMAX];
 void main() {
   const uint t = gl_LocalInvocationID.x, wave = gl_SubgroupID, lane = gl_SubgroupInvocationID;

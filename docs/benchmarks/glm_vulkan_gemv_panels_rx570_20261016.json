@@ -1,0 +1,281 @@
+{
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX57016GiB / RADV POLARIS10",
+    "driver": "Mesa26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen9 3950X",
+    "ram": "64GiB DDR4-2666"
+  },
+  "feature": "STRATA_VULKAN_FAST_PREFILL_GEMV_PANEL=8|16 with matched main GEMV arithmetic; default4",
+  "primitive": {
+    "positive_panel_cases": 428,
+    "all_output_and_sentinel_bytes_identical": true,
+    "reference": "Original4column GEMV calls, same K splits, strides, offsets and accumulation",
+    "types": [
+      "F32",
+      "Q4_K",
+      "Q6_K",
+      "Q5_0"
+    ],
+    "K": [
+      256,
+      768,
+      4096
+    ],
+    "row_tail": 67,
+    "column_counts": [
+      1,
+      5,
+      17,
+      33,
+      129
+    ],
+    "heads": [
+      1,
+      2
+    ],
+    "F32_heads": 1,
+    "accumulation": [
+      false,
+      true
+    ],
+    "sampled_fp64_relative_l2_limit": 2e-05,
+    "native_guard_passed": true,
+    "faults": [],
+    "paired_benchmark_protocol": "Three untimed warmup rounds and five measured rounds rotating4/8/16 order; every invocation compares all bytes",
+    "paired_gpu_timestamp_rows": [
+      {
+        "type": 0,
+        "K": 16384,
+        "M": 144,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 8,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 1.16145e-07,
+        "fp64_samples": 612,
+        "control_median_gpu_ms": 4.65264,
+        "candidate_median_gpu_ms": 3.6624,
+        "gpu_speedup": 1.27038
+      },
+      {
+        "type": 0,
+        "K": 16384,
+        "M": 144,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 16,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 1.16145e-07,
+        "fp64_samples": 612,
+        "control_median_gpu_ms": 4.65264,
+        "candidate_median_gpu_ms": 3.3992,
+        "gpu_speedup": 1.36875
+      },
+      {
+        "type": 12,
+        "K": 4096,
+        "M": 4096,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 8,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 2.74353e-07,
+        "fp64_samples": 544,
+        "control_median_gpu_ms": 4.79616,
+        "candidate_median_gpu_ms": 4.18768,
+        "gpu_speedup": 1.1453
+      },
+      {
+        "type": 12,
+        "K": 4096,
+        "M": 4096,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 16,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 2.74353e-07,
+        "fp64_samples": 544,
+        "control_median_gpu_ms": 4.79616,
+        "candidate_median_gpu_ms": 3.8968,
+        "gpu_speedup": 1.23079
+      },
+      {
+        "type": 14,
+        "K": 4096,
+        "M": 4096,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 8,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 1.21222e-07,
+        "fp64_samples": 544,
+        "control_median_gpu_ms": 6.07552,
+        "candidate_median_gpu_ms": 4.66016,
+        "gpu_speedup": 1.30371
+      },
+      {
+        "type": 14,
+        "K": 4096,
+        "M": 4096,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 16,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 1.21222e-07,
+        "fp64_samples": 544,
+        "control_median_gpu_ms": 6.07552,
+        "candidate_median_gpu_ms": 3.96784,
+        "gpu_speedup": 1.53119
+      },
+      {
+        "type": 6,
+        "K": 4096,
+        "M": 4096,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 8,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 1.4711e-07,
+        "fp64_samples": 544,
+        "control_median_gpu_ms": 3.91552,
+        "candidate_median_gpu_ms": 2.8768,
+        "gpu_speedup": 1.36107
+      },
+      {
+        "type": 6,
+        "K": 4096,
+        "M": 4096,
+        "heads": 1,
+        "columns": 129,
+        "accumulate": 0,
+        "panel": 16,
+        "all_output_and_sentinel_bytes_identical": true,
+        "sampled_control_fp64_rel_l2": 1.4711e-07,
+        "fp64_samples": 544,
+        "control_median_gpu_ms": 3.91552,
+        "candidate_median_gpu_ms": 2.35632,
+        "gpu_speedup": 1.66171
+      }
+    ],
+    "executable_sha256": "acf152e663bf4e1956cc6dbd0564e036a9f52d22889b60e07af11dc228df1e51",
+    "guard_sha256": "b60cf6adf37b0e96aec753b01d67a1517de5ecec19ee2cdb2513f71dc1c5efb1",
+    "log_sha256": "8de28723fdf70b39032ce6ae65d00924e80928599dc71175d6f719e3f95a2735",
+    "source_manifest_sha256": "32e05df671e898dbcfa05f2e8d6c9138db5b5e8c06fa040d549a80831c89a4e7"
+  },
+  "model_512": [
+    {
+      "run": "gpu512-bounds-v7-max20-match-perf-run",
+      "prefill_tok_s": [
+        29.1239,
+        28.9532,
+        28.9645
+      ],
+      "median_prefill_tok_s": 28.9645,
+      "executable_sha256": "054a31a584dd7e80959a4bbbda67358dbefc97fa24668be759d3ad0496993e65",
+      "config_sha256": "7a965a2bd79a9f050c1eadeac251feab581324a959311d06344d3808bc551419",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "c4e6542cbece3a8bc5ae94beb46607d1fb4eb70e06742e835e5256ebf420d5bb",
+      "log_sha256": "bf5969e16746a6a61c71490a80ee331eba6fca617517ca9d114cf75ea6a6e5df",
+      "first_measured_final_vocab_logits_sha256": "f6788a0cfefeee0ebb7be3a6e13d8f3f4e874e098eda37e20897ed040284cc9e",
+      "performance_guard_passed": true,
+      "faults": []
+    },
+    {
+      "run": "gpu512-panel-v9-max20-match16-perf-run",
+      "prefill_tok_s": [
+        32.0372,
+        31.9936,
+        31.9726
+      ],
+      "median_prefill_tok_s": 31.9936,
+      "executable_sha256": "3b4bf46e6c59e495b9078f627a82bf8f65435a7789bb86475f27d71969528e4a",
+      "config_sha256": "ad065ebc38b58f3d5e26445085faa107144798190a2403eb0fb8c26f00f60a6e",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "f97faa8986028e8cc1474fa0ed9830195d8826efc7c922a86e726c6fd2c0d0c4",
+      "log_sha256": "8c76acc32ba418bcaedef8d8d86f4d16d94abfde07ae0378e2bb2f76bdbe0796",
+      "first_measured_final_vocab_logits_sha256": "f6788a0cfefeee0ebb7be3a6e13d8f3f4e874e098eda37e20897ed040284cc9e",
+      "performance_guard_passed": true,
+      "faults": []
+    }
+  ],
+  "default_inference_changed": false,
+  "combined_quality_throughput_qualified": false,
+  "model_512_speedup": 1.1045797441695868,
+  "model_512_final_vocab_logits_byte_identical": true,
+  "model_protocol": "512repetitive input tokens,2output tokens,one prefill warmup and3measured trials each; separate guarded processes in control/candidate order",
+  "model32_byte_control": {
+    "control_run": "gpu32-bounds-v7-match-run",
+    "candidate_run": "gpu32-panel-v9-match16-run",
+    "final_vocab_logits_byte_identical": true
+  },
+  "compiled_source_sha256": {
+    "vulkan/CMakeLists.txt": "504530b3c0d5a167afb62707a56651b1f501f3b595cf6434919557987cbd99bb",
+    "vulkan/fast/device.cpp": "dea6b1dc648cdcf5b3d5498e528c3953b6982becf3aaa7c453887ba9da713a41",
+    "vulkan/fast/device.hpp": "dbb9b49b23695224f137b7647d5d02e0e4704b1145ce3312ed548faf8b2855f8",
+    "vulkan/fast/engine.cpp": "e3dd4828cc8c896a258429c65076ff3277b1507be330886e4445f474dee9b84a",
+    "vulkan/fast/engine.hpp": "380809802135eaae7484e672f44a0f56ff686e9a5a2bc39c7d14b082455e0f20",
+    "vulkan/fast/expert_batch.cpp": "79039a05e761fbafd99fab7ae7170c7988d42127d2b3513f6cd43bed25bf25fd",
+    "vulkan/fast/expert_batch.hpp": "87dc326a46a792f1d2e9c86494b93bf3a776bc7865a64554b7ebe4067b9b4fcb",
+    "vulkan/fast/expert_batch_check.cpp": "4dae2daf618c5de07b446c69816b1e855d5a65705ee08da5831ac4f57c5e97bd",
+    "vulkan/fast/gemv_panel_check.cpp": "d9730679101a4b086cd940206749c6f9bab941fb9c0ccc59a4aeaca47e553e35",
+    "vulkan/fast/kernels.cpp": "fa27d659cb1b5842f8a34e6960447f2483dfce3ac3d195dca5239e8eee102148",
+    "vulkan/fast/kernels.hpp": "49d61d98a275ca1685203848b92de552a7b28077ff8d27ade358fc7965c94f04",
+    "vulkan/fast/repack_gpu_check.cpp": "5e5cde20fe69e56064c8b3a286498d5de547196342153b0acaaa8e822b07fdce",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "cac8ea2eb406509e01c4501dbe1353a2090ded2fda1027aa44f231675193b8cc",
+    "vulkan/fast/shaders/gemv_f32.comp": "e7455f46e3206cdd9c05ac0d1194e782415a26dc432a6e572fde39cbd88d9cdf",
+    "vulkan/fast/shaders/gemv_rows.comp": "7bba814ccd1b5e9059854cce6dab61f5e0b17a3bd4bbf46239b0460bec17a681",
+    "vulkan/fast/shaders/repack_expert.comp": "92c9438c45c478d7a42fcb9515fdfaf6ae31e33d1021c44757686536aa5fbfb6"
+  },
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "limitations": [
+    "This preserves the existing matched arithmetic; it does not repair the previously failing optimized GPU-expert training gate.",
+    "The512prompt is repetitive; no coding-throughput or100+prefill result is established.",
+    "Model logit comparisons use only each run's first measured final vocabulary vector, not every intermediate token.",
+    "Legacy GEMV requires64lane subgroups; no software Vulkan execution of these panel kernels is claimed. Both builds compile and all eight default GEMV SPIRV comparisons pass.",
+    "Separate min64GPUexpert training completed1/3 passes, with real offload exposure in all three cases; it does not repair quality."
+  ],
+  "separate_min64_training": {
+    "requested_cases": 3,
+    "completed_cases": 3,
+    "passed_cases": 1,
+    "generation_cap": 1536,
+    "prompts_and_oracles_unchanged": true,
+    "rows": [
+      {
+        "name": "parse_u64",
+        "generated": 627,
+        "stop_terminated": true,
+        "oracle_passed": false,
+        "gpu_experts_across_layers": 38,
+        "gpu_routes_across_layers": 3040
+      },
+      {
+        "name": "checked_slice",
+        "generated": 698,
+        "stop_terminated": true,
+        "oracle_passed": true,
+        "gpu_experts_across_layers": 27,
+        "gpu_routes_across_layers": 2235
+      },
+      {
+        "name": "reduce_routed",
+        "generated": 1536,
+        "stop_terminated": false,
+        "oracle_passed": false,
+        "gpu_experts_across_layers": 45,
+        "gpu_routes_across_layers": 3597
+      }
+    ],
+    "candidate_sha256": "118d7661b3e359bf18d5ba310dc3c7d41b80ebd050bf42e9b544fe42d5118515",
+    "score_summary_sha256": "042fe20739b0194f30f67e2d7455224b4451cb203f129edddc7288cf8a9a3065",
+    "note": "Parser single-code-block gate fails; reduction reaches cap and emitted C++ fails compilation. All resource/fault guards pass. This candidate is not functionally qualified."
+  }
+}

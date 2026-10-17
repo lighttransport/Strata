@@ -22,7 +22,9 @@ layout(binding = 3, std430) writeonly restrict buffer Part { float part[]; };
 layout(push_constant) uniform P {
   uint K, M, Mp, N, xs, ys, xofs, yofs, accumulate, ksw, hb, hx, hy, side, kparts, pad1;
 } p;
+#ifndef NMAX
 #define NMAX 4
+#endif
 float acc[NMAX];
 #if defined(TYPE_Q4K)
 #define QK 256u

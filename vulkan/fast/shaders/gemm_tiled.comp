@@ -52,7 +52,11 @@ uint byte_at(uint b, uint byte_index, uint row) {
 #endif
 float weight(uint row, uint k0, uint kk) {
 #ifdef TYPE_F32
+#ifdef TRANSPOSED_F32
+  return uintBitsToFloat(w[base + (k0 + kk) * p.M + row]);
+#else
   return uintBitsToFloat(w[base + row * p.K + k0 + kk]);
+#endif
 #else
   // k0 is a multiple of 32. Keep the subblock metadata wave-uniform;
   // deriving it from k0+kk makes the compiler treat it as lane-varying.
@@ -104,7 +108,20 @@ float weight(uint row, uint k0, uint kk) {
 #endif
 #endif
 }
+#ifdef EXPAND_WEIGHTS
+// Expand one bounded row panel; output is the existing F32 matrix layout.
+void main() {
+  const uint k = gl_GlobalInvocationID.x, row = p.yofs + gl_WorkGroupID.y, head = gl_WorkGroupID.z;
+  base = head * p.hb / 4u;
+  if (k < p.K && row < p.M)
+    y[(head * p.M + row) * p.K + k] = weight(row, (k / 32u) * 32u, k % 32u);
+}
+#else
+#if defined(COALESCED_F32) || defined(TRANSPOSED_F32)
+shared float wt[32][65];
+#else
 shared float wt[32][64];
+#endif
 // Load contiguous K values from each token. Padding avoids bank conflicts
 // when the compute lanes read one K value from several token rows.
 shared float xt[NTILE][33];
@@ -173,6 +190,13 @@ void main() {
     } else {
       for (uint j = 0; j < 8u; ++j) wt[wave * 8u + j][rr] = 0;
     }
+#elif defined(COALESCED_F32)
+    // Consecutive lanes read consecutive K values. Padding also keeps the
+    // transposed LDS writes in different banks.
+    for (uint index = t; index < 32u * 64u; index += 256u) {
+      const uint kk = index % 32u, wr = index / 32u;
+      wt[kk][wr] = row0 + wr < p.M && k0 + kk < p.K ? weight(row0 + wr, k0, kk) : 0;
+    }
 #else
     for (uint kk = t / 64u; kk < 32u; kk += 4u) {
       wt[kk][rr] = row0 + rr < p.M && k0 + kk < p.K ? weight(row0 + rr, k0, kk) : 0;
@@ -229,3 +253,5 @@ void main() {
     }
   }
 }
+
+#endif // EXPAND_WEIGHTS

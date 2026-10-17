@@ -1,0 +1,27 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "common.glsl"
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) buffer Scores {float scores[];};
+layout(binding = 1, std430) readonly buffer Ids {int ids[];};
+layout(push_constant) uniform P {uint width, istride; float scale;} p;
+shared float red[4];
+void main() {
+  uint t = gl_LocalInvocationID.x, lane = gl_SubgroupInvocationID, wave = gl_SubgroupID;
+  uint q = gl_WorkGroupID.y, head = gl_WorkGroupID.x, base = (q * 64u + head) * p.width;
+  uint count = uint(ids[q * p.istride]);
+  float maximum = -3.402823e38;
+  for (uint k = t; k < count; k += 256u) maximum = max(maximum, scores[base+k] * p.scale);
+  maximum = subgroupMax(maximum);
+  if (lane == 0) red[wave] = maximum;
+  barrier(); maximum = max(max(red[0], red[1]), max(red[2], red[3])); barrier();
+  float total = 0;
+  for (uint k = t; k < p.width; k += 256u) {
+    float e = k < count ? exp(scores[base+k] * p.scale - maximum) : 0;
+    scores[base+k] = e; total += e;
+  }
+  total = subgroupAdd(total);
+  if (lane == 0) red[wave] = total;
+  barrier(); total = (red[0] + red[1]) + (red[2] + red[3]);
+  for (uint k = t; k < p.width; k += 256u) scores[base+k] /= total;
+}
