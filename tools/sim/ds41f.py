@@ -528,6 +528,8 @@ A64FX_CURRENT = dict(attn_us_per_layer=433.0,     # 17.34 ms / 40 (current runne
                      comm_ms=6.0,                 # of the 13.7 ms "rest": ~90 collectives at the measured ~67 us (hypothesis split)
                      other_ms=5.0,                # mHC, router, head, waits: the rest after trunk 1.7, Engram 0.56, head 0.3, context
                      mhc_site_us=0.0, phase_us=0.0, prefill_per_pos_factor=29.9 / 40.7)
+# ggml-cpu SVE vec_dot per node (48 threads), measured 2026-10-18 (tools/sim/data/measured_a64fx_kernels.json); all compute-bound
+A64FX_GGML_NODE_GBPS = {"Q2_K": 97.0, "Q3_K": 55.6, "Q4_K": 76.0, "IQ2_XXS": 11.2, "IQ2_S": 10.5, "IQ1_S": 8.2, "Q8_0": 432.1}
 A64FX_REDESIGN = dict(attn_us_per_layer=60.0,     # trunk stream at the chain rate + one fused phase per sub-layer (hypothesis)
                       expert_gbps=250.0, comm_ms=0.0, other_ms=0.0, mhc_site_us=23.0, phase_us=3.0, prefill_int8_eff=0.7)
 
@@ -561,7 +563,12 @@ def a64fx_decode(ap):
     _, ratio = a64fx.ep_max_load(R, g.top_k, parts, trials=20000) if parts < R else (0, 1.0)
     rate = prof["expert_gbps"] / (1 + 0.12 * (parts - 1)) if ap.profile == "current" else prof["expert_gbps"] / (1 + 0.04 * (parts - 1))
     if pk.formats[0] != "MXFP4":
-        rate *= 0.75 if ap.profile == "current" else 1.0      # Q2-class kernels cost more instructions per byte (hypothesis)
+        if ap.profile == "current":
+            # today's kernels = ggml's SVE dots, bytes-weighted over the pack's three projections (measured per node)
+            n = g.hidden * g.expert_ff
+            bytes_ = [tensor_bytes(n, f) for f in pk.formats]
+            rate = sum(bytes_) / sum(b / A64FX_GGML_NODE_GBPS.get(f, 20.0) for b, f in zip(bytes_, pk.formats)) / (1 + 0.12 * (parts - 1))
+        # redesign keeps its SDOT-tile hypothesis rate for every format
     per_layer_experts = pk.expert_bytes() * g.top_k * union / R
     t_exp = per_layer_experts / (rate * 1e6) * g.layers
     skew = (0.72 if ap.profile == "current" else 0.5) * max(0.0, ratio - 1) * t_exp / g.layers * 1e3
@@ -590,7 +597,7 @@ def a64fx_decode(ap):
     return dict(tok_s=tokens / round_ms * 1e3, step_ms=step, experts_ms=t_exp, trunk_ms=t_trunk, attn_ms=t_attn, comm_ms=t_comm,
                 engram_ms=engram, other_ms=other, head_ms=head, ctx_ms=ctx, load_ratio=ratio, fit=fit, notes=fit["notes"],
                 hypotheses=[f"a64fx {ap.profile} profile constants (see A64FX_CURRENT / A64FX_REDESIGN)",
-                            "Q2-class SVE expert rate never measured on A64FX"] if pk.formats[0] != "MXFP4" else
+                            "current: ggml SVE dots measured per node (Q2_K 97, IQ2_XXS 11, IQ1_S 8 GB/s); redesign: SDOT-tile kernel hypothesis"] if pk.formats[0] != "MXFP4" else
                            [f"a64fx {ap.profile} profile constants (see A64FX_CURRENT / A64FX_REDESIGN)"])
 
 

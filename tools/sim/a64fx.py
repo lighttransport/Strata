@@ -75,7 +75,8 @@ class A64FXNode:
     stream_gbps: float = 800.0         # node read stream, per-CMG local buffers: 807-915 measured (matvec.md:5, utofu summary:88)
     matvec_q8_gbps: float = 351.0      # standalone cold Q8 matvec, 11.8 MB (handoff-decode100-20261004.md:52)
     chain_efficiency: float = 0.63     # one-node 270-stage decode chain 2.75 ms vs 1.74 ms roof (clair glm53f/STATUS.md:266-335)
-    q2k_core_gbps: float = 0.0         # Q2_K/Q3_K SVE dot bytes/s per core; 0 = HYPOTHESIS below (never measured on A64FX)
+    q2k_core_gbps: float = 2.02        # ggml-cpu SVE Q2_K vec_dot, measured 2026-10-18 on one node (data/measured_a64fx_kernels.json);
+                                       # Q3_K 1.16, Q4_K 1.6, IQ2_XXS 0.23, IQ1_S 0.17, Q8_0 9.0 GB/s per core; all compute-bound, linear in threads
     expert_q4_gbps: float = 88.0       # in-model Q4_K/Q5_K expert stream: 426 MB in 4.9 ms (the handoff's 107 includes the router)
     int8_tops_m: dict = dataclasses.field(default_factory=lambda: {8: 1.87, 16: 2.60, 32: 3.06, 64: 3.18})  # int8 SDOT GEMM Gop/s/1000 by M (CALIBRATION.md)
     fp_gemm_tflops: float = 1.1        # w8a16 FP GEMM at M=64 (26 % of the 3.07 TFLOPS fp32 FMA peak)
@@ -86,9 +87,8 @@ class A64FXNode:
     usable_per_cmg_gib: float = 7.0    # cmg-and-numa/README.md:66-69
 
     def q2k_core_rate(self):
-        """HYPOTHESIS when q2k_core_gbps is 0: the Zen 1 Q2_K/Q3_K kernel streams 6 GB/s per core out of L2
-        (model.KERNEL_EFFICIENCY note); scaled by clock (2.0/3.4) and doubled for 512-bit SVE -> 7.1 GB/s."""
-        return self.q2k_core_gbps or 6.0 * (self.ghz / 3.4) * 2.0
+        """Measured ggml SVE Q2_K rate per core (2.02 GB/s); the old hypothesis (Zen 1 scaled: 7.1) was 3.5x too high."""
+        return self.q2k_core_gbps
 
     def int8_tops(self, m):
         keys = sorted(self.int8_tops_m)
@@ -241,7 +241,8 @@ class Profile:
     router_us: float = 18.0            # 0.76 ms / 42 layers, replicated F32 router
     expert_fixed_us: float = 0.0
     expert_q4_gbps: float = 120.0      # whole-expert Q4_K/Q5_K rate: 88 GB/s measured in-model at parts=4 x the 1.36 slice penalty
-    expert_q2k_gbps: float = 82.0      # HYPOTHESIS: the Q4_K kernel is instruction-bound at ~2.1 instr/byte; Q2_K needs ~1.5x
+    expert_q2k_gbps: float = 78.0      # q23 pack through ggml's SVE kernels, measured 2026-10-18: Q2_K 97 GB/s, Q3_K 55.6 GB/s per
+                                       # node (bytes-weighted 2:1 -> 78); the runner's own kernel is what this profile would run
     slice_penalty: float = 0.12        # per extra slice of an expert: measured 0.2109 / 0.1219 x 2 / 0.0724 x 4 ms at parts 1/2/4
                                        # (glm53f_expert_shard_sim.py, job 51040571) = 1.0 / 1.16 / 1.37
     moe_skew_frac: float = 0.72        # straggler wait before the MoE combine = frac x (busiest/mean load - 1) x expert time;
@@ -262,7 +263,7 @@ class Profile:
     prefill_ctx_us_per_1k: float = 21.7  # per position per 1K of mean position (372.39 at 32K)
     prefill_collectives_per_layer: int = 2
     cmg_fixed_scale: float = 1.0       # 4 ranks per node: scale of the fixed per-phase costs (12-thread CMG-local teams)
-    hypotheses: tuple = ("expert_q2k_gbps (Q2_K/Q3_K in-model rate, never measured on A64FX)",
+    hypotheses: tuple = ("expert_q2k_gbps 78 GB/s is ggml's standalone SVE rate; the runner's in-model Q2 rate is not measured",
                          "context slope applied as one term on the sparse layers",
                          "6-node attention split: 64 heads / 6 is not integral (TP-6 needs a 60+4 or TP-4 split)")
 
@@ -286,7 +287,8 @@ def redesign():
         mhc_site_us=(23.0, 23.0),      # standalone local-gram mHC kernel (handoff: ~23 us vs 48 legacy)
         router_us=12.0, expert_fixed_us=3.0,
         expert_q4_gbps=400.0,          # Q4_K gate/up measured 156 GB/s standalone v0 kernel; chain-level streaming assumed
-        expert_q2k_gbps=250.0,         # HYPOTHESIS: 47 cores x 7.1 GB/s x 0.75 in-model
+        expert_q2k_gbps=250.0,         # HYPOTHESIS, a new kernel: ggml's SVE Q2_K/Q3_K measure 97/56 GB/s per node (compute-bound,
+                                       # 2.0/1.2 GB/s per core); 250 needs int8-SDOT tiles as gemm's MXFP4 path (~380 GMAC/s)
         slice_penalty=0.04,            # HYPOTHESIS: 512-bit tiles keep narrow slices efficient
         moe_skew_frac=0.5, moe_collective="auto", head_fixed_ms=0.3,
         phase_us=1.4 + 1.6, phases_per_moe_layer=8, phases_per_dense_layer=4,
@@ -294,7 +296,7 @@ def redesign():
         stream_rate_mode="chain", sparse_front_sharded=True,
         prefill_int8_eff=0.70, prefill_layer_fixed_ms=0.3, prefill_ctx_us_per_1k=12.0,
         prefill_collectives_per_layer=1, cmg_fixed_scale=0.7,
-        hypotheses=("expert_q2k_gbps 250 GB/s (47 x 7.1 GB/s x 0.75): the Q2_K SVE dot has never been timed on A64FX",
+        hypotheses=("expert_q2k_gbps 250 GB/s needs a new SDOT-tile kernel: ggml's SVE Q2_K/Q3_K measured 97/56 GB/s per node (2026-10-18)",
                     "mHC 23 us per site in-model (standalone kernel time; the in-model cost was never reproduced)",
                     "KDA small steps 12 us as one full-team phase (today 82 us on 6 threads)",
                     "prefill int8 efficiency 0.70 (today 0.40 fitted; the 94 % CMG microkernel exists only standalone)",

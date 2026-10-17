@@ -333,9 +333,25 @@ The design, in the order the simulator says it matters:
 
 ## 5. Next measurements (one node each, before any port work)
 
-1. The Q2_K/Q3_K SVE dot rate per core on the real pack, standalone and inside a 47-thread streaming chain (ggml's
-   `vec_dot_q2_K_q8_K` / `q3_K` and an int8-SDOT variant). It replaces `A64FXNode.q2k_core_gbps` and
-   `Profile.expert_q2k_gbps`; the forecast moves up to 10 % either way.
+1. ~~The Q2_K/Q3_K SVE dot rate per core~~ **Measured 2026-10-18** (one node, interactive, `tools/a64fx_probe/run_probe.sh`,
+   ggml-cpu from llama.cpp fbec0ddd8 built with FCC in clang mode, `tools/sim/data/measured_a64fx_kernels.json`):
+
+   | ggml SVE `vec_dot`, GLM shapes | GB/s per core | GB/s per node (48) | GMAC/s per node |
+   |---|---:|---:|---:|
+   | Q2_K | 2.02 | 97.0 | 296 |
+   | Q3_K | 1.16 | 55.6 | 129 |
+   | Q4_K | 1.60 | 76.0 | 135 |
+   | IQ2_XXS / IQ2_S / IQ1_S | 0.23 / 0.22 / 0.17 | 11.2 / 10.5 / 8.2 | 43 / 33 / 42 |
+   | Q8_0 | 9.0 | 432 | 407 |
+
+   Every format scales linearly from 1 to 48 threads and matched a double dequantize-and-dot (rel 1e-7), so all are
+   instruction-bound, not HBM-bound (only Q8_0 reaches half the stream rate). The old hypothesis (7.1 GB/s per core,
+   Zen 1 scaled) was 3.5x too high: the `current` profile now uses 78 GB/s per node for the q23 pack (bytes-weighted
+   Q2_K/Q3_K), which leaves the 12-node decode forecast unchanged (35 tok/s, expert time is a small slice there) and
+   trims 6 nodes to 29 tok/s. The redesign's 250 GB/s is now explicitly a new-kernel target: ggml's codebook kernels
+   cannot reach it; it needs the int8-SDOT tile scheme of gemm's MXFP4 path (~380 GMAC/s per node). The IQ formats
+   are unusable as they stand on A64FX (10 GB/s per node): the DS4.1F 6/8-node plans need the SVE W1A8 kernel
+   (`svtbl` over an int8 grid + `svdot_s32`) before they are worth running.
 2. The mHC site cost as one fused phase in-model (today 70-86 us against 23 us standalone). Worth 5 ms per token.
 3. Dispatch + combine and tree allreduce at 6 ranks on a 6-node allocation (the model scales them from 12).
 4. The int8 expert GEMM efficiency at the chunk-4096 M per expert inside a full prefill (today 40 % effective).
