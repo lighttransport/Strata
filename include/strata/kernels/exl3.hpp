@@ -6,8 +6,12 @@ void exl3_dense_q6_to_float(const void* w,float* out,int count,void* stream);
 void exl3_dense_q8_gemv(const void* w,const float* x,float* y,int in,int out,void* stream);
 void exl3_dense_q8_to_float(const void* w,float* out,int count,void* stream);
 void exl3_packed_gemv(const uint8_t* packed,const float* x,float* y,int in,int out,void* stream);
+// Tile-once GEMV (STRATA_EXL3_GPU_TILED): x tokens x in, y tokens x out; same weights, different sum order.
+void exl3_packed_gemv_tiled(const uint8_t* packed,const float* x,float* y,int in,int out,int tokens,void* stream);
 void exl3_bf16_gemv(const uint16_t* w,const float* x,float* y,int in,int out,void* stream);
 void exl3_bf16_to_float(const uint16_t* w,float* out,int count,void* stream);
+// FP8 release: E4M3 [rows][cols] x f32 scales [rows/128][cols/128] -> f32 [rows][cols] (bit-identical to the host).
+void fp8_block_to_float(const uint8_t* w,const float* scale,float* out,int rows,int cols,void* stream);
 // Packed tiles in output-tile-major order; reconstructed matrix is [out,in].
 void exl3_reconstruct(const uint8_t* packed,float* weights,int in,int out,void* stream);
 void exl3_hadamard(const float* x,float* y,const uint16_t* scale,int width,int tokens,bool pre,void* stream);

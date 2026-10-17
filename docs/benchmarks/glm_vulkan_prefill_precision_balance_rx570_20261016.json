@@ -1,0 +1,176 @@
+{
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16GiB / RADV POLARIS10",
+    "driver": "Mesa26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen9 3950X",
+    "ram": "64GiB DDR4-2666"
+  },
+  "scope": "Opt-in precision-mode prefill balance and main F32 matching; no defaults changed",
+  "protocol": "512 repetitive input tokens,2 generated tokens,one untimed prefill warmup,three measured trials per process;12 host threads and fixed frozen v18 executable. Separate processes, not randomized paired cohorts.",
+  "runs": [
+    {
+      "run": "gpu512-fp64-math-v18-max20-match16-perf-run",
+      "max_gpu_experts": 20,
+      "main_matching": "all GEMV",
+      "cpu_q2_lut": false,
+      "prefill_tok_s": [
+        22.8178,
+        22.7655,
+        22.7984
+      ],
+      "median_prefill_tok_s": 22.7984,
+      "config_sha256": "6cff0dcb4522e282ae05112d60cce6e0df2d6d289ea99ed1e80d7cf1da1d7c5b",
+      "executable_sha256": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "e073f47c04b859624feb9d8c5b4c26b60d22313cfc9f92a04b3daad50ad80db9",
+      "log_sha256": "135de656453c8d37bc83992e0d444d35a0af8b16a643ef9f0c1db1dc405d50bb",
+      "first_measured_final_vocab_logits_sha256": "d71e6466e0d6649b8d4e292c4deb7cda2a249a52ca120a9c268e4190874539ec",
+      "performance_qualified": true,
+      "faults": []
+    },
+    {
+      "run": "gpu512-fp64-math-v18-max0-match16-perf-run",
+      "max_gpu_experts": 0,
+      "main_matching": "all GEMV",
+      "cpu_q2_lut": false,
+      "prefill_tok_s": [
+        24.5481,
+        24.5417,
+        24.5502
+      ],
+      "median_prefill_tok_s": 24.5481,
+      "config_sha256": "0adee30fdb1723cb75de0f34aebed8acbccf60cde14bf4dd5c408dc3d591026d",
+      "executable_sha256": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "8d518825479e0f94017fbb2626bb0f1a8984f026e345eb1be60268f42345f069",
+      "log_sha256": "1337b4b94bb076f6cca29d8bc49a8b2bd23780861683ae0ff0d8ab0fdff76d93",
+      "first_measured_final_vocab_logits_sha256": "d71e6466e0d6649b8d4e292c4deb7cda2a249a52ca120a9c268e4190874539ec",
+      "performance_qualified": true,
+      "faults": []
+    },
+    {
+      "run": "gpu512-fp64-math-v18-max20-f32match16-perf-run",
+      "max_gpu_experts": 20,
+      "main_matching": "F32 only",
+      "cpu_q2_lut": false,
+      "prefill_tok_s": [
+        26.5204,
+        26.4635,
+        26.4606
+      ],
+      "median_prefill_tok_s": 26.4635,
+      "config_sha256": "a78457a14b2b492ee5746c5f0100a56f67498a83c197a934dec3fb9b95ca0172",
+      "executable_sha256": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "925b4fd86a885a51339d32e2c09cbad700ec5b522f83f8b1bd73cfbcddc15e71",
+      "log_sha256": "5a1105a12e7fa7dc0e24e4540d6e69224d0306dde43f1e63e9ba634c3cdbcef3",
+      "first_measured_final_vocab_logits_sha256": "94fdf23069e711c9818ca0c137d313e136b71859e833a58d8ca0f7c01e639d28",
+      "performance_qualified": true,
+      "faults": []
+    },
+    {
+      "run": "gpu512-fp64-math-v18-max12-f32match16-perf-run",
+      "max_gpu_experts": 12,
+      "main_matching": "F32 only",
+      "cpu_q2_lut": false,
+      "prefill_tok_s": [
+        33.2716,
+        33.0058,
+        33.0006
+      ],
+      "median_prefill_tok_s": 33.0058,
+      "config_sha256": "887de211302d96d2acd1681a0ccfedd3046570d5307e9f4f80f41764d889e30e",
+      "executable_sha256": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "5f621d48b31af968dfe3c1e44b79572aaeb91ddb77f2349356c4d8f565d4c575",
+      "log_sha256": "7b372c3e66fd8102965d64341477903bfb2bff13abbe8b71fa080105a5740141",
+      "first_measured_final_vocab_logits_sha256": "94fdf23069e711c9818ca0c137d313e136b71859e833a58d8ca0f7c01e639d28",
+      "performance_qualified": true,
+      "faults": []
+    },
+    {
+      "run": "gpu512-fp64-math-v18-max12-f32match16-lut-perf-run",
+      "max_gpu_experts": 12,
+      "main_matching": "F32 only",
+      "cpu_q2_lut": true,
+      "prefill_tok_s": [
+        33.1001,
+        33.2943,
+        33.2295
+      ],
+      "median_prefill_tok_s": 33.2295,
+      "config_sha256": "0b1d60ae6bd4d9c3513548bb4942e3ab17b5e6558bcd9caefbc172c2de23df92",
+      "executable_sha256": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "83954beb0e99f88b32cc98db5835a89f93a7d54c3d79b0904b43421b966a1517",
+      "log_sha256": "1a815b955fa85f099fc98cbc6ebf7758e969d0dc2c6ce6a89b2ccca295b2d13e",
+      "first_measured_final_vocab_logits_sha256": "94fdf23069e711c9818ca0c137d313e136b71859e833a58d8ca0f7c01e639d28",
+      "performance_qualified": true,
+      "faults": []
+    },
+    {
+      "run": "gpu512-fp64-math-v18-max10-f32match16-lut-perf-run",
+      "max_gpu_experts": 10,
+      "main_matching": "F32 only",
+      "cpu_q2_lut": true,
+      "prefill_tok_s": [
+        35.4211,
+        35.2012,
+        35.4167
+      ],
+      "median_prefill_tok_s": 35.4167,
+      "config_sha256": "a5bdddc5bc813c6e7110143d9d6b518ff1e1cfa03f122f7ffeeeb0e2796e9c79",
+      "executable_sha256": "d50b7e2e92fad8f0aadc4b58fdd613d329b599a6cafe48b1ca680a2b478ae4c2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "ed641f61b30afc2ea37cfaff4089a9a73b25d1d37bf20faa86a8c415dc787ef8",
+      "log_sha256": "552157c4045e048e0d0939545478de0b229f192d0676fcae9a7f6c8cc561fc97",
+      "first_measured_final_vocab_logits_sha256": "94fdf23069e711c9818ca0c137d313e136b71859e833a58d8ca0f7c01e639d28",
+      "performance_qualified": true,
+      "faults": []
+    }
+  ],
+  "source_manifest_sha256": "142e8985a507ac17ccb3550c470dc1f8906c4cef30d418ab8e67b38e9eedba8b",
+  "training": {
+    "requested": 3,
+    "passed": 3,
+    "generated": [
+      159,
+      343,
+      397
+    ],
+    "unchanged_prompts_oracles_caps": true,
+    "reference_output_ids_unchanged": false,
+    "score_summary_sha256": "96482c4084abb28f889ef8ddb7f842ab46e0ef9f36e32a21c8bbd933cb05c36b",
+    "candidate_sha256": "1edc93baf0e4c837bda8f29719e5a7fc6bca4096b516e5342387bd4d7ae16f05",
+    "fixture_manifest_sha256": "6288ee92355b817b385005a18ca9c61ab9c3ed8d1f31e6429e35f36df557bb2d"
+  },
+  "byte_controls": {
+    "matched_main_cpu0_vs_gpu20_final_vocab_identical": true,
+    "f32_main_gpu20_vs_gpu12_final_vocab_identical": true,
+    "f32_main_gpu12_lut_off_vs_on_final_vocab_identical": true,
+    "f32_main_gpu20_vs_gpu10_lut_final_vocab_identical": true
+  },
+  "limitations": [
+    "Repetitive prompt timings do not establish coding throughput or100+prefill.",
+    "Three fixed training passes do not qualify the new fullHumanEval140 gate.",
+    "LUT timing difference overlaps trial ranges; no end-to-end LUT win selected from this single cohort.",
+    "Only the first measured final vocabulary vector is compared, not all intermediate logits."
+  ],
+  "combined_quality_throughput_qualified": false,
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "selected_balance_training": {
+    "gpu_experts_per_layer": 10,
+    "cpu_q2_lut": true,
+    "passed": 3,
+    "generated": [
+      159,
+      343,
+      397
+    ],
+    "all899_output_ids_identical_to_passing_f32_control": true,
+    "score_summary_sha256": "96482c4084abb28f889ef8ddb7f842ab46e0ef9f36e32a21c8bbd933cb05c36b",
+    "candidate_sha256": "4bda71447a39c74952dfb678ec6b7f9bb54734b7723191617faf29c8cd7fbde6",
+    "full_humaneval_qualified": false
+  }
+}

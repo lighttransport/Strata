@@ -1,4 +1,5 @@
 #pragma once
+#include "strata/artifact/fp8_experts.hpp"
 #include "strata/artifact/glm_exl3.hpp"
 #include "strata/artifact/gguf_reader.hpp"
 #include "strata/host/glm_names.hpp"
@@ -13,7 +14,7 @@ public:
     GlmExl3 model;
     struct Binding {
         TensorInfo info; const GlmExl3* model;
-        std::string source;bool promote=false;int kv_part=-1;
+        std::string source;bool promote=false,fp8=false;int kv_part=-1;
         mutable std::vector<uint8_t> storage;
         const uint8_t* data()const {
             if(!storage.empty())return storage.data();
@@ -26,6 +27,14 @@ public:
                     size_t dst=(h*256*512+(kv_part? r*512+c:c*256+r))*2;
                     storage[dst]=raw[src];storage[dst+1]=raw[src+1];
                 }
+            }else if(fp8) {
+                // E4M3 x its 128x128 block's weight_scale_inv, in f32 (strata/artifact/fp8_experts.hpp's rounding)
+                const auto& st=model->tensors.at(source+"_scale_inv");const uint64_t rows=t.shape[0],cols=t.shape[1];
+                const uint64_t scols=(cols+127)/128;std::vector<float> scale(st.bytes/4);model->tensors.read(st,0,scale.data(),st.bytes);
+                if(st.dtype!="F32"||scale.size()!=(rows+127)/128*scols)throw std::runtime_error("GLM FP8: scale grid of "+source);
+                float lut[256];for(int i=0;i<256;++i)lut[i]=fp8::e4m3(uint8_t(i));
+                storage.resize(rows*cols*4);auto* out=reinterpret_cast<float*>(storage.data());
+                for(uint64_t r=0;r<rows;++r)for(uint64_t c=0;c<cols;++c)out[r*cols+c]=lut[raw[r*cols+c]]*scale[(r/128)*scols+c/128];
             }else if(promote && t.dtype=="BF16") {
                 storage.resize(raw.size()*2);
                 for(size_t i=0;i<raw.size()/2;++i) { uint32_t v=(uint32_t(raw[i*2])|(uint32_t(raw[i*2+1])<<8))<<16;std::memcpy(storage.data()+i*4,&v,4); }
@@ -102,7 +111,8 @@ public:
     }
     void add(const std::string& name,const std::string& source,bool promote=false) {
         const auto& t=model.tensors.at(source);Binding b;b.model=&model;b.source=source;b.promote=promote;
-        b.info.name=name;b.info.type=promote||t.dtype=="F32"?0:30;b.info.shape.assign(t.shape.rbegin(),t.shape.rend());
+        b.fp8=t.dtype=="F8_E4M3";if(b.fp8&&(promote||t.shape.size()!=2))throw std::runtime_error("GLM FP8: unexpected tensor "+source);
+        b.info.name=name;b.info.type=promote||b.fp8||t.dtype=="F32"?0:30;b.info.shape.assign(t.shape.rbegin(),t.shape.rend());
         bindings.emplace(name,std::move(b));
     }
 };

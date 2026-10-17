@@ -63,10 +63,14 @@ __device__ __forceinline__ void mma_s8(int (&c)[4], const uint32_t (&a)[4], uint
         : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
 }
 __device__ __forceinline__ void mma_e4m3(float (&c)[4], const uint32_t (&a)[4], uint32_t b0, uint32_t b1) {
+#ifndef FP4_AMPERE
     asm volatile(
         "mma.sync.aligned.m16n8k32.row.col.f32.e4m3.e4m3.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};"
         : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3])
         : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1));
+#else
+    asm volatile("trap;"); // Unsupported kinds are rejected by the host dispatcher.
+#endif
 }
 __device__ __forceinline__ void mma_f16(float (&c)[4], const uint32_t (&a)[4], uint32_t b0, uint32_t b1) {
     asm volatile(
@@ -76,19 +80,27 @@ __device__ __forceinline__ void mma_f16(float (&c)[4], const uint32_t (&a)[4], u
 }
 __device__ __forceinline__ void mma_mxf8f6f4_e2m1_e4m3(float (&c)[4], const uint32_t (&a)[4], uint32_t b0, uint32_t b1,
                                                         uint32_t sa, uint32_t sb) {
+#ifndef FP4_AMPERE
     asm volatile(
         "mma.sync.aligned.m16n8k32.row.col.kind::mxf8f6f4.block_scale.scale_vec::1X.f32.e2m1.e4m3.f32.ue8m0 "
         "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3}, %10, {0, 0}, %11, {0, 0};"
         : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3])
         : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1), "r"(sa), "r"(sb));
+#else
+    asm volatile("trap;"); // Unsupported kinds are rejected by the host dispatcher.
+#endif
 }
 __device__ __forceinline__ void mma_mxf4(float (&c)[4], const uint32_t (&a)[4], uint32_t b0, uint32_t b1, uint32_t sa,
                                          uint32_t sb) {
+#ifndef FP4_AMPERE
     asm volatile(
         "mma.sync.aligned.kind::mxf4.block_scale.scale_vec::2X.m16n8k64.row.col.f32.e2m1.e2m1.f32.ue8m0 "
         "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3}, %10, {0, 0}, %11, {0, 0};"
         : "+f"(c[0]), "+f"(c[1]), "+f"(c[2]), "+f"(c[3])
         : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b0), "r"(b1), "r"(sa), "r"(sb));
+#else
+    asm volatile("trap;"); // Unsupported kinds are rejected by the host dispatcher.
+#endif
 }
 
 __device__ __forceinline__ uint32_t bytemax4(uint32_t v) {
@@ -377,11 +389,16 @@ void set_f8_tables(const uint32_t* tab64) { CK(cudaMemcpyToSymbol(c_f8tab, tab64
 void launch_gemm(int kind, int bn, int container_shift, const GemmArgs& a, cudaStream_t s) {
     switch (kind) {
         case 0: launch_bn<0, 0>(bn, a, s); break;
+#ifndef FP4_AMPERE
         case 1: launch_bn<1, 0>(bn, a, s); break;
+#endif
         case 2: launch_bn<2, 0>(bn, a, s); break;
+#ifndef FP4_AMPERE
         case 3: container_shift ? launch_bn<3, 2>(bn, a, s) : launch_bn<3, 0>(bn, a, s); break;
         case 4: launch_bn<4, 0>(bn, a, s); break;
         case 5: launch_bn<5, 0>(bn, a, s); break;
+#endif
+        default: fprintf(stderr, "unsupported GEMM kind %d in this build\n", kind); exit(2);
     }
     CK(cudaGetLastError());
 }

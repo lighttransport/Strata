@@ -690,8 +690,10 @@ struct GpuPrefill {
         if (reuse_prefetch_slots && (!staged_prefetch || prefetch_groups() < 2))
             throw std::invalid_argument("GLM: prefetch device reuse requires at least two staged groups");
         GpuLocality locality;
+        // The native (EXL3 / FP8) path also rebuilds one routed projection at a time in this arena: a 32 MiB f32
+        // matrix, its packed or raw source and the expert-group buffers, which arena_bytes (GGUF prefill) leaves out.
         arena = std::make_unique<Device>(experts_only ? (size_t)width * 320 * 1024 + 192 * MiB
-                                                     : arena_bytes(width, capacity));
+                                                     : arena_bytes(width, capacity) + (native_exl ? 128 * MiB : 0));
         if(native_exl) {
             std::cerr<<"EXL3 GPU prefill chunk="<<chunk<<" scratch_MiB="<<arena->bytes/double(MiB)<<'\n';
             return;
@@ -2142,6 +2144,33 @@ class Decoder {
         k::exl3_hadamard(y,y,(const uint16_t*)scales_out.p,out,nt,false,stream);
         check(cudaGetLastError());
     }
+    // FP8 release: routed experts are read from disk (their pages dropped afterwards: 304 GB of experts stream once per
+    // use), dequantized exactly to f32 on the GPU, then the same FP32 product as EXL3. Reads run ahead of the GPU: up to
+    // kFp8Prefetch experts of the layer are being read at once, each into its own pinned slot of three projections
+    // (weights then scales). A slot is refilled only after its expert group's stream synchronization.
+    static constexpr int kFp8Prefetch=6;
+    static constexpr size_t kFp8Weights=size_t(4096)*2048,kFp8Scales=size_t(32)*16*4,kFp8Projection=kFp8Weights+kFp8Scales;
+    std::vector<std::unique_ptr<Pinned>> fp8_slots;
+    void fp8_read_expert(int layer,int expert,uint8_t* dst) {
+        const char* projections[]={"gate_proj","up_proj","down_proj"};
+        for(unsigned i=0;i<3;++i) {
+            uint8_t* host=dst+i*kFp8Projection;
+            artifact.exl3().read_fp8(layer,expert,projections[i],host,reinterpret_cast<float*>(host+kFp8Weights),true);
+        }
+    }
+    void fp8_gpu_linear(unsigned slot,const uint8_t* expert_host,const char* projection,const float* x,float* y,int nt) {
+        const bool down=std::string(projection)=="down_proj";const int in=down?2048:4096,out=down?4096:2048;
+        const size_t wbytes=size_t(in)*out,sbytes=size_t(out/128)*(in/128)*4;
+        if(wbytes!=kFp8Weights||sbytes!=kFp8Scales)throw std::logic_error("FP8 reference: unexpected projection geometry");
+        const uint8_t* host=expert_host+slot*kFp8Projection;
+        auto& raw=buf("fp8_raw"+std::to_string(slot),(wbytes+sbytes+3)/4);
+        check(cudaMemcpyAsync(raw.p,host,wbytes+sbytes,cudaMemcpyHostToDevice,stream));
+        auto& w=buf("fp8_weights",wbytes);
+        k::fp8_block_to_float((const uint8_t*)raw.p,reinterpret_cast<const float*>((const uint8_t*)raw.p+wbytes),w.f(),out,in,stream);
+        const float one=1,zero=0;
+        check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,out,nt,in,&one,w.f(),in,x,in,&zero,y,out));
+        check(cudaGetLastError());
+    }
     void moe_exl3_gpu(const std::string& p,int layer_id,const float* x,float* out,const strata::core::LayerDescriptor& layer) {
         const int nt=batch_tokens;
         auto& logits=buf("router_logits",m.experts*nt);auto& ids=buf("router_ids",m.top_k*nt);auto& rw=buf("router_weights",m.top_k*nt);
@@ -2157,16 +2186,42 @@ class Decoder {
             groups[selected[j]].push_back(j);
         }
         std::vector<float> sum(nt*m.hidden,0.f),input,result;
+        // FP8: read the experts in group order on background threads, kFp8Prefetch ahead of the GPU.
+        std::vector<int> order;for(const auto& g:groups)order.push_back(g.first);
+        std::vector<std::future<void>> reads;
+        const bool fp8=artifact.is_fp8();
+        auto start_read=[&](size_t index) {
+            const int slot=int(index%kFp8Prefetch),expert=order[index];
+            auto* dst=static_cast<uint8_t*>(fp8_slots[slot]->p);
+            reads[slot]=std::async(std::launch::async,[this,layer_id,expert,dst]{fp8_read_expert(layer_id,expert,dst);});
+        };
+        if(fp8) {
+            while(fp8_slots.size()<size_t(kFp8Prefetch))fp8_slots.push_back(std::make_unique<Pinned>(3*kFp8Projection));
+            reads.resize(kFp8Prefetch);
+            for(size_t i=0;i<order.size()&&i<size_t(kFp8Prefetch);++i)start_read(i);
+        }
+        // Wait for every read in flight before leaving (an exception must not leave a thread writing a slot).
+        struct Join{std::vector<std::future<void>>& r;~Join(){for(auto& f:r)if(f.valid())f.wait();}} join{reads};
+        size_t group_index=0;
         for(const auto& [expert,indices]:groups) {
             check_stop();int count=indices.size();input.resize(count*m.hidden);result.resize(count*m.hidden);
+            const uint8_t* fp8_host=nullptr;
+            if(fp8) {const int slot=int(group_index%kFp8Prefetch);reads[slot].get();fp8_host=static_cast<const uint8_t*>(fp8_slots[slot]->p);}
             for(int j=0;j<count;++j)std::copy_n(activation.data()+(indices[j]/m.top_k)*m.hidden,m.hidden,input.data()+j*m.hidden);
             auto& dx=buf("exl_group_x",count*m.hidden);auto& gate=buf("exl_gate",count*layer.intermediate);
             auto& up=buf("exl_up",count*layer.intermediate);auto& dy=buf("exl_group_y",count*m.hidden);dx.put(input.data(),input.size()*4);
-            exl_gpu_linear(exl_matrix(layer_id,expert,"gate_proj"),dx.f(),gate.f(),count);
-            exl_gpu_linear(exl_matrix(layer_id,expert,"up_proj"),dx.f(),up.f(),count);
+            auto linear=[&](unsigned slot,const char* projection,const float* in,float* outp) {
+                if(fp8)fp8_gpu_linear(slot,fp8_host,projection,in,outp,count);
+                else exl_gpu_linear(exl_matrix(layer_id,expert,projection),in,outp,count);
+            };
+            linear(0,"gate_proj",dx.f(),gate.f());
+            linear(1,"up_proj",dx.f(),up.f());
             k::glm_swiglu(gate.f(),up.f(),gate.f(),count*layer.intermediate,layer.swiglu_limit,stream);
-            exl_gpu_linear(exl_matrix(layer_id,expert,"down_proj"),gate.f(),dy.f(),count);
+            linear(2,"down_proj",gate.f(),dy.f());
             check(cudaMemcpyAsync(result.data(),dy.p,result.size()*4,cudaMemcpyDeviceToHost,stream));check(cudaStreamSynchronize(stream));
+            // the slot's uploads are complete: refill it with the expert kFp8Prefetch further on
+            if(fp8 && group_index+kFp8Prefetch<order.size())start_read(group_index+kFp8Prefetch);
+            ++group_index;
             for(int j=0;j<count;++j)for(int i=0;i<m.hidden;++i)sum[(indices[j]/m.top_k)*m.hidden+i]+=routing[indices[j]]*result[j*m.hidden+i];
         }
         auto& routed=buf("moe_sum",sum.size());routed.put(sum.data(),sum.size()*4);const float one=1;
@@ -2244,7 +2299,10 @@ class Decoder {
         const auto* data=static_cast<const uint8_t*>(e.data->p);const int in=e.in[projection],out=e.out[projection];
         auto& h=buf("native_expert_h",std::max(in,out));
         k::exl3_hadamard(x,h.f(),reinterpret_cast<const uint16_t*>(data+e.suh[projection]),in,1,true,stream);
-        k::exl3_packed_gemv(data+e.packed[projection],h.f(),y,in,out,stream);
+        // STRATA_EXL3_GPU_TILED: decode each tile once (same weights; the sum order differs).
+        static const bool tiled=std::getenv("STRATA_EXL3_GPU_TILED")!=nullptr;
+        if(tiled)k::exl3_packed_gemv_tiled(data+e.packed[projection],h.f(),y,in,out,1,stream);
+        else k::exl3_packed_gemv(data+e.packed[projection],h.f(),y,in,out,stream);
         k::exl3_hadamard(y,y,reinterpret_cast<const uint16_t*>(data+e.svh[projection]),out,1,false,stream);
     }
     void moe_exl3_gpu_decode(int layer,const float* x,float* out,const strata::core::LayerDescriptor& desc) {
@@ -2274,6 +2332,27 @@ class Decoder {
             auto it=exl_matrices.find(key);if(it==exl_matrices.end())it=exl_matrices.emplace(key,exl_pool->load(artifact.exl3(),l,expert,projection)).first;
             return it->second;
         };
+        // STRATA_EXL3_FAST (AVX2+FMA+F16C): the tokens routed to one expert in one call and one pool epoch, MCG
+        // weights computed in registers (strata/kernels/cpu/exl3/mcg_avx2.hpp). Same weights; the sum order differs.
+        static const bool fast=std::getenv("STRATA_EXL3_FAST")!=nullptr && strata::cpu::exl3::mcg_avx2_supported();
+        if(fast) {
+            std::map<int,std::vector<std::pair<int,float>>> routes;
+            for(int t=0;t<nt;++t)for(int j=0;j<m.top_k;++j) {
+                int e=ids[t*m.top_k+j];if(e<0||e>=m.experts)throw std::runtime_error("EXL3: invalid route");
+                routes[e].push_back({t,routing[t*m.top_k+j]});
+            }
+            std::vector<float> xs,ys;
+            for(const auto& [e,list]:routes) {
+                check_stop();const size_t n=list.size();
+                xs.resize(n*m.hidden);ys.resize(n*m.hidden);
+                for(size_t i=0;i<n;++i)std::copy_n(activation+size_t(list[i].first)*m.hidden,m.hidden,xs.data()+i*m.hidden);
+                exl_pool->expert_tokens(matrix(e,"gate_proj"),matrix(e,"up_proj"),matrix(e,"down_proj"),xs.data(),n,layer.swiglu_limit,ys.data());
+                for(size_t i=0;i<n;++i)for(int h=0;h<m.hidden;++h)sum[size_t(list[i].first)*m.hidden+h]+=list[i].second*ys[i*m.hidden+h];
+            }
+            auto& routed=buf("moe_sum",sum.size());routed.put(sum.data(),sum.size()*4);const float one=1;
+            check(cublasSaxpy(blas,sum.size(),&one,routed.f(),1,out,1));
+            return;
+        }
         for(int t=0;t<nt;++t)for(int j=0;j<m.top_k;++j) {
             check_stop();int e=ids[t*m.top_k+j];if(e<0||e>=m.experts)throw std::runtime_error("EXL3: invalid route");
             exl_pool->apply(matrix(e,"gate_proj"),activation+t*m.hidden,gate.data());
@@ -4133,6 +4212,7 @@ class Decoder {
     }
     void moe(const std::string &p, int l, const float *x, float *out,
              const strata::core::LayerDescriptor &layer) {
+        if(artifact.is_fp8() && !fast)throw std::invalid_argument("FP8 reference: routed experts run only in GPU prefill (corpus evaluation)");
         if(artifact.is_exl3()) {if(fast)moe_exl3_gpu(p,l,x,out,layer);else moe_exl3(p,l,x,out,layer);return;}
         if (l == (int)m.layers.size() && mtp_ready) {
             moe_mtp(p, x, out, layer);
@@ -6785,7 +6865,8 @@ class Decoder {
             GpuPrefill::prefetch_bytes = 0;
             std::cerr << "PREFETCH_REAP experts=" << m.experts << " maximum_groups=" << prefill_expert_groups << '\n';
         }
-        for (size_t l = 0; l < m.layers.size(); ++l) {
+        // EXL3 has no GGUF expert tensors; its prefill reconstructs projections in its own scratch.
+        for (size_t l = 0; l < m.layers.size() && !artifact.is_exl3(); ++l) {
             if (!owns_layer(l)) continue;
             if (m.layers[l].ffn != strata::core::FfnKind::Moe) continue;
             const auto p = "blk." + std::to_string(l) + ".";
@@ -6852,7 +6933,8 @@ class Decoder {
 #ifdef __linux__
             const uint64_t ram=uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
             const auto census=artifact.census();
-            if(census.main_experts+census.main_fixed+6ULL*1024*MiB>ram)throw std::runtime_error("EXL3: main weights plus 6 GiB host reserve exceed system RAM");
+            const uint64_t resident=(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;   // FP8: experts streamed from disk
+            if(resident+6ULL*1024*MiB>ram)throw std::runtime_error("EXL3: main weights plus 6 GiB host reserve exceed system RAM");
 #endif
             if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
             exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu);
@@ -7679,7 +7761,7 @@ class Decoder {
             if (!std::isfinite(v))
                 throw std::runtime_error("GLM: non-finite logits");
         tail_part(trace.copy_ms);
-        if(artifact.is_exl3()) {
+        if(artifact.is_exl3() && exl3_mask_padding) {
             const auto& ids=artifact.exl3().token_ids;
             for(int t=0;t<head_tokens;++t)for(size_t id=0;id<ids.size();++id)
                 if(!ids[id])result[t*m.vocab+id]=-std::numeric_limits<float>::infinity();
@@ -7886,6 +7968,17 @@ class Decoder {
         } catch (...) { in_verify = false; capturing_history = false; throw; }
     }
     int vocabulary() const { return m.vocab; }
+    // EXL3 sets the head rows of IDs absent from its tokenizer to -inf for generation. Corpus evaluation scores the
+    // raw padded head instead, as it does for GGUF models, so the logits stay finite and comparable with a reference.
+    bool exl3_mask_padding = true;
+    // The FP8 release (reference evaluation) runs its routed experts only in GPU prefill, so evaluation scores prefill rows.
+    // STRATA_EXL3_EVAL_PREFILL=1 scores EXL3 the same way (its GPU prefill experts, windows up to 256 tokens) instead
+    // of 4-token CPU decode windows; the same weights, the summation order differs.
+    bool evaluates_prefill_rows() const {
+        static const bool exl3_prefill=strata_env_is_one("STRATA_EXL3_EVAL_PREFILL");
+        return artifact.is_fp8() || (artifact.is_exl3() && exl3_prefill);
+    }
+    void set_exl3_mask_padding(bool on) { exl3_mask_padding = on; }
     int prefill_capacity() const { return gpu ? gpu->chunk : 1; }
     bool external_batch_exact() const {
         return canon_experts && canon_strict() && !has_route_affinity() && !defer_experts &&
@@ -9353,7 +9446,8 @@ class Decoder {
             if(gpu)return gpu->chunk;
             int width=requested?requested:256;
             const size_t reserve = Device::budget_reserve();
-            if(width<1||width>256||total_budget<2048*MiB||total_budget<=reserve)throw std::invalid_argument("EXL3: GPU prefill batch must be 1..256 and its budget must exceed the runtime reserve");
+            const int max_width=artifact.is_fp8()?512:256;   // FP8: one pass per 512-token sequence reads each expert once
+            if(width<1||width>max_width||total_budget<2048*MiB||total_budget<=reserve)throw std::invalid_argument("EXL3: GPU prefill batch must be 1.."+std::to_string(max_width)+" and its budget must exceed the runtime reserve");
             size_t free,total;check(Device::mem_info(&free,&total));
             Device::limit()=std::min(total_budget-reserve,Device::live()+(free>reserve?free-reserve:0));
             check(cublasSetMathMode(blas,glm_blas_math_mode));
@@ -10060,6 +10154,7 @@ static void evaluate_corpus(EvaluationDecoder& decoder,const std::string& corpus
     const uint32_t header[2]={0x31455647,uint32_t(decoder.vocabulary())};
     if(!save_path.empty()){if(std::filesystem::exists(save_path))throw std::runtime_error("refusing to overwrite baseline logits");saved.open(save_path,std::ios::binary);saved.write(reinterpret_cast<const char*>(header),sizeof header);if(!saved)throw std::runtime_error("cannot save evaluation logits");}
     if(!reference_path.empty()){reference.open(reference_path,std::ios::binary);uint32_t h[2];if(!reference.read(reinterpret_cast<char*>(h),sizeof h)||std::memcmp(h,header,sizeof h))throw std::runtime_error("invalid evaluation baseline");}
+    if constexpr (requires { decoder.set_exl3_mask_padding(false); }) decoder.set_exl3_mask_padding(false);
     const int vocab=decoder.vocabulary();std::vector<float> base(vocab);std::string line;uint64_t count=0,different_logits=0;double nll=0,kl=0;int sequence=0,top1=0;
     while(std::getline(input,line)) {
         if(line.empty())continue;
@@ -10072,7 +10167,11 @@ static void evaluate_corpus(EvaluationDecoder& decoder,const std::string& corpus
         if(reference.is_open()){uint32_t len=0;reference.read(reinterpret_cast<char*>(&len),4);if(len!=length)throw std::runtime_error("evaluation baseline sequence mismatch");std::vector<int> expected(len);if(!reference.read(reinterpret_cast<char*>(expected.data()),len*4)||expected!=ids)throw std::runtime_error("evaluation baseline tokens differ");}
         decoder.reset();lock_small_runtime_mappings();
         static const size_t eval_width = [] { const char *v = std::getenv("STRATA_GLM_EVAL_WIDTH"); return v ? std::stoul(v) : 4ul; }();
-        if (eval_width < 1 || eval_width > (size_t)cpu::MAXT) throw std::invalid_argument("STRATA_GLM_EVAL_WIDTH must be 1..8");
+        bool prefill_rows = false;
+        if constexpr (requires { decoder.evaluates_prefill_rows(); }) prefill_rows = decoder.evaluates_prefill_rows();
+        // Prefill-row scoring (the FP8 reference) takes windows up to the GPU prefill chunk; decode paths at most MAXT.
+        const size_t max_width = prefill_rows ? 512 : (size_t)cpu::MAXT;
+        if (eval_width < 1 || eval_width > max_width) throw std::invalid_argument("STRATA_GLM_EVAL_WIDTH must be 1.." + std::to_string(max_width));
         if(verify) {
             if constexpr(requires { decoder.enable_verify_history(1); decoder.verify_history_slots(); }) {
                 if(eval_width<2)throw std::invalid_argument("verify evaluation needs width 2..8");
@@ -10120,7 +10219,11 @@ static void evaluate_corpus(EvaluationDecoder& decoder,const std::string& corpus
                 if (verify) {
                     if constexpr(requires { decoder.verify(window); }) logits = decoder.verify(window);
                     else throw std::invalid_argument("verify evaluation requires the batched target decoder");
-                } else logits = decoder.batch(window, prefix_phase, !(decode_only && prefix_phase));
+                } else {
+                    bool prefill_rows = prefix_phase;
+                    if constexpr (requires { decoder.evaluates_prefill_rows(); }) prefill_rows = prefill_rows || decoder.evaluates_prefill_rows();
+                    logits = decoder.batch(window, prefill_rows, !(decode_only && prefix_phase));
+                }
                 if (prefix_phase) prefix_last_logits.assign(logits.end() - vocab, logits.end());
                 if (!(decode_only && prefix_phase)) score(logits.data(), 0, (int)(end-start));
             }

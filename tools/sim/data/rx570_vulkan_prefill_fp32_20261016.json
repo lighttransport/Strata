@@ -1,0 +1,1084 @@
+{
+  "schema": 1,
+  "kind": "batched_prefill_fp32",
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 modified 16 GiB",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB DDR4-2666",
+    "threads": 12,
+    "stream_processors": 2048,
+    "nominal_fp32_tflops": 5.1,
+    "nominal_bandwidth_gbps": 224,
+    "memory_bus_bits": 256,
+    "clock_sample_counts_mhz": {
+      "pp_dpm_sclk": {
+        "300": 1,
+        "1041": 61,
+        "588": 1,
+        "952": 2
+      },
+      "pp_dpm_mclk": {
+        "300": 11,
+        "1000": 43,
+        "1750": 11
+      }
+    },
+    "spec_source": "https://www.amd.com/en/support/downloads/drivers.html/graphics/radeon-600-500-400/radeon-rx-500-series/radeon-rx-570.html"
+  },
+  "evidence": {
+    "executable_sha256": "cb5e946e05572d465cdea6734d5c9af6439b8d7fa0b53fc1bac2e180d84a637b",
+    "config_sha256": "56cd35cf6f63eeb62b80813aacb840988521fa6b40053ee8ddffb2ce5efe3774",
+    "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+    "files": {
+      "gpu512-fp32-v23-selected-run.log": "b3499f26431d39b97f2f2f1d05e9f0c7abf9849a77d479beabc0469b1d40d21e",
+      "gpu512-fp32-v23-selected-run.guard.json": "2934124aff63a1bed93c8580a651c9ffa79b5e50ead981a4ac15d0e2a1d3eee0",
+      "gpu512-fp32-v23-selected-run.result.json": "ea94e31b5198b23cfd5051170c00d0c23241832b30153f5a3ddbab5a15cbc123"
+    }
+  },
+  "trials": [
+    {
+      "trial": 0,
+      "tokens": 512,
+      "wall_ms_per_token": 22.903515625,
+      "layers": [
+        {
+          "layer": 3.0,
+          "prepare_ms": 39.6035,
+          "cpu_work_ms": 173.993,
+          "upload_ms": 33.6193,
+          "queued_work_ms": 70.9034,
+          "gpu_routes": 1375.0
+        },
+        {
+          "layer": 4.0,
+          "prepare_ms": 7.40401,
+          "cpu_work_ms": 169.466,
+          "upload_ms": 37.5398,
+          "queued_work_ms": 59.6579,
+          "gpu_routes": 1126.0
+        },
+        {
+          "layer": 5.0,
+          "prepare_ms": 7.45314,
+          "cpu_work_ms": 161.672,
+          "upload_ms": 36.8134,
+          "queued_work_ms": 62.7635,
+          "gpu_routes": 1221.0
+        },
+        {
+          "layer": 6.0,
+          "prepare_ms": 7.49137,
+          "cpu_work_ms": 147.373,
+          "upload_ms": 38.0875,
+          "queued_work_ms": 76.6249,
+          "gpu_routes": 1466.0
+        },
+        {
+          "layer": 7.0,
+          "prepare_ms": 7.37182,
+          "cpu_work_ms": 130.908,
+          "upload_ms": 38.7613,
+          "queued_work_ms": 86.3845,
+          "gpu_routes": 1808.0
+        },
+        {
+          "layer": 8.0,
+          "prepare_ms": 7.45597,
+          "cpu_work_ms": 132.237,
+          "upload_ms": 38.1491,
+          "queued_work_ms": 84.9147,
+          "gpu_routes": 1851.0
+        },
+        {
+          "layer": 9.0,
+          "prepare_ms": 7.39541,
+          "cpu_work_ms": 134.065,
+          "upload_ms": 38.9243,
+          "queued_work_ms": 81.505,
+          "gpu_routes": 1726.0
+        },
+        {
+          "layer": 10.0,
+          "prepare_ms": 7.44368,
+          "cpu_work_ms": 149.466,
+          "upload_ms": 38.3758,
+          "queued_work_ms": 84.9765,
+          "gpu_routes": 1817.0
+        },
+        {
+          "layer": 11.0,
+          "prepare_ms": 7.33412,
+          "cpu_work_ms": 130.342,
+          "upload_ms": 39.0642,
+          "queued_work_ms": 86.3017,
+          "gpu_routes": 1822.0
+        },
+        {
+          "layer": 12.0,
+          "prepare_ms": 7.41241,
+          "cpu_work_ms": 117.878,
+          "upload_ms": 38.0732,
+          "queued_work_ms": 99.3719,
+          "gpu_routes": 2120.0
+        },
+        {
+          "layer": 13.0,
+          "prepare_ms": 7.76077,
+          "cpu_work_ms": 122.207,
+          "upload_ms": 37.0506,
+          "queued_work_ms": 101.291,
+          "gpu_routes": 2218.0
+        },
+        {
+          "layer": 14.0,
+          "prepare_ms": 7.4005,
+          "cpu_work_ms": 109.289,
+          "upload_ms": 37.0841,
+          "queued_work_ms": 99.7624,
+          "gpu_routes": 2253.0
+        },
+        {
+          "layer": 15.0,
+          "prepare_ms": 7.38975,
+          "cpu_work_ms": 124.372,
+          "upload_ms": 36.8256,
+          "queued_work_ms": 90.9977,
+          "gpu_routes": 1926.0
+        },
+        {
+          "layer": 16.0,
+          "prepare_ms": 7.34858,
+          "cpu_work_ms": 121.763,
+          "upload_ms": 38.3606,
+          "queued_work_ms": 93.4834,
+          "gpu_routes": 1983.0
+        },
+        {
+          "layer": 17.0,
+          "prepare_ms": 7.4486,
+          "cpu_work_ms": 142.787,
+          "upload_ms": 38.0575,
+          "queued_work_ms": 87.8773,
+          "gpu_routes": 1813.0
+        },
+        {
+          "layer": 18.0,
+          "prepare_ms": 7.41236,
+          "cpu_work_ms": 133.005,
+          "upload_ms": 38.3486,
+          "queued_work_ms": 93.8492,
+          "gpu_routes": 2104.0
+        },
+        {
+          "layer": 19.0,
+          "prepare_ms": 7.68644,
+          "cpu_work_ms": 114.414,
+          "upload_ms": 36.203,
+          "queued_work_ms": 95.4638,
+          "gpu_routes": 2089.0
+        },
+        {
+          "layer": 20.0,
+          "prepare_ms": 7.89685,
+          "cpu_work_ms": 127.09,
+          "upload_ms": 39.7435,
+          "queued_work_ms": 90.1173,
+          "gpu_routes": 1898.0
+        },
+        {
+          "layer": 21.0,
+          "prepare_ms": 7.41156,
+          "cpu_work_ms": 113.337,
+          "upload_ms": 37.0067,
+          "queued_work_ms": 103.731,
+          "gpu_routes": 2297.0
+        },
+        {
+          "layer": 22.0,
+          "prepare_ms": 7.3685,
+          "cpu_work_ms": 113.143,
+          "upload_ms": 35.9666,
+          "queued_work_ms": 92.9063,
+          "gpu_routes": 2090.0
+        },
+        {
+          "layer": 23.0,
+          "prepare_ms": 7.50173,
+          "cpu_work_ms": 107.774,
+          "upload_ms": 35.0434,
+          "queued_work_ms": 97.01,
+          "gpu_routes": 2187.0
+        },
+        {
+          "layer": 24.0,
+          "prepare_ms": 7.3667,
+          "cpu_work_ms": 146.477,
+          "upload_ms": 37.359,
+          "queued_work_ms": 93.734,
+          "gpu_routes": 2043.0
+        },
+        {
+          "layer": 25.0,
+          "prepare_ms": 7.39964,
+          "cpu_work_ms": 113.311,
+          "upload_ms": 38.6857,
+          "queued_work_ms": 99.285,
+          "gpu_routes": 2151.0
+        },
+        {
+          "layer": 26.0,
+          "prepare_ms": 7.4861,
+          "cpu_work_ms": 133.862,
+          "upload_ms": 39.184,
+          "queued_work_ms": 90.525,
+          "gpu_routes": 2069.0
+        },
+        {
+          "layer": 27.0,
+          "prepare_ms": 7.41107,
+          "cpu_work_ms": 128.346,
+          "upload_ms": 38.8193,
+          "queued_work_ms": 87.9285,
+          "gpu_routes": 1886.0
+        },
+        {
+          "layer": 28.0,
+          "prepare_ms": 7.45518,
+          "cpu_work_ms": 124.898,
+          "upload_ms": 40.5413,
+          "queued_work_ms": 85.6148,
+          "gpu_routes": 1848.0
+        },
+        {
+          "layer": 29.0,
+          "prepare_ms": 7.34096,
+          "cpu_work_ms": 131.182,
+          "upload_ms": 41.9752,
+          "queued_work_ms": 86.5863,
+          "gpu_routes": 1770.0
+        },
+        {
+          "layer": 30.0,
+          "prepare_ms": 7.39917,
+          "cpu_work_ms": 133.848,
+          "upload_ms": 37.7265,
+          "queued_work_ms": 78.5966,
+          "gpu_routes": 1664.0
+        },
+        {
+          "layer": 31.0,
+          "prepare_ms": 7.39878,
+          "cpu_work_ms": 142.769,
+          "upload_ms": 37.6253,
+          "queued_work_ms": 83.633,
+          "gpu_routes": 1640.0
+        },
+        {
+          "layer": 32.0,
+          "prepare_ms": 7.4331,
+          "cpu_work_ms": 138.638,
+          "upload_ms": 37.6411,
+          "queued_work_ms": 77.4035,
+          "gpu_routes": 1594.0
+        },
+        {
+          "layer": 33.0,
+          "prepare_ms": 7.36741,
+          "cpu_work_ms": 132.493,
+          "upload_ms": 38.8683,
+          "queued_work_ms": 83.2432,
+          "gpu_routes": 1783.0
+        },
+        {
+          "layer": 34.0,
+          "prepare_ms": 7.51941,
+          "cpu_work_ms": 130.12,
+          "upload_ms": 40.1223,
+          "queued_work_ms": 88.6963,
+          "gpu_routes": 1849.0
+        },
+        {
+          "layer": 35.0,
+          "prepare_ms": 7.4074,
+          "cpu_work_ms": 137.491,
+          "upload_ms": 33.954,
+          "queued_work_ms": 81.537,
+          "gpu_routes": 1691.0
+        },
+        {
+          "layer": 36.0,
+          "prepare_ms": 7.52382,
+          "cpu_work_ms": 136.418,
+          "upload_ms": 37.2931,
+          "queued_work_ms": 83.1218,
+          "gpu_routes": 1753.0
+        },
+        {
+          "layer": 37.0,
+          "prepare_ms": 7.46382,
+          "cpu_work_ms": 131.959,
+          "upload_ms": 39.3034,
+          "queued_work_ms": 87.2573,
+          "gpu_routes": 1806.0
+        },
+        {
+          "layer": 38.0,
+          "prepare_ms": 7.64195,
+          "cpu_work_ms": 146.637,
+          "upload_ms": 39.8234,
+          "queued_work_ms": 81.5361,
+          "gpu_routes": 1763.0
+        },
+        {
+          "layer": 39.0,
+          "prepare_ms": 7.33096,
+          "cpu_work_ms": 132.158,
+          "upload_ms": 38.7771,
+          "queued_work_ms": 87.9258,
+          "gpu_routes": 1882.0
+        },
+        {
+          "layer": 40.0,
+          "prepare_ms": 7.45942,
+          "cpu_work_ms": 128.932,
+          "upload_ms": 38.549,
+          "queued_work_ms": 85.5585,
+          "gpu_routes": 1879.0
+        },
+        {
+          "layer": 41.0,
+          "prepare_ms": 7.41559,
+          "cpu_work_ms": 139.66,
+          "upload_ms": 38.1928,
+          "queued_work_ms": 90.0684,
+          "gpu_routes": 1888.0
+        },
+        {
+          "layer": 42.0,
+          "prepare_ms": 7.49724,
+          "cpu_work_ms": 121.517,
+          "upload_ms": 40.3727,
+          "queued_work_ms": 92.5982,
+          "gpu_routes": 2009.0
+        },
+        {
+          "layer": 43.0,
+          "prepare_ms": 7.40086,
+          "cpu_work_ms": 122.755,
+          "upload_ms": 37.2763,
+          "queued_work_ms": 92.5055,
+          "gpu_routes": 1960.0
+        },
+        {
+          "layer": 44.0,
+          "prepare_ms": 7.72799,
+          "cpu_work_ms": 137.151,
+          "upload_ms": 39.9967,
+          "queued_work_ms": 80.2752,
+          "gpu_routes": 1711.0
+        }
+      ],
+      "serial_gpu_ms_per_token": 9.975605900000001,
+      "shared_gpu_ms_per_token": 1.0265
+    },
+    {
+      "trial": 1,
+      "tokens": 512,
+      "wall_ms_per_token": 23.0275390625,
+      "layers": [
+        {
+          "layer": 3.0,
+          "prepare_ms": 40.0366,
+          "cpu_work_ms": 168.27,
+          "upload_ms": 34.5927,
+          "queued_work_ms": 71.248,
+          "gpu_routes": 1375.0
+        },
+        {
+          "layer": 4.0,
+          "prepare_ms": 7.43773,
+          "cpu_work_ms": 165.121,
+          "upload_ms": 39.371,
+          "queued_work_ms": 60.247,
+          "gpu_routes": 1126.0
+        },
+        {
+          "layer": 5.0,
+          "prepare_ms": 7.43315,
+          "cpu_work_ms": 162.708,
+          "upload_ms": 36.8271,
+          "queued_work_ms": 64.5061,
+          "gpu_routes": 1221.0
+        },
+        {
+          "layer": 6.0,
+          "prepare_ms": 7.48704,
+          "cpu_work_ms": 147.417,
+          "upload_ms": 37.1512,
+          "queued_work_ms": 76.2065,
+          "gpu_routes": 1466.0
+        },
+        {
+          "layer": 7.0,
+          "prepare_ms": 7.38171,
+          "cpu_work_ms": 133.261,
+          "upload_ms": 38.9078,
+          "queued_work_ms": 86.0968,
+          "gpu_routes": 1808.0
+        },
+        {
+          "layer": 8.0,
+          "prepare_ms": 7.49094,
+          "cpu_work_ms": 141.2,
+          "upload_ms": 39.2181,
+          "queued_work_ms": 85.5349,
+          "gpu_routes": 1851.0
+        },
+        {
+          "layer": 9.0,
+          "prepare_ms": 7.57497,
+          "cpu_work_ms": 152.716,
+          "upload_ms": 39.1541,
+          "queued_work_ms": 84.8259,
+          "gpu_routes": 1726.0
+        },
+        {
+          "layer": 10.0,
+          "prepare_ms": 7.48612,
+          "cpu_work_ms": 130.725,
+          "upload_ms": 40.1009,
+          "queued_work_ms": 86.1213,
+          "gpu_routes": 1817.0
+        },
+        {
+          "layer": 11.0,
+          "prepare_ms": 7.43924,
+          "cpu_work_ms": 130.225,
+          "upload_ms": 39.8285,
+          "queued_work_ms": 86.5914,
+          "gpu_routes": 1822.0
+        },
+        {
+          "layer": 12.0,
+          "prepare_ms": 7.38849,
+          "cpu_work_ms": 113.463,
+          "upload_ms": 35.9615,
+          "queued_work_ms": 99.4928,
+          "gpu_routes": 2120.0
+        },
+        {
+          "layer": 13.0,
+          "prepare_ms": 7.48199,
+          "cpu_work_ms": 118.863,
+          "upload_ms": 36.4818,
+          "queued_work_ms": 101.047,
+          "gpu_routes": 2218.0
+        },
+        {
+          "layer": 14.0,
+          "prepare_ms": 7.34347,
+          "cpu_work_ms": 110.727,
+          "upload_ms": 36.575,
+          "queued_work_ms": 100.714,
+          "gpu_routes": 2253.0
+        },
+        {
+          "layer": 15.0,
+          "prepare_ms": 7.44645,
+          "cpu_work_ms": 124.465,
+          "upload_ms": 38.1838,
+          "queued_work_ms": 91.8557,
+          "gpu_routes": 1926.0
+        },
+        {
+          "layer": 16.0,
+          "prepare_ms": 7.46917,
+          "cpu_work_ms": 119.439,
+          "upload_ms": 37.6417,
+          "queued_work_ms": 93.2979,
+          "gpu_routes": 1983.0
+        },
+        {
+          "layer": 17.0,
+          "prepare_ms": 7.63762,
+          "cpu_work_ms": 141.437,
+          "upload_ms": 39.1745,
+          "queued_work_ms": 88.1205,
+          "gpu_routes": 1813.0
+        },
+        {
+          "layer": 18.0,
+          "prepare_ms": 7.43956,
+          "cpu_work_ms": 115.905,
+          "upload_ms": 38.1656,
+          "queued_work_ms": 92.6177,
+          "gpu_routes": 2104.0
+        },
+        {
+          "layer": 19.0,
+          "prepare_ms": 7.36686,
+          "cpu_work_ms": 115.113,
+          "upload_ms": 35.8378,
+          "queued_work_ms": 95.6773,
+          "gpu_routes": 2089.0
+        },
+        {
+          "layer": 20.0,
+          "prepare_ms": 7.56471,
+          "cpu_work_ms": 127.047,
+          "upload_ms": 39.0325,
+          "queued_work_ms": 90.2146,
+          "gpu_routes": 1898.0
+        },
+        {
+          "layer": 21.0,
+          "prepare_ms": 7.47584,
+          "cpu_work_ms": 104.738,
+          "upload_ms": 33.3447,
+          "queued_work_ms": 103.67,
+          "gpu_routes": 2297.0
+        },
+        {
+          "layer": 22.0,
+          "prepare_ms": 7.38288,
+          "cpu_work_ms": 115.406,
+          "upload_ms": 40.7825,
+          "queued_work_ms": 94.5921,
+          "gpu_routes": 2090.0
+        },
+        {
+          "layer": 23.0,
+          "prepare_ms": 7.39335,
+          "cpu_work_ms": 107.312,
+          "upload_ms": 36.7279,
+          "queued_work_ms": 97.3063,
+          "gpu_routes": 2187.0
+        },
+        {
+          "layer": 24.0,
+          "prepare_ms": 7.41019,
+          "cpu_work_ms": 136.014,
+          "upload_ms": 36.3053,
+          "queued_work_ms": 93.7616,
+          "gpu_routes": 2043.0
+        },
+        {
+          "layer": 25.0,
+          "prepare_ms": 7.63199,
+          "cpu_work_ms": 126.596,
+          "upload_ms": 39.4929,
+          "queued_work_ms": 98.7585,
+          "gpu_routes": 2151.0
+        },
+        {
+          "layer": 26.0,
+          "prepare_ms": 7.47623,
+          "cpu_work_ms": 128.593,
+          "upload_ms": 39.1958,
+          "queued_work_ms": 90.5761,
+          "gpu_routes": 2069.0
+        },
+        {
+          "layer": 27.0,
+          "prepare_ms": 7.83603,
+          "cpu_work_ms": 126.706,
+          "upload_ms": 37.0611,
+          "queued_work_ms": 88.1215,
+          "gpu_routes": 1886.0
+        },
+        {
+          "layer": 28.0,
+          "prepare_ms": 7.54392,
+          "cpu_work_ms": 125.774,
+          "upload_ms": 40.3952,
+          "queued_work_ms": 86.0151,
+          "gpu_routes": 1848.0
+        },
+        {
+          "layer": 29.0,
+          "prepare_ms": 7.52501,
+          "cpu_work_ms": 137.193,
+          "upload_ms": 42.4073,
+          "queued_work_ms": 86.5225,
+          "gpu_routes": 1770.0
+        },
+        {
+          "layer": 30.0,
+          "prepare_ms": 7.48698,
+          "cpu_work_ms": 135.144,
+          "upload_ms": 38.0992,
+          "queued_work_ms": 78.5674,
+          "gpu_routes": 1664.0
+        },
+        {
+          "layer": 31.0,
+          "prepare_ms": 7.466,
+          "cpu_work_ms": 163.587,
+          "upload_ms": 36.3388,
+          "queued_work_ms": 83.6833,
+          "gpu_routes": 1640.0
+        },
+        {
+          "layer": 32.0,
+          "prepare_ms": 7.46803,
+          "cpu_work_ms": 138.357,
+          "upload_ms": 38.1262,
+          "queued_work_ms": 80.0047,
+          "gpu_routes": 1594.0
+        },
+        {
+          "layer": 33.0,
+          "prepare_ms": 7.45358,
+          "cpu_work_ms": 149.898,
+          "upload_ms": 37.6128,
+          "queued_work_ms": 86.7515,
+          "gpu_routes": 1783.0
+        },
+        {
+          "layer": 34.0,
+          "prepare_ms": 7.83691,
+          "cpu_work_ms": 130.441,
+          "upload_ms": 38.5227,
+          "queued_work_ms": 88.3515,
+          "gpu_routes": 1849.0
+        },
+        {
+          "layer": 35.0,
+          "prepare_ms": 7.45552,
+          "cpu_work_ms": 137.708,
+          "upload_ms": 37.6704,
+          "queued_work_ms": 81.4612,
+          "gpu_routes": 1691.0
+        },
+        {
+          "layer": 36.0,
+          "prepare_ms": 7.56643,
+          "cpu_work_ms": 135.69,
+          "upload_ms": 38.6588,
+          "queued_work_ms": 85.9833,
+          "gpu_routes": 1753.0
+        },
+        {
+          "layer": 37.0,
+          "prepare_ms": 7.37802,
+          "cpu_work_ms": 153.625,
+          "upload_ms": 38.8487,
+          "queued_work_ms": 83.8183,
+          "gpu_routes": 1806.0
+        },
+        {
+          "layer": 38.0,
+          "prepare_ms": 7.45195,
+          "cpu_work_ms": 134.285,
+          "upload_ms": 38.5516,
+          "queued_work_ms": 84.4519,
+          "gpu_routes": 1763.0
+        },
+        {
+          "layer": 39.0,
+          "prepare_ms": 7.45503,
+          "cpu_work_ms": 141.327,
+          "upload_ms": 38.6533,
+          "queued_work_ms": 87.9298,
+          "gpu_routes": 1882.0
+        },
+        {
+          "layer": 40.0,
+          "prepare_ms": 7.42464,
+          "cpu_work_ms": 125.584,
+          "upload_ms": 40.2394,
+          "queued_work_ms": 89.3056,
+          "gpu_routes": 1879.0
+        },
+        {
+          "layer": 41.0,
+          "prepare_ms": 7.35057,
+          "cpu_work_ms": 123.846,
+          "upload_ms": 39.3169,
+          "queued_work_ms": 90.0838,
+          "gpu_routes": 1888.0
+        },
+        {
+          "layer": 42.0,
+          "prepare_ms": 7.39178,
+          "cpu_work_ms": 138.969,
+          "upload_ms": 38.3895,
+          "queued_work_ms": 92.2218,
+          "gpu_routes": 2009.0
+        },
+        {
+          "layer": 43.0,
+          "prepare_ms": 7.36015,
+          "cpu_work_ms": 121.664,
+          "upload_ms": 38.5366,
+          "queued_work_ms": 91.6415,
+          "gpu_routes": 1960.0
+        },
+        {
+          "layer": 44.0,
+          "prepare_ms": 7.41565,
+          "cpu_work_ms": 148.906,
+          "upload_ms": 38.2465,
+          "queued_work_ms": 81.0425,
+          "gpu_routes": 1711.0
+        }
+      ],
+      "serial_gpu_ms_per_token": 9.9683778,
+      "shared_gpu_ms_per_token": 1.0011
+    },
+    {
+      "trial": 2,
+      "tokens": 512,
+      "wall_ms_per_token": 22.9048828125,
+      "layers": [
+        {
+          "layer": 3.0,
+          "prepare_ms": 40.3355,
+          "cpu_work_ms": 170.704,
+          "upload_ms": 33.0906,
+          "queued_work_ms": 71.0599,
+          "gpu_routes": 1375.0
+        },
+        {
+          "layer": 4.0,
+          "prepare_ms": 7.41146,
+          "cpu_work_ms": 165.388,
+          "upload_ms": 38.2894,
+          "queued_work_ms": 59.8829,
+          "gpu_routes": 1126.0
+        },
+        {
+          "layer": 5.0,
+          "prepare_ms": 7.6816,
+          "cpu_work_ms": 164.193,
+          "upload_ms": 37.6105,
+          "queued_work_ms": 63.098,
+          "gpu_routes": 1221.0
+        },
+        {
+          "layer": 6.0,
+          "prepare_ms": 7.85309,
+          "cpu_work_ms": 147.871,
+          "upload_ms": 38.4219,
+          "queued_work_ms": 76.3637,
+          "gpu_routes": 1466.0
+        },
+        {
+          "layer": 7.0,
+          "prepare_ms": 7.35619,
+          "cpu_work_ms": 148.331,
+          "upload_ms": 36.5916,
+          "queued_work_ms": 86.2867,
+          "gpu_routes": 1808.0
+        },
+        {
+          "layer": 8.0,
+          "prepare_ms": 7.36637,
+          "cpu_work_ms": 129.341,
+          "upload_ms": 35.5246,
+          "queued_work_ms": 85.433,
+          "gpu_routes": 1851.0
+        },
+        {
+          "layer": 9.0,
+          "prepare_ms": 7.40601,
+          "cpu_work_ms": 152.676,
+          "upload_ms": 40.5391,
+          "queued_work_ms": 81.8478,
+          "gpu_routes": 1726.0
+        },
+        {
+          "layer": 10.0,
+          "prepare_ms": 7.73306,
+          "cpu_work_ms": 131.726,
+          "upload_ms": 40.9216,
+          "queued_work_ms": 86.3572,
+          "gpu_routes": 1817.0
+        },
+        {
+          "layer": 11.0,
+          "prepare_ms": 7.4287,
+          "cpu_work_ms": 129.447,
+          "upload_ms": 38.5763,
+          "queued_work_ms": 86.5533,
+          "gpu_routes": 1822.0
+        },
+        {
+          "layer": 12.0,
+          "prepare_ms": 7.3579,
+          "cpu_work_ms": 115.737,
+          "upload_ms": 38.5682,
+          "queued_work_ms": 99.4416,
+          "gpu_routes": 2120.0
+        },
+        {
+          "layer": 13.0,
+          "prepare_ms": 7.47038,
+          "cpu_work_ms": 119.797,
+          "upload_ms": 37.4596,
+          "queued_work_ms": 100.802,
+          "gpu_routes": 2218.0
+        },
+        {
+          "layer": 14.0,
+          "prepare_ms": 7.43748,
+          "cpu_work_ms": 109.47,
+          "upload_ms": 35.4261,
+          "queued_work_ms": 100.357,
+          "gpu_routes": 2253.0
+        },
+        {
+          "layer": 15.0,
+          "prepare_ms": 7.38253,
+          "cpu_work_ms": 138.09,
+          "upload_ms": 37.2797,
+          "queued_work_ms": 91.33,
+          "gpu_routes": 1926.0
+        },
+        {
+          "layer": 16.0,
+          "prepare_ms": 7.41564,
+          "cpu_work_ms": 119.929,
+          "upload_ms": 37.6008,
+          "queued_work_ms": 93.2534,
+          "gpu_routes": 1983.0
+        },
+        {
+          "layer": 17.0,
+          "prepare_ms": 7.42193,
+          "cpu_work_ms": 129.651,
+          "upload_ms": 41.4183,
+          "queued_work_ms": 88.8633,
+          "gpu_routes": 1813.0
+        },
+        {
+          "layer": 18.0,
+          "prepare_ms": 7.40122,
+          "cpu_work_ms": 135.423,
+          "upload_ms": 37.6908,
+          "queued_work_ms": 93.2158,
+          "gpu_routes": 2104.0
+        },
+        {
+          "layer": 19.0,
+          "prepare_ms": 7.34393,
+          "cpu_work_ms": 114.34,
+          "upload_ms": 35.9841,
+          "queued_work_ms": 95.6638,
+          "gpu_routes": 2089.0
+        },
+        {
+          "layer": 20.0,
+          "prepare_ms": 7.4237,
+          "cpu_work_ms": 128.596,
+          "upload_ms": 40.2028,
+          "queued_work_ms": 89.0152,
+          "gpu_routes": 1898.0
+        },
+        {
+          "layer": 21.0,
+          "prepare_ms": 7.4616,
+          "cpu_work_ms": 127.584,
+          "upload_ms": 36.7987,
+          "queued_work_ms": 103.235,
+          "gpu_routes": 2297.0
+        },
+        {
+          "layer": 22.0,
+          "prepare_ms": 7.39568,
+          "cpu_work_ms": 130.505,
+          "upload_ms": 38.7099,
+          "queued_work_ms": 93.5563,
+          "gpu_routes": 2090.0
+        },
+        {
+          "layer": 23.0,
+          "prepare_ms": 7.29218,
+          "cpu_work_ms": 107.373,
+          "upload_ms": 35.4912,
+          "queued_work_ms": 96.996,
+          "gpu_routes": 2187.0
+        },
+        {
+          "layer": 24.0,
+          "prepare_ms": 7.4259,
+          "cpu_work_ms": 121.323,
+          "upload_ms": 37.8679,
+          "queued_work_ms": 94.3812,
+          "gpu_routes": 2043.0
+        },
+        {
+          "layer": 25.0,
+          "prepare_ms": 7.38788,
+          "cpu_work_ms": 113.702,
+          "upload_ms": 37.113,
+          "queued_work_ms": 99.9132,
+          "gpu_routes": 2151.0
+        },
+        {
+          "layer": 26.0,
+          "prepare_ms": 7.37357,
+          "cpu_work_ms": 113.663,
+          "upload_ms": 37.174,
+          "queued_work_ms": 90.3225,
+          "gpu_routes": 2069.0
+        },
+        {
+          "layer": 27.0,
+          "prepare_ms": 7.46924,
+          "cpu_work_ms": 129.831,
+          "upload_ms": 38.0118,
+          "queued_work_ms": 87.621,
+          "gpu_routes": 1886.0
+        },
+        {
+          "layer": 28.0,
+          "prepare_ms": 7.41682,
+          "cpu_work_ms": 145.487,
+          "upload_ms": 40.5939,
+          "queued_work_ms": 88.3311,
+          "gpu_routes": 1848.0
+        },
+        {
+          "layer": 29.0,
+          "prepare_ms": 7.44273,
+          "cpu_work_ms": 130.536,
+          "upload_ms": 40.0265,
+          "queued_work_ms": 88.8595,
+          "gpu_routes": 1770.0
+        },
+        {
+          "layer": 30.0,
+          "prepare_ms": 7.48399,
+          "cpu_work_ms": 139.335,
+          "upload_ms": 38.0745,
+          "queued_work_ms": 78.5487,
+          "gpu_routes": 1664.0
+        },
+        {
+          "layer": 31.0,
+          "prepare_ms": 7.43821,
+          "cpu_work_ms": 141.097,
+          "upload_ms": 37.5905,
+          "queued_work_ms": 83.6262,
+          "gpu_routes": 1640.0
+        },
+        {
+          "layer": 32.0,
+          "prepare_ms": 7.44284,
+          "cpu_work_ms": 138.702,
+          "upload_ms": 37.9417,
+          "queued_work_ms": 77.502,
+          "gpu_routes": 1594.0
+        },
+        {
+          "layer": 33.0,
+          "prepare_ms": 7.67584,
+          "cpu_work_ms": 139.75,
+          "upload_ms": 43.4366,
+          "queued_work_ms": 83.8584,
+          "gpu_routes": 1783.0
+        },
+        {
+          "layer": 34.0,
+          "prepare_ms": 7.6074,
+          "cpu_work_ms": 130.492,
+          "upload_ms": 42.3477,
+          "queued_work_ms": 89.0923,
+          "gpu_routes": 1849.0
+        },
+        {
+          "layer": 35.0,
+          "prepare_ms": 7.39094,
+          "cpu_work_ms": 136.32,
+          "upload_ms": 36.9609,
+          "queued_work_ms": 81.3958,
+          "gpu_routes": 1691.0
+        },
+        {
+          "layer": 36.0,
+          "prepare_ms": 7.46629,
+          "cpu_work_ms": 135.297,
+          "upload_ms": 38.6795,
+          "queued_work_ms": 85.9476,
+          "gpu_routes": 1753.0
+        },
+        {
+          "layer": 37.0,
+          "prepare_ms": 7.41669,
+          "cpu_work_ms": 132.238,
+          "upload_ms": 37.1796,
+          "queued_work_ms": 83.345,
+          "gpu_routes": 1806.0
+        },
+        {
+          "layer": 38.0,
+          "prepare_ms": 7.4294,
+          "cpu_work_ms": 134.019,
+          "upload_ms": 42.0551,
+          "queued_work_ms": 84.1643,
+          "gpu_routes": 1763.0
+        },
+        {
+          "layer": 39.0,
+          "prepare_ms": 7.5884,
+          "cpu_work_ms": 129.077,
+          "upload_ms": 37.8921,
+          "queued_work_ms": 87.9744,
+          "gpu_routes": 1882.0
+        },
+        {
+          "layer": 40.0,
+          "prepare_ms": 7.60452,
+          "cpu_work_ms": 125.77,
+          "upload_ms": 38.6723,
+          "queued_work_ms": 86.0322,
+          "gpu_routes": 1879.0
+        },
+        {
+          "layer": 41.0,
+          "prepare_ms": 7.45168,
+          "cpu_work_ms": 122.736,
+          "upload_ms": 38.0983,
+          "queued_work_ms": 90.5758,
+          "gpu_routes": 1888.0
+        },
+        {
+          "layer": 42.0,
+          "prepare_ms": 7.42438,
+          "cpu_work_ms": 120.993,
+          "upload_ms": 39.7443,
+          "queued_work_ms": 92.3974,
+          "gpu_routes": 2009.0
+        },
+        {
+          "layer": 43.0,
+          "prepare_ms": 7.3152,
+          "cpu_work_ms": 122.242,
+          "upload_ms": 38.7969,
+          "queued_work_ms": 91.8495,
+          "gpu_routes": 1960.0
+        },
+        {
+          "layer": 44.0,
+          "prepare_ms": 7.48898,
+          "cpu_work_ms": 136.593,
+          "upload_ms": 42.1519,
+          "queued_work_ms": 83.1253,
+          "gpu_routes": 1711.0
+        }
+      ],
+      "serial_gpu_ms_per_token": 9.9544887,
+      "shared_gpu_ms_per_token": 1.0161
+    }
+  ],
+  "limits": [
+    "One untimed warmup excluded; three trials fit, not independent validation.",
+    "Serial GPU = attention + dense prefix + head; shared FFN overlaps expert processing.",
+    "GPU queued work includes host submission, packing and waits, not pure shader time.",
+    "Residual and preparation costs fixed; routes and chunk size fixed.",
+    "Clock samples include load, warmup and decode; not prefill-only averages.",
+    "No clock changes, GPU reruns, decode extrapolation or new HumanEval qualification."
+  ]
+}

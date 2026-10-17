@@ -62,6 +62,10 @@ holds only while the remote half plus the round trip finishes before the local h
 
 ## Measured (InfiniBand)
 
+2026-10-16: the TR16 HCA moved to a PCIe 3 x8 slot and the link now runs at full QDR (3.26 GB/s through ucomm,
+decode-shaped round trip 15.7 us instead of 20.9). The new table is in [GLM_MULTINODE.md](GLM_MULTINODE.md#the-link-measured-2026-10-16);
+the numbers below are the earlier, PCIe-degraded link.
+
 tr16 ↔ b550 over Mellanox ConnectX-3 (mlx4, one port each, subnet manager on b550; IPoIB addresses <tr16-ib-ip> and
 <b550-ib-ip> for the bootstrap), `UCOMM_BACKEND=ib` (verbs, RC queue pairs), 2026-10-06, while b550 also ran other builds.
 

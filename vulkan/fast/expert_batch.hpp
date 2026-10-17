@@ -1,14 +1,20 @@
 #pragma once
 #include "fast/kernels.hpp"
+#include <map>
 #include <span>
+#include <tuple>
 namespace strata::vulkan::fast {
 
 struct ExpertBatchTrace {
   std::vector<float> qinput, gate_up, hidden, qhidden;
+  std::vector<float> gate_lane_prefix; // FP64 diagnostic: first16 rows of token0, eight K lanes
+  std::vector<float> gate_block_scale; // lane, block, eight scale/FMA operands/results for row0/token0
 };
 struct ExpertBatchStats {
   double pack_ms = 0, upload_ms = 0, queued_work_ms = 0;
+  double record_ms = 0, submit_wait_ms = 0;
   uint64_t input_bytes = 0;
+  uint64_t command_records = 0, command_replays = 0;
 };
 
 // Scratch for one Q2_K gate/up (4096 -> 2048), Q3_K down (2048 -> 4096)
@@ -19,7 +25,8 @@ struct ExpertBatchStats {
 class ExpertBatch {
 public:
   ExpertBatch(Device &, uint32_t capacity, bool portable_rounding = false, bool gpu_pack = false,
-              bool vector_weights = false);
+              bool vector_weights = false, uint32_t tile_columns = 64, bool replay = false, uint32_t tile_rows = 64, bool expanded_weights = false);
+  ~ExpertBatch();
   void run(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
            std::span<const float *const> inputs, std::span<float *const> outputs,
            float swiglu_limit, ExpertBatchTrace *trace = nullptr);
@@ -28,12 +35,23 @@ public:
   void run_quantized(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
                      std::span<const uint8_t *const> inputs, std::span<float *const> outputs,
                      float swiglu_limit, ExpertBatchTrace *trace = nullptr);
+  void run_quantized_panels(const uint8_t *gate, const uint8_t *up, const uint8_t *down,
+                            std::span<const uint8_t *const> inputs, std::span<float *const> outputs,
+                            float swiglu_limit, bool prepared = false);
+  void prepare_weights_async(const uint8_t *gate, const uint8_t *up, const uint8_t *down);
   const ExpertBatchStats &stats() const { return stats_; }
+  uint32_t capacity() const { return capacity_; }
 private:
   Device &device_;
   uint32_t capacity_;
-  bool portable_rounding_, gpu_pack_, vector_weights_;
+  uint32_t tile_columns_, tile_rows_;
+  bool portable_rounding_, gpu_pack_, vector_weights_, replay_, expanded_weights_;
+  std::unique_ptr<Buffer> expanded_gu_, expanded_down_;
+  using CommandKey = std::tuple<uint32_t, uint32_t, bool>;
+  std::map<CommandKey, VkCommandBuffer> commands_;
   ExpertBatchStats stats_;
+  std::unique_ptr<Buffer> gate_lane_prefix_;
+  std::unique_ptr<Buffer> gate_block_scale_;
   size_t quantized_row_bytes_ = 0;
   Layout down_layout_;
   std::vector<uint8_t> packed_;
@@ -41,8 +59,13 @@ private:
   std::unique_ptr<Buffer> input_, qinput_, gu_, hidden_, qhidden_, output_, hits_;
   std::unique_ptr<Buffer> input_meta_, hidden_meta_, partial_;
   std::unique_ptr<Buffer> raw_gu_, raw_down_;
+  std::unique_ptr<Buffer> upload_staging_;
+  VkCommandBuffer upload_command_ = VK_NULL_HANDLE;
+  VkSemaphore upload_ready_ = VK_NULL_HANDLE;
+  uint64_t upload_value_ = 0;
+  void finish_upload();
   void run_impl(const uint8_t *, const uint8_t *, const uint8_t *,
                 std::span<const float *const>, std::span<const uint8_t *const>,
-                std::span<float *const>, float, ExpertBatchTrace *);
+                std::span<float *const>, float, ExpertBatchTrace *, bool upload_weights = true, uint32_t completed_limit_ms = 0);
 };
 } // namespace strata::vulkan::fast

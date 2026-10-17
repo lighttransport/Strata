@@ -22,6 +22,21 @@ static int accepted_retained_type(int type) {
            type == STRATA_EP_TYPE_Q4_K || type == STRATA_EP_TYPE_Q5_K || type == STRATA_EP_TYPE_Q6_K;
 }
 
+uint32_t strata_ep_fp8_block_bytes(int type) {
+    switch (type) {
+    case STRATA_EP_TYPE_Q2_K: return 84;
+    case STRATA_EP_TYPE_Q3_K: return 110;
+    case STRATA_EP_TYPE_Q4_K: return 144;
+    case STRATA_EP_TYPE_IQ2_XXS: return 66;
+    case STRATA_EP_TYPE_IQ2_XS: return 74;
+    case STRATA_EP_TYPE_IQ3_XXS: return 98;
+    case STRATA_EP_TYPE_IQ3_S: return 110;
+    case STRATA_EP_TYPE_IQ2_S: return 82;
+    case STRATA_EP_TYPE_IQ4_XS: return 136;
+    default: return 0;
+    }
+}
+
 int strata_ep_scan(void *context, strata_ep_lookup lookup, strata_ep_projection *out, size_t cap, size_t *count,
                    char *err, size_t err_cap) {
     size_t at = 0;
@@ -32,7 +47,7 @@ int strata_ep_scan(void *context, strata_ep_lookup lookup, strata_ep_projection 
     for (layer = STRATA_EP_FIRST_LAYER; layer <= STRATA_EP_LAST_LAYER; ++layer) {
         for (part_index = 0; part_index < STRATA_EP_PART_COUNT; ++part_index) {
             char suffix[STRATA_NAME_MAX];
-            strata_ep_projection entry;
+            strata_ep_projection entry = {0};
             int written;
             if (at >= cap) {
                 status = fail(err, err_cap, STRATA_EP_ERR_ARGS, "too many routed projections");
@@ -73,11 +88,11 @@ int strata_ep_count_retained(const strata_ep_projection *projections, size_t cou
         const strata_ep_projection *p = &projections[layer];
         if (p->name[0] == '\0') return fail(err, err_cap, STRATA_EP_ERR_ARGS, "unnamed routed projection");
         if (p->hashed) {
-            /* A checksum only certifies a payload the overlay wrote itself: Q2_K, or Q3_K on the down
-               projections that are allowed it.  Anything else after a checksum is a pack that recorded a
-               number for bytes it did not convert. */
+            /* Legacy overlays wrote Q2_K, or Q3_K down. FP8-derived overlays may write any supported
+               native expert target; the assembler and the loader must accept the same set. */
             if (p->hash_type != STRATA_EP_META_U64 ||
-                (p->type != STRATA_EP_TYPE_Q2_K && !(p->part == STRATA_EP_PART_DOWN && p->type == STRATA_EP_TYPE_Q3_K)))
+                (!(p->from_fp8 && strata_ep_fp8_block_bytes(p->type)) &&
+                 p->type != STRATA_EP_TYPE_Q2_K && !(p->part == STRATA_EP_PART_DOWN && p->type == STRATA_EP_TYPE_Q3_K)))
                 return fail(err, err_cap, STRATA_EP_ERR_INCOMPLETE, "incomplete assembled Q23 experts");
             continue;
         }

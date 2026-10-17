@@ -1,0 +1,12 @@
+#version 450
+// Gather once. The value GEMM reads this buffer as transposed weights.
+layout(local_size_x = 256) in;
+layout(binding = 0, std430) readonly buffer Cache {float cache[];};
+layout(binding = 1, std430) readonly buffer Ids {int ids[];};
+layout(binding = 2, std430) writeonly buffer Keys {float keys[];};
+layout(push_constant) uniform P {uint width, istride, queries;} p;
+void main() {
+  uint k = gl_GlobalInvocationID.x, row = gl_WorkGroupID.y, q = gl_WorkGroupID.z;
+  uint count = uint(ids[q * p.istride]);
+  keys[(q*p.width+row)*512u+k] = row < count ? cache[uint(ids[q*p.istride+1u+row])*512u+k] : 0;
+}

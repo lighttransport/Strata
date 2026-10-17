@@ -408,8 +408,14 @@ DevAct prep_act(ActKind kind, const std::vector<float>& X, int ntok, int K, std:
 
 struct GemmKind { const char* name; int kind; ActKind act; int shift; };
 std::vector<GemmKind> g_kinds = {
-    {"k0_i8_mma", 0, A_Q8, 0},       {"k1_f8fold_mma", 1, A_F8TOK, 0}, {"k2_f16fold_mma", 2, A_F16LOG, 0},
+    {"k0_i8_mma", 0, A_Q8, 0},
+#ifndef FP4_AMPERE
+    {"k1_f8fold_mma", 1, A_F8TOK, 0},
+#endif
+    {"k2_f16fold_mma", 2, A_F16LOG, 0},
+#ifndef FP4_AMPERE
     {"k3_mxf8f6f4", 3, A_MXF8, 2},   {"k4_mxf4", 4, A_MXF4, 0},        {"k5_msd_mxf4x2", 5, A_MSD, 0},
+#endif
 };
 
 void build_f8_tables() {
@@ -424,7 +430,7 @@ void build_f8_tables() {
 
 // ---- options ----
 struct Opts {
-    std::string weights = "dummy", model = "/mnt/nvme01/models/m26f", csv, mode = "all";
+    std::string weights = "dummy", model = "models/m26f", csv, mode = "all";
     int layer = 1, experts = 256, reps = 20, trials = 9;
     std::vector<int> tokens = {512, 2048, 8192};
     std::vector<int> ncols = {1, 2, 4, 8, 16};
@@ -896,6 +902,15 @@ int main(int argc, char** argv) {
             return a == "--help" ? 0 : 2;
         }
     }
+    if (o.experts < TOPK || o.experts % TOPK || o.reps < 1 || o.trials < 1) {
+        fprintf(stderr, "experts must be a positive multiple of 8; reps/trials must be positive\n");
+        return 2;
+    }
+#ifdef FP4_AMPERE
+    for (int kind : o.only_kinds) if (kind != 0 && kind != 2) {
+        fprintf(stderr, "Ampere supports GEMM kinds 0 and 2 only\n"); return 2;
+    }
+#endif
     const bool selftest = o.mode == "selftest";
     if (selftest) { o.experts = std::min(o.experts, 16); o.ncols = {1, 2}; }
 

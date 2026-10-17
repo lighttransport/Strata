@@ -15,8 +15,6 @@ Tracked in [lighttransport/Strata#1](https://github.com/lighttransport/Strata/is
   (~10 min) and a full HumanEval (~2 h). Record the speed cost.
 - **Requalify the single-GPU REAP-224 profile on the current binaries.** It scored 152/164 once and 150/164 on a
   rerun; with the score at the floor, run it twice more to know its variance before calling it qualified.
-- **Two-GPU prefill configuration (870 tok/s)**: uses lossy F16 attention and the F16 worker partial; it has no gate
-  run of its own. Run the corpus gate with `--eval-prefill` on it.
 - **Code-generation spot checks for every demo and profile.** The RX 9070 XT demo answer failed the C++ oracle
   (rejects inputs longer than 20 characters despite "leading zeroes are allowed"); the two-GPU answer passed all
   400,532 cases. Make the oracle run part of recording (`docs/fixtures/glm53_cpp_quality/test_generated.cpp`).

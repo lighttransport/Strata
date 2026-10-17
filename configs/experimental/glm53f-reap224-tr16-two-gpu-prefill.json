@@ -125,7 +125,7 @@
  },
  "prefill_experts": "f16-batched",
  "model_name": "glm53f-reap224-tr16-two-gpu-prefill",
- "experimental_role": "Two-GPU prefill configuration (HIP primary + CUDA expert worker, case hip-cuda, STRATA_GLM_MIXED_PRIMARY_FRACTION=0.79); 870 tok/s at 8K, quality not gated separately.",
+ "experimental_role": "Two-GPU prefill configuration (HIP primary + CUDA expert worker, case hip-cuda, STRATA_GLM_MIXED_PRIMARY_FRACTION=0.79); 870 tok/s at 8K; the prefill path passes the tr16-35 corpus gate with --eval-prefill at routing affinity 0.14 (KL 0.1705 vs 0.1711 strict, docs/GLM53F_RELEASE.md).",
  "backend": "hip",
  "cuda_prefetch_groups": 4,
  "worker_cache_mib": 14336,

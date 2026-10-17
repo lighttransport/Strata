@@ -4,7 +4,7 @@ A standalone benchmark and profiler (not part of the Strata build) that answers 
 work starts: what is the fastest correct way to multiply MiMo-V2.6-Flash's native MXFP4 expert weights on this
 machine's GPU and CPU, for decode (1 token), MTP/batch verify (2-16 tokens) and prefill (512-8192 tokens)?
 Every kernel runs on MiMo-V2.6-Flash expert shapes, with seeded dummy weights or the real checkpoint
-(`/mnt/nvme01/models/m26f`), and is checked against an fp64 reference.
+(`models/m26f`), and is checked against an fp64 reference.
 
 Measured on 2026-10-11: RTX 5060 Ti 16 GB (GB206, sm_120, 36 SMs, 128-bit GDDR7, driver/CUDA 13.2), AMD
 Threadripper 1950X (16 cores, Zen 1, AVX2 without VNNI, 2 NUMA nodes), Linux 6.8. Raw numbers are in
@@ -230,6 +230,63 @@ The tensor-core kernels share one grouped-GEMM main loop (`gpu/mma_native.cu`):
   the GEMM was 1.5-2x slower.
 
 ## Running
+
+### RTX 3070 (sm_86) and Zen 2
+
+The runner also includes independently encoded MCG/mul1, XOR-Trellis packed GEMV,
+scalar HIGGS-style/Qift baselines and a GyRot-inspired grouping/rotation study.
+See [research probe scope and commands](research/README.md) for the experimental
+encoders, metadata accounting, diagnostics and limits of these comparisons.
+
+The opt-in `FP4_AMPERE` build compares the same MXFP4, Q2_K gate/up and Q3_K down
+expert shapes on Ampere and AVX2 CPUs. It includes dp4a and half2 GEMV, fused MoE,
+and int8/fp16 tensor-core grouped GEMM. FP8 and native Blackwell FP4 instructions
+are excluded; explicitly requesting those GEMM kinds returns an error.
+The CPU uses AVX2/FMA/F16C, which the Ryzen 9 3950X supports.
+
+```sh
+cmake -S experiment/fp4 -B /tmp/strata-fp4-sm86 -G Ninja \
+  -DFP4_AMPERE=ON -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+cmake --build /tmp/strata-fp4-sm86 -j 2
+python3 experiment/fp4/scripts/bench_sm86_zen2.py \
+  --build /tmp/strata-fp4-sm86 --output /tmp/strata-fp4-sm86-smoke
+```
+
+The runner defaults to an execution smoke check: seeded dummy weights, one CPU
+expert set at two threads, eight GPU experts, one timing repetition, and small
+token counts. It exercises CPU MXFP4/K-quants and GPU decode, K-quants, fused MoE
+and prefill. Logs retain diagnostics; a failed process stops the runner.
+It emits no timing CSV and marks the output as unsuitable for performance claims.
+The underlying programs still print timings and reference errors; the runner
+checks process exit status, not numerical tolerances. Bandwidth calibration and
+kernel warmups still run, so this is a brief workload rather than a zero-load check.
+
+The runner also checks `bench_exl3_cpu` and `bench_exl3_gpu`. These use Strata's
+production EXL3 K2/MCG packed FP32-activation kernels, including input/output
+Hadamard transforms, with seeded synthetic packed states and unit FP16 scales.
+Smoke mode uses 128x128 projections. Benchmark mode uses separate 2048x4096
+gate/up and 4096x2048 down projections, 64 rotating matrices (128 MiB of packed
+weights per projection), 20 passes and one warmup call. CPU threads follow the
+same sweep as above. GPU timing includes launches and synchronization per
+projection, with no weight upload in the timed region. CSV error columns are NaN
+because this probe checks execution and finite outputs, not reference parity.
+It covers this K2/MCG implementation, not every EXL3 bit rate or codebook.
+Synthetic EXL3 and requantized MXFP4 weights do not establish equal model quality.
+
+After stopping competing workloads, add `--benchmark` with a fresh output directory
+to collect repeated CSV measurements: CPU 1/2/4/8/16/32 threads, four rotating
+expert sets, GPU 64 experts, decode batches 1/2/4/8/16, and prefill 512/2048/8192.
+GPU GEMV uses MXFP4 q8 per 32 and K-quant q8 per 32; CPU K-quants use q8_K per 256.
+Compare timing together with reference error and bytes, because activation formats
+and quantization errors differ. These are expert-kernel measurements, not full-model
+throughput or quality measurements. No model download is required.
+
+Execution check on 2026-10-12: Ryzen 9 3950X (Zen 2), RTX 3070 8 GB (sm_86),
+GCC 15.2 and CUDA 13.4. The Ampere and default Blackwell builds compiled, and all
+seven smoke processes, including EXL3 CPU and CUDA, exited successfully with
+synthetic weights while a miner was running. Timings from
+this check are not qualified measurements; numerical correctness, real weights
+and full benchmark mode were not validated in this check.
 
 ```
 cmake -S experiment/fp4 -B experiment/fp4/build -G Ninja -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc

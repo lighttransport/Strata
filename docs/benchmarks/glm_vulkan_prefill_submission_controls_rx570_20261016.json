@@ -1,0 +1,149 @@
+{
+  "rows": [
+    {
+      "run": "cpu32-split-run",
+      "executable_sha256": "899687f8af78c60a8831323287d61dd8b0cb582bd24561202b4818b3d1439479",
+      "prompt_sha256": "a13fa3aa2cc3048fb834e4b61222b1b1269ed61d16711b1d945cdfc03dfec615",
+      "config_sha256": "70cf74bf7e7afd01ae666d7593c2838ec1ba852ee9610d2a21be42b8c9a7565c",
+      "passed": true,
+      "faults": [],
+      "completed_prefix_submissions": 6,
+      "max_prefix_host_wall_ms": 7.95291,
+      "max_gpu_segment": {
+        "name": "head",
+        "gpu_ms": 12.8014
+      },
+      "final_vocab_logits_sha256": "43895f3132fda101486981ae48e93228c27119473d5890f294b8d2cefaf2ba7f",
+      "guard_sha256": "18a4ea4f6563c999d93c78bbba2e9a1bf00c5369e72aced5863a071dd09eb1c8",
+      "log_sha256": "1c173c2db3bdbbe88079f61bcba4b15c96fb54e63c4c67c88925cf69bb8a2060",
+      "reference": {
+        "run": "build-vulkan-rx570-native/prefix-split-20261016/model-controls/cpu32-frozen-run",
+        "executable_sha256": "3027585b5ada1e82fbdba4d17f59e4bd76afce6cc46c0892128d9c6b5dcf84d2",
+        "logits_sha256": "43895f3132fda101486981ae48e93228c27119473d5890f294b8d2cefaf2ba7f"
+      },
+      "final_vocab_logits_byte_identical": true
+    },
+    {
+      "run": "gpu128-split-run",
+      "executable_sha256": "899687f8af78c60a8831323287d61dd8b0cb582bd24561202b4818b3d1439479",
+      "prompt_sha256": "db4202fe6f2d3422d02fbd42b053bf746e87f9dcc594de37033dc12d3e35a85a",
+      "config_sha256": "6fa7d111eb471f1fa148c367b0806f453a54f3ef3c62f32de676adab6559f075",
+      "passed": true,
+      "faults": [],
+      "completed_prefix_submissions": 6,
+      "max_prefix_host_wall_ms": 16.3235,
+      "max_gpu_segment": {
+        "name": "attn35",
+        "gpu_ms": 27.0222
+      },
+      "final_vocab_logits_sha256": "45addfcb69ab71f1964a2d2a2aaa1f38d9e6b7f48c544f0c31c9cb5cf99baeeb",
+      "guard_sha256": "e1d6f8d2521733d040c5024c753e95a2231dee9534f414904223c11a6c47ae6d",
+      "log_sha256": "c339b4bdce2e3666095145607d6ec915e3ee6072c7a00be3917ed963e2a59ef3",
+      "reference": {
+        "run": "build-vulkan-rx570-native/prefix-split-20261016/model-controls/gpu128-frozen-run",
+        "executable_sha256": "3027585b5ada1e82fbdba4d17f59e4bd76afce6cc46c0892128d9c6b5dcf84d2",
+        "logits_sha256": "45addfcb69ab71f1964a2d2a2aaa1f38d9e6b7f48c544f0c31c9cb5cf99baeeb"
+      },
+      "final_vocab_logits_byte_identical": true
+    },
+    {
+      "run": "gpu256-host-v5-run",
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "prompt_sha256": "4f468eeb04aab0b33bc68ac7b0e65dad056d188e6b9dfb9d3c2f3ce2e7ceb68d",
+      "config_sha256": "7355fe355082a17c49bd9c7e6cc5b343008d8b7fe14888e4060e7d3117367677",
+      "passed": true,
+      "faults": [],
+      "completed_prefix_submissions": 24,
+      "max_prefix_host_wall_ms": 36.2173,
+      "max_gpu_segment": {
+        "name": "attn39",
+        "gpu_ms": 56.7728
+      },
+      "final_vocab_logits_sha256": "027e185409c9b53e8202068c42cc168253c540c16a8a67cf04b3042f9d87215d",
+      "guard_sha256": "c2ead64a12ad7b73ff8f0ed026b6f5ae53daaf02f574472b6d540f238f900ba2",
+      "log_sha256": "a442110142e8260c9c0efca887501d21ddfb0fa311ed2f21bd76c3ed41ee79d8",
+      "reference": {
+        "run": "build-vulkan-rx570-native/prefix-split-20261016/model-controls/gpu256-frozen-run",
+        "executable_sha256": "3027585b5ada1e82fbdba4d17f59e4bd76afce6cc46c0892128d9c6b5dcf84d2",
+        "logits_sha256": "027e185409c9b53e8202068c42cc168253c540c16a8a67cf04b3042f9d87215d"
+      },
+      "final_vocab_logits_byte_identical": true
+    },
+    {
+      "run": "gpu512-host-v5-run",
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "config_sha256": "ad520e14568e9c46851fa9f76c3f7edd2bd226e95b0922c2eecd790d93f7f70c",
+      "passed": true,
+      "faults": [],
+      "completed_prefix_submissions": 24,
+      "max_prefix_host_wall_ms": 68.3593,
+      "max_gpu_segment": {
+        "name": "attn43",
+        "gpu_ms": 153.521
+      },
+      "final_vocab_logits_sha256": "9982a930e0db5e03be1731294cd36b9c90e6c702852adc81116100d27d1f032a",
+      "guard_sha256": "aa7b0958195127009e30ec8cc4dc54baad2584afc9ded3794e28e8d0f15cfac4",
+      "log_sha256": "024d80aa48be2678133de7bdfa0bb2117593109282f6c51439a1f45a96ee5f1a",
+      "reference": {
+        "run": "build-vulkan-rx570-native/post-reboot-20261015/vector512-repeat",
+        "executable_sha256": "908760eab6cc90f01edfaf06631182ed265f970a20b505f102acd21c5f36ff59",
+        "logits_sha256": "9982a930e0db5e03be1731294cd36b9c90e6c702852adc81116100d27d1f032a"
+      },
+      "final_vocab_logits_byte_identical": true
+    },
+    {
+      "run": "gpu1024-host-v5-detail-run",
+      "executable_sha256": "82bd13ebdd9552da2d627a7ab22ba2a3217fdb186be186aac3986ebb186bad78",
+      "prompt_sha256": "a821069bb1b0d5c6420b2620e158867702551381d5dbf61c06448349be5fbcf2",
+      "config_sha256": "bc32325e51cb3616bdf81f486a6f303205d5ae0ec9d8f0521312e77902c1d8f7",
+      "passed": true,
+      "faults": [],
+      "completed_prefix_submissions": 6,
+      "max_prefix_host_wall_ms": 132.643,
+      "max_gpu_segment": {
+        "name": "attn11",
+        "gpu_ms": 458.216
+      },
+      "final_vocab_logits_sha256": "4d2c819b897b9d3b7bf2f6d4e6ddd1cd9a5c63947694e169a42ee5c533eb26a4",
+      "guard_sha256": "5e964e350605c8ea4787249ac54ffbf9e2af4cdfbe668eb1843d94ffac2796a4",
+      "log_sha256": "ac9640ae5a8e8c805b1fdf2f80f50cb4c696b7cb154cb40513fe8d408aab20ed",
+      "reference": {
+        "run": "build-vulkan-rx570-native/post-reboot-20261015/vector1024-detail",
+        "executable_sha256": "908760eab6cc90f01edfaf06631182ed265f970a20b505f102acd21c5f36ff59",
+        "logits_sha256": "4d2c819b897b9d3b7bf2f6d4e6ddd1cd9a5c63947694e169a42ee5c533eb26a4"
+      },
+      "final_vocab_logits_byte_identical": true
+    }
+  ],
+  "driver_watchdog_changed": false,
+  "gpu_2048_tested": false,
+  "limitations": [
+    "Final-vocabulary logits match the appropriate frozen controls at32/128/256/512/1024; this is not full intermediate-state or functional quality qualification.",
+    "Longest measured 1024-token command is458.216ms; wider commands require separate bounds/control validation.",
+    "The original failed2048 executable was not retried.",
+    "Byte comparisons use the first measured trial final-vocabulary dump from each run."
+  ],
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "driver": "Mesa 26.0.8-1ubuntu0.3",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB; DDR4-2666 from prior qualification"
+  },
+  "compiled_host_v5_source_sha256": {
+    "vulkan/fast/engine.cpp": "c0ed833fe006a13bdd65fe160ee9c69d0aff360b19a485d941df50e80b9610f9",
+    "vulkan/fast/engine.hpp": "65dbca87bff323388d9540f144b7036998b38c76ced34040effdc6f68b829b85",
+    "vulkan/fast/expert_batch.cpp": "79039a05e761fbafd99fab7ae7170c7988d42127d2b3513f6cd43bed25bf25fd",
+    "vulkan/fast/expert_batch.hpp": "87dc326a46a792f1d2e9c86494b93bf3a776bc7865a64554b7ebe4067b9b4fcb",
+    "vulkan/fast/expert_batch_check.cpp": "4dae2daf618c5de07b446c69816b1e855d5a65705ee08da5831ac4f57c5e97bd",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "cac8ea2eb406509e01c4501dbe1353a2090ded2fda1027aa44f231675193b8cc",
+    "vulkan/CMakeLists.txt": "8cc5779ba3815982e07af5b255896bd057391ab675808e7b87b513b268244c03",
+    "vulkan/fast/device.cpp": "dea6b1dc648cdcf5b3d5498e528c3953b6982becf3aaa7c453887ba9da713a41",
+    "vulkan/fast/device.hpp": "873f2ec3f7c46525a3d80fb6399ff76c39ed20c5deab23e725499df50862fef1",
+    "vulkan/fast/kernels.cpp": "f974db507479f804cea6992dd34b4dd1e223791cf2e5f003c5e2f7bd9d4db103",
+    "vulkan/fast/kernels.hpp": "41febcc2b7d700bf96573a2dc86df403d4dd20153060e865cc909db0fe8c43c0"
+  },
+  "raw_evidence": "build-vulkan-rx570-native/prefix-split-20261016",
+  "new_candidate_functional_quality_qualified": false
+}

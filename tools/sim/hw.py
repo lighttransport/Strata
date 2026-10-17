@@ -110,7 +110,12 @@ class WorkerNode:
 
 LINKS = {
     "ib": lambda: Link(name="ib-connectx3-degraded", rtt_us=20.9, gbps=1.65, exposed_us=25.0),   # measured, PCIe-lane-degraded
-    "ib-qdr": lambda: Link(name="ib-qdr", rtt_us=15.0, gbps=3.2, exposed_us=20.0),                 # healthy ConnectX-3 estimate
+    # InfiniBand 4x QDR, measured 2026-10-16 between TR16 (ConnectX-3, PCIe 3 x8) and the B550 (ConnectX-3, PCIe 3 x4).
+    # ucomm_bench -b ib (verbs, RC): round trip 4800 B -> 8192 B mean 15.7 us (p50 15.2, p99 20.5), 36864 -> 49152 B
+    # 42.3 us, 64 -> 64 B 6.7 us; bandwidth 3.26 GB/s from 64 KiB messages. perftest: 3.30 GB/s one way, ~2.7 GB/s each
+    # way bidirectional, 1.3 us one-way small messages. exposed_us is the older decode.py model's per-layer exposed
+    # wait (estimate); the runner model (glm_runner.two_node_hardware) charges rtt/2 per message plus bytes/gbps.
+    "ib-qdr": lambda: Link(name="ib-qdr", rtt_us=15.7, gbps=3.26, exposed_us=20.0),
     "gbe": lambda: Link(name="1gbe", rtt_us=401.0, gbps=0.117, exposed_us=80.0),                   # measured (UDP backend)
     "10gbe": lambda: Link(name="10gbe", rtt_us=90.0, gbps=1.1, exposed_us=50.0),                   # estimate, not measured
 }
@@ -218,7 +223,7 @@ def tr16():
         runtime_vram={pack: dict(staging=0, prefetch=0, prefill_scratch=32, misc=228, tier_fill_reserve=1280, runtime_headroom=1024,
                                  mtp_dense_mib=156.84, verify_history_by_depth={"1": 145.6, "2": 291.2, "3": 436.8})
                       for pack in ("q23", "q22")},
-        notes="calibration machine; model mount /mnt/nvme01 is x1 (~1 GB/s), work mount /mnt/nvme02 is x4; device numbers are not stable",
+        notes="calibration machine; model drive is x1 (~1 GB/s), work drive is x4; device numbers are not stable",
     )
 
 
@@ -257,6 +262,20 @@ def xeon_v100():
         pcie=Pcie(gen=3, lanes=16, h2d_gbps=12.0, latency_us=20.0),
         disk=Disk(read_gbps=2.0, fetch_gbps=2.0),
     )
+
+
+def b550_5060ti():
+    """The B550 node with the RTX 5060 Ti 16 GB instead of the RX 9070 XT (docs/GLM_MULTINODE.md). CPU and RAM as
+    measured on the B550 (DDR4-2133); the card is PCIe 5.0 x8, so in the board's PCIe 4 slot it gets ~13 GB/s
+    (estimate). Headless: no desktop VRAM."""
+    hw = b550()
+    hw.name = "b550_5060ti"
+    hw.gpu = Gpu(name="NVIDIA GeForce RTX 5060 Ti 16 GB", vram_mib=15907, bandwidth_gbps=448.0, tflops=47.0,
+                 gemv_efficiency=0.85, tier_gbps=235.0, launch_us=3.0, desktop_mib=0)
+    hw.pcie = Pcie(gen=4, lanes=8, h2d_gbps=13.0, latency_us=16.0)
+    hw.runtime_vram = {}
+    hw.notes = "unmeasured preset: B550 CPU/RAM measured, RTX 5060 Ti numbers from TR16, PCIe 4 x8 estimated"
+    return hw
 
 
 def b550_32g_3070():
@@ -317,6 +336,7 @@ PRESETS = {
     "b550": b550,
     "xeon_v100": xeon_v100,
     "b550_32g_3070": b550_32g_3070,
+    "b550_5060ti": b550_5060ti,
     "tr16+b550-ib": tr16_plus_b550_ib,
     "tr16+b550-1gbe": tr16_plus_b550_gbe,
 }

@@ -139,6 +139,28 @@ int main(void) {
           STRATA_EP_OK);
     CHECK(strata_ep_count_retained(list, count, &retained, message, sizeof message) == STRATA_EP_ERR_INCOMPLETE);
 
+    /* FP8-derived packs use the same native targets in the writer and the reader. Without the marker,
+       the legacy rejection above remains in force; an unknown type or a wrongly typed hash is refused. */
+    fill(&a, 1, STRATA_EP_TYPE_Q3_K, STRATA_EP_TYPE_IQ2_XS);
+    CHECK(strata_ep_scan(&a, lookup, list, STRATA_EP_PROJECTIONS, &count, message, sizeof message) == STRATA_EP_OK);
+    {
+        const int types[] = {10, 11, 12, 16, 17, 18, 21, 22, 23};
+        const uint32_t sizes[] = {84, 110, 144, 66, 74, 98, 110, 82, 136};
+        size_t i, j;
+        for (i = 0; i < sizeof types / sizeof types[0]; ++i) {
+            CHECK(strata_ep_fp8_block_bytes(types[i]) == sizes[i]);
+            for (j = 0; j < count; ++j) { list[j].type = types[i]; list[j].from_fp8 = 1; }
+            CHECK(strata_ep_check_projections(list, count, 0, &retained, message, sizeof message) == STRATA_EP_OK);
+            CHECK(retained == 0);
+        }
+        CHECK(strata_ep_fp8_block_bytes(0) == 0);
+        list[0].type = 0;
+        CHECK(strata_ep_count_retained(list, count, &retained, message, sizeof message) == STRATA_EP_ERR_INCOMPLETE);
+        list[0].type = STRATA_EP_TYPE_IQ2_S;
+        list[0].hash_type = STRATA_EP_META_U32;
+        CHECK(strata_ep_count_retained(list, count, &retained, message, sizeof message) == STRATA_EP_ERR_INCOMPLETE);
+    }
+
     /* A recorded count that the file does not support, and the key that is not a U32. */
     fill(&a, 1, STRATA_EP_TYPE_Q3_K, STRATA_EP_TYPE_IQ2_XS);
     CHECK(strata_ep_scan(&a, lookup, list, STRATA_EP_PROJECTIONS, &count, message, sizeof message) ==

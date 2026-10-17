@@ -1,0 +1,307 @@
+{
+  "date": "2026-10-16",
+  "hardware": {
+    "gpu": "RX570 16 GiB / RADV POLARIS10",
+    "cpu": "Ryzen 9 3950X",
+    "ram": "64 GiB DDR4-2666",
+    "driver": "Isolated Mesa 26.2.0 RADV; system driver unchanged",
+    "shaderFloat16": false,
+    "accelerated_integer_dot_products": false
+  },
+  "protocol": "512 repetitive input tokens, 2 outputs, one untimed prefill warmup and 3 measured trials per process, 12 host threads, 16 GPU experts per layer, fixed model/prompt. Separate runs, not randomized paired cohorts. Training timings unqualified.",
+  "runs": [
+    {
+      "variant": "fp32_expert_math",
+      "description": "FP32 expert division; F32 main projections retain matching panels",
+      "run": "gpu512-fp32-v23-max16-run",
+      "prefill_tok_s": [
+        41.5482,
+        41.2626,
+        41.0323
+      ],
+      "median_prefill_tok_s": 41.2626,
+      "guard_passed": true,
+      "performance_qualified": true,
+      "faults": [],
+      "executable_sha256": "cb5e946e05572d465cdea6734d5c9af6439b8d7fa0b53fc1bac2e180d84a637b",
+      "config_sha256": "981f1af8d888e4c1a973000e875b8faf2773faa993bfa5388a8a83f5072f0662",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "b980dcaecb8c6c70d0ea730157ce58dda926777fb738d409acd7002c9bd68d67",
+      "log_sha256": "347a6218f31921247ba659059679d7628ec431f83e20f9f6cd4a9f7ab5ace60d"
+    },
+    {
+      "variant": "int32_expert_dot",
+      "description": "INT8/INT16 shared storage, INT32 dot accumulation",
+      "run": "gpu512-int-v24-max16-run",
+      "prefill_tok_s": [
+        31.2992,
+        31.2642,
+        31.2373
+      ],
+      "median_prefill_tok_s": 31.2642,
+      "guard_passed": true,
+      "performance_qualified": true,
+      "faults": [],
+      "executable_sha256": "8fe9bcdfd98ce854fb41bb715d2121b5bd5f9a80a32509d54924d5b1563e026f",
+      "config_sha256": "445e3879643d86f789211237cb20fa2ac17ff4927b8616379e9459ae3e40fedb",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "a5f8a878fe110b34f43c5c3299335c3719864f0d5093d3ff9c7b0c0b851f3a21",
+      "log_sha256": "c777c85b8a1b58de3daf1a2c7db62c81a22d6552cc90f65f1818a8303b409e40"
+    },
+    {
+      "variant": "fp32_main_gemm",
+      "description": "FP32 expert division and 64-column main GEMM",
+      "run": "gpu512-fp32-v24-main-gemm-run",
+      "prefill_tok_s": [
+        43.7836,
+        43.4066,
+        43.037
+      ],
+      "median_prefill_tok_s": 43.4066,
+      "guard_passed": true,
+      "performance_qualified": true,
+      "faults": [],
+      "executable_sha256": "8fe9bcdfd98ce854fb41bb715d2121b5bd5f9a80a32509d54924d5b1563e026f",
+      "config_sha256": "a154a6eacd4456799d618781e141696ac925e79743f68b8a7634eee5d2ec3cd2",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "2d7f56ebf62fa2aa79d92a2032297fb58c6369c5c5b76c5c42a5ce786364c088",
+      "log_sha256": "d155b046632e839c4fd568216937b3335bae18a779dbe62934daf96ac5a841c9"
+    },
+    {
+      "variant": "fp32_expert_gemm",
+      "description": "Approximate tiled FP32 expert GEMM",
+      "run": "gpu512-gemm-v25-max16-run",
+      "prefill_tok_s": [
+        40.5426,
+        40.4587,
+        40.4067
+      ],
+      "median_prefill_tok_s": 40.4587,
+      "guard_passed": true,
+      "performance_qualified": true,
+      "faults": [],
+      "executable_sha256": "4f3248c712f80e840c5bf216775096fce290c0a31881ba836850f178bdbea84a",
+      "config_sha256": "cd0bdbce509990f883a3b8af59f9e1b8967cad0e48b49fa8cf4e9f708c31f035",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "13cf28e6a022ac3c837411ddf5bdddff07f9c77a610c574cdb832fa7b4c875fb",
+      "log_sha256": "c99b0f5d25aedc6afb53ff4ddf57b7ee3a3cde071fdc3276bcd4c5698afd26ac"
+    },
+    {
+      "variant": "packed_q4_int8",
+      "description": "Q4 weights and INT8 activation grid; two products per UINT32 multiply",
+      "run": "gpu512-q4i8-v26-max16-run",
+      "prefill_tok_s": [
+        37.2999,
+        37.6507,
+        37.4014
+      ],
+      "median_prefill_tok_s": 37.4014,
+      "guard_passed": true,
+      "performance_qualified": true,
+      "faults": [],
+      "executable_sha256": "110c88871f3df5d8196059b83106ac0471c5ef9fbfc63e65e2165c9168f71c5f",
+      "config_sha256": "4fd00b09a5941ef41225ba6deed3c34aae797ff89a9b245c5af652f86b175dd8",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "1df81ff096055b11ab6b0b442a53b1274065995be37147ed418850b9ae540391",
+      "log_sha256": "4265b4733c0d41395c003c85efe3c2f2720bf9d64256f7933eee6be58cfa512d"
+    },
+    {
+      "variant": "fp32_tile128",
+      "description": "FP32 main GEMM with 128-column tiles",
+      "run": "gpu512-fp32-v26-tile128-run",
+      "prefill_tok_s": [
+        40.1151,
+        39.8577,
+        39.5676
+      ],
+      "median_prefill_tok_s": 39.8577,
+      "guard_passed": true,
+      "performance_qualified": true,
+      "faults": [],
+      "executable_sha256": "110c88871f3df5d8196059b83106ac0471c5ef9fbfc63e65e2165c9168f71c5f",
+      "config_sha256": "5413ab2c53d5218bc2273eb17e40c7bcada8f317535043eccd00f8118f9556cf",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "1f676fafbd9d5257171255f4c8df027b384e370990581a57bd23ba18bbf55138",
+      "log_sha256": "599976bd6dc95110fd7d23e3a35dd9cb648fd26d9229e4694fccdfe2320c1496"
+    },
+    {
+      "variant": "retained_fp32_repeat",
+      "description": "Retained FP32-only source/executable, 64-column main GEMM; no FP64 expert modes",
+      "run": "gpu512-fp32-v23-selected-run",
+      "prefill_tok_s": [
+        43.6616,
+        43.4264,
+        43.6587
+      ],
+      "median_prefill_tok_s": 43.6587,
+      "guard_passed": true,
+      "performance_qualified": true,
+      "faults": [],
+      "executable_sha256": "cb5e946e05572d465cdea6734d5c9af6439b8d7fa0b53fc1bac2e180d84a637b",
+      "config_sha256": "56cd35cf6f63eeb62b80813aacb840988521fa6b40053ee8ddffb2ce5efe3774",
+      "prompt_sha256": "eb44877ccd6f9471dbbdcf92432b4850ce580c55b2cc6e4a45de96b389454902",
+      "guard_sha256": "2934124aff63a1bed93c8580a651c9ffa79b5e50ead981a4ac15d0e2a1d3eee0",
+      "log_sha256": "b3499f26431d39b97f2f2f1d05e9f0c7abf9849a77d479beabc0469b1d40d21e"
+    }
+  ],
+  "reference": {
+    "record": "glm_vulkan_native_fma_rx570_20261016.json",
+    "variant": "native FMA with FP64 divisions, 16 GPU experts",
+    "median_prefill_tok_s": 41.3824
+  },
+  "integer_findings": {
+    "int32_dot_cpu_byte_identical_cases": 12,
+    "int32_vs_fp32_first_final_vocab_bytes_identical": true,
+    "packed_q4_oracle_cases": 12,
+    "packed_q4_max_relative_l2_quantized_cpu": 1.87749e-07,
+    "packed_q4_max_relative_l2_unquantized": 0.00563135,
+    "expert_gemm_strict_parity_passed": false,
+    "expert_gemm_failed_relative_l2": 0.000386351,
+    "expert_gemm_strict_bound": 0.0002
+  },
+  "selection": "Retain only the opt-in FP32 expert math experiment: 43.6587 tok/s on the exact retained binary and 3/3 fixed training passes. Integer, packed Q4, approximate expert GEMM and wider-tile prototypes were slower and removed from production source; frozen source/binaries and raw evidence remain local. Full HumanEval, 100+ prefill and combined decode/quality targets remain unqualified.",
+  "build_validation": {
+    "native_all_targets_passed": true,
+    "portable_all_targets_passed": true,
+    "rebuilt_native_binary_identical_to_v23": true,
+    "existing_shader_byte_comparisons_passed": 234,
+    "fp32_expert_kernels_without_fp64_types": 7,
+    "rejection_controls_passed": 4
+  },
+  "full_humaneval_qualified": false,
+  "prefill_100_target_met": false,
+  "combined_quality_throughput_qualified": false,
+  "raw_evidence": "build-vulkan-rx570-native/integer-prefill-20261016",
+  "limitations": [
+    "Repetitive-prompt throughput does not establish coding throughput.",
+    "The FP32 division correction is approximate and does not guarantee all IEEE rounding cases.",
+    "Small primitive parity cases do not establish whole-model output identity.",
+    "The new candidate must pass a fresh full HumanEval run; the older 145-pass result is not transferable."
+  ],
+  "retained_fp32_candidate": {
+    "runtime_switch": "STRATA_VULKAN_FAST_EXPERT_FP32_MATH=1",
+    "requires": "STRATA_VULKAN_NATIVE_FMA=ON build and STRATA_VULKAN_FAST_EXPERT_NATIVE_FMA=1 runtime; FP64_MATH and FP64_SCALE unset; streamed expert tiles 64x64",
+    "executable_sha256": "cb5e946e05572d465cdea6734d5c9af6439b8d7fa0b53fc1bac2e180d84a637b",
+    "compiled_source_manifest_sha256": "8613b46e130b27640f3810b2187c73dddedd84dcc815121cbaa4a509853ace1d",
+    "physical_expert_cpu_byte_cases": 12,
+    "boundary_guard_sha256": "7cb5bf0e61c6bc8358963c1a8e2ccea79b828a45e708ea50fcbe76589baa4002",
+    "boundary_log_sha256": "afee30f20d2909b444f8981e70242676ee8c85f91286e8fa6b06b6f2cb675041",
+    "median_prefill_tok_s": 43.6587,
+    "prefill_tok_s": [
+      43.6616,
+      43.4264,
+      43.6587
+    ],
+    "first_final_vocab_sha256": "d4c698e1e54259f203ae027f3ee81f16125299d86d059df09e7dba0e007cf877",
+    "first_final_vocab_matches_previous_main_gemm_control": true,
+    "prefill_settings": {
+      "gpu_experts_per_layer": 16,
+      "chunk_tokens": 512,
+      "main_gemm_tile_columns": 64,
+      "main_match_f32": false,
+      "main_match_gemv": false,
+      "cpu_q2_lut": true,
+      "speculative": "none",
+      "decode_cache_mib": 0
+    }
+  },
+  "training": {
+    "completed": 3,
+    "passed": 3,
+    "cases": [
+      {
+        "name": "parse_u64",
+        "split": "training",
+        "generated": 159,
+        "stop_terminated": true,
+        "oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "passed": true
+      },
+      {
+        "name": "checked_slice",
+        "split": "training",
+        "generated": 267,
+        "stop_terminated": true,
+        "oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "passed": true
+      },
+      {
+        "name": "reduce_routed",
+        "split": "training",
+        "generated": 456,
+        "stop_terminated": true,
+        "oracle": {
+          "passed": true,
+          "checks": 1
+        },
+        "passed": true
+      }
+    ],
+    "unchanged_prompts_oracles_caps": true,
+    "max_generated_tokens_per_case": 1536,
+    "candidate_sha256": "8a9a6e3aef4988ee3e35caab55a351601056a0862a07a6c3b4fefc989f359b99",
+    "fixture_manifest_sha256": "6288ee92355b817b385005a18ca9c61ab9c3ed8d1f31e6429e35f36df557bb2d",
+    "score_summary_sha256": "2bc234409559a55c3b646b1d333a4bb93ffcc010f364637c613359a8ea5d04a2",
+    "timings_qualified": false,
+    "speculative": "mtp",
+    "draft_depth": 3,
+    "decode_cache_mib": 9216
+  },
+  "profile": {
+    "variant": "fp32_expert_gemm",
+    "run": "gpu512-gemm-v25-detail-run",
+    "timings_qualified": false,
+    "guard_sha256": "2f85bba22fe1297c11789ae5c4b63f90aa78167767094f3ad256c56db31ecb9e",
+    "log_sha256": "7826b01ba177b2a821bf7ef65a2035f94a426a5d254c01beae6d78f421762d98",
+    "scope": "Single detailed 512-token profile, correctness-only guard; main kernels only, expert submissions not included.",
+    "kernel_ms_per_token": {
+      "gemm_f32": 0.256005,
+      "gemm_q4k": 6.31863,
+      "gemm_q50": 0.0830875,
+      "gemm_q6k": 0.80265,
+      "gemv_rows_q6k": 0.0171413,
+      "index_key": 0.0272509,
+      "index_scores_step": 0.0524072,
+      "kda_step": 0.538125,
+      "mhc_read": 0.260593,
+      "mhc_write": 0.294142,
+      "mla_step": 1.44311,
+      "reduce_parts": 0.006055,
+      "rmsnorm": 0.279199,
+      "route_merge": 0.486602,
+      "router": 0.00663188,
+      "select_pools": 0.00074625,
+      "swiglu": 0.0121928
+    }
+  },
+  "compiled_source_sha256": {
+    "vulkan/CMakeLists.txt": "e034e9437383d263dd8d2eff8f27877576cd28e15da3b23b1695847b9c7721ee",
+    "vulkan/fast/device.cpp": "be93ebabdf7dcf9e87539e41b4f73ec7327b5f709af3b0dab8516093f6ccc27d",
+    "vulkan/fast/device.hpp": "c7954cd22fc894ad6ee336d3bee268b64371e84260d662b7c3a1223a01ae7175",
+    "vulkan/fast/engine.cpp": "65328e09e0cc59597c6debe1aa067d2d4b5318dc044600c009b14e75ef54fb11",
+    "vulkan/fast/engine.hpp": "380809802135eaae7484e672f44a0f56ff686e9a5a2bc39c7d14b082455e0f20",
+    "vulkan/fast/expert_batch.cpp": "ffccfb0a154545e9b07afb73716d63a7b95cf72c0aeade58adb7a77306b31093",
+    "vulkan/fast/expert_batch.hpp": "f6fc3d96588f50ab2c0a349d97d289f8314a6c6f8ae33465b0f24c60ccb81070",
+    "vulkan/fast/expert_batch_check.cpp": "033f7e70e047446096ece5b8fd48f80fd75080faa12ad9ace69a6436a6db27c7",
+    "vulkan/fast/gemv_panel_check.cpp": "d9730679101a4b086cd940206749c6f9bab941fb9c0ccc59a4aeaca47e553e35",
+    "vulkan/fast/kernels.cpp": "fa27d659cb1b5842f8a34e6960447f2483dfce3ac3d195dca5239e8eee102148",
+    "vulkan/fast/kernels.hpp": "49d61d98a275ca1685203848b92de552a7b28077ff8d27ade358fc7965c94f04",
+    "vulkan/fast/repack_gpu_check.cpp": "5e5cde20fe69e56064c8b3a286498d5de547196342153b0acaaa8e822b07fdce",
+    "vulkan/fast/shaders/expert_gemm_canon.comp": "8c678b71b8f5be6e17e696eb154c85f8820560277ca26f7e44b89d1dcc012870",
+    "vulkan/fast/shaders/expert_mix.comp": "0e84050a2eb3f72582dd1309bbb171fed80a16f4510f4bc9882c65ab564aae81",
+    "vulkan/fast/shaders/fma_oracle.comp": "532f7c1de76978d5039b604352839ba342138c39be1a74afab8dc2fad2324039",
+    "vulkan/fast/shaders/fp64_round.glsl": "a5d9fcdc567a3e38a01de456f143da7acf94b3503479ef4c0f91a0523524a99e",
+    "vulkan/fast/shaders/gemv_f32.comp": "e7455f46e3206cdd9c05ac0d1194e782415a26dc432a6e572fde39cbd88d9cdf",
+    "vulkan/fast/shaders/gemv_rows.comp": "7bba814ccd1b5e9059854cce6dab61f5e0b17a3bd4bbf46239b0460bec17a681",
+    "vulkan/fast/shaders/q8k_round.comp": "06b86ca25f318aa4723e15e41c56779187d2bf9baeab46113d1b1c35d2aadf3c",
+    "vulkan/fast/shaders/repack_expert.comp": "92c9438c45c478d7a42fcb9515fdfaf6ae31e33d1021c44757686536aa5fbfb6",
+    "vulkan/fast/shaders/round_fp64_oracle.comp": "cad70a14fcba5c27382c8bb13f59e8441381556bc899b67b57c86c7557070636",
+    "vulkan/fast/shaders/fp32_native.glsl": "1c6d1c9295e875774414e59b178e45f2c9d473768ff87aedeebc79c6a2709164"
+  }
+}

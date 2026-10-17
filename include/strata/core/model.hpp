@@ -223,6 +223,8 @@ inline int expert_scan_lookup(void *context, int layer, const char *part, strata
     if (it == scan->tensors->end()) return -1;
     const auto &tensor = *it->second.tensor;
     const auto *hash = it->second.file->get("strata.expert_pack.hash." + std::string(out->name));
+    const auto *fp8 = it->second.file->get("strata.expert_pack.fp8");
+    out->from_fp8 = fp8 && fp8->type == MetaType::BOOL && fp8->u;
     out->type = static_cast<int>(tensor.type);
     out->hashed = hash != nullptr;
     out->hash_type = hash ? static_cast<int>(hash->type) : 0;
@@ -344,6 +346,8 @@ class ModelArtifact {
     }
 
     bool is_exl3()const { return bool(native_); }
+    // The native artifact holds the FP8 release (reference evaluation only), not an EXL3 pack.
+    bool is_fp8()const { return native_ && native_->model.codec==artifact::GlmExl3::Codec::Fp8; }
     artifact::GlmExl3& exl3() { if(!native_)throw std::runtime_error("not EXL3");return native_->model; }
     const ModelDescriptor &descriptor() const { return descriptor_; }
     const std::map<std::string, ArtifactTensor> &tensors() const { return tensors_; }
@@ -370,6 +374,11 @@ class ModelArtifact {
         if(!version||version->type!=MetaType::U32||version->u!=1||!source||source->type!=MetaType::U64||source->u!=source_fingerprint())
             throw std::runtime_error("expert pack: version or source fingerprint mismatch");
         std::set<std::string> names;std::map<uint64_t,uint64_t> spans;
+        // A pack converted from the FP8 release (strata-glm-q2-pack --fp8) may hold any expert type with native
+        // kernels; the GGUF's own expert types do not constrain it.
+        const auto* fp8=pack->get("strata.expert_pack.fp8");
+        const bool from_fp8=fp8&&fp8->type==MetaType::BOOL&&fp8->u;
+        auto block_bytes=[](uint32_t type)->uint64_t { return strata_ep_fp8_block_bytes(int(type)); };
         for(const auto& t:pack->tensors()) {
             if(!names.insert(t.name).second)throw std::runtime_error("expert pack: duplicate tensor");
             const auto& original=at(t.name);std::smatch match;
@@ -384,8 +393,8 @@ class ModelArtifact {
             // The higher formats of the exception layers (IQ3_XXS gate/up, IQ4_XS down) convert to the same targets.
             const bool valid=((original.tensor->type==17||original.tensor->type==18||kquant) && t.type==10 && match[2]!="down") ||
                              ((original.tensor->type==18||original.tensor->type==23||kquant) && (t.type==11||t.type==10) && match[2]=="down") || assembled_down;
-            if(!valid)throw std::runtime_error("expert pack: invalid type transition "+t.name);
-            const uint64_t length=t.elements()/256*(t.type==10?84:110);
+            if(!(valid||(from_fp8&&block_bytes(t.type))))throw std::runtime_error("expert pack: invalid type transition "+t.name);
+            const uint64_t length=t.elements()/256*block_bytes(t.type);
             if(t.offset%32||pack->data_start()>pack->file_size()||t.offset>pack->file_size()-pack->data_start()||length>pack->file_size()-pack->data_start()-t.offset||!spans.emplace(t.offset,length).second)
                 throw std::runtime_error("expert pack: invalid payload bounds");
             const auto* checksum=pack->get("strata.expert_pack.hash."+t.name);
@@ -398,7 +407,7 @@ class ModelArtifact {
         for(int l=STRATA_EP_FIRST_LAYER;l<=STRATA_EP_LAST_LAYER;++l){auto p=strata::host::blk_name(l,"ffn_");if(names.contains(p+"gate_exps.weight")!=names.contains(p+"up_exps.weight")||retained.contains(p+"gate_exps.weight")!=retained.contains(p+"up_exps.weight"))throw std::runtime_error("expert pack: gate/up must be paired");}
         for(const auto& t:pack->tensors())if(!retained.contains(t.name)) {
             auto& entry=tensors_.at(t.name);original_experts_.emplace(t.name,entry);
-            entry={pack.get(),&t,t.elements()/256*(t.type==10?84:110)};
+            entry={pack.get(),&t,t.elements()/256*block_bytes(t.type)};
         }
         expert_pack_=path.string();files_.push_back(std::move(pack));
     }

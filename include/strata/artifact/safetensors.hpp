@@ -19,7 +19,7 @@ inline size_t dtype_bytes(const std::string& name) {
     if(name=="F32"||name=="I32") return 4;
     if(name=="BF16"||name=="F16"||name=="I16") return 2;
     if(name=="I64") return 8;
-    if(name=="U8"||name=="I8"||name=="BOOL") return 1;
+    if(name=="U8"||name=="I8"||name=="BOOL"||name=="F8_E4M3") return 1;
     throw std::runtime_error("safetensors: unsupported dtype " + name);
 }
 struct TensorView {
@@ -132,5 +132,14 @@ public:
         shards_.at(t.shard)->read(shards_[t.shard]->start+t.offset+offset,out,bytes);
     }
     void read(const std::string& name,uint64_t offset,void* out,size_t bytes) const { read(at(name),offset,out,bytes); }
+    // Drop a tensor's clean pages from the page cache (a hint; a weight set larger than RAM is streamed once per use).
+    void drop(const TensorView& t) const {
+#ifndef _WIN32
+        const auto& s=*shards_.at(t.shard);
+        ::posix_fadvise(s.fd,static_cast<off_t>(s.start+t.offset),static_cast<off_t>(t.bytes),POSIX_FADV_DONTNEED);
+#else
+        (void)t;
+#endif
+    }
 };
 } // namespace strata::artifact

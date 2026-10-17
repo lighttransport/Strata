@@ -3,6 +3,22 @@
 // or quantization: every payload byte is retained and padded rows are zero.
 layout(local_size_x = 256) in;
 layout(binding = 0, std430) readonly buffer Source { uint raw[]; };
+#ifdef CHECK_SOURCE_BOUNDS
+layout(binding = 2, std430) buffer Bounds { uint invalid_reads; } bounds;
+uint source_word(uint i) {
+  if (i >= uint(raw.length())) {
+    atomicAdd(bounds.invalid_reads, 1u);
+    return 0u; // The negative control records an attempted read, never executes it.
+  }
+  return raw[i];
+}
+#define SOURCE_WORD(I) source_word(I)
+#else
+#define SOURCE_WORD(I) raw[I]
+#endif
+#if defined(LEGACY_WIDE_SIDE) && !defined(CHECK_SOURCE_BOUNDS)
+#error The legacy negative control must never execute unchecked loads
+#endif
 layout(binding = 1, std430) writeonly buffer Output { uvec4 chunks[]; };
 layout(binding = 1, std430) writeonly buffer SideOutput { uint side[]; };
 layout(push_constant) uniform P { uint blocks, rows, padded_rows, source_offset; } p;
@@ -13,9 +29,17 @@ const uint CH = 6u, SW = 4u, BB = 110u;
 #endif
 uint word_at(uint byte_offset) {
   const uint shift = 8u * (byte_offset % 4u), i = byte_offset / 4u;
-  if (shift == 0u) return raw[i];
-  return (raw[i] >> shift) | (raw[i + 1u] << (32u - shift));
+  if (shift == 0u) return SOURCE_WORD(i);
+  return (SOURCE_WORD(i) >> shift) | (SOURCE_WORD(i + 1u) << (32u - shift));
 }
+#ifndef TYPE_Q2K
+uint half_at(uint byte_offset) {
+  const uint shift = 8u * (byte_offset % 4u), i = byte_offset / 4u;
+  uint value = SOURCE_WORD(i) >> shift;
+  if (shift == 24u) value |= SOURCE_WORD(i + 1u) << 8u;
+  return value & 65535u;
+}
+#endif
 void main() {
   const uint t = gl_LocalInvocationID.x, row = gl_WorkGroupID.x * 64u + t % 64u;
   const uint block = gl_WorkGroupID.y;
@@ -30,6 +54,7 @@ void main() {
   }
   if (t < 64u) {
     const uint side_base = p.blocks * CH * p.padded_rows * 4u;
+#if defined(TYPE_Q2K) || defined(LEGACY_WIDE_SIDE)
     for (uint w = 0u; w < SW; ++w) {
       uint value = 0u;
       if (row < p.rows) {
@@ -40,5 +65,14 @@ void main() {
       }
       side[side_base + (block * SW + w) * p.padded_rows + row] = value;
     }
+#else
+    for (uint w = 0u; w < 3u; ++w)
+      side[side_base + (block * SW + w) * p.padded_rows + row] =
+          row < p.rows ? word_at(source + CH * 16u + w * 4u) : 0u;
+    // The native Q3_K block ends with two scale bytes. Reading a full word
+    // and then masking can request one word beyond an exact-size source.
+    side[side_base + (block * SW + 3u) * p.padded_rows + row] =
+        row < p.rows ? half_at(source + 108u) : 0u;
+#endif
   }
 }

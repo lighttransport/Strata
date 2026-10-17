@@ -1,0 +1,132 @@
+{
+  "calibration": "tools/sim/data/rx570_vulkan_prefill_fp32_20261016.json",
+  "scenarios": [
+    {
+      "scenario": "measured fit",
+      "predicted_prefill_tok_s": 43.65881319655846,
+      "trial_predictions_tok_s": [
+        43.6614193372333,
+        43.42626440827474,
+        43.65881319655846
+      ],
+      "gpu_speedup": 1,
+      "cpu_speedup": 1,
+      "upload_speedup": 1,
+      "hypothetical": false,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "GPU only 1.5x",
+      "predicted_prefill_tok_s": 52.14902731932879,
+      "trial_predictions_tok_s": [
+        52.16253973309899,
+        51.9238833780603,
+        52.14902731932879
+      ],
+      "gpu_speedup": 1.5,
+      "cpu_speedup": 1,
+      "upload_speedup": 1,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "CPU and GPU 1.25x",
+      "predicted_prefill_tok_s": 52.65987650111766,
+      "trial_predictions_tok_s": [
+        52.75666867573415,
+        52.46597494451824,
+        52.65987650111766
+      ],
+      "gpu_speedup": 1.25,
+      "cpu_speedup": 1.25,
+      "upload_speedup": 1,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "CPU and GPU 1.5x",
+      "predicted_prefill_tok_s": 60.62902211237372,
+      "trial_predictions_tok_s": [
+        60.87047108799277,
+        60.562172228333125,
+        60.62902211237372
+      ],
+      "gpu_speedup": 1.5,
+      "cpu_speedup": 1.5,
+      "upload_speedup": 1,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "CPU and GPU 2x",
+      "predicted_prefill_tok_s": 74.30404700014071,
+      "trial_predictions_tok_s": [
+        74.49553439644382,
+        74.30404700014071,
+        74.14201997077902
+      ],
+      "gpu_speedup": 2,
+      "cpu_speedup": 2,
+      "upload_speedup": 1,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "CPU and GPU 3x",
+      "predicted_prefill_tok_s": 95.09785048029867,
+      "trial_predictions_tok_s": [
+        95.43568486819595,
+        95.09785048029867,
+        94.80961976734876
+      ],
+      "gpu_speedup": 3,
+      "cpu_speedup": 3,
+      "upload_speedup": 1,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "CPU and GPU 3.2973x",
+      "predicted_prefill_tok_s": 100.0,
+      "trial_predictions_tok_s": [
+        100.37773533087812,
+        100.0,
+        99.67518906820958
+      ],
+      "gpu_speedup": 3.2972513413313767,
+      "cpu_speedup": 3.2972513413313767,
+      "upload_speedup": 1,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "CPU GPU upload 3x",
+      "predicted_prefill_tok_s": 114.14146655341257,
+      "trial_predictions_tok_s": [
+        114.51468948833669,
+        113.8176904144423,
+        114.14146655341257
+      ],
+      "gpu_speedup": 3,
+      "cpu_speedup": 3,
+      "upload_speedup": 3,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    },
+    {
+      "scenario": "GPU-only asymptote",
+      "predicted_prefill_tok_s": 79.74807718615772,
+      "trial_predictions_tok_s": [
+        79.86938629414341,
+        79.28092238695102,
+        79.74807718615772
+      ],
+      "gpu_speedup": 1000000000.0,
+      "cpu_speedup": 1,
+      "upload_speedup": 1,
+      "hypothetical": true,
+      "scope": "Same 512-token repetitive prompt and fixed route assignment only; no quality inference."
+    }
+  ],
+  "warning": "Sensitivity analysis, not achieved speeds or independent prediction validation. Fixed routes and 512-token repetitive prompt."
+}
