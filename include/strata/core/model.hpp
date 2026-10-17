@@ -344,6 +344,8 @@ class ModelArtifact {
     }
 
     bool is_exl3()const { return bool(native_); }
+    // The native artifact holds the FP8 release (reference evaluation only), not an EXL3 pack.
+    bool is_fp8()const { return native_ && native_->model.codec==artifact::GlmExl3::Codec::Fp8; }
     artifact::GlmExl3& exl3() { if(!native_)throw std::runtime_error("not EXL3");return native_->model; }
     const ModelDescriptor &descriptor() const { return descriptor_; }
     const std::map<std::string, ArtifactTensor> &tensors() const { return tensors_; }

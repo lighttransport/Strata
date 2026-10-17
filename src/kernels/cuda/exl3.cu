@@ -61,6 +61,24 @@ void exl3_bf16_gemv(const uint16_t* w,const float* x,float* y,int in,int out,voi
 void exl3_bf16_to_float(const uint16_t* w,float* out,int count,void* stream) {
     bf16_convert<<<(count+255)/256,256,0,(cudaStream_t)stream>>>(w,out,count);
 }
+// FP8 release weights: E4M3 times its 128x128 block's f32 scale, one multiply (the value is exact in f32), so the
+// result is bit-identical to strata/artifact/fp8_experts.hpp on the host. w and out are row-major [rows][cols].
+__device__ inline float e4m3_value(uint8_t b) {
+    const int e=(b>>3)&15,m=b&7;float v;
+    if(e==15&&m==7)v=__int_as_float(0x7fc00000);
+    else if(e==0)v=ldexpf(float(m)*0.125f,-6);
+    else v=ldexpf(1.0f+float(m)*0.125f,e-7);
+    return (b&0x80)?-v:v;
+}
+__global__ void fp8_block_convert(const uint8_t* w,const float* scale,float* out,int rows,int cols) {
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;if(i>=size_t(rows)*cols)return;
+    const int r=int(i/cols),c=int(i%cols),scols=(cols+127)/128;
+    out[i]=e4m3_value(w[i])*scale[(r/128)*scols+c/128];
+}
+void fp8_block_to_float(const uint8_t* w,const float* scale,float* out,int rows,int cols,void* stream) {
+    const size_t n=size_t(rows)*cols;
+    fp8_block_convert<<<unsigned((n+255)/256),256,0,(cudaStream_t)stream>>>(w,scale,out,rows,cols);
+}
 __device__ unsigned offset(int r,int c) {
     // Equivalent to the published 16x16 MMA fragment permutation.
     return ((r&1)) + ((r&6)<<2) + ((r&8)>>2) + ((c&7)<<5) + ((c&8)>>1);

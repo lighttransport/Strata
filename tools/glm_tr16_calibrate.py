@@ -69,6 +69,24 @@ def input_identity(config):
                 note='Weight identity uses size and mtime, not a full content hash.')
 
 
+def amdgpu_facts():
+    """Name, VRAM, PCIe link and current clocks of each amdgpu card (sysfs), for runs without nvidia-smi."""
+    cards = []
+    for dev in sorted(Path('/sys/class/drm').glob('card[0-9]*/device')):
+        if not (dev / 'mem_info_vram_total').exists():
+            continue
+        def read(name):
+            try:
+                return (dev / name).read_text().strip()
+            except OSError:   # missing, or EBUSY while the GPU changes power state
+                return None
+        cards.append(dict(pci=dev.resolve().name, vram_total=read('mem_info_vram_total'), vram_used=read('mem_info_vram_used'),
+                          link_speed=read('current_link_speed'), link_width=read('current_link_width'),
+                          sclk=[l for l in (read('pp_dpm_sclk') or '').splitlines() if '*' in l],
+                          mclk=[l for l in (read('pp_dpm_mclk') or '').splitlines() if '*' in l]))
+    return cards
+
+
 def case_config(base, name):
     c = copy.deepcopy(base)
     env = c.setdefault('env', {})
@@ -246,7 +264,10 @@ def main():
                     decode_tokens=args.tokens, timed_trials=args.trials, warmup_decode_trials=1,
                     allow_interference=args.allow_interference, created=time.strftime('%Y-%m-%dT%H:%M:%S%z'))
     manifest['inputs'] = input_identity(base)
-    manifest['nvidia_smi'] = subprocess.check_output(['nvidia-smi', '--query-gpu=name,driver_version,memory.total,memory.used,pcie.link.gen.current,pcie.link.width.current,power.limit,power.default_limit,clocks.current.graphics,clocks.current.memory', '--format=csv'], text=True)
+    try:
+        manifest['nvidia_smi'] = subprocess.check_output(['nvidia-smi', '--query-gpu=name,driver_version,memory.total,memory.used,pcie.link.gen.current,pcie.link.width.current,power.limit,power.default_limit,clocks.current.graphics,clocks.current.memory', '--format=csv'], text=True)
+    except (OSError, subprocess.CalledProcessError):
+        manifest['amdgpu'] = amdgpu_facts()   # no NVIDIA device: the same facts from amdgpu sysfs
     (args.output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     (args.output / 'runner.py').write_bytes(Path(__file__).read_bytes())
     summaries = []

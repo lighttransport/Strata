@@ -361,6 +361,15 @@ outputs per token, followed by a warp and shared-memory reduction. Same weights,
 A 2,048-row, 4,096-column EXL3 K2 matrix is 2 MiB. The tiled kernel reaches 23% of the RX 9070 XT's bandwidth: the
 per-weight decode bounds it.
 
+Corpus evaluation (2026-10-17):
+- Corpus evaluation keeps EXL3's padded head raw instead of masking it, so its logits stay comparable with a
+  reference.
+- `STRATA_EXL3_EVAL_PREFILL=1` scores prefill rows through the GPU expert path in windows of up to 256. Without it,
+  scoring uses 4-token CPU decode windows. Both took about 16 minutes per 512-token sequence on TR16.
+- The native prefill arena has 128 MiB more for the per-expert scratch.
+- Against the FP8 reference ([GLM_FP8_REFERENCE.md](GLM_FP8_REFERENCE.md)), sequence 1 only: perplexity 7.835
+  (FP8 7.410), KL 0.239, top-1 78.9%.
+
 End-to-end decode with either switch was not run. From 2026-10-07 (861e1f92) until 2026-10-16 the native EXL3 model
 failed at load in the `Decoder` constructor with `model: missing tensor blk.3.ffn_down_exps.weight`. The cause was the
 prefill slot sizing, which looked up the GGUF expert tensors of every MoE layer, and EXL3 has none. That loop now skips

@@ -33,6 +33,10 @@ a partial file is refused, as before.
 
 ### Full IQ2_S pack from FP8 (TR16, 2026-10-16)
 
+Superseded by [GLM_FP8_REFERENCE.md](GLM_FP8_REFERENCE.md) (2026-10-17). It measures every 128 GB pack against an
+exact FP8 reference instead of UD-Q2_K_XL. There, IQ2_S is ahead of the release Q23 (KL 0.132 vs 0.212), and Q23
+quantized from FP8 is the recommended pack. This section records the first IQ2_S run.
+
 All routed layers 3-44, gate/up and down IQ2_S, with the calibration importance:
 
 ```
