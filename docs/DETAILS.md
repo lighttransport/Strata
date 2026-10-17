@@ -6,6 +6,8 @@ New here? Start with the [README](../README.md); installing step by step is in [
 
 The experimental GLM decoder can also read a routed-only K2/MCG safetensors pack; see
 [GLM native EXL3](GLM_EXL3.md) for its NUMA placement, configuration and validation limits.
+The opt-in [native ModelOpt FP4 path for V100](GLM_FP4_V100.md) keeps the mixed
+precision checkpoint compressed in shared host memory and uses one or two CUDA GPUs.
 
 > **On this page:** [Speed](#speed-measured) · [Other GPUs](#other-gpus-estimated) · [Which model?](#which-model) ·
 > [Requirements](#before-you-start) · [Windows](#windows) · [Linux](#linux) · [API](#using-it) ·

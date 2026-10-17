@@ -10,6 +10,32 @@ import glm_generate
 
 
 class GenerateTransport(unittest.TestCase):
+    def test_native_modelopt_defaults_and_mtp(self):
+        import glm_artifact
+        with tempfile.TemporaryDirectory() as directory:
+            tokenizer = mock.Mock()
+            tokenizer.encode.return_value = [1, 2]
+            tokenizer.decode.return_value = "ok"
+            metadata = {"general.architecture": "glm5next", "glm5next.context_length": 1048576,
+                        "strata.native_codec": "modelopt", "tokenizer.chat_template": "{{ messages[0].content }}"}
+            def launch(command, **kwargs):
+                for option in ("--fp4-kernel=sm70", "--speculative=mtp", "--context=12288",
+                               "--prefill-batch=8192", "--gpu-budget-mib=32768", "--gpu-devices=0,1"):
+                    self.assertIn(option, command)
+                self.assertEqual(command[5], "35")
+                result = mock.MagicMock()
+                result.__enter__.return_value = result
+                result.stdout = io.StringIO("7\n9\n")
+                result.wait.return_value = 0
+                return result
+            with mock.patch("sys.argv", ["glm_generate", directory, "hello", "--fp4-kernel=sm70",
+                                         "--speculative=mtp", "--gpu-devices=0,1"]), \
+                 mock.patch.object(glm_artifact, "load_metadata", return_value=metadata), \
+                 mock.patch.object(glm_artifact, "NativeTokenizer", return_value=tokenizer), \
+                 mock.patch.object(glm_generate.subprocess, "Popen", side_effect=launch), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                glm_generate.main()
+
     def run_frontend(self, arguments, ids, popen):
         metadata = {"general.architecture": "glm5next", "glm5next.context_length": 1048576,
                     "tokenizer.chat_template": "{{ messages[0].content }}"}

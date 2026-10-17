@@ -2,6 +2,7 @@
 // Indexed bounded reads follow gemm/common/glm53f_safetensors.h; no payload mapping at inspection.
 #include "strata/artifact/json.hpp"
 #include <array>
+#include <cstdio>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -11,13 +12,14 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #endif
 
 namespace strata::artifact {
-enum class TensorDtype { F32, BF16, F16, I16, I32, I64, U8, I8, Bool };
+enum class TensorDtype { F32, BF16, F16, I16, I32, I64, U8, I8, Bool, U16, U32 };
 inline size_t dtype_bytes(const std::string& name) {
-    if(name=="F32"||name=="I32") return 4;
-    if(name=="BF16"||name=="F16"||name=="I16") return 2;
+    if(name=="F32"||name=="I32"||name=="U32") return 4;
+    if(name=="BF16"||name=="F16"||name=="I16"||name=="U16") return 2;
     if(name=="I64") return 8;
     if(name=="U8"||name=="I8"||name=="BOOL"||name=="F8_E4M3") return 1;
     throw std::runtime_error("safetensors: unsupported dtype " + name);
@@ -34,7 +36,9 @@ class Safetensors {
         uint64_t start=0, size=0;
 #ifndef _WIN32
         int fd=-1;
-        ~Shard() { if(fd>=0) ::close(fd); }
+        mutable void* mapping = MAP_FAILED;
+        mutable std::mutex mapping_mutex;
+        ~Shard() { if(mapping != MAP_FAILED) ::munmap(mapping, size); if(fd>=0) ::close(fd); }
 #else
         mutable std::ifstream file;
         mutable std::mutex mutex;
@@ -59,7 +63,7 @@ class Safetensors {
     std::map<std::string,TensorView> tensors_;
     uint64_t payload_=0, file_bytes_=0;
 public:
-    explicit Safetensors(const std::filesystem::path& directory) {
+    explicit Safetensors(const std::filesystem::path& directory,bool indexed_subsets=false) {
         auto root=std::filesystem::canonical(directory);
         Json index=read_json((root/"model.safetensors.index.json").string());
         const auto& map=index.at("weight_map");
@@ -67,14 +71,19 @@ public:
         std::set<std::string> paths;
         for(const auto& [name,shard] : map.object) {
             auto p=std::filesystem::path(shard.string());
-            if(name.empty() || p.empty() || p.is_absolute() || p.has_parent_path() || p.extension()!=".safetensors") throw std::runtime_error("safetensors: invalid shard path");
+            bool parent=false;for(const auto& component:p)if(component=="..")parent=true;
+            if(name.empty() || p.empty() || p.is_absolute() || parent ||
+               (!indexed_subsets&&p.has_parent_path()) || p.extension()!=".safetensors") throw std::runtime_error("safetensors: invalid shard path");
             paths.insert(p.string());
         }
         if(paths.size()>1024) throw std::runtime_error("safetensors: too many shards");
         for(const auto& filename:paths) {
             auto shard=std::make_unique<Shard>(); shard->path=std::filesystem::canonical(root/filename);
-            if(shard->path.parent_path()!=root) throw std::runtime_error("safetensors: shard escapes model directory");
+            const auto relative=shard->path.lexically_relative(root);
+            if(relative.empty() || relative.is_absolute() || *relative.begin()==".." ||
+               (!indexed_subsets&&shard->path.parent_path()!=root))throw std::runtime_error("safetensors: shard escapes model directory");
             shard->size=std::filesystem::file_size(shard->path);
+            if(file_bytes_>UINT64_MAX-shard->size)throw std::runtime_error("safetensors: shard size sum overflow");
             file_bytes_+=shard->size;
             if(shard->size<8 || shard->size>uint64_t(INT64_MAX)) throw std::runtime_error("safetensors: invalid shard size");
 #ifndef _WIN32
@@ -105,7 +114,10 @@ public:
                 t.offset=begin; t.bytes=bytes;
                 if(bytes && !spans.emplace(begin,end).second) throw std::runtime_error("safetensors: duplicate span " + name);
                 auto declared=map.object.find(name);
-                if(declared==map.object.end() || declared->second.string()!=filename) throw std::runtime_error("safetensors: index/header disagreement " + name);
+                if(declared==map.object.end() || declared->second.string()!=filename) {
+                    if(indexed_subsets)continue; // the index explicitly selects a local replacement
+                    throw std::runtime_error("safetensors: index/header disagreement " + name);
+                }
                 if(!tensors_.emplace(name,std::move(t)).second) throw std::runtime_error("safetensors: duplicate tensor " + name);
                 if(payload_>UINT64_MAX-bytes) throw std::runtime_error("safetensors: payload overflow");
                 payload_+=bytes;
@@ -123,6 +135,7 @@ public:
         auto i=tensors_.find(name); if(i==tensors_.end()) throw std::runtime_error("safetensors: missing tensor " + name); return i->second;
     }
     uint64_t bytes() const { return payload_; }
+    uint64_t file_bytes() const { return file_bytes_; }
     size_t shards() const { return shards_.size(); }
     void expect(const std::string& name,const std::string& dtype,const std::vector<uint64_t>& shape) const {
         const auto& t=at(name); if(t.dtype!=dtype || t.shape!=shape) throw std::runtime_error("safetensors: incompatible dtype/shape " + name);
@@ -132,6 +145,45 @@ public:
         shards_.at(t.shard)->read(shards_[t.shard]->start+t.offset+offset,out,bytes);
     }
     void read(const std::string& name,uint64_t offset,void* out,size_t bytes) const { read(at(name),offset,out,bytes); }
+    // MAP_SHARED read-only pages are shared by all native workers. No anonymous
+    // copy or eager payload allocation; transformed small tensors remain owned
+    // by their binding. Mapping lifetime equals this reader's lifetime.
+    const uint8_t* data(const TensorView& t) const {
+#ifndef _WIN32
+        const auto& s=*shards_.at(t.shard);
+        std::lock_guard lock(s.mapping_mutex);
+        if(s.mapping==MAP_FAILED) {
+            s.mapping=::mmap(nullptr,s.size,PROT_READ,MAP_SHARED,s.fd,0);
+            if(s.mapping==MAP_FAILED) throw std::runtime_error("safetensors: cannot map shard");
+        }
+        return static_cast<const uint8_t*>(s.mapping)+s.start+t.offset;
+#else
+        (void)t;
+        throw std::runtime_error("safetensors: shared native mappings require Linux");
+#endif
+    }
+    const uint8_t* data(const std::string& name) const { return data(at(name)); }
+    void warm(bool lock=false)const {
+#ifndef _WIN32
+        uint64_t bytes=0;unsigned checksum=0;
+        for(const auto& holder:shards_) {
+            const auto& s=*holder;
+            std::lock_guard guard(s.mapping_mutex);
+            if(s.mapping==MAP_FAILED) {
+                s.mapping=::mmap(nullptr,s.size,PROT_READ,MAP_SHARED,s.fd,0);
+                if(s.mapping==MAP_FAILED)throw std::runtime_error("safetensors: cannot map shard for warmup");
+            }
+            if(lock && ::mlock(s.mapping,s.size))throw std::runtime_error("safetensors: cannot lock shared weight pages");
+            const auto* p=static_cast<const volatile uint8_t*>(s.mapping);
+            for(uint64_t offset=0;offset<s.size;offset+=4096)checksum^=p[offset];
+            bytes+=s.size;
+        }
+        std::fprintf(stderr,"FP4_HOST_WEIGHTS bytes=%llu locked=%d shared_readonly=1 checksum=%u\n",
+                     static_cast<unsigned long long>(bytes),int(lock),checksum);
+#else
+        (void)lock;throw std::runtime_error("safetensors: resident shared weights require Linux");
+#endif
+    }
     // Drop a tensor's clean pages from the page cache (a hint; a weight set larger than RAM is streamed once per use).
     void drop(const TensorView& t) const {
 #ifndef _WIN32

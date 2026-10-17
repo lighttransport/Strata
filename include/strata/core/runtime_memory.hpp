@@ -1,4 +1,6 @@
 #pragma once
+#include "strata/core/expert_source.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -9,9 +11,26 @@
 #include <vector>
 #ifdef __linux__
 #include <sys/mman.h>
+#include <unistd.h>
 #endif
 
 namespace strata::core {
+// The Slurm request remains an upper bound when the job's memory controller
+// is nested or not mounted in this process's namespace.
+inline uint64_t host_memory_allowance_bytes() {
+    uint64_t limit=UINT64_MAX;
+#ifdef __linux__
+    limit=uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
+    detail::HostMemory memory;
+    detail::host_available_memory(memory);
+    limit=std::min(limit,memory.cgroup_limit);
+    if(const char* text=std::getenv("SLURM_MEM_PER_NODE"))try {
+        size_t used=0;const uint64_t mib=std::stoull(text,&used);
+        if(text[used]=='\0'&&mib&&mib<=UINT64_MAX/(1024*1024))limit=std::min(limit,mib*1024*1024);
+    }catch(const std::exception&) {}
+#endif
+    return limit;
+}
 // The page cache can cause Linux to swap idle worker stacks even when model
 // weights fit. Opt-in locking is bounded and excludes model/large arenas.
 inline void lock_small_runtime_mappings() {

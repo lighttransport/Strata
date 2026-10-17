@@ -14,18 +14,35 @@ public:
     GlmExl3 model;
     struct Binding {
         TensorInfo info; const GlmExl3* model;
-        std::string source;bool promote=false,fp8=false;int kv_part=-1;
+        std::string source;bool promote=false,fp8=false,modelopt=false;int kv_part=-1;
         mutable std::vector<uint8_t> storage;
         const uint8_t* data()const {
             if(!storage.empty())return storage.data();
+            if(modelopt && kv_part<0 && !promote && !fp8 && !info.name.ends_with(".ssm_a"))
+                return model->tensors.data(source);
+            if(modelopt && fp8 && kv_part<0) {
+                const auto p=model->modelopt->load(source);
+                storage.resize(p.rows*p.columns*4);
+                for(size_t r=0;r<p.rows;++r)for(size_t c=0;c<p.columns;++c) {
+                    const float value=GlmModelOpt::value(p,r,c);
+                    std::memcpy(storage.data()+4*(r*p.columns+c),&value,4);
+                }
+                return storage.data();
+            }
             const auto& t=model->tensors.at(source);std::vector<uint8_t> raw(t.bytes);
             model->tensors.read(t,0,raw.data(),raw.size());
             if(kv_part>=0) {
-                storage.resize(64*256*512*2);
+                const size_t element=modelopt&&fp8?4:2;
+                storage.resize(64*256*512*element);
+                ModelOptPacked packed;
+                if(element==4)packed=model->modelopt->load(source,true);
                 for(size_t h=0;h<64;++h)for(size_t r=0;r<256;++r)for(size_t c=0;c<512;++c) {
                     size_t src=((h*512+kv_part*256+r)*512+c)*2;
-                    size_t dst=(h*256*512+(kv_part? r*512+c:c*256+r))*2;
-                    storage[dst]=raw[src];storage[dst+1]=raw[src+1];
+                    size_t dst=(h*256*512+(kv_part? r*512+c:c*256+r))*element;
+                    if(element==4) {
+                        const float value=GlmModelOpt::value(packed,h*512+kv_part*256+r,c);
+                        std::memcpy(storage.data()+dst,&value,4);
+                    }else {storage[dst]=raw[src];storage[dst+1]=raw[src+1];}
                 }
             }else if(fp8) {
                 // E4M3 x its 128x128 block's weight_scale_inv, in f32 (strata/artifact/fp8_experts.hpp's rounding)
@@ -63,24 +80,34 @@ public:
             {"self_attn.indexer.weights_proj.weight","indexer.proj.weight"},{"self_attn.indexer.k_norm.weight","indexer.k_norm.weight"},
             {"self_attn.indexer.k_norm.bias","indexer.k_norm.bias"},{"self_attn.indexer.index_kpool_compress_gate","indexer_compressor_gate.weight"},
             {"self_attn.indexer.index_kpool_compress_ape","indexer_compressor_ape.weight"}};
-        for(unsigned l=0;l<45;++l) {
+        for(unsigned l=0;l<(model.codec==GlmExl3::Codec::ModelOpt?46u:45u);++l) {
             auto src="model.language_model.layers."+std::to_string(l)+".",dst=strata::host::blk_prefix(int(l));
             for(const auto& [from,to]:names)if(model.tensors.tensors().contains(src+from)) {
                 bool scalar=to.find("norm.")!=std::string::npos||to.find("_base.")!=std::string::npos||to.find("_scale.")!=std::string::npos||to=="ssm_a"||to=="ssm_dt.bias"||to=="exp_probs_b.bias"||to=="indexer_compressor_ape.weight";
                 add(dst+to,src+from,scalar);
             }
             for(const auto* p:{"gate","up","down"})add(dst+"ffn_"+p+(l<3?"":"_shexp")+".weight",src+"mlp."+(l<3?"":"shared_experts.")+p+"_proj.weight");
-            if(l%4!=3) {
+            if(l%4!=3 && l!=45) {
                 for(const auto* p:{"q","k","v"}) {
                     add(dst+"attn_"+p+".weight",src+"self_attn."+p+"_proj.weight");
                     add(dst+"ssm_conv1d_"+p+".weight",src+"self_attn."+p+"_conv1d.weight",true);
                 }
                 for(const auto* p:{"f","g"})for(const auto* q:{"a","b"})add(dst+"ssm_"+p+"_"+q+".weight",src+"self_attn."+p+"_"+q+"_proj.weight");
             }else for(int part=0;part<2;++part) {
-                model.tensors.expect(src+"self_attn.kv_b_proj.weight","BF16",{32768,512});
+                if(model.codec==GlmExl3::Codec::ModelOpt) {
+                    const auto m=model.modelopt->matrix(src+"self_attn.kv_b_proj.weight");
+                    if(m.rows!=32768||m.columns!=512)throw std::runtime_error("GLM ModelOpt: incompatible KV-B matrix");
+                }else model.tensors.expect(src+"self_attn.kv_b_proj.weight","BF16",{32768,512});
                 auto name=dst+(part?"attn_v_b.weight":"attn_k_b.weight");add(name,src+"self_attn.kv_b_proj.weight");
                 auto& b=bindings.at(name);b.kv_part=part;b.info.shape=part?std::vector<uint64_t>{512,256,64}:std::vector<uint64_t>{256,512,64};
             }
+        }
+        if(model.codec==GlmExl3::Codec::ModelOpt) {
+            const std::string src="model.language_model.layers.45.",dst="blk.45.nextn.";
+            add(dst+"enorm.weight",src+"enorm.weight",true);
+            add(dst+"hnorm.weight",src+"hnorm.weight",true);
+            add(dst+"eh_proj.weight",src+"eh_proj.weight");
+            add(dst+"shared_head_norm.weight",src+"shared_head.norm.weight",true);
         }
         validate();
     }
@@ -111,8 +138,12 @@ public:
     }
     void add(const std::string& name,const std::string& source,bool promote=false) {
         const auto& t=model.tensors.at(source);Binding b;b.model=&model;b.source=source;b.promote=promote;
-        b.fp8=t.dtype=="F8_E4M3";if(b.fp8&&(promote||t.shape.size()!=2))throw std::runtime_error("GLM FP8: unexpected tensor "+source);
+        b.modelopt=model.codec==GlmExl3::Codec::ModelOpt;
+        b.fp8=t.dtype=="F8_E4M3" || (b.modelopt && t.dtype=="U8");if(b.fp8&&(promote||t.shape.size()!=2))throw std::runtime_error("GLM FP8: unexpected tensor "+source);
         b.info.name=name;b.info.type=promote||b.fp8||t.dtype=="F32"?0:30;b.info.shape.assign(t.shape.rbegin(),t.shape.rend());
+        if(b.modelopt && b.fp8) {
+            const auto m=model.modelopt->matrix(source);b.info.shape={m.columns,m.rows};
+        }
         bindings.emplace(name,std::move(b));
     }
 };

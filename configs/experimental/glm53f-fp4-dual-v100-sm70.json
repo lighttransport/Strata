@@ -1,0 +1,27 @@
+{
+  "exe": "build-glm-v100/strata-glm-decode",
+  "model": "models/glm53f-fp4",
+  "host": "127.0.0.1",
+  "model_name": "glm53f-fp4-dual-v100-sm70-experimental",
+  "context": 12288,
+  "dense_cache_mib": 4096,
+  "gpu_budget_mib": 32768,
+  "gpu_devices": "0,1",
+  "threads": 35,
+  "cpu_affinity": "numa",
+  "prefill_batch": 8192,
+  "fp4_kernel": "sm70",
+  "decode_experts": "cpu",
+  "speculative": "mtp",
+  "draft_depth": 3,
+  "decode_graphs": false,
+  "prefill_expert_cache_mib": 0,
+  "decode_cache_mib": 0,
+  "decode_prefill_cache": false,
+  "decode_cache_adapt": false,
+  "lock_weights": true,
+  "env": {
+    "STRATA_GLM_MTP_ACCEPT_MARGIN": "0"
+  },
+  "experimental_role": "Native full-checkpoint FP4 experiment. Throughput and quality qualification are recorded separately; no default change."
+}

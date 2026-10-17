@@ -36,7 +36,8 @@ def chat_prompt(metadata, prompt, system=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("model", type=pathlib.Path, help="GLM GGUF shard or native EXL3 model directory")
+    parser.add_argument("model", type=pathlib.Path, help="GLM GGUF shard or native EXL3/ModelOpt directory")
+    parser.add_argument("--fp4-kernel", choices=("reference", "sm70"), default="reference")
     parser.add_argument("prompt", nargs="?")
     parser.add_argument("--prompt-file", type=pathlib.Path, help="UTF-8 prompt, avoiding shell argument limits")
     parser.add_argument("--decoder", type=pathlib.Path, default=pathlib.Path("build/strata-glm-decode"))
@@ -88,21 +89,27 @@ def main():
     text = args.prompt_file.read_text(encoding="utf-8") if args.prompt_file else args.prompt
     shard = metadata_shard(args.model)
     native = args.model.is_dir()
+    modelopt = False
     if native:
         from glm_artifact import NativeTokenizer, load_metadata
         metadata = load_metadata(args.model)
         tokenizer = NativeTokenizer(args.model)
-        if args.speculative != "none" or args.lookup_depth or args.decode_experts != "cpu":
+        modelopt = metadata.get("strata.native_codec") == "modelopt"
+        if modelopt and args.gpu_layout != "legacy":
+            parser.error("native ModelOpt uses its own compressed cache across --gpu-devices")
+        if (not modelopt and args.speculative != "none") or args.speculative == "lookup" or args.lookup_depth or args.decode_experts != "cpu":
             parser.error("native EXL3 requires CPU decode experts and speculative=none")
         def specified(name): return any(x == name or x.startswith(name + "=") for x in sys.argv[1:])
-        if not specified("--threads"): args.threads = 15
-        if not specified("--prefill-batch"): args.prefill_batch = "256"
-        if not specified("--gpu-budget-mib"): args.gpu_budget_mib = 10240
-        if not specified("--context"): args.context = 8192
+        if not specified("--threads"): args.threads = 35 if modelopt else 15
+        if not specified("--prefill-batch"): args.prefill_batch = "8192" if modelopt else "256"
+        if not specified("--gpu-budget-mib"): args.gpu_budget_mib = 32768 if modelopt else 10240
+        if not specified("--context"): args.context = 12288 if modelopt else 8192
         if "--cpu-affinity" not in sys.argv and not any(x.startswith("--cpu-affinity=") for x in sys.argv): args.cpu_affinity = "numa"
     else:
         metadata = GGUFFile(shard).metadata
         tokenizer = Tokenizer.from_gguf(shard)
+    if not modelopt and any(x=="--fp4-kernel" or x.startswith("--fp4-kernel=") for x in sys.argv[1:]):
+        parser.error("--fp4-kernel requires a native ModelOpt checkpoint")
     if metadata.get("general.architecture") not in ("glm5next", "glm5-next"):
         parser.error("expected a glm5next artifact")
     prompt = text if args.raw else chat_prompt(metadata, text, args.system)
@@ -126,7 +133,9 @@ def main():
                f"--stop-ids={','.join(map(str, sorted(stops)))}"]
     if args.speculative != "none": command.append(f"--speculative={args.speculative}")
     command.extend((f"--draft-depth={args.draft_depth}", f"--cpu-affinity={args.cpu_affinity}", f"--cpu-prepack-mib={args.cpu_prepack_mib}"))
-    if native: command.append(f"--weight-pages={args.weight_pages}")
+    if native:
+        command.append(f"--weight-pages={args.weight_pages}")
+        if modelopt: command.append(f"--fp4-kernel={args.fp4_kernel}")
     # Read only the token-ID protocol from stdout; decoder failures use stderr.
     if args.context is not None: command.append(f"--context={args.context}")
     if args.lock_weights: command.append("--lock-weights")

@@ -58,6 +58,10 @@ struct ModelDescriptor {
         m.shared_intermediate=n("moe_intermediate_size");m.residual=ResidualKind::Mhc;
         for(int64_t l=0;l<n("num_hidden_layers");++l)m.layers.push_back({c.at("layer_types").array.at(l).string()=="linear_attention"?MixerKind::Kda:MixerKind::SparseMla,
             l<n("first_k_dense_replace")?FfnKind::Dense:FfnKind::Moe,l<n("first_k_dense_replace")?n("intermediate_size"):n("moe_intermediate_size"),c.at("swiglu_limit").real(),c.at("swiglu_limit").real()});
+        if(root.at("quantization_config").at("quant_method").string()=="modelopt") {
+            if(n("num_nextn_predict_layers")!=1)throw std::runtime_error("GLM ModelOpt: expected one draft block");
+            m.draft_layers.push_back({MixerKind::SparseMla,FfnKind::Moe,n("moe_intermediate_size"),c.at("swiglu_limit").real(),c.at("swiglu_limit").real()});
+        }
         return m;
     }
     static ModelDescriptor read(const GgufFile &file) {
@@ -348,6 +352,7 @@ class ModelArtifact {
     bool is_exl3()const { return bool(native_); }
     // The native artifact holds the FP8 release (reference evaluation only), not an EXL3 pack.
     bool is_fp8()const { return native_ && native_->model.codec==artifact::GlmExl3::Codec::Fp8; }
+    bool is_modelopt()const { return native_ && native_->model.codec==artifact::GlmExl3::Codec::ModelOpt; }
     artifact::GlmExl3& exl3() { if(!native_)throw std::runtime_error("not EXL3");return native_->model; }
     const ModelDescriptor &descriptor() const { return descriptor_; }
     const std::map<std::string, ArtifactTensor> &tensors() const { return tensors_; }

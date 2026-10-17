@@ -1,20 +1,26 @@
 #pragma once
 #include "strata/artifact/safetensors.hpp"
+#include "strata/artifact/glm_modelopt.hpp"
 #include "strata/kernels/cpu/exl3/math.hpp"
 namespace strata::artifact {
 // This reader accepts the inspected K2/MCG pack contract and, as a reference source, the FP8 release
 // (zai-org/GLM-5.3-Flash: routed experts and some fixed matrices in E4M3 with 128x128 weight_scale_inv blocks).
 class GlmExl3 {
 public:
-    enum class Codec { Exl3K2, Fp8 };
+    enum class Codec { Exl3K2, Fp8, ModelOpt };
     Codec codec=Codec::Exl3K2;
-    Safetensors tensors;
     Json config;
+    Safetensors tensors;
+    std::unique_ptr<GlmModelOpt> modelopt;
     std::vector<bool> token_ids;
     uint64_t experts_bytes=0, fixed_bytes=0, draft_bytes=0, vision_bytes=0;
-    explicit GlmExl3(const std::filesystem::path& root):tensors(root),config(read_json((root/"config.json").string())) {
+    explicit GlmExl3(const std::filesystem::path& root):config(read_json((root/"config.json").string())),
+        tensors(root,config.at("quantization_config").at("quant_method").string()=="modelopt") {
         const auto& q=config.at("quantization_config");
-        if(q.at("quant_method").string()=="fp8") {
+        if(q.at("quant_method").string()=="modelopt") {
+            if(q.at("quant_algo").string()!="MIXED_PRECISION")throw std::runtime_error("GLM ModelOpt: expected mixed precision checkpoint");
+            codec=Codec::ModelOpt;modelopt=std::make_unique<GlmModelOpt>(tensors,config);
+        }else if(q.at("quant_method").string()=="fp8") {
             const auto& block=q.at("weight_block_size").array;
             if(q.at("fmt").string()!="e4m3" || block.size()!=2 || block[0].integer()!=128 || block[1].integer()!=128)
                 throw std::runtime_error("GLM FP8: requires e4m3 weights in 128x128 blocks");
@@ -48,6 +54,12 @@ public:
         for(unsigned l=3;l<46;++l)for(unsigned e=0;e<288;++e)for(const auto* projection:{"gate_proj","up_proj","down_proj"}) {
             const auto p=prefix(l,e,projection);bool down=std::string(projection)=="down_proj";
             const uint64_t in=down?2048:4096,out=down?4096:2048;
+            if(codec==Codec::ModelOpt) {
+                const auto matrix=modelopt->matrix(p+".weight");
+                if(matrix.format!=ModelOptFormat::Nvfp4 || matrix.rows!=out || matrix.columns!=in)
+                    throw std::runtime_error("GLM ModelOpt: incompatible routed expert: "+p);
+                continue;
+            }
             if(codec==Codec::Fp8) {
                 tensors.expect(p+".weight","F8_E4M3",{out,in});tensors.expect(p+".weight_scale_inv","F32",{out/128,in/128});
                 continue;
@@ -62,9 +74,9 @@ public:
             else if(name.starts_with("model.language_model.layers.45."))draft_bytes+=t.bytes;
             else if(name.find(".mlp.experts.")!=std::string::npos)experts_bytes+=t.bytes;
             else {
-                if(t.dtype!="BF16"&&t.dtype!="F32"&&!(codec==Codec::Fp8&&t.dtype=="F8_E4M3"))throw std::runtime_error("GLM EXL3: unsupported fixed dtype "+name);
+                if(codec!=Codec::ModelOpt && t.dtype!="BF16"&&t.dtype!="F32"&&!(codec==Codec::Fp8&&t.dtype=="F8_E4M3"))throw std::runtime_error("GLM EXL3: unsupported fixed dtype "+name);
                 // FP8 fixed matrices are held dequantized as f32 (4 bytes per weight).
-                fixed_bytes+=t.dtype=="F8_E4M3"?t.bytes*4:t.bytes;
+                fixed_bytes+=t.dtype=="F8_E4M3"&&codec!=Codec::ModelOpt?t.bytes*4:t.bytes;
             }
         }
     }

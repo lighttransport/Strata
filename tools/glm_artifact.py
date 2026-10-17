@@ -8,10 +8,14 @@ def load_metadata(directory):
     config = json.loads((root / "config.json").read_text(encoding="utf-8"))
     text = config["text_config"]
     quant = config.get("quantization_config", {})
-    if config.get("model_type") != "glm5_next" or quant.get("quant_method") != "exl3":
-        raise ValueError("expected a GLM-5.3-Flash EXL3 directory")
+    codec = quant.get("quant_method")
+    if config.get("model_type") != "glm5_next" or codec not in ("exl3", "modelopt"):
+        raise ValueError("expected a GLM-5.3-Flash EXL3 or ModelOpt directory")
+    if codec == "modelopt" and quant.get("quant_algo") != "MIXED_PRECISION":
+        raise ValueError("native GLM ModelOpt requires mixed precision metadata")
     result = {"general.architecture": "glm5next", "glm5next.context_length": text["max_position_embeddings"],
               "tokenizer.chat_template": (root / "chat_template.jinja").read_text(encoding="utf-8")}
+    result["strata.native_codec"] = codec
     for key, value in zip(("eos", "eot", "eom"), text["eos_token_id"]):
         result[f"tokenizer.ggml.{key}_token_id"] = value
     return result

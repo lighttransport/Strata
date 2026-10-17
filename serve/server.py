@@ -6748,12 +6748,14 @@ def main() -> int:
         from strata_tokenizer import Tokenizer
         shard = metadata_shard(Path(cfg["model"]))
         glm_native = shard.is_dir()
+        glm_modelopt = False
         if glm_native and cfg.get("expert_pack"):
             ap.error("GLM expert_pack requires an original GGUF model")
         if glm_native:
             from glm_artifact import NativeTokenizer, load_metadata
             glm_metadata = load_metadata(shard)
             tok = NativeTokenizer(shard)
+            glm_modelopt = glm_metadata.get("strata.native_codec") == "modelopt"
         else:
             glm_metadata = GGUFFile(shard).metadata
             tok = Tokenizer.from_gguf(shard)
@@ -6832,9 +6834,9 @@ def main() -> int:
         if recovery is True or recovery == "recover":
             ap.error('GLM decodes greedily only: reasoning_loop_recovery "recover" would resample; use "stop"')
         context = int(cfg.get("context", 8192 if glm_native else 4096))
-        if glm_native and (context > 65536 or cfg.get("speculative", "none") != "none" or cfg.get("lookup_depth", 0) or cfg.get("decode_experts", "cpu") != "cpu"):
+        if glm_native and (context > 65536 or (not glm_modelopt and cfg.get("speculative", "none") != "none") or cfg.get("lookup_depth", 0) or cfg.get("decode_experts", "cpu") != "cpu"):
             ap.error("native EXL3 requires context <=64K, CPU decode experts and speculative=none")
-        if glm_native and (cfg.get("decode_graphs") or cfg.get("decode_cache_mib", 0)):
+        if glm_native and ((not glm_modelopt and cfg.get("decode_graphs")) or cfg.get("decode_cache_mib", 0)):
             ap.error("native EXL3 does not support decode_graphs or decode_cache_mib")
         args = [cfg["model"], str(context), str(cfg.get("dense_cache_mib", 4096)),
                 str(cfg.get("threads", 15 if glm_native else 6)), str(cfg.get("expert_cache_mib", 0)),
@@ -6930,6 +6932,13 @@ def main() -> int:
             while len(args) < 27:
                 args.append(defaults[len(args) - 22])
             args += batch_args + layer_args
+        if glm_modelopt:
+            kernel = cfg.get("fp4_kernel", "reference")
+            if kernel not in ("reference", "sm70"):
+                ap.error("GLM fp4_kernel must be reference or sm70")
+            args.append(f"--fp4-kernel={kernel}")
+        elif "fp4_kernel" in cfg:
+            ap.error("GLM fp4_kernel requires a native ModelOpt checkpoint")
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
         vision, sampling_defaults = None, {}
     elif a.engine == "strata":

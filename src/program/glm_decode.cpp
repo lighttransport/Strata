@@ -29,6 +29,8 @@
 #include "strata/kernels/glm_q23.hpp"
 #include "strata/kernels/canon_expert.hpp"
 #include "strata/kernels/glm_q8.hpp"
+#include "strata/kernels/glm_fp4.hpp"
+#include "strata/kernels/cpu/glm_fp4.hpp"
 #include "strata/kernels/dequant_bf16.hpp"
 #include "strata/prefill/gemm.hpp"
 #include "strata/prefill/partition.hpp"
@@ -409,6 +411,7 @@ struct GpuLocality {
 #endif
     }
 };
+#include "glm_fp4_native.inc"
 class ExpertStager {
     std::mutex mutex;
     std::condition_variable work, finished;
@@ -2011,6 +2014,9 @@ class Decoder {
     std::map<int, MoePrefix> moe_prefixes;
     int prepared_moe_layer = -1;
     std::unique_ptr<ResidentExecutor> cached_decode, cached_decode_b;
+#ifndef STRATA_USE_HIP
+    std::unique_ptr<Fp4NativeExecutor> modelopt_gpu;
+#endif
     std::unique_ptr<SecondaryPrefill> secondary;
     PrefillGroupCache prefill_cache;
     std::map<std::string, std::unique_ptr<Device>> phase;
@@ -2819,7 +2825,7 @@ class Decoder {
         }
         // Verification can grow a one-token buffer after layer graphs captured
         // its address. Reserve the whole verification window before first replay.
-        if (gpu && main && batch_tokens <= cpu::MAXT && (batched_resident || !artifact.is_exl3())) {
+        if (gpu && main && batch_tokens <= cpu::MAXT && (batched_resident || !artifact.is_exl3() || artifact.is_modelopt())) {
             const size_t row = name == "streams" ? 4 * m.hidden :
                                name == "hc_coeff" ? 24 : name == "output" ? m.vocab :
                                name == "moe_ids" || name == "moe_weights" ? m.top_k : m.hidden;
@@ -3068,6 +3074,12 @@ class Decoder {
         if (t.shape.size() != 2)
             throw std::runtime_error("GLM: matrix must have two dimensions: " + name);
         const int in = (int)t.shape[0], out = (int)t.shape[1];
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {
+            if(!modelopt_gpu)throw std::runtime_error("GLM FP4: configure GPU execution before matrix products");
+            modelopt_gpu->dense(name,x,y,nt,stream);return;
+        }
+#endif
         if(artifact.is_exl3() && t.type==GGML_TYPE_BF16) {
             if(native_dense_q8) {
                 const auto it=native_q8_weights.find(name);
@@ -3612,6 +3624,9 @@ class Decoder {
     }
     void moe_gpu(const std::string &p, const float *x, float *out,
                  const strata::core::LayerDescriptor &layer) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {moe(p,std::stoi(p.substr(4)),x,out,layer);return;}
+#endif
         const int nt = batch_tokens, H = m.hidden, E = m.experts, K = m.top_k;
         auto &logits = buf("router_logits", nt * E);
         auto &ids = buf("router_ids", nt * K), &rw = buf("router_weights", nt * K);
@@ -4066,6 +4081,9 @@ class Decoder {
     }
     void moe_mtp(const std::string &p, const float *x, float *out,
                  const strata::core::LayerDescriptor &layer) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {moe(p,45,x,out,layer);return;}
+#endif
         const int H = m.hidden, K = m.top_k;
         auto &logits = buf("mtp_router", m.experts), &ids = buf("mtp_ids", K);
         auto &routing = buf("mtp_routing", K);
@@ -4212,6 +4230,20 @@ class Decoder {
     }
     void moe(const std::string &p, int l, const float *x, float *out,
              const strata::core::LayerDescriptor &layer) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {
+            const int nt=batch_tokens;
+            auto& logits=buf("fp4_router",m.experts*nt);
+            auto& ids=buf("fp4_ids",m.top_k*nt);
+            auto& routing=buf("fp4_routing",m.top_k*nt);
+            mat(p+"ffn_gate_inp.weight",x,logits.f());
+            auto& bias=weight(p+"exp_probs_b.bias");
+            k::glm_router_tokens(logits.f(),bias.f(),static_cast<int*>(ids.p),routing.f(),m.experts,m.top_k,m.expert_scale,nt,stream);
+            ffn(p,x,out,"_shexp",m.shared_intermediate,layer.shared_swiglu_limit);
+            modelopt_gpu->routed(l,x,static_cast<const int*>(ids.p),routing.f(),out,nt,layer.swiglu_limit,stream);
+            return;
+        }
+#endif
         if(artifact.is_fp8() && !fast)throw std::invalid_argument("FP8 reference: routed experts run only in GPU prefill (corpus evaluation)");
         if(artifact.is_exl3()) {if(fast)moe_exl3_gpu(p,l,x,out,layer);else moe_exl3(p,l,x,out,layer);return;}
         if (l == (int)m.layers.size() && mtp_ready) {
@@ -6927,14 +6959,21 @@ class Decoder {
         check(cudaGetDevice(&primary_device));
         if (m.architecture != "glm5next" || ctx < 1 || ctx > (size_t)m.context || budget < 64 * 1024 * 1024)
             throw std::invalid_argument("GLM: invalid architecture, context, or cache budget");
+#ifndef STRATA_USE_HIP
+        if(fp4_kernel_selected&&!artifact.is_modelopt())throw std::invalid_argument("--fp4-kernel requires a native ModelOpt checkpoint");
+#endif
         validate();
         if(artifact.is_exl3()) {
+#ifdef STRATA_USE_HIP
+            if(artifact.is_modelopt())throw std::invalid_argument("GLM ModelOpt FP4 currently requires the CUDA backend");
+#endif
             if(ctx>65536)throw std::invalid_argument("EXL3: context above 64K requires host KV offload, which is deferred");
 #ifdef __linux__
-            const uint64_t ram=uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
+            const uint64_t ram=artifact.is_modelopt()?strata::core::host_memory_allowance_bytes():uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
             const auto census=artifact.census();
-            const uint64_t resident=(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;   // FP8: experts streamed from disk
-            if(resident+6ULL*1024*MiB>ram)throw std::runtime_error("EXL3: main weights plus 6 GiB host reserve exceed system RAM");
+            const uint64_t resident=artifact.is_modelopt()?artifact.exl3().tensors.file_bytes():(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;
+            if(artifact.is_modelopt())std::cerr<<"FP4_HOST_BUDGET weights_bytes="<<resident<<" reserve_bytes="<<6ULL*1024*MiB<<" limit_bytes="<<ram<<'\n';
+            if(resident>ram || 6ULL*1024*MiB>ram-resident)throw std::runtime_error(artifact.is_modelopt()?"GLM FP4: indexed files plus 6 GiB host reserve exceed the memory allowance":"EXL3: main weights plus 6 GiB host reserve exceed system RAM");
 #endif
             if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
             exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu);
@@ -7155,7 +7194,7 @@ class Decoder {
                              tokens.size() != 1 || !row_sequences.empty() || capturing_history ||
                              !gpu || !greedy_scratch || !greedy_pick))
             throw std::invalid_argument("GLM: compact greedy requires one ordinary GGUF decode row");
-        if (consume_logits && (!all_logits || artifact.is_exl3()))
+        if (consume_logits && (!all_logits || (artifact.is_exl3()&&!artifact.is_modelopt())))
             throw std::invalid_argument("GLM: streamed logits require all GGUF rows");
         if (!prefill && tensor_mla_decode) prepare_mla_decode();
         if (!prefill && streaming_dense) compact_decode();
@@ -7355,7 +7394,7 @@ class Decoder {
                 else
                     k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             };
-            const bool combined = row_sequences.empty() && layer_graphs && decode_graphs && !fast &&
+            const bool combined = !artifact.is_modelopt() && row_sequences.empty() && layer_graphs && decode_graphs && !fast &&
                 ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=4)) &&
                 (layer.mixer == strata::core::MixerKind::Kda || graph_mla()) && layer.ffn == strata::core::FfnKind::Moe && !tp_active();
             if (combined && pipelining) {
@@ -7722,6 +7761,11 @@ class Decoder {
                 auto panel = logits.floats((size_t)m.vocab * count);
                 for (float value : panel)
                     if (!std::isfinite(value)) throw std::runtime_error("GLM: non-finite streamed logits");
+                if(artifact.is_modelopt() && exl3_mask_padding) {
+                    const auto& ids=artifact.exl3().token_ids;
+                    for(int t=0;t<count;++t)for(size_t id=0;id<ids.size();++id)
+                        if(!ids[id])panel[size_t(t)*m.vocab+id]=-std::numeric_limits<float>::infinity();
+                }
                 consume_logits(panel.data(), first, count);
             }
         }
@@ -7761,7 +7805,7 @@ class Decoder {
             if (!std::isfinite(v))
                 throw std::runtime_error("GLM: non-finite logits");
         tail_part(trace.copy_ms);
-        if(artifact.is_exl3() && exl3_mask_padding) {
+        if(artifact.is_exl3() && exl3_mask_padding && !consume_logits) {
             const auto& ids=artifact.exl3().token_ids;
             for(int t=0;t<head_tokens;++t)for(size_t id=0;id<ids.size();++id)
                 if(!ids[id])result[t*m.vocab+id]=-std::numeric_limits<float>::infinity();
@@ -8234,6 +8278,7 @@ class Decoder {
     void enable_mtp_capture(bool enabled = true) {
         capture_hidden = enabled;
         if (!enabled) return;
+        if(artifact.is_modelopt())mtp_batched=true;
         ensure_draft_state();
     }
     // The NextN draft block keeps its own latent cache and indexer state behind the main layers.
@@ -8296,13 +8341,16 @@ class Decoder {
         mat(p + "nextn.eh_proj.weight", joined.f(), cur.f());
         reset_phase();
         norm(p + "attn_norm.weight", cur.f(), x.f(), H);
-        mla_gpu(p, m.layers.size(), x.f(), y.f());
+        const bool state_only=artifact.is_modelopt();
+        mla_gpu(p, m.layers.size(), x.f(), y.f(),state_only);
         const float one = 1;
-        check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
-        reset_phase();
-        norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
-        moe_gpu(p, x.f(), y.f(), layer);
-        check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
+        if(!state_only) {
+            check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
+            reset_phase();
+            norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
+            moe_gpu(p, x.f(), y.f(), layer);
+            check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
+        }
         check(cudaStreamSynchronize(stream));
         mtp_position += count;
         mtp_primed = true;
@@ -8502,7 +8550,7 @@ class Decoder {
         }
     }
     void set_verify_graphs(bool enabled) {verify_graphs=enabled;}
-    void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
+    void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&!artifact.is_modelopt()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
     // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
     // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
     // STRATA_GLM_REMOTE_TP_CHECK=1: the same routes' whole experts again from the file mapping (unfused, unsplit),
@@ -8691,7 +8739,8 @@ class Decoder {
     }
     bool uses_device_experts() const { return device_resident_experts; }
     void prepare_mtp_history(int depth) {
-        if (batched_resident || tier_owned_reserve) enable_verify_history(std::max(depth, mtp_lookup_depth()));
+        if (batched_resident || tier_owned_reserve || artifact.is_modelopt())
+            enable_verify_history(std::max(depth, mtp_lookup_depth()));
     }
     void set_device_experts(bool enabled) { device_resident_experts = enabled; }
     void set_bench_mode(bool device, bool reduction, bool active_pools, bool split, int tasks, bool profiling,
@@ -8873,6 +8922,9 @@ class Decoder {
                       std::chrono::steady_clock::now() - start).count() << '\n';
     }
     void prepare_decode_cache() {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu){compact_decode();return;}
+#endif
         if (kv_stage) {   // host KV: the prefill staging copy is not used by decode; give its VRAM to the tier
             check(cudaStreamSynchronize(stream));
             kv_stage.reset();
@@ -9224,6 +9276,9 @@ class Decoder {
         prefill_width_saved = gpu->chunk;
         phase.clear(); scratch.clear(); gpu.reset();
         gpu = std::make_unique<GpuPrefill>(cpu::MAXT, stream, true);
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)modelopt_gpu->compact();
+#endif
         fast = false;
         if (streaming_dense) {
             active_dense_prefix.clear();
@@ -9284,9 +9339,10 @@ class Decoder {
         const auto &layer = m.draft_layers.at(0);
         if (layer.mixer != strata::core::MixerKind::SparseMla)
             throw std::invalid_argument("GLM: MTP requires a NoPE MLA draft block");
-        for (const auto &[name, tensor] : artifact.tensors())
+        if(!artifact.is_modelopt()) for (const auto &[name, tensor] : artifact.tensors())
             if (name.starts_with("blk.45.") && !name.ends_with("_exps.weight"))
                 weight(name, (name.ends_with("attn_k_b.weight") || name.ends_with("attn_v_b.weight")) && !floating_q8_weight(name));
+        if(!artifact.is_modelopt()) {
         const auto &G = artifact.at("blk.45.ffn_gate_exps.weight");
         const auto &U = artifact.at("blk.45.ffn_up_exps.weight");
         const auto &D = artifact.at("blk.45.ffn_down_exps.weight");
@@ -9310,6 +9366,7 @@ class Decoder {
             for (int e = 0; e < m.experts; ++e) lookup[e] = (unsigned long long)mtp_experts->p + e * mtp_expert_bytes;
             mtp_lookup = std::make_unique<Device>(lookup.size() * 8);
             mtp_lookup->put(lookup.data(), lookup.size() * 8);
+        }
         }
         ensure_draft_state();
         mtp_ready = true;
@@ -9442,6 +9499,13 @@ class Decoder {
     }
     int enable_gpu(int requested, size_t total_budget, bool reserve_checkpoint = false,
                    bool tensor_experts = false) {
+        if(artifact.is_modelopt()) {
+            if(gpu)return gpu->chunk;
+            const int width=requested?requested:8192;
+            if(width<1||width>8192)throw std::invalid_argument("GLM FP4: prefill batch must be 1..8192");
+            gpu=std::make_unique<GpuPrefill>(width,stream,false,capacity,false,false,false,true);
+            return width;
+        }
         if(artifact.is_exl3()) {
             if(gpu)return gpu->chunk;
             int width=requested?requested:256;
@@ -9604,6 +9668,15 @@ class Decoder {
     void configure_prefill(const std::vector<int> &devices, size_t total_budget,
                            size_t cache_bytes, bool automatic, bool reserve_mtp, bool tensor_experts = false,
                            bool tensor_batches = false, bool tensor_bf16 = false) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {
+            if(cache_bytes||automatic||tensor_bf16||direct_upload_enabled())
+                throw std::invalid_argument("GLM FP4: native cache admission requires no GGUF prefill cache or direct-upload overrides");
+            if(!gpu)enable_gpu(8192,total_budget);
+            modelopt_gpu=std::make_unique<Fp4NativeExecutor>(artifact,*exl_pool,devices,total_budget,gpu->chunk,reserve_mtp);
+            return;
+        }
+#endif
         if (registered_prefill_upload_enabled() &&
             (devices.size() != 1 || artifact.is_exl3() || capture_hidden || reserve_mtp))
             throw std::invalid_argument("GLM: registered prefill upload requires single-GPU GGUF without MTP");
@@ -9740,6 +9813,7 @@ class Decoder {
         }
     }
     void set_secondary_enabled(bool value) {
+        if(artifact.is_modelopt())throw std::invalid_argument("GLM FP4: compare GPU counts in separate invocations");
         if (secondary_enabled == value) return;
         secondary_enabled = value;
         device_lookup_ready = false;
@@ -9750,6 +9824,9 @@ class Decoder {
     }
     void warm_weights(bool lock = false, const std::vector<int> &upload_devices = {}, bool include_draft = false,
                       const std::function<bool(const std::string &)> &selected = {}) {
+        if(artifact.is_modelopt()) {
+            artifact.exl3().tensors.warm(lock);return;
+        }
         if (registered_prefill_upload_enabled() &&
             (lock || !gpu || secondary || remote_tp || !numa_experts.empty() || !prepared_experts.empty() ||
              artifact.is_exl3()))
@@ -9855,7 +9932,7 @@ class Decoder {
         pool.multi_bytes = 0;
     }
     void set_native_dense_q8(bool enabled,bool cpu_reference=false) {
-        if(!artifact.is_exl3())throw std::invalid_argument("EXL3 Q8 requires a native artifact");
+        if(!artifact.is_exl3()||artifact.is_modelopt())throw std::invalid_argument("EXL3 Q8 requires a native EXL3 or FP8 artifact");
         native_dense_q8=enabled;native_cpu_dense=cpu_reference;
         if(enabled && !native_q8_weights.empty()) {
             // A BF16 quality-reference pass may have cached duplicate dense matrices.
@@ -9886,6 +9963,9 @@ class Decoder {
     }
     void set_cancel(std::function<bool()> fn) { cancelled = std::move(fn); }
     void report_gpu() const {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)modelopt_gpu->report();
+#endif
         if (ram_tier)
             std::cerr << "RAM_TIER_STATE resident_MiB=" << ram_tier->resident_bytes / double(MiB) << " reads=" << ram_tier->loads
                       << " evictions=" << ram_tier->evictions << " rebalances=" << ram_rebalances << " misses=" << ram_misses
@@ -9957,6 +10037,9 @@ class Decoder {
         };
         report(primary_device, gpu.get(), prefill_cache);
         if (secondary) report(secondary->device, secondary->gpu.get(), secondary->cache);
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)for(int device:modelopt_gpu->devices())if(device!=primary_device)report(device,nullptr,prefill_cache);
+#endif
     }
     void check_exact_cache(const std::vector<float>& logits) {
         if (std::getenv("STRATA_GLM_EXACT_CACHE_CHECK")) {
@@ -9976,6 +10059,9 @@ class Decoder {
     }
     void freeze_cache() { cache_frozen = true; }
     void reset() {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)modelopt_gpu->begin_request();
+#endif
         ++routing_request; routing_round = -1; routing_phase = "target";
         report_exact_cache(position);
         exact_cache.reset();
@@ -10034,6 +10120,9 @@ class Decoder {
         }
         if (prefill_width_saved) {
             phase.clear(); scratch.clear(); gpu.reset(); mtp_experts.reset(); mtp_lookup.reset();
+#ifndef STRATA_USE_HIP
+            if(modelopt_gpu)modelopt_gpu->begin_prefill();
+#endif
             if (prefill_dense_budget) begin_streaming_dense();
             for (auto it = weights.begin(); it != weights.end();) {
                 if (it->first.starts_with("blk.45.")) {
@@ -10044,7 +10133,7 @@ class Decoder {
             }
             states.resize(m.layers.size());
             gpu = std::make_unique<GpuPrefill>(prefill_width_saved, stream, false, capacity, false,
-                                              tensor_prefill_experts, tensor_batched_experts);
+                                              tensor_prefill_experts, tensor_batched_experts, artifact.is_modelopt());
             prefill_width_saved = 0;
             if (capture_hidden) ensure_draft_state();
         }
@@ -11117,6 +11206,20 @@ int main(int argc, char **argv) {
     }
     try {
         capture_allocation();
+#ifndef STRATA_USE_HIP
+        // Strip the optional named setting before the legacy serve positional
+        // parser. No existing invocation changes its argument positions.
+        for(int i=1;i<argc;++i)if(std::string(argv[i]).starts_with("--fp4-kernel=")) {
+            if(fp4_kernel_selected)throw std::invalid_argument("--fp4-kernel may be supplied once");
+            const std::string mode=std::string(argv[i]).substr(13);
+            if(mode!="reference"&&mode!="sm70")throw std::invalid_argument("--fp4-kernel must be reference or sm70");
+            fp4_sm70_kernel=mode=="sm70";
+            fp4_kernel_selected=true;
+            for(int j=i;j+1<argc;++j)argv[j]=argv[j+1];
+            --argc;argv[argc]=nullptr;--i;
+        }
+        if(argc<3)throw std::invalid_argument("expected a model and prompt after --fp4-kernel");
+#endif
         if (auto result = layer_entry(argc, argv); result.first) return result.second;
         if (std::string(argv[1]) == "--serve")
             return serve(argc, argv);

@@ -15,6 +15,15 @@ import glm_v100_sweep
 
 
 class RequestDiagnostics(unittest.TestCase):
+    def test_native_fp4_counters_keep_cumulative_scope(self):
+        row, = request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=1\n"
+            "FP4_CPU expert_groups=44 activation_format=f16 weight_format=native_nvfp4\n"
+            "FP4_ROUTES device=0 hits=11 misses=5 uploaded_bytes=100 cache_bytes=90 mma=12 reference=0 prefill=7\n"
+            "FP4_ROUTES device=1 hits=9 misses=4 uploaded_bytes=80 cache_bytes=70 mma=10 reference=0 prefill=6\n")
+        self.assertEqual(row["native_cpu_expert_groups"], 44)
+        self.assertEqual(row["native_devices"][1]["cache_bytes"], 70)
+        self.assertEqual(row["native_counter_scope"], "cumulative since model load")
+
     def test_trace_presence_marks_instrumentation_and_stage_cpu_work_is_separate(self):
         with mock.patch.dict(os.environ,STRATA_GLM_STEP_TRACE='0'):
             self.assertIn('STRATA_GLM_STEP_TRACE',glm_v100_bench.diagnostic_environment())
@@ -122,7 +131,7 @@ resident expert entries=800/1000
 
 
 class ResidentProgress(unittest.TestCase):
-    def run_fake(self, module, *, fail=False, cases=None, boundary=False, sanitizer=None, validate_all=False, prefill_batch=None, extra_args=()):
+    def run_fake(self, module, *, fail=False, cases=None, boundary=False, sanitizer=None, validate_all=False, prefill_batch=None, extra_args=(), native=False):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = pathlib.Path(temporary.name)
@@ -150,8 +159,18 @@ for line in sys.stdin:
         decoder.chmod(0o700)
         text = root / "prompt.txt"
         text.write_text("fixture")
+        model = root / "model.gguf"
+        if native:
+            model.mkdir()
+            (model / "config.json").write_text(json.dumps(dict(model_type="glm5_next",
+                text_config=dict(max_position_embeddings=1048576, eos_token_id=[1,2,3]),
+                quantization_config=dict(quant_method="modelopt", quant_algo="MIXED_PRECISION"))))
+            (model / "chat_template.jinja").write_text("{{ messages }}")
+            (model / "tokenizer.json").write_text("{}")
+            (model / "model.safetensors.index.json").write_text('{"weight_map": {"x": "a.safetensors"}}')
+            (model / "a.safetensors").write_bytes(b"small identity fixture")
         output = root / "result.json"
-        argv = ["bench", str(root / "model.gguf"), str(text), "--decoder", str(decoder),
+        argv = ["bench", str(model), str(text), "--decoder", str(decoder),
                 "--prompt-tokens", "4", "--generated-tokens", "2", "--repetitions", "2",
                 "--validation-tokens", "3", "--threads", "5", "--output", str(output)]
         argv.extend(extra_args)
@@ -184,6 +203,7 @@ sys.exit(97 if MODE == 'failure' else rc)
              mock.patch.dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"]), \
              mock.patch.object(module, "metadata_shard", side_effect=lambda p: p), \
              mock.patch.object(module.Tokenizer, "from_gguf", return_value=tokenizer), \
+             mock.patch("glm_artifact.NativeTokenizer", return_value=tokenizer), \
              contextlib.redirect_stdout(io.StringIO()):
             if sanitizer in ("failure", "missing", "internal"):
                 message = "decoder failed" if sanitizer == "failure" else "sanitizer"
@@ -201,6 +221,15 @@ sys.exit(97 if MODE == 'failure' else rc)
         result = json.loads(output.read_text())
         self.assertEqual(result["decoder_sha256"], hashlib.sha256(decoder.read_bytes()).hexdigest())
         return result
+
+    def test_native_modelopt_records_identity_and_uses_native_cache(self):
+        result = self.run_fake(glm_v100_bench, native=True, extra_args=("--fp4-kernel", "sm70"))
+        self.assertTrue(result["complete"])
+        self.assertIn("--fp4-kernel=sm70", result["command"])
+        self.assertEqual(result["command"][17], "0")
+        self.assertEqual(result["native_model"]["indexed_tensors"], 1)
+        self.assertEqual(result["native_memory"]["peak_swap_bytes"], 0)
+        self.assertEqual(result["trials"][0]["major_faults"], 0)
 
     def test_layer_options_and_full_warmups(self):
         result = self.run_fake(glm_v100_bench, extra_args=(

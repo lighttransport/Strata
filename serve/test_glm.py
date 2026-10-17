@@ -101,13 +101,14 @@ class GlmBoundary(unittest.TestCase):
 class GlmConfigChecks(unittest.TestCase):
     """Combinations the engine refuses only after loading the weights are refused at startup."""
 
-    def start(self, cfg, extra_files=()):
+    def start(self, cfg, extra_files=(), native=False):
         import serve.server as server
         import gguf_reader
         import strata_tokenizer
+        import glm_artifact
         with tempfile.TemporaryDirectory() as directory:
             model = Path(directory) / "m.gguf"
-            model.touch()
+            model.mkdir() if native else model.touch()
             for name in extra_files:
                 (Path(directory) / name).touch()
             cfg = {k: (str(Path(directory) / v) if isinstance(v, str) and v.endswith(".gguf") else v)
@@ -116,18 +117,30 @@ class GlmConfigChecks(unittest.TestCase):
             config.write_text(json.dumps({"exe": "unused", "model": str(model), **cfg}))
             metadata = {"general.architecture": "glm5next", "tokenizer.ggml.eos_token_id": 1,
                         "tokenizer.ggml.tokens": ["a", "b"], "tokenizer.chat_template": "{{ messages }}"}
+            if native: metadata["strata.native_codec"] = "modelopt"
             def engine_start(*args, **kwargs):
                 self.launch_args = args
                 raise RuntimeError("engine would start")
             with mock.patch.object(sys, "argv", ["server", "--engine", "glm", "--config", str(config), "--port", "0"]), \
                  mock.patch.object(gguf_reader, "GGUFFile", return_value=mock.Mock(metadata=metadata)), \
                  mock.patch.object(strata_tokenizer.Tokenizer, "from_gguf", return_value=ByteTokenizer()), \
+                 mock.patch.object(glm_artifact, "load_metadata", return_value=metadata), \
+                 mock.patch.object(glm_artifact, "NativeTokenizer", return_value=ByteTokenizer()), \
                  mock.patch.object(server, "Server"), \
                  mock.patch.object(server, "GlmEngine", side_effect=engine_start), \
                  mock.patch("sys.stderr"):
                 with self.assertRaises((SystemExit, RuntimeError)) as caught:
                     server.main()
             return caught.exception
+
+    def test_modelopt_kernel_and_exact_mtp(self):
+        cfg = {"fp4_kernel": "sm70", "speculative": "mtp", "draft_depth": 3,
+               "context": 12288, "prefill_batch": 8192, "gpu_devices": [0, 1]}
+        self.assertIsInstance(self.start(cfg, native=True), RuntimeError)
+        self.assertIn("--fp4-kernel=sm70", self.launch_args[1])
+        self.assertIsInstance(self.start({**cfg, "fp4_kernel": "unknown"}, native=True), SystemExit)
+        self.assertIsInstance(self.start({**cfg, "decode_cache_mib": 1024}, native=True), SystemExit)
+        self.assertRefused({"fp4_kernel": "sm70"})
 
     def assertRefused(self, cfg, extra_files=()):
         self.assertIsInstance(self.start(cfg, extra_files), SystemExit, cfg)
