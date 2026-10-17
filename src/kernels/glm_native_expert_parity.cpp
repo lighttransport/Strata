@@ -152,20 +152,26 @@ int main(int argc, char** argv) {
                     std::vector<float> g((size_t) NT * FF);
                     float* gp[NT];
                     for (int k = 0; k < NT; ++k) gp[k] = g.data() + k * FF;
-                    (is512 ? cpu::iq512_rows : cpu::iq256_rows)(f.gu_type, blob.data(), f.gu_row, (int) H, a, NT, gp, 0, (int) FF);
-                    const double rg = rel(g, gref);
-                    std::printf("          %s %s gate rows vs ggml vec_dot: rel %.2e\n",
-                                ggml_type_name((ggml_type) f.gu_type), tag, rg);
-                    if (rg > 1e-5) {   // ggml's own vec_dot is the reference: above 1e-5 it is a real mismatch,
-                        std::printf("          %s %s gate rows MISMATCH (rel %.2e > 1e-5)\n",
-                                    ggml_type_name((ggml_type) f.gu_type), tag, rg);   // not rounding (measured 3e-8)
-                        ++failures;
+                    // The old raw-row unit has a VNNI/VBMI floor. Only the
+                    // separate clamped unit is safe on AVX512BW-only CPUs.
+                    if (!is512 || cpu::cpu_avx512_ok()) {
+                        (is512 ? cpu::iq512_rows : cpu::iq256_rows)(f.gu_type, blob.data(), f.gu_row, (int) H, a, NT, gp, 0, (int) FF);
+                        const double rg = rel(g, gref);
+                        std::printf("          %s %s gate rows vs ggml vec_dot: rel %.2e\n",
+                                    ggml_type_name((ggml_type) f.gu_type), tag, rg);
+                        if (rg > 1e-5) {
+                            std::printf("          %s %s gate rows MISMATCH (rel %.2e > 1e-5)\n",
+                                        ggml_type_name((ggml_type) f.gu_type), tag, rg);
+                            ++failures;
+                        }
                     }
                     float* f1[1] = {ffp[0]};
                     const int it = 50;
                     auto gu = [&](int type, const uint8_t *data, size_t row, size_t up, int n,
                                   const void *const *acts, int nt, float *const *outputs, int r0, int r1) {
-                        if (is512) cpu::iq512_gu_rows(type, data, row, up, n, acts, nt, outputs, r0, r1);
+                        if (is512 && f.swiglu_limit > 0)
+                            cpu::iq512_gu_rows_clamped(type, data, row, up, n, acts, nt, outputs, r0, r1, f.swiglu_limit);
+                        else if (is512) cpu::iq512_gu_rows(type, data, row, up, n, acts, nt, outputs, r0, r1);
                         else cpu::iq256_gu_rows_clamped(type, data, row, up, n, acts, nt, outputs, r0, r1, f.swiglu_limit);
                     };
                     auto t0 = std::chrono::steady_clock::now();
@@ -179,9 +185,12 @@ int main(int argc, char** argv) {
                                 tag, us1, 2.0 * f.up_off / us1 / 1e3, usg, 2.0 * f.up_off / usg / 1e3);
                     std::printf("          gate+up %d tokens one thread: %s %.0f us vs ggml %d x %.0f us\n", NT, tag, usn, NT, usg);
                 };
-                if (!f.swiglu_limit && cpu::cpu_avx512_ok()) check("avx512", true);   // guarded: the binary runs on AVX-2 CPUs too
+                if (cpu::cpu_avx512_ok() || (f.swiglu_limit > 0 && cpu::cpu_avx512bw_ok())) check("avx512", true);
                 check("avx2", false);
             }
+            // The microbenchmarks above may use another dispatch. Quantize the
+            // hidden values produced by this process's actual engine policy.
+            cpu::native_gu_rows(f, blob.data(), a, NT, ffp, 0, (int)FF);
             for (int k = 0; k < NT; ++k) {
                 cpu::native_quant_h(f, ff[k].data(), hq[k].data());
                 hp[k] = hq[k].data();
@@ -211,7 +220,7 @@ int main(int argc, char** argv) {
                 std::printf("          dynamic CPU pool vs direct: rel %.2e\n", e);
                 if (!std::isfinite(e) || e > 1e-6) ++failures;
             }
-            if (f.gu_type == 21 || f.gu_type == 22) {
+            if ((f.gu_type == 21 || f.gu_type == 22) && cpu::iq256_prepared_row_bytes(f.gu_type, H)) {
                 auto prepared = f; prepared.lossless = true;
                 prepared.gu_row = cpu::iq256_prepared_row_bytes(f.gu_type, H);
                 const size_t down_row = cpu::iq256_prepared_row_bytes(f.d_type, FF);

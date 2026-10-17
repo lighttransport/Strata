@@ -27,6 +27,22 @@ from glm_v100_bench import prompt_ids, save_result
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def wait_for_idle(timeout=600):
+    """Restart the complete quiet interval after a transient NVML timeout."""
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("GPU idle queries exceeded their time limit")
+        try:
+            wait_idle(timeout=remaining)
+            return
+        except subprocess.TimeoutExpired:
+            # The failed query proves nothing about idleness. Require a fresh
+            # quiet interval, within the original overall deadline.
+            continue
+
+
 def digest(path):
     with Path(path).open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
@@ -76,7 +92,7 @@ def process_memory(pid):
     return dict(swap_bytes=swap, summed_rss_bytes=rss, observed_processes=len(seen))
 
 
-def assess(record, stops, expected_trials=3, tokens=512):
+def assess(record, stops, expected_trials=3, tokens=512, decode_target=60, prefill_target=None):
     trials = record.get("trials", [])
     validation = record.get("validation_trials", [])
     warmups = record.get("full_warmup_trials", [])
@@ -89,15 +105,17 @@ def assess(record, stops, expected_trials=3, tokens=512):
         )
         for row in trials + validation + warmups
     ]
-    eligible = bool(
+    checkpoint = record.get('protocol') == 'checkpoint'
+    protocol_ok = (record.get('prefill_reproducible') and len(warmups) >= 1
+                   and len(record.get('prefill_trials', [])) >= expected_trials
+                   if checkpoint else len(validation) >= 3 and len(warmups) >= 2)
+    measured = bool(
         record.get("complete")
         and not record.get("instrumented")
-        and record.get("repetitions_identical")
         and len(trials) >= expected_trials
         and record["configuration"]["prompt_tokens"] == 8192
         and tokens >= 512
-        and len(validation) >= 3
-        and len(warmups) >= 2
+        and protocol_ok
         and all(
             len(row["token_ids"]) == tokens
             and math.isfinite(row["decode_tok_s"])
@@ -109,18 +127,52 @@ def assess(record, stops, expected_trials=3, tokens=512):
             for h in health
         )
     )
+    eligible = measured and bool(record.get('repetitions_identical'))
     speed = statistics.median(row["decode_tok_s"] for row in trials) if trials else None
+    prefill = record.get('median_prefill_tok_s')
+    prefill_ok = prefill is not None and math.isfinite(prefill) and prefill > 0
+    prefill_eligible = bool(measured and prefill_ok)
     return dict(
         timing_eligible=eligible,
+        performance_measured=measured,
+        prefill_timing_eligible=prefill_eligible,
+        decode_repeatable=bool(record.get('repetitions_identical')),
         median_decode_tok_s=speed,
+        median_prefill_tok_s=prefill,
         stream_health=health,
-        speed_target_reached=bool(eligible and speed >= 60),
+        speed_target_reached=bool(eligible and speed >= decode_target),
+        prefill_target_reached=bool(prefill_eligible and prefill_target is not None and prefill >= prefill_target),
         quality_qualified=False,
         note="Corpus, complete paired HumanEval and long-context qualification are separate.",
     )
 
 
+def profile_config(case):
+    cfg = json.loads(Path(case['profile']).read_text())
+    settings = case.get('settings', {})
+    allowed = {'threads', 'prefill_batch', 'decode_cache_mib'}
+    if set(settings) - allowed:
+        raise ValueError('profile settings support threads, prefill_batch and decode_cache_mib')
+    cfg.update(settings)
+    cfg['env'].update(case.get('env', {}))
+    for name in case.get('unset', []):
+        cfg['env'].pop(name, None)
+    return cfg
+
+
 def command(case, args, output):
+    if 'profile' in case:
+        if not args.worker:
+            raise ValueError('mixed profile needs --worker')
+        cfg = profile_config(case)
+        saved = output.with_suffix('.profile.json')
+        save_result(saved, cfg)
+        binary = args.baseline if case.get('build') == 'baseline' else args.decoder
+        worker = getattr(args, 'baseline_worker', None) if case.get('build') == 'baseline' else None
+        return [sys.executable, str(ROOT / 'tools/glm_v100_profile_bench.py'),
+                '--profile', str(saved), '--model', str(args.model),
+                '--prompt', str(Path(case['prompt']).resolve()), '--decoder', str(binary),
+                '--worker', str(worker or args.worker), '--output', str(output)]
     topology = case.get("topology", "layer")
     if topology not in ("layer", "legacy", "worker"):
         raise ValueError("topology must be layer, legacy or worker")
@@ -242,21 +294,49 @@ def main():
     p.add_argument("--decoder", type=Path, required=True)
     p.add_argument("--baseline", type=Path)
     p.add_argument("--worker", type=Path)
+    p.add_argument('--baseline-worker', type=Path)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--minimum-remaining", type=int, default=1200)
     p.add_argument("--retry-failed", action="store_true")
+    p.add_argument('--resident-identity', type=Path,
+                   help='verified shared owner identity, required for resumable profile cases')
+    p.add_argument('--decode-target', type=float, default=60)
+    p.add_argument('--prefill-target', type=float)
     p.add_argument(
         "--screen",
         action="store_true",
         help="one full warmup and three timed requests; cannot qualify the final target",
     )
     a = p.parse_args()
-    for key in ("matrix", "model", "decoder", "baseline", "worker", "output"):
+    if (not math.isfinite(a.decode_target) or a.decode_target <= 0 or
+            a.prefill_target is not None and (not math.isfinite(a.prefill_target) or a.prefill_target <= 0)):
+        p.error('throughput targets must be finite and positive')
+    for key in ("matrix", "model", "decoder", "baseline", "worker", "baseline_worker", "output"):
         if getattr(a, key) is not None:
-            setattr(a, key, getattr(a, key).expanduser().resolve())
+            path = getattr(a, key).expanduser()
+            setattr(a, key, path.absolute() if key == 'model' else path.resolve())
     a.baseline = a.baseline or a.decoder
     matrix = json.loads(a.matrix.read_text())
     cases = matrix["cases"]
+    profiles = [profile_config(case) for case in cases if 'profile' in case]
+    if not profiles:
+        a.model = a.model.resolve()
+    if profiles and (len(profiles) != len(cases) or a.screen):
+        p.error('use a separate non-screen matrix for saved profiles')
+    owner = None
+    if profiles:
+        if not a.resident_identity:
+            p.error('profile cases require --resident-identity from a verified shared owner')
+        import fcntl
+        owner = json.loads(a.resident_identity.read_text())
+        with a.model.open('rb') as model:
+            sealed = fcntl.fcntl(model.fileno(), fcntl.F_GET_SEALS) == 15
+        if (not sealed or owner.get('seals') != 15 or a.model.stat().st_size != owner.get('bytes')
+                or not owner.get('socket_row_samples')
+                or not all(s['local'] for s in owner['socket_row_samples'])
+                or any((cfg.get('model_sha256'), cfg.get('model_bytes')) !=
+                       (owner.get('sha256'), owner.get('bytes')) for cfg in profiles)):
+            p.error('resident model does not match verified profile weights and socket placement')
     names = [case["name"] for case in cases]
     if len(names) != len(set(names)) or any(
         not re.fullmatch(r"[A-Za-z0-9_.-]+", name) for name in names
@@ -278,9 +358,18 @@ def main():
                 "glm_v100_optimize.py",
                 "glm_v100_bench.py",
                 "glm_mixed_run.py",
+                "glm_v100_profile_bench.py",
             )
         },
     )
+    if owner:
+        identity.pop('model_mtime_ns')
+        identity['model'] = 'verified shared resident model'
+        identity.update(model_sha256=owner['sha256'],
+                        socket_row_plan_sha256=owner['socket_row_plan_sha256'],
+                        profiles_sha256={str(Path(c['profile']).resolve()): digest(c['profile']) for c in cases},
+                        baseline_worker_sha256=digest(a.baseline_worker or a.worker),
+                        decode_target=a.decode_target, prefill_target=a.prefill_target)
     frozen = a.output / "identity.json"
     if frozen.exists() and json.loads(frozen.read_text()) != identity:
         p.error("resume identity differs; use a new output directory")
@@ -296,6 +385,9 @@ def main():
         )
         if k in metadata
     }
+    if profiles:
+        from glm_chat_stops import chat_stop_ids
+        stops = set(chat_stop_ids(metadata))
     summary = dict(identity=identity, stop_ids=sorted(stops), cases=[], complete=False)
     failed = False
     for case in cases:
@@ -319,7 +411,7 @@ def main():
         output = attempt / "benchmark.json"
         cmd = command(case, a, output)
         env = {k: v for k, v in os.environ.items() if not k.startswith("STRATA_")}
-        env.update(case.get("env", {}))
+        env.update(profile_config(case)['env'] if 'profile' in case else case.get('env', {}))
         record = dict(
             name=case["name"],
             job_id=os.environ.get("SLURM_JOB_ID"),
@@ -335,7 +427,7 @@ def main():
         )
         save_result(attempt / "record.json", record)
         print("CASE_START", case["name"], flush=True)
-        wait_idle(timeout=600)
+        wait_for_idle(timeout=600)
         start = time.monotonic()
         with (attempt / "runner.log").open("w") as log:
             process = subprocess.Popen(
@@ -374,9 +466,12 @@ def main():
             finally:
                 record["elapsed_seconds"] = time.monotonic() - start
                 if output.exists():
-                    record.update(assess(json.loads(output.read_text()), stops))
+                    record.update(assess(json.loads(output.read_text()), stops,
+                                         decode_target=a.decode_target, prefill_target=a.prefill_target))
                 if record["peak_swap_bytes"]:
-                    record.update(timing_eligible=False, speed_target_reached=False)
+                    record.update(timing_eligible=False, speed_target_reached=False,
+                                  performance_measured=False, prefill_timing_eligible=False,
+                                  prefill_target_reached=False)
                 record["complete"] = record["returncode"] == 0
                 save_result(attempt / "record.json", record)
         summary["cases"].append(record)

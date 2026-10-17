@@ -18,6 +18,8 @@ class RequestDiagnostics(unittest.TestCase):
     def test_trace_presence_marks_instrumentation_and_stage_cpu_work_is_separate(self):
         with mock.patch.dict(os.environ,STRATA_GLM_STEP_TRACE='0'):
             self.assertIn('STRATA_GLM_STEP_TRACE',glm_v100_bench.diagnostic_environment())
+        with mock.patch.dict(os.environ, STRATA_GLM_MIXED_PROFILE_DECODE='1'):
+            self.assertIn('STRATA_GLM_MIXED_PROFILE_DECODE', glm_v100_bench.diagnostic_environment())
         text='''RESPONSE_PREPARE kind=decode_cache ms=10
 LAYER_WORK stage=0 device=0 decode_rows=10 decode_wall_ms=100 draft_wall_ms=0
 CPU_EXPERT gu_ms=10 quant_ms=1 down_ms=5 layer_flow_ms=2 bytes=1000

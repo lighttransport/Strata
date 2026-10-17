@@ -154,6 +154,58 @@ swap. These are quality and memory checks; Q3 throughput was not measured.
 Screening, diagnostics, and final timing eligibility are separate. Final
 eligibility requires full warmups and validations, stable streams, no observed
 swap, and no detected cycles or generation beyond a real stop token.
+
+Saved CUDA expert-worker profiles can also be matrix cases. Set `profile` to
+the experimental configuration JSON and `prompt` to an 8,192-token ID file.
+Optional `settings` override `threads`, `prefill_batch` or `decode_cache_mib`;
+`env` and `unset` apply explicit environment changes. Keep routing and MTP
+acceptance fixed when comparing scheduling changes. For example:
+
+```json
+{"cases":[
+  {"name":"q3-greedy","profile":"configs/experimental/glm53f-ud-q3-k-xl-v100s-greedy.json","prompt":"docs/fixtures/glm_tr16_20261009/prompts/8k/train-code.ids"},
+  {"name":"q3-aff008-mtp3","profile":"configs/experimental/glm53f-ud-q3-k-xl-v100s-aff008-mtp3.json","prompt":"docs/fixtures/glm_tr16_20261009/prompts/8k/train-code.ids"}
+]}
+```
+
+These cases require a live shared resident owner. Save its `resident.identity`
+as JSON and pass `resident.path` directly, preserving the `/proc` descriptor
+path. Run from the repository root with the project Python environment active:
+
+```sh
+python3 tools/glm_v100_optimize.py --matrix tmp/q3-matrix.json \
+  --model "$RESIDENT_MODEL" --resident-identity tmp/resident-identity.json \
+  --decoder build/strata-glm-decode --worker build/strata-glm-gpu-worker \
+  --decode-target 50 --prefill-target 700 --output tmp/q3-timing
+```
+
+The profile's context, precision, cache budgets and speculation mode are used.
+One prefill warmup precedes three timed prefills, each checked against the
+warmup's logits and route counts outside timing. One full decode warmup
+precedes three timed decodes restored from the same target state. Both modes
+count generated tokens after the initial prefill-selected token. Cache
+learning can continue across repeats: the report distinguishes complete
+measurements from repeatable decode timings and quality qualification. Renewed
+allocations may use a new verified resident descriptor without changing the
+frozen experiment identity. Freeze the candidate using training prompts, then
+run two fresh processes on training and held-out prompts before accepting its
+measured result. Use `--baseline` and
+`--baseline-worker` for cases marked `build=baseline` when comparing binaries.
+
+`STRATA_GLM_IQ512_CLAMP=1` selects the clamped IQ gate/up CPU kernel on
+AVX512F/BW/DQ/VL processors, including Skylake and Cascade Lake. It supports
+separate NUMA mappings for gate and up rows. The default remains AVX2 for
+clamped rows; the new path changes the floating-point reduction order and
+requires a fresh quality comparison. `STRATA_NO_IQ512` and the forced ISA cap
+disable it. The older unclamped AVX-512 kernel retains its VNNI/VBMI check.
+
+When testing `STRATA_SM70_TABLE=1` on Volta with a clamped model, also set
+`STRATA_GLM_FUSED_CLAMP=1`. The fused gate/up kernel then applies the same
+asymmetric SwiGLU clamp as the standalone activation. Compare normal and
+high-amplitude activations with `native_expert_bench`; its optional last
+argument scales the test activations. Neither switch changes the default
+kernel selection.
+
 `tools/glm_v100_corpus.py` scores a saved benchmark configuration against full
 Q23 reference logits; legacy configurations use the actual target verification
 path through `--eval-verify`. Corpus scores alone do not qualify a candidate.

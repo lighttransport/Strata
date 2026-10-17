@@ -11,6 +11,12 @@ bool iq512_supported(int ggml_type) noexcept;
 /// ff[t][r] = silu(gate_r . a[t]) * (up_r . a[t]), rows [r0, r1); gate rows at blob, up rows at blob + up_off.
 void iq512_gu_rows(int ggml_type, const uint8_t* blob, size_t gu_row, size_t up_off, int n, const void* const* act,
                    int nt, float* const* ff, int r0, int r1);
+/// GLM's asymmetric SwiGLU clamp on AVX512F/BW/DQ/VL, including CPUs without
+/// VNNI/VBMI. Requires cpu_avx512bw_ok(). Supports separately mapped up rows. The dot's
+/// reduction order is AVX-512's, which can differ from the AVX2 reference.
+void iq512_gu_rows_clamped(int ggml_type, const uint8_t* blob, size_t gu_row, size_t up_off, int n,
+                           const void* const* act, int nt, float* const* ff, int r0, int r1,
+                           float limit, const uint8_t* separate_up = nullptr);
 /// out[t][r] = w_r . a[t], rows [r0, r1).
 void iq512_rows(int ggml_type, const uint8_t* w, size_t row_bytes, int n, const void* const* act, int nt,
                 float* const* out, int r0, int r1);
