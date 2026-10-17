@@ -1,6 +1,7 @@
 // Stream a converted routed-expert GGUF sidecar. Original files are read-only.
 #include "strata/core/model.hpp"
 #include "strata/artifact/fp8_experts.hpp"
+#include "strata/artifact/glm_expert_map.hpp"
 #include "strata/core/runtime_memory.hpp"
 #include "ggml.h"
 #include "ggml-cpu.h"
@@ -71,22 +72,17 @@ int main(int argc,char** argv){try {
     const std::filesystem::path progress_path=partial.string()+".progress";
     if(std::filesystem::exists(partial)&&!resume)throw std::runtime_error("refusing to overwrite existing partial file (--resume continues it)");
     if(fp8_dir.empty()&&(gate_type!=10||(down_type!=10&&down_type!=11)))throw std::runtime_error("--gate-type/--down-type other than Q2_K/Q3_K need --fp8=DIR");
-    strata::artifact::fp8::Index fp8;if(!fp8_dir.empty())fp8=strata::artifact::fp8::scan(fp8_dir);
     if(!map_path.empty()&&fp8_dir.empty())throw std::runtime_error("--expert-map needs --fp8=DIR");
+    if(!fp8_dir.empty()&&experts<288&&map_path.empty())throw std::runtime_error("pruned FP8 conversion requires --expert-map=FILE");
     std::map<int,std::vector<int>> expert_map;std::string map_text;
     if(!map_path.empty()) {
         std::ifstream in(map_path);if(!in)throw std::runtime_error("cannot read expert map "+map_path);
-        for(std::string line;std::getline(in,line);) {
-            std::istringstream ls(line);int l;if(!(ls>>l))continue;
-            std::vector<int> v;for(int e;ls>>e;)v.push_back(e);
-            std::vector<int> sorted=v;std::sort(sorted.begin(),sorted.end());
-            if(v.size()!=experts||std::adjacent_find(sorted.begin(),sorted.end())!=sorted.end()||sorted.front()<0||sorted.back()>=288)
-                throw std::runtime_error("expert map layer "+std::to_string(l)+": need "+std::to_string(experts)+" distinct indices below 288");
-            expert_map[l]=v;map_text+=line+"\n";
-        }
+        auto mapping=strata::artifact::read_glm_expert_map(in,experts,first,last);
+        expert_map=std::move(mapping.layers);map_text=std::move(mapping.plan_text);
     }
+    strata::artifact::fp8::Index fp8;if(!fp8_dir.empty())fp8=strata::artifact::fp8::scan(fp8_dir);
     auto fp8_expert=[&](int l,int ex) {
-        if(expert_map.empty())return ex;
+        if(map_path.empty())return ex;
         const auto m=expert_map.find(l);if(m==expert_map.end())throw std::runtime_error("expert map lacks layer "+std::to_string(l));
         return m->second[size_t(ex)];
     };

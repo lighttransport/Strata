@@ -2056,6 +2056,11 @@ if(STRATA_BUILD_TESTS)
   add_executable(safetensors_test tests/artifact/safetensors_test.cpp)
   target_link_libraries(safetensors_test PRIVATE strata_artifact)
   add_test(NAME safetensors_test COMMAND safetensors_test)
+  add_executable(glm_expert_map_test tests/artifact/glm_expert_map_test.cpp)
+  target_include_directories(glm_expert_map_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME glm_expert_map_test COMMAND glm_expert_map_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/sim/data/v100s_release/plan-keep224.txt)
+  set_tests_properties(glm_expert_map_test PROPERTIES LABELS glm)
 endif()
 
 if(STRATA_NATIVE_EXPERTS)

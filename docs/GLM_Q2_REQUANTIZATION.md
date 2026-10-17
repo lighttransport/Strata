@@ -25,6 +25,13 @@ unchanged. Layer 10 to IQ2_S with the calibration importance (`--calibration`) t
 0.062, down 0.045. IQ2_S experts run on the non-canonical CPU, GPU-tier and worker
 paths; the canonical sum (`STRATA_GLM_CANON`) is Q2_K/Q3_K only.
 
+FP8 conversion of a pruned model requires `--expert-map=FILE`: one line per routed layer,
+`LAYER original_id0 original_id1 ...`, in the model's expert order. A pruning plan with the header
+`experts 288 KEPT_COUNT` is also accepted. Every selected layer must be present with exactly the model's
+expert count of distinct original IDs below 288. Empty, incomplete or malformed maps, duplicate layers and
+trailing text are refused before FP8 weights are read or a pack is written. Full 288-expert conversion without
+a map keeps identity order.
+
 `--resume` continues an interrupted conversion. Each finished projection is recorded in `OUTPUT.partial.progress`
 (name, checksum, error terms) after its payload is synced. A resumed run must have the same plan: source
 fingerprint, options and layout. It rewrites only the projections that are not recorded. A layer-10 IQ2_S pack killed
