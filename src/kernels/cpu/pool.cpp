@@ -463,9 +463,16 @@ int64_t now_ms() {
 
 void ExpertPool::diag(std::FILE* f) const {
     const uint64_t h = head_.load();
+    uint32_t claimed = uint32_t(h) & 0xffffu, done = done_.load();
+    if (socket_rows_ && native_local_phase_) {
+        const auto a = local_next0_.load(), b = local_next1_.load();
+        if (uint32_t(a >> 32) == uint32_t(h >> 32) && uint32_t(b >> 32) == uint32_t(h >> 32))
+            claimed = (uint32_t(a) & 0xffffu) + (uint32_t(b) & 0xffffu);
+        done = completed_tasks();
+    }
     std::fprintf(f, "  expert pool: epoch %u, batch epoch %u: %u of %u jobs claimed, %u done; %u of %d workers parked, "
-                    "%u sleeping; mode %d\n", epoch_.load(), (uint32_t) (h >> 32), (uint32_t) h & 0xffffu,
-                 (uint32_t) (h >> 16) & 0xffffu, done_.load(), parked_.load(), n_, sleepers_.load(), mode_);
+                    "%u sleeping; mode %d\n", epoch_.load(), (uint32_t) (h >> 32), claimed,
+                 (uint32_t) (h >> 16) & 0xffffu, done, parked_.load(), n_, sleepers_.load(), mode_);
     std::fprintf(f, "  expert pool threads:");
     for (int i = 0; i < n_; ++i) {
         const int32_t s = wstate_[(size_t) i].load();
@@ -483,7 +490,7 @@ void ExpertPool::diag(std::FILE* f) const {
 }
 
 ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity,
-                       int tasks, const CpuTopology *placement)
+                       int tasks, const CpuTopology *placement, bool socket_rows)
     : tasks_(tasks), host_works_(host_works), affinity_(affinity),
       topo_(placement ? *placement : detect_cpu_topology(true, affinity)) {
     if (placement && (topo_.worker_cores.empty() || n_workers > (int)topo_.worker_cores.size()))
@@ -515,6 +522,30 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
         }
     }
 #endif
+    if (socket_rows) {
+#if defined(__linux__)
+        if (!pin) throw std::invalid_argument("socket rows require pinned CPU workers");
+        size_t count = CPU_SETSIZE;
+        for (int cpu : topo_.worker_cores) {
+            if (cpu < 0) throw std::invalid_argument("socket rows require valid CPU IDs");
+            count = std::max(count, size_t(cpu) + 1);
+        }
+        if (topo_.host_core >= 0) count = std::max(count, size_t(topo_.host_core) + 1);
+        std::vector<int> packages(count, -1);
+        for (size_t cpu = 0; cpu < count; ++cpu) {
+            char path[128];
+            std::snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%zu/topology/physical_package_id", cpu);
+            if (auto *file = std::fopen(path, "r")) {
+                if (std::fscanf(file, "%d", &packages[cpu]) != 1) packages[cpu] = -1;
+                std::fclose(file);
+            }
+        }
+        cpu_nodes_ = detail::two_socket_row_groups(packages);
+        socket_rows_ = true;
+#else
+        throw std::invalid_argument("socket rows require Linux CPU topology");
+#endif
+    }
     if (const char* e = std::getenv("STRATA_NATIVE_TASKS_PER_THREAD")) {
         char* end = nullptr;
         const long value = std::strtol(e, &end, 10);
@@ -534,11 +565,17 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
     if (n_ < 1) n_ = 1;
     if(pin && !cpu_nodes_.empty()) {
         for(int i=0;i<n_ && i<int(topo_.worker_cores.size());++i) {
-            int core=topo_.worker_cores[i],node=cpu_nodes_[core];
+            int core=topo_.worker_cores[i];
+            if (core < 0 || size_t(core) >= cpu_nodes_.size()) continue;
+            int node=cpu_nodes_[core];
             if(node>=0 && node<2 && numa_cores_[node]<0)numa_cores_[node]=core;
         }
         numa_rows_available_=numa_cores_[0]>=0 && numa_cores_[1]>=0;
     }
+    if (socket_rows_ && !numa_rows_available_)
+        throw std::invalid_argument("socket rows require pinned workers in both physical CPU packages");
+    if (socket_rows_)
+        std::fprintf(stderr, "CPU_SOCKET_ROWS groups=2 group0_cpu=%d group1_cpu=%d\n", numa_cores_[0], numa_cores_[1]);
     scratch_.resize((size_t) n_);
     wstate_.reset(new std::atomic<int32_t>[(size_t) n_]);
     for (int i = 0; i < n_; ++i) wstate_[(size_t) i].store(kParked);
@@ -671,7 +708,7 @@ int ExpertPool::claim(uint32_t epoch, int node) {
                 if(cursor.compare_exchange_weak(local,local+1,std::memory_order_acq_rel,std::memory_order_acquire)) {
                     // A successful epoch-tagged claim owns an unfinished job,
                     // so the host cannot replace this queue until it completes.
-                    head_.fetch_add(1,std::memory_order_relaxed);
+                    if (!socket_rows_) head_.fetch_add(1,std::memory_order_relaxed);
                     return local_tasks_[q][index];
                 }
             }
@@ -695,6 +732,10 @@ uint32_t ExpertPool::begin_batch(int n) {
     // Every job of the previous batch has completed (`wait_done`), and a claim of it can no longer succeed, so
     // nothing adds to `done` until this batch's first claim - which the release below orders after the reset.
     done_.store(0, std::memory_order_relaxed);
+    if (socket_rows_ && native_local_phase_) {
+        socket_done0_.store(0, std::memory_order_relaxed);
+        socket_done1_.store(0, std::memory_order_relaxed);
+    }
     const uint32_t e = epoch_.load(std::memory_order_relaxed) + 1;   // only the host bumps the epoch
     head_.store(pack_head(e, (uint32_t) n, 0), std::memory_order_release);
     publish();
@@ -721,14 +762,34 @@ void ExpertPool::wait_parked(const char* what) {
     }
 }
 
+uint32_t ExpertPool::completed_tasks() const {
+    if (socket_rows_ && native_local_phase_)
+        return socket_done0_.load(std::memory_order_acquire) + socket_done1_.load(std::memory_order_acquire);
+    return done_.load(std::memory_order_acquire);
+}
+
+void ExpertPool::complete_task(int node) {
+    if (socket_rows_ && native_local_phase_)
+        (node == 1 ? socket_done1_ : socket_done0_).fetch_add(1, std::memory_order_release);
+    else done_.fetch_add(1, std::memory_order_release);
+}
+
 void ExpertPool::wait_done(int n) {
     hstate_.store(kWaitDone, std::memory_order_relaxed);
     hstate_ms_.store(now_ms(), std::memory_order_relaxed);
     uint32_t spins = 0, seen = 0;
     auto t0=std::chrono::steady_clock::now();
     for (;;) {
-        const uint32_t d = done_.load(std::memory_order_acquire);
-        if (d >= (uint32_t) n) return;                                // `>=`: never a wait that an overshoot outlives
+        const uint32_t d = completed_tasks();
+        if (d >= (uint32_t) n) {
+            if (socket_rows_ && native_local_phase_) {
+                // No old task can complete after both counts reach n. Mirror
+                // the final counts once for diagnostics outside a local phase.
+                done_.store(d, std::memory_order_release);
+                head_.fetch_add(uint32_t(n), std::memory_order_relaxed);
+            }
+            return;                                                 // `>=`: never a wait that an overshoot outlives
+        }
         _mm_pause();
         if ((++spins & 1023u) != 0) continue;
         const auto now = std::chrono::steady_clock::now();
@@ -799,7 +860,7 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
                     if(nfmt_->fuse_h_quant)for(int t=0;t<j.nt;++t)native_quant_h_rows(*nfmt_,split_multi_[e].ff[t],split_multi_[e].hq[t],node*half+r0,node*half+r1);
                 }
                 else native_down_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].down);
-                done_.fetch_add(1,std::memory_order_release);continue;
+                complete_task(node);continue;
             }
             const int per = (int) (mode_ == 5 ? nfmt_->n_ff : nfmt_->n_embd);
             const int64_t g0 = mrows_ * (int64_t) i / mtasks_, g1 = mrows_ * (int64_t) (i + 1) / mtasks_;
@@ -856,7 +917,7 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
                 r += r1 - r0;
             }
         }
-        done_.fetch_add(1, std::memory_order_release);
+        complete_task(node);
     }
 }
 

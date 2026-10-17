@@ -223,6 +223,8 @@ inline int expert_scan_lookup(void *context, int layer, const char *part, strata
     if (it == scan->tensors->end()) return -1;
     const auto &tensor = *it->second.tensor;
     const auto *hash = it->second.file->get("strata.expert_pack.hash." + std::string(out->name));
+    const auto *fp8 = it->second.file->get("strata.expert_pack.fp8");
+    out->from_fp8 = fp8 && fp8->type == MetaType::BOOL && fp8->u;
     out->type = static_cast<int>(tensor.type);
     out->hashed = hash != nullptr;
     out->hash_type = hash ? static_cast<int>(hash->type) : 0;
@@ -376,10 +378,7 @@ class ModelArtifact {
         // kernels; the GGUF's own expert types do not constrain it.
         const auto* fp8=pack->get("strata.expert_pack.fp8");
         const bool from_fp8=fp8&&fp8->type==MetaType::BOOL&&fp8->u;
-        auto block_bytes=[](uint32_t type)->uint64_t {
-            switch(type){case 10:return 84;case 11:return 110;case 12:return 144;case 16:return 66;case 17:return 74;case 18:return 98;
-                         case 21:return 110;case 22:return 82;case 23:return 136;default:return 0;}
-        };
+        auto block_bytes=[](uint32_t type)->uint64_t { return strata_ep_fp8_block_bytes(int(type)); };
         for(const auto& t:pack->tensors()) {
             if(!names.insert(t.name).second)throw std::runtime_error("expert pack: duplicate tensor");
             const auto& original=at(t.name);std::smatch match;

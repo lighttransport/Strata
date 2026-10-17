@@ -13,8 +13,8 @@ Install the normal Python requirements and the optional tokenizer:
 ```sh
 python3 -m pip install -r requirements.txt -r requirements-exl3.txt
 cmake --build build-glm --target strata-glm-decode strata-glm-exl3-check
-build-glm/strata-glm-exl3-check /mnt/nvme01/models/glm53f/glm53f-exl
-python3 tools/glm_generate.py /mnt/nvme01/models/glm53f/glm53f-exl \
+build-glm/strata-glm-exl3-check models/glm53f/glm53f-exl
+python3 tools/glm_generate.py models/glm53f/glm53f-exl \
   'Explain NUMA placement.' --decoder build-glm/strata-glm-decode --tokens 32
 python3 -m serve.server --engine glm --config configs/glm53f-exl.json
 ```
@@ -86,7 +86,7 @@ weights in 128 GB host memory does not establish 1M-context support.
 ```sh
 cmake --build build-glm --target exl3_cpu_test exl3_cuda_test safetensors_test
 ctest --test-dir build-glm -R '^(exl3_|safetensors_test)' --output-on-failure
-build-glm/exl3_cpu_test /mnt/nvme01/models/glm53f/glm53f-exl
+build-glm/exl3_cpu_test models/glm53f/glm53f-exl
 python3 tools/test_glm_artifact.py
 python3 tools/test_glm_generate.py
 python3 -m unittest serve.test_glm
@@ -330,7 +330,7 @@ change the sum order: tests compare within 1e-5 of a double reference. Up to fou
 tiles of 16 rows are spread evenly over the workers, and three spin barriers separate the 128-wide Hadamard steps;
 the 128-row partition left one of 15 workers with twice the gate/up rows. `moe_exl3` groups each expert's tokens.
 
-`strata-glm-exl3-kernel-bench /mnt/nvme01/models/glm53f/glm53f-exl 336 2 15` (2 GiB of real expert rows, 15
+`strata-glm-exl3-kernel-bench models/glm53f/glm53f-exl 336 2 15` (2 GiB of real expert rows, 15
 workers, TR16):
 
 | Mode | ms per 336 experts | Packed GB/s | Expert tokens/s |

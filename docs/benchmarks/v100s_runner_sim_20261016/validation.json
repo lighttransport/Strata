@@ -1,0 +1,80 @@
+{
+ "schema": "strata.v100s.validation.v1",
+ "python": {
+  "passed": 86,
+  "command": "PYTHONPATH=tools python3 -m unittest tools.test_glm_runner_sim tools.test_glm_resident_model tools.test_glm_heterogeneous tools.test_glm_mixed_run tools.test_glm_mixed_bench tools.test_glm_mixed_fraction_calibrate"
+ },
+ "builds": {
+  "CUDA_sm70": "passed",
+  "HIP_gfx1201_MMQ_on": "passed",
+  "HIP_gfx1201_MMQ_off": "passed"
+ },
+ "host_protocol_tests": {
+  "per_backend_passed": 8,
+  "backends": [
+   "CUDA",
+   "HIP_MMQ_on",
+   "HIP_MMQ_off"
+  ],
+  "note": "The restricted-sandbox transport attempt failed; all eight checks in each build passed outside the sandbox. No transport source was changed."
+ },
+ "native_pipeline": {
+  "passed": true,
+  "scope": "Two-stage native serial versus overlapped tokens, bit-identical committed state, cache-policy history and routes, plus byte-identical resident payloads under forced rejection; not a full-logit comparison or a throughput result",
+  "decoder_sha256": "a0b9f97eda44713077d76f26a40b948eb5db7066caf5597e0d225d69a5650720",
+  "raw_receipt_sha256": "765dff686a9313c5fcb9179fcd2abbb52882b2151cd68ff173b77242445bd3cd",
+  "engine_commit": "bba75e56",
+  "configuration": {
+   "experts": 288,
+   "prompt_tokens": 64,
+   "generated_tokens": 16,
+   "split_layer": 23,
+   "stage_workers": [
+    16,
+    15
+   ],
+   "memory_policy": "socket",
+   "cache_mib_per_stage": 22528,
+   "cache_adapt": true,
+   "cache_window": 8,
+   "forced_miss_every": 1
+  }
+ },
+ "legacy_output_parity": {
+  "passed": true,
+  "tokens": 4,
+  "scope": "Bit-identical ordinary legacy output for one-token prefix, ordinary legacy numerical defaults with four-domain Q2_NUMA_WEIGHTS=0/PACK_FUSE_QUANT=0 fallback; CPU experts/ordinary prefill, no MTP/cache; not full release throughput or model quality qualification",
+  "measured_decoder_sha256": "9a60025b03d3020b1d5cc150f389166523507192b09e6fe1f8b66b464047a496",
+  "fixed_decoder_sha256": "a0b9f97eda44713077d76f26a40b948eb5db7066caf5597e0d225d69a5650720",
+  "output_sha256": "9e9a944ce99ab5d6308b65403078371433b915204363f05679fd6850501b241d",
+  "prompt_sha256": "3176ce9f961b1cac262f0147d755e52194dc287e23957485c60829ebbbf68a1e"
+ },
+ "simulator": {
+  "MTP3": {
+   "conditional_calibrated": true,
+   "heldout_timings": 6,
+   "max_absolute_error_percent": 2.685845785500507,
+   "acceptance": "Observed, not predicted"
+  },
+  "MTP2": {
+   "conditional_calibrated": true,
+   "heldout_timings": 3,
+   "max_absolute_error_percent": 1.5559448110244234,
+   "acceptance": "Observed, not predicted"
+  }
+ },
+ "skipped_or_unqualified": [
+  "HIP GPU execution unavailable",
+  "SYCL compiler icpx unavailable",
+  "Nsight injection caused device enumeration to segfault; no kernel timings used",
+  "Model/coding/recall quality not qualified",
+  "Full 512-token release timing not repeated after native ownership repair",
+  "Other contexts, native pipeline throughput, full288 throughput and prefill simulation unqualified"
+ ],
+ "legacy_tr16": {
+  "records": 44,
+  "predictions_identical": true,
+  "mismatches": [],
+  "existing_validation_calibrated": false
+ }
+}

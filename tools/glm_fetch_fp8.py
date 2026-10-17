@@ -7,7 +7,7 @@
 - Verifies every file against the repository's LFS sha256 (or size for small non-LFS files) at the end and writes
   verify.json next to the files.
 
-  build-exl3-venv/bin/python tools/glm_fetch_fp8.py --out /mnt/nvme01/models/glm53f/fp8 [--workers 4] [--verify-only]
+  build-exl3-venv/bin/python tools/glm_fetch_fp8.py --out models/glm53f/fp8 [--workers 4] [--verify-only]
 """
 import argparse
 import os

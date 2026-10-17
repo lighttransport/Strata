@@ -40,8 +40,48 @@ EXCLUDED_SOURCE.update({name: 'historical environment snapshot contains a possib
     'bench/results/2026-10-08-community-rtx4090-iq3xxs-200k-ru/runs.json',
  )})
 
+# Keep frozen evidence byte-identical in the checkout while omitting private
+# filesystem paths from the source candidate.
+EXCLUDED_SOURCE.update({name: 'frozen benchmark evidence contains machine-specific filesystem paths'
+                        for name in (
+    'docs/fixtures/glm_b550_levers_20261010/codecheck.sh',
+    'docs/fixtures/glm_b550_levers_20261010/confirm-final.sh',
+    'docs/fixtures/glm_b550_levers_20261010/evalkl.sh',
+    'docs/fixtures/glm_b550_levers_20261010/full-parity.sh',
+    'docs/fixtures/glm_b550_levers_20261010/he-fit7p2-smoke/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/he-fit8full-smoke/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/he-q22fit4-rest20/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/he-q22fit4-smoke/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/he-q22fit5rows4-rest20/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/he-q22fit5rows4-smoke/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/he-q22fit8q3cap16-smoke/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/he-q23mix2-reference30/manifest.json',
+    'docs/fixtures/glm_b550_levers_20261010/humaneval.sh',
+    'docs/fixtures/glm_b550_levers_20261010/prepush-cuda-build.txt',
+    'docs/fixtures/glm_b550_levers_20261010/prepush-hip-build.txt',
+    'docs/fixtures/glm_b550_levers_20261010/prepush-hip-tests.txt',
+    'docs/fixtures/glm_b550_levers_20261010/qualify-first.sh',
+    'docs/fixtures/glm_b550_levers_20261010/quality-final.sh',
+    'docs/fixtures/glm_b550_levers_20261010/steptrace.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-budget.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-cpu-q22.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-fit5-q22.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-gpu-q22.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-mtp-q22.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-native.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-q22.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep-resume.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep2.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep3.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep4.sh',
+    'docs/fixtures/glm_b550_levers_20261010/sweep5.sh',
+ )})
+
 PATCH_ONLY_EXCLUDED_SOURCE = {
     'configs/experimental/glm53f-q23-reap224-tr16-tuned.json':
+        'archive includes the normalized profile; omit old machine-specific paths from patch',
+    'configs/experimental/glm-b550-q22-fit4-2133.json':
         'archive includes the normalized profile; omit old machine-specific paths from patch',
 }
 

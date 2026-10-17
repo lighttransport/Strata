@@ -1,0 +1,88 @@
+{
+ "rows": [
+  {
+   "name": "v100s-ram-d2-trace-8k256",
+   "kind": "decode",
+   "split": "fit",
+   "measured_tok_s": 37.1756,
+   "predicted_tok_s": 37.21343973124067,
+   "error_fraction": 0.0010178647080523184,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 4.386275862068966,
+     "predicted": 4.386275862068966,
+     "error_fraction": 0.0
+    },
+    "cpu_service": {
+     "measured": 28.844482758620693,
+     "predicted": 29.088661706204114,
+     "error_fraction": 0.008465360589988258
+    },
+    "between": {
+     "measured": 28.972298850574717,
+     "predicted": 28.647925267600037,
+     "error_fraction": -0.01119599050968112
+    },
+    "tail": {
+     "measured": 4.567459770114943,
+     "predicted": 4.567459770114944,
+     "error_fraction": 2.220446049250313e-16
+    },
+    "draft": {
+     "measured": 7.748379310344828,
+     "predicted": 7.748379310344831,
+     "error_fraction": 4.440892098500626e-16
+    }
+   },
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d2-clean-trial1",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 37.6593,
+   "predicted_tok_s": 37.07334207578188,
+   "error_fraction": -0.015559448110244234,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d2-clean-trial2",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 37.2144,
+   "predicted_tok_s": 36.86269808671494,
+   "error_fraction": -0.009450694174434005,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d2-clean-trial3",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 36.6079,
+   "predicted_tok_s": 36.244887504256035,
+   "error_fraction": -0.009916233811389508,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  }
+ ],
+ "calibrated": true,
+ "holdout_count": 3,
+ "ungated": [],
+ "scope_tolerance": 0.15,
+ "context_tokens": null,
+ "scope": "Gated holdout rows within 10% decode / 15% prefill and every traced scope within the scope tolerance; ungated rows are reported only"
+}

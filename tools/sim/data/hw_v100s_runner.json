@@ -1,0 +1,83 @@
+{
+  "schema": "strata.heterogeneous.hardware.v1",
+  "name": "v100s node",
+  "primary": "gpu0",
+  "scope": "Warm decode with a CUDA primary and CUDA expert worker. Host contention is represented by measured CPU expert flow and worker round trips. No storage, model-load, peer-DMA, or separate NUMA-fabric prediction.",
+  "hardware": {
+    "gpus": [
+      "Tesla V100 PCIe 32GB",
+      "Tesla V100 PCIe 32GB"
+    ],
+    "cpu": "2 x Intel Xeon Gold 6240",
+    "physical_cores": 36,
+    "logical_cpus": 72,
+    "numa_domains": 4,
+    "ram_allocation_gib": 160,
+    "ram_speed_mt_s": null,
+    "driver_version": "580.178.04",
+    "gpu_power_limit_w": [
+      250,
+      250
+    ],
+    "pcie_links": [
+      "3.0 x16",
+      "3.0 x16"
+    ],
+    "gpu_numa_domains": [
+      0,
+      2
+    ],
+    "ram_os_visible_mib": 190991
+  },
+  "resources": {
+    "host": 1.0,
+    "cpu": 1.0,
+    "gpu0.compute": 1.0,
+    "gpu0.vram": 576055639.0,
+    "gpu0.h2d": 12315386.0,
+    "gpu0.d2h": 12689054.0,
+    "gpu1.compute": 1.0,
+    "gpu1.vram": 576371787.0,
+    "gpu1.h2d": 12291871.0,
+    "gpu1.d2h": 13125715.0
+  },
+  "paths": {
+    "ram->gpu0": [
+      {
+        "bytes": {
+          "gpu0.h2d": 1
+        }
+      }
+    ],
+    "gpu0->ram": [
+      {
+        "bytes": {
+          "gpu0.d2h": 1
+        }
+      }
+    ],
+    "ram->gpu1": [
+      {
+        "bytes": {
+          "gpu1.h2d": 1
+        }
+      }
+    ],
+    "gpu1->ram": [
+      {
+        "bytes": {
+          "gpu1.d2h": 1
+        }
+      }
+    ]
+  },
+  "memory_bytes": {
+    "ram": 171798691840,
+    "gpu0": 32212254720,
+    "gpu1": 32212254720
+  },
+  "provenance": {
+    "source": "docs/benchmarks/v100s_runner_sim_20261016/component-measurements.json",
+    "method": "64 MiB pinned transfers / device memory kernel, one warmup and five timed 0.5-second trials; medians; CUDA 12.9, SM70. These are component rates, not decode throughput."
+  }
+}

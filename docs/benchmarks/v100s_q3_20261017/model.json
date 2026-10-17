@@ -1,0 +1,76 @@
+{
+  "schema": "strata.gguf-byte-preserving-join.v1",
+  "source_shards": [
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00001-of-00004.gguf",
+      "bytes": 9429859,
+      "sha256": "d72a357e8ccb0091d451866044b485bd3f562515c3f283b27775234bd0bccb77"
+    },
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00002-of-00004.gguf",
+      "bytes": 49609243584,
+      "sha256": "310b5bef056c5cc61d98e1845feac97e35d0a5aa412fca354b6cd597d66b486e"
+    },
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00003-of-00004.gguf",
+      "bytes": 49623486016,
+      "sha256": "eacaab11505a25f00e78b4dce64795cc38bc25839372ec586745af0261673a0c"
+    },
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00004-of-00004.gguf",
+      "bytes": 48293762496,
+      "sha256": "c650640c9f94f5f1662ac84b803405db3265ee9fc24ffe56670bb0eafd632d00"
+    }
+  ],
+  "source_verification": [
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00001-of-00004.gguf",
+      "bytes": 9429859,
+      "sha256": "d72a357e8ccb0091d451866044b485bd3f562515c3f283b27775234bd0bccb77",
+      "verified": true,
+      "payload_bytes": 0
+    },
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00002-of-00004.gguf",
+      "bytes": 49609243584,
+      "sha256": "310b5bef056c5cc61d98e1845feac97e35d0a5aa412fca354b6cd597d66b486e",
+      "verified": true,
+      "payload_bytes": 49609212672
+    },
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00003-of-00004.gguf",
+      "bytes": 49623486016,
+      "sha256": "eacaab11505a25f00e78b4dce64795cc38bc25839372ec586745af0261673a0c",
+      "verified": true,
+      "payload_bytes": 49623456384
+    },
+    {
+      "name": "GLM-5.3-Flash-UD-Q3_K_XL-00004-of-00004.gguf",
+      "bytes": 48293762496,
+      "sha256": "c650640c9f94f5f1662ac84b803405db3265ee9fc24ffe56670bb0eafd632d00",
+      "verified": true,
+      "payload_bytes": 48293734144
+    }
+  ],
+  "source": "GLM-5.3-Flash-UD-Q3_K_XL-merged.gguf",
+  "bytes": 147535921504,
+  "sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+  "tensors": 1412,
+  "experts_per_layer": 288,
+  "quantization": "UD-Q3_K_XL (original IQ3_XXS / IQ4_XS mixtures retained)",
+  "types": {
+    "Q8_0": 644,
+    "F32": 638,
+    "IQ3_XXS": 82,
+    "IQ4_XS": 41,
+    "Q6_K": 4,
+    "Q3_K": 2,
+    "Q4_K": 1
+  },
+  "seconds": 1158.6465655779466,
+  "payload_transform": "none",
+  "tensor_descriptor_and_three_payload_sample_checks": 1412,
+  "host_headroom_bytes": 24262770336,
+  "resident_budget_bytes": 150323855360,
+  "allocation_bytes": 171798691840
+}

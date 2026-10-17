@@ -1,0 +1,4223 @@
+{
+  "node": "v100s node",
+  "allocation_ram_gib": 160,
+  "allocation_minutes": 180,
+  "ram_speed": "unavailable",
+  "physical_gpu_pair_count": 1,
+  "same_physical_gpu_pair_in_recorded_runs": true,
+  "physical_gpu_pair_scope": "Timing benchmark.memory.json records; quality allocations have separate hardware-class and PCI/NUMA-root checks",
+  "anonymized_device_placements": [
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-async128",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "d25ff168d66aa0c9103643547127956e6423d2edcf65dc2a3f1e650b8935bfc8",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-async256",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "03e7ce4905c1972007288d3fe44aa83eac1c2f9d73b5272914a469bc228bb0db",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-async512",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "4e465ff8ec085bed1ac707aa20ac050a65f91f5c529792e9f47a0c610ef8a666",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "b02e387e36bf5ae9f6bc7a163d21e378477b598aa7e2ca7fc9e1e215d90278f5",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "baseline-v3",
+      "case": "baseline-aff008-mtp3",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "e64305e671e4f55848a08a6a61b8c8e22ae43dfd6b2cb8b56d1165c0ad95fd36",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "baseline-v3",
+      "case": "baseline-greedy",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "70ee000af58efd863f821bbd559047b2616810748dac0d3b4c9d7a3e73e9b0f8",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-combined",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "7330776f4a6b5bd58cf2e5987d9d6f6d8e6ec3627f0d3ec86bee4c7ea8c9bae8",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "2fd6b897dcfbd177e11c30c25c5a81fc98707bd144840def3dc9af1c9ea257ff",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-cpu512",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f28ccb295c333d5dc475f9ca32776371411a25d686c8d3ab41044c6b717fbaa5",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-gpu-clamp",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "8b5b8709cdfd91380db16d4dc3eaf384b6afc4f25ff82527f308238c39d911b1",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-combined",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "c65d5f48b6d5091643ed230d9324f232262ce9e63d3d9825043b999b48372214",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f2837fdd71c0da402bdecb41394c0ea7cefef92d42ea34e9c143a28c4258111e",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-cpu512",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "711f3f151e2c6d469f2cd42e23190ddbb5cda19a10cd84a63efc94a58f5759cf",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-gpu-clamp",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "20f6ccce6cd0e25a68716062914f826a54e23b473ecdcb202797fc959d8ebfe8",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "aff008-mtp3-cpu256-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "505664ad9864dae063a992f05b4fee9ff4ba509c27731657d1b5caebfe60722c",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "aff008-mtp3-cpu512-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "5316a7106360234c53ff48ae41df845a6669edff12cc577bd6eb4352e099293c",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "greedy-cpu256-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "5ec5b7f00c4e0422eafd7f6f478836f0ff9300142ca509ffeea731abc973c675",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "greedy-cpu512-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "006a8eeae456be06038be1ea15bd34947afb584210207390c28491d494797e2b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-cpu256-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "16424eddaa3f1dd3a1edd7371c6dd51aa165fdd341f83cf172596fe6bb3705db",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-cpu512-signs",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "762bba69e3a76d6072b3d23df358e1ee5069351082370652ccefce468e764629",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-cpu512-signs-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "63125215cbeeea596bf62c03a2ddd5976aa585a8f9b1203c129379eea39291d9",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-gpu-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9f131727029b145215c9b7bd226f0b918c686e428922e870143b1b97a672cd5f",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-cpu256-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "0985152b494b668f2289441c4312dda085e3027d9643f7f8eca8b84bed461da4",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-cpu512-signs",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "3bbfbfb64632426f359e9fa20edb7128469d32faf3f3231b74ad7ff97cf4b808",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-cpu512-signs-gather",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "2b63a2ced2b264921e2aebae95a28e1d2feb39159ea357f29f7d329a6cd197bc",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-gpu-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "60ac080ad3fcc3f9dd3934931e75c4adab853b4464bad886ea3c65ac59d68924",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "cd42566244028fb5fd8704f88b9b503ef30ca100ca36d74473c5aefb3ecd8f0d",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "aff008-mtp3-workers18",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "2e444650fb45c3820eecd083c1f57111a6fd65f40572b90f2f0885e5b9469729",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "aff008-mtp3-workers26",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "80a826750e2797fa3155b69c701ac0f3d7a83c30c1a68694517c55c00733f8ae",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "greedy-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "da9338106c2cbcb42787c403a0d42e5aa1a7cdebcc9b1af44bb2ecf3c0ec0385",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "greedy-workers18",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "18154f3bae3b215c4226647533b4a5393d8a06c2e32585e1afe889da160959ae",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "greedy-workers26",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "8652d4ae6b34ceb5bb29cf143ef2e1bda539c51f3172d3b8ef54d73d3a66e946",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "diagnostics",
+      "case": "aff008-mtp3",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "4522bf3068fced05eb87e7a18521abfddf306b214ba599fdeefa50bdb39c5102",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "diagnostics",
+      "case": "greedy",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "a408a05a7808732c902f07400505a449acc2a00131041113d700c45ff94ce25c",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-baseline-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9ef5e9fa9157948b2c51c5b883675f81200ed0114f549a611591d3391926e124",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-baseline-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "c11e3c6e0c777ac06203bed8d582a43881e8692ce4e396f76453022b938b0e46",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-candidate-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f4533159dfc1434f13ac247f22fe7c6209b94f656344963222a06c7b53e2127b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-candidate-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "7591f08c6ab3e4139717b12ebc2059203aa38bc726307434c5540b9b57170eec",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-baseline-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f62b96eac4a9b870b96251093ed4d9cec01abec12c33b1cb6fe884bed1fb7ba0",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-baseline-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "62903981630945db6846caa3eb08a4af05571eb6cb466ad2d9cfd0877125ed57",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-candidate-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9a47bea86a18dbaad294d6ed7d3da5d93068ec829502154fc867b4543afcb53f",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-candidate-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "439c13a6b150cc3789c46815677b456cee147023e86c83d33573315af16276e3",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-baseline-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "c85178fba16bbb2d9a5a5d9c166f4e1f3f43bc24d0dc5531c31b9708d0f6a7d6",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-baseline-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "59ba97f2573884748899a36b0d472c5291b5ac58a4b513b060e42e057502d63f",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-candidate-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "717aef436a7f622877937389bbbc4af01cd664dacb0256ae500a53209c11b6f2",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-candidate-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9ce6bfa66c1c46ccf21550e8b9c01ce6e8ffdcafb02874d9bae2eab4cca19e7b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-baseline-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9459c88dc539bc7e26f26b9f13a85685f90df56bf4fbc0608a78b4cfc4649c4b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-baseline-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "7638a39a6d8dba76c956056ec98353e82b62c211e7ceb1bbe0294968a50d700c",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-candidate-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9d6bb8f8f7685ad75e89ea1d26cd478b190f2096a34747f361500035ecaf137c",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-candidate-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "6b07a1930dd7d5754b5f693486a207b81f77fcf5120b3084004f5271253c5dcb",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-baseline-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "b632cd51ae14c7334fc91a726036f4982d82e2582d87da1150a080169ce32c26",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-baseline-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "5bd07b92f208d165e7a2d4f2754dd4c43771bc33248c2761277b7bfc86c3626b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-candidate-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "d7255bd291dfbac3a4c4ef306852f5ac6bb3fd399d22facd03a5a575e8fbc017",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-candidate-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "bf642968ce2976faae4b2ec8d399a16d0625dce2bd6fd581bc85ac62635fd78e",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-baseline-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "96533091be3121a122919248aded54694cf6b0787305e1df1cf800a1217655be",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-baseline-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "cf66e126d90ee4041a738f7bce184b47272e02419ff9cb71114efab4e78ea4f7",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-candidate-r1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "753b683c1f62ada0b792c5ba303feacbb04adc4d2e739aa5f48997cceb4687a8",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-candidate-r2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "c4c430ba4385ee46cd665e8523a00bcc1846363acd5234af891ea0eba8b47969",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary11-prefetch11",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "d8419bb1a0f8e2a546703717ad18a48af5bd6e99d9971d0318f8fe5bc66a980a",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary11-prefetch4",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "364fa9227280213d6a7d5f7a4d71ac938fc38cda81dca011dabbc977129645cc",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary11-prefetch8",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "202c40182e19bbe5f3b884195c35574013b4f1fbe8834e8009eed63425a3996a",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary9-prefetch11",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "266fbe517b294793e8d1d9a2acda026905baba3487d17872ff352aeeb6c8683f",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary9-prefetch4",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f4c5bd34cdd822afded5f2df0e2fe3868b9c90fce88a665beecca706e0c806ba",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary9-prefetch8",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "95588ca4028f0c77c70cbb187fd85a80b5f8c2b57ea0d0aea2b726dbb8bcc901",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-5",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "721eec78ce82fba509d52b65a9afd676cbbe46a86c0a945229c3febb99e29d73",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-6",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "4d593e19e1ee0e5fc51a8ccbe7f46720c1762162fe7512140ff0455036a46a18",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-7",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "0e36e2a3a93a32304b10bc3fdddd9a7e7231d095070c4e839e2c5f93c0e13e55",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-8",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "044a11dd4a6cab64ab2b05bcb8cfe3a792f38d87809ab0e5033706522fec721a",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-10",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "8008e523762de03a2c00c6eff85f54883e78610b6d260b5eae74ac573f752a27",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-11",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "662cffbc3611e300b5fbd6e4e72cd8ac39d83d80cb21eb3e656dd8fc68779ab3",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-12",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "e7f21d965b9eaa0547a8c0c3c40e3a08918bfd2d733cc3d8e85893060f1bd744",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-13",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "de1660535707106b3962b83cbebe449d85044e8dce597fe97cce497b67c328c4",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-batch4096",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f685febf8a17a3d3fa95e3aafeffff3d82476349ffaed46358fcffc545ef294d",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-bucket128",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "4d25ef8560f5b26f2b36ab3325e786abdc7de08359f00ed1be6afcb8a2e3a014",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-bucket32",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "ae5f9e6a90c3a59d07838d6159397bd1b3139e7d00b4f272b05ca268e547b4bc",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "5a018da8c88ff2e17561aeab55e1b46f174ceb86aad10925a822c872c70763a9",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-gpu-default",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "2573509003a193db5699551945495510b66d6678b4d962ef7f33fc111ae76d4b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-panel128",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "c174a687394447c0a30fd4d8816c8dab7dfdb66979ec953663bf98ab6ac525c6",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-panel256",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "d5ecd9128256c2254728d2ace79174b88e334ff8602ec11a82c9216a082d6cf3",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-prefetch0",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "7d76b6f8b4d3823628742e6cd87e839a89dd44b2e0c793c2c346cbfb7fa06b3b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-static-cache",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "a9711bbb564b3328d97c54189e4c634c8ce6161dd75d0b345fc7266b6a63acde",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tasks16",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "83485710070915056aad022ae217516cba067865275b8aea102683e93c7053d6",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tasks4",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "86394e2b65ad571a0b758c4da622a136e68d2bcff9973cb741bc17bd621494d9",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tasks8",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "608cefe29b09a4ff13ee4164a5a9cd92287203134941088154b8cc08664c7c8d",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-inflight16",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "5198c69ff7ac4ac0d04e715a69a65fc2f48a4bf5480c360a41e9380d8d35ec55",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-inflight8",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "ff321fdcfe29cff0cd5e08f1aec02175461690535a008204ef9d102ebb134df0",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-margin11",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "d8f95e45a8498fe790a4aa9944f5c05cd2d85b2ad8cc40dcc932786bc20b008e",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-window20",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "7db1da34f76c170fa9f4c8fd38a765c892e39f1fd8bdc6ecc89f2b3b32a379d0",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-upload-stream",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "63acc5fc15057870a18a0f67f986853454908d88c3312fb3ce043ed5afa1df63",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-worker-local",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f008c41a0110678dfa0fad67bc954c5e4fda0d728c8ea4712ae3ab5dc3c325ae",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9896faaf8f3501c273d070bc7c3c229b77f9ddec57c5559c318b80c417b5925a",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-gpu-default",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f550703db5ff4873dbb59b1b8e8fada6099b6a5c1310ad70dd8bcc7b6501d62d",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-prefetch0",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "fe3ed895752afe4eaa1a2d984acfc23aaab4bb4a1bbbe167a5d7efc9651805ba",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-static-cache",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "65f9a75c767b5e710aff039940d3963ecb709e38c41d3fbfb4fe5826302afda2",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tasks16",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "4baa6219f3646289f40d54a0f400b8147822f33e684c47e677e795845e9b9c82",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tasks4",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "9b7edba8bd44daf3b4dfd73f4a750c662a2767c7ddbf59af529a106263c72315",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tasks8",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "fc3a8a97010c44bf8fe963420c193b976558b78c7314f498c1c5852995bd2a83",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-inflight16",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "7855fcf570a6c48593b1b92dc3aa929cd8a19006b7a7bfd9ebe628886beaf43b",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-inflight8",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "8f428aa62f89779a0d47953928a0302e66fa513d86be0ea4ac988ef90f03f38a",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-margin11",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "e8daf1e70f65ef5a3933227acc1fe705f66c8dbfb756d282a6e8be59ccd48ead",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-window20",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "c6d903d10363b37b8cf83409ce4c9fb443440c3c58b105caacd98ffbb9bc1e14",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-worker-local",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "6e620df959fddf6c355a3b30d8119eb847e4dc14d7153430a2b113cfca4e52f1",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "aff008-mtp3-stable-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "35c5cb6f55294fc63fe4f884e4aca701473aab939663fb4a999b25ce1dbe3fbe",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "aff008-mtp3-stable-tasks1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "f1e9640dd1ac14600535c985466445027bb2eb358f61e834176b73716e90b7cc",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "aff008-mtp3-stable-tasks2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "b8ff20bf1491503d457b3d68e6f18c6db181c0c22acb9a8033e56773952c88fa",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-best-tasks",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "33caec500c7c3053acc14ef2b47293feeb98e6647b7ef3fa302b8677c5690b86",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-control",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "8238f5de19c61d4e8a5bf827311c4856ec5d8d1a56c2cb6e20092bbc295fd13a",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-tasks1",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "6c0d08d15212a80efdbe683705e48d33603422c1c90e09b934ea665a91e01cc9",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-tasks2",
+      "attempt": "attempt-001",
+      "hardware_instance": "N01",
+      "memory_record_sha256": "2f87484e173cfcc0592330f599bc32665f5564649eac9924ec23752e35b02834",
+      "devices": [
+        {
+          "ordinal": 0,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        },
+        {
+          "ordinal": 1,
+          "name": "Tesla V100-PCIE-32GB",
+          "total_bytes": 34072559616
+        }
+      ]
+    }
+  ],
+  "shared_resident_copies": [
+    {
+      "allocation": "A01",
+      "proof_sha256": "e81c388717ad7d356dc6120e42816c1ac7eda8e6391a359f60154171514c794e",
+      "bytes": 147535921504,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "seals": 15,
+      "copy_and_lock_seconds": 283.523532977968,
+      "verification_seconds": 345.0805499770213,
+      "numa_pages": {
+        "0": 9004839,
+        "1": 9004893,
+        "2": 9004917,
+        "3": 9004864
+      },
+      "socket_nodes": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "socket_row_samples": [
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 272,
+            "1": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 272,
+            "3": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 195,
+            "1": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 195,
+            "3": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 195,
+            "1": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 195,
+            "3": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 272,
+            "1": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 272,
+            "3": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 219,
+            "1": 220
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 219,
+            "3": 220
+          },
+          "local": true
+        }
+      ],
+      "socket_row_plan_sha256": "aa71071f89cae87e8c06a93e4373d9fcad1260f6ccc28508c6bc41a23ec3b1d1"
+    },
+    {
+      "allocation": "A02",
+      "proof_sha256": "806f964a868ff52e7e7f779471b04d636cee6ec2c8341c4bb000aaee51bd1be0",
+      "bytes": 147535921504,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "seals": 15,
+      "copy_and_lock_seconds": 154.13525811198633,
+      "verification_seconds": 345.3181730590295,
+      "numa_pages": {
+        "0": 9004910,
+        "1": 9004923,
+        "2": 9004846,
+        "3": 9004834
+      },
+      "socket_nodes": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "socket_row_samples": [
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 272,
+            "1": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 272,
+            "3": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 195,
+            "1": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 195,
+            "3": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 195,
+            "1": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 195,
+            "3": 196
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 272,
+            "1": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 272,
+            "3": 271
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 219,
+            "1": 220
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 219,
+            "3": 220
+          },
+          "local": true
+        }
+      ],
+      "socket_row_plan_sha256": "aa71071f89cae87e8c06a93e4373d9fcad1260f6ccc28508c6bc41a23ec3b1d1"
+    },
+    {
+      "allocation": "A03",
+      "proof_sha256": "d7c107fb8cfd9347d26a91618bc89aa0be386b5e53399a2e84c06a5d96e46b96",
+      "bytes": 147535921504,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "seals": 15,
+      "copy_and_lock_seconds": 248.37204265600303,
+      "verification_seconds": 345.28684479399817,
+      "numa_pages": {
+        "0": 9004950,
+        "1": 9004968,
+        "2": 9004807,
+        "3": 9004788
+      },
+      "socket_nodes": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "socket_row_samples": [
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 271,
+            "1": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 271,
+            "3": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 196,
+            "1": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 196,
+            "3": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 196,
+            "1": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 196,
+            "3": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 271,
+            "1": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 271,
+            "3": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 220,
+            "1": 219
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 220,
+            "3": 219
+          },
+          "local": true
+        }
+      ],
+      "socket_row_plan_sha256": "aa71071f89cae87e8c06a93e4373d9fcad1260f6ccc28508c6bc41a23ec3b1d1"
+    },
+    {
+      "allocation": "A04",
+      "proof_sha256": "5dba9f30dbace8bdd6ceafa2b6b4d29f2d7ce2737e50932c8e029d862cb9f4ea",
+      "bytes": 147535921504,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "seals": 15,
+      "copy_and_lock_seconds": 168.16664419701556,
+      "verification_seconds": 345.1844184270012,
+      "numa_pages": {
+        "0": 9005324,
+        "1": 9006099,
+        "2": 9004433,
+        "3": 9003657
+      },
+      "socket_nodes": [
+        [
+          0,
+          1
+        ],
+        [
+          2,
+          3
+        ]
+      ],
+      "socket_row_samples": [
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 271,
+            "1": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.3.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 271,
+            "3": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 196,
+            "1": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.13.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 196,
+            "3": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 196,
+            "1": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.24.ffn_gate_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 196,
+            "3": 195
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 271,
+            "1": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.35.ffn_down_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 271,
+            "3": 272
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 0,
+          "pages": {
+            "0": 220,
+            "1": 219
+          },
+          "local": true
+        },
+        {
+          "tensor": "blk.45.ffn_up_exps.weight",
+          "side": 1,
+          "pages": {
+            "2": 220,
+            "3": 219
+          },
+          "local": true
+        }
+      ],
+      "socket_row_plan_sha256": "aa71071f89cae87e8c06a93e4373d9fcad1260f6ccc28508c6bc41a23ec3b1d1"
+    }
+  ],
+  "owner_monitor_samples": 6525,
+  "owner_monitor_windows": [
+    {
+      "allocation": "A01",
+      "samples": 1908,
+      "raw_resource_log_sha256": "ee8dd0ca8d2844e19008fcc8d4ac92832be90a4ba91054ebf2834516b79265d9",
+      "first_sample_unix": 1792188276.0143511,
+      "last_sample_unix": 1792198797.1153808,
+      "maximum_interval_seconds": 9.312042951583862
+    },
+    {
+      "allocation": "A02",
+      "samples": 1983,
+      "raw_resource_log_sha256": "f9f7c5315a1d97fc6a7d216b60b75534031f983f48e8a8310dbef871f9f51ce0",
+      "first_sample_unix": 1792199003.8735156,
+      "last_sample_unix": 1792209623.1723366,
+      "maximum_interval_seconds": 11.468021631240845
+    },
+    {
+      "allocation": "A03",
+      "samples": 741,
+      "raw_resource_log_sha256": "c3f96df1fccbc7cbc5ebc1269db8a3c8298142a1c3e3eecf8db83007f3a93f1f",
+      "first_sample_unix": 1792209829.2037513,
+      "last_sample_unix": 1792213818.9119434,
+      "maximum_interval_seconds": 8.434662818908691
+    },
+    {
+      "allocation": "A04",
+      "samples": 1893,
+      "raw_resource_log_sha256": "e1a20a24e01bef959d190e46aa3b587ad691187f2d9acc2eb5b1fd111f803f7b",
+      "first_sample_unix": 1792215123.7349203,
+      "last_sample_unix": 1792224884.9898818,
+      "maximum_interval_seconds": 11.684100866317749
+    }
+  ],
+  "owner_peak_rss_bytes": 147593023488,
+  "owner_peak_process_swap_bytes": 0,
+  "gpu_nvml_samples": [
+    {
+      "ordinal": 0,
+      "samples": 6525,
+      "peak_used_mib": 32350,
+      "minimum_free_mib": 145,
+      "nominal_total_mib": 32768
+    },
+    {
+      "ordinal": 1,
+      "samples": 6525,
+      "peak_used_mib": 32448,
+      "minimum_free_mib": 47,
+      "nominal_total_mib": 32768
+    }
+  ],
+  "populated_expert_cache_observations": [
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-baseline-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "1fce5524a6719314492ac8030e84ac18ea16c8561da87af15bc83deba2982cec",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1732,
+          "populated_weight_mib": 18299.8
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29245.0
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-baseline-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "13ded6485b42e2e699c065fd61750ac60ef6d10aea5c790fc64e5cdb87f6c75c",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1732,
+          "populated_weight_mib": 18299.8
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29245.0
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-candidate-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "67fea12c43f78adc17a2fca688979070d390cc0f4240c38a77a9b9af32b5160c",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1732,
+          "populated_weight_mib": 18297.4
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29125.0
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-candidate-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "e1c89b7472a0419ce59c0008074a6c750aae7251a6d2efea84cfa15d686bc1d3",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1732,
+          "populated_weight_mib": 18297.4
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29125.0
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-baseline-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "77925329a0fa3ed56b8d934b866cb429b57a34339dc8017c18e52be72a8b75ad",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1734,
+          "populated_weight_mib": 18301.8
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29143.5
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-baseline-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "240545c9bdfe42c2dc644784238f0f458350ddc21d0e5fd47254be8d968cc285",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1734,
+          "populated_weight_mib": 18301.8
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29143.5
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-candidate-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "613f8bcb373b9bbc2da96476cf0f86f997e3ce862ae147a8d6e8cc77a69952e8",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1735,
+          "populated_weight_mib": 18309.9
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29218.4
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-candidate-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "8fa8cc4a68126fb5de1dc6c82a2a541a344888530b923cfd4ad4c0784e35d67b",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1735,
+          "populated_weight_mib": 18309.9
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29218.4
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-baseline-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "38c6a64d1fa65b3182105050ee00a61e7e777da5df510e0e237558fc02c97b2e",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1727,
+          "populated_weight_mib": 18297.1
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29135.4
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-baseline-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "30a1a39a68b0bd01f6fe3ffbd7408b5f3f89c0db48cfb35670e05a208b2e802d",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1727,
+          "populated_weight_mib": 18297.1
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29135.4
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-candidate-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "77d1d81a4209b38214a7ef7a03008d737176355373cd5ad7ad488fb0d1883438",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1728,
+          "populated_weight_mib": 18307.4
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29213.8
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-candidate-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "f68872a9d834054ff7012bb7ecc30a193eb58623365cc496a7f6a2e678f0f114",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 1728,
+          "populated_weight_mib": 18307.4
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29213.8
+      ],
+      "draft_expert_resident_mib": [
+        3276.0
+      ],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-baseline-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "349e52987cd0c3808415d05c14c8c6605d6f36fce6b9f106fc05d9069767258a",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2084,
+          "populated_weight_mib": 22023.9
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29158.5
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-baseline-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "75e8e1bf89f87f992d6dc627638241ad80fb6ae2b412394d2d58c35037be0483",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2084,
+          "populated_weight_mib": 22023.9
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29158.5
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-candidate-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "80be37699566b8c7010f7df89fd95758f1ba2c0ff6094e64709ee4251383a4bc",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2084,
+          "populated_weight_mib": 22026.2
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29112.3
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-candidate-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "52696b87181d1285d2b87c3cf9d4dc98b3faac1841836216bc7786a6e35f792a",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2084,
+          "populated_weight_mib": 22026.2
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29112.3
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-baseline-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "7c2abe49abb07fe4647339a9669d9c863f840d009fe39458a0078028090e629b",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2084,
+          "populated_weight_mib": 22033.2
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29153.9
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-baseline-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "bf2dd55634ee872ebb96c397c597a1c0c400debb90cc34298526cb7436be353c",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2084,
+          "populated_weight_mib": 22033.2
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29153.9
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-candidate-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "841673e6021f17c02f7f5b8084f87d7c085c695c179946d7a5d2af61839d2df4",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2085,
+          "populated_weight_mib": 22036.6
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29205.8
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-candidate-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "57b06b84c655d76a0822c7f6af25f6ff3015c3162b873672105a67088c50ea38",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2085,
+          "populated_weight_mib": 22036.6
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29205.8
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-baseline-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "19af528ef387e31c551076ab3844a4df8a192c5de8ac45219c82daf751b7babf",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2080,
+          "populated_weight_mib": 22027.0
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29120.4
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-baseline-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "de7a0f64e966caa3757b0bd5770ec94aa3994bbc7f3ce1c4948f5147616cc11c",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2080,
+          "populated_weight_mib": 22027.0
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29120.4
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-candidate-r1",
+      "attempt": "attempt-001",
+      "log_sha256": "943294469f4d838c9800574a15ef6d90639a6dd1c75f270996ef37a6a9f2f40b",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2079,
+          "populated_weight_mib": 22023.6
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29226.5
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-candidate-r2",
+      "attempt": "attempt-001",
+      "log_sha256": "882a0b04470446c03c27203807604bf549bb83b4f1fca5d3e73b1e5584f414b8",
+      "preallocated_pools": [
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        },
+        {
+          "device": 0.0,
+          "pool_MiB": 31616.0,
+          "free_MiB": 32182.0,
+          "total_MiB": 32494.0,
+          "margin_MiB": 512.0
+        }
+      ],
+      "primary_decode_expert_cache": [
+        {
+          "slots": 2079,
+          "populated_weight_mib": 22023.6
+        }
+      ],
+      "worker_populated_weight_mib": [
+        29226.5
+      ],
+      "draft_expert_resident_mib": [],
+      "device_ordinal_scope": "Pool log ordinals are local to their processes; NVML ordinals above are physical"
+    }
+  ],
+  "quality_process_observation": [
+    {
+      "returncode": 0,
+      "samples": 9016,
+      "peak_process_swap_bytes": 0,
+      "runner_sha256": "87a269f049559f9d892435df17f016100b4247f4c7a49dd7f8e0adfdaf2a3b78",
+      "observer_sha256": "5de845feacc6172ef7f4600042c60b299298997ce90ddb7c53ebf7279ec6e766",
+      "scope": "One-second samples of the quality runner and its descendants; shared model owner monitored separately"
+    },
+    {
+      "returncode": null,
+      "samples": 1639,
+      "peak_process_swap_bytes": 0,
+      "observer_interrupted": true,
+      "raw_observer_log_sha256": "fa0967d3623daa11cee2b9bf53110b542ec2ee8fc2a772ce03c0b9007e43ee53",
+      "scope": "One-second quality subtree samples before controller cancellation; termination is recorded separately"
+    }
+  ],
+  "timing_process_observation": [
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-async128",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "12ed43675061f99a22edad627b4afc5f61200e5e5453eec92770a3e15228eda3"
+    },
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-async256",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "8f2546c00935df4d2b5b85958994f9582bd9b52e4b7b9bf7950814dbe3d08ac1"
+    },
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-async512",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "e719ae7441d18ba88ad9acc9e23674fe0a1a484507b0a1514b8fc9f4cd8fb0cd"
+    },
+    {
+      "stage": "async-sweep",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "5709d20f6eee24e239564906bcac1807f272a452c774f3f21ec0814074367819"
+    },
+    {
+      "stage": "baseline-v3",
+      "case": "baseline-aff008-mtp3",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "cd19835a90dc68803f6fa5553a70cc4c1bf9da35c0a6c0d4cf580b86b89583c3"
+    },
+    {
+      "stage": "baseline-v3",
+      "case": "baseline-greedy",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "ea05c6b6e56225985394c2b972588b40df0b2aa440a2272c16bc3dec0ce8ac8c"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-combined",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "1df5ffda0ebd16a5fddeb7506a4eb32261f21e779c9e36b2c61e2ab8cebccc48"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "215afc337e87d545ea07d0e160af48e484011ec5d4e2441898350b548de349e4"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-cpu512",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a2a941ea2762e36a1427659a3482696618359248c7ce35f7c23bf5faa5a05adf"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "aff008-mtp3-gpu-clamp",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "d8fed8fa3ca2de312a2837fe05e9757070f7fab0794ece367b91d80baca16768"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-combined",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "719fe36e288b923b596abf6edf5e11898d40d8aa834691753cfafb273b0fa667"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "8eadfaff977b11037d4512411d0c025d2f1fca7c1b6f671020ba1f731fd6eb87"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-cpu512",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "3f7dcfa9bd9270d7a697b9234ff9bda640b1f5c495b9db690e8b7c28b9f7e9d6"
+    },
+    {
+      "stage": "candidate-factorial",
+      "case": "greedy-gpu-clamp",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "ba414091bce79ee3d5719406403a550915d92b246b4ceef04e8d8df86e1ca479"
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "aff008-mtp3-cpu256-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a1796f12e76d5e720c9c88e06daddd70436a47067aaa3e3432106beb5103212c"
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "aff008-mtp3-cpu512-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "e627ae2bd94779c9693ccbfc96dc540bff812ddf5ee0034f7bd9ac94d65c60fe"
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "greedy-cpu256-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "0274a07deeb97a856b0cf094978a1ae9400202215cb5a777b7f2e47589c678ed"
+    },
+    {
+      "stage": "candidate-gather",
+      "case": "greedy-cpu512-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "6d75b87572332ce63b9b4f7bc5f0d891a1f03aa56b6780737d43dfab37a51501"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-cpu256-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a9251ad0dd5ab9e0deda20c03056e3954ae4c77b17410b583c19bfa16e42fd2f"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-cpu512-signs",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "c68b2ec9aaebc6c8034adb4561e983d41e8bf6ffbddfe5c4715ea8f563234722"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-cpu512-signs-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "5c6c1f766109e7ca5c9ae1e23088e71324199d8b203cb744c7f4d82e892af0c1"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "aff008-mtp3-gpu-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "fcef2fffcfb7de92217e37d2abf172358a5c8fe8b308df6b7aeac43d10759c30"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-cpu256-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "d854da2b80305e5490bf603472b7b65a702e8274c1fe2a9a79e6a3fe6c316b43"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-cpu512-signs",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "87d989c1a42b6064ec4472eca73208140677d5bbc7d0f9875f911f1732dd5910"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-cpu512-signs-gather",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "abe3312153c949111b9fcf635b71c1104ae48d6ddfedc81cd73163dc1d385469"
+    },
+    {
+      "stage": "candidate-signs",
+      "case": "greedy-gpu-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a0643fd1e8653a3eee885bb0d9a7243381f5e16efd17845d13c0e66d71e8c957"
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a87c5e74c28b95948bedae2391174f8bdcc901166345bb9cdc91e0b395580848"
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "aff008-mtp3-workers18",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "b6409809cfb40b0dba69d751159985364efc77b511e57f67177ad6117aac672c"
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "aff008-mtp3-workers26",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "aa5f280738ec00acbdde65a55949dc23989af9618d43e43ce14033012c632d1f"
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "greedy-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "4756b8d5f32bf8c94fc475e8698059e11e69b5100561142682b791907fb65f89"
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "greedy-tasks8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "0da1aa578a992a7e144f0edd91e598b64e295a5e2e934109d9e75695eb160e1b"
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "greedy-workers18",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "b3676ecbbcbe72979963a0c21e4e504e099b29e763e7d40c00c1b6a9281b2240"
+    },
+    {
+      "stage": "decode-sweep",
+      "case": "greedy-workers26",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "f9f9e393ae0d9379c2ebf9bdc87b2ee88a34fa6d2bd4f1280d9c3a52b4e318d2"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-baseline-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "0582d4ba9f9633eb605a36e9779d1b5c6f49e2e73edd43ff0c35904482aaf442"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-baseline-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "e04d6481a759ccdc14ec285e80d0a12fbc97c2889f5677ecdae39a445a599877"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-candidate-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "df8c7ed0a6eead6cf043b410357bf8def9565a94891ed33a11518ba75f5970f7"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-chat-candidate-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "3cf3c613981f4fc61bcffa18417ea0676d7aed306c186f54fba94dab87102cc9"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-baseline-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "b6c08cd169fa1a8a962a52bfbf76f359330b9eeca8218897ca19dca07f073603"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-baseline-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "7e39f6741c9e8e6824345f8ab9749cbbdaffc9bd6335b4fb1e39a3796106abfc"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-candidate-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "964d0f3300838a555dfe25807d5ffbdee33a56ac1a932d956ee3918d9b22125e"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-holdout-code-candidate-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "edd5597c20021990c40c690c0da5e6f54f31b4b67cce93244f760b66361f53bb"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-baseline-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a6887f578c25aee837733b2f2dfb8023856e00fc49ef90af5f39159970763a96"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-baseline-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "7c462d46b6950fded82eb00d04e8eb39790e05d1040203d0518cbcb204e6dd48"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-candidate-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "0d2abc6117e4a99960c46198459d07b693d27996e64cf8e50d53c6125688403b"
+    },
+    {
+      "stage": "final-timing",
+      "case": "aff008-mtp3-train-code-candidate-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a6dbb77f0b706787f8a2bcb667d2cac8736c5679678381472a66a7174ef0996d"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-baseline-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "febcc238b3cd294653a770cd9221a02fd9e719f1dfa89e13eade03870485f870"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-baseline-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "e27334905acd90c58ce7467e29fc580d8c414104b7c479fe257066077b0e2cb8"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-candidate-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "b5e84081717f5744ec50ad2ee23841e357ef056d7d37f393a15ccd02c3f13f49"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-chat-candidate-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "0c0a79eca561c9e5845c75fb3f64f09589157158d9fa2cc9e5f2c877373e73c5"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-baseline-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "b903c89a77363148ef341e62b1cca253315f40b0ed250004752a1693a1972329"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-baseline-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "fb4ea5ff6c645c22c51196b3e43598b14b74f03f98cc483376581a97540fb00b"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-candidate-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "41eb0403304e354fd1029631f159f895995306a4261448d9f9a1b8e23b76bd9d"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-holdout-code-candidate-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "de9b22ecb6a09f47cc4cf66c725343f0492573da25545d83f3d6552752c3f305"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-baseline-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a927fc2ba532ddff60cbd0d390a24b9c875d4c9ef01a5726a6525035b5c6dc3f"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-baseline-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "04b028ec9592fd612be942370ff4946debc788900db232ff64eee7dce1406fff"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-candidate-r1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "cfb108333b29b3c3bd16ce39dc34c8ec76c9edc49cfab0f68cadbda645f14aa1"
+    },
+    {
+      "stage": "final-timing",
+      "case": "greedy-train-code-candidate-r2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "15e1a37ada19a3ac1d76a21ed0dcf270e2f37a69e7ba31a21b5f74f207a150a9"
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary11-prefetch11",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "41d5a6f46cda0d55fa8da3ed413a61e9fbc1718d4955398038fb916e32c97405"
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary11-prefetch4",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "13d3cb8a6eb508b9dd5d52d2c42de6667f5968a342ca0d261bf486a1d38bcb69"
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary11-prefetch8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "65de503875d60c027cc50a1f6aeb6ff8743a18e6bd03942793b18db5d80ad38c"
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary9-prefetch11",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "874ede97b9290bfa205e7ef7a5497d0a889124ab8c3b0b9c180c9f3973b4cccf"
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary9-prefetch4",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "5b1538c0eea8c00ace5c78b38132ebc2578f206aaac6ebc8817c2ca5d6b54970"
+    },
+    {
+      "stage": "prefetch-sweep",
+      "case": "aff008-mtp3-primary9-prefetch8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "624206accddc869e102e707c4f8239a2367dab40008da4b9b4d9a691bdd53b61"
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-5",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "e2a502d981895ce9fac508bc540359029bc7e6c504791f7a6477b8f74893c900"
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-6",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "5dbd78b5dc499a08b7b654eac259fe87559006285c8323bc12ff24d86dce1073"
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-7",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "ff3634a39e7a68f66028fb84e5125de159c549b9d749cae2bf1f8562b24a6649"
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a7088bd2014ee5bc1d1b1b0f4ab33de99178a12830e42e09821125e90f9863b5"
+    },
+    {
+      "stage": "prefill-balance",
+      "case": "aff008-mtp3-groups-9",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "8ef620ae43e4765d79f4eb589cf6b675b38819d92b7d5c6401d2ba1af5da77bb"
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-10",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "60174ce89d45ea6afae86e8d96e04268abb9acabeeff167a9da6027393a97157"
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-11",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "e837b3beaec866f2a3bfe867f6dd274f96029a275f5ad33d8f35f792566bd10c"
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-12",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "68859d21aeb6030a0d4b3f50adb4b9437f687ae54b9ebc56cedea601e1bde376"
+    },
+    {
+      "stage": "prefill-primary",
+      "case": "aff008-mtp3-primary-13",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "5ee80a2f791745dc625daa345061c36bb130bcabc781574fa864dcf7d5b128d5"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-batch4096",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "5f507dccad676555ba897ce379caa261523b301c81c580dc314b7cec6702d164"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-bucket128",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "1d46af051c2e9fb2bdc0cafdbb9381aef43d4b90fee7f0c2bf1b22c893b656be"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-bucket32",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "31ef88a7a3ac13a298fe446f00fea4958bc182eecc7306ceaaedb069db494f5a"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a281b94c1a1c30d13a01e7164eac62dbc2d467527c8db25b84550aa28c60ae00"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-gpu-default",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "cce6333ebf0db23bc398c1a6c9be723ab862afdd1ff2d4def0b79497d76e2f07"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-panel128",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "38f1b600a9d8786e7e41dd64e8b86420531cd7ee908d7792d513bea6d665d5b6"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-panel256",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "ce0d40b43b671b9e58479296a9022fc616872affcd36b03e0aa8b2ce1e40f01d"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-prefetch0",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "30056977eec56ce66514f2a87acaeeaf8073732751061f01233bab1f3e752224"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-static-cache",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "af40921cdb3289b5e241819ab3b859c3321084e8a28c15d808f9af2b231a774f"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tasks16",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a8a679ac571f1982545ca7d2959f4fba375799680b03fa981b2bea6973dc5aeb"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tasks4",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "560f07fe2dd3ae885346b99799840e2b50c8bfa934d22c577b8275f416c96842"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tasks8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "33d14d38d8c089d329425e977170b57406ed80888fe0ee4c163ef8368324a572"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-inflight16",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "93e6a07b7e4d1b5dc2d0c55396fe6d50f69d83c6cc9eec48a86be6e58adfdb97"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-inflight8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "242e25f8a44510d287effa8df0fa865e6f4ecc2baef978005b1c0bba89b8c8e0"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-margin11",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "05522e5bf356974bb8d3c56a03a00db7e5c6e54a9a89a9cf0bc6906be5b27646"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-tier-window20",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "c8526102710efdee1818424b721e5559a20c455bedee210837f3062164b13e86"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-upload-stream",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "24117ccfd28ddad9b7225246859800cfed9c6761b3e64e2112b9f4a33ac5ec39"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "aff008-mtp3-worker-local",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "282988ab87f8d4f847f3b2b75ec84245a80ccf8ba505aecb6453c172ce841669"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "ab454ec230db7c4ad6927a6a4a901dd1a0a8cb3365e44f63d89c88022d261012"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-gpu-default",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "ceae18dda51593b3ec1d1c254a0dff7b8e5b8cb99fd6ab7d3af971d39b301f34"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-prefetch0",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "457e6f19107d56604a2a9ab5187b48b11aceb98cfe7810fd0567f8fc074913b5"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-static-cache",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "ed34d7ba2b70ce47aa1e265258a649b2fad0f7815c81c212e13af3d9828d1db4"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tasks16",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "3cfa18d8069b2d9185b89054cdea50583feec78d5cbb056366274c7abdd95b22"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tasks4",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "97941dd5520daf0c044aebca64a6a15602820038ce061ccf37e20c2a9e09662d"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tasks8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "f8fc35768f7c6199163c000f986437c34275776ce645d09ecc6b4f10461ecefd"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-inflight16",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "2272dd6cd81e05cd5035e0b49e2842d2ec4316ffe81290c03ef8cd8cac476c23"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-inflight8",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "07ca56b870515b64730bcf24b972ec9fa423273672a43afe423d402754651aac"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-margin11",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "a8fabb99ec723254d740a6085a7300ae58c5318b4923da72172cea5123535b5c"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-tier-window20",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "2eea0b5e1afd75afd3e3a49d3b8b82f6dd8b09970073d1ea7baadf926b0a0ced"
+    },
+    {
+      "stage": "schedule-sweep",
+      "case": "greedy-worker-local",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "5591d93fb285b982de8b16b58025595f38d50ac6490ebc9cd0bb78cfe07977e8"
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "aff008-mtp3-stable-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "115f003d854d00177c41c49e5a2a37a711c4859912ed3196c03949df29fe3ae4"
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "aff008-mtp3-stable-tasks1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "029ef956145cfc8ed14e911aaa1565e56f88b00128b42002a61b07cb4ea68cad"
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "aff008-mtp3-stable-tasks2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "f637c21024f5e72f09fcfea4c753add20999e4a7b0a43213b969e5363160b275"
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-best-tasks",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "739829c255e965f0b7800d174933ae6a9a4c5002bde329794f9f4c46d7d26bf5"
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-control",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "1f24e2189573bce4b6c2ed8f52683c98ba4b87f883bc23ed0ffc47ab103e8b18"
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-tasks1",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "8c6a0c417d2eb8e209a3372b9250cf14e3626880004fd87ed9188d23355f1f89"
+    },
+    {
+      "stage": "stable-sweep",
+      "case": "greedy-stable-tasks2",
+      "attempt": "attempt-001",
+      "peak_process_swap_bytes": 0,
+      "record_sha256": "58070ec5fc0af20946c36cbb2bda4df7ed749627a295ac32df5c160a50fe8892"
+    }
+  ],
+  "requested_gpu_pools": {
+    "each_mib": 31616,
+    "each_gib": 30.875,
+    "nominal_each_mib": 32768
+  },
+  "caveats": [
+    "Reserved pool capacity is not populated expert-weight capacity",
+    "NVML peaks include setup, validation and timing; sampled counters are not instantaneous peaks",
+    "Owner samples cover the RAM owner and its descendants; independent timing steps and quality processes are observed separately",
+    "Summed process RSS double-counts shared model pages and is not reported as RAM usage",
+    "The launcher PSS counter samples setup before the first request and is not a full-run peak",
+    "No deduplicated full-run host RAM peak or RAM speed measurement was collected"
+  ]
+}

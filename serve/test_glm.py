@@ -149,6 +149,19 @@ class GlmConfigChecks(unittest.TestCase):
         self.assertRefused({"parallel": 2, "speculative": "lookup"})
         self.assertRefused({"reasoning_loop_recovery": "recover"})
 
+    def test_preallocated_cache_uses_the_explicit_gpu_budget(self):
+        cfg = {"gpu_budget_mib": 32768, "decode_cache_mib": 32000,
+               "env": {"STRATA_GLM_VRAM_PREALLOC": "1"}}
+        self.assertAccepted(cfg)
+        self.assertEqual(self.launch_args[1][18], "32000")
+        self.assertRefused({**cfg, "decode_cache_mib": 32769})
+        self.assertRefused({**cfg, "gpu_budget_mib": 16384})
+        for value in ("0", "2"):
+            self.assertRefused({**cfg, "env": {"STRATA_GLM_VRAM_PREALLOC": value}})
+        with mock.patch.dict("os.environ", {"STRATA_GLM_VRAM_PREALLOC": "1"}):
+            self.assertAccepted({"gpu_budget_mib": 32768, "decode_cache_mib": 32000})
+            self.assertRefused({**cfg, "env": {"STRATA_GLM_VRAM_PREALLOC": "0"}})
+
     def test_layer_layout(self):
         self.assertAccepted({"gpu_layout": "layer", "gpu_devices": [0, 1],
                              "layer_split": [24], "layer_pipeline": "mtp", "speculative": "mtp"})

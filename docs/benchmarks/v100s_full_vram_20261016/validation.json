@@ -1,0 +1,559 @@
+{
+  "code_commit": "f8bf1ce79b8b5422a5bfd0a227fe222362be99cf",
+  "source_state": {
+    "base_commit": "6e4277070684cc20a1663cd7981c7fce6eadec80",
+    "patch_sha256": "af44e0603c4f2452908a92b4bfabd4effd0ce316542242611a348f4c53ad1652",
+    "changes": [
+      "worker honors ordered prefill scatter",
+      "opt-in worker direct expert upload",
+      "opt-in batched RMS norm/Q8 reuse with 80 bit-parity cases",
+      "opt-in per-token-independent decode operations in a token grid",
+      "opt-in socket-owned lazy mapped expert row scheduling",
+      "socket-local task completion counters; independent unowned CPU oracle",
+      "opt-in batched convolution with exact per-token rollback history",
+      "opt-in one/two-token canonical Q23 expert kernels",
+      "register disjoint worker source pages once; omit unused direct-mode copy threads and staging",
+      "preallocated decode cache follows device capacity; ordinary mode keeps the 12 GiB ceiling"
+    ],
+    "files": {
+      "src/program/glm_decode.cpp": {
+        "before_sha256": "6ccfb2f63ffc90ede8e3c48e5c99cbb391c5b29a7c05eb5efe23c97706d4e0d1",
+        "previous_sha256": "e47c76fea78350d747311a319bfa9f24dc015c7782b563ac72e87ac19b9acd6c",
+        "after_sha256": "2f609b9980f092122cf305f130dd987901e3f59df01e0a4fcf7be422c946ad47"
+      },
+      "src/program/glm_gpu_worker.cpp": {
+        "before_sha256": "d31cd6b4d08f2c9a205967c259997ac46a755e796aa308fee8c2252a7e4307f7",
+        "previous_sha256": "dbb78627d0e9a1265851aff37ae545a5e707d162ae110e26031319ff0464a32d",
+        "after_sha256": "ed72c85687a26c77ea191281cb1cb1551149b7995d5796a3dc7407453509bc2e"
+      },
+      "src/kernels/glm_q8_test.cpp": {
+        "before_sha256": "a3f0963cef5782635598a7f084fa62a7c61525732398425c8a6edac188502438",
+        "previous_sha256": "ef09884ccd3c366be71bef677db1add614c6851c7185974876518e624043be7d",
+        "after_sha256": "ef09884ccd3c366be71bef677db1add614c6851c7185974876518e624043be7d"
+      },
+      "include/strata/kernels/glm_q8.hpp": {
+        "before_sha256": "7fd796c9a9f56feea3256c8dd2d4b37a46ffb55d06eeb83b3df707f3e804f950",
+        "previous_sha256": "68374e9ae45584b565e86afc80865f8136725f6ebecff2bc6a181d6c25bb25d5",
+        "after_sha256": "68374e9ae45584b565e86afc80865f8136725f6ebecff2bc6a181d6c25bb25d5"
+      },
+      "src/kernels/cuda/glm_q8.cu": {
+        "before_sha256": "f3273733bff0e570c55241927534ea41bbebf25be13bd310f726eb1db1b41dd0",
+        "previous_sha256": "b253a444c0991d54d5664b4aa87914a35756a8f5cd2b3f7e4f07474cb16c12c6",
+        "after_sha256": "b253a444c0991d54d5664b4aa87914a35756a8f5cd2b3f7e4f07474cb16c12c6"
+      },
+      "src/kernels/cpu/pool.cpp": {
+        "before_sha256": "0a3e56b12b630ccb9ba0a930f23045a12ca6da7199a7050b7cecabc8fa5964b3",
+        "previous_sha256": "09283bc5c28a79061d2a4fc9cfac75098c4904723d27c1e614a6049441f25d77",
+        "after_sha256": "09283bc5c28a79061d2a4fc9cfac75098c4904723d27c1e614a6049441f25d77"
+      },
+      "include/strata/kernels/cpu/pool.hpp": {
+        "before_sha256": "8ddf382a80d68f7f289d735e575f6d0f3d38c0c9b1dfa6fa20b70c3ddf3847a6",
+        "previous_sha256": "950352b3ddea9eaa21fb9fb78ced558cd6afb5bbe67f0c74753debfb973d67ea",
+        "after_sha256": "950352b3ddea9eaa21fb9fb78ced558cd6afb5bbe67f0c74753debfb973d67ea"
+      },
+      "src/kernels/cpu/pool_affinity_linux.hpp": {
+        "before_sha256": "36c373feffae439f7f18cba37a9c6313ef07794357aca0c684a6ebfe32cdd4c0",
+        "previous_sha256": "e33144b944473ceb8e01bb7045a0174c6c9c0e67bfd038c9f8410c308118642f",
+        "after_sha256": "e33144b944473ceb8e01bb7045a0174c6c9c0e67bfd038c9f8410c308118642f"
+      },
+      "src/kernels/cpu/pool_affinity_linux_test.cpp": {
+        "before_sha256": "33305144a4d15b4bd74027f42d0a7daee05aeac01053b377fe02f848f90de465",
+        "previous_sha256": "9a120f513b87ff18cbef6f96965742571a9bf50f4cfd96b64914558c6bcadf08",
+        "after_sha256": "9a120f513b87ff18cbef6f96965742571a9bf50f4cfd96b64914558c6bcadf08"
+      },
+      "src/kernels/cpu/flow_pool_test.cpp": {
+        "before_sha256": "1ca78dc2214a48de86c429bad9d37ff832d723773bec2d34bbe1ce22ce276202",
+        "previous_sha256": "dfd7259473fd84fed517457238d3de4685cb27e63ddb87d4353c19ef7eb2eb28",
+        "after_sha256": "dfd7259473fd84fed517457238d3de4685cb27e63ddb87d4353c19ef7eb2eb28"
+      },
+      "include/strata/kernels/glm_prefill.hpp": {
+        "before_sha256": "1a361306422b84bfc211827e7e1a55bddca25688ad977a51b37b35a0acf10c00",
+        "previous_sha256": "cc005b2ce25bcb09651fcb9455a407571fda3ae162e1e13ffb68294feff705ef",
+        "after_sha256": "cc005b2ce25bcb09651fcb9455a407571fda3ae162e1e13ffb68294feff705ef"
+      },
+      "src/kernels/cuda/glm_prefill.cu": {
+        "before_sha256": "c777ad900a98d74f96aef520246ecda07dce795a27a78e44df3bc049bc6bf1a3",
+        "previous_sha256": "30e8f95bf0102b8d3f67c463375883dc8259834bdd4acc3e5a61ab7f40c504c7",
+        "after_sha256": "30e8f95bf0102b8d3f67c463375883dc8259834bdd4acc3e5a61ab7f40c504c7"
+      },
+      "src/kernels/cuda/glm_q23.cu": {
+        "before_sha256": "03fed6121edae36d78f75787d7024480ac9cfa64032e9e9503842a9eafe4b0b8",
+        "previous_sha256": "71ddf9dc5474df685d3f7637c7ef7da396db40ed94a4f36c8cd1e028c46cacb6",
+        "after_sha256": "71ddf9dc5474df685d3f7637c7ef7da396db40ed94a4f36c8cd1e028c46cacb6"
+      },
+      "serve/server.py": {
+        "before_sha256": "fa49876b161e16722f286ac4855ce6b1188ef68d1ec1f70265e92a5ae9cd956f",
+        "previous_sha256": "fa49876b161e16722f286ac4855ce6b1188ef68d1ec1f70265e92a5ae9cd956f",
+        "after_sha256": "148cc00cb573f2e70efc2d89316665a0743f93dd2a105c9858622d6ba37ce26b"
+      },
+      "serve/test_glm.py": {
+        "before_sha256": "c6f980a6a243d3897f5fdd343a2ab41a64123224cd3f9bc7e4c8fd3995990fe6",
+        "previous_sha256": "c6f980a6a243d3897f5fdd343a2ab41a64123224cd3f9bc7e4c8fd3995990fe6",
+        "after_sha256": "7720d03cc7a151404d9e3b5d3a8c9df15f1f92d5007726b3957135f7581fb787"
+      },
+      "tools/glm_mixed_decode.py": {
+        "before_sha256": "4d2037c73ef222999bc1776ebd1c6c3a31d3c9f6ce92efcc059e531bebfd183b",
+        "previous_sha256": "4d2037c73ef222999bc1776ebd1c6c3a31d3c9f6ce92efcc059e531bebfd183b",
+        "after_sha256": "aa8f33a38430c0376e472559b244f81cebe92b8bcf96a643486f8eae3b3e8e32"
+      },
+      "tools/test_glm_mixed.py": {
+        "before_sha256": "5306c710f3f02a4aecdc9aa3f5d84163ad2b97a2150dfb2120543a5041089770",
+        "previous_sha256": "5306c710f3f02a4aecdc9aa3f5d84163ad2b97a2150dfb2120543a5041089770",
+        "after_sha256": "d477b761911e73bbb0862deab224dd1414adc8d9b2695c7d264a6f8b005d3948"
+      }
+    },
+    "code_commit": "f8bf1ce79b8b5422a5bfd0a227fe222362be99cf"
+  },
+  "actual_remote_source_hashes_verified": 17,
+  "build": {
+    "CMAKE_CXX_COMPILER_ID": "GNU",
+    "CMAKE_CXX_COMPILER_VERSION": "12.2.1",
+    "CMAKE_CUDA_COMPILER_ID": "NVIDIA",
+    "CMAKE_CUDA_COMPILER_VERSION": "12.9.86",
+    "CMAKE_CUDA_ARCHITECTURES": "70",
+    "CMAKE_BUILD_TYPE": "Release",
+    "actual_source_hashes_verified": 17,
+    "code_commit": "f8bf1ce79b8b5422a5bfd0a227fe222362be99cf"
+  },
+  "local_cuda_compile": {
+    "exit": 0,
+    "source_sha256": "2f609b9980f092122cf305f130dd987901e3f59df01e0a4fcf7be422c946ad47",
+    "architecture": "sm80",
+    "execution": "compile only"
+  },
+  "local_hip_compile": {
+    "exit": 0,
+    "source_sha256": "2f609b9980f092122cf305f130dd987901e3f59df01e0a4fcf7be422c946ad47",
+    "architecture": "gfx1201",
+    "execution": "compile only"
+  },
+  "unit_tests": {
+    "api_mixed": 19,
+    "humaneval_resident": 11,
+    "release_archive": 2,
+    "total": 32
+  },
+  "configuration_integration": {
+    "experimental_profile_main_validation": "passed with mocked weights and engine",
+    "engine_arguments_match_frozen_generation": true,
+    "matching_argument_positions": 21,
+    "excluded_arguments": [
+      "model path",
+      "stop IDs (mock metadata)"
+    ],
+    "default_weight_pages": "4k; explicit in evaluation, decoder default for API",
+    "all_inference_environment_switches_match": true
+  },
+  "grader_environment": {
+    "additional_oracle_environment": "lower_index",
+    "known_correct_passed": true,
+    "known_wrong_rejected": true,
+    "compiler": "GNU g++ 13.3.0",
+    "isolated_python": "3.12.3"
+  },
+  "gpu_default_parity": {
+    "passed": true,
+    "prompt_tokens": 64,
+    "generated_tokens": 16,
+    "compared": "token bytes plus complete prefill and final 154880-float arrays",
+    "reference_case": "parity-default-v10",
+    "independently_compared_locally": true,
+    "reference_file_hashes": {
+      "parity-default-v10.tokens": {
+        "bytes": 75,
+        "sha256": "a5147eade68d6a32113fa45e062b51b3206bde6e20cd2a55918714cc324f8d73"
+      },
+      "parity-default-v10.prefill.f32": {
+        "bytes": 619520,
+        "sha256": "498a56e2c5de7e9154c9f125e59ae5ab189a1f63679c4e9e88b87aea90919d3e"
+      },
+      "parity-default-v10.final.f32": {
+        "bytes": 619520,
+        "sha256": "775804294a9cdc5573b862d991484568c1531725112d4b9744f0eea84702f7a8"
+      }
+    }
+  },
+  "public_resident_copier": {
+    "helper_sha256": {
+      "glm_resident_model.py": "da2b089d674e2b52611a694d21e0184523afa89f2119b63c0953ed0b7e526137",
+      "glm_socket_placement.py": "a836c61012e9691ca0c602f0eadf26688ff76feddb29943598fd3a8af742c61b"
+    },
+    "full_model_validations": [
+      {
+        "allocation": "allocation_1",
+        "bytes": 95538419872,
+        "sha256": "3ef5726ae4a9768fa8311453927674401f3958a8c3884effddac92fc41262003",
+        "seals": 15,
+        "numa_pages": {
+          "0": 5831248,
+          "1": 5831099,
+          "2": 5831157,
+          "3": 5831306
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ],
+        "socket_row_plan_sha256": "28d335db79b9ecf8228630d94c1196f574cd646379dbcd7b30536324c24dab93",
+        "copy_and_lock_seconds": 120.75389963999623,
+        "verification_seconds": 223.34703280299436,
+        "raw_identity_sha256": "5839199d0c1f4b7ad06f1ad7d3d120decad1522873e961a6604031ab9480ad95"
+      },
+      {
+        "allocation": "allocation_2",
+        "bytes": 95538419872,
+        "sha256": "3ef5726ae4a9768fa8311453927674401f3958a8c3884effddac92fc41262003",
+        "seals": 15,
+        "numa_pages": {
+          "0": 5831340,
+          "1": 5831246,
+          "2": 5831065,
+          "3": 5831159
+        },
+        "socket_nodes": [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "socket_row_samples": [
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.10.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.20.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 168,
+              "1": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.30.ffn_gate_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 168,
+              "3": 167
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 220,
+              "1": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.40.ffn_down_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 220,
+              "3": 219
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 0,
+            "pages": {
+              "0": 167,
+              "1": 168
+            },
+            "local": true
+          },
+          {
+            "tensor": "blk.9.ffn_up_exps.weight",
+            "side": 1,
+            "pages": {
+              "2": 167,
+              "3": 168
+            },
+            "local": true
+          }
+        ],
+        "socket_row_plan_sha256": "28d335db79b9ecf8228630d94c1196f574cd646379dbcd7b30536324c24dab93",
+        "copy_and_lock_seconds": 85.9400552760344,
+        "verification_seconds": 223.38695822498994,
+        "raw_identity_sha256": "ad1ebcd8d4440235f43bf199590f67bc380ae26c9d9fb8faa966e9f626a2c71f"
+      }
+    ],
+    "active_owner_matches_frozen_public_owner": true,
+    "active_owner_sha256": "b38a4b74bb40e4cfc84013a2cbe535d6d93773a1daf6f1bcb1988a91d9920234"
+  },
+  "expert_prior_sha256": "8162269a14b84d1057402278d49a25b4e4407f0e1a24e9154f483d162a73a7c2",
+  "socket_plan_sha256": "ee3d6e62ef8897a6386f0900233ed08416337d9cb92a10ff6e81efe285b164ab",
+  "pipeline_file_sha256": {
+    "whole-engine.sh": "e960586f49a0803d4c78dd87c189e0a7bc05b451598df173f74f6db66323da5c",
+    "whole-engine.py": "bc1f62ae3505a0c3117c30127c9b61fa8f90cc06745acd8c65751558ce59212d",
+    "whole-quality.py": "ca36a016190797535b04e9fb05f10cd56c2c94e1ccf333648bc3f0a425a2da66",
+    "whole-driver.py": "0d9359e12f06bdf3586514d5e47a9d5711e1a5558a75f6a27684b1be641f8996",
+    "whole-build.sh": "c27c0fa3ab70dfd17acc238c0169b396bd49ee23eed2beee6f1150b0079fc789",
+    "whole-quality-step.sh": "067bcd1a007baf9f4aef17ff5de5c9ffa9548b27ac332a73206f8e2aa188ff71",
+    "whole-step.sh": "e2b231b89e076c39d73b9aff36a7001f772d04f72fd070802c5be8d9abeb446b",
+    "whole-source-state.json": "6491a62dbb44ecfcadd0ae8e94d5a7b1dd4f2c44904e8d7683cc044d459039a3",
+    "whole-inference.patch": "af44e0603c4f2452908a92b4bfabd4effd0ce316542242611a348f4c53ad1652",
+    "whole-queue.json": "a2d0cdedc3a92f76285892063f05e5d15435c01aeb798d72d08b36f0aa550311",
+    "owner-public.py": "b38a4b74bb40e4cfc84013a2cbe535d6d93773a1daf6f1bcb1988a91d9920234"
+  },
+  "grading_helper_sha256": {
+    "human": "b99acf29d51ff9350dbeefa632088ae4692f0092ea142c4286d42a5fafbbb1eb",
+    "cpp": "76ce345a910336e8405e25381b55f077ddbed149fc551ee9fe7033e0ef82c298",
+    "quality_summary": "9cf859866356c34b47a9261572baef70e800a59b01ac28f369987a75efc4a662"
+  },
+  "complete_generation_tasks": 376,
+  "paired_human_inputs_identical": 164,
+  "paired_cpp_inputs_identical": 24,
+  "quality_gate_passed": false,
+  "decode_50_target_met": false,
+  "prefill_700_target_met": true,
+  "shutdown": {
+    "session_phase": "STOPPED",
+    "active_jobs_for_this_session": 0,
+    "owner_exit_code": 0,
+    "quality_exit_code": 0,
+    "generation_complete": true,
+    "controllers_running": {
+      "whole-controller.pid": false,
+      "controller-whole.pid": false
+    },
+    "stop_marker": true
+  },
+  "skipped": [
+    "HIP GPU execution",
+    "Windows execution",
+    "HTTP frontend GPU smoke test",
+    "full-precision/unpruned model quality comparison"
+  ],
+  "source_candidate_privacy_cleanup": {
+    "frozen_files_excluded_and_unchanged": 32,
+    "normalized_profile_path_fields": 6,
+    "prior_candidate_files_verified": 8806,
+    "binary_build_products_detected": 0,
+    "raw_numeric_dumps_detected": 0
+  },
+  "raw_final_snapshot_sha256": "718432a540134abce7dfc8f80cadbe1c6228cf528b030fdf9d2bb4e2cba9653d",
+  "timing_output_identity_gate_passed": false,
+  "cpp_oracle_file_sha256": {
+    "glm_coding_quality.py": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+    "glm_q2_coding_check.py": "3de89659fa9b7f2a548db5ae1cad63973022008393f56e35db97fddd8fc998b1",
+    "grade.py": "f9a1ead9eaea2823d995f9a09d1c05f21c2362abbc8fa29e516def9e36a95196",
+    "test_generated.cpp": "63eb791af526aee24807f8a702fe231656aa822d06964e74198840901a5b97de"
+  },
+  "local_validation": {
+    "unit_tests_api_mixed": 19,
+    "unit_tests_humaneval_resident": 11,
+    "cpp_oracle_self_test_cases": 400532,
+    "incorrect_cpp_parser_rejected": true,
+    "cuda_compile": "sm80",
+    "hip_compile": "gfx1201",
+    "gpu_execution": "CUDA sm70 execution completed on v100s node; HIP compile only",
+    "changed_files": [
+      "serve/server.py",
+      "serve/test_glm.py",
+      "src/program/glm_decode.cpp",
+      "tools/glm_mixed_decode.py",
+      "tools/test_glm_mixed.py"
+    ],
+    "private_path_findings": [],
+    "code_commit": "f8bf1ce79b8b5422a5bfd0a227fe222362be99cf",
+    "documentation_commit": "3c24afce",
+    "secret_scanners": {
+      "gitleaks": {
+        "findings": 0,
+        "scope": "five changed source files, two updated docs, feature commit patch and message"
+      },
+      "trufflehog": {
+        "findings": 0,
+        "verification": "offline; no verification",
+        "scope": "same local audit directory"
+      }
+    },
+    "release_archive_tests": 2,
+    "remote_inference_source_hashes_verified": 17,
+    "public_resident_full_model_validation": "passed on v100s node",
+    "gpu_default_parity": "16 tokens and both full logit arrays byte-identical",
+    "cleanup_scanners_findings": {
+      "gitleaks": 0,
+      "trufflehog": 0
+    }
+  },
+  "cpp_oracle_isolation": "bubblewrap user, process, filesystem and network namespaces; read-only system tools and frozen oracles; temporary files only",
+  "cpp_oracle_resources": {
+    "address_space_gib": 3,
+    "cpu_seconds": 45,
+    "file_size_mib": 64,
+    "processes": 64,
+    "open_files": 128,
+    "compile_timeout_seconds": 60,
+    "execution_timeout_seconds": 20
+  },
+  "humaneval_dataset_revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+  "cpp_oracle_self_test": {
+    "known_correct_original_parser_cases": 400532,
+    "known_wrong_original_parser_rejected": true,
+    "additional_contract_environment": {
+      "additional_oracle_environment": "lower_index",
+      "known_correct_passed": true,
+      "known_wrong_rejected": true,
+      "compiler": "GNU g++ 13.3.0",
+      "isolated_python": "3.12.3"
+    }
+  },
+  "public_report_audit": {
+    "public_files": 8,
+    "timing_cases_verified_against_raw_records": 4,
+    "quality_samples_verified_against_frozen_grades": 376,
+    "default_token_and_logit_bytes_independently_compared": true,
+    "private_path_findings": 0,
+    "local_markdown_links_valid": true,
+    "example_python_syntax_valid": true,
+    "gitleaks": {
+      "findings": 756,
+      "unresolved": 0,
+      "classification": "SHA-256 metadata matched frozen generation grades and timing records"
+    },
+    "trufflehog": {
+      "findings": 0,
+      "verification": "offline; no verification or update"
+    }
+  }
+}

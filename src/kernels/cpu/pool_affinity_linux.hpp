@@ -7,9 +7,25 @@
 #include <cerrno>
 #include <climits>
 #include <cstring>
+#include <algorithm>
+#include <stdexcept>
 #include <vector>
 
 namespace strata::kernels::cpu::detail {
+
+// Normalize physical package IDs, which need not be consecutive. Unknown CPUs
+// stay unknown; owned rows require workers in both groups and never steal rows.
+inline std::vector<int> two_socket_row_groups(const std::vector<int>& packages) {
+    std::vector<int> ids;
+    for (int package : packages) if (package >= 0) ids.push_back(package);
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    if (ids.size() != 2) throw std::invalid_argument("socket rows require exactly two physical CPU packages");
+    std::vector<int> groups(packages.size(), -1);
+    for (size_t cpu = 0; cpu < packages.size(); ++cpu)
+        if (packages[cpu] >= 0) groups[cpu] = packages[cpu] == ids[0] ? 0 : 1;
+    return groups;
+}
 
 // CPU_ALLOC and the sized macros also handle kernels whose CPU mask exceeds CPU_SETSIZE.
 // Keep the native mask opaque: copy its bytes for storage and use CPU_*_S to inspect it.

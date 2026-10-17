@@ -73,7 +73,7 @@ needs a calibration run tens of times longer; the diagonal rows are the reliable
    Unsloth's UD-Q2_K_XL, already a 2-bit model, and carry 12% error against the original; the same Q2_K/Q3_K types
    quantized from the original with the importance weights the engine already collects reach 7.0% (gate/up) and
    2.1% (down), on the same kernels and at the same size. Requantizing from the FP8 release (now downloading to
-   `/mnt/nvme01/models/glm53f/fp8`) is the first step.
+   `models/glm53f/fp8`) is the first step.
 2. **IQ2_S is the best 2.5-bit option of the existing types** (output error 0.048 at 2.56 bpw against Q2_K's 0.055 at
    2.625). IQ2_S already runs in the CPU expert lane, the GPU tier, the decode cache and the mixed worker (CUDA and
    HIP, non-canonical); only the canonical sum (`STRATA_GLM_CANON`) is Q2_K/Q3_K only. `strata-glm-q2-pack --fp8=DIR
@@ -97,9 +97,9 @@ needs a calibration run tens of times longer; the diagonal rows are the reliable
 ## Reproduce
 
 ```sh
-B=/mnt/nvme01/models/glm53f/quant-study; PY=$HOME/venvs/gsq/bin/python   # numpy + torch (cu128) + GSQ deps
+B=models/glm53f/quant-study; PY=$HOME/venvs/gsq/bin/python   # numpy + torch (cu128) + GSQ deps
 python3 tools/quant_study/fetch_bf16_experts.py --layer 20 --experts 21,29,... --shared --out $B
-build-glm-release/strata-glm-exl3-dequant /mnt/nvme01/models/glm53f/glm53f-exl 20 21,29,... $B/exl3-layer20.safetensors
+build-glm-release/strata-glm-exl3-dequant models/glm53f/glm53f-exl 20 21,29,... $B/exl3-layer20.safetensors
 # tools: $B/bin/ggml_quant (tools/quant_study/ggml_quant.cpp, libggml-base), $B/bin/llvq_layer
 #        (tools/quant_study/llvq_layer, cargo +1.93.0, llvq ddecad31), GSQ checkout at 03fc1648 in $B/GSQ
 $PY tools/quant_study/evaluate.py --root $B --methods q2_K,q2_K-im,...,llvq-diag-rot

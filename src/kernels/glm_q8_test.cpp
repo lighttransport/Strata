@@ -1,6 +1,7 @@
 // Q8_0 decode GEMVs against an FP64 reference at GLM's MLA absorb and mHC projection shapes.
 #include "strata/kernels/glm_q8.hpp"
 #include "strata/kernels/glm.hpp"
+#include "strata/kernels/glm_prefill.hpp"
 #include "strata/kernels/native_mmvq.hpp"
 #include <cmath>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include <random>
 #include <stdexcept>
 #include <vector>
+#include <tuple>
 namespace k = strata::kernels;
 void ck(cudaError_t e) {
     if (e != cudaSuccess) throw std::runtime_error(cudaGetErrorString(e));
@@ -55,7 +57,8 @@ void check_heads_batch_bits(std::mt19937 &rng, cudaStream_t stream) {
     const char *batch = std::getenv("STRATA_GLM_HEADS_BLOCKS_BATCH");
     if (!blocks || !batch || std::string(blocks) != "1" || std::string(batch) != "1") return;
     std::uniform_real_distribution<float> values(-3.f, 3.f);
-    for (auto shape : {std::vector<int>{64,128,512},std::vector<int>{64,512,128}})
+    for (auto shape : {std::vector<int>{64,128,512}, std::vector<int>{64,512,128},
+                      std::vector<int>{64,256,512}, std::vector<int>{64,512,256}})
         for (int tokens : {2,3,4,5,8}) {
             const int heads=shape[0], in=shape[1], out=shape[2];
             const int ix=heads*in+7, iy=heads*out+5;
@@ -65,7 +68,7 @@ void check_heads_batch_bits(std::mt19937 &rng, cudaStream_t stream) {
             auto *w=upload(weight.bytes);auto *dx=upload(x);auto *a=upload(initial);auto *b=upload(initial);
             for(int t=0;t<tokens;++t)
                 k::glm_q8_heads_gemv(w,dx+(size_t)t*ix,a+(size_t)t*iy,heads,in,out,1,ix,iy,stream);
-            k::glm_q8_heads_gemv(w,dx,b,heads,in,out,tokens,ix,iy,stream);
+            k::glm_q8_heads_gemv(w,dx,b,heads,in,out,tokens,ix,iy,stream,true);
             ck(cudaStreamSynchronize(stream));
             const auto expected=download(a,initial.size()), actual=download(b,initial.size());
             bool same=std::memcmp(expected.data(),actual.data(),actual.size()*sizeof(float))==0;
@@ -88,7 +91,7 @@ void compare(const char *what, const std::vector<float> &got, const std::vector<
 void check_norm_q8(std::mt19937 &rng, cudaStream_t stream) {
     std::uniform_real_distribution<float> values(-3.f, 3.f), weights(.5f, 1.5f);
     int cases = 0, failed = 0;
-    for (int n : {32, 256, 4096, 16384}) for (int tokens : {1, 4}) for (int mode = 0; mode < 4; ++mode) {
+    for (int n : {32, 256, 4096, 16384}) for (int tokens : {1, 2, 3, 4, 8}) for (int mode = 0; mode < 4; ++mode) {
         std::vector<float> x((size_t)n * tokens), w(n);
         for (auto &v : x) v = mode == 3 ? 0.f : values(rng);
         for (auto &v : w) v = weights(rng) * (mode == 2 ? 1e9f : 1.f);
@@ -118,6 +121,100 @@ void check_norm_q8(std::mt19937 &rng, cudaStream_t stream) {
     failures += failed;
     std::cout << (failed ? "FAIL" : "PASS") << " fused norm/Q8 bitwise parity cases=" << cases << '\n';
 }
+// These operations have no cross-token state. Compare the new token grid with
+// the existing launches, including scratch/output guards and every float bit.
+void check_pointwise_batch(std::mt19937 &rng, cudaStream_t stream) {
+    std::uniform_real_distribution<float> values(-3.f, 3.f);
+    int cases = 0, failed = 0;
+    auto equal = [&](const float *a, const float *b, size_t n) {
+        const auto x = download(a, n), y = download(b, n);
+        const bool same = std::memcmp(x.data(), y.data(), n * sizeof(float)) == 0;
+        ++cases;
+        if (!same) ++failed;
+    };
+    for (int n : {256, 4096}) for (int tokens : {1, 2, 3, 4, 8}) for (int iters : {1, 20}) {
+        auto w = make((size_t)24 * 4 * n, rng);
+        std::vector<float> r((size_t)tokens * 4 * n), base(24), scale{.1f, .2f, .3f};
+        for (auto &v : r) v = values(rng);
+        for (auto &v : base) v = values(rng);
+        auto *dw = upload(w.bytes); auto *dr = upload(r); auto *db = upload(base); auto *ds = upload(scale);
+        auto *c0 = upload(std::vector<float>(24 * tokens + 11, 1234.5f));
+        auto *c1 = upload(std::vector<float>(24 * tokens + 11, 1234.5f));
+        auto *x0 = upload(std::vector<float>((size_t)n * tokens + 11, 1234.5f));
+        auto *x1 = upload(std::vector<float>((size_t)n * tokens + 11, 1234.5f));
+        auto *p0 = upload(std::vector<float>(25 * 32 * tokens + 11, 1234.5f));
+        auto *p1 = upload(std::vector<float>(25 * 32 * tokens + 11, 1234.5f));
+        for (int t = 0; t < tokens; ++t)
+            k::glm_hc_read_fused(dw, dr + (size_t)t * 4 * n, db, ds, c0 + t * 24, x0 + (size_t)t * n,
+                p0 + t * 25 * 32, n, iters, 1e-6f, 1e-6f, stream);
+        k::glm_hc_read_fused_tokens(dw, dr, db, ds, c1, x1, p1, n, iters, 1e-6f, 1e-6f, tokens, stream);
+        ck(cudaStreamSynchronize(stream));
+        equal(c0, c1, 24 * tokens + 11); equal(x0, x1, (size_t)n * tokens + 11);
+        equal(p0, p1, 25 * 32 * tokens + 11);
+        for (void *p : {static_cast<void *>(dw), static_cast<void *>(dr), static_cast<void *>(db),
+                       static_cast<void *>(ds), static_cast<void *>(c0), static_cast<void *>(c1),
+                       static_cast<void *>(x0), static_cast<void *>(x1), static_cast<void *>(p0),
+                       static_cast<void *>(p1)}) ck(cudaFree(p));
+    }
+    for (int heads : {2, 64}) for (int tokens : {1, 2, 3, 4, 8}) {
+        const int dim = 128, n = heads * dim;
+        std::vector<float> x((size_t)n * tokens), g(x.size()), bias(n), a(heads, -.8f), w(dim);
+        for (auto *v : {&x, &g, &bias, &w}) for (auto &f : *v) f = values(rng);
+        auto *dx = upload(x); auto *dg = upload(g); auto *db = upload(bias); auto *da = upload(a); auto *dw = upload(w);
+        auto *y0 = upload(std::vector<float>(x.size() + 11, 1234.5f));
+        auto *y1 = upload(std::vector<float>(x.size() + 11, 1234.5f));
+        for (int t = 0; t < tokens; ++t)
+            k::glm_kda_gate(dx + t * n, db, da, y0 + t * n, heads, dim, -5.f, stream);
+        k::glm_kda_gate_batch(dx, db, da, y1, heads, dim, -5.f, tokens, stream);
+        ck(cudaStreamSynchronize(stream)); equal(y0, y1, x.size() + 11);
+        for (int t = 0; t < tokens; ++t)
+            k::glm_kda_output(dx + t * n, dg + t * n, dw, y0 + t * n, heads, dim, 1e-6f, stream);
+        k::glm_kda_output_batch(dx, dg, dw, y1, heads, dim, 1e-6f, tokens, stream);
+        ck(cudaStreamSynchronize(stream)); equal(y0, y1, x.size() + 11);
+        for (void *p : {dx, dg, db, da, dw, y0, y1}) ck(cudaFree(p));
+    }
+    failures += failed;
+    std::cout << (failed ? "FAIL" : "PASS") << " pointwise token grid bitwise parity cases=" << cases << '\n';
+}
+void check_conv_history(std::mt19937 &rng, cudaStream_t stream) {
+    std::uniform_real_distribution<float> values(-3.f, 3.f);
+    int cases = 0, failed = 0;
+    for (int n : {1, 257, 8192}) for (int kernel : {1, 4, 7}) for (int tokens : {1, 2, 3, 4, 8})
+        for (int saved : {0, 1, tokens / 2, tokens}) {
+            const size_t hist = (size_t)n * (kernel - 1), stride = hist + 13;
+            std::vector<float> x((size_t)n * tokens), w((size_t)n * kernel), h(hist + 11, 1234.5f);
+            for (auto *v : {&x, &w}) for (auto &f : *v) f = values(rng);
+            for (size_t i = 0; i < hist; ++i) h[i] = values(rng);
+            auto *dx = upload(x); auto *dw = upload(w); auto *h0 = upload(h); auto *h1 = upload(h);
+            auto *y0 = upload(std::vector<float>(x.size() + 11, 1234.5f));
+            auto *y1 = upload(std::vector<float>(x.size() + 11, 1234.5f));
+            const size_t snapshot_values = (tokens + 1) * stride + 11;
+            auto *p0 = upload(std::vector<float>(snapshot_values, 1234.5f));
+            auto *p1 = upload(std::vector<float>(snapshot_values, 1234.5f));
+            for (int t = 0; t < tokens; ++t) {
+                k::glm_conv(dx + t * n, dw, h0, y0 + t * n, n, kernel, stream);
+                if (t < saved && hist)
+                    ck(cudaMemcpyAsync(p0 + t * stride, h0, hist * sizeof(float), cudaMemcpyDeviceToDevice, stream));
+            }
+            k::glm_conv_batch_history(dx, dw, h1, y1, n, kernel, tokens, p1, stride, saved, stream);
+            ck(cudaStreamSynchronize(stream));
+            bool same = true;
+            for (auto [a, b, count] : {std::tuple{h0, h1, hist + 11}, std::tuple{y0, y1, x.size() + 11},
+                                       std::tuple{p0, p1, snapshot_values}}) {
+                const auto expected = download(a, count), actual = download(b, count);
+                same &= std::memcmp(expected.data(), actual.data(), count * sizeof(float)) == 0;
+            }
+            ++cases;
+            if (!same) {
+                ++failed;
+                std::cout << "FAIL convolution history channels=" << n << " kernel=" << kernel
+                          << " tokens=" << tokens << " snapshots=" << saved << '\n';
+            }
+            for (void *p : {dx, dw, h0, h1, y0, y1, p0, p1}) ck(cudaFree(p));
+        }
+    failures += failed;
+    std::cout << (failed ? "FAIL" : "PASS") << " convolution history bitwise/guards cases=" << cases << '\n';
+}
 int main() {
     try {
         std::mt19937 rng(1234);
@@ -125,6 +222,8 @@ int main() {
         cudaStream_t s;
         ck(cudaStreamCreate(&s));
         check_norm_q8(rng, s);
+        check_pointwise_batch(rng, s);
+        check_conv_history(rng, s);
         cudaEvent_t a, b;
         ck(cudaEventCreate(&a));
         ck(cudaEventCreate(&b));

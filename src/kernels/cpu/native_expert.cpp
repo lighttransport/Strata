@@ -13,6 +13,7 @@
 #include "strata/kernels/cpu/nvfp4_avx2.hpp"
 #include "strata/kernels/cpu/nvfp4_avx512.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
+#include "strata/host/glm_env.h"
 
 #include "ggml.h"
 #include "ggml-cpu.h"
@@ -203,6 +204,13 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
     // baseline the build selected (AVX1 here) and covers the same types - IQ2_XXS and IQ2_S among
     // them.  That path loops over tokens itself, so it is correct for any `nt`, not just one.
     static const bool avx2 = cpu_avx2_ok() && std::getenv("STRATA_NO_IQ256") == nullptr;
+    static const bool clamp512 = strata_env_truthy_one("STRATA_GLM_IQ512_CLAMP") &&
+                                 cpu_isa_cap() >= 3 && cpu_avx512bw_ok() && std::getenv("STRATA_NO_IQ512") == nullptr;
+    if (f.swiglu_limit > 0 && clamp512 && iq512_supported(f.gu_type)) {
+        iq512_gu_rows_clamped(f.gu_type, blob, f.gu_row, f.up_off, (int)f.n_embd,
+                             act, nt, ff, r0, r1, f.swiglu_limit, separate_up);
+        return;
+    }
     if (f.swiglu_limit > 0 && avx2 && iq256_supported(f.gu_type)) {
         iq256_gu_rows_clamped(f.gu_type, blob, f.gu_row, f.up_off, (int)f.n_embd,
                              act, nt, ff, r0, r1, f.swiglu_limit, separate_up);

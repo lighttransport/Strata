@@ -3625,7 +3625,9 @@ __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned lon
         }
         __syncthreads();
         if (warp < cn) {   // swiglu_entries_kernel + quantize_q8_1_kernel, one block of 32 h values per entry
-            const float gg = res[warp][lane], uu = res[warp][32 + lane];
+            // Match the standalone activation when clamped fusion is enabled.
+            const float gg = L.swiglu_limit > 0 ? fminf(res[warp][lane], L.swiglu_limit) : res[warp][lane];
+            const float uu = L.swiglu_limit > 0 ? fmaxf(-L.swiglu_limit, fminf(res[warp][32 + lane], L.swiglu_limit)) : res[warp][32 + lane];
             const float xi = (gg / (1.0f + __expf(-gg))) * uu;
             float amax = fabsf(xi), sum = xi;
 #pragma unroll
@@ -3751,6 +3753,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
         return;
     }
     const bool v1 = g_grouped_v1;
+    static const bool fused_clamp = env_on("STRATA_GLM_FUSED_CLAMP");
     const int64_t gy = (v1 || grid_groups <= 0 || grid_groups > cap_groups) ? cap_groups : grid_groups;
     const int gu_rows = (!g_old_kernels && !g_no_sub16_gu && L.n_embd == 2560 && gu_split(L.gu_type)) ? 16 : GU_ROWS;
     const dim3 ggu((unsigned) ((2 * L.n_ff + gu_rows - 1) / gu_rows), (unsigned) gy);
@@ -3769,12 +3772,16 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     if (fused_gu && g_exp_phase != 2) {
         const dim3 gl((unsigned) (L.n_ff / 32), (unsigned) cap_groups);
         const size_t sh = (size_t) LDS_NT * (size_t) (L.n_embd / 32) * sizeof(block_q8_1);
+        auto fused_layout = L;
+        // Preserve the existing path unless the model's clamped fusion was
+        // explicitly requested, as for the separate fused activation below.
+        if (!fused_clamp) fused_layout.swiglu_limit = 0.f;
         switch (L.gu_type) {
-            case 16: native_gu_fused_kernel<16><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
-            case 18: native_gu_fused_kernel<18><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
-            case 21: native_gu_fused_kernel<21><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
-            case 23: native_gu_fused_kernel<23><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
-            default: native_gu_fused_kernel<22><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
+            case 16: native_gu_fused_kernel<16><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, fused_layout, hq); break;
+            case 18: native_gu_fused_kernel<18><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, fused_layout, hq); break;
+            case 21: native_gu_fused_kernel<21><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, fused_layout, hq); break;
+            case 23: native_gu_fused_kernel<23><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, fused_layout, hq); break;
+            default: native_gu_fused_kernel<22><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, fused_layout, hq); break;
         }
         check("native_expert_grouped/gu fused");
     }
@@ -3832,7 +3839,6 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     const bool sw_v1 = v1;
 #endif
     // GLM's clamped SwiGLU takes the separate pass unless STRATA_GLM_FUSED_CLAMP=1.
-    static const bool fused_clamp = env_on("STRATA_GLM_FUSED_CLAMP");
     if (sw_v1 || (L.swiglu_limit > 0 && !fused_clamp)) {
         swiglu_entries_kernel<<<(unsigned) ((nh + 255) / 256), 256, 0, s>>>(gate, up, h, nh, L.swiglu_limit);
         quantize_q8_1_kernel<<<(unsigned) ((nh + 255) / 256), 256, 0, s>>>(h, hq, nh);

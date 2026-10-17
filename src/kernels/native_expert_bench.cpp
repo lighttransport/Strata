@@ -7,6 +7,7 @@
 // in L2); its entries read distinct tokens of an 8-token window.  The output must be bitwise equal to the
 // reference mode's: the verify window's text depends on it.
 #include "strata/artifact/gguf_reader.hpp"
+#include "strata/core/model.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/kernels/iq_kernels.hpp"
 
@@ -29,10 +30,11 @@ namespace K = strata::kernels;
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 7) {
-        std::fprintf(stderr, "usage: native_expert_bench <shard1.gguf> <layer[,layer]> <groups> <tokens> <ref mode> <mode> [iters]\n");
+        std::fprintf(stderr, "usage: native_expert_bench <shard1.gguf> <layer[,layer]> <groups> <tokens> <ref mode> <mode> [iters] [activation-scale=1]\n");
         return 2;
     }
-    strata::GgufFile gguf(argv[1]);
+    strata::core::ModelArtifact artifact(argv[1]);
+    const auto& model = artifact.descriptor();
     std::vector<int> layers;
     {
         std::stringstream ss(argv[2]);
@@ -41,9 +43,14 @@ int main(int argc, char** argv) {
     }
     const int G = std::atoi(argv[3]), T = std::atoi(argv[4]), mref = std::atoi(argv[5]), mode = std::atoi(argv[6]);
     const int iters = argc > 7 ? std::atoi(argv[7]) : 200;
+    char* scale_end = nullptr;
+    const float activation_scale = argc > 8 ? std::strtof(argv[8], &scale_end) : 1.f;
     const int NTOK = 8;
-    if (T < 1 || T > NTOK || G < 1) { std::fprintf(stderr, "tokens 1..8, groups >= 1\n"); return 2; }
-    const int64_t H = 2560, FF_FULL = 640, FF = FF_FULL;   // Flash-Next's expert geometry
+    if (T < 1 || T > NTOK || G < 1 || G > model.experts || iters < 1 ||
+        !std::isfinite(activation_scale) || activation_scale <= 0 || (scale_end && *scale_end)) {
+        std::fprintf(stderr, "tokens 1..8, groups 1..expert count, iterations >= 1, positive finite activation scale\n"); return 2;
+    }
+    const int64_t H = model.hidden;
     int failures = 0;
     cudaStream_t s;
     cudaStreamCreate(&s);
@@ -51,17 +58,26 @@ int main(int argc, char** argv) {
     cudaEventCreate(&e0);
     cudaEventCreate(&e1);
     for (int l : layers) {
+        if (l < 0 || l >= (int)(model.layers.size() + model.draft_layers.size())) {
+            std::printf("layer %d: outside model\n", l); ++failures; continue;
+        }
+        const auto& layer = l < (int)model.layers.size() ? model.layers.at(l)
+                            : model.draft_layers.at(l - model.layers.size());
+        const int64_t FF = layer.intermediate, FF_FULL = FF;
         const strata::TensorInfo* t[3] = {};
         const char* roles[3] = {"gate", "up", "down"};
-        for (const auto& ti : gguf.tensors())
+        for (const auto& [name, tensor] : artifact.tensors()) {
+            const auto& ti = *tensor.tensor;
             for (int r = 0; r < 3; ++r)
                 if (ti.name == "blk." + std::to_string(l) + ".ffn_" + roles[r] + "_exps.weight") t[r] = &ti;
+        }
         if (!t[0] || !t[1] || !t[2]) { std::printf("layer %d: no expert tensors\n", l); ++failures; continue; }
         cpu::NativeFmt f;
         std::string err;
         if (!cpu::native_fmt((int) t[0]->type, (int) t[2]->type, H, FF, f, err)) {
             std::printf("layer %d: %s\n", l, err.c_str()); ++failures; continue;
         }
+        f.swiglu_limit = layer.swiglu_limit;
         cpu::NativeFmt ff;    // the full expert's geometry, for strides into the GGUF
         if (!cpu::native_fmt((int) t[0]->type, (int) t[2]->type, H, FF_FULL, ff, err)) {
             std::printf("layer %d: %s\n", l, err.c_str()); ++failures; continue;
@@ -70,21 +86,24 @@ int main(int argc, char** argv) {
         const size_t drow = dsz / H, drow_full = dsz_full / H;
         std::vector<uint8_t> blobs((size_t) G * f.bytes);
         for (int g = 0; g < G; ++g) {
-            const size_t E = (size_t) ((g * 37 + 5) % 256);
+            const size_t E = (size_t) ((g * 37 + 5) % model.experts);
             uint8_t* b = blobs.data() + (size_t) g * f.bytes;
-            std::memcpy(b, gguf.tensor_data(*t[0]) + E * ff.up_off, f.up_off);
-            std::memcpy(b + f.up_off, gguf.tensor_data(*t[1]) + E * ff.up_off, f.up_off);
+            std::memcpy(b, artifact.at(t[0]->name).data() + E * ff.up_off, f.up_off);
+            std::memcpy(b + f.up_off, artifact.at(t[1]->name).data() + E * ff.up_off, f.up_off);
             for (int64_t r = 0; r < H; ++r)
-                std::memcpy(b + f.down_off + r * drow, gguf.tensor_data(*t[2]) + E * dsz_full + r * drow_full, drow);
+                std::memcpy(b + f.down_off + r * drow, artifact.at(t[2]->name).data() + E * dsz_full + r * drow_full, drow);
         }
         std::mt19937 rng(17 + l);
         std::normal_distribution<float> nd(0.f, 1.f);
         std::vector<float> x((size_t) NTOK * H);
-        for (auto& v : x) v = nd(rng);
+        for (auto& v : x) v = nd(rng) * activation_scale;
         const int NE = G * T;
         std::vector<unsigned long long> ptr(G);
         std::vector<int32_t> start(G + 1), dst(NE), tok(NE);
-        const auto L = K::native_expert_layout(f.gu_type, f.d_type, H, FF);
+        auto L = K::native_expert_layout(f.gu_type, f.d_type, H, FF);
+        L.swiglu_limit = layer.swiglu_limit;
+        std::printf("shape layer=%d hidden=%lld intermediate=%lld experts=%lld swiglu_limit=%g\n",
+                    l, (long long)H, (long long)FF, (long long)model.experts, (double)L.swiglu_limit);
         uint8_t* dblob;
         void *dx, *dxq, *dscr;
         float* dout;
@@ -132,7 +151,8 @@ int main(int argc, char** argv) {
         size_t ndiff = 0;
         double worst = 0;
         for (size_t i = 0; i < ref.size(); ++i)
-            if (std::memcmp(&ref[i], &got[i], 4) != 0) {
+            if (!std::isfinite(ref[i]) || !std::isfinite(got[i]) ||
+                std::memcmp(&ref[i], &got[i], 4) != 0) {
                 ++ndiff;
                 worst = std::fmax(worst, std::fabs((double) ref[i] - got[i]) / (std::fabs((double) ref[i]) + 1e-6));
             }
@@ -165,6 +185,7 @@ int main(int argc, char** argv) {
         cudaFree(dblob); cudaFree(dx); cudaFree(dxq); cudaFree(dscr); cudaFree(dout); cudaFree(dptr);
         cudaFree(dstart); cudaFree(dn); cudaFree(ddst); cudaFree(dtok);
     }
+    cudaEventDestroy(e0); cudaEventDestroy(e1); cudaStreamDestroy(s);
     std::printf("native_expert_bench: %d differing\n", failures);
     return failures ? 1 : 0;
 }

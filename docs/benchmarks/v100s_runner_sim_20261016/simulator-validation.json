@@ -1,0 +1,127 @@
+{
+ "rows": [
+  {
+   "name": "v100s-ram-d3-trace-8k256",
+   "kind": "decode",
+   "split": "fit",
+   "measured_tok_s": 38.6209,
+   "predicted_tok_s": 38.947494783667075,
+   "error_fraction": 0.0084564260197737,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {
+    "head": {
+     "measured": 6.180458333333333,
+     "predicted": 6.390458333333333,
+     "error_fraction": 0.033978062576265344
+    },
+    "cpu_service": {
+     "measured": 36.34652777777777,
+     "predicted": 35.701280746660686,
+     "error_fraction": -0.01775264572897084
+    },
+    "between": {
+     "measured": 30.642083333333332,
+     "predicted": 30.308386684129907,
+     "error_fraction": -0.010890142343566445
+    },
+    "tail": {
+     "measured": 6.205333333333333,
+     "predicted": 6.205333333333343,
+     "error_fraction": 1.5543122344752192e-15
+    },
+    "draft": {
+     "measured": 8.32075,
+     "predicted": 8.320750000000004,
+     "error_fraction": 4.440892098500626e-16
+    }
+   },
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d3-clean-trial1",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 38.0851,
+   "predicted_tok_s": 39.0238624204978,
+   "error_fraction": 0.024649073272692057,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d3-clean-trial2",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 39.5533,
+   "predicted_tok_s": 40.13882991822631,
+   "error_fraction": 0.014803566787759959,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d3-clean-trial3",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 40.4159,
+   "predicted_tok_s": 41.31938373935061,
+   "error_fraction": 0.02235466089708793,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d3-chat-clean-trial1",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 41.6872,
+   "predicted_tok_s": 41.936090959340916,
+   "error_fraction": 0.0059704407909602075,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d3-chat-clean-trial2",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 40.5367,
+   "predicted_tok_s": 41.62545324853099,
+   "error_fraction": 0.02685845785500507,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  },
+  {
+   "name": "v100s-release-d3-chat-clean-trial3",
+   "kind": "decode",
+   "split": "holdout",
+   "measured_tok_s": 42.01,
+   "predicted_tok_s": 42.57148627690669,
+   "error_fraction": 0.013365538607633676,
+   "tolerance": 0.1,
+   "within": true,
+   "scope_errors": {},
+   "context_tokens": 8192,
+   "gate": true
+  }
+ ],
+ "calibrated": true,
+ "holdout_count": 6,
+ "ungated": [],
+ "scope_tolerance": 0.15,
+ "context_tokens": null,
+ "scope": "Gated holdout rows within 10% decode / 15% prefill and every traced scope within the scope tolerance; ungated rows are reported only"
+}

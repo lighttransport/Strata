@@ -180,6 +180,74 @@ int main(int argc,char** argv){try {
                     self.assertEqual(stream.read(tensor.expected_bytes()), kept[tensor.name][3])
         self.assertEqual(int(subprocess.check_output([self.census, self.output])), 3)
 
+    def test_fp8_native_targets_round_trip_through_shared_checks(self):
+        # Every native FP8 pack type must pass both assembly and loading. The marker is required to extend
+        # the legacy Q2_K/Q3_K agreement, and its metadata type matters.
+        sizes = {10: 84, 11: 110, 12: 144, 16: 66, 17: 74, 18: 98, 21: 110, 22: 82, 23: 136}
+        for kind, size in sizes.items():
+            with self.subTest(kind=kind):
+                converted = [(name, kind, shape, bytes([data[0]]) * size)
+                             for name, _, shape, data in self.converted]
+                meta = {k: v for k, v in self.pack_meta.items() if '.hash.' not in k}
+                meta['strata.expert_pack.fp8'] = ('bool', True)
+                meta.update({'strata.expert_pack.hash.' + t[0]: ('u64', fnv(t[3])) for t in converted})
+                write_gguf(self.pack, meta, converted)
+                result = self.run_assembly()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(int(subprocess.check_output([self.census, self.output])), 0)
+                model = GGUFFile(self.output)
+                expected = {t[0]: t[3] for t in converted + [self.fixed]}
+                with self.output.open('rb') as stream:
+                    for tensor in model.tensors:
+                        stream.seek(model.data_start + tensor.offset)
+                        self.assertEqual(stream.read(tensor.expected_bytes()), expected.pop(tensor.name))
+                self.assertFalse(expected)
+                self.output.unlink()
+        meta['strata.expert_pack.fp8'] = ('u32', 1)
+        write_gguf(self.pack, meta, converted)
+        self.assertNotEqual(self.run_assembly().returncode, 0)
+        self.assertFalse(self.output.exists())
+
+    def test_reassemble_replaces_every_projection(self):
+        # --reassemble: an assembly is the base and a pack converted from the FP8 release against it replaces every
+        # projection; the old pack metadata goes, the new one is recorded, and a plain assembly of it is refused.
+        self.assertEqual(self.run_assembly().returncode, 0)
+        assembled, second, out2 = self.output, self.directory / 'fp8.gguf', self.directory / 'out2.gguf'
+        refused = subprocess.run([self.assembler, assembled, self.pack, out2], capture_output=True, text=True)
+        self.assertIn('original GGUF without pack metadata', refused.stderr)
+        source = int(subprocess.check_output([self.fingerprint, assembled]))
+        fresh = [(n, k, shape, bytes([data[0] + 100]) * len(data)) for n, k, shape, data in self.converted]
+        meta = {'strata.expert_pack.version': ('u32', 1), 'strata.expert_pack.source': ('u64', source),
+                'strata.expert_pack.fp8': ('bool', True)}
+        meta.update({'strata.expert_pack.hash.' + t[0]: ('u64', fnv(t[3])) for t in fresh})
+        write_gguf(second, meta, fresh)
+        result = subprocess.run([self.assembler, '--reassemble', assembled, second, out2], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        model = GGUFFile(out2)
+        self.assertEqual(model.metadata['strata.expert_pack.source'], source)
+        self.assertTrue(model.metadata['strata.expert_pack.fp8'])
+        self.assertEqual(model.metadata['test.signed'], -17)
+        expected = {t[0]: t for t in fresh + [self.fixed]}
+        with out2.open('rb') as stream:
+            for tensor in model.tensors:
+                reference = expected.pop(tensor.name)
+                stream.seek(model.data_start + tensor.offset)
+                self.assertEqual(stream.read(tensor.expected_bytes()), reference[3])
+        self.assertFalse(expected)
+        self.assertEqual(int(subprocess.check_output([self.census, out2])), 0)
+        # a pack that is not from FP8, or leaves one old projection in place, is refused
+        out3 = self.directory / 'out3.gguf'
+        del meta['strata.expert_pack.fp8']
+        write_gguf(second, meta, fresh)
+        result = subprocess.run([self.assembler, '--reassemble', assembled, second, out3], capture_output=True, text=True)
+        self.assertIn('invalid type transition', result.stderr)   # the overlay refuses it first
+        meta['strata.expert_pack.fp8'] = ('bool', True)
+        del meta['strata.expert_pack.hash.' + fresh[0][0]]
+        write_gguf(second, meta, fresh[3:])
+        result = subprocess.run([self.assembler, '--reassemble', assembled, second, out3], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(out3.exists())
+
     def test_retained_count_is_enforced(self):
         # Changing the recorded retained count of an assembly with original-format projections is rejected by the loader.
         write_gguf(self.pack, self.partial_pack_meta(3), self.converted[3:])

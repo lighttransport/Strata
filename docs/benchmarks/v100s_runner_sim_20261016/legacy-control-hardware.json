@@ -1,0 +1,11 @@
+{
+ "hardware": "v100s node",
+ "cpu": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz",
+ "gpus": [
+  "Tesla V100-PCIE-32GB",
+  "Tesla V100-PCIE-32GB"
+ ],
+ "logical_cpus": 72,
+ "numa_domains": 4,
+ "scope": "Hardware class of the renewed allocation used only for legacy output parity; performance records belong to the original allocation"
+}

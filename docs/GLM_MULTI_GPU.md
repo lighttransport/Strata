@@ -85,21 +85,27 @@ bytes; it is not copied into the legacy two-node expert arenas.
 
 ## Coexistence with the TR16 runner
 
-The TR16 state imported at `71fecf19` also has a mixed CUDA/HIP worker and a
-process-based layer-range experiment. Their controls and measurements are in
-[GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md). `tools/glm_stage_run.py` uses
-`STRATA_GLM_LAYER_RANGE` and the stage protocol, with the output head on its
-primary process. The `gpu_layout=layer` path described here uses shared model
-mappings and a tail-owned head within one backend. Each path retains its own
-transport and ownership rules. Mixing stage/mixed protocol descriptors with
-`gpu_layout=layer` is rejected before model loading.
+The TR16 mixed CUDA/HIP worker's controls and measurements are in
+[GLM_TR16_RUNNER_PLAN.md](GLM_TR16_RUNNER_PLAN.md). The release cleanup after
+`3e01337d` removes its process-based layer-range prototype, stage protocol and
+`tools/glm_stage_run.py`. The native `gpu_layout=layer` path described here
+retains its shared model mappings, tail-owned head and independent transport
+within one backend. Mixed-worker descriptors and retired stage descriptors
+cannot be combined with `gpu_layout=layer`.
 
 The imported decode levers remain opt-in. The fastest TR16 settings include
 lossy routing and soft acceptance and have deferred quality checks; their rates
-are not V100 measurements. The linked V100 report freezes the earlier v9/v10
+are not V100 measurements. The earlier native-layer V100 report freezes the v9/v10
 source and binaries. It does not measure this combined revision. Rebuild and
 collect fresh timings before claiming a speed change; measured plans from the
 older binary will fail the decoder-identity check.
+
+The [v100s node release-profile report](benchmarks/v100s_runner_sim_20261016/README.md)
+measures the integrated `83f3cac9` engine with two V100 PCIe 32 GB GPUs, two
+Xeon Gold 6240 sockets and four NUMA domains. It uses the CUDA expert-worker
+runner, REAP-224 Q23, affinity 0.14 and MTP depths 2 and 3. Its measured warm
+decode rates and mode-specific simulator fits are separate from the native
+one-token-ahead pipeline and from quality qualification.
 
 `tools/glm_mixed_run.py` also accepts two CUDA binaries. Supply
 `--primary-device=0 --worker-device=1` using ordinals visible inside the
@@ -112,10 +118,106 @@ checked against actual GPU capacity. Existing CUDA/HIP defaults are unchanged.
 `--combine=native` is an additional CUDA/CUDA experiment; `strict` remains the
 launcher's default. Changing arithmetic requires a fresh quality comparison.
 
+For serving through `tools/glm_mixed_decode.py`, set the same placement in the
+server config's `env` block:
+
+| Environment variable | Launcher option |
+| --- | --- |
+| `STRATA_GLM_MIXED_PRIMARY_DEVICE` | `--primary-device` |
+| `STRATA_GLM_MIXED_WORKER_DEVICE` | `--worker-device` |
+| `STRATA_GLM_MIXED_PRIMARY_CPUS` | `--primary-cpus` |
+| `STRATA_GLM_MIXED_WORKER_CPUS` | `--worker-cpus` |
+
+GPU values are allocation-visible ordinals. CPU values are comma-separated
+IDs or ranges, such as `0-15,32-47`; choose them from the actual topology and
+allowed cpuset. The adapter forwards these settings to the same launcher
+checks. Unset variables retain the existing placement behavior.
+
+On dedicated cards, [VRAM preallocation](GLM_KV_OFFLOAD.md) also allows a
+numeric primary `decode_cache_mib` above 12,288 MiB, within `gpu_budget_mib`.
+Set `STRATA_GLM_MIXED_WORKER_CACHE_MIB` and
+`STRATA_GLM_MIXED_WORKER_GPU_BUDGET_MIB` separately for the worker. Both
+processes inherit the preallocation switch. Check each process's admitted
+cache and live allocations as well as total GPU memory use: reserving a pool
+alone does not populate it with useful expert weights.
+
+The [full UD-Q3_K_XL quality report](benchmarks/v100s_q3_20261017/README.md)
+uses the original 288 experts on the v100s node: two V100 PCIe 32 GB GPUs,
+two Xeon Gold 6240 sockets and a 160 GiB allocation. The 137.4 GiB shared
+model passed full SHA and socket-placement checks. Greedy decoding scored
+154/164 HumanEval and 24/24 C++; affinity 0.08/MTP3 scored 153/164 and 21/24,
+failing the held-out C++ criterion. Use its greedy profile as the Q3 quality
+reference. Both cards reached nearly full VRAM use, with no observed process
+swap. That report measures quality and memory; it does not measure Q3 throughput.
+
+The [Q3 optimization report](benchmarks/v100s_q3_opt_20261017/README.md)
+measures the full model on the same hardware class with 8,192 input and 512
+output tokens. Across three prompts and two fresh processes per profile,
+the frozen candidates reach 22.97 decode / 563.20 prefill tok/s for greedy
+and 43.61 / 562.05 for affinity 0.08/MTP3. Timed output repeats across both
+processes. The paired old-build fast control measures 41.25 / 532.47 tok/s;
+the 50 / 700 targets are not reached. Coding scores are 153/164 HumanEval
+and 24/24 C++ for greedy, and 150/164 and 21/24 for fast. Both candidates
+fail the planned quality preservation checks; fast also loses previous
+passes on `checked_slice` and `mul_i64`. The new profiles remain experiments,
+and the previous greedy profile remains the Q3 quality reference.
+
 `tools/glm_v100_optimize.py` runs a frozen, resumable 8K/512-token matrix.
 Screening, diagnostics, and final timing eligibility are separate. Final
 eligibility requires full warmups and validations, stable streams, no observed
 swap, and no detected cycles or generation beyond a real stop token.
+
+Saved CUDA expert-worker profiles can also be matrix cases. Set `profile` to
+the experimental configuration JSON and `prompt` to an 8,192-token ID file.
+Optional `settings` override `threads`, `prefill_batch` or `decode_cache_mib`;
+`env` and `unset` apply explicit environment changes. Keep routing and MTP
+acceptance fixed when comparing scheduling changes. For example:
+
+```json
+{"cases":[
+  {"name":"q3-greedy","profile":"configs/experimental/glm53f-ud-q3-k-xl-v100s-greedy.json","prompt":"docs/fixtures/glm_tr16_20261009/prompts/8k/train-code.ids"},
+  {"name":"q3-aff008-mtp3","profile":"configs/experimental/glm53f-ud-q3-k-xl-v100s-aff008-mtp3.json","prompt":"docs/fixtures/glm_tr16_20261009/prompts/8k/train-code.ids"}
+]}
+```
+
+These cases require a live shared resident owner. Save its `resident.identity`
+as JSON and pass `resident.path` directly, preserving the `/proc` descriptor
+path. Run from the repository root with the project Python environment active:
+
+```sh
+python3 tools/glm_v100_optimize.py --matrix tmp/q3-matrix.json \
+  --model "$RESIDENT_MODEL" --resident-identity tmp/resident-identity.json \
+  --decoder build/strata-glm-decode --worker build/strata-glm-gpu-worker \
+  --decode-target 50 --prefill-target 700 --output tmp/q3-timing
+```
+
+The profile's context, precision, cache budgets and speculation mode are used.
+One prefill warmup precedes three timed prefills, each checked against the
+warmup's logits and route counts outside timing. One full decode warmup
+precedes three timed decodes restored from the same target state. Both modes
+count generated tokens after the initial prefill-selected token. Cache
+learning can continue across repeats: the report distinguishes complete
+measurements from repeatable decode timings and quality qualification. Renewed
+allocations may use a new verified resident descriptor without changing the
+frozen experiment identity. Freeze the candidate using training prompts, then
+run two fresh processes on training and held-out prompts before accepting its
+measured result. Use `--baseline` and
+`--baseline-worker` for cases marked `build=baseline` when comparing binaries.
+
+`STRATA_GLM_IQ512_CLAMP=1` selects the clamped IQ gate/up CPU kernel on
+AVX512F/BW/DQ/VL processors, including Skylake and Cascade Lake. It supports
+separate NUMA mappings for gate and up rows. The default remains AVX2 for
+clamped rows; the new path changes the floating-point reduction order and
+requires a fresh quality comparison. `STRATA_NO_IQ512` and the forced ISA cap
+disable it. The older unclamped AVX-512 kernel retains its VNNI/VBMI check.
+
+When testing `STRATA_SM70_TABLE=1` on Volta with a clamped model, also set
+`STRATA_GLM_FUSED_CLAMP=1`. The fused gate/up kernel then applies the same
+asymmetric SwiGLU clamp as the standalone activation. Compare normal and
+high-amplitude activations with `native_expert_bench`; its optional last
+argument scales the test activations. Neither switch changes the default
+kernel selection.
+
 `tools/glm_v100_corpus.py` scores a saved benchmark configuration against full
 Q23 reference logits; legacy configurations use the actual target verification
 path through `--eval-verify`. Corpus scores alone do not qualify a candidate.

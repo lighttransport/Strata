@@ -1,0 +1,179 @@
+{
+  "complete": true,
+  "total_samples": 376,
+  "phases": [
+    {
+      "profile": "greedy",
+      "suite": "humaneval",
+      "tasks": 164,
+      "manifest_sha256": "aec331e58b700bc8f99d2a5ac353eedd8d49d85b1117e001527c3dffd80b5857",
+      "measurement_sha256": "afb5461b6408a2cf72500880cb90b10c88e65dd2a0cd9e7c894fd230376c6221",
+      "maximum_generated_tokens": 2048,
+      "dataset_revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "dataset_sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef",
+      "engine_args_sha256": "da6f1e5cba65fcc6d0e09de03023a80d9a6ed2ef9059e40318e86d3bb87c6c89",
+      "wrapper_sha256": "02a34c4ca5d669acfc771fe05feeb50aafe626df205802f7f11784c8866aea3b",
+      "bound_artifacts_sha256": {
+        "strata-glm-decode": "45a6f9b8e72a805089f704af569b932eec293367c698ac4b226848f6e644bc89",
+        "strata-glm-gpu-worker": "025c76fcbe5ae18f9a7f7139db47e497dc53641b9769b1acebb68c0601935d9f",
+        "libstrata_kq.so": "299ea26aacdb9994e3013e2c5c82bd98694a7b5e25a4a9558f5ac2afbccf0a06",
+        "frozen-profiles.json": "72d2f1835cf433b76b51bf329885059d57c3289bb4a11d40c46f9a96417721ea",
+        "quality.py": "87a269f049559f9d892435df17f016100b4247f4c7a49dd7f8e0adfdaf2a3b78",
+        "quality-resources.py": "5de845feacc6172ef7f4600042c60b299298997ce90ddb7c53ebf7279ec6e766",
+        "q3-engine.py": "f006e187b176b54cd1e35c850f9c85c54ddb48eedb036fa1b85e6bad71d1c009",
+        "glm_mixed_decode.py": "aa8f33a38430c0376e472559b244f81cebe92b8bcf96a643486f8eae3b3e8e32",
+        "glm_mixed_run.py": "a96bf26d2ccf5993e1a7d23d08dff73c5d84d6740bb80b39be4f21bb87a5c59e"
+      }
+    },
+    {
+      "profile": "greedy",
+      "suite": "cpp",
+      "tasks": 24,
+      "manifest_sha256": "004b0cf862e38b69aaefb518bb3577bca21146964fc0bf38447b884784a69c59",
+      "measurement_sha256": "090b841d8a3c6704ae56e2a01d9f0158241ea8edb05b2fdf878e91dacd01cb59",
+      "maximum_generated_tokens": 2048,
+      "inputs_sha256": "c94655d5e00367ddd2a71ef5cbbde4167b57b8dc0b374e9c0c5c361fd96b7694",
+      "wrapper_sha256": "02a34c4ca5d669acfc771fe05feeb50aafe626df205802f7f11784c8866aea3b",
+      "implementation_sha256": "f006e187b176b54cd1e35c850f9c85c54ddb48eedb036fa1b85e6bad71d1c009",
+      "runner_sha256": "87a269f049559f9d892435df17f016100b4247f4c7a49dd7f8e0adfdaf2a3b78",
+      "decoder_sha256": "45a6f9b8e72a805089f704af569b932eec293367c698ac4b226848f6e644bc89",
+      "worker_sha256": "025c76fcbe5ae18f9a7f7139db47e497dc53641b9769b1acebb68c0601935d9f"
+    },
+    {
+      "profile": "fast",
+      "suite": "humaneval",
+      "tasks": 164,
+      "manifest_sha256": "72a02ff96754f499f8233d4dfb3a0076927fb76b5ab632fb6bbdbf1db74e229b",
+      "measurement_sha256": "beb6ec89bb20ff42496030d39feda376bea82cba85b98fd90f408200c2320a39",
+      "maximum_generated_tokens": 2048,
+      "dataset_revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "dataset_sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef",
+      "engine_args_sha256": "742fb35fa2a55a1436529ddf13e938d4d3b68eca74fbb5fa77bcfcb401b81ec4",
+      "wrapper_sha256": "02a34c4ca5d669acfc771fe05feeb50aafe626df205802f7f11784c8866aea3b",
+      "bound_artifacts_sha256": {
+        "strata-glm-decode": "45a6f9b8e72a805089f704af569b932eec293367c698ac4b226848f6e644bc89",
+        "strata-glm-gpu-worker": "025c76fcbe5ae18f9a7f7139db47e497dc53641b9769b1acebb68c0601935d9f",
+        "libstrata_kq.so": "299ea26aacdb9994e3013e2c5c82bd98694a7b5e25a4a9558f5ac2afbccf0a06",
+        "frozen-profiles.json": "72d2f1835cf433b76b51bf329885059d57c3289bb4a11d40c46f9a96417721ea",
+        "quality.py": "87a269f049559f9d892435df17f016100b4247f4c7a49dd7f8e0adfdaf2a3b78",
+        "quality-resources.py": "5de845feacc6172ef7f4600042c60b299298997ce90ddb7c53ebf7279ec6e766",
+        "q3-engine.py": "f006e187b176b54cd1e35c850f9c85c54ddb48eedb036fa1b85e6bad71d1c009",
+        "glm_mixed_decode.py": "aa8f33a38430c0376e472559b244f81cebe92b8bcf96a643486f8eae3b3e8e32",
+        "glm_mixed_run.py": "a96bf26d2ccf5993e1a7d23d08dff73c5d84d6740bb80b39be4f21bb87a5c59e"
+      }
+    },
+    {
+      "profile": "fast",
+      "suite": "cpp",
+      "tasks": 24,
+      "manifest_sha256": "911d9c298657343be6c3d974cd65e9dedd039fba222debad9db134a87ad716a9",
+      "measurement_sha256": "9bb011afee0b19b4ed935e0812190de2228ade5f221178e7bfd1bdded051ed27",
+      "maximum_generated_tokens": 2048,
+      "inputs_sha256": "c94655d5e00367ddd2a71ef5cbbde4167b57b8dc0b374e9c0c5c361fd96b7694",
+      "wrapper_sha256": "02a34c4ca5d669acfc771fe05feeb50aafe626df205802f7f11784c8866aea3b",
+      "implementation_sha256": "f006e187b176b54cd1e35c850f9c85c54ddb48eedb036fa1b85e6bad71d1c009",
+      "runner_sha256": "87a269f049559f9d892435df17f016100b4247f4c7a49dd7f8e0adfdaf2a3b78",
+      "decoder_sha256": "45a6f9b8e72a805089f704af569b932eec293367c698ac4b226848f6e644bc89",
+      "worker_sha256": "025c76fcbe5ae18f9a7f7139db47e497dc53641b9769b1acebb68c0601935d9f"
+    }
+  ],
+  "engine_starts": [
+    {
+      "profile": "greedy",
+      "allocation": "A03",
+      "start_unix_ns": 1792213150591756792,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "raw_invocation_sha256": "9b3e4e017abaeeb39378505f80dd7f2caf395cb68b0f5610f3598c8868619b48"
+    },
+    {
+      "profile": "greedy",
+      "allocation": "A03",
+      "start_unix_ns": 1792213204067014904,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "raw_invocation_sha256": "9b3e4e017abaeeb39378505f80dd7f2caf395cb68b0f5610f3598c8868619b48"
+    },
+    {
+      "profile": "greedy",
+      "allocation": "A04",
+      "start_unix_ns": 1792215662448094284,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "raw_invocation_sha256": "ec91eccf20c1ddda6e7976160261b5b9b94e2355ee98f592a9f35b638dea1cd8"
+    },
+    {
+      "profile": "greedy",
+      "allocation": "A04",
+      "start_unix_ns": 1792218784919026201,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "raw_invocation_sha256": "ec91eccf20c1ddda6e7976160261b5b9b94e2355ee98f592a9f35b638dea1cd8"
+    },
+    {
+      "profile": "fast",
+      "allocation": "A04",
+      "start_unix_ns": 1792219560703000760,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "raw_invocation_sha256": "2e3374ed241e6099427411ae6b258964cc44626a3cdb0c3c03d5da23f22bf021"
+    },
+    {
+      "profile": "fast",
+      "allocation": "A04",
+      "start_unix_ns": 1792219612887555648,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "raw_invocation_sha256": "2e3374ed241e6099427411ae6b258964cc44626a3cdb0c3c03d5da23f22bf021"
+    },
+    {
+      "profile": "fast",
+      "allocation": "A04",
+      "start_unix_ns": 1792223975304724799,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "raw_invocation_sha256": "2e3374ed241e6099427411ae6b258964cc44626a3cdb0c3c03d5da23f22bf021"
+    }
+  ],
+  "process_resources": [
+    {
+      "allocation": "A04",
+      "raw_record_sha256": "5f6274bb7bba6a1c820b4b6e2ca2c3d5b51615f4e1bedd86f4e7257da1263ef5",
+      "returncode": 0,
+      "samples": 9016,
+      "peak_process_swap_bytes": 0,
+      "runner_sha256": "87a269f049559f9d892435df17f016100b4247f4c7a49dd7f8e0adfdaf2a3b78",
+      "observer_sha256": "5de845feacc6172ef7f4600042c60b299298997ce90ddb7c53ebf7279ec6e766",
+      "scope": "One-second samples of the quality runner and its descendants; shared model owner monitored separately"
+    },
+    {
+      "allocation": "A03",
+      "observer_interrupted": true,
+      "samples": 1639,
+      "peak_process_swap_bytes": 0,
+      "raw_observer_log_sha256": "fa0967d3623daa11cee2b9bf53110b542ec2ee8fc2a772ce03c0b9007e43ee53",
+      "returncode": null,
+      "scope": "Observer was terminated by the allocation controller; completed samples were resumed unchanged"
+    }
+  ],
+  "operational_interruption": {
+    "reason": "Transient scheduler-query failure ended the RAM owner; controller subsequently cancelled the quality step",
+    "completed_samples": 54,
+    "profile": "greedy",
+    "suite": "humaneval",
+    "resume_uses_unchanged_manifest": true,
+    "inference_sources_or_settings_changed": false,
+    "checkpoint_measurement_sha256": "c63530a9948a2d63508f55d497172fd53812ce28a763870be7560b6a1f1faa72",
+    "manifest_sha256": "aec331e58b700bc8f99d2a5ac353eedd8d49d85b1117e001527c3dffd80b5857",
+    "operational_fix": {
+      "operational_only": true,
+      "old_owner_sha256": "f7688e226ee8b944056a5cd23af4c1f08f2936961b6abb227dd6b78fa0f61f7e",
+      "new_owner_sha256": "1d23c2dbe7aa9075089555145e7ae4f6ad87e96097ac10831de39eecf1ff2087",
+      "cached_deadline_after_transient_query_failure_verified": true,
+      "subsequent_control_queries": 0,
+      "quality_and_inference_sources_changed": false,
+      "reason": "One failed scheduler query ended the RAM owner; its controller cancelled the quality step after the repair window"
+    },
+    "completed_prefix_preserved": true,
+    "raw_interruption_record_sha256": "0c92a36dc47b0bfff736d5098183562822be83e2d27c0d62dafdcb1cae2e3d51",
+    "failed_step_receipt_sha256": "26a23dfd98cbe163cbc7758474e266a26e46cc9831296f68ae8285c760cac6cd"
+  },
+  "frozen_profiles_sha256": "72d2f1835cf433b76b51bf329885059d57c3289bb4a11d40c46f9a96417721ea",
+  "raw_profiles_sha256": "917550da44b77694cb3db9331bd0df39dc207e3108932389cc72ed284c5ee328",
+  "cpp_inputs_sha256": "c94655d5e00367ddd2a71ef5cbbde4167b57b8dc0b374e9c0c5c361fd96b7694",
+  "protocol": "Chat, low reasoning, temperature zero, one sample per task; fixed greedy or affinity 0.08/MTP3 profile",
+  "scope": "One sealed shared model per allocation; cache/engine restarts and allocation checkpoints do not change manifests or completed samples"
+}

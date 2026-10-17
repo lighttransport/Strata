@@ -32,6 +32,7 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 | TR16, two GPUs (prefill) | REAP-224 Q23, HIP primary + CUDA expert worker, fraction 0.79 (`configs/experimental/glm53f-reap224-tr16-two-gpu-prefill.json`) | about 37 (short samples) | 870-875 (8K) | lossy F16 attention and F16 partial return; prefill path passes the corpus gate (below) |
 | TR16, two GPUs, fastest | as the decode row with affinity 0.30 | 49.0 (1K), 46.1 (8K) | 510 (8K) | fails the corpus gate (KL 0.310, top-1 0.817); not a release configuration |
 | TR16, RTX 5060 Ti, full model | full Q23 (288 experts), affinity 0.08, MTP depth 1 | 23.1 (2K), 23.0 (8K) | 131 (2K), 428 (8K) | HumanEval 153/164 |
+| TR16, RX 9070 XT, full model | **Q23 from FP8** (`experts-q23-fp8.gguf`, the default since 2026-10-17), affinity 0.08, MTP depth 1 (`configs/experimental/glm53f-q23fp8-tr16-9070xt-aff08.json`) | 19.6 (2K), 19.6 (8K) | 178 (2K), 497 (8K) | vs the FP8 release: perplexity +3.5%, KL 0.117, top-1 88.3% (release Q23: +9.0%, 0.212, 84.7%); HumanEval 151/164, **155/164 at affinity 0** (`...-aff0.json`) |
 | B550, RX 9070 XT, 16 GB VRAM | REAP-50 Q23, default service, 60 GiB RAM cap | 10.2 (2K) | 230 (2K) | vs UD-Q2_K_XL: perplexity 11.12 vs 8.57, KL 0.587, top-1 69.8%; no HumanEval |
 | B550, RX 9070 XT, 16 GB VRAM | REAP-50 Q23, affinity 0.06 | 16.5 (2K and a 7.4K document) | 229-250 | passes the fork's C++ coding review task; higher affinity did not |
 | zen5, RTX 3070 8 GB, 64 GB | REAP-50 Q23, strict routing, bounded dense prefill cache (`STRATA_GLM_PREFILL_DENSE_MIB=4096`), 2K prefix | 10.2 | 207 (2K) | bit-exact against the reference logits on the frozen prefix; HumanEval 0-29 subset 30/30 |
@@ -120,8 +121,15 @@ Estimated from the allocation sizes in the code and the memory records of the 12
 Hugging Face: [`lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts`](https://huggingface.co/lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts).
 The model card there has the full file table, the conversion recipe and the quality numbers.
 
+**Default for 128 GB since 2026-10-17: `experts-q23-fp8.gguf`.** It has the same types as `experts-q23.gguf`
+(Q2_K gate/up, Q3_K down), quantized once from the official FP8 release instead of from UD-Q2_K_XL's 2-bit experts.
+Against exact FP8 logits it halves the release Q23's KL at the same decode speed
+([GLM_FP8_REFERENCE.md](GLM_FP8_REFERENCE.md)). `experts-q23.gguf` and `GLM-5.3-Flash-Q23-assembled.gguf` stay
+published for reproducing the earlier measurements.
+
 | file | size | what it is |
 |---|---:|---|
+| `experts-q23-fp8.gguf` | 110.2 GB | **default**: expert sidecar for the four Unsloth UD-Q2_K_XL shards with every routed projection of layers 3-44 quantized from the FP8 release (Q2_K gate/up, Q3_K down, importance-weighted with the fork's calibration); `--expert-pack`, same shard fingerprint caveat as the row for `experts-q23.gguf` below |
 | `GLM-5.3-Flash-Q23-assembled.gguf` | 120.9 GB | the full model, single file: Unsloth UD-Q2_K_XL dense/attention/router weights with the routed experts requantized to Q2_K (gate/up) and Q3_K (down). Needs about 128 GB of RAM. |
 | `reap224/GLM-5.3-Flash-Q23-REAP224-assembled.gguf` | 95.5 GB | 224 of 288 experts per layer, sliced from the file above (REAP-style saliency ranking with the fork's own calibration, no further requantization). The TR16 release rows use it. |
 | `reap224/coverage-keep224.json`, `plan-keep224.txt`, `plan-keep224.report.json` | small | expert prior for the GPU-resident tier (`STRATA_GLM_EXPERT_PRIOR`), the kept experts, the per-layer saliency report |
@@ -163,7 +171,11 @@ Tests: `ctest --test-dir build-glm -L glm` (and the same for `build-hip`); the l
 
 ```sh
 pip install -U huggingface_hub
-# 128 GB machine: the full model
+# 128 GB machine, default: Unsloth's shards + the FP8-derived experts (restore the shard timestamps,
+# GLM_RELEASE_Q2Q3.md "Portability warning", then check with strata-glm-q2-pack --verify)
+hf download unsloth/GLM-5.3-Flash-GGUF --include 'UD-Q2_K_XL/*' --local-dir models/glm53f
+hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'experts-q23-fp8.gguf' --local-dir models
+# 128 GB machine, earlier single file (release Q23, no timestamp step)
 hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'GLM-5.3-Flash-Q23-assembled.gguf' --local-dir models
 # TR16 release rows: REAP-224
 hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'reap224/*' --local-dir models

@@ -430,7 +430,7 @@ void build_f8_tables() {
 
 // ---- options ----
 struct Opts {
-    std::string weights = "dummy", model = "/mnt/nvme01/models/m26f", csv, mode = "all";
+    std::string weights = "dummy", model = "models/m26f", csv, mode = "all";
     int layer = 1, experts = 256, reps = 20, trials = 9;
     std::vector<int> tokens = {512, 2048, 8192};
     std::vector<int> ncols = {1, 2, 4, 8, 16};

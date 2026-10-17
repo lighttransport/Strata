@@ -9,7 +9,8 @@ template<class T> void put(std::ostream& out,T v) { out.write(reinterpret_cast<c
 void str(std::ostream& out,const std::string& s) { put<uint64_t>(out,s.size());out.write(s.data(),s.size()); }
 struct Metadata { uint64_t count=0;std::string bytes; };
 // Copy a file's KV block verbatim, dropping the split.* keys: the assembly is one file even when the base is sharded.
-Metadata metadata(const std::filesystem::path& path) {
+// drop_pack also drops a previous assembly's strata.expert_pack.* keys (--reassemble).
+Metadata metadata(const std::filesystem::path& path,bool drop_pack=false) {
     strata::GgufFile file(path.string());
     // A metadata-only shard (Unsloth's -00001-of-N) ends before its aligned data offset: read what exists.
     std::vector<uint8_t> header(std::min<uint64_t>(file.data_start(), std::filesystem::file_size(path)));
@@ -19,24 +20,36 @@ Metadata metadata(const std::filesystem::path& path) {
     Metadata result;const uint64_t count=c.read<uint64_t>();
     for(uint64_t i=0;i<count;++i) {
         const size_t start=c.pos();const std::string key=c.str();strata::read_value(c,static_cast<strata::MetaType>(c.read<uint32_t>()));
-        if(key.rfind("split.",0)==0)continue;
+        if(key.rfind("split.",0)==0||(drop_pack&&key.rfind("strata.expert_pack.",0)==0))continue;
         result.bytes.append(reinterpret_cast<const char*>(header.data()+start),c.pos()-start);++result.count;
     }
     return result;
 }
 }
 int main(int argc,char** argv) { try {
-    if(argc!=4)throw std::runtime_error("usage: strata-glm-assemble MODEL PACK OUTPUT (MODEL may be the first shard of a split GGUF)");
-    const std::filesystem::path source=argv[1],pack=argv[2],output=argv[3],partial=output.string()+".partial";
+    // --reassemble: MODEL is itself an assembly (e.g. a published REAP-50 file whose original base is no longer at
+    // hand) and PACK, converted from the FP8 release against it, replaces every routed projection it held.
+    const bool reassemble=argc==5&&std::string(argv[1])=="--reassemble";
+    if(argc!=4&&!reassemble)throw std::runtime_error("usage: strata-glm-assemble [--reassemble] MODEL PACK OUTPUT (MODEL may be the first shard of a split GGUF)");
+    const int a=reassemble?2:1;
+    const std::filesystem::path source=argv[a],pack=argv[a+1],output=argv[a+2],partial=output.string()+".partial";
     if(std::filesystem::exists(output)||std::filesystem::exists(partial))throw std::runtime_error("refusing to overwrite output or partial");
     strata::GgufFile base(source.string());
-    if(base.get("strata.expert_pack.version"))throw std::runtime_error("assembly requires an original GGUF without pack metadata");
+    if(!reassemble&&base.get("strata.expert_pack.version"))throw std::runtime_error("assembly requires an original GGUF without pack metadata");
+    if(reassemble&&!base.get("strata.expert_pack.assembled"))throw std::runtime_error("--reassemble requires an assembled GGUF");
     strata::core::ModelArtifact model(source);
     const auto fingerprint=model.source_fingerprint();model.overlay_experts(pack);
-    const auto source_meta=metadata(source),pack_meta=metadata(pack);
     strata::GgufFile pack_header(pack.string());
+    if(reassemble) {
+        // Every projection the old assembly converted must come from the new pack: none of its payloads may survive.
+        const auto* fp8=pack_header.get("strata.expert_pack.fp8");
+        if(!fp8||!fp8->u)throw std::runtime_error("--reassemble requires a pack converted from the FP8 release");
+        for(const auto& [key,value]:base.metadata())
+            if(key.rfind("strata.expert_pack.hash.",0)==0&&!pack_header.get(key))throw std::runtime_error("pack does not replace "+key.substr(24));
+    }
+    const auto source_meta=metadata(source,reassemble),pack_meta=metadata(pack);
     for(const auto& [key,value]:pack_header.metadata())
-        if(base.get(key))throw std::runtime_error("duplicate metadata key: "+key);
+        if(base.get(key)&&!(reassemble&&key.rfind("strata.expert_pack.",0)==0))throw std::runtime_error("duplicate metadata key: "+key);
     std::ostringstream header(std::ios::binary);
     put<uint32_t>(header,0x46554747);put<uint32_t>(header,3);put<uint64_t>(header,model.tensors().size());
     // Projections the pack left in their original format (e.g. layers 11/12/44 of UD-Q2_K_XL) are copied as they are;

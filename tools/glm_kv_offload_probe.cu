@@ -14,14 +14,12 @@
 #define API(x) hip##x
 #define HOST_ALLOC_FLAGS (hipHostMallocMapped | hipHostMallocPortable)
 #define HostAllocCall(p, n) hipHostMalloc(p, n, HOST_ALLOC_FLAGS)
-#define HostFreeCall(p) (void)hipHostFree(p)
-#define FreeCall(p) (void)hipFree(p)
+#define HostFreeCall(p) hipHostFree(p)
 #else
 #include <cuda_runtime.h>
 #define API(x) cuda##x
 #define HostAllocCall(p, n) cudaHostAlloc(p, n, cudaHostAllocMapped | cudaHostAllocPortable)
-#define HostFreeCall(p) (void)cudaFreeHost(p)
-#define FreeCall(p) (void)cudaFree(p)
+#define HostFreeCall(p) cudaFreeHost(p)
 #endif
 #include <algorithm>
 #include <chrono>
@@ -117,8 +115,8 @@ int main(int argc, char **argv) {
     const double ms = (now_ms() - t0) / reps;
     std::printf("MODE %-22s ms_per_layer=%.3f GB_s=%.2f ms_all_layers=%.1f\n", "dma_layer_stage", ms,
                 layer_bytes / ms / 1e6, ms * LAYERS);
-    HostFreeCall(host);
-    if (vram) FreeCall(vram);
-    FreeCall(out); FreeCall(ids); FreeCall(stage);
+    CK(HostFreeCall(host));
+    if (vram) API(Free)(vram);
+    API(Free)(out); API(Free)(ids); API(Free)(stage);
     return 0;
 }

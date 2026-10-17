@@ -8,7 +8,7 @@ every method, and records per method: bits per weight, relative weight error and
 the method's own input. Results are appended to results.jsonl (one line per input/expert/projection/method), so the
 run can be resumed; `--table` prints the summary.
 
-  python3 tools/quant_study/evaluate.py --root /mnt/nvme01/models/glm53f/quant-study --layer 20 --experts ... \
+  python3 tools/quant_study/evaluate.py --root models/glm53f/quant-study --layer 20 --experts ... \
       [--methods q2_K,q3_K,...,llvq-diag-rot] [--inputs bf16,exl3] [--table]
 """
 import argparse
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-GGUF_PY = os.environ.get('STRATA_GGUF_PY', '/mnt/nvme02/work/llama.cpp/gguf-py')
+GGUF_PY = os.environ.get('STRATA_GGUF_PY', 'third_party/llama.cpp/gguf-py')
 sys.path.insert(0, GGUF_PY)
 
 PROJ = ('gate_proj', 'up_proj', 'down_proj')
@@ -129,8 +129,8 @@ def main():
     ap.add_argument('--hot', default='29,117,140,141,220,244,251,263')
     ap.add_argument('--methods', default=','.join(DEFAULT_METHODS))
     ap.add_argument('--inputs', default='bf16,exl3')
-    ap.add_argument('--calibration', default='/mnt/nvme01/models/glm53f/prune/calibration')
-    ap.add_argument('--gguf', default='/mnt/nvme01/models/glm53f/assembled/GLM-5.3-Flash-Q23-assembled.gguf')
+    ap.add_argument('--calibration', default='models/glm53f/prune/calibration')
+    ap.add_argument('--gguf', default='models/glm53f/assembled/GLM-5.3-Flash-Q23-assembled.gguf')
     ap.add_argument('--table', action='store_true')
     ap.add_argument('--oerr', action='store_true', help='full-Hessian pass: held-out output error (hess/ from hessians.py)')
     a = ap.parse_args()

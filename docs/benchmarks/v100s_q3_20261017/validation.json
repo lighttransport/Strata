@@ -1,0 +1,478 @@
+{
+  "measured_code_commit": "bb9295c955fd97e86ddd7221154c163e81ee000a",
+  "source_files": {
+    "src/program/glm_decode.cpp": "c4ae49be425144719ff25d564eacf8ea17295ca66bb70401a879694880fd237e",
+    "src/program/glm_gpu_worker.cpp": "ed72c85687a26c77ea191281cb1cb1551149b7995d5796a3dc7407453509bc2e",
+    "src/kernels/glm_q8_test.cpp": "ef09884ccd3c366be71bef677db1add614c6851c7185974876518e624043be7d",
+    "include/strata/kernels/glm_q8.hpp": "68374e9ae45584b565e86afc80865f8136725f6ebecff2bc6a181d6c25bb25d5",
+    "src/kernels/cuda/glm_q8.cu": "b253a444c0991d54d5664b4aa87914a35756a8f5cd2b3f7e4f07474cb16c12c6",
+    "src/kernels/cpu/pool.cpp": "09283bc5c28a79061d2a4fc9cfac75098c4904723d27c1e614a6049441f25d77",
+    "include/strata/kernels/cpu/pool.hpp": "950352b3ddea9eaa21fb9fb78ced558cd6afb5bbe67f0c74753debfb973d67ea",
+    "src/kernels/cpu/pool_affinity_linux.hpp": "e33144b944473ceb8e01bb7045a0174c6c9c0e67bfd038c9f8410c308118642f",
+    "src/kernels/cpu/pool_affinity_linux_test.cpp": "9a120f513b87ff18cbef6f96965742571a9bf50f4cfd96b64914558c6bcadf08",
+    "src/kernels/cpu/flow_pool_test.cpp": "dfd7259473fd84fed517457238d3de4685cb27e63ddb87d4353c19ef7eb2eb28",
+    "include/strata/kernels/glm_prefill.hpp": "cc005b2ce25bcb09651fcb9455a407571fda3ae162e1e13ffb68294feff705ef",
+    "src/kernels/cuda/glm_prefill.cu": "30e8f95bf0102b8d3f67c463375883dc8259834bdd4acc3e5a61ab7f40c504c7",
+    "src/kernels/cuda/glm_q23.cu": "71ddf9dc5474df685d3f7637c7ef7da396db40ed94a4f36c8cd1e028c46cacb6",
+    "serve/server.py": "148cc00cb573f2e70efc2d89316665a0743f93dd2a105c9858622d6ba37ce26b",
+    "serve/test_glm.py": "7720d03cc7a151404d9e3b5d3a8c9df15f1f92d5007726b3957135f7581fb787",
+    "tools/glm_mixed_decode.py": "aa8f33a38430c0376e472559b244f81cebe92b8bcf96a643486f8eae3b3e8e32",
+    "tools/test_glm_mixed.py": "d477b761911e73bbb0862deab224dd1414adc8d9b2695c7d264a6f8b005d3948",
+    "tools/glm_resident_model.py": "da2b089d674e2b52611a694d21e0184523afa89f2119b63c0953ed0b7e526137",
+    "tools/glm_socket_placement.py": "a836c61012e9691ca0c602f0eadf26688ff76feddb29943598fd3a8af742c61b",
+    "tools/glm_q2_humaneval.py": "645cceb473b134509d3514aeb709aa3c5e2ec7aebd7d6da8b68126922d252c39",
+    "tools/glm_coding_perf_matrix.py": "b371a7d6c936ae76fa11a1c3bd1353851b0cd099208b0cedfde82213b7921632",
+    "tools/glm_coding_quality.py": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+    "tools/glm_mixed_run.py": "a96bf26d2ccf5993e1a7d23d08dff73c5d84d6740bb80b39be4f21bb87a5c59e",
+    "tools/gguf_reader.py": "5ecf739bb3c2f07bc7f889f7f3a455e3dfdb40068409e10781a1a9b2be289b5e",
+    "CMakeLists.txt": "6c512c4275255d875cc04208932753a782838a22c54bc4530059587ab8a686b1",
+    "src/host/glm_env.c": "c9b73573d2f6ec201619987de09ad3f44ff8d322f2fea711dc3674df73026acc",
+    "include/strata/host/glm_env.h": "7f22320388a7fcecc5bfd69bfb8518991cd34c3a330c8d5b8bacc0134cb37a5e"
+  },
+  "source_file_count": 27,
+  "raw_build_source_sha256": "6eef41b00471ea79f02d5b180cbd6cabdd505925bc7ea913b16cbdb506be2ec9",
+  "default_parity": {
+    "passed": true,
+    "scope": "Previous/current single-GPU F16 prefill with STRATA_MMQ_KQ=1 for the old capability guard, and current F16 prefill without that switch;64 input tokens,16greedy output tokens and both154880-float logit arrays byte-identical on the same sealed full288Q3model. Does not exercise the enlarged opt-in NUMA budget.",
+    "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+    "prompt_sha256": "225fc963aecb4bd40ee74de98912ad8e6065ce0282de266916b4dafd20302cf1",
+    "results": {
+      "previous": {
+        "decoder_sha256": "7e38c239f0d811873139b2980a61235683744ab86fa10ade5397e6ec853de7dd",
+        "environment": {
+          "STRATA_MMQ_KQ": "1"
+        },
+        "kquant_library_sha256": "e16bdd1869cc2d938ac97c550ce405592b74bfece516650ba80e3b8dbddd36e8",
+        "files": {
+          "tokens": {
+            "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee",
+            "bytes": 74
+          },
+          "prefill.f32": {
+            "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1",
+            "bytes": 619520
+          },
+          "final.f32": {
+            "sha256": "acf75d02e632586202a4b31bd39f8088785c4971e158d8fa80aaded4e4f7b8bd",
+            "bytes": 619520
+          }
+        }
+      },
+      "current": {
+        "decoder_sha256": "e165a2cfa0a84cb4e8bc238039a445cf1dd9b59f068252426c7e8755687db056",
+        "environment": {
+          "STRATA_MMQ_KQ": "1"
+        },
+        "kquant_library_sha256": "e16bdd1869cc2d938ac97c550ce405592b74bfece516650ba80e3b8dbddd36e8",
+        "files": {
+          "tokens": {
+            "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee",
+            "bytes": 74
+          },
+          "prefill.f32": {
+            "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1",
+            "bytes": 619520
+          },
+          "final.f32": {
+            "sha256": "acf75d02e632586202a4b31bd39f8088785c4971e158d8fa80aaded4e4f7b8bd",
+            "bytes": 619520
+          }
+        }
+      },
+      "current-native": {
+        "decoder_sha256": "e165a2cfa0a84cb4e8bc238039a445cf1dd9b59f068252426c7e8755687db056",
+        "environment": {},
+        "kquant_library_sha256": null,
+        "files": {
+          "tokens": {
+            "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee",
+            "bytes": 74
+          },
+          "prefill.f32": {
+            "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1",
+            "bytes": 619520
+          },
+          "final.f32": {
+            "sha256": "acf75d02e632586202a4b31bd39f8088785c4971e158d8fa80aaded4e4f7b8bd",
+            "bytes": 619520
+          }
+        }
+      }
+    }
+  },
+  "hardware": [
+    {
+      "allocation": "allocation-01",
+      "cpu": {
+        "Architecture": "x86_64",
+        "CPU(s)": "72",
+        "Thread(s) per core": "2",
+        "Core(s) per socket": "18",
+        "Socket(s)": "2",
+        "NUMA node(s)": "4",
+        "Model name": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "gpus": [
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory": "32768 MiB",
+          "driver": "580.178.04"
+        },
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory": "32768 MiB",
+          "driver": "580.178.04"
+        }
+      ],
+      "raw_hardware_sha256": "8df990012fe3170e8340b47effe265dd097c5809e4b0e79da593e38abc1e1352"
+    },
+    {
+      "allocation": "allocation-02",
+      "cpu": {
+        "Architecture": "x86_64",
+        "CPU(s)": "72",
+        "Thread(s) per core": "2",
+        "Core(s) per socket": "18",
+        "Socket(s)": "2",
+        "NUMA node(s)": "4",
+        "Model name": "Intel(R) Xeon(R) Gold 6240 CPU @ 2.60GHz"
+      },
+      "gpus": [
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory": "32768 MiB",
+          "driver": "580.178.04"
+        },
+        {
+          "name": "Tesla V100-PCIE-32GB",
+          "nominal_memory": "32768 MiB",
+          "driver": "580.178.04"
+        }
+      ],
+      "raw_hardware_sha256": "219b2751aa321bc02d9492c5f3f40b6d7be2415b8f9d562bd545fed59ac108c5"
+    }
+  ],
+  "compiler_identification": [
+    "-- The CXX compiler identification is GNU 12.2.1",
+    "-- The CUDA compiler identification is NVIDIA 12.9.86"
+  ],
+  "cmake_configuration": [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DSTRATA_ENABLE_CUDA=ON",
+    "-DCMAKE_CUDA_ARCHITECTURES=70",
+    "-DSTRATA_ENABLE_HIP=OFF",
+    "-DSTRATA_NATIVE_EXPERTS=ON",
+    "-DSTRATA_Q6K_EXPERTS=ON",
+    "-DSTRATA_MMQ_KQUANTS=ON",
+    "-DSTRATA_BUILD_TESTS=ON"
+  ],
+  "ram_speed": "unavailable",
+  "allocated_memory_bytes": 171798691840,
+  "maximum_allocation_minutes": 180,
+  "failed_setup_attempts": [
+    {
+      "attempt": "disk-reference",
+      "outcome": {
+        "complete": false,
+        "qualified": false,
+        "reason": "Aborted disk-backed Q23 reference after repeated filesystem page invalidation; primary reread over348GB for95GB model and generated0tokens. Default parity will compare old/current binaries on the verified Q3 sealed RAM model. No heldout generation had begun.",
+        "raw_evidence_preserved": true
+      },
+      "raw_outcome_sha256": "ae8fcc6c815a825a9a147fcc92630a05afcb8dda890fc80e6f014c72c1af293e"
+    },
+    {
+      "attempt": "fp32-attention-scratch-cap",
+      "outcome": {
+        "complete": false,
+        "qualified": false,
+        "reason": "Two-GPU full-memory initialization passed;4K training prefill exhausted manually reduced2048MiB GPU scratch by mla_value256MiB. Removed override to use engine-computed workspace. No heldout generation had begun; verified host RAM retained."
+      },
+      "raw_outcome_sha256": "fd208240e4d079ea00de8d2b8a8fef8876299fa53729daded2f9c9cb42d69313"
+    },
+    {
+      "attempt": "full288-pruning-prefetch-flag",
+      "outcome": {
+        "complete": false,
+        "qualified": false,
+        "reason": "First two-GPU memory preflight rejected inherited REAP-only prefetch flag on full288 experts. Removed pruning-only and inactive canonical-Q23 switches before any heldout generation. Successful three-way numerical reference preserved separately."
+      },
+      "raw_outcome_sha256": "3b75ac0412d37908a3266ac8727ef8f2a828747969778f8e4dd659343bd57080"
+    },
+    {
+      "attempt": "kquant-reference-library-link",
+      "outcome": {
+        "complete": false,
+        "qualified": false,
+        "reason": "Old optional K-quant library exists but dlopen fails with undefined strata_env_value_ll. Fixed new CUDA library link to canonical strata_host. The old decoder will run from an isolated reference folder with the fixed library; original source/build remain untouched. No heldout generation had begun."
+      },
+      "raw_outcome_sha256": "c596e6c0e3bf9f27d21a5e50ed507d0f371664396620be2e1232fda214e9c16a"
+    },
+    {
+      "attempt": "ram-reference-prefill-guard",
+      "outcome": {
+        "complete": false,
+        "qualified": false,
+        "reason": "Older prefill capability guard rejects original Q6_K tensors even with F16 expert prefill; no GPU inference or heldout generation had begun. RAM retained while correcting selected-path validation."
+      },
+      "raw_outcome_sha256": "019c5be7cdf28a4ecfe093fe17805d832b929e63b0692839f2f54ad88c33045a"
+    },
+    {
+      "attempt": "ram-reference-prompt-check",
+      "outcome": {
+        "complete": false,
+        "qualified": false,
+        "reason": "Full sealed RAM SHA and all socket placement checks passed, then prompt assertion counted whitespace instead of comma-separated IDs; stopped before GPU inference or heldout generation. Corrected delimiter handling and added cheap static preflight before staging.",
+        "raw_evidence_preserved": true
+      },
+      "raw_outcome_sha256": "7e034ffdbb976bd25d16f6316f64c3add1fffa30025b5cb456cafd64bea612ee"
+    }
+  ],
+  "scope": "All inference setup repairs preceded heldout generation. No offline requantization or expert pruning. CUDA+CUDA quality only; HIP compile checks and portable API checks are recorded separately. Quality wall time is not a throughput benchmark.",
+  "independent_local_parity": {
+    "passed": true,
+    "scope": "Independent local byte comparison of downloaded64/16reference token files and all6complete154880-float logit arrays",
+    "raw_receipt_sha256": "99f6ff1f1dcdd5d9a762101ba48198d32d25b2d2208ea3fa4dc591a43f4ae65b",
+    "raw_archive_sha256": "a294f9a1a10e26370a6336ebc63b856072b975fe2a7c799b699916697ba39d0f",
+    "array_bytes_each": 619520
+  },
+  "api_profile_config_check": {
+    "passed": true,
+    "matched_non_model_stop_positional_fields": 22,
+    "implicit_weight_pages": "4k",
+    "all_configured_environment_fields_forwarded": 116,
+    "complete_model_chat_stop_handling": true,
+    "model_and_engine_mocked": true,
+    "gpu_http_smoke": false
+  },
+  "local_cuda_compile_only": {
+    "exit_code": 0,
+    "source_sha256": "a5d670998e66bd54d1ff35f6b4bb72a75dc6bf56e7d79cca158b172da099b8b3",
+    "architecture": "sm80",
+    "execution": "compile only",
+    "change": "Unsupported-backend startup guard; measured CUDA path unchanged because mmq::built() is true"
+  },
+  "local_hip_compile_only": {
+    "exit_code": 0,
+    "source_sha256": "a5d670998e66bd54d1ff35f6b4bb72a75dc6bf56e7d79cca158b172da099b8b3",
+    "architecture": "gfx1201",
+    "execution": "compile only",
+    "change": "Unsupported-backend startup guard; measured CUDA path unchanged because mmq::built() is true"
+  },
+  "api_profile_config_checks": {
+    "greedy": {
+      "passed": true,
+      "matched_non_model_stop_positional_fields": 22,
+      "implicit_weight_pages": "4k",
+      "all_configured_environment_fields_forwarded": 116,
+      "complete_model_chat_stop_handling": true,
+      "model_and_engine_mocked": true,
+      "gpu_http_smoke": false
+    },
+    "fast": {
+      "passed": true,
+      "matched_non_model_stop_positional_fields": 22,
+      "implicit_weight_pages": "4k",
+      "all_configured_environment_fields_forwarded": 116,
+      "complete_model_chat_stop_handling": true,
+      "model_and_engine_mocked": true,
+      "gpu_http_smoke": false
+    }
+  },
+  "local_grading_setup_attempt": {
+    "complete": false,
+    "graded_samples": 0,
+    "reason": "Local orchestration omitted the pinned dataset positional argument; argparse exited2 before grading. Added the already-verified snapshot dataset argument; generation, graders, oracles and profiles unchanged.",
+    "raw_log_sha256": "b11b45a3e810cb24e960c805d32f617d08c0e76e397fa186cd083e1b9547fe92"
+  },
+  "final_source_audit": {
+    "files": {
+      "src/program/glm_decode.cpp": "a5d670998e66bd54d1ff35f6b4bb72a75dc6bf56e7d79cca158b172da099b8b3",
+      "CMakeLists.txt": "6c512c4275255d875cc04208932753a782838a22c54bc4530059587ab8a686b1",
+      "docs/MULTI_GPU.md": "0aa3b800eea6fcc5a3d83059e6ac57fc26077832147b2b0f80fab68b9bb09dac"
+    },
+    "scanners": {
+      "gitleaks": {
+        "exit_code": 0,
+        "verification": "local/offline, redacted findings"
+      },
+      "trufflehog": {
+        "exit_code": 0,
+        "verification": "local/offline, verification disabled"
+      }
+    },
+    "scope": "Only the final3source/documentation files touched for full Q3 admission; final report is audited separately"
+  },
+  "humaneval_dataset": {
+    "dataset_revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+    "dataset_sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef"
+  },
+  "measured_binaries": {
+    "build/strata-glm-decode": {
+      "sha256": "e165a2cfa0a84cb4e8bc238039a445cf1dd9b59f068252426c7e8755687db056"
+    },
+    "build/strata-glm-gpu-worker": {
+      "sha256": "c63282fd777e183e4682dfbb62bc09d78b4d18a7004cfb90184494e5347f5908"
+    },
+    "build/glm_prefill_parity": {
+      "sha256": "25efc29c26b655b8b4d55f83a7fcf61329035a420f638056a16682168e5ebbe2"
+    },
+    "build/libstrata_kq.so": {
+      "sha256": "e16bdd1869cc2d938ac97c550ce405592b74bfece516650ba80e3b8dbddd36e8"
+    }
+  },
+  "grading_isolation": {
+    "tool": "Bubblewrap",
+    "unshared": [
+      "user",
+      "process",
+      "filesystem",
+      "network"
+    ],
+    "read_only": "toolchain and frozen oracles",
+    "writable": "temporary scratch only",
+    "model_home_network_access": false,
+    "humaneval_test_timeout_seconds": 5,
+    "cpp_compile_timeout_seconds": 60,
+    "cpp_run_timeout_seconds": 20,
+    "cpp_address_space_bytes": 3221225472
+  },
+  "grading_source_hashes": {
+    "tools/glm_humaneval_grade.py": "b99acf29d51ff9350dbeefa632088ae4692f0092ea142c4286d42a5fafbbb1eb",
+    "isolated_cpp_wrapper": "76ce345a910336e8405e25381b55f077ddbed149fc551ee9fe7033e0ef82c298",
+    "isolated_cpp_entrypoint": "f9a1ead9eaea2823d995f9a09d1c05f21c2362abbc8fa29e516def9e36a95196"
+  },
+  "release_guard": {
+    "passed": true,
+    "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+    "build": {
+      "schema": "strata.startup-guard-build.v1",
+      "source_sha256": "a5d670998e66bd54d1ff35f6b4bb72a75dc6bf56e7d79cca158b172da099b8b3",
+      "decoder_sha256": "a52c18d02649fe7257d1a457444247d8a48936d12b5ebaecfa1d2816bbf31f89",
+      "measured_decoder_sha256": "e165a2cfa0a84cb4e8bc238039a445cf1dd9b59f068252426c7e8755687db056",
+      "kquant_library_sha256": "e16bdd1869cc2d938ac97c550ce405592b74bfece516650ba80e3b8dbddd36e8",
+      "change": "Require compiled prefill helpers in the newly added tensor-quant capability fallback; no arithmetic changes",
+      "measured_build_modified": false
+    },
+    "ordinary_parity_passed": true,
+    "full_memory_preflight_profiles": [
+      "greedy",
+      "fast"
+    ],
+    "quality_suites_binary_unchanged": true,
+    "scope": "Full quality suites ran the measured decoder. This release guard changes startup admission only; CUDA mmq::built is true. New release decoder ran ordinary parity and both4K/128token training probes; unchanged measured GPU worker.",
+    "ordinary_parity": {
+      "passed": true,
+      "model_sha256": "7800e21bc527db7ae6eaea36a190711c3c500109c2e5f5904017f1d2d9089b5a",
+      "prompt_sha256": "225fc963aecb4bd40ee74de98912ad8e6065ce0282de266916b4dafd20302cf1",
+      "decoder_sha256": "a52c18d02649fe7257d1a457444247d8a48936d12b5ebaecfa1d2816bbf31f89",
+      "files": {
+        "tokens": {
+          "sha256": "ea297307d0d0596531e33d6b02ccf20a06c8bf572a6e0494dc55220997a5c4ee",
+          "bytes": 74
+        },
+        "prefill.f32": {
+          "sha256": "649a74beec7e73993822ac197b27ee96efeac947cd382ba680e189bac7bdf6f1",
+          "bytes": 619520
+        },
+        "final.f32": {
+          "sha256": "acf75d02e632586202a4b31bd39f8088785c4971e158d8fa80aaded4e4f7b8bd",
+          "bytes": 619520
+        }
+      },
+      "reference_receipt_sha256": "99f6ff1f1dcdd5d9a762101ba48198d32d25b2d2208ea3fa4dc591a43f4ae65b",
+      "scope": "64 input IDs, 16 greedy output IDs, both full154880-float arrays byte-identical to the frozen measured decoder; no STRATA switches"
+    },
+    "training_probes": {
+      "greedy": {
+        "complete": true,
+        "training_contract": "parse_u64_4k",
+        "input_token_sha256": "70b6bb1333f923ef2de2dc02faebb38e119fd05590eb7bb8002c25590fc5ab9f",
+        "generated_tokens": 128,
+        "matches_frozen_preflight_tokens": true,
+        "reference_preflight_sha256": "5df02c73fc7bec97cbd97c0c5fb5368cd23acdd02f6312c54fe544fd6980f913",
+        "log_sha256": "650c21248964a9a56785b34d2d239b40052821f595409b34cdca63549526a906",
+        "token_sha256": "0638ad84bbd096287626ae31d8ec7618e41e1d0c2ef1e5d71f43280374b03b6b",
+        "raw_probe_receipt_sha256": "c95f7c2e77414b1f795691e11442a502633491451ee56b30477458954e3a3ca4"
+      },
+      "fast": {
+        "complete": true,
+        "training_contract": "parse_u64_4k",
+        "input_token_sha256": "70b6bb1333f923ef2de2dc02faebb38e119fd05590eb7bb8002c25590fc5ab9f",
+        "generated_tokens": 128,
+        "matches_frozen_preflight_tokens": true,
+        "reference_preflight_sha256": "2fffc484bd5f43818ecb1c9ff6d3059d735cffff85179fe3603edd221e91f29f",
+        "log_sha256": "213c2a1f80ca7a2df238bf3e9f74c83a37fda2c73b87027e2db1452abdcd2c8a",
+        "token_sha256": "c965b19299d3018039b70556ae4b9d906f7ecfb75907584e0221e46a87eb8484",
+        "raw_probe_receipt_sha256": "20f41fd8b85cc81fd25593cf95fec28d12d9997f2bdb587901e27997869217e6"
+      }
+    }
+  },
+  "shutdown": {
+    "checked_unix": 1792183082.211581,
+    "session_phase": "STOPPED",
+    "active_session_jobs": 0,
+    "controllers": {
+      "experiment": {
+        "alive": false
+      },
+      "post_generation": {
+        "alive": false
+      },
+      "session": {
+        "alive": false
+      }
+    },
+    "release_validation_complete": true,
+    "completed_owner_exit_zero": true,
+    "scope": "Only this experiment session; Slurm reports no queued/running jobs for its pinned unique job name"
+  },
+  "release_validation_setup_attempts": [
+    {
+      "attempt": "system-python-launcher",
+      "outcome": {
+        "complete": false,
+        "phase": "post-quality release validation",
+        "reason": "Ordinary64/16token and full-logit parity passed. The memory-probe adapter selected the old system Python and rejected subprocess text=True before probe GPU inference. Resume the same binary and sealed model using the project Python wrapper; generation, graders and profiles unchanged.",
+        "ordinary_parity_preserved": true,
+        "frozen_source_unchanged": true
+      },
+      "raw_outcome_sha256": "5c6d456b56deb6f5de5b67988ecbe5b79bf208d89c52199dffe7a65c6d80f648"
+    }
+  ],
+  "raw_snapshot_archive_sha256": "c9dbdc4642f8c10268161bb1e26181eece48a3d63ec49345e0ae46ac8a5fd5b5",
+  "host_tests": {
+    "host-env.log": {
+      "output": "env OK 6 knobs",
+      "raw_log_sha256": "e387d30eddfcd16f6657c3e896b51b09dfa9bc609d79c284b8874dc052e39b97"
+    },
+    "host-names.log": {
+      "output": "names OK 27",
+      "raw_log_sha256": "2db7667a9d601699a84ecb0062883559100cd0394abb053e1ba6867f8854f671"
+    },
+    "host-expert-pack.log": {
+      "output": "expert_pack OK 126 projections",
+      "raw_log_sha256": "cc49b1ce665dfffafbff3ef26cceb19b117213963a7511da709b145daa3ede58"
+    }
+  },
+  "cpp_grader_selftest": {
+    "passed": true,
+    "exit_code": 0,
+    "raw_log_sha256": "d89838e0a8a31a6792a0e4222f43d8b0f5b30093fa93b597087bfac0ca969df7",
+    "original_parser_cases": 400532,
+    "deliberately_incorrect_parser_rejected": true
+  },
+  "release_guard_code_commit": "cf9a70a92ce978d601da4808dda72338b28fe312",
+  "generated_cpp_compiler": {
+    "family": "GNU g++",
+    "version": "13.3.0",
+    "language": "C++17",
+    "flags": [
+      "-O2"
+    ],
+    "original_parser_additional_flags": [
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ]
+  }
+}

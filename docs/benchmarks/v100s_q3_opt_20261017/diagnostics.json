@@ -1,0 +1,233 @@
+{
+  "scope": "Instrumented training-prompt diagnostics only; no throughput qualification",
+  "profiles": {
+    "greedy": {
+      "benchmark_sha256": "91d1347dfc01f063a61252c5c212ea30a66e6d18a2a2f2f15a57436d2d8a4823",
+      "log_sha256": "9655a90d2ca204a1ea5ae6f6eb54c1e314f42ddc1bb0f1d37fef1b1cd7d33773",
+      "input_tokens": 8192,
+      "generated_tokens": 128,
+      "timed_replays": 2,
+      "diagnostic_environment": [
+        "STRATA_GLM_MIXED_PROFILE",
+        "STRATA_GLM_MIXED_PROFILE_DECODE",
+        "STRATA_GLM_MTP_TIMING",
+        "STRATA_GLM_STEP_TRACE"
+      ],
+      "warmup_step_trace": [
+        {
+          "steps": 127.0,
+          "moe_layers": 5334.0,
+          "pipelined": 1.0,
+          "head_ms": 865.61,
+          "cpu_ms": 5542.15,
+          "between_ms": 2253.93,
+          "tail_ms": 347.854,
+          "tail_sync_ms": 94.4599,
+          "tail_plan_ms": 43.8718,
+          "tail_copy_ms": 202.551,
+          "hidden_readback_ms": 0.0,
+          "enqueue_ms": 1810.52,
+          "tier_swaps": 101.0,
+          "split_windows": 0.0,
+          "per_step_ms": 70.9412
+        }
+      ],
+      "timed_step_trace": [
+        {
+          "steps": 127.0,
+          "moe_layers": 5334.0,
+          "pipelined": 1.0,
+          "head_ms": 554.788,
+          "cpu_ms": 2595.73,
+          "between_ms": 2252.12,
+          "tail_ms": 210.407,
+          "tail_sync_ms": 94.5586,
+          "tail_plan_ms": 48.1372,
+          "tail_copy_ms": 60.9251,
+          "hidden_readback_ms": 0.0,
+          "enqueue_ms": 418.765,
+          "tier_swaps": 102.0,
+          "split_windows": 0.0,
+          "per_step_ms": 44.1972
+        },
+        {
+          "steps": 127.0,
+          "moe_layers": 5334.0,
+          "pipelined": 1.0,
+          "head_ms": 518.702,
+          "cpu_ms": 2690.72,
+          "between_ms": 2249.51,
+          "tail_ms": 210.669,
+          "tail_sync_ms": 94.5204,
+          "tail_plan_ms": 48.2181,
+          "tail_copy_ms": 61.0804,
+          "hidden_readback_ms": 0.0,
+          "enqueue_ms": 382.896,
+          "tier_swaps": 102.0,
+          "split_windows": 0.0,
+          "per_step_ms": 44.6426
+        }
+      ],
+      "cpu_summaries": [
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 0.0,
+          "bytes": 0.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 0.0,
+          "bytes": 0.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 2563.06,
+          "bytes": 254678335488.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 2302.92,
+          "bytes": 231573159936.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 2411.62,
+          "bytes": 244287078400.0
+        }
+      ],
+      "worker_lifetime_profile": [
+        {
+          "requests": 13840.0,
+          "prologue_ms": 62.172,
+          "body_ms": 2031.2,
+          "idle_ms": 55681.3
+        }
+      ],
+      "caveat": "CPU and worker counters can overlap; worker lifetime idle includes initialization and prefills; warmup and timed counters are separated"
+    },
+    "aff008-mtp3": {
+      "benchmark_sha256": "3fff7ccef5e518cddf4fe9fd7105144c9ef2adc52cb82bfb9c8f907e886c0a1b",
+      "log_sha256": "66869173a0af155d5490d6a20fb84b898f890e1942941f2ad738c7236d6974c6",
+      "input_tokens": 8192,
+      "generated_tokens": 128,
+      "timed_replays": 2,
+      "diagnostic_environment": [
+        "STRATA_GLM_MIXED_PROFILE",
+        "STRATA_GLM_MIXED_PROFILE_DECODE",
+        "STRATA_GLM_MTP_TIMING",
+        "STRATA_GLM_STEP_TRACE"
+      ],
+      "warmup_step_trace": [
+        {
+          "steps": 35.0,
+          "moe_layers": 2940.0,
+          "pipelined": 1.0,
+          "head_ms": 156.19,
+          "cpu_ms": 2595.0,
+          "between_ms": 456.364,
+          "tail_ms": 278.88,
+          "tail_sync_ms": 43.404,
+          "tail_plan_ms": 12.1865,
+          "tail_copy_ms": 109.528,
+          "hidden_readback_ms": 112.215,
+          "enqueue_ms": 757.618,
+          "tier_swaps": 38.0,
+          "split_windows": 35.0,
+          "per_step_ms": 99.6123
+        }
+      ],
+      "timed_step_trace": [
+        {
+          "steps": 33.0,
+          "moe_layers": 2772.0,
+          "pipelined": 1.0,
+          "head_ms": 145.362,
+          "cpu_ms": 1944.08,
+          "between_ms": 443.897,
+          "tail_ms": 116.028,
+          "tail_sync_ms": 41.0522,
+          "tail_plan_ms": 13.6112,
+          "tail_copy_ms": 56.7487,
+          "hidden_readback_ms": 3.23362,
+          "enqueue_ms": 134.073,
+          "tier_swaps": 39.0,
+          "split_windows": 68.0,
+          "per_step_ms": 80.2837
+        },
+        {
+          "steps": 35.0,
+          "moe_layers": 2898.0,
+          "pipelined": 1.0,
+          "head_ms": 149.844,
+          "cpu_ms": 1918.6,
+          "between_ms": 563.993,
+          "tail_ms": 121.718,
+          "tail_sync_ms": 43.0491,
+          "tail_plan_ms": 15.2254,
+          "tail_copy_ms": 58.7124,
+          "hidden_readback_ms": 3.30689,
+          "enqueue_ms": 159.852,
+          "tier_swaps": 44.0,
+          "split_windows": 102.0,
+          "per_step_ms": 78.6901
+        }
+      ],
+      "cpu_summaries": [
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 0.0,
+          "bytes": 0.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 0.0,
+          "bytes": 0.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 1696.04,
+          "bytes": 155707572224.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 1632.97,
+          "bytes": 154550665216.0
+        },
+        {
+          "gu_ms": 0.0,
+          "quant_ms": 0.0,
+          "down_ms": 0.0,
+          "layer_flow_ms": 1558.11,
+          "bytes": 147091554304.0
+        }
+      ],
+      "worker_lifetime_profile": [
+        {
+          "requests": 8595.0,
+          "prologue_ms": 40.3462,
+          "body_ms": 2765.87,
+          "idle_ms": 48399.3
+        }
+      ],
+      "caveat": "CPU and worker counters can overlap; worker lifetime idle includes initialization and prefills; warmup and timed counters are separated"
+    }
+  }
+}

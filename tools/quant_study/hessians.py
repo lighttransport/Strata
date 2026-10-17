@@ -8,7 +8,7 @@ selected expert this writes, split 80/20 by token order:
   hess/e{E}.down.fit.f32 / .down.test.f32 H over h = silu(min(x Wg^T, L)) * clamp(x Wu^T, -L, L) (2048 x 2048),
 computed with the original BF16 gate/up weights (L = swiglu_limit = 10), plus counts.json.
 
-  python3 tools/quant_study/hessians.py --trace trace-layer20.bin --layer 20 --root /mnt/nvme01/models/glm53f/quant-study
+  python3 tools/quant_study/hessians.py --trace trace-layer20.bin --layer 20 --root models/glm53f/quant-study
 """
 import argparse
 import json

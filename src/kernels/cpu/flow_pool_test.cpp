@@ -1,6 +1,7 @@
 // run_layer_native against run_split_multi_native + reduce_routed: plain and NUMA-owned rows, IQ and fused
 // Q2_K/Q3_K formats, shared experts across tokens, and routes left to the GPU (zero weight and rows).
 #include "strata/kernels/cpu/pool.hpp"
+#include <algorithm>
 #include "strata/kernels/cpu/numa_weights.hpp"
 #include "ggml.h"
 #include <cstring>
@@ -116,7 +117,12 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
     std::vector<float> ref_results((size_t)nt * K * H), ref_sum((size_t)nt * H);
     std::vector<ExpertJobMulti> jobs;
     build(ref_results, jobs);
-    pool.run_split_multi_native(w.f, jobs.data(), (int)jobs.size());
+    // The oracle uses whole rows, including when the tested flow owns halves.
+    // Comparing two schedules over the same shards would miss a shared row-split bug.
+    auto oracle = w.f;
+    oracle.fuse_h_quant = false;
+    for (auto &job : jobs) for (auto &half : job.numa) half = {};
+    pool.run_split_multi_native(oracle, jobs.data(), (int)jobs.size());
     pool.reduce_routed(ref_results.data(), masked.data(), ref_sum.data(), nt, K, H, w.f.canon);
     for (int repeat = 0; repeat < 6; ++repeat) {
         std::vector<float> results((size_t)nt * K * H, std::numeric_limits<float>::quiet_NaN()),
@@ -150,9 +156,12 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
     }
     return 6;
 }
-int main() {
+int main(int argc, char** argv) {
     try {
-        ExpertPool pool(15, true);
+        const bool no_host = argc == 2 && std::string(argv[1]) == "--socket-rows-no-host";
+        const bool socket_rows = no_host || (argc == 2 && std::string(argv[1]) == "--socket-rows");
+        if (argc != 1 && !socket_rows) throw std::invalid_argument("expected --socket-rows or no arguments");
+        ExpertPool pool(socket_rows ? 0 : 15, true, !no_host, PoolAffinity::All, 0, nullptr, socket_rows);
         if (!pool.numa_rows_available()) return 77;
         const auto cores = physical_cores(false);
         const auto previous = pin_current_thread(cores.front());

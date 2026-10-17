@@ -223,7 +223,7 @@ def tr16():
         runtime_vram={pack: dict(staging=0, prefetch=0, prefill_scratch=32, misc=228, tier_fill_reserve=1280, runtime_headroom=1024,
                                  mtp_dense_mib=156.84, verify_history_by_depth={"1": 145.6, "2": 291.2, "3": 436.8})
                       for pack in ("q23", "q22")},
-        notes="calibration machine; model mount /mnt/nvme01 is x1 (~1 GB/s), work mount /mnt/nvme02 is x4; device numbers are not stable",
+        notes="calibration machine; model drive is x1 (~1 GB/s), work drive is x4; device numbers are not stable",
     )
 
 

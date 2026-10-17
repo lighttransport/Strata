@@ -328,7 +328,7 @@ target_link_libraries(strata-plan PRIVATE strata_plan)
 # read once through strata_env_init from main(), since C has no thread-safe function-local static for the
 # lambdas this replaces to lean on.
 enable_language(C)
-add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_stage.c src/host/glm_layer.c src/host/ds41f_names.c)
+add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_layer.c src/host/ds41f_names.c)
 set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 target_include_directories(strata_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(UNIX)
@@ -1456,11 +1456,13 @@ if(STRATA_NATIVE_EXPERTS)
   # part of strata_kernels_cpu (the pool calls these and they call its CPU probe: one library, so GNU ld's
   # one-pass static linking has no cycle to resolve)
   target_sources(strata_kernels_cpu PRIVATE src/kernels/cpu/native_expert.cpp src/kernels/cpu/iq_avx512.cpp
+                                           src/kernels/cpu/iq_avx512_clamp.cpp
                                            src/kernels/cpu/iq_avx2.cpp src/kernels/cpu/kq_avx2.cpp src/kernels/cpu/q23_avx2.cpp src/kernels/cpu/q23_packed.cpp
                                            src/kernels/cpu/kq_avx1.cpp src/kernels/cpu/q2_avx1.cpp src/kernels/cpu/iq_avx1.cpp
                                            src/kernels/cpu/nvfp4_avx512.cpp src/kernels/cpu/nvfp4_avx2.cpp)
   target_include_directories(strata_kernels_cpu PRIVATE third_party/ggml)
   if(MSVC)
+    set_source_files_properties(src/kernels/cpu/iq_avx512_clamp.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp src/kernels/cpu/nvfp4_avx512.cpp
                                 PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
     set_source_files_properties(src/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
@@ -1476,6 +1478,8 @@ if(STRATA_NATIVE_EXPERTS)
     # the older CPUs' i-quant expert rows (iq_avx1.hpp): 128-bit SSSE3/SSE2 integer, SSE2 float, no FMA/F16C
     set_source_files_properties(src/kernels/cpu/iq_avx1.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX")
   else()
+    # This opt-in GLM path runs on Skylake/Cascade Lake, which lack VBMI.
+    set_source_files_properties(src/kernels/cpu/iq_avx512_clamp.cpp PROPERTIES COMPILE_OPTIONS "-march=skylake-avx512")
     set_source_files_properties(src/kernels/cpu/iq_avx512.cpp src/kernels/cpu/nvfp4_avx512.cpp PROPERTIES COMPILE_OPTIONS
                                 "-mavx512f;-mavx512bw;-mavx512vl;-mavx512dq;-mavx512vnni;-mavx512vbmi;-mf16c;-mfma")
     set_source_files_properties(src/kernels/cpu/iq_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma;-mf16c")
@@ -1533,6 +1537,26 @@ if(STRATA_NATIVE_EXPERTS)
   # against ggml-cpu's dot, on random blocks; --bench: ms per expert on one thread, the weights streamed from DRAM
   add_executable(iq_avx2_parity src/kernels/cpu/iq_avx2_parity.cpp)
   target_link_libraries(iq_avx2_parity PRIVATE strata_kernels_cpu)
+  if(STRATA_BUILD_TESTS)
+    add_executable(iq_avx512_clamp_test src/kernels/cpu/iq_avx512_clamp_test.cpp)
+    target_include_directories(iq_avx512_clamp_test PRIVATE third_party/ggml)
+    target_link_libraries(iq_avx512_clamp_test PRIVATE strata_kernels_cpu)
+    add_test(NAME iq_even_signs COMMAND iq_avx512_clamp_test --signs-only)
+    set_tests_properties(iq_even_signs PROPERTIES LABELS "glm;cpu")
+    foreach(_clamp_mode 0 1 2)
+      add_test(NAME iq_avx512_clamp_${_clamp_mode} COMMAND ${CMAKE_COMMAND} -E env
+        --unset=STRATA_NO_IQ256 --unset=STRATA_NO_IQ512 STRATA_GLM_IQ512_CLAMP=${_clamp_mode}
+        $<TARGET_FILE:iq_avx512_clamp_test>)
+      set_tests_properties(iq_avx512_clamp_${_clamp_mode} PROPERTIES LABELS "glm;cpu" SKIP_RETURN_CODE 77)
+    endforeach()
+    add_test(NAME iq_avx512_clamp_fallback COMMAND ${CMAKE_COMMAND} -E env
+      --unset=STRATA_NO_IQ256 STRATA_NO_IQ512=1 STRATA_GLM_IQ512_CLAMP=1 $<TARGET_FILE:iq_avx512_clamp_test>)
+    set_tests_properties(iq_avx512_clamp_fallback PROPERTIES LABELS "glm;cpu" SKIP_RETURN_CODE 77)
+    add_test(NAME iq_avx512_clamp_isa_cap COMMAND ${CMAKE_COMMAND} -E env
+      --unset=STRATA_NO_IQ256 --unset=STRATA_NO_IQ512 STRATA_FORCE_ISA=avx2 STRATA_GLM_IQ512_CLAMP=1
+      $<TARGET_FILE:iq_avx512_clamp_test>)
+    set_tests_properties(iq_avx512_clamp_isa_cap PROPERTIES LABELS "glm;cpu" SKIP_RETURN_CODE 77)
+  endif()
   # MODEL-UPDATE: the pool's expert rows per format on T threads against the RAM bandwidth (a benchmark, no test)
   add_executable(kq_cpu_bench src/kernels/cpu/kq_cpu_bench.cpp)
   target_link_libraries(kq_cpu_bench PRIVATE strata_kernels_cpu)
@@ -1646,9 +1670,10 @@ if(STRATA_NATIVE_EXPERTS)
       endif()
       set_target_properties(strata_kq PROPERTIES CUDA_RUNTIME_LIBRARY Static POSITION_INDEPENDENT_CODE ON
                             CXX_VISIBILITY_PRESET hidden CUDA_VISIBILITY_PRESET hidden)
-      # ggml-base is static: position-independent so a shared library can hold it (the same code otherwise)
-      set_target_properties(ggml-base PROPERTIES POSITION_INDEPENDENT_CODE ON)
-      target_link_libraries(strata_kq PRIVATE ggml-base)
+      # Both static libraries are linked into this optional shared library.
+      # ggml_cuda_host.cu also calls the common C11 environment helpers.
+      set_target_properties(ggml-base strata_host PROPERTIES POSITION_INDEPENDENT_CODE ON)
+      target_link_libraries(strata_kq PRIVATE ggml-base strata_host)
       if(TARGET CUDA::cuda_driver)
         target_link_libraries(strata_kq PRIVATE CUDA::cuda_driver)
       endif()
@@ -1800,7 +1825,7 @@ if(STRATA_NATIVE_EXPERTS)
     endif()
     add_executable(native_expert_bench src/kernels/native_expert_bench.cpp)
     target_include_directories(native_expert_bench PRIVATE ${_strata_gpu_include_directories})
-    target_link_libraries(native_expert_bench PRIVATE strata_kernels strata_kernels_cpu strata_artifact ${_strata_gpu_runtime_target})
+    target_link_libraries(native_expert_bench PRIVATE strata_kernels strata_kernels_cpu strata_artifact strata_host ${_strata_gpu_runtime_target})
     # MODEL-UPDATE: the dense Q8_0 GEMVs at the engine's shapes against the memory bandwidth (a benchmark, no test)
     add_executable(q8_gemv_bench src/kernels/q8_gemv_bench.cpp)
     target_include_directories(q8_gemv_bench PRIVATE ${_strata_gpu_include_directories})
@@ -2031,6 +2056,11 @@ if(STRATA_BUILD_TESTS)
   add_executable(safetensors_test tests/artifact/safetensors_test.cpp)
   target_link_libraries(safetensors_test PRIVATE strata_artifact)
   add_test(NAME safetensors_test COMMAND safetensors_test)
+  add_executable(glm_expert_map_test tests/artifact/glm_expert_map_test.cpp)
+  target_include_directories(glm_expert_map_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  add_test(NAME glm_expert_map_test COMMAND glm_expert_map_test
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/sim/data/v100s_release/plan-keep224.txt)
+  set_tests_properties(glm_expert_map_test PROPERTIES LABELS glm)
 endif()
 
 if(STRATA_NATIVE_EXPERTS)

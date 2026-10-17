@@ -55,8 +55,11 @@ extern "C" {
 #define STRATA_EP_TYPE_Q4_K 12
 #define STRATA_EP_TYPE_Q5_K 13
 #define STRATA_EP_TYPE_Q6_K 14
+#define STRATA_EP_TYPE_IQ2_XXS 16
 #define STRATA_EP_TYPE_IQ2_XS 17
 #define STRATA_EP_TYPE_IQ3_XXS 18
+#define STRATA_EP_TYPE_IQ3_S 21
+#define STRATA_EP_TYPE_IQ2_S 22
 #define STRATA_EP_TYPE_IQ4_XS 23
 
 /* A GGUF metadata value this module is asked about.  `type` is the MetaType the file claims, ignored when
@@ -74,7 +77,11 @@ typedef struct {
     int part;                   /* STRATA_EP_PART_GATE / _UP / _DOWN */
     int hashed;                 /* the pack recorded a payload checksum for this projection */
     int hash_type;              /* that checksum key's metadata type, meaningful only when hashed */
+    int from_fp8;               /* this projection's pack has a BOOL true strata.expert_pack.fp8 key */
 } strata_ep_projection;
+
+/* Bytes per 256 weights for a supported FP8-derived expert target, or 0 for an unsupported type. */
+uint32_t strata_ep_fp8_block_bytes(int type);
 
 /* How a caller resolves a projection.  The artifact is C++ on the loader side and raw bytes on any other, so
    the container is the caller's: return 0 and fill `out`'s type/hashed/hash_type (the scan has already set

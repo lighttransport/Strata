@@ -72,6 +72,19 @@ build-vision-cuda12.bat
 
 # Local GPU operator tooling and raw runs; publish generic measurement summaries.
 /slurm-gpu/
+# Local driver maintenance and release upload state can contain machine paths.
+/b.sh
+/c.sh
+/build-hip.sh
+/release/b550-start-upload.sh
+/release/b550-upload.sh
+/release/manifest-b550.json
+/release/upload-b550.log.state.json
+/release/upload-b550.nohup
+# Frozen operator scratch evidence; shared measurements live in docs/benchmarks/.
+/bench/results/2026-10-14-glm-v100-followup/
+/docs/fixtures/glm_b550_levers_20261010/outgoing-history-audit.json
+/docs/fixtures/glm_b550_levers_20261010/outgoing-sycl-link.txt
 /bench/results/2026-10-02-glm-v100*/
 /bench/results/2026-10-03-glm-v100*/
 /docs/glm53_flash_v100*_measurement.json

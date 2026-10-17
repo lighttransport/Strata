@@ -4,7 +4,7 @@ A standalone benchmark and profiler (not part of the Strata build) that answers 
 work starts: what is the fastest correct way to multiply MiMo-V2.6-Flash's native MXFP4 expert weights on this
 machine's GPU and CPU, for decode (1 token), MTP/batch verify (2-16 tokens) and prefill (512-8192 tokens)?
 Every kernel runs on MiMo-V2.6-Flash expert shapes, with seeded dummy weights or the real checkpoint
-(`/mnt/nvme01/models/m26f`), and is checked against an fp64 reference.
+(`models/m26f`), and is checked against an fp64 reference.
 
 Measured on 2026-10-11: RTX 5060 Ti 16 GB (GB206, sm_120, 36 SMs, 128-bit GDDR7, driver/CUDA 13.2), AMD
 Threadripper 1950X (16 cores, Zen 1, AVX2 without VNNI, 2 NUMA nodes), Linux 6.8. Raw numbers are in

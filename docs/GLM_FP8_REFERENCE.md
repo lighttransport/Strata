@@ -36,7 +36,7 @@ How it runs (opt-in; GGUF and EXL3 behave as before):
   `--prefill-batch=512`). Decode refuses the FP8 model.
 
 ```sh
-STRATA_GLM_EVAL_WIDTH=512 build-hip-rocm101-tr16/strata-glm-decode /mnt/nvme01/models/glm53f/fp8 0 1 4096 15 \
+STRATA_GLM_EVAL_WIDTH=512 build-hip-rocm101-tr16/strata-glm-decode models/glm53f/fp8 0 1 4096 15 \
   --context=4096 --prefill-batch=512 --gpu-budget-mib=12288 --cpu-affinity=numa \
   --eval-corpus=build-q2-v2/quality/evaluation16.ids --eval-save-logits=eval16-fp8.logits
 ```

@@ -34,14 +34,16 @@ def experiment_environment():
             if name in names or name.startswith(prefixes)}
 
 
-def diagnostic_environment():
+def diagnostic_environment(environment=None):
     # Presence enables STEP_TRACE even for "0"; conservatively keep every
     # explicitly requested diagnostic out of placement/speed qualification.
     names = ("STRATA_GLM_STEP_TRACE", "STRATA_GLM_TASK_TRACE", "STRATA_GLM_TASK_TRACE_SYNC",
              "STRATA_GLM_ROUTING_EVENTS", "STRATA_GLM_STATE_TRACE_DIR", "STRATA_GLM_CHECK_RESIDENT_ROWS",
-             "STRATA_GLM_MIXED_PROFILE", "STRATA_GLM_MIXED_DECODE_PROFILE", "STRATA_GLM_MTP_TIMING",
+             "STRATA_GLM_MIXED_PROFILE", "STRATA_GLM_MIXED_DECODE_PROFILE",
+             "STRATA_GLM_MIXED_PROFILE_DECODE", "STRATA_GLM_MTP_TIMING",
              "STRATA_GLM_LAYER_VERIFY_CACHE")
-    return [name for name in names if name in os.environ]
+    values = os.environ if environment is None else environment
+    return [name for name in names if name in values]
 
 
 def cpu_diagnostics(text):

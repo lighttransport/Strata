@@ -1,0 +1,125 @@
+{
+ "schema": "strata.glm.kernels.v1",
+ "hardware": "v100s node",
+ "supported_phases": [
+  "decode"
+ ],
+ "supported_topologies": [
+  "A"
+ ],
+ "supported_contexts": [
+  8192
+ ],
+ "provenance": {
+  "sources": [
+   "docs/benchmarks/v100s_runner_sim_20261016/component-measurements.json"
+  ],
+  "scope": "8K warm decode, REAP224 affinity 0.14, CUDA primary and expert worker, sealed RAM interleaved over four NUMA domains; 34 CPU workers plus participating host. CPU flow is an effective real expert kernel rate. GPU chain terms are fitted aggregate costs, not isolated kernels. Zero subterms are folded into fitted costs, not measured zero. Worker service includes the round-trip copies. Only the listed verification grouping is qualified; primary group width 4 is unmeasured. No topology B, storage, NUMA-local sharding, quality, full288 or other context prediction.",
+  "width4_qualified": false,
+  "worker_ownership_observed": false,
+  "verification_groups": [
+   1,
+   2
+  ],
+  "note_mode": "Mode-specific effective head, tail, draft and host costs from the diagnostic. MTP-2 width-2 chain is fixed from the MTP-3 fit; width-1 chain is fitted separately. Fits include the measured average cost of occasional resync work."
+ },
+ "model": {
+  "experts_per_layer": 224,
+  "draft_top_k": 4,
+  "joint_dense": true,
+  "unique_experts_per_route": 0.8892765918627987,
+  "accepted_per_round": 2.9310344827586206,
+  "rows_per_worker_expert": 1.0883481421647818,
+  "note": "Measured average slot mix for this verification grouping. Use recorded route shares; no cache hit curve was measured.",
+  "require_recorded_shares": true
+ },
+ "cpu": {
+  "lanes": {
+   "all34": {
+    "gb_s": 77.39317059966052,
+    "source": "timed RAM diagnostic CPU_EXPERT bytes/layer_flow_ms"
+   }
+  },
+  "slot_fixed_ms": 0.1,
+  "quant_ms_per_token": 0,
+  "expert_fixed_ms": 0,
+  "mailbox_latency_ms": 0,
+  "strict_combine_factor": 1,
+  "additive_service": true
+ },
+ "worker": {
+  "rtt_socket_ms": 0.03262498648837209,
+  "rtt_flag_ms": 0.03262498648837209,
+  "submit_host_ms": 0,
+  "client_host_ms": 0,
+  "service_includes_return": true,
+  "ownership_interval": 0,
+  "ownership_ms": 0,
+  "wait_release_ms": 0
+ },
+ "host": {
+  "resync_ms": 0.43123908045977016,
+  "other_ms": 3.8928528735632195
+ },
+ "devices": {
+  "gpu0": {
+   "decode": {
+    "kda_ms": {
+     "1": 0.41370798898071637,
+     "2": 0.6080000000000001
+    },
+    "mla_ms": {
+     "1": 0.5695925925925925,
+     "2": 0.9099999999999999
+    },
+    "publish_ms": 0,
+    "resident_fixed_ms": 0,
+    "resident_expert_ms": {
+     "1": 0.019627706413822516,
+     "2": 0.017998266654709976
+    },
+    "launch_ms": 0,
+    "combine_ms": 0,
+    "draft_step_ms": {
+     "1": 3.795678829517124
+    },
+    "head_ms": 3.8166832694763735,
+    "tail_ms": 4.567459770114943,
+    "worker_request_fixed_ms": 0.05792097681911574,
+    "vram_gb_s": 576.055639,
+    "mla_kv_ms_per_ktoken": 0
+   }
+  },
+  "gpu1": {
+   "decode": {
+    "resident_expert_ms": {
+     "1": 0.019272140759442533,
+     "2": 0.01782793163632353,
+     "4": 0.01782793163632353
+    },
+    "resident_fixed_ms": 0,
+    "worker_request_fixed_ms": 0.05792097681911574,
+    "vram_gb_s": 576.371787
+   }
+  }
+ },
+ "free": [
+  "cpu.slot_fixed_ms",
+  "devices.gpu0.decode.kda_ms.1",
+  "devices.gpu0.decode.mla_ms.1",
+  "devices.gpu0.decode.head_ms"
+ ],
+ "supported_expert_counts": [
+  224
+ ],
+ "supported_group_widths": [
+  1,
+  2
+ ],
+ "supported_verification_groups": [
+  [
+   1,
+   2
+  ]
+ ]
+}

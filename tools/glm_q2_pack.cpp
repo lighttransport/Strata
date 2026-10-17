@@ -1,6 +1,7 @@
 // Stream a converted routed-expert GGUF sidecar. Original files are read-only.
 #include "strata/core/model.hpp"
 #include "strata/artifact/fp8_experts.hpp"
+#include "strata/artifact/glm_expert_map.hpp"
 #include "strata/core/runtime_memory.hpp"
 #include "ggml.h"
 #include "ggml-cpu.h"
@@ -46,19 +47,21 @@ int main(int argc,char** argv){try {
         }
         std::cout<<"PACK verified projections="<<checked<<'\n';return 0;
     }
-    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-pack MODEL OUTPUT [--calibration=DIR | --uncalibrated] [--first-layer=3] [--last-layer=44] [--threads=8] [--down=q3|q2] [--reuse=PACK] [--all-layers] [--fp8=DIR --gate-type=T --down-type=T] [--resume]");
+    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-pack MODEL OUTPUT [--calibration=DIR | --uncalibrated] [--first-layer=3] [--last-layer=44] [--threads=8] [--down=q3|q2] [--reuse=PACK] [--all-layers] [--fp8=DIR --gate-type=T --down-type=T [--expert-map=FILE]] [--resume]");
     // --fp8=DIR converts every layer in range from the FP8 release (strata/artifact/fp8_experts.hpp) instead of the
     // GGUF's own experts; --gate-type (gate and up) and --down-type pick any of q2_k, q3_k, q4_k, iq2_xxs, iq2_xs,
     // iq2_s, iq3_xxs, iq3_s, iq4_xs (default q2_k and the --down choice).
     // --down=q2 stores down projections as Q2_K (84 instead of 110 bytes per 256 weights). --reuse=PACK copies
     // every projection that an existing pack of the same source already holds in the requested type.
+    // --expert-map=FILE (with --fp8) is for a pruned model (REAP): one line per layer, "LAYER e0 e1 ...", giving the
+    // FP8 release's expert index behind each of the model's experts, in order.
     // --all-layers also converts the layers the UD quantization kept in a higher format (IQ3_XXS gate/up, IQ4_XS down).
-    std::string calibration,reuse,fp8_dir;bool uncalibrated=false,all_layers=false,resume=false;int first=3,last=44,threads=8;uint32_t down_type=11,gate_type=10;
+    std::string calibration,reuse,fp8_dir,map_path;bool uncalibrated=false,all_layers=false,resume=false;int first=3,last=44,threads=8;uint32_t down_type=11,gate_type=10;
     auto type_of=[](const std::string& name)->uint32_t {
         static const std::map<std::string,uint32_t> types={{"q2_k",10},{"q3_k",11},{"q4_k",12},{"iq2_xxs",16},{"iq2_xs",17},{"iq3_xxs",18},{"iq3_s",21},{"iq2_s",22},{"iq4_xs",23}};
         auto t=types.find(name);if(t==types.end())throw std::runtime_error("unknown expert type "+name);return t->second;
     };
-    for(int i=3;i<argc;++i){std::string arg=argv[i];if(arg=="--all-layers")all_layers=true;else if(arg=="--resume")resume=true;else if(arg.starts_with("--fp8="))fp8_dir=arg.substr(6);else if(arg.starts_with("--gate-type="))gate_type=type_of(arg.substr(12));else if(arg.starts_with("--down-type="))down_type=type_of(arg.substr(12));else if(arg=="--down=q2")down_type=10;else if(arg=="--down=q3")down_type=11;else if(arg.starts_with("--reuse="))reuse=arg.substr(8);else if(arg.starts_with("--calibration="))calibration=arg.substr(14);else if(arg=="--uncalibrated")uncalibrated=true;else if(arg.starts_with("--first-layer="))first=std::stoi(arg.substr(14));else if(arg.starts_with("--last-layer="))last=std::stoi(arg.substr(13));else if(arg.starts_with("--threads="))threads=std::stoi(arg.substr(10));else throw std::runtime_error("unknown argument "+arg);}
+    for(int i=3;i<argc;++i){std::string arg=argv[i];if(arg=="--all-layers")all_layers=true;else if(arg=="--resume")resume=true;else if(arg.starts_with("--fp8="))fp8_dir=arg.substr(6);else if(arg.starts_with("--expert-map="))map_path=arg.substr(13);else if(arg.starts_with("--gate-type="))gate_type=type_of(arg.substr(12));else if(arg.starts_with("--down-type="))down_type=type_of(arg.substr(12));else if(arg=="--down=q2")down_type=10;else if(arg=="--down=q3")down_type=11;else if(arg.starts_with("--reuse="))reuse=arg.substr(8);else if(arg.starts_with("--calibration="))calibration=arg.substr(14);else if(arg=="--uncalibrated")uncalibrated=true;else if(arg.starts_with("--first-layer="))first=std::stoi(arg.substr(14));else if(arg.starts_with("--last-layer="))last=std::stoi(arg.substr(13));else if(arg.starts_with("--threads="))threads=std::stoi(arg.substr(10));else throw std::runtime_error("unknown argument "+arg);}
     if(first<3||last>44||first>last||threads<1||threads>16||uncalibrated==!calibration.empty())throw std::runtime_error("invalid conversion settings; choose calibration or explicit uncalibrated, threads 1..16");
     strata::core::ModelArtifact model(argv[1]);const uint64_t experts=model.descriptor().experts;
     if(model.is_exl3()||model.descriptor().architecture!="glm5next"||model.descriptor().hidden!=4096||experts>288||experts%16)throw std::runtime_error("GLM model required");
@@ -69,7 +72,20 @@ int main(int argc,char** argv){try {
     const std::filesystem::path progress_path=partial.string()+".progress";
     if(std::filesystem::exists(partial)&&!resume)throw std::runtime_error("refusing to overwrite existing partial file (--resume continues it)");
     if(fp8_dir.empty()&&(gate_type!=10||(down_type!=10&&down_type!=11)))throw std::runtime_error("--gate-type/--down-type other than Q2_K/Q3_K need --fp8=DIR");
+    if(!map_path.empty()&&fp8_dir.empty())throw std::runtime_error("--expert-map needs --fp8=DIR");
+    if(!fp8_dir.empty()&&experts<288&&map_path.empty())throw std::runtime_error("pruned FP8 conversion requires --expert-map=FILE");
+    std::map<int,std::vector<int>> expert_map;std::string map_text;
+    if(!map_path.empty()) {
+        std::ifstream in(map_path);if(!in)throw std::runtime_error("cannot read expert map "+map_path);
+        auto mapping=strata::artifact::read_glm_expert_map(in,experts,first,last);
+        expert_map=std::move(mapping.layers);map_text=std::move(mapping.plan_text);
+    }
     strata::artifact::fp8::Index fp8;if(!fp8_dir.empty())fp8=strata::artifact::fp8::scan(fp8_dir);
+    auto fp8_expert=[&](int l,int ex) {
+        if(map_path.empty())return ex;
+        const auto m=expert_map.find(l);if(m==expert_map.end())throw std::runtime_error("expert map lacks layer "+std::to_string(l));
+        return m->second[size_t(ex)];
+    };
     std::vector<Entry> entries;uint64_t offset=0;
     for(int l=first;l<=last;++l)for(const char* part:{"gate","up","down"}) {
         const auto name="blk."+std::to_string(l)+".ffn_"+part+"_exps.weight";const auto& t=model.at(name);
@@ -79,8 +95,8 @@ int main(int argc,char** argv){try {
         const bool higher=all_layers&&t.tensor->type==(down?23u:18u);   // IQ4_XS down, IQ3_XXS gate/up
         const bool assembled_down=down&&down_type==10&&t.tensor->type==11&&model.has_expert_pack();
         if(fp8_dir.empty()&&t.tensor->type!=(down?18u:17u)&&!kquant&&!higher&&!assembled_down)continue;
-        if(!fp8_dir.empty())for(uint64_t ex=0;ex<experts;++ex)if(!strata::artifact::fp8::has_expert(fp8,l,int(ex),std::string(part)+"_proj"))
-            throw std::runtime_error("FP8 release lacks "+strata::artifact::fp8::expert_name(l,int(ex),std::string(part)+"_proj"));
+        if(!fp8_dir.empty())for(uint64_t ex=0;ex<experts;++ex)if(!strata::artifact::fp8::has_expert(fp8,l,fp8_expert(l,int(ex)),std::string(part)+"_proj"))
+            throw std::runtime_error("FP8 release lacks "+strata::artifact::fp8::expert_name(l,fp8_expert(l,int(ex)),std::string(part)+"_proj"));
         if(t.tensor->shape!=std::vector<uint64_t>{down?2048u:4096u,down?4096u:2048u,experts})throw std::runtime_error("unsupported expert geometry: "+name);
         const uint64_t bytes=ggml_row_size(ggml_type(type),t.tensor->shape[0])*t.tensor->shape[1]*t.tensor->shape[2];
         entries.push_back({name,&t,type,offset,bytes});offset+=(bytes+31)/32*32;
@@ -91,7 +107,7 @@ int main(int argc,char** argv){try {
     // The plan: everything that fixes the bytes of the pack. A resumed run must have the same one.
     uint64_t plan=hash_bytes(14695981039346656037ULL,reinterpret_cast<const uint8_t*>(&fingerprint),8);
     {
-        std::string key=calibration+"|"+fp8_dir+"|"+std::to_string(h.size());
+        std::string key=calibration+"|"+fp8_dir+"|"+std::to_string(h.size());if(!map_text.empty())key+="|map:"+map_text;
         for(const auto& e:entries)key+="|"+e.name+":"+std::to_string(e.type)+":"+std::to_string(e.offset)+":"+std::to_string(e.bytes);
         plan=hash_bytes(plan,reinterpret_cast<const uint8_t*>(key.data()),key.size());
     }
@@ -168,7 +184,7 @@ int main(int argc,char** argv){try {
                 else {
                     const auto l=std::stoi(e.name.substr(4,e.name.find(".ffn_")-4));
                     const std::string part=e.name.find("_gate_")!=std::string::npos?"gate_proj":e.name.find("_up_")!=std::string::npos?"up_proj":"down_proj";
-                    size_t r=0,c=0;auto w=strata::artifact::fp8::load_expert(fp8,l,expert,part,r,c);
+                    size_t r=0,c=0;auto w=strata::artifact::fp8::load_expert(fp8,l,fp8_expert(l,expert),part,r,c);
                     if(r!=size_t(rows)||c!=size_t(cols))throw std::runtime_error("FP8 expert shape differs from the GGUF: "+e.name);
                     weights=std::move(w);
                 }

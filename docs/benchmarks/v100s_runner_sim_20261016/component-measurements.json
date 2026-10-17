@@ -1,0 +1,2180 @@
+{
+ "schema": "strata.v100s.components.v1",
+ "hardware": "v100s node",
+ "engine_commit": "83f3cac9",
+ "decoder_sha256": "9a60025b03d3020b1d5cc150f389166523507192b09e6fe1f8b66b464047a496",
+ "worker_sha256": "58ce80aaf27c32f1640f7a9e0972f9e5c2706a60dd8cfdb5f01bc56e3726a273",
+ "note": "Derived portable measurements; original raw files are retained privately without modification. SHA-256 identifies each raw source. No quality prediction.",
+ "gpu": {
+  "gpu0": {
+   "h2d": {
+    "raw_sha256": "dfeddd20e0f2add505f665bc7732c91b624d8931c9793eff50cea4fd6e8c3c18",
+    "trials": [
+     {
+      "mode": "h2d",
+      "trial": 0,
+      "warmup": true,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.501416171,
+      "GB_s": 12.313156,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 1,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.501319017,
+      "GB_s": 12.315542,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 2,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.501312834,
+      "GB_s": 12.315694,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 3,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.501327162,
+      "GB_s": 12.315342,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 4,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.501325383,
+      "GB_s": 12.315386,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 5,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.50133137,
+      "GB_s": 12.315239,
+      "kernel_check": true
+     }
+    ],
+    "median_GB_s": 12.315386
+   },
+   "d2h": {
+    "raw_sha256": "88d64e0b9361e4569ccdeeec2298fcdf5f146ced809ee1989083e7c05fdfa228",
+    "trials": [
+     {
+      "mode": "d2h",
+      "trial": 0,
+      "warmup": true,
+      "bytes_per_iteration": 67108864,
+      "iterations": 95,
+      "seconds": 0.502489213,
+      "GB_s": 12.68752,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 1,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 95,
+      "seconds": 0.502469584,
+      "GB_s": 12.688016,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 2,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 95,
+      "seconds": 0.502400506,
+      "GB_s": 12.68976,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 3,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 95,
+      "seconds": 0.502454657,
+      "GB_s": 12.688393,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 4,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 95,
+      "seconds": 0.502419924,
+      "GB_s": 12.68927,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 5,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 95,
+      "seconds": 0.502428468,
+      "GB_s": 12.689054,
+      "kernel_check": true
+     }
+    ],
+    "median_GB_s": 12.689054
+   },
+   "kernel": {
+    "raw_sha256": "b8573da7a930faf6abd0131f78b0da445302c5fbc427bb67a27e68f56276b978",
+    "trials": [
+     {
+      "mode": "kernel",
+      "trial": 0,
+      "warmup": true,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2129,
+      "seconds": 0.500097646,
+      "GB_s": 571.387498,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 1,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2146,
+      "seconds": 0.500005945,
+      "GB_s": 576.055639,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 2,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2146,
+      "seconds": 0.500206845,
+      "GB_s": 575.824276,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 3,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2147,
+      "seconds": 0.500075185,
+      "GB_s": 576.244274,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 4,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2147,
+      "seconds": 0.500196137,
+      "GB_s": 576.104933,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 5,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2146,
+      "seconds": 0.500014643,
+      "GB_s": 576.045619,
+      "kernel_check": true
+     }
+    ],
+    "median_GB_s": 576.055639
+   }
+  },
+  "gpu1": {
+   "h2d": {
+    "raw_sha256": "9b97162d3e23eeae0c9be64b71908231e726fe50104a2ed338a6c3b029a7e112",
+    "trials": [
+     {
+      "mode": "h2d",
+      "trial": 0,
+      "warmup": true,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.50233781,
+      "GB_s": 12.290565,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 1,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.502285245,
+      "GB_s": 12.291851,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 2,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.502283006,
+      "GB_s": 12.291906,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 3,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.502284449,
+      "GB_s": 12.291871,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 4,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.502276227,
+      "GB_s": 12.292072,
+      "kernel_check": true
+     },
+     {
+      "mode": "h2d",
+      "trial": 5,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 92,
+      "seconds": 0.502289186,
+      "GB_s": 12.291755,
+      "kernel_check": true
+     }
+    ],
+    "median_GB_s": 12.291871
+   },
+   "d2h": {
+    "raw_sha256": "aca6aed32d0a8017e90fea77b5da70408fd80063d3b029b193aa2294f245b25e",
+    "trials": [
+     {
+      "mode": "d2h",
+      "trial": 0,
+      "warmup": true,
+      "bytes_per_iteration": 67108864,
+      "iterations": 98,
+      "seconds": 0.501113719,
+      "GB_s": 13.124104,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 1,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 98,
+      "seconds": 0.501052213,
+      "GB_s": 13.125715,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 2,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 98,
+      "seconds": 0.501047263,
+      "GB_s": 13.125845,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 3,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 98,
+      "seconds": 0.501054929,
+      "GB_s": 13.125644,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 4,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 98,
+      "seconds": 0.501052392,
+      "GB_s": 13.125711,
+      "kernel_check": true
+     },
+     {
+      "mode": "d2h",
+      "trial": 5,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 98,
+      "seconds": 0.501050041,
+      "GB_s": 13.125772,
+      "kernel_check": true
+     }
+    ],
+    "median_GB_s": 13.125715
+   },
+   "kernel": {
+    "raw_sha256": "4a799d86e296a9f231154b9e5cc955d50af393d368351736c99de87ec54e780b",
+    "trials": [
+     {
+      "mode": "kernel",
+      "trial": 0,
+      "warmup": true,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2136,
+      "seconds": 0.500038703,
+      "GB_s": 573.333755,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 1,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2148,
+      "seconds": 0.500197418,
+      "GB_s": 576.371787,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 2,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2147,
+      "seconds": 0.500000475,
+      "GB_s": 576.330377,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 3,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2148,
+      "seconds": 0.500021019,
+      "GB_s": 576.575121,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 4,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2148,
+      "seconds": 0.500014712,
+      "GB_s": 576.582394,
+      "kernel_check": true
+     },
+     {
+      "mode": "kernel",
+      "trial": 5,
+      "warmup": false,
+      "bytes_per_iteration": 67108864,
+      "iterations": 2148,
+      "seconds": 0.500225943,
+      "GB_s": 576.33892,
+      "kernel_check": true
+     }
+    ],
+    "median_GB_s": 576.371787
+   }
+  }
+ },
+ "cpu": {
+  "17": {
+   "raw_sha256": "d19043e5193b7249de555486623f3fc304c6a3fbd601a39a697941f9a23e41c7",
+   "rows": [
+    {
+     "layer": 3,
+     "gate_type": 10,
+     "down_type": 11,
+     "hidden": 4096,
+     "intermediate": 2048,
+     "working_set_bytes": 583008256,
+     "workers": 17,
+     "host_participates": true,
+     "device": 0
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 1,
+     "cpu_median_ms": 0.158724,
+     "pcie_median_ms": 0.757611,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 2,
+     "cpu_median_ms": 0.301719,
+     "pcie_median_ms": 1.50857,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 3,
+     "cpu_median_ms": 0.448615,
+     "pcie_median_ms": 2.25959,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 4,
+     "cpu_median_ms": 0.597001,
+     "pcie_median_ms": 3.01076,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 5,
+     "cpu_median_ms": 0.745926,
+     "pcie_median_ms": 3.76205,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 6,
+     "cpu_median_ms": 0.893227,
+     "pcie_median_ms": 4.51324,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 7,
+     "cpu_median_ms": 1.03738,
+     "pcie_median_ms": 5.26462,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 8,
+     "cpu_median_ms": 1.18375,
+     "pcie_median_ms": 6.01603,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 1,
+     "cpu_median_ms": 0.181588,
+     "pcie_median_ms": 0.757219,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 2,
+     "cpu_median_ms": 0.338391,
+     "pcie_median_ms": 1.50854,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 3,
+     "cpu_median_ms": 0.498123,
+     "pcie_median_ms": 2.25964,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 4,
+     "cpu_median_ms": 0.666228,
+     "pcie_median_ms": 3.01082,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 5,
+     "cpu_median_ms": 0.829451,
+     "pcie_median_ms": 3.76207,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 6,
+     "cpu_median_ms": 0.99706,
+     "pcie_median_ms": 4.51329,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 7,
+     "cpu_median_ms": 1.15127,
+     "pcie_median_ms": 5.26474,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 8,
+     "cpu_median_ms": 1.31199,
+     "pcie_median_ms": 6.01594,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 1,
+     "cpu_median_ms": 0.261992,
+     "pcie_median_ms": 0.757083,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 2,
+     "cpu_median_ms": 0.498176,
+     "pcie_median_ms": 1.50855,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 3,
+     "cpu_median_ms": 0.733446,
+     "pcie_median_ms": 2.25977,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 4,
+     "cpu_median_ms": 0.973792,
+     "pcie_median_ms": 3.01078,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 5,
+     "cpu_median_ms": 1.21206,
+     "pcie_median_ms": 3.76212,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 6,
+     "cpu_median_ms": 1.45473,
+     "pcie_median_ms": 4.51339,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 7,
+     "cpu_median_ms": 1.69032,
+     "pcie_median_ms": 5.26462,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 8,
+     "cpu_median_ms": 1.92795,
+     "pcie_median_ms": 6.01604,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "gate_type": 10,
+     "down_type": 23,
+     "hidden": 4096,
+     "intermediate": 2048,
+     "working_set_bytes": 637534208,
+     "workers": 17,
+     "host_participates": true,
+     "device": 0
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 1,
+     "cpu_median_ms": 0.173972,
+     "pcie_median_ms": 0.827134,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 2,
+     "cpu_median_ms": 0.332386,
+     "pcie_median_ms": 1.64833,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 3,
+     "cpu_median_ms": 0.491296,
+     "pcie_median_ms": 2.46926,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 4,
+     "cpu_median_ms": 0.65071,
+     "pcie_median_ms": 3.29053,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 5,
+     "cpu_median_ms": 0.810119,
+     "pcie_median_ms": 4.11155,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 6,
+     "cpu_median_ms": 0.970799,
+     "pcie_median_ms": 4.93283,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 7,
+     "cpu_median_ms": 1.13052,
+     "pcie_median_ms": 5.75409,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 8,
+     "cpu_median_ms": 1.29473,
+     "pcie_median_ms": 6.57497,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 1,
+     "cpu_median_ms": 0.198809,
+     "pcie_median_ms": 0.827044,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 2,
+     "cpu_median_ms": 0.378658,
+     "pcie_median_ms": 1.64817,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 3,
+     "cpu_median_ms": 0.559917,
+     "pcie_median_ms": 2.46935,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 4,
+     "cpu_median_ms": 0.741244,
+     "pcie_median_ms": 3.29051,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 5,
+     "cpu_median_ms": 0.921999,
+     "pcie_median_ms": 4.11153,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 6,
+     "cpu_median_ms": 1.10268,
+     "pcie_median_ms": 4.93287,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 7,
+     "cpu_median_ms": 1.28319,
+     "pcie_median_ms": 5.7541,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 8,
+     "cpu_median_ms": 1.47452,
+     "pcie_median_ms": 6.57513,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 1,
+     "cpu_median_ms": 0.302285,
+     "pcie_median_ms": 0.827091,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 2,
+     "cpu_median_ms": 0.578591,
+     "pcie_median_ms": 1.64835,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 3,
+     "cpu_median_ms": 0.856504,
+     "pcie_median_ms": 2.46938,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 4,
+     "cpu_median_ms": 1.13466,
+     "pcie_median_ms": 3.29052,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 5,
+     "cpu_median_ms": 1.41433,
+     "pcie_median_ms": 4.11153,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 6,
+     "cpu_median_ms": 1.69234,
+     "pcie_median_ms": 4.93291,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 7,
+     "cpu_median_ms": 1.97175,
+     "pcie_median_ms": 5.75422,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 8,
+     "cpu_median_ms": 2.25049,
+     "pcie_median_ms": 6.57513,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "gate_type": 18,
+     "down_type": 23,
+     "hidden": 4096,
+     "intermediate": 2048,
+     "working_set_bytes": 696254464,
+     "workers": 17,
+     "host_participates": true,
+     "device": 0
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 1,
+     "cpu_median_ms": 0.241457,
+     "pcie_median_ms": 0.902697,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 2,
+     "cpu_median_ms": 0.46743,
+     "pcie_median_ms": 1.79856,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 3,
+     "cpu_median_ms": 0.692269,
+     "pcie_median_ms": 2.69471,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 4,
+     "cpu_median_ms": 0.922629,
+     "pcie_median_ms": 3.59094,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 5,
+     "cpu_median_ms": 1.16383,
+     "pcie_median_ms": 4.4872,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 6,
+     "cpu_median_ms": 1.38838,
+     "pcie_median_ms": 5.38341,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 7,
+     "cpu_median_ms": 1.6118,
+     "pcie_median_ms": 6.2795,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 8,
+     "cpu_median_ms": 1.84478,
+     "pcie_median_ms": 7.17574,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 1,
+     "cpu_median_ms": 0.283333,
+     "pcie_median_ms": 0.90238,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 2,
+     "cpu_median_ms": 0.552767,
+     "pcie_median_ms": 1.79844,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 3,
+     "cpu_median_ms": 0.840748,
+     "pcie_median_ms": 2.69463,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 4,
+     "cpu_median_ms": 1.08598,
+     "pcie_median_ms": 3.59086,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 5,
+     "cpu_median_ms": 1.342,
+     "pcie_median_ms": 4.4871,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 6,
+     "cpu_median_ms": 1.63545,
+     "pcie_median_ms": 5.38328,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 7,
+     "cpu_median_ms": 1.92956,
+     "pcie_median_ms": 6.27971,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 8,
+     "cpu_median_ms": 2.20064,
+     "pcie_median_ms": 7.17559,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 1,
+     "cpu_median_ms": 0.36611,
+     "pcie_median_ms": 0.9024,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 2,
+     "cpu_median_ms": 0.711985,
+     "pcie_median_ms": 1.79838,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 3,
+     "cpu_median_ms": 1.06569,
+     "pcie_median_ms": 2.69466,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 4,
+     "cpu_median_ms": 1.37439,
+     "pcie_median_ms": 3.59088,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 5,
+     "cpu_median_ms": 1.74323,
+     "pcie_median_ms": 4.48715,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 6,
+     "cpu_median_ms": 2.12343,
+     "pcie_median_ms": 5.38333,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 7,
+     "cpu_median_ms": 2.47234,
+     "pcie_median_ms": 6.27967,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 8,
+     "cpu_median_ms": 2.8227,
+     "pcie_median_ms": 7.17579,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    }
+   ],
+   "memory_policy": "interleave=all",
+   "host_participates": true,
+   "note": "Rotating 64 real experts; 17 workers use cores on one socket but data is interleaved across all four domains; not a socket-local data measurement."
+  },
+  "34": {
+   "raw_sha256": "6fa7e715819d2006266d966459c9e6bf8349b31fcc612009c0e53006fab82fc1",
+   "rows": [
+    {
+     "layer": 3,
+     "gate_type": 10,
+     "down_type": 11,
+     "hidden": 4096,
+     "intermediate": 2048,
+     "working_set_bytes": 583008256,
+     "workers": 34,
+     "host_participates": true,
+     "device": 0
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 1,
+     "cpu_median_ms": 0.121111,
+     "pcie_median_ms": 0.758185,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 2,
+     "cpu_median_ms": 0.205311,
+     "pcie_median_ms": 1.5094,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 3,
+     "cpu_median_ms": 0.289588,
+     "pcie_median_ms": 2.26089,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 4,
+     "cpu_median_ms": 0.374149,
+     "pcie_median_ms": 3.01249,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 5,
+     "cpu_median_ms": 0.469433,
+     "pcie_median_ms": 3.76431,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 6,
+     "cpu_median_ms": 0.549955,
+     "pcie_median_ms": 4.51602,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 7,
+     "cpu_median_ms": 0.638604,
+     "pcie_median_ms": 5.26774,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 1,
+     "experts": 8,
+     "cpu_median_ms": 0.715365,
+     "pcie_median_ms": 6.01964,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 1,
+     "cpu_median_ms": 0.144918,
+     "pcie_median_ms": 0.757553,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 2,
+     "cpu_median_ms": 0.235965,
+     "pcie_median_ms": 1.50929,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 3,
+     "cpu_median_ms": 0.325578,
+     "pcie_median_ms": 2.26089,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 4,
+     "cpu_median_ms": 0.416392,
+     "pcie_median_ms": 3.0126,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 5,
+     "cpu_median_ms": 0.517232,
+     "pcie_median_ms": 3.7642,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 6,
+     "cpu_median_ms": 0.612877,
+     "pcie_median_ms": 4.516,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 7,
+     "cpu_median_ms": 0.709228,
+     "pcie_median_ms": 5.26778,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 2,
+     "experts": 8,
+     "cpu_median_ms": 0.803224,
+     "pcie_median_ms": 6.01944,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 1,
+     "cpu_median_ms": 0.23741,
+     "pcie_median_ms": 0.757554,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 2,
+     "cpu_median_ms": 0.330634,
+     "pcie_median_ms": 1.5094,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 3,
+     "cpu_median_ms": 0.462299,
+     "pcie_median_ms": 2.26081,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 4,
+     "cpu_median_ms": 0.596029,
+     "pcie_median_ms": 3.01253,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 5,
+     "cpu_median_ms": 0.74082,
+     "pcie_median_ms": 3.76426,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 6,
+     "cpu_median_ms": 0.87233,
+     "pcie_median_ms": 4.5161,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 7,
+     "cpu_median_ms": 0.9993,
+     "pcie_median_ms": 5.2677,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 3,
+     "tokens": 4,
+     "experts": 8,
+     "cpu_median_ms": 1.14184,
+     "pcie_median_ms": 6.01959,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "gate_type": 10,
+     "down_type": 23,
+     "hidden": 4096,
+     "intermediate": 2048,
+     "working_set_bytes": 637534208,
+     "workers": 34,
+     "host_participates": true,
+     "device": 0
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 1,
+     "cpu_median_ms": 0.133322,
+     "pcie_median_ms": 0.827092,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 2,
+     "cpu_median_ms": 0.221289,
+     "pcie_median_ms": 1.64823,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 3,
+     "cpu_median_ms": 0.310989,
+     "pcie_median_ms": 2.4694,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 4,
+     "cpu_median_ms": 0.398433,
+     "pcie_median_ms": 3.2906,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 5,
+     "cpu_median_ms": 0.499973,
+     "pcie_median_ms": 4.11172,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 6,
+     "cpu_median_ms": 0.579877,
+     "pcie_median_ms": 4.93301,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 7,
+     "cpu_median_ms": 0.674075,
+     "pcie_median_ms": 5.75435,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 1,
+     "experts": 8,
+     "cpu_median_ms": 0.754819,
+     "pcie_median_ms": 6.57552,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 1,
+     "cpu_median_ms": 0.152112,
+     "pcie_median_ms": 0.827077,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 2,
+     "cpu_median_ms": 0.249171,
+     "pcie_median_ms": 1.64834,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 3,
+     "cpu_median_ms": 0.345824,
+     "pcie_median_ms": 2.46946,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 4,
+     "cpu_median_ms": 0.440989,
+     "pcie_median_ms": 3.29062,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 5,
+     "cpu_median_ms": 0.54673,
+     "pcie_median_ms": 4.11175,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 6,
+     "cpu_median_ms": 0.642175,
+     "pcie_median_ms": 4.93307,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 7,
+     "cpu_median_ms": 0.745848,
+     "pcie_median_ms": 5.75446,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 2,
+     "experts": 8,
+     "cpu_median_ms": 0.841189,
+     "pcie_median_ms": 6.57536,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 1,
+     "cpu_median_ms": 0.215203,
+     "pcie_median_ms": 0.8271,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 2,
+     "cpu_median_ms": 0.352947,
+     "pcie_median_ms": 1.64821,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 3,
+     "cpu_median_ms": 0.502286,
+     "pcie_median_ms": 2.46947,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 4,
+     "cpu_median_ms": 0.64959,
+     "pcie_median_ms": 3.29059,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 5,
+     "cpu_median_ms": 0.808662,
+     "pcie_median_ms": 4.11172,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 6,
+     "cpu_median_ms": 0.955106,
+     "pcie_median_ms": 4.93305,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 7,
+     "cpu_median_ms": 1.11326,
+     "pcie_median_ms": 5.75441,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 12,
+     "tokens": 4,
+     "experts": 8,
+     "cpu_median_ms": 1.26499,
+     "pcie_median_ms": 6.57549,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "gate_type": 18,
+     "down_type": 23,
+     "hidden": 4096,
+     "intermediate": 2048,
+     "working_set_bytes": 696254464,
+     "workers": 34,
+     "host_participates": true,
+     "device": 0
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 1,
+     "cpu_median_ms": 0.15928,
+     "pcie_median_ms": 0.902405,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 2,
+     "cpu_median_ms": 0.284309,
+     "pcie_median_ms": 1.79836,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 3,
+     "cpu_median_ms": 0.40329,
+     "pcie_median_ms": 2.69458,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 4,
+     "cpu_median_ms": 0.525377,
+     "pcie_median_ms": 3.59088,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 5,
+     "cpu_median_ms": 0.65361,
+     "pcie_median_ms": 4.48713,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 6,
+     "cpu_median_ms": 0.771472,
+     "pcie_median_ms": 5.38339,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 7,
+     "cpu_median_ms": 0.895689,
+     "pcie_median_ms": 6.2796,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 1,
+     "experts": 8,
+     "cpu_median_ms": 1.01835,
+     "pcie_median_ms": 7.17581,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 1,
+     "cpu_median_ms": 0.189338,
+     "pcie_median_ms": 0.902211,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 2,
+     "cpu_median_ms": 0.327502,
+     "pcie_median_ms": 1.79847,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 3,
+     "cpu_median_ms": 0.462312,
+     "pcie_median_ms": 2.69467,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 4,
+     "cpu_median_ms": 0.606667,
+     "pcie_median_ms": 3.59099,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 5,
+     "cpu_median_ms": 0.796372,
+     "pcie_median_ms": 4.48731,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 6,
+     "cpu_median_ms": 0.958599,
+     "pcie_median_ms": 5.38335,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 7,
+     "cpu_median_ms": 1.07337,
+     "pcie_median_ms": 6.27964,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 2,
+     "experts": 8,
+     "cpu_median_ms": 1.18638,
+     "pcie_median_ms": 7.17577,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 1,
+     "cpu_median_ms": 0.24023,
+     "pcie_median_ms": 0.902279,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 2,
+     "cpu_median_ms": 0.415521,
+     "pcie_median_ms": 1.79829,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 3,
+     "cpu_median_ms": 0.59376,
+     "pcie_median_ms": 2.69462,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 4,
+     "cpu_median_ms": 0.780719,
+     "pcie_median_ms": 3.59087,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 5,
+     "cpu_median_ms": 1.02206,
+     "pcie_median_ms": 4.48712,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 6,
+     "cpu_median_ms": 1.16473,
+     "pcie_median_ms": 5.38327,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 7,
+     "cpu_median_ms": 1.31966,
+     "pcie_median_ms": 6.27985,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    },
+    {
+     "layer": 11,
+     "tokens": 4,
+     "experts": 8,
+     "cpu_median_ms": 1.50418,
+     "pcie_median_ms": 7.17578,
+     "gpu_compute_included": false,
+     "repetitions": 3
+    }
+   ],
+   "memory_policy": "interleave=all",
+   "host_participates": true,
+   "note": "Rotating 64 real experts; 17 workers use cores on one socket but data is interleaved across all four domains; not a socket-local data measurement."
+  }
+ },
+ "worker_loopback": {
+  "gpu0": {
+   "raw_sha256": "94f3e6d2104be91a7fed2d0db9b33159abadf0913764401f1b8a6ea7f8287729",
+   "measurements": {
+    "ownership_noop": {
+     "count": 300,
+     "p50_us": 23.316009901463985,
+     "p90_us": 24.371023755520582,
+     "p99_us": 26.569992769509554,
+     "mean_us": 23.41305565399428,
+     "min_us": 22.02700125053525
+    },
+    "decode_partial_w1_r1": {
+     "count": 300,
+     "p50_us": 91.17304580286145,
+     "p90_us": 97.37699292600155,
+     "p99_us": 99.9670010060072,
+     "mean_us": 92.53259534792353,
+     "min_us": 88.0980514921248
+    },
+    "decode_partial_w1_r4": {
+     "count": 300,
+     "p50_us": 149.2529991082847,
+     "p90_us": 155.01101734116673,
+     "p99_us": 159.17903510853648,
+     "mean_us": 150.6215037079528,
+     "min_us": 145.45000158250332
+    },
+    "decode_partial_w1_r8": {
+     "count": 300,
+     "p50_us": 228.56699069961905,
+     "p90_us": 234.90702733397484,
+     "p99_us": 244.26699383184314,
+     "mean_us": 230.5781466808791,
+     "min_us": 216.1930315196514
+    },
+    "decode_partial_w2_r1": {
+     "count": 300,
+     "p50_us": 97.74899808689952,
+     "p90_us": 100.13103019446135,
+     "p99_us": 102.18302486464381,
+     "mean_us": 96.32539974215129,
+     "min_us": 89.5550474524498
+    },
+    "decode_partial_w2_r4": {
+     "count": 300,
+     "p50_us": 152.83800894394517,
+     "p90_us": 155.46102076768875,
+     "p99_us": 158.19503460079432,
+     "mean_us": 151.61593696878603,
+     "min_us": 144.5380039513111
+    },
+    "decode_partial_w2_r8": {
+     "count": 300,
+     "p50_us": 229.43801013752818,
+     "p90_us": 232.14903194457293,
+     "p99_us": 234.94899505749345,
+     "mean_us": 228.75247503786036,
+     "min_us": 219.57396529614925
+    },
+    "decode_partial_w2_r16": {
+     "count": 300,
+     "p50_us": 367.72299790754914,
+     "p90_us": 370.2589892782271,
+     "p99_us": 372.1849643625319,
+     "mean_us": 367.0836824070042,
+     "min_us": 358.47199615091085
+    },
+    "decode_rows_w1_r1": {
+     "count": 300,
+     "p50_us": 90.49201617017388,
+     "p90_us": 92.94901974499226,
+     "p99_us": 95.25299537926912,
+     "mean_us": 89.2778835259378,
+     "min_us": 81.82198507711291
+    },
+    "decode_rows_w1_r4": {
+     "count": 300,
+     "p50_us": 150.4640094935894,
+     "p90_us": 153.87701569125056,
+     "p99_us": 156.49298438802361,
+     "mean_us": 149.30827465529242,
+     "min_us": 138.24400957673788
+    },
+    "decode_rows_w1_r8": {
+     "count": 300,
+     "p50_us": 227.2070269100368,
+     "p90_us": 231.1980351805687,
+     "p99_us": 235.58101383969188,
+     "mean_us": 226.73880254539353,
+     "min_us": 217.07703126594424
+    },
+    "decode_rows_w2_r1": {
+     "count": 300,
+     "p50_us": 102.65602031722665,
+     "p90_us": 105.32402666285634,
+     "p99_us": 107.95803973451257,
+     "mean_us": 102.10694570560008,
+     "min_us": 93.66701124235988
+    },
+    "decode_rows_w2_r4": {
+     "count": 300,
+     "p50_us": 162.80898125842214,
+     "p90_us": 166.24300042167306,
+     "p99_us": 169.26496755331755,
+     "mean_us": 162.06246548487493,
+     "min_us": 150.58397548273206
+    },
+    "decode_rows_w2_r8": {
+     "count": 300,
+     "p50_us": 239.84501603990793,
+     "p90_us": 243.63002739846706,
+     "p99_us": 246.26503000035882,
+     "mean_us": 239.8819732479751,
+     "min_us": 230.8000111952424
+    },
+    "decode_rows_w2_r16": {
+     "count": 300,
+     "p50_us": 386.91499503329396,
+     "p90_us": 390.96904220059514,
+     "p99_us": 396.14702109247446,
+     "mean_us": 387.04615474368137,
+     "min_us": 376.22801028192043
+    }
+   },
+   "environment": {
+    "STRATA_GLM_MIXED_DECODE_GRAPHS": "1",
+    "STRATA_GLM_MIXED_DECODE_PARTIAL": "1",
+    "STRATA_GLM_CANON": "1"
+   },
+   "scope": "Wall-clock request round trips from a Python client through the real worker protocol; includes the socket, validation, GPU execution and the worker-side copies. Not decoder throughput.",
+   "numa_node": 0,
+   "client_cpu": 0,
+   "client_memory_node": 0,
+   "iterations": 300,
+   "warmup_requests": 50,
+   "activation": "zero",
+   "expert_pattern": "distinct",
+   "layer": 20
+  },
+  "gpu1": {
+   "raw_sha256": "6a96abddf2cc28fb7ffe039648a865e99ebca52985709000f19f0d4711e7ec0b",
+   "measurements": {
+    "ownership_noop": {
+     "count": 300,
+     "p50_us": 32.62498648837209,
+     "p90_us": 34.046999644488096,
+     "p99_us": 37.649006117135286,
+     "mean_us": 32.7609987774243,
+     "min_us": 29.867980629205704
+    },
+    "decode_partial_w1_r1": {
+     "count": 300,
+     "p50_us": 107.48498607426882,
+     "p90_us": 109.66701665893197,
+     "p99_us": 113.94696775823832,
+     "mean_us": 107.37903144521019,
+     "min_us": 98.27496251091361
+    },
+    "decode_partial_w1_r4": {
+     "count": 300,
+     "p50_us": 164.6020100452006,
+     "p90_us": 167.20598796382546,
+     "p99_us": 172.12802777066827,
+     "mean_us": 164.66999135445803,
+     "min_us": 156.34397277608514
+    },
+    "decode_partial_w1_r8": {
+     "count": 300,
+     "p50_us": 242.38997139036655,
+     "p90_us": 245.43801555410028,
+     "p99_us": 251.25301908701658,
+     "mean_us": 242.59646112720174,
+     "min_us": 232.82394977286458
+    },
+    "decode_partial_w2_r1": {
+     "count": 300,
+     "p50_us": 110.70701293647289,
+     "p90_us": 112.954992800951,
+     "p99_us": 117.29297693818808,
+     "mean_us": 110.76570837758482,
+     "min_us": 104.08100206404924
+    },
+    "decode_partial_w2_r4": {
+     "count": 300,
+     "p50_us": 165.58700008317828,
+     "p90_us": 168.3640293776989,
+     "p99_us": 172.88397066295147,
+     "mean_us": 165.4047028083975,
+     "min_us": 158.54299999773502
+    },
+    "decode_partial_w2_r8": {
+     "count": 300,
+     "p50_us": 238.4990220889449,
+     "p90_us": 241.59200256690383,
+     "p99_us": 245.36100681871176,
+     "mean_us": 238.68148312127838,
+     "min_us": 232.0110215805471
+    },
+    "decode_partial_w2_r16": {
+     "count": 300,
+     "p50_us": 378.12598748132586,
+     "p90_us": 381.1549977399409,
+     "p99_us": 385.2960071526468,
+     "mean_us": 378.3448531369989,
+     "min_us": 372.88403837010264
+    },
+    "decode_rows_w1_r1": {
+     "count": 300,
+     "p50_us": 100.81403888761997,
+     "p90_us": 102.60299313813448,
+     "p99_us": 105.80499656498432,
+     "mean_us": 100.82993345956008,
+     "min_us": 92.27998089045286
+    },
+    "decode_rows_w1_r4": {
+     "count": 300,
+     "p50_us": 161.59098595380783,
+     "p90_us": 164.62401254102588,
+     "p99_us": 167.50703798606992,
+     "mean_us": 160.86531764206788,
+     "min_us": 152.2870152257383
+    },
+    "decode_rows_w1_r8": {
+     "count": 300,
+     "p50_us": 238.4099643677473,
+     "p90_us": 243.24102560058236,
+     "p99_us": 246.54599837958813,
+     "mean_us": 238.85670777720708,
+     "min_us": 231.07498418539762
+    },
+    "decode_rows_w2_r1": {
+     "count": 300,
+     "p50_us": 111.5299528464675,
+     "p90_us": 113.76600014045835,
+     "p99_us": 116.44599726423621,
+     "mean_us": 111.64786817971617,
+     "min_us": 105.52199091762304
+    },
+    "decode_rows_w2_r4": {
+     "count": 300,
+     "p50_us": 172.81604232266545,
+     "p90_us": 175.62502762302756,
+     "p99_us": 178.58401406556368,
+     "mean_us": 172.2611281244705,
+     "min_us": 163.7320383451879
+    },
+    "decode_rows_w2_r8": {
+     "count": 300,
+     "p50_us": 249.99905144795775,
+     "p90_us": 254.53499983996153,
+     "p99_us": 258.2439919933677,
+     "mean_us": 250.29059712930274,
+     "min_us": 243.95500076934695
+    },
+    "decode_rows_w2_r16": {
+     "count": 300,
+     "p50_us": 398.2179914601147,
+     "p90_us": 402.6450333185494,
+     "p99_us": 406.87696309760213,
+     "mean_us": 398.5826267550389,
+     "min_us": 387.8860152326524
+    }
+   },
+   "environment": {
+    "STRATA_GLM_MIXED_DECODE_GRAPHS": "1",
+    "STRATA_GLM_MIXED_DECODE_PARTIAL": "1",
+    "STRATA_GLM_CANON": "1"
+   },
+   "scope": "Wall-clock request round trips from a Python client through the real worker protocol; includes the socket, validation, GPU execution and the worker-side copies. Not decoder throughput.",
+   "numa_node": 2,
+   "client_cpu": 0,
+   "client_memory_node": 0,
+   "iterations": 300,
+   "warmup_requests": 50,
+   "activation": "zero",
+   "expert_pattern": "distinct",
+   "layer": 20
+  }
+ },
+ "diagnostic": {
+  "raw_log_sha256": "4be15cce543c2a05139ecb9b60186f3a92f691ea7f5b16ccb9269e6980d47761",
+  "routing_sha256": "2ab322d8b81494b1aae96bd9a1a83e8e4fed7118b44b6dbd2bce66f9296bacce",
+  "scopes_ms": {
+   "head": 6.180458333333333,
+   "cpu_service": 36.34652777777777,
+   "between": 30.642083333333332,
+   "tail": 6.205333333333333,
+   "draft": 8.32075,
+   "resync": 0.897375,
+   "other": 3.110805555555558,
+   "round_ms": 91.70333333333333,
+   "accepted_per_round": 3.5416666666666665,
+   "rounds": 72.0,
+   "speculative_rounds": 72.0
+  },
+  "cpu_expert": {
+   "gu_ms": 0.0,
+   "quant_ms": 0.0,
+   "down_ms": 0.0,
+   "layer_flow_ms": 2008.52,
+   "bytes": 163195453440.0
+  },
+  "route_summary": {
+   "unique_experts": 79654,
+   "primary_unique": 35759,
+   "weighted_unique_bytes": 732375154688,
+   "weighted_primary_bytes": 325746753536,
+   "unique_per_token_route": 0.8231440145502645,
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "worker_ownership_observed": false,
+   "assumption": "CPU share comes from measured CPU_EXPERT bytes; primary residency is traced. Worker share is the remainder. Token reuse for worker experts uses the nonprimary trace average."
+  },
+  "slot_period_ms": {
+   "kda": 0.702,
+   "mla": 1.0514999999999999
+  }
+ },
+ "probe_source_sha256": "66a27b940880c7de4672b36f5d66ec38ce08fd27f5703b86fbcd1188b1375d22",
+ "diagnostics": {
+  "mtp3": {
+   "raw_log_sha256": "4be15cce543c2a05139ecb9b60186f3a92f691ea7f5b16ccb9269e6980d47761",
+   "routing_sha256": "2ab322d8b81494b1aae96bd9a1a83e8e4fed7118b44b6dbd2bce66f9296bacce",
+   "scopes_ms": {
+    "head": 6.180458333333333,
+    "cpu_service": 36.34652777777777,
+    "between": 30.642083333333332,
+    "tail": 6.205333333333333,
+    "draft": 8.32075,
+    "resync": 0.897375,
+    "other": 3.110805555555558,
+    "round_ms": 91.70333333333333,
+    "accepted_per_round": 3.5416666666666665,
+    "rounds": 72,
+    "speculative_rounds": 72.0,
+    "verify_steps": 72
+   },
+   "cpu_expert": {
+    "gu_ms": 0.0,
+    "quant_ms": 0.0,
+    "down_ms": 0.0,
+    "layer_flow_ms": 2008.52,
+    "bytes": 163195453440.0
+   },
+   "shares": {
+    "cpu": 0.22283040651416294,
+    "primary": 0.44478127289117525,
+    "worker": 0.33238832059466183,
+    "rows_per_worker_expert": 1.1363936667046362
+   },
+   "worker_ownership_observed": false
+  },
+  "mtp2": {
+   "raw_log_sha256": "0060f5b2020da661727371899776a4df73408c511afd8fb018b9d928f99a8b4c",
+   "routing_sha256": "b6d61eb5d81e5024f10376843b5551c5f2340c5ae481dc614587dc92b6e92a25",
+   "scopes_ms": {
+    "head": 4.386275862068966,
+    "cpu_service": 28.844482758620693,
+    "between": 28.972298850574717,
+    "tail": 4.567459770114943,
+    "draft": 7.748379310344828,
+    "resync": 0.43123908045977016,
+    "other": 3.8928528735632195,
+    "round_ms": 78.84298850574714,
+    "accepted_per_round": 2.9310344827586206,
+    "rounds": 87,
+    "speculative_rounds": 87.0,
+    "verify_steps": 88
+   },
+   "cpu_expert": {
+    "gu_ms": 0.0,
+    "quant_ms": 0.0,
+    "down_ms": 0.0,
+    "layer_flow_ms": 1796.85,
+    "bytes": 139063918592.0
+   },
+   "shares": {
+    "cpu": 0.1939730643116298,
+    "primary": 0.4875436381736093,
+    "worker": 0.3184832975147609,
+    "rows_per_worker_expert": 1.0883481421647818
+   },
+   "worker_ownership_observed": false
+  }
+ }
+}

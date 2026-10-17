@@ -81,7 +81,7 @@ measured rates on TR16:
 
 All-f64 on TR16 is short of the target. The f32 fallback on the 5060 Ti reaches it only with that GPU to itself; its
 unshared f32 rate was not measured. The run scripts are in the output's parent directory
-(`/mnt/nvme01/models/glm53f/llvq-{run,stop,progress}.sh`):
+(`models/glm53f/llvq-{run,stop,progress}.sh`):
 
 - The 9070 XT and the CPU run in f64. An NVIDIA GPU, if present, runs the f32 fallback.
 - The workers share the queue through claim files.
