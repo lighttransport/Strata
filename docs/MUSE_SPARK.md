@@ -235,6 +235,123 @@ identical output. The CUDA build compiles; it was not run (no NVIDIA card in TR1
 the GPU was running other jobs. `--bench N` prints the GPU calls' time per token apart from the CPU lane's. Not done:
 one launch for the four projections, the two-card layer split.
 
+### The CPU expert lane, a decoder, and IQ1_S on the GPU (2026-10-17)
+
+- **`strata::muse::ExpertLane`** (`include/strata/muse/expert_lane.hpp`, `src/muse/expert_lane.cpp`): the routed
+  experts on persistent CPU threads.
+  - Every thread takes its share of the rows of every selected expert, so a layer is three phases (gate/up, the
+    hidden's quantization, down) with a spin barrier after each, whatever the number of experts.
+  - The rows go through the engine's kernels (`NativeFmt::iq1s_rows`). Groups of more than 8 tokens per expert are
+    cut into chunks for the multi-token kernels.
+  - The post-expert norm and the weighted sum run in route order, as in `reference.hpp`.
+  - `muse_expert_lane_test` (ctest): bit-identical to the single-thread loop of `muse_gpu_trunk_check` on synthetic
+    IQ1_S experts of the release's shape, for 1, 2 and 5 tokens and 12 tokens on one expert, on 1, 4 and 15 threads.
+    `--bench T [numa]` times a decode layer.
+  - Measured on TR16 with nothing else running (2026-10-17), synthetic experts, one token, top-8, 8 x 3 x 9.83 MB per
+    layer:
+
+    | threads | unpinned | NUMA-pinned, rows on their node (`numa`, `adopt`) |
+    |---:|---:|---:|
+    | 8 | 10.2 GB/s (7.7 ms per layer) | 10.2 GB/s |
+    | 15 | 17.9 GB/s (4.4 ms) | 13.5 GB/s |
+    | 16 | 18.6 GB/s (4.2 ms) | 18.6 GB/s |
+    | 30 | 18.4 GB/s (4.3 ms) | 11.9 GB/s |
+
+  - **Unpinned is already at the kernel's own rate** (18.0 GB/s, `iq1s_expert_parity --bench`): 262 ms per token over
+    62 layers on one node. Pinning threads to NUMA nodes and placing each thread's rows on its node is opt-in, tested
+    bit-identical, and gives nothing here, so the default stays unpinned. A first reading of 9.0 GB/s at 15 threads
+    was taken while other jobs used the machine.
+- **`strata-muse-decode`** (`tools/muse_decode.cpp`): prompt ids (`--ids` or `--dump DIR`) to greedy tokens through
+  the GPU trunk and the expert lane.
+  - The prompt runs through the decode step one token at a time; there is no batched prefill yet.
+  - It prints the GPU trunk's and the CPU lane's time per token and, with a llama.cpp dump, the prompt positions
+    whose argmax agrees.
+  - The whole trunk must fit one GPU. The two-layer slice does; the release (18.7 GB of trunk) needs the two-card
+    split, which is not written.
+- **IQ1_S in the GPU IQ kernels** (`src/kernels/cuda/iq_kernels.cu`): the dot (llama.cpp's
+  `vec_dot_iq1_s_q8_1`, with the activation sum taken from the q8_1 values as IQ1_M does here), the dequantizer,
+  and type 19 in the gate/up, down and mat-vec format lists. So `native_expert_grouped`, the GPU expert tier's
+  kernel, takes Muse's experts.
+  - `iq1s_gpu_parity` (ctest): `iq_mmvq` against ggml-cpu's IQ1_S dequantizer with the GPU's own q8_1 activations,
+    1024 x 4096, 1-4 columns: relative error 1.0e-7 (float summation order).
+  - `native_grouped_parity` now covers IQ1_S as gate/up and as down: bitwise equal to the older launch path.
+
+### Two nodes: the expert row split (2026-10-17)
+
+The B550 holds ff rows [cut, 4096) of gate and up and the same columns of down for every routed expert.
+`cut = strata_muse_row_split(4096, 256, 0.375)` = 2560. Each node's experts give partial outputs, which are added
+before the post-expert norm and the router weights.
+
+| piece | where |
+|---|---|
+| a node's share of every expert (gate/up rows, down's columns in whole blocks) | `include/strata/muse/row_split.hpp` (`slice_experts`) |
+| raw expert outputs and the combine step | `ExpertLane::run_raw`, `ExpertLane::combine` |
+| the primary's split lane; the worker's request loop | `include/strata/muse/split_lane.hpp` (`SplitLane`, `serve_expert_share`) |
+| node 1 | `strata-muse-expert-worker MODEL --root HOST:PORT --share-b 0.375` |
+| node 0 | `strata-muse-decode ... --worker-root HOST:PORT --share-b 0.375` |
+| a real-weight check without a GPU | `muse_split_check MODEL --worker-root HOST:PORT` |
+
+How a layer runs:
+- **The request:** per MoE layer the primary sends a 16-byte header, then the latents and routes, over ucomm. The
+  receiver sizes its buffer from the header.
+- **Overlap:** the primary computes its own share, then waits for the worker's partials.
+- **Combine:** it adds the two partials (local + remote, always in that order) and combines. The result is
+  deterministic and differs from one node's full rows only in summation order.
+
+Checked:
+- **`muse_row_split_test` (ctest), synthetic IQ1_S experts of the release's shape:**
+  - The split against one node, in one process: relative 1.9e-7 at the 0.375 cut, 3.0e-7 at 0.75.
+  - Over ucomm, a worker in a second process reproduces the in-process split bit for bit, for 6 layer calls, over IB
+    and over UDP, and it passes on TR16 and on the B550.
+- **`muse_split_check`, the two-layer slice of the release, TR16 to the B550 over ConnectX-3 IB:**
+  - The worker holds 1.9 GB (loaded in 1.6 s).
+  - Both layers, 1 and 4 tokens: split against one node, relative 5.5e-9 to 5.4e-8.
+- **Moving the slice:** the 7.9 GB slice went to the B550 with `ucfile`, CRC32C on, at 0.36 GB/s (the B550's
+  nearly full disk sets the rate).
+
+Not done: the worker copies its share out of the full GGUF, so the B550 would need the whole release. A packer that
+writes each node's rows from HTTP ranges is still to write. The layer owner does not alternate between the nodes'
+GPUs (split-gpus) yet, and nothing here is timed.
+
+### Two nodes, both GPUs: `strata-muse-stage` (2026-10-17)
+
+The full layout of the forecast's split-gpus plan, as one program on each node:
+
+| | node 0 (TR16, RX 9070 XT, HIP) | node 1 (B550, RTX 5060 Ti, CUDA) |
+|---|---|---|
+| trunk on the GPU | embedding, layers [0, S) | layers [S, 62), head |
+| experts on the CPU | ff rows [0, cut) of every layer | ff rows [cut, 4096) of every layer |
+
+Per token:
+1. Node 0 runs its layers. Each MoE layer asks node 1 for its partial expert outputs, the `SplitLane` above.
+2. Node 0 sends the hidden state (8192 floats) to node 1.
+3. Node 0 serves node 1's expert requests until node 1 returns the next token.
+4. Node 1 drives its layers the same way, then the head.
+
+Each node alternates between driving and serving, and its serve loop polls two ucomm receives: the expert-request
+header and the hand-off or result. Node 0's bootstrap address is the `--root` of both. The release's trunk (17.3 GB of
+blocks + 1.4 GB head) splits as about 34 + 28 layers for the 16 GB card and the 5060 Ti's 10 GB left beside its
+other use.
+
+```
+node 1: strata-muse-stage MODEL... --rank 1 --root NODE0:PORT --split-layer S [--share-b 0.375] [--threads T]
+node 0: strata-muse-stage MODEL... --rank 0 --root NODE0:PORT --split-layer S --dump DIR | --ids 1,2,3 [--tokens N]
+```
+
+First run: the two-layer slice, S = 1 (layer 0 on the 9070 XT, layer 1 and the head on the 5060 Ti), experts split
+at 2560.
+
+Measured so far on the two-layer slice (2026-10-17, untimed conditions: other jobs on both machines):
+
+| run | decode | prompt argmax vs llama.cpp | generated tokens |
+|---|---:|---|---|
+| one node (`strata-muse-decode`, graphs + split-K) | 52.3 tok/s (GPU 4.3 + CPU 14.9 ms) | 10 of 11 | reference |
+| two nodes, experts split over IB (`--worker-root`) | 39.0 tok/s (GPU 4.3 + CPU 21.3 ms, 9.7 ms waiting for the B550) | 10 of 11 | the first 30 of 32 the same; the last 2 differ (a near tie, another summation order) |
+| two nodes, two GPUs (`strata-muse-stage`, S = 1): layer 0 on the 9070 XT (HIP), layer 1 + head on the 5060 Ti (CUDA, beside a miner on that card and CPU) | 22.7 tok/s (node 0 stage 12.7 + node 1 stage 30.5 ms) | 10 of 11 | the first 31 the same as the two-node decode above; the last one differs |
+
+The two-GPU run hands the hidden state across the link twice per token and runs layer 1 on a GPU and CPU that another
+job keeps busy; per-layer times are not representative of the release's 62 layers.
+
 Next, in order (each with a parity test against `reference.hpp` before it is timed):
 
 1. **The GPU trunk, fast** (CUDA and HIP): done except one launch for q/k/v/gate and the trunk split by layer across
