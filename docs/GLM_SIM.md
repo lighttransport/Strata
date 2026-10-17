@@ -34,6 +34,13 @@ python3 -m unittest tools.test_sim
 layouts, 4 ranks per node, MTP, and two efficiency profiles (the runner as it is, and the proposed redesign). Report:
 [GLM_A64FX_PLAN.md](GLM_A64FX_PLAN.md); tests `python3 -m unittest tools.test_sim_a64fx`.
 
+## DeepSeek V4.1 Flash
+
+`tools/sim/ds41f.py` with the CLI `tools/glm_ds41f_sim.py` models DeepSeek V4.1 Flash (552B backbone, 384 experts
+top-6, two 98 GB FP8 Engram tables read 48 rows per token from SSD) on TR16, TR16 + B550, the Xeon + 2x V100 box and
+A64FX nodes, and ranks expert packs from IQ1_S to native MXFP4 by memory fit and speed; the pack tool is
+`strata-ds41f-pack` (`tools/ds41f_pack.cpp`). Report: [DS41F_PLAN.md](DS41F_PLAN.md).
+
 ## Hardware input
 
 A hardware config (`tools/sim/hw.py`) has: CPU cores, clock, NUMA nodes, SIMD width (FP32 FMA peak is derived

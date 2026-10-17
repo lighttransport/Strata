@@ -328,7 +328,7 @@ target_link_libraries(strata-plan PRIVATE strata_plan)
 # read once through strata_env_init from main(), since C has no thread-safe function-local static for the
 # lambdas this replaces to lean on.
 enable_language(C)
-add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_stage.c src/host/glm_layer.c)
+add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_stage.c src/host/glm_layer.c src/host/ds41f_names.c)
 set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 target_include_directories(strata_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(UNIX)
@@ -2045,6 +2045,9 @@ target_link_libraries(strata-glm-q2-pack PRIVATE strata_kernels_cpu strata_artif
 # MiMo-V2 (mimo2) counterpart: same sidecar format, MXFP4 source, routed layers 1..47; no GLM code path involved.
 add_executable(strata-mimo-q2-pack tools/mimo_q2_pack.cpp)
 target_link_libraries(strata-mimo-q2-pack PRIVATE strata_kernels_cpu strata_artifact)
+# DeepSeek V4.1 Flash (deepseek4): safetensors MXFP4 experts -> Strata sidecar, FP8/BF16 trunk -> GGUF; Engram untouched.
+add_executable(strata-ds41f-pack tools/ds41f_pack.cpp)
+target_link_libraries(strata-ds41f-pack PRIVATE strata_kernels_cpu strata_artifact strata_host)
 add_executable(strata-glm-block-norms tools/glm_block_norms.cpp)
 target_link_libraries(strata-glm-block-norms PRIVATE strata_kernels_cpu strata_artifact strata_host)
 if(STRATA_BUILD_TESTS)

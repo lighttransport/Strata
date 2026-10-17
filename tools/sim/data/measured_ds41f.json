@@ -1,0 +1,153 @@
+{
+ "notes": "DeepSeek V4 / V4.1 Flash measurements the model is checked against. kind a64fx_*: gemm a64fx/ds41f runner on 12 nodes (fit: true rows set A64FX_CURRENT). kind decode/prefill: the gemm hetero/ds4f runner for V4-Flash on TR16 + RX 9070 XT (fit: false, cross-check only; that runner's own ceiling analysis says 12 tok/s). Tolerances are relative.",
+ "records": [
+  {
+   "name": "V4.1-Flash 12 A64FX nodes, best decode (INT8, BF16 reductions, split mHC), 1K history",
+   "kind": "a64fx_decode",
+   "tolerance": 0.15,
+   "fit": true,
+   "source": "gemm a64fx/doc/ds41f.md:160,2644-2652 (24.557 tok/s = 40.722 ms: attention 17.34, routed+shared experts 9.68)",
+   "plan": {
+    "nodes": 12,
+    "pack": "mxfp4",
+    "trunk": "fp8",
+    "context": 1024,
+    "expert_layout": "ep",
+    "profile": "current"
+   },
+   "measured": {
+    "tok_s": 24.557
+   }
+  },
+  {
+   "name": "V4.1-Flash 12 A64FX nodes, DSpark speculative (emitted tokens)",
+   "kind": "a64fx_decode",
+   "tolerance": 0.25,
+   "fit": false,
+   "source": "gemm a64fx/doc/ds41f.md:337 (20.566-20.709 tok/s; slower than plain decode)",
+   "plan": {
+    "nodes": 12,
+    "pack": "mxfp4",
+    "trunk": "fp8",
+    "context": 1024,
+    "expert_layout": "ep",
+    "profile": "current",
+    "width": 3,
+    "acceptance": "a64fx_sweep768"
+   },
+   "measured": {
+    "tok_s": 20.6
+   }
+  },
+  {
+   "name": "V4.1-Flash 12 A64FX nodes, prefill (unbatched per position)",
+   "kind": "a64fx_prefill",
+   "prompt": 1024,
+   "tolerance": 0.15,
+   "fit": true,
+   "source": "gemm a64fx/doc/ds41f.md:18,313 (33.45-33.56 input tok/s)",
+   "plan": {
+    "nodes": 12,
+    "pack": "mxfp4",
+    "trunk": "fp8",
+    "context": 1024,
+    "expert_layout": "ep",
+    "profile": "current"
+   },
+   "measured": {
+    "tok_s": 33.5
+   }
+  },
+  {
+   "name": "V4-Flash on TR16 + RX 9070 XT (hetero/ds4f), bit-exact defaults, 1024-token prompt",
+   "kind": "decode",
+   "tolerance": 1.0,
+   "fit": false,
+   "source": "gemm resume-ds4f.md:140-146 (decode 5.02 tok/s; llama.cpp on the same host 7.33; the runner's expert-read ceiling 12 tok/s at 41.4 GB/s, :191)",
+   "plan": {
+    "machine": "tr16",
+    "pack": "v4flash_mxfp4",
+    "trunk": "fp8",
+    "head": "bf16",
+    "context": 1024,
+    "tier_gib": 0
+   },
+   "machine_set": {
+    "stream_gbps": 41.4,
+    "gpu.gemv_gbps": 448.0,
+    "gpu.tier_gbps": 200.0,
+    "gpu.h2d_gbps": 27.21,
+    "gpu.vram_gib": 15.9,
+    "gpu.desktop_gib": 1.8
+   },
+   "measured": {
+    "tok_s": 5.02
+   }
+  },
+  {
+   "name": "V4-Flash on TR16 + RX 9070 XT, prefill 1024 tokens (W4A8 + GPU tier B2)",
+   "kind": "prefill",
+   "prompt": 1024,
+   "tolerance": 3.0,
+   "fit": false,
+   "source": "gemm resume-ds4f.md:140-144 (prefill 14.22 tok/s; the runner streams experts per token, not per chunk)",
+   "plan": {
+    "machine": "tr16",
+    "pack": "v4flash_mxfp4",
+    "trunk": "fp8",
+    "head": "bf16",
+    "context": 1024,
+    "tier_gib": 0
+   },
+   "measured": {
+    "tok_s": 14.22
+   }
+  }
+ ],
+ "engram": {
+  "rows_per_token": 48,
+  "row_bytes": 264,
+  "tables_bytes": 202758032400,
+  "a64fx_exposed_ms_per_token": {
+   "no_prefetch": 17.1,
+   "prefetch": 1.16
+  },
+  "lookups_per_s_12n_qd1": 20900,
+  "row_cache_8mib_hit": "0.30-0.50",
+  "source": "gemm a64fx/doc/ds41f.md:1076-1101,1945,2027,2519,2742"
+ },
+ "public_quality_prior": {
+  "model": "DeepSeek-V4-Flash-0731 (same MXFP4 expert format)",
+  "rows": [
+   {
+    "quant": "official MXFP4",
+    "gb": 156.4,
+    "ppl": 4.5319,
+    "kld": 0.0,
+    "top1": 1.0
+   },
+   {
+    "quant": "Unsloth UD-Q4_K_XL",
+    "gb": 155.1,
+    "ppl": 4.5335,
+    "kld": 0.0102,
+    "top1": 0.9628
+   },
+   {
+    "quant": "antirez mixed L37-42-Q4K imatrix",
+    "gb": 97.6,
+    "ppl": 5.8169,
+    "kld": 0.3605,
+    "top1": 0.7974
+   },
+   {
+    "quant": "antirez IQ2XXS imatrix",
+    "gb": 86.7,
+    "ppl": 6.0808,
+    "kld": 0.4079,
+    "top1": 0.7815
+   }
+  ],
+  "source": "unsloth.ai/docs/models/deepseek-v4 (Wikitext-2, ctx 512)"
+ }
+}
