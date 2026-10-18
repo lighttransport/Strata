@@ -17,7 +17,8 @@
 # DS41F_PACKS: name:gate/up/down, several joined with '+' (pjsub -x already uses commas). DS41F_TRUNK: trunk/head
 # formats or "none". IQ formats need DS41F_IMATRIX. Each pack goes to $DS41F_OUT/experts-<name>.d, one chunk directory
 # shared by all ranks (each layer has exactly one owner); the trunk to $DS41F_OUT/trunk-<trunk>-<head>.gguf (rank 11).
-# Resumable: resubmit the same command; finished layers are skipped, an interrupted layer is redone.
+# Resumable: resubmit the same command; finished layers are skipped, an interrupted layer is redone. Jobs on different
+# packs (one pack each, say) run in parallel; a second job on a pack another live job holds is refused.
 # Status: $DS41F_OUT/status/<job>/rankNN.status and SENTINEL lines on stdout; the job ends with
 # `SENTINEL DS41F_JOB_END state=complete|resubmit|failed`.
 set -uo pipefail
@@ -33,13 +34,23 @@ end() { say "SENTINEL DS41F_JOB_END state=$1 job=$JOB elapsed_s=$(( $(date +%s) 
 say "SENTINEL DS41F_JOB_BEGIN job=$JOB host=$(hostname) packs=$PACKS trunk=$TRUNK threads=$THREADS deadline=$DEADLINE"
 # 1. the binary is the published one
 if [ -n "${DS41F_PACK_SHA256:-}" ] && [ "$(sha256sum "$BIN" | cut -d' ' -f1)" != "$DS41F_PACK_SHA256" ]; then say "SENTINEL DS41F_STALE_BINARY $BIN"; end failed; fi
-# 2. one job at a time per output directory
-LOCK=$OUT/.lock
-if [ -f "$LOCK" ]; then
-    read -r lj le < <(sed -e 's/job=//' -e 's/end=//' "$LOCK")
-    if [ "${lj:-}" != "$JOB" ] && [ "${le:-0}" -gt "$(date +%s)" ] && [ "${DS41F_FORCE:-0}" != 1 ]; then say "SENTINEL DS41F_LOCKED by job=$lj until=$le"; end failed; fi
-fi
-echo "job=$JOB end=$((T0 + ELAPSE))" > "$LOCK"; trap 'rm -f "$LOCK"' EXIT
+# 2. one job at a time per pack (and per trunk file): jobs on different packs run in parallel. A lock holds the owner
+#    job and its end time; it is created atomically (noclobber) and a stale one (end passed) is taken over.
+LOCKS=()
+take_lock() {
+    local L=$1 try
+    for try in 1 2; do
+        if ( set -o noclobber; echo "job=$JOB end=$((T0 + ELAPSE))" > "$L" ) 2>/dev/null; then LOCKS+=("$L"); return 0; fi
+        read -r lj le < <(sed -e 's/job=//' -e 's/end=//' "$L" 2>/dev/null)
+        if [ "${lj:-}" = "$JOB" ]; then LOCKS+=("$L"); return 0; fi
+        if [ "${le:-0}" -gt "$(date +%s)" ] && [ "${DS41F_FORCE:-0}" != 1 ]; then say "SENTINEL DS41F_LOCKED $(basename "$L") by job=$lj until=$le"; end failed; fi
+        rm -f "$L"   # stale (or forced): take it over
+    done
+    say "SENTINEL DS41F_LOCKED $(basename "$L") (could not create)"; end failed
+}
+trap 'rm -f "${LOCKS[@]}"' EXIT
+for spec in ${PACKS//+/ }; do take_lock "$OUT/experts-${spec%%:*}.d.lock"; done
+[ "$TRUNK" != none ] && take_lock "$OUT/trunk-${TRUNK%%/*}-${TRUNK#*/}.lock"
 # 3. the probe's canary (persistence of shared-FS writes across jobs)
 if [ -n "${DS41F_CANARY:-}" ] && [ ! -s "$DS41F_CANARY" ]; then say "SENTINEL DS41F_CANARY_MISSING $DS41F_CANARY"; end failed; fi
 # 4. plans, created once here so the ranks only validate them
