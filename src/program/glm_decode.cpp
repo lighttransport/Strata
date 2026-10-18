@@ -2265,8 +2265,43 @@ class Decoder {
         check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,out,nt,in,&one,w.f(),in,x,in,&zero,y,out));
         check(cudaGetLastError());
     }
+    // STRATA_GLM_EXPERT_MAP=FILE (with STRATA_GLM_EXPERT_GGUF of a pruned model, e.g. REAP-50): one line per layer,
+    // "LAYER e0 e1 ...", the original expert behind each of the pack's experts (tools/glm_reap_expert_map.py). The
+    // FP8 router is restricted to those experts (the others' bias is -1e30, so they are never selected; a pruned
+    // model's router rows and biases are the original ones), and expert e is read as the pack's index of e.
+    std::map<int,std::vector<int>> expert_slot;   // per layer: original expert -> pack index, -1 when pruned
+    std::map<int,std::unique_ptr<Device>> masked_bias;
+    void load_expert_map() {
+        const char* path=std::getenv("STRATA_GLM_EXPERT_MAP");if(!path||!*path)return;
+        std::ifstream in(path);if(!in)throw std::runtime_error(std::string("expert map: cannot read ")+path);
+        for(std::string line;std::getline(in,line);) {
+            std::istringstream ls(line);int l;if(!(ls>>l))continue;
+            std::vector<int> slot(size_t(m.experts),-1);int i=0;
+            for(int e;ls>>e;++i){if(e<0||e>=int(m.experts)||slot[size_t(e)]>=0)throw std::runtime_error("expert map: bad entry in layer "+std::to_string(l));slot[size_t(e)]=i;}
+            if(i<m.top_k)throw std::runtime_error("expert map: fewer experts than top-k in layer "+std::to_string(l));
+            expert_slot[l]=std::move(slot);
+        }
+        std::cerr<<"GLM: router restricted to the experts of "<<path<<" ("<<expert_slot.size()<<" layers)\n";
+    }
+    const float* router_bias(int layer,const float* bias) {
+        const auto s=expert_slot.find(layer);if(s==expert_slot.end())return bias;
+        auto& d=masked_bias[layer];
+        if(!d) {
+            std::vector<float> b(size_t(m.experts));check(cudaMemcpy(b.data(),bias,b.size()*4,cudaMemcpyDeviceToHost));
+            for(size_t e=0;e<b.size();++e)if(s->second[e]<0)b[e]=-1e30f;
+            d=std::make_unique<Device>(b.size()*4);d->put(b.data(),b.size()*4);
+        }
+        return d->f();
+    }
     void fp8_read_expert(int layer,int expert,uint8_t* dst) {
-        if(gguf_experts){gguf_read_expert(layer,expert,dst);return;}
+        if(gguf_experts) {
+            if(const auto s=expert_slot.find(layer);s!=expert_slot.end()) {
+                const int i=s->second[size_t(expert)];
+                if(i<0)throw std::logic_error("expert map: a pruned expert was routed");
+                expert=i;
+            }
+            gguf_read_expert(layer,expert,dst);return;
+        }
         if(!llvq_dir().empty()){llvq_read_expert(layer,expert,dst);return;}
         const char* projections[]={"gate_proj","up_proj","down_proj"};
         for(unsigned i=0;i<3;++i) {
@@ -2291,7 +2326,16 @@ class Decoder {
         const int nt=batch_tokens;
         auto& logits=buf("router_logits",m.experts*nt);auto& ids=buf("router_ids",m.top_k*nt);auto& rw=buf("router_weights",m.top_k*nt);
         mat(p+"ffn_gate_inp.weight",x,logits.f());auto& bias=weight(p+"exp_probs_b.bias");
-        for(int t=0;t<nt;++t)k::glm_router(logits.f(t*m.experts),bias.f(),(int*)ids.p+t*m.top_k,rw.f(t*m.top_k),m.experts,m.top_k,m.expert_scale,stream);
+        const float* bias_p=bias.f();
+        if(artifact.is_fp8()&&!gguf_experts_path().empty()) {
+            if(!gguf_experts) {
+                if(!llvq_dir().empty())throw std::runtime_error("STRATA_GLM_EXPERT_GGUF and STRATA_GLM_EXPERT_LLVQ are exclusive");
+                gguf_experts=std::make_unique<strata::GgufFile>(gguf_experts_path());load_expert_map();
+                std::cerr<<"GLM: routed experts from "<<gguf_experts_path()<<" (FP8 for everything else)\n";
+            }
+            bias_p=router_bias(layer_id,bias_p);
+        }
+        for(int t=0;t<nt;++t)k::glm_router(logits.f(t*m.experts),bias_p,(int*)ids.p+t*m.top_k,rw.f(t*m.top_k),m.experts,m.top_k,m.expert_scale,stream);
         std::vector<int> selected(nt*m.top_k);std::vector<float> routing(nt*m.top_k),activation(nt*m.hidden);
         check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*4,cudaMemcpyDeviceToHost,stream));
         check(cudaMemcpyAsync(routing.data(),rw.p,routing.size()*4,cudaMemcpyDeviceToHost,stream));
@@ -2314,6 +2358,7 @@ class Decoder {
         if(fp8&&!gguf_experts_path().empty()&&!gguf_experts) {
             if(!llvq_dir().empty())throw std::runtime_error("STRATA_GLM_EXPERT_GGUF and STRATA_GLM_EXPERT_LLVQ are exclusive");
             gguf_experts=std::make_unique<strata::GgufFile>(gguf_experts_path());
+            load_expert_map();
             std::cerr<<"GLM: routed experts from "<<gguf_experts_path()<<" (FP8 for everything else)\n";
         }
         if(fp8&&!llvq_dir().empty()&&!llvq) {

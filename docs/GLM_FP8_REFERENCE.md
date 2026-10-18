@@ -100,6 +100,13 @@ Same gate, HumanEval with unchanged routing and MTP depth 1, speed in a 60 GiB /
 | **experts from FP8** | **5.184** | **+16.5%** | **0.393** | **80.4%** | **154/164** | 16.1 / 16.0 | 219 / 217 |
 | first release (requantized from the REAP-50 Q4_K_M experts) | 5.632 | +26.6% | 0.479 | 77.6% | 149/164 | 15.9 / 16.2 | 215 / 192 |
 
+Where REAP-50's error comes from: the same file's experts on the exact-FP8 path (`STRATA_GLM_EXPERT_GGUF` with
+`STRATA_GLM_EXPERT_MAP=reap50-expert-map.txt`, which restricts the FP8 router to the 144 kept experts; REAP-50's router
+rows and biases are the original ones) give perplexity 5.212 (+17.1%), KL 0.385, top-1 80.7%. So its Q4_K_M dense
+weights add almost nothing (0.393 against 0.385). The same Q2_K/Q3_K experts unpruned give KL 0.108 on that path, so
+pruning to 144 experts accounts for most of REAP-50's KL. A better 64 GB model has to change which experts are kept
+(or keep more of them at fewer bits), not the expert quantizer.
+
 ## Expert quantizers alone: llvq Tetra against Q23 (2026-10-18)
 
 The tables above use each pack's own dense weights (UD-Q2_K_XL's). To compare expert quantizers alone, two opt-in
