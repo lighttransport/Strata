@@ -566,7 +566,8 @@ def a64fx_sdot_cost(fmt, tpe):
 
 
 A64FX_REDESIGN = dict(attn_us_per_layer=60.0,     # trunk stream at the chain rate + one fused phase per sub-layer (hypothesis)
-                      expert_gbps=250.0, comm_ms=0.0, other_ms=0.0, mhc_site_us=23.0, phase_us=3.0, prefill_int8_eff=0.7)
+                      expert_gbps=250.0, comm_ms=0.0, other_ms=0.0, mhc_site_us=a64fx.MHC_LOCAL_GRAM_INMODEL_US,
+                      phase_us=3.0, prefill_int8_eff=0.7)   # mHC: GLM's in-model local-gram site (42.2 us; was the 23 us standalone)
 
 
 def a64fx_memory_fit(ap):

@@ -224,6 +224,14 @@ class MeasuredKernelTest(unittest.TestCase):
         self.assertTrue(all(b > a for a, b in zip(costs, costs[1:])))
         self.assertEqual(a64fx._width_cost(prof, a64fx.pack("ud_q4kxl"), 3), 1.0)   # Q4 path: bandwidth-bound
 
+    def test_redesign_mhc_is_the_inmodel_measurement(self):
+        d = json.loads((a64fx.DATA / "measured_a64fx_mhc.json").read_text())["per_site_us_mean_over_ranks"]
+        self.assertEqual(a64fx.redesign().mhc_site_us, (d["local_gram"]["end_site"],) * 2)
+        self.assertLess(d["local_gram"]["end_site"], d["legacy"]["end_site"])
+        # today's calibrated profile stays within 5 % of the uninstrumented runner's legacy sites
+        for got, meas in zip(a64fx.current().mhc_site_us, (d["legacy"]["ffn_site_incl_router"], d["legacy"]["end_site"])):
+            self.assertAlmostEqual(got, meas, delta=0.05 * meas)
+
     def test_node_constants_measured(self):
         node = a64fx.A64FXNode()
         self.assertEqual(node.stream_gbps, 915.0)

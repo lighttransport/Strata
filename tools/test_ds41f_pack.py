@@ -87,7 +87,7 @@ def run(converter, *args, expect_fail=None):
 
 def gguf_py():
     repo = pathlib.Path(__file__).resolve().parents[1]
-    for candidate in (os.environ.get("STRATA_GGUF_PY"), str(repo.parent / "llama.cpp" / "gguf-py"), str(repo / "build-tr16-goal-20261010" / "ggml-reference" / "gguf-py")):
+    for candidate in (os.environ.get("STRATA_GGUF_PY"), str(repo.parent / "llama.cpp" / "gguf-py")):
         if candidate and pathlib.Path(candidate, "gguf").is_dir():
             sys.path.insert(0, candidate)
             try:

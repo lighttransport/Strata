@@ -83,7 +83,7 @@ completes; a too-small receive buffer gives `UCOMM_ERR_TRUNC` with the full size
 
 ## Measured
 
-UDP backend, tr16 (rank 0) ↔ b550 (rank 1), 1 GbE, MTU 1500, default `UCOMM_UDP_MTU=1400`, `ucomm_bench`.
+UDP backend, node-a (rank 0) ↔ node-b (rank 1), 1 GbE, MTU 1500, default `UCOMM_UDP_MTU=1400`, `ucomm_bench`.
 `ping` round trip on this link is 0.28 ms.
 
 | Test | Result |
@@ -95,7 +95,7 @@ UDP backend, tr16 (rank 0) ↔ b550 (rank 1), 1 GbE, MTU 1500, default `UCOMM_UD
 | allreduce f32, 16 MiB, 2 ranks | 240 ms |
 | allreduce f32, 16 KiB / 16 MiB, 4 ranks (2 per host) | 1.5 ms / 599 ms |
 
-The **ib** backend has since run on ConnectX-3 QDR between tr16 and b550; its numbers are in
+The **ib** backend has since run on ConnectX-3 QDR between node-a and node-b; its numbers are in
 `docs/GLM_REMOTE_TP_COMM.md` (and the file transfer rates below).
 
 ## File transfer: `ucomm_file` and `ucfile`
@@ -165,7 +165,7 @@ How it works:
 - **Shards:** contiguous 1 MiB-aligned ranges by weight. The coordinator writes the manifest (node, path, offset,
   length per shard) when every shard arrived. `ucfile.py reassemble MANIFEST OUT` joins local shards back.
 
-Measured 2026-10-17, tr16 → b550, ConnectX-3 QDR, 1 GiB from tmpfs to tmpfs:
+Measured 2026-10-17, node-a → node-b, ConnectX-3 QDR, 1 GiB from tmpfs to tmpfs:
 
 | Backend | Verify | GB/s |
 |---|---|---:|
@@ -173,5 +173,5 @@ Measured 2026-10-17, tr16 → b550, ConnectX-3 QDR, 1 GiB from tmpfs to tmpfs:
 | ib | crc32c | 1.65 (the CRC runs in the transfer loop on both sides) |
 | udp over 1 GbE | none | 0.11 (line rate) |
 
-To b550's disk, which was 99% full and under load, ib ran at 0.12 GB/s: the destination disk sets the rate there.
+To node-b's disk, which was 99% full and under load, ib ran at 0.12 GB/s: the destination disk sets the rate there.
 `make test` adds `test_file`: whole ranges, CRC32C, resume and sub-ranges, also over udp with 2% induced loss.
