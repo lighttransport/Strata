@@ -3,6 +3,10 @@
 #include "strata/kernels/cpu/exl3/dense_q8.hpp"
 #include "strata/kernels/exl3.hpp"
 #include "strata/kernels/llvq_tetra.hpp"
+#include "glm_prefix_cache.hpp"
+#include "glm_state_store.hpp"
+#include "strata/core/conversation_file.hpp"
+#include "strata/spec/host_sampler.hpp"
 #include "strata/llvq/tetra_decode.hpp"
 // Experimental GLM decode and streamed GPU prefill. CPU experts overlap resident GPU experts.
 // Greedy decoding with verified speculation and optional recurrent CUDA graphs.
@@ -75,6 +79,8 @@
 #include <memory>
 #include <filesystem>
 #include <mutex>
+#include <optional>
+#include <random>
 #include <numeric>
 #include <queue>
 #include <sstream>
@@ -2265,8 +2271,43 @@ class Decoder {
         check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,out,nt,in,&one,w.f(),in,x,in,&zero,y,out));
         check(cudaGetLastError());
     }
+    // STRATA_GLM_EXPERT_MAP=FILE (with STRATA_GLM_EXPERT_GGUF of a pruned model, e.g. REAP-50): one line per layer,
+    // "LAYER e0 e1 ...", the original expert behind each of the pack's experts (tools/glm_reap_expert_map.py). The
+    // FP8 router is restricted to those experts (the others' bias is -1e30, so they are never selected; a pruned
+    // model's router rows and biases are the original ones), and expert e is read as the pack's index of e.
+    std::map<int,std::vector<int>> expert_slot;   // per layer: original expert -> pack index, -1 when pruned
+    std::map<int,std::unique_ptr<Device>> masked_bias;
+    void load_expert_map() {
+        const char* path=std::getenv("STRATA_GLM_EXPERT_MAP");if(!path||!*path)return;
+        std::ifstream in(path);if(!in)throw std::runtime_error(std::string("expert map: cannot read ")+path);
+        for(std::string line;std::getline(in,line);) {
+            std::istringstream ls(line);int l;if(!(ls>>l))continue;
+            std::vector<int> slot(size_t(m.experts),-1);int i=0;
+            for(int e;ls>>e;++i){if(e<0||e>=int(m.experts)||slot[size_t(e)]>=0)throw std::runtime_error("expert map: bad entry in layer "+std::to_string(l));slot[size_t(e)]=i;}
+            if(i<m.top_k)throw std::runtime_error("expert map: fewer experts than top-k in layer "+std::to_string(l));
+            expert_slot[l]=std::move(slot);
+        }
+        std::cerr<<"GLM: router restricted to the experts of "<<path<<" ("<<expert_slot.size()<<" layers)\n";
+    }
+    const float* router_bias(int layer,const float* bias) {
+        const auto s=expert_slot.find(layer);if(s==expert_slot.end())return bias;
+        auto& d=masked_bias[layer];
+        if(!d) {
+            std::vector<float> b(size_t(m.experts));check(cudaMemcpy(b.data(),bias,b.size()*4,cudaMemcpyDeviceToHost));
+            for(size_t e=0;e<b.size();++e)if(s->second[e]<0)b[e]=-1e30f;
+            d=std::make_unique<Device>(b.size()*4);d->put(b.data(),b.size()*4);
+        }
+        return d->f();
+    }
     void fp8_read_expert(int layer,int expert,uint8_t* dst) {
-        if(gguf_experts){gguf_read_expert(layer,expert,dst);return;}
+        if(gguf_experts) {
+            if(const auto s=expert_slot.find(layer);s!=expert_slot.end()) {
+                const int i=s->second[size_t(expert)];
+                if(i<0)throw std::logic_error("expert map: a pruned expert was routed");
+                expert=i;
+            }
+            gguf_read_expert(layer,expert,dst);return;
+        }
         if(!llvq_dir().empty()){llvq_read_expert(layer,expert,dst);return;}
         const char* projections[]={"gate_proj","up_proj","down_proj"};
         for(unsigned i=0;i<3;++i) {
@@ -2291,7 +2332,16 @@ class Decoder {
         const int nt=batch_tokens;
         auto& logits=buf("router_logits",m.experts*nt);auto& ids=buf("router_ids",m.top_k*nt);auto& rw=buf("router_weights",m.top_k*nt);
         mat(p+"ffn_gate_inp.weight",x,logits.f());auto& bias=weight(p+"exp_probs_b.bias");
-        for(int t=0;t<nt;++t)k::glm_router(logits.f(t*m.experts),bias.f(),(int*)ids.p+t*m.top_k,rw.f(t*m.top_k),m.experts,m.top_k,m.expert_scale,stream);
+        const float* bias_p=bias.f();
+        if(artifact.is_fp8()&&!gguf_experts_path().empty()) {
+            if(!gguf_experts) {
+                if(!llvq_dir().empty())throw std::runtime_error("STRATA_GLM_EXPERT_GGUF and STRATA_GLM_EXPERT_LLVQ are exclusive");
+                gguf_experts=std::make_unique<strata::GgufFile>(gguf_experts_path());load_expert_map();
+                std::cerr<<"GLM: routed experts from "<<gguf_experts_path()<<" (FP8 for everything else)\n";
+            }
+            bias_p=router_bias(layer_id,bias_p);
+        }
+        for(int t=0;t<nt;++t)k::glm_router(logits.f(t*m.experts),bias_p,(int*)ids.p+t*m.top_k,rw.f(t*m.top_k),m.experts,m.top_k,m.expert_scale,stream);
         std::vector<int> selected(nt*m.top_k);std::vector<float> routing(nt*m.top_k),activation(nt*m.hidden);
         check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*4,cudaMemcpyDeviceToHost,stream));
         check(cudaMemcpyAsync(routing.data(),rw.p,routing.size()*4,cudaMemcpyDeviceToHost,stream));
@@ -2314,6 +2364,7 @@ class Decoder {
         if(fp8&&!gguf_experts_path().empty()&&!gguf_experts) {
             if(!llvq_dir().empty())throw std::runtime_error("STRATA_GLM_EXPERT_GGUF and STRATA_GLM_EXPERT_LLVQ are exclusive");
             gguf_experts=std::make_unique<strata::GgufFile>(gguf_experts_path());
+            load_expert_map();
             std::cerr<<"GLM: routed experts from "<<gguf_experts_path()<<" (FP8 for everything else)\n";
         }
         if(fp8&&!llvq_dir().empty()&&!llvq) {
@@ -9405,7 +9456,8 @@ class Decoder {
         prepare_mtp_history(depth);
         return true;
     }
-    void prepare_mtp(const std::vector<int> &prompt) {
+    // `from` > 0: a resumed prefix (serve --prefix-cache) - the draft block already holds positions below it.
+    void prepare_mtp(const std::vector<int> &prompt, int from = 0) {
         if (!gpu || gpu_decode_experts || m.draft_layers.size() != 1 ||
             target_hidden.size() < prompt.size() * m.hidden)
             throw std::invalid_argument("GLM: MTP requires captured GPU prefill and CPU target experts");
@@ -9446,6 +9498,10 @@ class Decoder {
             if (mtp_position != (int)prompt.size() - 1)
                 throw std::runtime_error("GLM: batched MTP priming does not cover the prompt");
             std::cerr << "MTP_PRIME batched=1 positions=" << mtp_position << '\n';
+        } else if (from > 0) {
+            if (mtp_position != from || from >= (int)prompt.size())
+                throw std::logic_error("GLM: resumed MTP state does not match the prefix");
+            sync_mtp(std::vector<int>(prompt.begin() + from, prompt.end()), from);
         } else {
             mtp_position = 0;
             sync_mtp(prompt, 0);
@@ -9525,6 +9581,178 @@ class Decoder {
                                   cudaMemcpyDeviceToDevice, stream));
         }
         mtp_position = cp.mtp_position;
+    }
+    // A prefix checkpoint in pinned host memory (serve --prefix-cache): the buffers of checkpoint() - the KDA states,
+    // the MLA index rings, the draft block's - plus the positions and route counts.  The MLA latents and pooled keys
+    // are append-only, so rows below the position stay valid in place as long as nothing overwrote them.
+    struct HostCheckpoint {
+        int position = 0, mtp_position = 0;
+        bool primed = false;                 // the draft block was primed by the prefill (mtp_position = position - 1)
+        size_t bytes = 0;
+        std::unique_ptr<Pinned> host;
+        std::vector<std::vector<uint64_t>> layer_routes;
+        std::vector<float> prev_hidden;      // the last target hidden row the primed draft block continues from
+        // The draft block can continue from here: synced to the position (serve), or primed to one before it.
+        bool draft_at(int pos) const { return mtp_position == pos || (primed && mtp_position == pos - 1); }
+    };
+    std::vector<Device *> checkpoint_buffers() {
+        std::vector<Device *> out;
+        for (auto &state : states)
+            for (Device *buffer : {state.recurrent.get(), state.conv_q.get(), state.conv_k.get(),
+                                   state.conv_v.get(), state.keys.get(), state.gates.get()})
+                if (buffer) out.push_back(buffer);
+        return out;
+    }
+    void save_host(HostCheckpoint &cp) {
+        if (secondary) throw std::logic_error("GLM: prefix checkpoints do not cover a second GPU's state");
+        const auto buffers = checkpoint_buffers();
+        size_t bytes = 0;
+        for (auto *b : buffers) bytes += b->bytes;
+        if (!cp.host || cp.bytes != bytes) { cp.host.reset(); cp.host = std::make_unique<Pinned>(bytes); cp.bytes = bytes; }
+        check(cudaStreamSynchronize(stream));
+        size_t offset = 0;
+        for (auto *b : buffers) {
+            check(cudaMemcpyAsync((char *)cp.host->p + offset, b->p, b->bytes, cudaMemcpyDeviceToHost, stream));
+            offset += b->bytes;
+        }
+        check(cudaStreamSynchronize(stream));
+        cp.position = position;
+        cp.mtp_position = mtp_position;
+        cp.primed = mtp_primed;
+        cp.layer_routes = layer_route_counts;
+        cp.prev_hidden.clear();
+        if (mtp_prev_hidden) {
+            cp.prev_hidden.resize(m.hidden);
+            check(cudaMemcpy(cp.prev_hidden.data(), mtp_prev_hidden->p, size_t(m.hidden) * 4, cudaMemcpyDeviceToHost));
+        }
+    }
+    void restore_host(const HostCheckpoint &cp) {
+        const auto buffers = checkpoint_buffers();
+        size_t offset = 0;
+        for (auto *b : buffers) offset += b->bytes;
+        if (!cp.host || offset != cp.bytes) throw std::logic_error("GLM: prefix checkpoint layout changed");
+        if (capture_hidden && target_hidden.size() < size_t(cp.position) * m.hidden)
+            throw std::logic_error("GLM: prefix checkpoint lacks the target hidden rows MTP needs");
+        offset = 0;
+        for (auto *b : buffers) {
+            check(cudaMemcpyAsync(b->p, (char *)cp.host->p + offset, b->bytes, cudaMemcpyHostToDevice, stream));
+            offset += b->bytes;
+        }
+        check(cudaStreamSynchronize(stream));
+        position = cp.position;
+        mtp_position = cp.mtp_position;
+        if (!cp.layer_routes.empty()) layer_route_counts = cp.layer_routes;
+        if (!cp.prev_hidden.empty()) {
+            if (!mtp_prev_hidden) mtp_prev_hidden = std::make_unique<Device>((size_t)m.hidden * 4);
+            check(cudaMemcpy(mtp_prev_hidden->p, cp.prev_hidden.data(), size_t(m.hidden) * 4, cudaMemcpyHostToDevice));
+        }
+        if (target_hidden.size() > size_t(cp.position) * m.hidden) target_hidden.resize(size_t(cp.position) * m.hidden);
+        tp_stale = true;
+        history_valid = 0;
+    }
+    // ---- state images (serve --state-cache, SAVE / RESTORE; src/program/glm_state_store.hpp)
+    // MLA layers with a latent cache, in the decoder's order (main layers, then the draft block).
+    std::vector<LayerState *> mla_states() {
+        std::vector<LayerState *> out;
+        for (auto &state : states) if (state.cache) out.push_back(&state);
+        return out;
+    }
+    size_t latent_row_bytes() const { return size_t(m.kv_rank) * 4; }
+    size_t pooled_row_bytes() const { return size_t(m.index_dim) * 4; }
+    // The fixed buffers (KDA states, index rings, the draft block's), the positions and the last target hidden row,
+    // at the current position.  With export_rows below it makes an image; taken alone during a prefill at a position
+    // that is a multiple of the index pool, its rows can be copied after the prefill (they are append-only).
+    void export_fixed(strata::glm::GlmStateImage &image) {
+        if (secondary) throw std::logic_error("GLM: state images do not cover a second GPU's state");
+        check(cudaStreamSynchronize(stream));
+        const auto buffers = checkpoint_buffers();
+        size_t bytes = 0;
+        for (auto *b : buffers) bytes += b->bytes;
+        image.fixed.resize(bytes);
+        size_t offset = 0;
+        for (auto *b : buffers) {
+            check(cudaMemcpy(image.fixed.data() + offset, b->p, b->bytes, cudaMemcpyDeviceToHost));
+            offset += b->bytes;
+        }
+        image.position = position;
+        image.mtp_position = 0;
+        image.last_hidden.clear();
+        if (capture_hidden && position > 0 && target_hidden.size() >= size_t(position) * m.hidden)
+            image.last_hidden.assign(target_hidden.begin() + size_t(position - 1) * m.hidden,
+                                     target_hidden.begin() + size_t(position) * m.hidden);
+        image.routes.clear();
+        for (const auto &counts : layer_route_counts) image.routes.insert(image.routes.end(), counts.begin(), counts.end());
+        image.prefill_routes.clear();
+        for (const auto &counts : prefill_routes) image.prefill_routes.insert(image.prefill_routes.end(), counts.begin(), counts.end());
+    }
+    // The latent and pooled rows below image.position of every MLA layer.  The draft block counts as synced to the
+    // position when it has been fed at least that far (its rows are append-only too).
+    void export_rows(strata::glm::GlmStateImage &image) {
+        check(cudaStreamSynchronize(stream));
+        const size_t upto = size_t(image.position), pools = upto / size_t(m.index_pool);
+        const auto layers = mla_states();
+        image.rows.assign(layers.size(), {});
+        for (size_t l = 0; l < layers.size(); ++l) {
+            auto &row = image.rows[l];
+            const size_t latent = upto * latent_row_bytes(), pooled = pools * pooled_row_bytes();
+            row.resize(latent + pooled);
+            if (latent) check(cudaMemcpy(row.data(), layers[l]->cache->p, latent, cudaMemcpyDeviceToHost));
+            if (pooled && layers[l]->pooled) check(cudaMemcpy(row.data() + latent, layers[l]->pooled->p, pooled, cudaMemcpyDeviceToHost));
+        }
+        const bool draft = states.size() > m.layers.size() && states[m.layers.size()].cache;
+        image.mtp_position = draft && mtp_position >= image.position ? image.position : 0;
+    }
+    // Put an image into the current slot (zeroed or not): every buffer it covers is overwritten.
+    void import_state(const strata::glm::GlmStateImage &image) {
+        const auto buffers = checkpoint_buffers();
+        size_t bytes = 0;
+        for (auto *b : buffers) bytes += b->bytes;
+        const auto layers = mla_states();
+        if (image.fixed.size() != bytes || image.rows.size() != layers.size() || size_t(image.position) >= capacity)
+            throw std::invalid_argument("GLM: state image does not fit this engine");
+        const size_t upto = size_t(image.position), pools = upto / size_t(m.index_pool);
+        for (size_t l = 0; l < layers.size(); ++l)
+            if (image.rows[l].size() != upto * latent_row_bytes() + (layers[l]->pooled ? pools * pooled_row_bytes() : 0))
+                throw std::invalid_argument("GLM: state image rows do not fit this engine");
+        size_t offset = 0;
+        for (auto *b : buffers) {
+            check(cudaMemcpy(b->p, image.fixed.data() + offset, b->bytes, cudaMemcpyHostToDevice));
+            offset += b->bytes;
+        }
+        for (size_t l = 0; l < layers.size(); ++l) {
+            const size_t latent = upto * latent_row_bytes();
+            if (latent) check(cudaMemcpy(layers[l]->cache->p, image.rows[l].data(), latent, cudaMemcpyHostToDevice));
+            if (layers[l]->pooled && image.rows[l].size() > latent)
+                check(cudaMemcpy(layers[l]->pooled->p, image.rows[l].data() + latent, image.rows[l].size() - latent,
+                                 cudaMemcpyHostToDevice));
+        }
+        position = image.position;
+        mtp_position = image.mtp_position;
+        // MTP continues from the last target hidden row; the rows below it are never read again (zeros)
+        target_hidden.assign(size_t(position) * m.hidden, 0.f);
+        if (!image.last_hidden.empty() && image.last_hidden.size() == size_t(m.hidden)) {
+            std::copy(image.last_hidden.begin(), image.last_hidden.end(), target_hidden.end() - m.hidden);
+            if (!mtp_prev_hidden) mtp_prev_hidden = std::make_unique<Device>((size_t)m.hidden * 4);
+            check(cudaMemcpy(mtp_prev_hidden->p, image.last_hidden.data(), size_t(m.hidden) * 4, cudaMemcpyHostToDevice));
+        }
+        if (!image.routes.empty()) {
+            size_t at = 0;
+            for (auto &counts : layer_route_counts)
+                for (auto &c : counts) if (at < image.routes.size()) c = image.routes[at++];
+        }
+        if (!image.prefill_routes.empty()) {
+            size_t at = 0;
+            for (auto &counts : prefill_routes)
+                for (auto &c : counts) if (at < image.prefill_routes.size()) c = image.prefill_routes[at++];
+        }
+        tp_stale = true;
+        history_valid = 0;
+    }
+    int index_pool_size() const { return m.index_pool; }
+    // The current state can take more prompt tokens directly: without MTP always; with MTP when the draft block is
+    // synced to the position and the last target hidden row is there.
+    bool live_resumable(bool mtp) const {
+        return !mtp || (mtp_position == position && target_hidden.size() >= size_t(position) * m.hidden);
     }
 
     void check_sequences(const std::vector<int> &prompt) {
@@ -10104,7 +10332,11 @@ class Decoder {
         }
     }
     void freeze_cache() { cache_frozen = true; }
-    void reset() {
+    // reset() = begin_request() + zero_slot(): a prefix resume (serve --prefix-cache) restores a checkpoint between
+    // them instead of zeroing.  begin_request() drops the per-request caches and rebuilds the prefill workspace;
+    // keep_routes keeps the prefill route counts of the prefix being resumed (decode-cache admission).
+    void reset() { begin_request(false); zero_slot(); }
+    void begin_request(bool keep_routes) {
         ++routing_request; routing_round = -1; routing_phase = "target";
         report_exact_cache(position);
         exact_cache.reset();
@@ -10150,7 +10382,8 @@ class Decoder {
             for (auto &addresses : promoted_addresses) addresses.clear();
         }
         if (secondary) secondary->restore_prefill();
-        for (auto &counts : prefill_routes) std::fill(counts.begin(), counts.end(), 0);
+        if (!keep_routes)
+            for (auto &counts : prefill_routes) std::fill(counts.begin(), counts.end(), 0);
         for (auto &ids : prefill_recent_ids) ids.clear();
         // The verify history allocation stays: the tier is sized around it, and a later request might not find
         // the device memory again. Its contents are invalid.
@@ -10171,14 +10404,24 @@ class Decoder {
                     it = weights.erase(it);
                 } else ++it;
             }
+            // The draft block's state is kept (zero_slot() clears it): a resumed prefix continues it.
+            std::optional<LayerState> draft;
+            if (states.size() > m.layers.size()) draft = std::move(states[m.layers.size()]);
             states.resize(m.layers.size());
             gpu = std::make_unique<GpuPrefill>(prefill_width_saved, stream, false, capacity, false,
                                               tensor_prefill_experts, tensor_batched_experts);
             prefill_width_saved = 0;
-            if (capture_hidden) ensure_draft_state();
+            if (draft) states.push_back(std::move(*draft));
+            else if (capture_hidden) ensure_draft_state();
         }
         configure_prefill_schedule();
         reset_phase();
+        batch_tokens = 1;
+        cache_frozen = false;
+        cache_hits = cache_entries = pruned_routes = 0;
+        merged_expert_layers = 0;
+    }
+    void zero_slot() {
         for (auto &s : states)
             for (auto *b : {s.recurrent.get(), s.conv_q.get(), s.conv_k.get(), s.conv_v.get(), s.cache.get(),
                             s.keys.get(), s.gates.get(), s.pooled.get()})
@@ -10199,10 +10442,6 @@ class Decoder {
             check(cudaStreamSynchronize(secondary->stream));
         }
         target_hidden.clear();
-        batch_tokens = 1;
-        cache_frozen = false;
-        cache_hits = cache_entries = pruned_routes = 0;
-        merged_expert_layers = 0;
     }
     const std::vector<std::vector<uint64_t>> &prefill_route_counts() const { return prefill_routes; }
     void report_cache() const {
@@ -10389,6 +10628,19 @@ static int greedy(const std::vector<float> &logits, size_t offset = 0, size_t co
     return std::max_element(logits.begin() + offset, logits.begin() + offset + count) - logits.begin() -
            offset;
 }
+// The serve request's sampling (GEN temperature= top_p= top_k= min_p= seed=); inactive: greedy, as before.  A token is
+// drawn with its absolute position as the Philox counter, so a verify row and the anchor taken after a rejection
+// draw the same token for the same position: accepting a draft iff it equals the target's draw is exact sampling.
+struct RequestSampling {
+    strata::spec::HostSampler sampler;
+    bool active = false;
+};
+static RequestSampling request_sampling;
+static int pick(const std::vector<float> &logits, int64_t position, size_t offset = 0, size_t count = 0) {
+    if (!request_sampling.active) return greedy(logits, offset, count);
+    if (!count) count = logits.size() - offset;
+    return request_sampling.sampler.pick(logits.data() + offset, int(count), uint64_t(position));
+}
 struct LookupStats {
     int generated = 0, rounds = 0, proposed = 0, accepted = 0, replayed = 0;
     double milliseconds = 0;
@@ -10409,7 +10661,7 @@ static LookupStats generate_external_sequential(Decoder& decoder, std::vector<fl
         stats.stopped=std::find(stops.begin(),stops.end(),token)!=stops.end();};
     auto step=[&](int token){const auto begin=std::chrono::steady_clock::now();logits=decoder.step(token);verify_ms+=elapsed(begin);};
     while(stats.generated<max_new&&!stats.stopped){
-        const int anchor=greedy(logits);output(anchor);
+        const int anchor=pick(logits,decoder.token_position());output(anchor);
         if(stats.stopped||stats.generated==max_new)break;
         const auto begin=std::chrono::steady_clock::now();++calls;
         const auto drafts=external.propose(history,std::min(depth,max_new-stats.generated),decoder.vocabulary());
@@ -10418,7 +10670,7 @@ static LookupStats generate_external_sequential(Decoder& decoder, std::vector<fl
         stats.proposed+=drafts.size();
         for(size_t i=0;i<drafts.size();++i)++proposed[i];
         for(size_t i=0;i<drafts.size();++i){
-            ++opportunities[i];if(drafts[i]!=greedy(logits))break;
+            ++opportunities[i];if(drafts[i]!=pick(logits,decoder.token_position()))break;
             ++accepted[i];++stats.accepted;output(drafts[i]);
             if(stats.stopped||stats.generated==max_new)break;
             step(drafts[i]);
@@ -10475,7 +10727,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
         stats.stopped = std::find(stops.begin(), stops.end(), token) != stops.end();
     };
     while (stats.generated < max_new && !stats.stopped) {
-        const int anchor = greedy(logits);
+        const int anchor = pick(logits, decoder.token_position());
         output(anchor);
         if (stats.stopped || stats.generated == max_new)
             break;
@@ -10499,6 +10751,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
         window.insert(window.end(), drafts, drafts + k);
         const auto verify_start = std::chrono::steady_clock::now();
         decoder.save(checkpoint);
+        const int vpos = decoder.token_position();      // the anchor's position: row a draws position vpos + a + 1
         auto all = decoder.verify(window);
         verify_ms += elapsed(verify_start);
         ++stats.rounds;
@@ -10507,7 +10760,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
         int accepted = 0;
         while (accepted < k) {
             ++opportunities[accepted];
-            if (drafts[accepted] != greedy(all, (size_t)accepted * decoder.vocabulary(), decoder.vocabulary())) break;
+            if (drafts[accepted] != pick(all, vpos + accepted + 1, (size_t)accepted * decoder.vocabulary(), decoder.vocabulary())) break;
             ++accepted_at[accepted];
             output(drafts[accepted]);
             ++accepted;
@@ -10677,7 +10930,7 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
         stats.stopped = std::find(stops.begin(), stops.end(), token) != stops.end();
     };
     while (stats.generated < max_new && !stats.stopped) {
-        const int anchor = greedy(logits);
+        const int anchor = pick(logits, decoder.token_position());
         output(anchor);
         if (stats.stopped || stats.generated == max_new) break;
         int32_t lookup_tokens[7];
@@ -10750,9 +11003,10 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
         while (accepted < k) {
             if (accepted < mtp_proposals) ++mtp_position_opportunities[accepted];
             const size_t offset = (size_t)accepted * decoder.vocabulary();
-            const int target = greedy(all, offset, decoder.vocabulary());
+            const int target = pick(all, pos + accepted + 1, offset, decoder.vocabulary());
             if (window[accepted + 1] != target) {
-                if (acceptance.margin == 0.f || accepted >= mtp_proposals) break;
+                // soft acceptance is a greedy-decoding lever: a sampled request accepts exact draws only
+                if (acceptance.margin == 0.f || accepted >= mtp_proposals || request_sampling.active) break;
                 const auto decision = strata::spec::bounded_accept(
                     std::span<const float>(all.data() + offset, decoder.vocabulary()),
                     window[accepted + 1], target, acceptance, soft_in_window, stops);
@@ -10907,6 +11161,73 @@ static std::pair<size_t, bool> cache_setting(const std::string &value) {
     return {mib * MiB, false};
 }
 #include "glm_layer_decode.inc"
+// serve --state-*: conversation states kept beyond their slot (src/program/glm_state_store.hpp).  Boundaries are
+// role tokens (<|user|>, <|observation|>, <|assistant|>, <think>): a stored state is looked up at the positions
+// before and after each, so the previous prompt's end (it ends with <|assistant|><think>) and the system prompt's end
+// are found.  The root - the system prompt and tool definitions - is stored at the last multiple of the index pool
+// before the first <|user|>, where the index rings hold nothing, so it can be assembled after the prefill.
+struct ServeStateCache {
+    std::unique_ptr<strata::glm::GlmStateStore> store;
+    std::vector<int> boundaries;
+    int root_min = 2048, pool = 64;
+    uint64_t model_fp = 0, config_fp = 0;
+    bool on() const { return bool(store); }
+    std::vector<int> candidates(const std::vector<int> &tokens) const {
+        std::vector<int> out;
+        for (size_t k = 0; k < tokens.size(); ++k)
+            if (std::find(boundaries.begin(), boundaries.end(), tokens[k]) != boundaries.end()) {
+                out.push_back(int(k)); out.push_back(int(k) + 1);
+                out.push_back(int(k) / pool * pool);
+            }
+        return out;
+    }
+    // the root position for this prompt, or 0 (no user turn, or a prefix shorter than root_min)
+    int root(const std::vector<int> &tokens) const {
+        const int user = boundaries.empty() ? -1 : boundaries.front();
+        for (size_t k = 0; k < tokens.size(); ++k)
+            if (tokens[k] == user) {
+                const int at = int(k) / pool * pool;
+                return at >= root_min ? at : 0;
+            }
+        return 0;
+    }
+};
+extern "C" char **environ;
+static void configure_state_cache(ServeStateCache &cache, int argc, char **argv, size_t ram_mib, const std::string &dir,
+                                  double disk_gib, const std::vector<int> &boundaries, int root_min, int pool) {
+    std::vector<strata::core::SessionModelFile> files;
+    int shard = 0;
+    for (const auto &path : strata::gguf_split_paths(argv[2])) files.push_back({"shard " + std::to_string(++shard), path});
+    if (argc > 26 && *argv[26]) files.push_back({"expert pack", argv[26]});
+    std::string error;
+    if (!strata::core::session_model_fingerprint(files, cache.model_fp, error))
+        throw std::runtime_error("GLM: state cache: " + error);
+    // Everything that can change what a state's numbers are: the serve arguments and every STRATA_ setting.
+    strata::core::SessionIdentityBuilder id(0x474c4d5354415445ull);
+    id.str("format", "glm-state-1");
+    for (int i = 3; i < argc && i < 29; ++i) id.str("arg" + std::to_string(i), argv[i]);
+    std::vector<std::string> env;
+    for (char **e = environ; *e; ++e)
+        if (std::string_view(*e).starts_with("STRATA_") && !std::string_view(*e).starts_with("STRATA_GLM_SERVE_LOGITS="))
+            env.emplace_back(*e);
+    std::sort(env.begin(), env.end());
+    for (const auto &e : env) id.str("env", e);
+    cache.config_fp = id.digest();
+    strata::glm::GlmStateStore::Options o;
+    o.ram_bytes = ram_mib * MiB;
+    o.disk_dir = dir;
+    o.disk_bytes = uint64_t(disk_gib * double(1ull << 30));
+    o.identity_model = cache.model_fp;
+    o.identity_config = cache.config_fp;
+    cache.store = std::make_unique<strata::glm::GlmStateStore>(o);
+    cache.boundaries = boundaries;
+    cache.root_min = root_min;
+    cache.pool = pool;
+    const auto st = cache.store->stats();
+    std::cerr << "STATE_CACHE ram_MiB=" << ram_mib << " dir=" << (dir.empty() ? "-" : dir) << " disk_GiB=" << disk_gib
+              << " stored=" << st.disk_entries << " identity=" << std::hex << cache.model_fp << '/' << cache.config_fp
+              << std::dec << '\n';
+}
 #include "glm_batch_serve.inc"
 
 static int serve(int argc, char **argv) {
@@ -10915,12 +11236,39 @@ static int serve(int argc, char **argv) {
             "usage: strata-glm-decode --serve <shard> <context> <dense-MiB> <threads> "
             "[expert-MiB=0] [prefill-batch=8] [eos-id=-1] [gpu-budget-MiB=12288] [lookup-depth=0] "
             "[gpu-decode-experts=0]");
-    int parallel = 0;
+    int parallel = 0, prefix_entries = 0;
+    size_t state_ram_mib = 0;
+    std::string state_dir;
+    double state_disk_gib = 0;
+    std::vector<int> state_boundaries;
+    int state_root_min = 2048;
     // Named flags follow the legacy positional serve arguments; existing invocations remain valid.
-    if (argc >= 31 && std::string(argv[29]) == "--batch") {
-        parallel = std::stoi(argv[30]);
-        if (argc != 31 || parallel < 1 || parallel > cpu::MAXT)
-            throw std::invalid_argument("GLM: --batch must be 1..8");
+    //   --batch N            N sequence slots (glm_batch_serve.inc)
+    //   --prefix-cache=K     resume a request from a saved prefix: K checkpoints in pinned host memory (~146 MiB each)
+    const int argc_full = std::min(argc, 29);
+    if (argc > 29) {
+        for (int i = 29; i < argc; ++i) {
+            const std::string flag = argv[i];
+            if (flag == "--batch" && i + 1 < argc) {
+                parallel = std::stoi(argv[++i]);
+                if (parallel < 1 || parallel > cpu::MAXT) throw std::invalid_argument("GLM: --batch must be 1..8");
+            } else if (flag.starts_with("--state-ram-mib=")) {
+                state_ram_mib = std::stoull(flag.substr(16));
+            } else if (flag.starts_with("--state-dir=")) {
+                state_dir = flag.substr(12);
+            } else if (flag.starts_with("--state-disk-gib=")) {
+                state_disk_gib = std::stod(flag.substr(17));
+            } else if (flag.starts_with("--state-boundary=")) {
+                state_boundaries = token_ids(flag.substr(17));
+            } else if (flag.starts_with("--state-root-min=")) {
+                state_root_min = std::stoi(flag.substr(17));
+            } else if (flag.starts_with("--prefix-cache=")) {
+                prefix_entries = std::stoi(flag.substr(15));
+                if (prefix_entries < 1 || prefix_entries > 16)
+                    throw std::invalid_argument("GLM: --prefix-cache must be 1..16 checkpoints");
+            } else
+                throw std::invalid_argument("GLM: unknown serve flag " + flag);
+        }
         argc = 29;
     }
     const int ctx = std::stoi(argv[3]), dense = std::stoi(argv[4]), threads = std::stoi(argv[5]);
@@ -11012,9 +11360,26 @@ static int serve(int argc, char **argv) {
     else if (const char *active = std::getenv("STRATA_GLM_WARM_ACTIVE_ONLY"); active && std::string(active) == "1")
         decoder.warm_weights(false);
     if (use_mtp) decoder.enable_mtp_capture();
-    if (parallel) return serve_sequences(decoder, parallel, ctx, width, stops, use_mtp, draft_depth);
+    if (prefix_entries) {
+        const char *remote = std::getenv("STRATA_GLM_REMOTE_TP"), *host_kv = std::getenv("STRATA_GLM_KV_HOST");
+        if (devices.size() > 1 || std::filesystem::is_directory(argv[2]) || (remote && *remote) ||
+            (host_kv && *host_kv && std::string(host_kv) != "0"))
+            throw std::invalid_argument("GLM: --prefix-cache requires one GPU, GGUF weights, no remote TP and device KV");
+    }
+    ServeStateCache state_cache;
+    if (state_ram_mib || !state_dir.empty()) {
+        if (!prefix_entries || state_boundaries.empty() || (!state_dir.empty() && !(state_disk_gib > 0)))
+            throw std::invalid_argument("GLM: --state-* needs --prefix-cache, --state-boundary and a --state-disk-gib for --state-dir");
+        configure_state_cache(state_cache, argc_full, argv, state_ram_mib, state_dir, state_disk_gib, state_boundaries,
+                              state_root_min, decoder.index_pool_size());
+    }
+    if (parallel) return serve_sequences(decoder, parallel, ctx, width, stops, use_mtp, draft_depth, prefix_entries, &state_cache);
     std::cout << "INFO engine=glm-experimental sampling=greedy\nREADY " << ctx
-              << " stop prefill-includes-reset\n" << std::flush;
+              << " stop prefill-includes-reset" << (prefix_entries ? " resume" : "") << '\n' << std::flush;
+    // --prefix-cache: the slot's tokens and its checkpoints (src/program/glm_prefix_cache.hpp)
+    strata::glm::PrefixCache<Decoder::HostCheckpoint> prefixes{size_t(prefix_entries)};
+    // the tokens the slot's state was computed from, through the generated ones that were fed (prefix_entries)
+    std::vector<int> live;
     struct Request {
         std::string line;
         std::shared_ptr<std::atomic<bool>> cancel;
@@ -11095,38 +11460,209 @@ static int serve(int argc, char **argv) {
                 { std::lock_guard lock(mutex); active.reset(); }
                 continue;
             }
+            // SAVE <path> / RESTORE <path>: the slot's state to / from a file (the Qwen engine's session lines)
+            if (request.line.starts_with("SAVE ") || request.line.starts_with("RESTORE ")) {
+                const bool save = request.line.starts_with("SAVE ");
+                const std::string path = request.line.substr(save ? 5 : 8);
+                const auto t0 = Clock::now();
+                if (!prefix_entries) { std::cout << "SERR invalid 0 GLM sessions need --prefix-cache\n" << std::flush; }
+                else if (save) {
+                    if (live.empty() || (int)live.size() != decoder.token_position())
+                        std::cout << "SERR invalid 0 nothing to save in the slot\n" << std::flush;
+                    else {
+                        strata::glm::GlmStateImage image;
+                        decoder.export_fixed(image);
+                        decoder.export_rows(image);
+                        image.tokens = live;
+                        std::string error;
+                        if (!strata::glm::GlmStateStore::write_file(path, image, state_cache.model_fp, state_cache.config_fp, error))
+                            std::cout << "SERR io 0 " << error << '\n' << std::flush;
+                        else
+                            std::cout << "SAVED " << image.position << ' ' << std::filesystem::file_size(path) << ' '
+                                      << millis(t0, Clock::now()) << '\n' << std::flush;
+                    }
+                } else {
+                    strata::glm::GlmStateImage image;
+                    std::string error;
+                    if (!strata::glm::GlmStateStore::read_file(path, state_cache.model_fp, state_cache.config_fp, image, error))
+                        std::cout << "SERR invalid 0 " << error << '\n' << std::flush;
+                    else {
+                        decoder.reset();
+                        prefixes.clear();
+                        decoder.import_state(image);
+                        live = image.tokens;
+                        std::cout << "RESTORED " << image.position << ' ' << std::filesystem::file_size(path) << ' '
+                                  << millis(t0, Clock::now()) << '\n' << std::flush;
+                    }
+                }
+                { std::lock_guard lock(mutex); active.reset(); }
+                continue;
+            }
+            // GEN <max_new> [key=value ...] <comma-separated IDs>; keys (with --prefix-cache): pin=N saves a
+            // checkpoint at N (a shared prefix, kept over other entries), ckpt=0 saves none at the prompt's end.
             std::istringstream command(request.line);
-            std::string op, ids, extra;
+            std::string op;
             int count;
-            if (!(command >> op >> count >> ids) || op != "GEN" || command >> extra)
-                throw std::invalid_argument(
-                    "expected GEN <max_new> <comma-separated IDs>; only greedy text is supported");
-            const auto tokens = token_ids(ids);
+            std::vector<std::string> words;
+            if (!(command >> op >> count) || op != "GEN")
+                throw std::invalid_argument("expected GEN <max_new> <comma-separated IDs>; only greedy text is supported");
+            for (std::string word; command >> word;) words.push_back(word);
+            if (words.empty())
+                throw std::invalid_argument("expected GEN <max_new> [key=value ...] <comma-separated IDs>");
+            int pin = 0, split = 0;     // split=N (debug): a fresh prefill ends a chunk at N, as a resume from N does
+            bool save_prompt = true;
+            request_sampling = {};
+            uint64_t seed = 0;
+            for (size_t i = 0; i + 1 < words.size(); ++i) {
+                const auto eq = words[i].find('=');
+                const std::string key = words[i].substr(0, eq), value = eq == std::string::npos ? "" : words[i].substr(eq + 1);
+                if (key == "pin" && !value.empty()) pin = std::stoi(value);
+                else if (key == "ckpt" && (value == "0" || value == "1")) save_prompt = value == "1";
+                else if (key == "split" && !value.empty()) split = std::stoi(value);
+                else if (key == "temperature" && !value.empty()) request_sampling.sampler.temperature = std::stof(value);
+                else if (key == "top_p" && !value.empty()) request_sampling.sampler.top_p = std::stof(value);
+                else if (key == "top_k" && !value.empty()) request_sampling.sampler.top_k = std::stoi(value);
+                else if (key == "min_p" && !value.empty()) request_sampling.sampler.min_p = std::stof(value);
+                else if (key == "seed" && !value.empty()) seed = std::stoull(value);
+                else throw std::invalid_argument("GLM: unknown GEN key " + words[i]);
+            }
+            if ((pin || !save_prompt) && !prefix_entries)
+                throw std::invalid_argument("GLM: pin= and ckpt= need --prefix-cache");
+            request_sampling.active = !request_sampling.sampler.greedy();
+            if (request_sampling.active) {
+                const auto &sp = request_sampling.sampler;
+                if (!(sp.top_p > 0.f && sp.top_p <= 1.f) || !(sp.min_p >= 0.f && sp.min_p <= 1.f) || sp.top_k < 0)
+                    throw std::invalid_argument("GLM: invalid sampling settings");
+                request_sampling.sampler.seed = seed ? seed : std::random_device{}() | (uint64_t(std::random_device{}()) << 32);
+            }
+            const auto tokens = token_ids(words.back());
             if (tokens.empty() || count < 1 || tokens.size() + (size_t)count > (size_t)ctx)
                 throw std::invalid_argument("request exceeds context or has invalid token counts");
             request_prompt = tokens.size();
             auto start = Clock::now();
-            decoder.reset();
-            std::cerr << "RESPONSE_PREPARE kind=request_reset ms=" << millis(start, Clock::now()) << '\n';
+            // Resume from the latest checkpoint inside the prompt's common prefix with the slot's tokens; with MTP
+            // only checkpoints whose draft block is synced to them (prompt ends) qualify.
+            auto *entry = prefix_entries ? prefixes.choose(tokens) : nullptr;
+            if (prefix_entries)
+                std::cerr << "PREFIX_CHOOSE held=" << prefixes.held.size() << " common="
+                          << prefixes.common_prefix(prefixes.held, tokens) << " entry="
+                          << (entry ? entry->pos : -1) << " entry_mtp=" << (entry ? entry->store.mtp_position : -1) << '\n';
+            if (entry && use_mtp && !entry->store.draft_at(entry->pos)) entry = nullptr;
+            // the live state: the prompt extends exactly what the slot was fed (a wrap-up pass, a reply sent back as
+            // generated) - nothing to restore
+            const bool live_ok = prefix_entries && !live.empty() && live.size() < tokens.size() &&
+                                 (int)live.size() == decoder.token_position() && decoder.live_resumable(use_mtp) &&
+                                 std::equal(live.begin(), live.end(), tokens.begin()) &&
+                                 (int)live.size() > (entry ? entry->pos : 0);
+            // a stored state (another conversation's system prompt, this one before its slot was reused, a restart)
+            std::shared_ptr<const strata::glm::GlmStateImage> image;
+            std::string tier;
+            const int best_slot = live_ok ? (int)live.size() : entry ? entry->pos : 0;
+            if (state_cache.on()) {
+                image = state_cache.store->find(tokens, state_cache.candidates(tokens), &tier);
+                if (image && (image->position <= best_slot || (use_mtp && !image->draft_synced()))) image.reset();
+            }
+            int resumed = 0;
+            const char *kind = "request_reset";
+            if (image) {
+                decoder.reset();
+                decoder.import_state(*image);
+                resumed = image->position;
+                prefixes.clear();
+                prefixes.held.assign(tokens.begin(), tokens.begin() + resumed);
+                kind = tier == "disk" ? "state_disk" : "state_ram";
+            } else if (live_ok) {
+                decoder.begin_request(true);
+                resumed = (int)live.size();
+                kind = "live";
+            } else if (entry) {
+                decoder.begin_request(true);
+                decoder.restore_host(entry->store);
+                resumed = entry->pos;
+                prefixes.truncate(resumed);
+                kind = "resume";
+            } else {
+                decoder.reset();
+                prefixes.clear();
+            }
+            live.clear();
+            std::cerr << "RESPONSE_PREPARE kind=" << kind << " reused=" << resumed
+                      << " ms=" << millis(start, Clock::now()) << '\n';
+            if (prefix_entries) std::cout << "RESUME " << resumed << '\n' << std::flush;
             decoder.set_cancel([&request] { return bool(*request.cancel); });
             std::vector<float> logits;
             const auto prompt_start = Clock::now();
-            for (size_t t = 0; t < tokens.size(); t += width) {
+            auto save_at = [&](int at, bool pinned) {
+                auto *slot = prefixes.slot_for(at, pinned);
+                if (!slot) return;
+                const auto t0 = Clock::now();
+                decoder.save_host(slot->store);
+                prefixes.commit(slot);
+                std::cerr << "PREFIX_SAVE pos=" << at << " pinned=" << pinned << " MiB=" << slot->store.bytes / double(MiB)
+                          << " ms=" << millis(t0, Clock::now()) << '\n';
+            };
+            // the root (system prompt + tools) is stored once: its fixed buffers now, its rows after the prompt
+            const int root_at = state_cache.on() ? state_cache.root(tokens) : 0;
+            std::shared_ptr<strata::glm::GlmStateImage> root_image;
+            const bool want_root = root_at > resumed && !state_cache.store->contains(tokens, root_at);
+            for (size_t t = resumed; t < tokens.size();) {
                 if (*request.cancel)
                     break;
-                const size_t end = std::min(tokens.size(), t + width);
+                size_t end = std::min(tokens.size(), t + width);
+                // a pinned prefix ends a chunk there (not with MTP: its draft block is synced after the prompt)
+                const bool at_pin = prefix_entries && !use_mtp && pin > (int)t && (size_t)pin < end;
+                if (at_pin) end = pin;
+                if (split > (int)t && (size_t)split < end) end = split;
+                const bool at_root = want_root && root_at > (int)t && (size_t)root_at < end;
+                if (at_root) end = root_at;
                 logits = decoder.batch(std::vector<int>(tokens.begin() + t, tokens.begin() + end));
+                if (at_pin) { prefixes.held.assign(tokens.begin(), tokens.begin() + end); save_at(pin, true); }
+                if (at_root) {
+                    root_image = std::make_shared<strata::glm::GlmStateImage>();
+                    decoder.export_fixed(*root_image);
+                    root_image->tokens.assign(tokens.begin(), tokens.begin() + root_at);
+                }
                 const double prompt_ms = millis(prompt_start, Clock::now());
                 std::cout << "PP " << end << ' ' << tokens.size() << ' ' << prompt_ms << ' '
-                          << (prompt_ms > 0 ? end * 1000.0 / prompt_ms : 0.0) << '\n' << std::flush;
+                          << (prompt_ms > 0 ? (end - resumed) * 1000.0 / prompt_ms : 0.0) << '\n' << std::flush;
+                t = end;
+            }
+            const bool prompt_done = !*request.cancel;    // the whole prompt is in the slot's rows
+            if (prefix_entries && prompt_done) prefixes.held = tokens;
+            // STRATA_GLM_SERVE_LOGITS=PATH (debug): append the logits after the prompt, one f32 row per request
+            if (const char *dump = std::getenv("STRATA_GLM_SERVE_LOGITS"); dump && *dump && prompt_done) {
+                std::ofstream out(dump, std::ios::binary | std::ios::app);
+                out.write(reinterpret_cast<const char *>(logits.data()), std::streamsize(logits.size() * 4));
             }
             if (use_mtp && !*request.cancel) {
                 const auto mtp_start = Clock::now();
-                decoder.prepare_mtp(tokens);
+                decoder.prepare_mtp(tokens, resumed);
                 // Allocate verification snapshots before the auto expert cache
                 // consumes its budget; keep the existing physical headroom guard.
                 decoder.prepare_mtp_history(draft_depth);
                 std::cerr << "RESPONSE_PREPARE kind=mtp ms=" << millis(mtp_start, Clock::now()) << '\n';
+            }
+            if (prefix_entries && save_prompt && !*request.cancel) save_at((int)tokens.size(), false);
+            // stored states: the root, and this prompt's end (the turn: a conversation that comes back after its slot
+            // was reused, or after a restart, resumes there)
+            if (state_cache.on() && !*request.cancel) {
+                const auto t0 = Clock::now();
+                if (root_image) {
+                    decoder.export_rows(*root_image);
+                    state_cache.store->put(root_image);
+                    std::cerr << "STATE_SAVE kind=root pos=" << root_image->position << " MiB=" << root_image->bytes() / double(MiB)
+                              << " ms=" << millis(t0, Clock::now()) << '\n';
+                }
+                if ((int)tokens.size() >= state_cache.root_min && save_prompt) {
+                    const auto t1 = Clock::now();
+                    auto turn = std::make_shared<strata::glm::GlmStateImage>();
+                    decoder.export_fixed(*turn);
+                    decoder.export_rows(*turn);
+                    turn->tokens = tokens;
+                    state_cache.store->put(turn);
+                    std::cerr << "STATE_SAVE kind=turn pos=" << turn->position << " MiB=" << turn->bytes() / double(MiB)
+                              << " ms=" << millis(t1, Clock::now()) << '\n';
+                }
             }
             if (!*request.cancel) {
                 decoder.probe_decode_cache(logits, stops);
@@ -11139,12 +11675,14 @@ static int serve(int argc, char **argv) {
             if (!*request.cancel) lock_small_runtime_mappings();
             const auto prefilled = Clock::now();
             decoder.reset_decode_stats();
+            std::vector<int> emitted;
             int generated = 0, compact_next = -1;
             std::string finish = "length";
             if (use_mtp && !*request.cancel) {
                 auto result = generate_mtp(decoder, logits, count, stops, draft_depth, [&](int token) {
                     if (*request.cancel) throw std::runtime_error("cancelled");
                     ++sent;
+                    emitted.push_back(token);
                     std::cout << "T " << token << '\n' << std::flush;
                 }, &tokens);
                 generated = result.generated;
@@ -11155,6 +11693,7 @@ static int serve(int argc, char **argv) {
                         if (*request.cancel)
                             throw std::runtime_error("cancelled");
                         ++sent;
+                        emitted.push_back(token);
                         std::cout << "T " << token << '\n' << std::flush;
                     });
                 generated = result.generated;
@@ -11166,9 +11705,9 @@ static int serve(int argc, char **argv) {
                         finish = "cancel";
                         break;
                     }
-                    const int next = compact_next >= 0 ? compact_next :
-                        int(std::max_element(logits.begin(), logits.end()) - logits.begin());
+                    const int next = compact_next >= 0 ? compact_next : pick(logits, decoder.token_position());
                     ++sent;
+                    emitted.push_back(next);
                     std::cout << "T " << next << '\n' << std::flush;
                     if (std::find(stops.begin(), stops.end(), next) != stops.end()) {
                         ++generated;
@@ -11176,16 +11715,37 @@ static int serve(int argc, char **argv) {
                         break;
                     }
                     if (generated + 1 < count) {
-                        if (compact_greedy) compact_next = decoder.step_greedy(next);
+                        if (compact_greedy && !request_sampling.active) compact_next = decoder.step_greedy(next);
                         else logits = decoder.step(next);
                     }
                 }
+            // `held` stays the prompt: checkpoints are only saved inside it, so the generated tokens never decide
+            // a resume.  A request cancelled before its prompt was read leaves the rows unknown: start from zero.
+            // (A STOP after the prompt - the server sends one when it sees the stop token - changes nothing here.)
+            if (!prompt_done) prefixes.clear();
+            // what the slot was fed: the prompt, then the generated tokens up to its position
+            if (prefix_entries && prompt_done) {
+                const int fed = decoder.token_position() - (int)tokens.size();
+                if (fed >= 0 && fed <= (int)emitted.size()) {
+                    live = tokens;
+                    live.insert(live.end(), emitted.begin(), emitted.begin() + fed);
+                }
+            }
+            if (state_cache.on()) {
+                const auto st = state_cache.store->stats();
+                std::cerr << "STATE_STATS ram_MiB=" << st.ram_bytes / double(MiB) << " ram_entries=" << st.ram_entries
+                          << " disk_MiB=" << st.disk_bytes / double(MiB) << " disk_entries=" << st.disk_entries
+                          << " ram_hits=" << st.ram_hits << " disk_hits=" << st.disk_hits << " misses=" << st.misses
+                          << " written=" << st.written << " write_errors=" << st.write_errors << '\n';
+            }
             std::cout << "DONE " << generated << ' ' << tokens.size() << ' ' << millis(start, prefilled)
-                      << ' ' << millis(prefilled, Clock::now()) << ' ' << finish << " 0 0 0\n"
+                      << ' ' << millis(prefilled, Clock::now()) << ' ' << finish << " 0 0 " << resumed << '\n'
                       << std::flush;
         } catch (const std::exception &e) {
             decoder.set_cancel({});
             std::cerr << "GLM request failed: " << e.what() << '\n';
+            prefixes.clear();
+            live.clear();
             try { decoder.reset(); }
             catch (const std::exception &reset_error) {
                 std::cout << "ERR " << e.what() << "; reset failed: " << reset_error.what() << '\n' << std::flush;

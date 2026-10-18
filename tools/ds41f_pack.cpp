@@ -10,6 +10,12 @@
 //   strata-ds41f-pack trunk    MODEL_DIR OUT.gguf [--trunk=q4_k|q5_k|q6_k|q8_0] [--head=q8_0|q4_k] [--threads=N]
 //   strata-ds41f-pack verify   [MODEL_DIR] PACK.gguf       (hashes; with MODEL_DIR also the source identity)
 //   strata-ds41f-pack dequant  MODEL_DIR LAYER EXPERT gate|up|down OUT.f32   (debug: exact MXFP4 -> f32 of one projection)
+//   strata-ds41f-pack ranges   MODEL_DIR [--layers=A-B] [--keep=FILE] [--no-experts] [--trunk]
+//                              (the byte ranges experts/trunk will read: `SHARD name size header_bytes` per shard, then
+//                              `R shard offset bytes tensor`; what a node-local mirror of the checkpoint must hold)
+// experts and trunk take --coverage=FILE (lines `path offset bytes`, e.g. strata-pfetch --coverage-out): every read from
+// a shard named there must lie inside its listed ranges, or the run fails. A sparse local mirror reads zeros where a
+// range was not fetched, and zeros are valid weights, so a planning bug or an incomplete fetch must not go unnoticed.
 //
 // Streamable and resumable, for a 100 MB/s shared filesystem and 3-hour job slots: the unit of work is one layer
 // (384 experts x 3 projections), the unit of resume is one projection chunk file. A layer's experts are read once,
@@ -210,17 +216,47 @@ void dequant_fp8(const uint8_t* w, const uint8_t* scales, int rows, int cols, in
 inline float bf16(uint16_t v) { uint32_t u = uint32_t(v) << 16; float f; std::memcpy(&f, &u, 4); return f; }
 
 // ---- the checkpoint ------------------------------------------------------------------------------------------
+using Coverage = std::map<std::string, std::vector<std::pair<uint64_t, uint64_t>>>;   // shard basename -> merged [begin, end)
+
+Coverage read_coverage(const std::string& path) {
+    std::ifstream f(path); if (!f) throw std::runtime_error("cannot read coverage " + path);
+    Coverage c; std::string file; uint64_t off, len;
+    while (f >> file >> off >> len) c[fs::path(file).filename().string()].push_back({off, off + len});
+    if (!f.eof()) throw std::runtime_error("malformed coverage " + path);
+    for (auto& [_, v] : c) {
+        std::sort(v.begin(), v.end()); std::vector<std::pair<uint64_t, uint64_t>> m;
+        for (const auto& r : v) if (!m.empty() && r.first <= m.back().second) m.back().second = std::max(m.back().second, r.second); else m.push_back(r);
+        v.swap(m);
+    }
+    return c;
+}
+
 struct Checkpoint {
     fs::path dir;
     st::Index index;
     std::map<std::string, std::pair<uint64_t, std::string>> shards;   // basename -> (size, header sha256)
+    std::shared_ptr<const Coverage> coverage;                          // fetched ranges of a sparse mirror (or none)
     const st::Tensor& at(const std::string& name) const {
         auto it = index.find(name);
         if (it == index.end()) throw std::runtime_error("missing tensor " + name);
         return it->second;
     }
     const st::Tensor* find(const std::string& name) const { auto it = index.find(name); return it == index.end() ? nullptr : &it->second; }
-    std::vector<uint8_t> read(const st::Tensor& t) const { std::vector<uint8_t> v(t.bytes); pread_drop(t.path, t.offset, v.data(), t.bytes); return v; }
+    std::vector<uint8_t> read(const st::Tensor& t) const {
+        if (coverage) check_covered(t);
+        std::vector<uint8_t> v(t.bytes); pread_drop(t.path, t.offset, v.data(), t.bytes); return v;
+    }
+    void check_covered(const st::Tensor& t) const {
+        auto it = coverage->find(fs::path(t.path).filename().string());
+        if (it == coverage->end()) {   // only a shard that was not mirrored (a symlink to shared storage) may be read freely
+            if (fs::is_symlink(t.path)) return;
+            throw std::runtime_error("read from a shard without fetched coverage: " + t.path);
+        }
+        const auto& v = it->second;
+        auto r = std::upper_bound(v.begin(), v.end(), std::make_pair(t.offset, UINT64_MAX));
+        if (r == v.begin() || std::prev(r)->second < t.offset + t.bytes)
+            throw std::runtime_error("read outside fetched coverage: " + fs::path(t.path).filename().string() + " offset " + std::to_string(t.offset) + " bytes " + std::to_string(t.bytes));
+    }
     // Same bytes as st::pread_all; the pages are dropped after the read so streaming ~25 GB of source per node does not
     // fill the (small) node memory with page cache.
     static void pread_drop(const std::string& path, uint64_t offset, uint8_t* out, size_t bytes) {
@@ -526,13 +562,13 @@ void pack_layer(const Checkpoint& c, const fs::path& dir, int layer, const std::
             raw.push_back(std::move(r)); cv_raw.notify_all();
         }
         std::lock_guard lk(mu); reader_done = true; cv_raw.notify_all();
-    } catch (...) { std::lock_guard lk(mu); failure = std::current_exception(); reader_done = true; cv_raw.notify_all(); } });
+    } catch (...) { std::lock_guard lk(mu); failure = std::current_exception(); reader_done = true; cv_raw.notify_all(); cv_done.notify_all(); } });
     for (int t = 0; t < threads; ++t) workers.emplace_back([&] { try {
         std::vector<float> weights, decoded;
         for (;;) {
             std::unique_ptr<Raw> r;
             { std::unique_lock lk(mu); cv_raw.wait(lk, [&] { return !raw.empty() || reader_done || failure; });
-              if (failure || (raw.empty() && reader_done)) return;
+              if (failure || (raw.empty() && reader_done)) { cv_done.notify_all(); return; }   // the writer may wait for this failure
               r = std::move(raw.front()); raw.pop_front(); cv_raw.notify_all(); }
             Packed& out = packed[r->idx]; const int expert = ids[r->idx];
             for (int proj = 0; proj < 3; ++proj) {
@@ -656,8 +692,8 @@ int cmd_assemble(int argc, char** argv) {
 
 // ---- experts ------------------------------------------------------------------------------------------------------
 int cmd_experts(int argc, char** argv) {
-    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack experts MODEL_DIR (OUT.gguf | --chunk-dir=DIR) --gate=T --up=T --down=T (--imatrix=FILE | --uncalibrated) [--keep=FILE] [--layers=0-39] [--threads=N] [--deadline=EPOCH] [--layer-seconds=S] [--stop-after-layers=N] [--plan-only]");
-    std::string gate = "iq1_s", up = "iq1_s", down = "iq2_xxs", imatrix_path, keep_path, chunk_dir, output; bool uncalibrated = false;
+    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack experts MODEL_DIR (OUT.gguf | --chunk-dir=DIR) --gate=T --up=T --down=T (--imatrix=FILE | --uncalibrated) [--keep=FILE] [--layers=0-39] [--threads=N] [--deadline=EPOCH] [--layer-seconds=S] [--stop-after-layers=N] [--plan-only] [--coverage=FILE]");
+    std::string gate = "iq1_s", up = "iq1_s", down = "iq2_xxs", imatrix_path, keep_path, chunk_dir, output, coverage_path; bool uncalibrated = false;
     int first = 0, last = kLayers - 1, threads = default_threads(), stop_after = -1; int64_t deadline = 0; double seed_seconds = 0; bool plan_only = false;
     for (int i = 3; i < argc; ++i) {
         std::string a = argv[i];
@@ -667,6 +703,7 @@ int cmd_experts(int argc, char** argv) {
         else if (starts_with(a, "--threads=")) threads = std::stoi(a.substr(10)); else if (starts_with(a, "--chunk-dir=")) chunk_dir = a.substr(12);
         else if (starts_with(a, "--deadline=")) deadline = std::stoll(a.substr(11)); else if (starts_with(a, "--stop-after-layers=")) stop_after = std::stoi(a.substr(20));
         else if (starts_with(a, "--layer-seconds=")) seed_seconds = std::stod(a.substr(16)); else if (a == "--plan-only") plan_only = true;
+        else if (starts_with(a, "--coverage=")) coverage_path = a.substr(11);
         else if (a.rfind("--", 0) != 0 && output.empty()) output = a; else throw std::runtime_error("unknown argument " + a);
     }
     if (output.empty() == chunk_dir.empty()) throw std::runtime_error("give either OUT.gguf or --chunk-dir=DIR");
@@ -682,7 +719,8 @@ int cmd_experts(int argc, char** argv) {
         imatrix_sha = file_sha256(imatrix_path);
     }
     std::string keep_text; const auto keep = keep_path.empty() ? std::map<int, std::vector<int>>{} : read_keep(keep_path, keep_text);
-    const auto c = open_checkpoint(argv[2]);
+    auto c = open_checkpoint(argv[2]);
+    if (!coverage_path.empty()) c.coverage = std::make_shared<const Coverage>(read_coverage(coverage_path));
     const fs::path dir = chunk_dir.empty() ? fs::path(output + ".d") : fs::path(chunk_dir);
     if (!output.empty() && (fs::exists(output) || fs::exists(output + ".partial"))) throw std::runtime_error("refusing to overwrite existing pack or partial file");
     fs::create_directories(dir);
@@ -735,21 +773,11 @@ int cmd_experts(int argc, char** argv) {
     return 0;
 }
 // ---- trunk ----------------------------------------------------------------------------------------------------
-int cmd_trunk(int argc, char** argv) {
-    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack trunk MODEL_DIR OUT.gguf [--trunk=q4_k] [--head=q8_0] [--threads=1]");
-    std::string trunk = "q4_k", head = "q8_0"; int threads = 1;
-    for (int i = 4; i < argc; ++i) {
-        std::string a = argv[i];
-        if (starts_with(a, "--trunk=")) trunk = a.substr(8); else if (starts_with(a, "--head=")) head = a.substr(7);
-        else if (starts_with(a, "--threads=")) threads = std::clamp(std::stoi(a.substr(10)), 1, 128); else throw std::runtime_error("unknown argument " + a);
-    }
-    const ggml_type trunk_type = type_of(trunk), head_type = type_of(head);
-    if (ggml_quantize_requires_imatrix(trunk_type) || ggml_quantize_requires_imatrix(head_type)) throw std::runtime_error("trunk formats must not need an imatrix");
-    const auto c = open_checkpoint(argv[2]);
-    const fs::path output(argv[3]), partial = output.string() + ".partial";
-    if (fs::exists(output) || fs::exists(partial)) throw std::runtime_error("refusing to overwrite existing file");
-    struct Item { std::string name; const st::Tensor* w; const st::Tensor* scale; ggml_type type; };
-    std::vector<Item> items;
+struct TrunkItem { std::string name; const st::Tensor* w; const st::Tensor* scale; ggml_type type; };
+
+// The trunk tensors (everything but routed experts, Engram tables and the vision/DSpark payload), name order.
+std::vector<TrunkItem> trunk_items(const Checkpoint& c, ggml_type trunk_type, ggml_type head_type) {
+    std::vector<TrunkItem> items;
     for (const auto& [name, t] : c.index) {
         if (strata_ds41f_is_routed_expert(name.c_str()) || strata_ds41f_is_engram_table(name.c_str()) || ends_with(name, ".scale")) continue;
         const bool matrix = t.shape.size() == 2 && t.shape[0] >= 256 && t.shape[1] >= 256;
@@ -760,7 +788,26 @@ int cmd_trunk(int argc, char** argv) {
         else if (t.dtype == "I8" || t.dtype == "F8_E8M0") continue;   // vision tower or DSpark packed tensors: not part of the text trunk
         else throw std::runtime_error("unsupported dtype " + t.dtype + " for " + name);
     }
-    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.name < b.name; });
+    std::sort(items.begin(), items.end(), [](const TrunkItem& a, const TrunkItem& b) { return a.name < b.name; });
+    return items;
+}
+
+int cmd_trunk(int argc, char** argv) {
+    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack trunk MODEL_DIR OUT.gguf [--trunk=q4_k] [--head=q8_0] [--threads=1] [--coverage=FILE]");
+    std::string trunk = "q4_k", head = "q8_0", coverage_path; int threads = 1;
+    for (int i = 4; i < argc; ++i) {
+        std::string a = argv[i];
+        if (starts_with(a, "--trunk=")) trunk = a.substr(8); else if (starts_with(a, "--head=")) head = a.substr(7);
+        else if (starts_with(a, "--threads=")) threads = std::clamp(std::stoi(a.substr(10)), 1, 128);
+        else if (starts_with(a, "--coverage=")) coverage_path = a.substr(11); else throw std::runtime_error("unknown argument " + a);
+    }
+    const ggml_type trunk_type = type_of(trunk), head_type = type_of(head);
+    if (ggml_quantize_requires_imatrix(trunk_type) || ggml_quantize_requires_imatrix(head_type)) throw std::runtime_error("trunk formats must not need an imatrix");
+    auto c = open_checkpoint(argv[2]);
+    if (!coverage_path.empty()) c.coverage = std::make_shared<const Coverage>(read_coverage(coverage_path));
+    const fs::path output(argv[3]), partial = output.string() + ".partial";
+    if (fs::exists(output) || fs::exists(partial)) throw std::runtime_error("refusing to overwrite existing file");
+    const auto items = trunk_items(c, trunk_type, head_type);
     std::vector<Entry> entries; uint64_t offset = 0;
     for (const auto& it : items) {
         std::vector<uint64_t> shape(it.w->shape.rbegin(), it.w->shape.rend());
@@ -863,15 +910,54 @@ int cmd_dequant(int argc, char** argv) {
     std::cout << "DEQUANT rows=" << geometry(proj).rows << " cols=" << geometry(proj).cols << " values=" << weights.size() << '\n';
     return 0;
 }
+// ---- ranges ---------------------------------------------------------------------------------------------------
+int cmd_ranges(int argc, char** argv) {
+    if (argc < 3) throw std::runtime_error("usage: strata-ds41f-pack ranges MODEL_DIR [--layers=A-B] [--keep=FILE] [--no-experts] [--trunk]");
+    int first = 0, last = kLayers - 1; bool experts = true, trunk = false; std::string keep_path;
+    for (int i = 3; i < argc; ++i) {
+        std::string a = argv[i];
+        if (starts_with(a, "--layers=")) std::tie(first, last) = parse_layers(a.substr(9)); else if (starts_with(a, "--keep=")) keep_path = a.substr(7);
+        else if (a == "--no-experts") experts = false; else if (a == "--trunk") trunk = true; else throw std::runtime_error("unknown argument " + a);
+    }
+    if (first < 0 || first > last || last >= kLayers) throw std::runtime_error("layers must lie in 0..39");
+    std::string keep_text; const auto keep = keep_path.empty() ? std::map<int, std::vector<int>>{} : read_keep(keep_path, keep_text);
+    const auto c = open_checkpoint(argv[2], experts);
+    std::set<std::string> paths; for (const auto& [_, t] : c.index) paths.insert(t.path);
+    for (const auto& p : paths) {
+        std::ifstream f(p, std::ios::binary); uint64_t n = 0;
+        if (!f.read(reinterpret_cast<char*>(&n), 8)) throw std::runtime_error("cannot read header of " + p);
+        std::cout << "SHARD " << fs::path(p).filename().string() << ' ' << fs::file_size(p) << ' ' << 8 + n << '\n';
+    }
+    auto emit = [](const st::Tensor& t, const std::string& name) {
+        std::cout << "R " << fs::path(t.path).filename().string() << ' ' << t.offset << ' ' << t.bytes << ' ' << name << '\n'; };
+    if (experts) for (int l = first; l <= last; ++l) {     // the same ids cmd_experts packs (keep list honoured)
+        const int present = experts_in_layer(c, l);
+        std::vector<int> ids;
+        if (auto it = keep.find(l); it != keep.end()) ids = it->second; else for (int e = 0; e < present; ++e) ids.push_back(e);
+        for (int e : ids) {
+            const auto src = expert_source(c, l, e);
+            for (int proj = 0; proj < 3; ++proj) {
+                char wname[STRATA_DS41F_NAME_MAX], sname[STRATA_DS41F_NAME_MAX];
+                strata_ds41f_expert_source_name(wname, sizeof wname, l, e, strata_ds41f_proj(proj), "weight");
+                strata_ds41f_expert_source_name(sname, sizeof sname, l, e, strata_ds41f_proj(proj), "scale");
+                emit(*src.w[proj], wname); emit(*src.s[proj], sname);
+            }
+        }
+    }
+    if (trunk) for (const auto& it : trunk_items(c, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0)) {   // the selection does not depend on the formats
+        emit(*it.w, it.name); if (it.scale) emit(*it.scale, it.name.substr(0, it.name.size() - 7) + ".scale"); }
+    return 0;
+}
 }  // namespace
 
 int main(int argc, char** argv) { try {
-    if (argc < 2) throw std::runtime_error("usage: strata-ds41f-pack experts|assemble|trunk|verify|dequant ...");
+    if (argc < 2) throw std::runtime_error("usage: strata-ds41f-pack experts|assemble|trunk|verify|dequant|ranges ...");
     const std::string cmd = argv[1];
     if (cmd == "experts") return cmd_experts(argc, argv);
     if (cmd == "assemble") return cmd_assemble(argc, argv);
     if (cmd == "trunk") return cmd_trunk(argc, argv);
     if (cmd == "verify" || cmd == "--verify") return cmd_verify(argc, argv);
     if (cmd == "dequant") return cmd_dequant(argc, argv);
+    if (cmd == "ranges") return cmd_ranges(argc, argv);
     throw std::runtime_error("unknown command " + cmd);
 } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; } }

@@ -12,6 +12,7 @@
 #         -x DS41F_CKPT=<checkpoint dir> -x DS41F_OUT=<output dir> -x DS41F_SNAP=<published build dir> \
 #         -x DS41F_PACK_SHA256=<binary sha256> -x DS41F_PACKS=q23:q2_k/q2_k/q3_k -x DS41F_TRUNK=q4_k/q8_0 \
 #         [-x DS41F_IMATRIX=<imatrix.gguf>] [-x DS41F_THREADS=47] [-x DS41F_LAYER_SECONDS=600] [-x DS41F_CANARY=<file>] \
+#         [-x DS41F_MIRROR=1] [-x DS41F_PFETCH_STREAMS=16] [-x DS41F_PFETCH_ASSIGN=local] [-x DS41F_PUT_STREAMS=8] \
 #         <published build dir>/ds41f_pjm_pack.sh
 #
 # DS41F_PACKS: name:gate/up/down, several joined with '+' (pjsub -x already uses commas). DS41F_TRUNK: trunk/head
@@ -19,6 +20,13 @@
 # shared by all ranks (each layer has exactly one owner); the trunk to $DS41F_OUT/trunk-<trunk>-<head>.gguf (rank 11).
 # Resumable: resubmit the same command; finished layers are skipped, an interrupted layer is redone. Jobs on different
 # packs (one pack each, say) run in parallel; a second job on a pack another live job holds is refused.
+# Node-local I/O (DS41F_MIRROR=1, the default when the build has strata-pfetch): before the ranks start, one strata-pfetch
+# run fills a sparse mirror of the checkpoint on every node's /local -- the shard headers, that rank's layers (and the
+# trunk on rank 11), the imatrix -- with all 12 nodes reading the shared shards in parallel (each byte once, sent over MPI
+# to the node that packs it); the ranks then pack from /local (--coverage: a read outside the fetched ranges fails), one
+# layer at a time into a /local chunk directory, while strata-pput publishes the previous layer to the shared chunk
+# directory (chunks first, then their jsons, so a published json always has its chunk). The shared directory stays the
+# truth for resume. If the fetch fails, the ranks read the shared checkpoint and write the shared directory directly.
 # Status: $DS41F_OUT/status/<job>/rankNN.status and SENTINEL lines on stdout; the job ends with
 # `SENTINEL DS41F_JOB_END state=complete|resubmit|failed`.
 set -uo pipefail
@@ -66,11 +74,30 @@ done
 TFILE=""
 if [ "$TRUNK" != none ]; then TFILE=$OUT/trunk-${TRUNK%%/*}-${TRUNK#*/}.gguf; [ -f "$TFILE.verified" ] || complete=0; fi
 [ $complete = 1 ] && { say "SENTINEL DS41F_ALREADY_COMPLETE"; end complete; }
-# 5. the ranks
-say "DS41F_MPIEXEC start $(date +%T)"
-mpiexec -np 12 -of-proc "$LOG/rank" "$SNAP/ds41f_pjm_pack_rank.sh" "$DEADLINE" "$JOB" "$CKPT" "$OUT" "$BIN" "$PACKS" "$TRUNK" "$THREADS" "${IMATRIX:-none}" "$LAYER_S" "${DS41F_LD_LIBRARY_PATH:-none}"
+# 5. the node-local mirror (same layer split as ds41f_pjm_pack_rank.sh)
+layer_range() { if [ "$1" -lt 4 ]; then echo "$1:$((4 * $1))-$((4 * $1 + 3))"; else local a=$((16 + 3 * ($1 - 4))); echo "$1:$a-$((a + 2))"; fi; }
+LROOT=none
+if [ "${DS41F_MIRROR:-1}" = 1 ] && [ -x "$SNAP/strata-pfetch" ] && [ -x "$SNAP/strata-pput" ]; then
+    lr=${DS41F_LOCAL_ROOT:-/local}/ds41f-pack-$JOB; t1=$(date +%s)
+    trank=none; [ -n "$TFILE" ] && [ ! -f "$TFILE.verified" ] && [ ! -f "$TFILE" ] && trank=11
+    dirs=$(for spec in ${PACKS//+/ }; do printf '%s,' "$OUT/experts-${spec%%:*}.d"; done)
+    if python3 "$SNAP/ds41f_pfetch_plan.py" --bin "$BIN" --ckpt "$CKPT" --rank-layers "$(for r in $(seq 0 11); do layer_range "$r"; done | paste -sd,)" \
+           --trunk-rank "$trank" --chunk-dirs "${dirs%,}" --imatrix "${IMATRIX:-none}" --imatrix-local '@L/r{rank}/imatrix.gguf' \
+           --mirror '@L/r{rank}/ckpt' > "$LOG/fetch.manifest" 2>> "$LOG/head.log"; then
+        say "DS41F_PFETCH start $(date +%T) $(tail -1 "$LOG/head.log")"
+        mpiexec -np 12 -of-proc "$LOG/pfetch" "$SNAP/strata-pfetch" --manifest="$LOG/fetch.manifest" --local-root="$lr" \
+            --streams="${DS41F_PFETCH_STREAMS:-16}" --assign="${DS41F_PFETCH_ASSIGN:-local}" --coverage-out='@L/r{rank}/coverage' \
+            --status-dir="$LOG/pfetch" --deadline="$DEADLINE" --progress-s=60
+        ok=$(cat "$LOG"/pfetch/pfetch.rank*.status 2>/dev/null | grep -c "state=ok")
+        say "SENTINEL DS41F_PFETCH ranks_ok=$ok seconds=$(( $(date +%s) - t1 )) $(cat "$LOG"/pfetch.* 2>/dev/null | grep -o 'PFETCH_END.*' | head -1)"
+        [ "$ok" = 12 ] && LROOT=$lr
+    else say "SENTINEL DS41F_PFETCH plan failed: the ranks read the shared checkpoint"; fi
+fi
+# 6. the ranks
+say "DS41F_MPIEXEC start $(date +%T) mirror=$LROOT"
+mpiexec -np 12 -of-proc "$LOG/rank" "$SNAP/ds41f_pjm_pack_rank.sh" "$DEADLINE" "$JOB" "$CKPT" "$OUT" "$BIN" "$PACKS" "$TRUNK" "$THREADS" "${IMATRIX:-none}" "$LAYER_S" "${DS41F_LD_LIBRARY_PATH:-none}" "$LROOT" "${DS41F_PUT_STREAMS:-8}"
 say "DS41F_MPIEXEC rc=$? end $(date +%T)"
-# 6. what got done
+# 7. what got done
 ends=$(cat "$LOG"/rank*.status 2>/dev/null | grep -c "SENTINEL DS41F_RANK_END")
 [ "$ends" = 12 ] || say "SENTINEL DS41F_RANK_LOST ends=$ends"
 failed=0; grep -h "PACK_RESULT\|TRUNK_RESULT" "$LOG"/rank*.status 2>/dev/null | grep -q "rc=1\b\|verify=fail" && failed=1

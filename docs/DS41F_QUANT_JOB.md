@@ -115,25 +115,55 @@ go on the `pjsub` command line and live only in the untracked private notes.
 1. **Build and publish** (on a compute node; `tools/a64fx_probe/build_ds41f_pack.sh`): ggml static, OpenMP off, with FCC
    in clang mode (the `disable_autovec.h` workaround of `ggml_cmake_args.sh` for ggml's C++ files); the pack tool as
    C++17. Give it the same ggml tree as the x86 builds (`GGML_SRC`) and pin it with `DS41F_GGML_QUANTS_SHA256`
-   (quantizer output depends on `ggml-quants.c`). The binary and the job scripts go to a content-addressed directory
-   `strata-ds41f-pack-<sha12>/` that is never edited; jobs check `DS41F_PACK_SHA256` before use.
-2. **Probe** (`tools/ds41f_pjm_probe.sh`, 12 nodes, ~1.5 h): builds (or takes `DS41F_SNAP`), then rank r packs real layer
-   r into node-local storage with one setting per rank (q23, IQ1_S, IQ2_XXS/Q2_K at 47/48/24 threads, IQ1_M, Q4_K x3 as
+   (quantizer output depends on `ggml-quants.c`). With an MPI compiler (`mpifcc`) it also builds `strata-pfetch` and
+   `strata-pput` (below). The binaries and the job scripts go to a content-addressed directory
+   `strata-ds41f-pack-<key12>/` that is never edited; jobs check `DS41F_PACK_SHA256` before use.
+2. **Probe** (`tools/ds41f_pjm_probe.sh`, 12 nodes, ~2.5 h): builds (or takes `DS41F_SNAP`), measures the filesystem with
+   `strata-pfetch --measure` (read rate vs streams per node, own file / all nodes on one file / one file per stream, one
+   node alone, a re-read; shared-FS write rate vs streams; MPI; `/local` rate and sparse files), fetches each rank's probe
+   layer into a node-local mirror, then rank r packs real layer r from it into node-local storage with one setting per rank (q23, IQ1_S, IQ2_XXS/Q2_K at 47/48/24 threads, IQ1_M, Q4_K x3 as
    the trunk stand-in; IQ ranks use `tools/ds41f_synth_imatrix.py`'s constant imatrix), copies the chunks to the shared FS
    (write rate), checks the next rank's copies (cross-node coherence) and prints `PROBE_DECISION` lines: threads,
-   per-layer seconds seeds, packs per job, trunk threading, shared vs per-rank chunk directories. Its canary file is what
-   `DS41F_CANARY` of the pack jobs checks.
+   per-layer seconds seeds, packs per job, trunk threading, shared vs per-rank chunk directories, pfetch streams and
+   assignment, put streams, whether packing is I/O-bound, whether an MPI program can start from a rank wrapper (overlapped
+   fetch). Its canary file is what `DS41F_CANARY` of the pack jobs checks. Every measurement line carries
+   `gfscache=` (the `PJM_LLIO_GFSCACHE` of the job), so runs with different LLIO cache settings can be compared.
 3. **Pack jobs** (`tools/ds41f_pjm_pack.sh` + `ds41f_pjm_pack_rank.sh`): `DS41F_PACKS=q23:q2_k/q2_k/q3_k` and
    `DS41F_TRUNK=q4_k/q8_0` first (no imatrix); later `iq1s:iq1_s/iq1_s/iq1_s+iq2:iq2_xxs/iq2_xxs/q2_k+iq1m:iq1_m/iq1_m/iq1_m`
    with `DS41F_IMATRIX`. Ranks 0-3 own 4 layers, ranks 4-11 own 3. The job ends with `SENTINEL DS41F_JOB_END
    state=complete|resubmit|failed`; per-rank status in `$DS41F_OUT/status/<job>/`, an nmse summary per pack.
-4. **imatrix** (gemm `a64fx/ds41f/pjsub_ds41f_imatrix_12n.sh`, `ds41f_run --imatrix-out`): stages the model per job,
+   Node-local I/O (`DS41F_MIRROR=1`, default when the build has strata-pfetch): see below.
+4. **imatrix** (gemm `a64fx/ds41f/pjsub_ds41f_imatrix_12n.sh`, `ds41f_run --imatrix-out`): stages the model per job
+   (with `DS41F_PFETCH`, cooperatively, see below; `DS41F_META_FILE` = `engram_meta.bin` from `make_token_map.py`, which
+   depends only on the tokenizer),
    validates the hooks (64 tokens sequential vs batched), runs 32,768-token prompt files from `tools/ds41f_calib_corpus.py`
    until the deadline (~330-520k tokens per job at the batched prefill rate), and merges every finished launch into
    `imatrix.gguf` (`ds41f_imatrix_merge`: llama.cpp layout, counts `{1, 384}`, which the pack tool accepts).
 5. **Transfer** the IQ packs to the destination node with `tools/ds41f_transfer.sh` as above; the 197 GB q23 pack stays on the cluster.
 
+### Node-local staging: strata-pfetch
+
+The shared filesystem gives a node ~25-30 MB/s with one read stream (~300 MB/s over 12 nodes); every checkpoint file is
+on one storage target (stripe count 1) and each layer's 384 experts sit in one shard. `tools/pfetch/strata-pfetch` (C11
++ MPI) executes a manifest of byte copies cooperatively: every rank reads its share of the source blocks (16 MiB, each
+read once even when several ranks need it) with K threads spread over different files, sends each block's bytes to the
+ranks that need them over MPI (CRC32C per message), and writes them into `/local` destinations (sparse full-size files
+or atomic files with `.sha256` sidecars). `strata-pput` is the same engine without MPI plus the write direction: K
+streams into `.pfpart` files, renamed in dependency order.
+
+- **Pack jobs:** `tools/ds41f_pfetch_plan.py` turns `strata-ds41f-pack ranges` (the exact byte ranges the tool reads) into
+  a sparse mirror per rank: shard headers + that rank's layers + the trunk on rank 11 + the imatrix; other shards are
+  symlinks. The ranks pack from the mirror with `--coverage` (a read outside the fetched ranges fails: a sparse file reads
+  zeros, and zeros are valid weights), one layer at a time into `/local`, and `strata-pput` publishes the previous layer
+  (chunks, then jsons) while the next one packs. All nodes take part in the fetch, so the 4-layer ranks no longer read a
+  third more than the others. A failed fetch falls back to the shared reads.
+- **imatrix job:** gemm `stage_plan.py` lists every byte copy of the three stagers as one manifest; pfetch makes them, then
+  the stagers find every tensor in place (`copied_bytes=0`) and only write indices and symlinks.
+
 Tested locally: `tools/test_ds41f_pack.py` (incl. 4 processes racing on one chunk directory, `--plan-only`, imatrix count
-shapes, deadline seed, threaded trunk) and `tools/test_ds41f_pjm.py` (the batch and probe scripts with a fake `mpiexec`:
-40 layers x 2 packs + trunk complete, resubmission exits early, a deadline-bound job asks for resubmission, a stale
-binary is refused). Unmeasured until the probe: the A64FX quantize rate, shared-FS write rate and coherence, the trunk time.
+shapes, deadline seed, threaded trunk, packing from a pfetch mirror == from the checkpoint, fail-closed coverage),
+`tools/test_ds41f_pjm.py` (the batch and probe scripts with a fake `mpiexec`: 40 layers x 2 packs + trunk complete,
+mirror-fed packs == shared-read packs, resubmission exits early, a deadline-bound job asks for resubmission, a stale binary
+is refused), `make -C tools/pfetch test` (planner invariants, 4-rank copies vs a reference, injected corruption / EIO /
+deadline, pput ordering) and gemm `test_stage_plan.py`. Unmeasured until the probe: the A64FX quantize rate, the
+shared-FS read rate vs streams and per-target limits, the write rate and coherence, the trunk time.
