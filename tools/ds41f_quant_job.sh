@@ -52,7 +52,7 @@ PACK_CMD=("$PACK" experts "$DS41F_CKPT" "--chunk-dir=$DS41F_CHUNKS" $DS41F_FORMA
 echo "  pack: ${PACK_CMD[*]}"
 if [ "$DRY" = 1 ]; then
     echo "  requeue on exit 3: sbatch $SBATCH_ARGS --export=ALL,DS41F_JOBS_DONE=$((JOBS_DONE + 1)) $0"
-    echo "  complete when: $PACK assemble $DS41F_CHUNKS --check  exits 0"
+    echo "  complete when: $PACK assemble $DS41F_CHUNKS --check --layers=$LAYERS  exits 0"
     exit 0
 fi
 if [ "${DS41F_FETCH:-0}" = 1 ]; then
@@ -61,7 +61,7 @@ fi
 "${PACK_CMD[@]}"; rc=$?
 echo "pack exit=$rc at $(date +%FT%T)"
 if [ $rc -eq 0 ]; then
-    "$PACK" assemble "$DS41F_CHUNKS" --check && echo "DS41F_QUANT_COMPLETE chunks=$DS41F_CHUNKS" && exit 0
+    "$PACK" assemble "$DS41F_CHUNKS" --check --layers="$LAYERS" && echo "DS41F_QUANT_COMPLETE chunks=$DS41F_CHUNKS" && exit 0
     echo "pack returned 0 but the range is incomplete"; exit 1
 fi
 if [ $rc -eq 3 ]; then

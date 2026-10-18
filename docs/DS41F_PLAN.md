@@ -203,8 +203,9 @@ free). The 510 GB release is staged on the A64FX nodes' `/local` (28 min at 300 
 | Xeon | 203 | 153 | 8.4 | 8 | **372 GB** |
 | A64FX node (12 / 8 / 6) | 17 / 25 / 34 | 24 / 19 / 25.5 | 0.8 / 1.2 / 1.6 | 0.7 | 43 / 46 / 62 GB on `/local` |
 
-Pack building needs the 289 GB MXFP4 source once; it can run on the A64FX cluster against the staged shards (the tool is plain
-C++20 and cross-compiles) or on the Xeon box after a 510 GB download. Packs are 102-153 GB each; build two at a time.
+Pack building needs the 289 GB MXFP4 source once; it runs on the A64FX cluster against the checkpoint on the shared
+filesystem (the tool is plain C++17; 12-node PJM batch jobs, docs/DS41F_QUANT_JOB.md "On the A64FX cluster") or on the Xeon
+box after a 510 GB download. Packs are 102-197 GB each.
 
 ## 5. Quality gate
 

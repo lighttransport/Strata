@@ -3,9 +3,11 @@
 // stay in the release shards (FP8 rows + E8M0 scales) and are read per token from SSD by the runner.
 //
 //   strata-ds41f-pack experts  MODEL_DIR OUT.gguf|--chunk-dir=DIR --gate=T --up=T --down=T (--imatrix=FILE | --uncalibrated)
-//                              [--keep=FILE] [--layers=0-39] [--threads=16] [--deadline=EPOCH_SECONDS] [--stop-after-layers=N]
-//   strata-ds41f-pack assemble DIR OUT.gguf [--check]      (concatenate a chunk directory into the sidecar; --check only reports)
-//   strata-ds41f-pack trunk    MODEL_DIR OUT.gguf [--trunk=q4_k|q5_k|q6_k|q8_0] [--head=q8_0|q4_k]
+//                              [--keep=FILE] [--layers=0-39] [--threads=N] [--deadline=EPOCH_SECONDS] [--layer-seconds=S]
+//                              [--stop-after-layers=N] [--plan-only]
+//   strata-ds41f-pack assemble DIR OUT.gguf [--check] [--layers=0-39]   (concatenate a chunk directory into the sidecar;
+//                              --check only reports; the default range is all 40 layers)
+//   strata-ds41f-pack trunk    MODEL_DIR OUT.gguf [--trunk=q4_k|q5_k|q6_k|q8_0] [--head=q8_0|q4_k] [--threads=N]
 //   strata-ds41f-pack verify   [MODEL_DIR] PACK.gguf       (hashes; with MODEL_DIR also the source identity)
 //   strata-ds41f-pack dequant  MODEL_DIR LAYER EXPERT gate|up|down OUT.f32   (debug: exact MXFP4 -> f32 of one projection)
 //
@@ -18,6 +20,11 @@
 // stops cleanly (exit 3, "more to do") when the next layer would not finish before --deadline. `OUT.gguf` is the
 // chunk directory `OUT.gguf.d` assembled at the end; `assemble` also runs on another machine after the chunks were
 // copied there, so a slow node never has to write one 100-150 GB file.
+//
+// Several processes may fill one chunk directory at once (e.g. one per node, disjoint --layers): plan.json is created
+// atomically (hard link of a private temp file) and validated by everyone, each process only clears stale partials of
+// its own layers, and `--plan-only` creates/validates the plan (and the imatrix entries of --layers) without packing.
+// --threads defaults to the CPUs this process may run on, minus one. Source reads drop their page cache after use.
 //
 // Identity: the pack binds to the checkpoint through the shards' basenames, sizes and header bytes (FNV-1a-64 in the
 // GGUF key, SHA-256 per shard header in plan.json). File mtimes and the directory path are deliberately excluded
@@ -57,8 +64,11 @@
 #include <set>
 #include <sstream>
 #include <thread>
+#include <cerrno>
 #ifdef __linux__
 #include <fcntl.h>
+#include <sched.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #endif
 
@@ -75,6 +85,42 @@ constexpr int kExitMoreToDo = 3;
 template<class T> void write(std::ostream& out, T value) { out.write(reinterpret_cast<const char*>(&value), sizeof value); }
 void string(std::ostream& out, const std::string& value) { write<uint64_t>(out, value.size()); out.write(value.data(), value.size()); }
 uint64_t hash_bytes(uint64_t hash, const uint8_t* p, size_t n) { for (size_t i = 0; i < n; ++i) { hash ^= p[i]; hash *= 1099511628211ULL; } return hash; }
+bool starts_with(const std::string& s, const char* prefix) { return s.rfind(prefix, 0) == 0; }
+bool ends_with(const std::string& s, const char* suffix) { const size_t n = std::strlen(suffix); return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0; }
+
+// CPUs this process may run on (the job's affinity), minus one for the reader/writer; 1..128.
+int default_threads() {
+#ifdef __linux__
+    cpu_set_t set; CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof set, &set) == 0) return std::clamp(CPU_COUNT(&set) - 1, 1, 128);
+#endif
+    return std::clamp(int(std::thread::hardware_concurrency()) - 1, 1, 128);
+}
+
+// Rows [0, rows) split over `threads` ranges whose starts are multiples of `align`; fn(r0, r1, thread).
+template<class F> void parallel_rows(int64_t rows, int threads, int64_t align, F fn) {
+    threads = int(std::max<int64_t>(1, std::min<int64_t>(threads, (rows + align - 1) / align)));
+    if (threads == 1) { fn(int64_t(0), rows, 0); return; }
+    const int64_t blocks = (rows + align - 1) / align;
+    std::vector<std::thread> pool; std::exception_ptr failure; std::mutex mu;
+    for (int t = 0; t < threads; ++t) {
+        const int64_t r0 = std::min(rows, blocks * t / threads * align), r1 = std::min(rows, blocks * (t + 1) / threads * align);
+        pool.emplace_back([&, r0, r1, t] { try { if (r1 > r0) fn(r0, r1, t); } catch (...) { std::lock_guard lk(mu); failure = std::current_exception(); } });
+    }
+    for (auto& th : pool) th.join();
+    if (failure) std::rethrow_exception(failure);
+}
+
+// CPU seconds (user, system) and peak RSS of this process, for the per-layer log.
+struct Usage { double user = 0, sys = 0; long maxrss_kb = 0; };
+Usage usage_now() {
+    Usage u;
+#ifdef __linux__
+    rusage r{}; if (getrusage(RUSAGE_SELF, &r) == 0) {
+        u.user = double(r.ru_utime.tv_sec) + 1e-6 * double(r.ru_utime.tv_usec); u.sys = double(r.ru_stime.tv_sec) + 1e-6 * double(r.ru_stime.tv_usec); u.maxrss_kb = r.ru_maxrss; }
+#endif
+    return u;
+}
 
 // ---- SHA-256 (plan.json records one per shard header; small, self-contained) ------------------------------------
 struct Sha256 {
@@ -174,7 +220,26 @@ struct Checkpoint {
         return it->second;
     }
     const st::Tensor* find(const std::string& name) const { auto it = index.find(name); return it == index.end() ? nullptr : &it->second; }
-    std::vector<uint8_t> read(const st::Tensor& t) const { std::vector<uint8_t> v(t.bytes); st::pread_all(t.path, t.offset, v.data(), t.bytes); return v; }
+    std::vector<uint8_t> read(const st::Tensor& t) const { std::vector<uint8_t> v(t.bytes); pread_drop(t.path, t.offset, v.data(), t.bytes); return v; }
+    // Same bytes as st::pread_all; the pages are dropped after the read so streaming ~25 GB of source per node does not
+    // fill the (small) node memory with page cache.
+    static void pread_drop(const std::string& path, uint64_t offset, uint8_t* out, size_t bytes) {
+#ifdef __linux__
+        const int fd = ::open(path.c_str(), O_RDONLY);
+        if (fd < 0) throw std::runtime_error("cannot open " + path);
+        size_t done = 0;
+        while (done < bytes) {
+            const ssize_t n = ::pread(fd, out + done, bytes - done, off_t(offset + done));
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) { ::close(fd); throw std::runtime_error("short read from " + path); }
+            done += size_t(n);
+        }
+        ::posix_fadvise(fd, off_t(offset), off_t(bytes), POSIX_FADV_DONTNEED);
+        ::close(fd);
+#else
+        st::pread_all(path, offset, out, bytes);
+#endif
+    }
 };
 
 int experts_in_layer(const Checkpoint& c, int layer) {
@@ -257,8 +322,9 @@ void sync_and_drop(const fs::path& path) {
 std::vector<float> imatrix_importance(const GgufFile& im, const std::string& weight, int columns, int experts) {
     const auto* sum = im.find(weight + ".in_sum2"); const auto* cnt = im.find(weight + ".counts");
     if (!sum || !cnt) throw std::runtime_error("imatrix has no entry for " + weight);
-    if (sum->type != 0 || cnt->type != 0 || sum->shape != std::vector<uint64_t>{uint64_t(columns), uint64_t(experts)} ||
-        cnt->shape != std::vector<uint64_t>{uint64_t(experts)})
+    // counts: [experts] (older writers) or {1, experts} as llama-imatrix writes it
+    const bool counts_ok = cnt->shape == std::vector<uint64_t>{uint64_t(experts)} || cnt->shape == std::vector<uint64_t>{1, uint64_t(experts)};
+    if (sum->type != 0 || cnt->type != 0 || sum->shape != std::vector<uint64_t>{uint64_t(columns), uint64_t(experts)} || !counts_ok)
         throw std::runtime_error("imatrix geometry mismatch for " + weight);
     const float* s = reinterpret_cast<const float*>(im.tensor_data(*sum)); const float* c = reinterpret_cast<const float*>(im.tensor_data(*cnt));
     std::vector<double> pooled(columns, 0.); double total = 0;
@@ -365,15 +431,29 @@ struct Plan {
         for (const auto& [n, i] : shards) k += n + ":" + std::to_string(i.first) + ":" + i.second + ";";
         return k;
     }
-    void write(const fs::path& p) const {
-        std::ofstream o(p.string() + ".partial"); o.exceptions(std::ios::failbit | std::ios::badbit);
+    std::string identity_sha() const { Sha256 s; const auto id = identity(); s.update(reinterpret_cast<const uint8_t*>(id.data()), id.size()); return s.hex(); }
+    // Create plan.json only if it does not exist yet: the complete file is written privately and hard-linked into
+    // place (atomic create-if-absent), so concurrent processes never see a torn plan and the first one wins.
+    void write_if_absent(const fs::path& p) const {
+        char host[256] = "host"; ::gethostname(host, sizeof host - 1);
+        const fs::path tmp = p.string() + "." + host + "." + std::to_string(::getpid()) + ".partial";
+        write_to(tmp);
+        std::error_code ec; fs::create_hard_link(tmp, p, ec);
+        if (ec && ec != std::errc::file_exists) {   // filesystems without hard links: rename if still absent
+            std::cerr << "PLAN link_unsupported (" << ec.message() << "), using rename\n";
+            if (!fs::exists(p)) { fs::rename(tmp, p); return; }
+        }
+        fs::remove(tmp);
+    }
+    void write_to(const fs::path& tmp) const {
+        std::ofstream o(tmp); o.exceptions(std::ios::failbit | std::ios::badbit);
         o << "{\"architecture\":\"deepseek4\",\"version\":1,\"gate\":\"" << gate << "\",\"up\":\"" << up << "\",\"down\":\"" << down
           << "\",\"source_fingerprint\":" << fingerprint << ",\"imatrix_sha256\":\"" << imatrix_sha << "\",\"keep\":\"" << json_escape(keep_text)
-          << "\",\"identity_sha256\":\"" << [&] { Sha256 s; const auto id = identity(); s.update(reinterpret_cast<const uint8_t*>(id.data()), id.size()); return s.hex(); }()
+          << "\",\"identity_sha256\":\"" << identity_sha()
           << "\",\"layers\":\"" << first << "-" << last << "\",\"shards\":{";
         bool first = true;
         for (const auto& [n, i] : shards) { if (!first) o << ','; first = false; o << "\"" << n << "\":\"" << i.first << ":" << i.second << "\""; }
-        o << "}}\n"; o.close(); fs::rename(p.string() + ".partial", p);
+        o << "}}\n"; o.close(); sync_and_drop(tmp);
     }
     static std::string stored_identity(const fs::path& p) { return FlatJson::parse(p).s("identity_sha256"); }
 };
@@ -427,7 +507,17 @@ void pack_layer(const Checkpoint& c, const fs::path& dir, int layer, const std::
     std::deque<std::unique_ptr<Raw>> raw; bool reader_done = false; std::exception_ptr failure;
     std::vector<Packed> packed(ids.size());
     const size_t depth = 2;
-    std::jthread reader([&] { try {
+    std::thread reader; std::vector<std::thread> workers;
+    // Joins every thread on any exit; on an exception it first tells them to stop.
+    struct JoinAll {
+        std::thread& reader; std::vector<std::thread>& workers; std::mutex& mu; std::condition_variable& a; std::condition_variable& b; std::exception_ptr& failure; bool& reader_done;
+        ~JoinAll() {
+            if (std::uncaught_exceptions() > 0) { std::lock_guard lk(mu); if (!failure) failure = std::make_exception_ptr(std::runtime_error("writer failed")); reader_done = true; a.notify_all(); b.notify_all(); }
+            for (auto& t : workers) if (t.joinable()) t.join();
+            if (reader.joinable()) reader.join();
+        }
+    } join_all{reader, workers, mu, cv_raw, cv_done, failure, reader_done};
+    reader = std::thread([&] { try {
         for (size_t k : order) {
             auto r = std::make_unique<Raw>(); r->idx = k;
             for (int proj = 0; proj < 3; ++proj) { r->w[proj] = c.read(*sources[k].w[proj]); r->s[proj] = c.read(*sources[k].s[proj]); }
@@ -437,7 +527,6 @@ void pack_layer(const Checkpoint& c, const fs::path& dir, int layer, const std::
         }
         std::lock_guard lk(mu); reader_done = true; cv_raw.notify_all();
     } catch (...) { std::lock_guard lk(mu); failure = std::current_exception(); reader_done = true; cv_raw.notify_all(); } });
-    std::vector<std::jthread> workers;
     for (int t = 0; t < threads; ++t) workers.emplace_back([&] { try {
         std::vector<float> weights, decoded;
         for (;;) {
@@ -473,7 +562,7 @@ void pack_layer(const Checkpoint& c, const fs::path& dir, int layer, const std::
             std::vector<uint8_t>().swap(packed[i].q[proj]);
         }
     }
-    reader.join(); workers.clear();
+    reader.join(); for (auto& t : workers) t.join();
     if (failure) std::rethrow_exception(failure);
     for (int proj = 0; proj < 3; ++proj) {
         out[proj].close();
@@ -501,15 +590,18 @@ std::vector<ChunkInfo> read_chunks(const fs::path& dir, std::vector<int>* missin
 }
 
 int cmd_assemble(int argc, char** argv) {
-    if (argc < 3) throw std::runtime_error("usage: strata-ds41f-pack assemble DIR OUT.gguf [--check] [--layers=A-B]");
+    if (argc < 3) throw std::runtime_error("usage: strata-ds41f-pack assemble DIR OUT.gguf [--check] [--layers=A-B]   (default range: all 40 layers)");
     const fs::path dir = argv[2]; bool check = false; std::optional<std::pair<int, int>> range;
     std::string output = argc >= 4 && std::string(argv[3]).rfind("--", 0) != 0 ? argv[3] : "";
-    for (int i = 3; i < argc; ++i) { std::string a = argv[i]; if (a == "--check") check = true; else if (a.starts_with("--layers=")) range = parse_layers(a.substr(9)); else if (i == 3) continue; else throw std::runtime_error("unknown argument " + a); }
+    for (int i = 3; i < argc; ++i) { std::string a = argv[i]; if (a == "--check") check = true; else if (starts_with(a, "--layers=")) range = parse_layers(a.substr(9)); else if (i == 3) continue; else throw std::runtime_error("unknown argument " + a); }
     const auto plan = FlatJson::parse(dir / "plan.json");
     std::vector<int> partial_layers; auto chunks = read_chunks(dir, &partial_layers);
     std::set<int> done; for (const auto& c : chunks) done.insert(c.layer);
-    if (!range) range = parse_layers(plan.s("layers"));   // the range the chunk directory was made for
+    // default: the whole model; a partial pack needs an explicit --layers (plan.json's "layers" is informational only,
+    // since several processes fill one directory with different ranges)
+    if (!range) range = std::make_pair(0, kLayers - 1);
     const int first = range->first, last = range->second;
+    std::cout << "ASSEMBLE range=" << first << "-" << last << '\n';
     std::vector<int> missing; for (int l = first; l <= last; ++l) if (!done.count(l)) missing.push_back(l);
     std::cout << "ASSEMBLE dir=" << dir << " layers_done=" << done.size() << " missing=" << missing.size() << (partial_layers.empty() ? "" : " partial_present") << '\n';
     if (check) { for (int l : missing) std::cout << "  missing layer " << l << '\n'; return missing.empty() ? 0 : kExitMoreToDo; }
@@ -564,16 +656,17 @@ int cmd_assemble(int argc, char** argv) {
 
 // ---- experts ------------------------------------------------------------------------------------------------------
 int cmd_experts(int argc, char** argv) {
-    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack experts MODEL_DIR (OUT.gguf | --chunk-dir=DIR) --gate=T --up=T --down=T (--imatrix=FILE | --uncalibrated) [--keep=FILE] [--layers=0-39] [--threads=16] [--deadline=EPOCH] [--stop-after-layers=N]");
+    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack experts MODEL_DIR (OUT.gguf | --chunk-dir=DIR) --gate=T --up=T --down=T (--imatrix=FILE | --uncalibrated) [--keep=FILE] [--layers=0-39] [--threads=N] [--deadline=EPOCH] [--layer-seconds=S] [--stop-after-layers=N] [--plan-only]");
     std::string gate = "iq1_s", up = "iq1_s", down = "iq2_xxs", imatrix_path, keep_path, chunk_dir, output; bool uncalibrated = false;
-    int first = 0, last = kLayers - 1, threads = 16, stop_after = -1; int64_t deadline = 0;
+    int first = 0, last = kLayers - 1, threads = default_threads(), stop_after = -1; int64_t deadline = 0; double seed_seconds = 0; bool plan_only = false;
     for (int i = 3; i < argc; ++i) {
         std::string a = argv[i];
-        if (a.starts_with("--gate=")) gate = a.substr(7); else if (a.starts_with("--up=")) up = a.substr(5); else if (a.starts_with("--down=")) down = a.substr(7);
-        else if (a.starts_with("--imatrix=")) imatrix_path = a.substr(10); else if (a == "--uncalibrated") uncalibrated = true;
-        else if (a.starts_with("--keep=")) keep_path = a.substr(7); else if (a.starts_with("--layers=")) std::tie(first, last) = parse_layers(a.substr(9));
-        else if (a.starts_with("--threads=")) threads = std::stoi(a.substr(10)); else if (a.starts_with("--chunk-dir=")) chunk_dir = a.substr(12);
-        else if (a.starts_with("--deadline=")) deadline = std::stoll(a.substr(11)); else if (a.starts_with("--stop-after-layers=")) stop_after = std::stoi(a.substr(20));
+        if (starts_with(a, "--gate=")) gate = a.substr(7); else if (starts_with(a, "--up=")) up = a.substr(5); else if (starts_with(a, "--down=")) down = a.substr(7);
+        else if (starts_with(a, "--imatrix=")) imatrix_path = a.substr(10); else if (a == "--uncalibrated") uncalibrated = true;
+        else if (starts_with(a, "--keep=")) keep_path = a.substr(7); else if (starts_with(a, "--layers=")) std::tie(first, last) = parse_layers(a.substr(9));
+        else if (starts_with(a, "--threads=")) threads = std::stoi(a.substr(10)); else if (starts_with(a, "--chunk-dir=")) chunk_dir = a.substr(12);
+        else if (starts_with(a, "--deadline=")) deadline = std::stoll(a.substr(11)); else if (starts_with(a, "--stop-after-layers=")) stop_after = std::stoi(a.substr(20));
+        else if (starts_with(a, "--layer-seconds=")) seed_seconds = std::stod(a.substr(16)); else if (a == "--plan-only") plan_only = true;
         else if (a.rfind("--", 0) != 0 && output.empty()) output = a; else throw std::runtime_error("unknown argument " + a);
     }
     if (output.empty() == chunk_dir.empty()) throw std::runtime_error("give either OUT.gguf or --chunk-dir=DIR");
@@ -595,20 +688,28 @@ int cmd_experts(int argc, char** argv) {
     fs::create_directories(dir);
     Plan plan{gate, up, down, keep_text, imatrix_sha, source_fingerprint(c), c.shards, first, last};
     const fs::path plan_path = dir / "plan.json";
-    if (fs::exists(plan_path)) {
-        Sha256 s; const auto id = plan.identity(); s.update(reinterpret_cast<const uint8_t*>(id.data()), id.size());
-        if (Plan::stored_identity(plan_path) != s.hex()) throw std::runtime_error("plan mismatch: " + plan_path.string() + " was made with other formats, keep list, imatrix or source shards");
-    } else plan.write(plan_path);
-    // stale partials from an interrupted layer
-    for (const auto& e : fs::directory_iterator(dir)) if (e.path().extension() == ".partial") { std::cerr << "PACK removing stale " << e.path().filename() << '\n'; fs::remove(e.path()); }
+    if (!fs::exists(plan_path)) plan.write_if_absent(plan_path);
+    if (Plan::stored_identity(plan_path) != plan.identity_sha())
+        throw std::runtime_error("plan mismatch: " + plan_path.string() + " was made with other formats, keep list, imatrix or source shards");
+    if (plan_only) {
+        if (imatrix) for (int l = first; l <= last; ++l) { const int present = experts_in_layer(c, l);
+            for (int proj = 0; proj < 3; ++proj) imatrix_importance(*imatrix, chunk_name(l, proj), geometry(proj).cols, present); }
+        std::cerr << "PACK plan ok dir=" << dir << " identity=" << plan.identity_sha() << (imatrix ? " imatrix=checked" : "") << " layers=" << first << "-" << last << '\n';
+        return 0;
+    }
+    // stale partials of an interrupted run of THIS range only (other processes may be writing other layers here)
+    for (int l = first; l <= last; ++l) for (int proj = 0; proj < 3; ++proj) for (const char* suffix : {".chunk.partial", ".chunk.json.partial"}) {
+        const fs::path f = dir / (chunk_name(l, proj) + suffix);
+        if (fs::exists(f)) { std::cerr << "PACK removing stale " << f.filename() << '\n'; fs::remove(f); }
+    }
     ggml_cpu_init();
     const auto t0 = std::chrono::steady_clock::now();
-    int done_now = 0; double layer_seconds = 0; bool more = false;
+    int done_now = 0; double layer_seconds = seed_seconds; bool more = false;
     for (int l = first; l <= last; ++l) {
         bool have = true; for (int proj = 0; proj < 3; ++proj) if (!read_chunk_json(dir, l, proj)) have = false;
         if (have) { std::cerr << "PACK layer=" << l << " already complete\n"; continue; }
         const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        if (deadline && done_now > 0 && double(now) + layer_seconds * 1.2 > double(deadline)) { more = true; std::cerr << "PACK deadline: stopping before layer " << l << '\n'; break; }
+        if (deadline && (done_now > 0 || layer_seconds > 0) && double(now) + layer_seconds * 1.2 > double(deadline)) { more = true; std::cerr << "PACK deadline: stopping before layer " << l << '\n'; break; }
         if (stop_after >= 0 && done_now >= stop_after) { more = true; std::cerr << "PACK stop-after-layers reached before layer " << l << '\n'; break; }
         const int present = experts_in_layer(c, l);
         std::vector<int> ids;
@@ -616,11 +717,12 @@ int cmd_experts(int argc, char** argv) {
         else for (int e = 0; e < present; ++e) ids.push_back(e);
         const uint64_t need = uint64_t(ids.size()) * (slice_bytes(types[0], 0) + slice_bytes(types[1], 1) + slice_bytes(types[2], 2));
         if (fs::space(dir).available < need + (uint64_t(1) << 30)) throw std::runtime_error("insufficient disk capacity for the next layer plus 1 GiB reserve");
-        const auto l0 = std::chrono::steady_clock::now();
+        const auto l0 = std::chrono::steady_clock::now(); const Usage u0 = usage_now();
         pack_layer(c, dir, l, ids, present, types, imatrix.get(), threads);
-        const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - l0).count();
+        const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - l0).count(); const Usage u1 = usage_now();
         layer_seconds = done_now ? 0.5 * (layer_seconds + s) : s; ++done_now;
-        std::cerr << "PACK layer=" << l << " seconds=" << std::setprecision(4) << s << " elapsed_s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << '\n';
+        std::cerr << "PACK layer=" << l << " seconds=" << std::setprecision(4) << s << " elapsed_s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()
+                  << " threads=" << threads << " cpu_user_s=" << std::setprecision(6) << (u1.user - u0.user) << " cpu_sys_s=" << (u1.sys - u0.sys) << " maxrss_kb=" << u1.maxrss_kb << '\n';
     }
     if (more) { std::cerr << "PACK more layers remain (exit 3)\n"; return kExitMoreToDo; }
     if (!output.empty()) {
@@ -634,12 +736,12 @@ int cmd_experts(int argc, char** argv) {
 }
 // ---- trunk ----------------------------------------------------------------------------------------------------
 int cmd_trunk(int argc, char** argv) {
-    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack trunk MODEL_DIR OUT.gguf [--trunk=q4_k] [--head=q8_0]");
-    std::string trunk = "q4_k", head = "q8_0";
+    if (argc < 4) throw std::runtime_error("usage: strata-ds41f-pack trunk MODEL_DIR OUT.gguf [--trunk=q4_k] [--head=q8_0] [--threads=1]");
+    std::string trunk = "q4_k", head = "q8_0"; int threads = 1;
     for (int i = 4; i < argc; ++i) {
         std::string a = argv[i];
-        if (a.starts_with("--trunk=")) trunk = a.substr(8); else if (a.starts_with("--head=")) head = a.substr(7);
-        else if (a.starts_with("--threads=")) continue; else throw std::runtime_error("unknown argument " + a);
+        if (starts_with(a, "--trunk=")) trunk = a.substr(8); else if (starts_with(a, "--head=")) head = a.substr(7);
+        else if (starts_with(a, "--threads=")) threads = std::clamp(std::stoi(a.substr(10)), 1, 128); else throw std::runtime_error("unknown argument " + a);
     }
     const ggml_type trunk_type = type_of(trunk), head_type = type_of(head);
     if (ggml_quantize_requires_imatrix(trunk_type) || ggml_quantize_requires_imatrix(head_type)) throw std::runtime_error("trunk formats must not need an imatrix");
@@ -649,7 +751,7 @@ int cmd_trunk(int argc, char** argv) {
     struct Item { std::string name; const st::Tensor* w; const st::Tensor* scale; ggml_type type; };
     std::vector<Item> items;
     for (const auto& [name, t] : c.index) {
-        if (strata_ds41f_is_routed_expert(name.c_str()) || strata_ds41f_is_engram_table(name.c_str()) || name.ends_with(".scale")) continue;
+        if (strata_ds41f_is_routed_expert(name.c_str()) || strata_ds41f_is_engram_table(name.c_str()) || ends_with(name, ".scale")) continue;
         const bool matrix = t.shape.size() == 2 && t.shape[0] >= 256 && t.shape[1] >= 256;
         const st::Tensor* scale = c.find(name.substr(0, name.size() - 7) + ".scale");
         if (t.dtype == "F8_E4M3") { if (!scale) throw std::runtime_error("FP8 tensor without scale: " + name); items.push_back({name, &t, scale, matrix ? trunk_type : GGML_TYPE_F32}); }
@@ -687,18 +789,33 @@ int cmd_trunk(int argc, char** argv) {
             const auto sb = c.read(*it.scale);
             const int srows = int(it.scale->shape.size() == 2 ? it.scale->shape[0] : 1), scols = int(it.scale->shape.size() == 2 ? it.scale->shape[1] : it.scale->shape[0]);
             if (it.w->shape.size() != 2 || int64_t(ne0) % scols) throw std::runtime_error("FP8 scale geometry mismatch: " + it.name);
-            dequant_fp8(raw.data(), sb.data(), int(rows), int(ne0), srows, scols, f32.data());
-        } else if (it.w->dtype == "BF16") { for (size_t k = 0; k < f32.size(); ++k) f32[k] = bf16(reinterpret_cast<const uint16_t*>(raw.data())[k]); }
+            // row ranges start on 32-row scale blocks, so each range sees its own scale rows
+            parallel_rows(rows, threads, 32, [&](int64_t r0, int64_t r1, int) {
+                const int sr0 = std::min(int(r0 / 32), srows - 1);
+                dequant_fp8(raw.data() + size_t(r0) * ne0, sb.data() + size_t(sr0) * scols, int(r1 - r0), int(ne0), srows - sr0, scols, f32.data() + size_t(r0) * ne0); });
+        } else if (it.w->dtype == "BF16") parallel_rows(rows, threads, 1, [&](int64_t r0, int64_t r1, int) {
+            for (size_t k = size_t(r0) * ne0; k < size_t(r1) * ne0; ++k) f32[k] = bf16(reinterpret_cast<const uint16_t*>(raw.data())[k]); });
         else std::memcpy(f32.data(), raw.data(), f32.size() * 4);
         for (float v : f32) if (!std::isfinite(v)) throw std::runtime_error("nonfinite value in " + it.name);
-        const size_t written = it.type == GGML_TYPE_F32 ? (std::memcpy(payload.data(), f32.data(), f32.size() * 4), f32.size() * 4)
-                             : ggml_quantize_chunk(it.type, f32.data(), payload.data(), 0, rows, ne0, nullptr);
+        size_t written = 0;
+        if (it.type == GGML_TYPE_F32) { std::memcpy(payload.data(), f32.data(), f32.size() * 4); written = f32.size() * 4; }
+        else {   // ggml_quantize_chunk writes rows [start/ne0, ...) at start/ne0 * row_size: byte-identical to one call
+            std::mutex wmu;
+            parallel_rows(rows, threads, 1, [&](int64_t r0, int64_t r1, int) {
+                const size_t n = ggml_quantize_chunk(it.type, f32.data(), payload.data(), r0 * ne0, r1 - r0, ne0, nullptr);
+                std::lock_guard lk(wmu); written += n; });
+        }
         if (written > e.bytes) throw std::runtime_error("quantizer overflow: " + it.name);
         out.write(reinterpret_cast<const char*>(payload.data()), std::streamsize(payload.size())); e.hash = hash_bytes(kFnvBasis, payload.data(), payload.size());
         if (ggml_is_quantized(it.type)) {
-            std::vector<float> dec(ne0); const auto* traits = ggml_get_type_traits(it.type); const size_t row_bytes = ggml_row_size(it.type, ne0);
-            for (int64_t r = 0; r < rows; ++r) { traits->to_float(payload.data() + size_t(r) * row_bytes, dec.data(), ne0);
-                for (int64_t k = 0; k < ne0; ++k) { const double w = f32[size_t(r) * ne0 + k], d = dec[k] - w; e.error += d * d; e.norm += w * w; } }
+            const auto* traits = ggml_get_type_traits(it.type); const size_t row_bytes = ggml_row_size(it.type, ne0);
+            std::vector<double> err(size_t(threads), 0.), nrm(size_t(threads), 0.);
+            parallel_rows(rows, threads, 1, [&](int64_t r0, int64_t r1, int t) {
+                std::vector<float> dec(ne0); double se = 0, sn = 0;
+                for (int64_t r = r0; r < r1; ++r) { traits->to_float(payload.data() + size_t(r) * row_bytes, dec.data(), ne0);
+                    for (int64_t k = 0; k < ne0; ++k) { const double w = f32[size_t(r) * ne0 + k], d = dec[k] - w; se += d * d; sn += w * w; } }
+                err[size_t(t)] = se; nrm[size_t(t)] = sn; });
+            for (int t = 0; t < threads; ++t) { e.error += err[size_t(t)]; e.norm += nrm[size_t(t)]; }
         }
         std::cerr << "TRUNK tensor=" << it.name << " type=" << ggml_type_name(it.type) << " bytes=" << e.bytes
                   << (ggml_is_quantized(it.type) ? " normalized_mse=" + std::to_string(e.error / std::max(e.norm, 1e-30)) : "") << " done=" << i + 1 << "/" << items.size() << '\n';
