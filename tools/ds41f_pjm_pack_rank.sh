@@ -7,7 +7,7 @@
 set -u
 DEADLINE=$1 JOB=$2 CKPT=$3 OUT=$4 BIN=$5 PACKS=$6 TRUNK=$7 THREADS=$8 IMATRIX=$9 LAYER_S=${10} LIBS=${11}
 [ "$LIBS" != none ] && export LD_LIBRARY_PATH=$LIBS:${LD_LIBRARY_PATH:-}
-R=${PMIX_RANK:-${OMPI_COMM_WORLD_RANK:-${PJM_RANK:-}}}
+R=${PMIX_RANK:-${OMPI_COMM_WORLD_RANK:-${PMI_RANK:-${PJM_RANK:-}}}}
 [ -n "$R" ] || { echo "no rank variable"; exit 0; }
 if [ "$R" -lt 4 ]; then A=$((4 * R)); B=$((A + 3)); else A=$((16 + 3 * (R - 4))); B=$((A + 2)); fi
 ST=$OUT/status/$JOB/rank$(printf %02d "$R").status

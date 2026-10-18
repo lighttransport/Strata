@@ -6,7 +6,7 @@
 #       write1: one 2 GiB fsync'd write from a single node (uncontended rate).
 set -u
 PHASE=$1 JOB=$2 CKPT=$3 P=$4 BIN=$5 IM=$6
-R=${PMIX_RANK:-${OMPI_COMM_WORLD_RANK:-${PJM_RANK:-0}}}; RR=$(printf %02d "$R")
+R=${PMIX_RANK:-${OMPI_COMM_WORLD_RANK:-${PMI_RANK:-${PJM_RANK:-0}}}}; RR=$(printf %02d "$R")
 ST=$P/rank$RR.status; L=/local/ds41f-probe-$JOB/r$RR; mkdir -p "$L" 2>/dev/null || L=$P/local-r$RR; mkdir -p "$L"
 CONF=("q2_k q2_k q3_k 47" "q2_k q2_k q3_k 48" "q2_k q2_k q3_k 24" "iq1_s iq1_s iq1_s 47" "iq1_s iq1_s iq1_s 48" "iq1_s iq1_s iq1_s 24"
       "iq2_xxs iq2_xxs q2_k 47" "iq2_xxs iq2_xxs q2_k 48" "iq2_xxs iq2_xxs q2_k 24" "iq1_m iq1_m iq1_m 47" "iq1_m iq1_m iq1_m 48" "q4_k q4_k q4_k 47")
