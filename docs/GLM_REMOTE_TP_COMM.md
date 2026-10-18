@@ -108,6 +108,18 @@ when the worker binary is also copied to its tmpfs (`SHIP_WORKER`, below).
   on ConnectX-3 a registration is a firmware command. Registering the request and reply buffers once on both sides
   cut the decoder's wait per layer from 0.198 ms to 0.023 ms. The transfer registers the worker's rows one layer
   at a time (the memlock limit is ~8 GB on b550).
+- **Locked memory (memlock).** Every InfiniBand send or receive registers (pins) its buffer, and a registration that
+  exceeds `ulimit -l` fails: ucomm reports `I/O error` (for example `send blob: I/O error`) at the first large
+  message, with the link itself up. Ubuntu's default is 8 MiB, and a reboot returns to it unless it is configured.
+  On 2026-10-19 TR16 came back at 8 MiB after a reboot and a two-node run failed within a second until it was raised.
+  - Check: `ulimit -l` in the shell that starts the run (`unlimited`, or at least the largest buffer plus the
+    registered request/reply buffers; ~8 GB is enough on b550 because rows are registered one layer at a time).
+  - Permanent, for new logins: `echo '<user> - memlock unlimited' | sudo tee /etc/security/limits.d/90-memlock.conf`.
+  - An already running process (e.g. the shell or agent that launches the runs): `sudo prlimit --pid <pid>
+    --memlock=unlimited:unlimited`; processes started from it inherit the limit.
+  - Containers: `--ulimit memlock=-1`.
+  - Verified after raising it: 256 MiB, 2 GiB and 16 GiB registrations succeed on tr16, and 8 x 256 MiB unregistered
+    messages tr16 -> b550 arrive intact at 2.4 GB/s.
 
 ```sh
 # tr16 (decoder) + b550 (worker) over InfiniBand; the worker binary is copied to b550's /dev/shm
