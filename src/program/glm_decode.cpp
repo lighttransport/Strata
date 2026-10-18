@@ -3,6 +3,8 @@
 #include "strata/kernels/cpu/exl3/dense_q8.hpp"
 #include "strata/kernels/exl3.hpp"
 #include "strata/kernels/llvq_tetra.hpp"
+#include "glm_prefix_cache.hpp"
+#include "strata/spec/host_sampler.hpp"
 #include "strata/llvq/tetra_decode.hpp"
 // Experimental GLM decode and streamed GPU prefill. CPU experts overlap resident GPU experts.
 // Greedy decoding with verified speculation and optional recurrent CUDA graphs.
@@ -75,6 +77,8 @@
 #include <memory>
 #include <filesystem>
 #include <mutex>
+#include <optional>
+#include <random>
 #include <numeric>
 #include <queue>
 #include <sstream>
@@ -9450,7 +9454,8 @@ class Decoder {
         prepare_mtp_history(depth);
         return true;
     }
-    void prepare_mtp(const std::vector<int> &prompt) {
+    // `from` > 0: a resumed prefix (serve --prefix-cache) - the draft block already holds positions below it.
+    void prepare_mtp(const std::vector<int> &prompt, int from = 0) {
         if (!gpu || gpu_decode_experts || m.draft_layers.size() != 1 ||
             target_hidden.size() < prompt.size() * m.hidden)
             throw std::invalid_argument("GLM: MTP requires captured GPU prefill and CPU target experts");
@@ -9491,6 +9496,10 @@ class Decoder {
             if (mtp_position != (int)prompt.size() - 1)
                 throw std::runtime_error("GLM: batched MTP priming does not cover the prompt");
             std::cerr << "MTP_PRIME batched=1 positions=" << mtp_position << '\n';
+        } else if (from > 0) {
+            if (mtp_position != from || from >= (int)prompt.size())
+                throw std::logic_error("GLM: resumed MTP state does not match the prefix");
+            sync_mtp(std::vector<int>(prompt.begin() + from, prompt.end()), from);
         } else {
             mtp_position = 0;
             sync_mtp(prompt, 0);
@@ -9570,6 +9579,74 @@ class Decoder {
                                   cudaMemcpyDeviceToDevice, stream));
         }
         mtp_position = cp.mtp_position;
+    }
+    // A prefix checkpoint in pinned host memory (serve --prefix-cache): the buffers of checkpoint() - the KDA states,
+    // the MLA index rings, the draft block's - plus the positions and route counts.  The MLA latents and pooled keys
+    // are append-only, so rows below the position stay valid in place as long as nothing overwrote them.
+    struct HostCheckpoint {
+        int position = 0, mtp_position = 0;
+        bool primed = false;                 // the draft block was primed by the prefill (mtp_position = position - 1)
+        size_t bytes = 0;
+        std::unique_ptr<Pinned> host;
+        std::vector<std::vector<uint64_t>> layer_routes;
+        std::vector<float> prev_hidden;      // the last target hidden row the primed draft block continues from
+        // The draft block can continue from here: synced to the position (serve), or primed to one before it.
+        bool draft_at(int pos) const { return mtp_position == pos || (primed && mtp_position == pos - 1); }
+    };
+    std::vector<Device *> checkpoint_buffers() {
+        std::vector<Device *> out;
+        for (auto &state : states)
+            for (Device *buffer : {state.recurrent.get(), state.conv_q.get(), state.conv_k.get(),
+                                   state.conv_v.get(), state.keys.get(), state.gates.get()})
+                if (buffer) out.push_back(buffer);
+        return out;
+    }
+    void save_host(HostCheckpoint &cp) {
+        if (secondary) throw std::logic_error("GLM: prefix checkpoints do not cover a second GPU's state");
+        const auto buffers = checkpoint_buffers();
+        size_t bytes = 0;
+        for (auto *b : buffers) bytes += b->bytes;
+        if (!cp.host || cp.bytes != bytes) { cp.host.reset(); cp.host = std::make_unique<Pinned>(bytes); cp.bytes = bytes; }
+        check(cudaStreamSynchronize(stream));
+        size_t offset = 0;
+        for (auto *b : buffers) {
+            check(cudaMemcpyAsync((char *)cp.host->p + offset, b->p, b->bytes, cudaMemcpyDeviceToHost, stream));
+            offset += b->bytes;
+        }
+        check(cudaStreamSynchronize(stream));
+        cp.position = position;
+        cp.mtp_position = mtp_position;
+        cp.primed = mtp_primed;
+        cp.layer_routes = layer_route_counts;
+        cp.prev_hidden.clear();
+        if (mtp_prev_hidden) {
+            cp.prev_hidden.resize(m.hidden);
+            check(cudaMemcpy(cp.prev_hidden.data(), mtp_prev_hidden->p, size_t(m.hidden) * 4, cudaMemcpyDeviceToHost));
+        }
+    }
+    void restore_host(const HostCheckpoint &cp) {
+        const auto buffers = checkpoint_buffers();
+        size_t offset = 0;
+        for (auto *b : buffers) offset += b->bytes;
+        if (!cp.host || offset != cp.bytes) throw std::logic_error("GLM: prefix checkpoint layout changed");
+        if (capture_hidden && target_hidden.size() < size_t(cp.position) * m.hidden)
+            throw std::logic_error("GLM: prefix checkpoint lacks the target hidden rows MTP needs");
+        offset = 0;
+        for (auto *b : buffers) {
+            check(cudaMemcpyAsync(b->p, (char *)cp.host->p + offset, b->bytes, cudaMemcpyHostToDevice, stream));
+            offset += b->bytes;
+        }
+        check(cudaStreamSynchronize(stream));
+        position = cp.position;
+        mtp_position = cp.mtp_position;
+        if (!cp.layer_routes.empty()) layer_route_counts = cp.layer_routes;
+        if (!cp.prev_hidden.empty()) {
+            if (!mtp_prev_hidden) mtp_prev_hidden = std::make_unique<Device>((size_t)m.hidden * 4);
+            check(cudaMemcpy(mtp_prev_hidden->p, cp.prev_hidden.data(), size_t(m.hidden) * 4, cudaMemcpyHostToDevice));
+        }
+        if (target_hidden.size() > size_t(cp.position) * m.hidden) target_hidden.resize(size_t(cp.position) * m.hidden);
+        tp_stale = true;
+        history_valid = 0;
     }
 
     void check_sequences(const std::vector<int> &prompt) {
@@ -10149,7 +10226,11 @@ class Decoder {
         }
     }
     void freeze_cache() { cache_frozen = true; }
-    void reset() {
+    // reset() = begin_request() + zero_slot(): a prefix resume (serve --prefix-cache) restores a checkpoint between
+    // them instead of zeroing.  begin_request() drops the per-request caches and rebuilds the prefill workspace;
+    // keep_routes keeps the prefill route counts of the prefix being resumed (decode-cache admission).
+    void reset() { begin_request(false); zero_slot(); }
+    void begin_request(bool keep_routes) {
         ++routing_request; routing_round = -1; routing_phase = "target";
         report_exact_cache(position);
         exact_cache.reset();
@@ -10195,7 +10276,8 @@ class Decoder {
             for (auto &addresses : promoted_addresses) addresses.clear();
         }
         if (secondary) secondary->restore_prefill();
-        for (auto &counts : prefill_routes) std::fill(counts.begin(), counts.end(), 0);
+        if (!keep_routes)
+            for (auto &counts : prefill_routes) std::fill(counts.begin(), counts.end(), 0);
         for (auto &ids : prefill_recent_ids) ids.clear();
         // The verify history allocation stays: the tier is sized around it, and a later request might not find
         // the device memory again. Its contents are invalid.
@@ -10216,14 +10298,24 @@ class Decoder {
                     it = weights.erase(it);
                 } else ++it;
             }
+            // The draft block's state is kept (zero_slot() clears it): a resumed prefix continues it.
+            std::optional<LayerState> draft;
+            if (states.size() > m.layers.size()) draft = std::move(states[m.layers.size()]);
             states.resize(m.layers.size());
             gpu = std::make_unique<GpuPrefill>(prefill_width_saved, stream, false, capacity, false,
                                               tensor_prefill_experts, tensor_batched_experts);
             prefill_width_saved = 0;
-            if (capture_hidden) ensure_draft_state();
+            if (draft) states.push_back(std::move(*draft));
+            else if (capture_hidden) ensure_draft_state();
         }
         configure_prefill_schedule();
         reset_phase();
+        batch_tokens = 1;
+        cache_frozen = false;
+        cache_hits = cache_entries = pruned_routes = 0;
+        merged_expert_layers = 0;
+    }
+    void zero_slot() {
         for (auto &s : states)
             for (auto *b : {s.recurrent.get(), s.conv_q.get(), s.conv_k.get(), s.conv_v.get(), s.cache.get(),
                             s.keys.get(), s.gates.get(), s.pooled.get()})
@@ -10244,10 +10336,6 @@ class Decoder {
             check(cudaStreamSynchronize(secondary->stream));
         }
         target_hidden.clear();
-        batch_tokens = 1;
-        cache_frozen = false;
-        cache_hits = cache_entries = pruned_routes = 0;
-        merged_expert_layers = 0;
     }
     const std::vector<std::vector<uint64_t>> &prefill_route_counts() const { return prefill_routes; }
     void report_cache() const {
@@ -10434,6 +10522,19 @@ static int greedy(const std::vector<float> &logits, size_t offset = 0, size_t co
     return std::max_element(logits.begin() + offset, logits.begin() + offset + count) - logits.begin() -
            offset;
 }
+// The serve request's sampling (GEN temperature= top_p= top_k= min_p= seed=); inactive: greedy, as before.  A token is
+// drawn with its absolute position as the Philox counter, so a verify row and the anchor taken after a rejection
+// draw the same token for the same position: accepting a draft iff it equals the target's draw is exact sampling.
+struct RequestSampling {
+    strata::spec::HostSampler sampler;
+    bool active = false;
+};
+static RequestSampling request_sampling;
+static int pick(const std::vector<float> &logits, int64_t position, size_t offset = 0, size_t count = 0) {
+    if (!request_sampling.active) return greedy(logits, offset, count);
+    if (!count) count = logits.size() - offset;
+    return request_sampling.sampler.pick(logits.data() + offset, int(count), uint64_t(position));
+}
 struct LookupStats {
     int generated = 0, rounds = 0, proposed = 0, accepted = 0, replayed = 0;
     double milliseconds = 0;
@@ -10454,7 +10555,7 @@ static LookupStats generate_external_sequential(Decoder& decoder, std::vector<fl
         stats.stopped=std::find(stops.begin(),stops.end(),token)!=stops.end();};
     auto step=[&](int token){const auto begin=std::chrono::steady_clock::now();logits=decoder.step(token);verify_ms+=elapsed(begin);};
     while(stats.generated<max_new&&!stats.stopped){
-        const int anchor=greedy(logits);output(anchor);
+        const int anchor=pick(logits,decoder.token_position());output(anchor);
         if(stats.stopped||stats.generated==max_new)break;
         const auto begin=std::chrono::steady_clock::now();++calls;
         const auto drafts=external.propose(history,std::min(depth,max_new-stats.generated),decoder.vocabulary());
@@ -10463,7 +10564,7 @@ static LookupStats generate_external_sequential(Decoder& decoder, std::vector<fl
         stats.proposed+=drafts.size();
         for(size_t i=0;i<drafts.size();++i)++proposed[i];
         for(size_t i=0;i<drafts.size();++i){
-            ++opportunities[i];if(drafts[i]!=greedy(logits))break;
+            ++opportunities[i];if(drafts[i]!=pick(logits,decoder.token_position()))break;
             ++accepted[i];++stats.accepted;output(drafts[i]);
             if(stats.stopped||stats.generated==max_new)break;
             step(drafts[i]);
@@ -10520,7 +10621,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
         stats.stopped = std::find(stops.begin(), stops.end(), token) != stops.end();
     };
     while (stats.generated < max_new && !stats.stopped) {
-        const int anchor = greedy(logits);
+        const int anchor = pick(logits, decoder.token_position());
         output(anchor);
         if (stats.stopped || stats.generated == max_new)
             break;
@@ -10544,6 +10645,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
         window.insert(window.end(), drafts, drafts + k);
         const auto verify_start = std::chrono::steady_clock::now();
         decoder.save(checkpoint);
+        const int vpos = decoder.token_position();      // the anchor's position: row a draws position vpos + a + 1
         auto all = decoder.verify(window);
         verify_ms += elapsed(verify_start);
         ++stats.rounds;
@@ -10552,7 +10654,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
         int accepted = 0;
         while (accepted < k) {
             ++opportunities[accepted];
-            if (drafts[accepted] != greedy(all, (size_t)accepted * decoder.vocabulary(), decoder.vocabulary())) break;
+            if (drafts[accepted] != pick(all, vpos + accepted + 1, (size_t)accepted * decoder.vocabulary(), decoder.vocabulary())) break;
             ++accepted_at[accepted];
             output(drafts[accepted]);
             ++accepted;
@@ -10722,7 +10824,7 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
         stats.stopped = std::find(stops.begin(), stops.end(), token) != stops.end();
     };
     while (stats.generated < max_new && !stats.stopped) {
-        const int anchor = greedy(logits);
+        const int anchor = pick(logits, decoder.token_position());
         output(anchor);
         if (stats.stopped || stats.generated == max_new) break;
         int32_t lookup_tokens[7];
@@ -10795,9 +10897,10 @@ static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, in
         while (accepted < k) {
             if (accepted < mtp_proposals) ++mtp_position_opportunities[accepted];
             const size_t offset = (size_t)accepted * decoder.vocabulary();
-            const int target = greedy(all, offset, decoder.vocabulary());
+            const int target = pick(all, pos + accepted + 1, offset, decoder.vocabulary());
             if (window[accepted + 1] != target) {
-                if (acceptance.margin == 0.f || accepted >= mtp_proposals) break;
+                // soft acceptance is a greedy-decoding lever: a sampled request accepts exact draws only
+                if (acceptance.margin == 0.f || accepted >= mtp_proposals || request_sampling.active) break;
                 const auto decision = strata::spec::bounded_accept(
                     std::span<const float>(all.data() + offset, decoder.vocabulary()),
                     window[accepted + 1], target, acceptance, soft_in_window, stops);
@@ -10960,12 +11063,23 @@ static int serve(int argc, char **argv) {
             "usage: strata-glm-decode --serve <shard> <context> <dense-MiB> <threads> "
             "[expert-MiB=0] [prefill-batch=8] [eos-id=-1] [gpu-budget-MiB=12288] [lookup-depth=0] "
             "[gpu-decode-experts=0]");
-    int parallel = 0;
+    int parallel = 0, prefix_entries = 0;
     // Named flags follow the legacy positional serve arguments; existing invocations remain valid.
-    if (argc >= 31 && std::string(argv[29]) == "--batch") {
-        parallel = std::stoi(argv[30]);
-        if (argc != 31 || parallel < 1 || parallel > cpu::MAXT)
-            throw std::invalid_argument("GLM: --batch must be 1..8");
+    //   --batch N            N sequence slots (glm_batch_serve.inc)
+    //   --prefix-cache=K     resume a request from a saved prefix: K checkpoints in pinned host memory (~146 MiB each)
+    if (argc > 29) {
+        for (int i = 29; i < argc; ++i) {
+            const std::string flag = argv[i];
+            if (flag == "--batch" && i + 1 < argc) {
+                parallel = std::stoi(argv[++i]);
+                if (parallel < 1 || parallel > cpu::MAXT) throw std::invalid_argument("GLM: --batch must be 1..8");
+            } else if (flag.starts_with("--prefix-cache=")) {
+                prefix_entries = std::stoi(flag.substr(15));
+                if (prefix_entries < 1 || prefix_entries > 16)
+                    throw std::invalid_argument("GLM: --prefix-cache must be 1..16 checkpoints");
+            } else
+                throw std::invalid_argument("GLM: unknown serve flag " + flag);
+        }
         argc = 29;
     }
     const int ctx = std::stoi(argv[3]), dense = std::stoi(argv[4]), threads = std::stoi(argv[5]);
@@ -11057,9 +11171,17 @@ static int serve(int argc, char **argv) {
     else if (const char *active = std::getenv("STRATA_GLM_WARM_ACTIVE_ONLY"); active && std::string(active) == "1")
         decoder.warm_weights(false);
     if (use_mtp) decoder.enable_mtp_capture();
-    if (parallel) return serve_sequences(decoder, parallel, ctx, width, stops, use_mtp, draft_depth);
+    if (prefix_entries) {
+        const char *remote = std::getenv("STRATA_GLM_REMOTE_TP"), *host_kv = std::getenv("STRATA_GLM_KV_HOST");
+        if (devices.size() > 1 || std::filesystem::is_directory(argv[2]) || (remote && *remote) ||
+            (host_kv && *host_kv && std::string(host_kv) != "0"))
+            throw std::invalid_argument("GLM: --prefix-cache requires one GPU, GGUF weights, no remote TP and device KV");
+    }
+    if (parallel) return serve_sequences(decoder, parallel, ctx, width, stops, use_mtp, draft_depth, prefix_entries);
     std::cout << "INFO engine=glm-experimental sampling=greedy\nREADY " << ctx
-              << " stop prefill-includes-reset\n" << std::flush;
+              << " stop prefill-includes-reset" << (prefix_entries ? " resume" : "") << '\n' << std::flush;
+    // --prefix-cache: the slot's tokens and its checkpoints (src/program/glm_prefix_cache.hpp)
+    strata::glm::PrefixCache<Decoder::HostCheckpoint> prefixes{size_t(prefix_entries)};
     struct Request {
         std::string line;
         std::shared_ptr<std::atomic<bool>> cancel;
@@ -11140,39 +11262,112 @@ static int serve(int argc, char **argv) {
                 { std::lock_guard lock(mutex); active.reset(); }
                 continue;
             }
+            // GEN <max_new> [key=value ...] <comma-separated IDs>; keys (with --prefix-cache): pin=N saves a
+            // checkpoint at N (a shared prefix, kept over other entries), ckpt=0 saves none at the prompt's end.
             std::istringstream command(request.line);
-            std::string op, ids, extra;
+            std::string op;
             int count;
-            if (!(command >> op >> count >> ids) || op != "GEN" || command >> extra)
-                throw std::invalid_argument(
-                    "expected GEN <max_new> <comma-separated IDs>; only greedy text is supported");
-            const auto tokens = token_ids(ids);
+            std::vector<std::string> words;
+            if (!(command >> op >> count) || op != "GEN")
+                throw std::invalid_argument("expected GEN <max_new> <comma-separated IDs>; only greedy text is supported");
+            for (std::string word; command >> word;) words.push_back(word);
+            if (words.empty())
+                throw std::invalid_argument("expected GEN <max_new> [key=value ...] <comma-separated IDs>");
+            int pin = 0, split = 0;     // split=N (debug): a fresh prefill ends a chunk at N, as a resume from N does
+            bool save_prompt = true;
+            request_sampling = {};
+            uint64_t seed = 0;
+            for (size_t i = 0; i + 1 < words.size(); ++i) {
+                const auto eq = words[i].find('=');
+                const std::string key = words[i].substr(0, eq), value = eq == std::string::npos ? "" : words[i].substr(eq + 1);
+                if (key == "pin" && !value.empty()) pin = std::stoi(value);
+                else if (key == "ckpt" && (value == "0" || value == "1")) save_prompt = value == "1";
+                else if (key == "split" && !value.empty()) split = std::stoi(value);
+                else if (key == "temperature" && !value.empty()) request_sampling.sampler.temperature = std::stof(value);
+                else if (key == "top_p" && !value.empty()) request_sampling.sampler.top_p = std::stof(value);
+                else if (key == "top_k" && !value.empty()) request_sampling.sampler.top_k = std::stoi(value);
+                else if (key == "min_p" && !value.empty()) request_sampling.sampler.min_p = std::stof(value);
+                else if (key == "seed" && !value.empty()) seed = std::stoull(value);
+                else throw std::invalid_argument("GLM: unknown GEN key " + words[i]);
+            }
+            if ((pin || !save_prompt) && !prefix_entries)
+                throw std::invalid_argument("GLM: pin= and ckpt= need --prefix-cache");
+            request_sampling.active = !request_sampling.sampler.greedy();
+            if (request_sampling.active) {
+                const auto &sp = request_sampling.sampler;
+                if (!(sp.top_p > 0.f && sp.top_p <= 1.f) || !(sp.min_p >= 0.f && sp.min_p <= 1.f) || sp.top_k < 0)
+                    throw std::invalid_argument("GLM: invalid sampling settings");
+                request_sampling.sampler.seed = seed ? seed : std::random_device{}() | (uint64_t(std::random_device{}()) << 32);
+            }
+            const auto tokens = token_ids(words.back());
             if (tokens.empty() || count < 1 || tokens.size() + (size_t)count > (size_t)ctx)
                 throw std::invalid_argument("request exceeds context or has invalid token counts");
             request_prompt = tokens.size();
             auto start = Clock::now();
-            decoder.reset();
-            std::cerr << "RESPONSE_PREPARE kind=request_reset ms=" << millis(start, Clock::now()) << '\n';
+            // Resume from the latest checkpoint inside the prompt's common prefix with the slot's tokens; with MTP
+            // only checkpoints whose draft block is synced to them (prompt ends) qualify.
+            auto *entry = prefix_entries ? prefixes.choose(tokens) : nullptr;
+            if (prefix_entries)
+                std::cerr << "PREFIX_CHOOSE held=" << prefixes.held.size() << " common="
+                          << prefixes.common_prefix(prefixes.held, tokens) << " entry="
+                          << (entry ? entry->pos : -1) << " entry_mtp=" << (entry ? entry->store.mtp_position : -1) << '\n';
+            if (entry && use_mtp && !entry->store.draft_at(entry->pos)) entry = nullptr;
+            int resumed = 0;
+            if (entry) {
+                decoder.begin_request(true);
+                decoder.restore_host(entry->store);
+                resumed = entry->pos;
+                prefixes.truncate(resumed);
+            } else {
+                decoder.reset();
+                prefixes.clear();
+            }
+            std::cerr << "RESPONSE_PREPARE kind=" << (resumed ? "resume" : "request_reset") << " reused=" << resumed
+                      << " ms=" << millis(start, Clock::now()) << '\n';
+            if (prefix_entries) std::cout << "RESUME " << resumed << '\n' << std::flush;
             decoder.set_cancel([&request] { return bool(*request.cancel); });
             std::vector<float> logits;
             const auto prompt_start = Clock::now();
-            for (size_t t = 0; t < tokens.size(); t += width) {
+            auto save_at = [&](int at, bool pinned) {
+                auto *slot = prefixes.slot_for(at, pinned);
+                if (!slot) return;
+                const auto t0 = Clock::now();
+                decoder.save_host(slot->store);
+                prefixes.commit(slot);
+                std::cerr << "PREFIX_SAVE pos=" << at << " pinned=" << pinned << " MiB=" << slot->store.bytes / double(MiB)
+                          << " ms=" << millis(t0, Clock::now()) << '\n';
+            };
+            for (size_t t = resumed; t < tokens.size();) {
                 if (*request.cancel)
                     break;
-                const size_t end = std::min(tokens.size(), t + width);
+                size_t end = std::min(tokens.size(), t + width);
+                // a pinned prefix ends a chunk there (not with MTP: its draft block is synced after the prompt)
+                const bool at_pin = prefix_entries && !use_mtp && pin > (int)t && (size_t)pin < end;
+                if (at_pin) end = pin;
+                if (split > (int)t && (size_t)split < end) end = split;
                 logits = decoder.batch(std::vector<int>(tokens.begin() + t, tokens.begin() + end));
+                if (at_pin) { prefixes.held.assign(tokens.begin(), tokens.begin() + end); save_at(pin, true); }
                 const double prompt_ms = millis(prompt_start, Clock::now());
                 std::cout << "PP " << end << ' ' << tokens.size() << ' ' << prompt_ms << ' '
-                          << (prompt_ms > 0 ? end * 1000.0 / prompt_ms : 0.0) << '\n' << std::flush;
+                          << (prompt_ms > 0 ? (end - resumed) * 1000.0 / prompt_ms : 0.0) << '\n' << std::flush;
+                t = end;
+            }
+            const bool prompt_done = !*request.cancel;    // the whole prompt is in the slot's rows
+            if (prefix_entries && prompt_done) prefixes.held = tokens;
+            // STRATA_GLM_SERVE_LOGITS=PATH (debug): append the logits after the prompt, one f32 row per request
+            if (const char *dump = std::getenv("STRATA_GLM_SERVE_LOGITS"); dump && *dump && prompt_done) {
+                std::ofstream out(dump, std::ios::binary | std::ios::app);
+                out.write(reinterpret_cast<const char *>(logits.data()), std::streamsize(logits.size() * 4));
             }
             if (use_mtp && !*request.cancel) {
                 const auto mtp_start = Clock::now();
-                decoder.prepare_mtp(tokens);
+                decoder.prepare_mtp(tokens, resumed);
                 // Allocate verification snapshots before the auto expert cache
                 // consumes its budget; keep the existing physical headroom guard.
                 decoder.prepare_mtp_history(draft_depth);
                 std::cerr << "RESPONSE_PREPARE kind=mtp ms=" << millis(mtp_start, Clock::now()) << '\n';
             }
+            if (prefix_entries && save_prompt && !*request.cancel) save_at((int)tokens.size(), false);
             if (!*request.cancel) {
                 decoder.probe_decode_cache(logits, stops);
                 const auto admission_start = Clock::now();
@@ -11200,7 +11395,7 @@ static int serve(int argc, char **argv) {
                         if (*request.cancel)
                             throw std::runtime_error("cancelled");
                         ++sent;
-                        std::cout << "T " << token << '\n' << std::flush;
+                            std::cout << "T " << token << '\n' << std::flush;
                     });
                 generated = result.generated;
                 if (result.stopped)
@@ -11211,8 +11406,7 @@ static int serve(int argc, char **argv) {
                         finish = "cancel";
                         break;
                     }
-                    const int next = compact_next >= 0 ? compact_next :
-                        int(std::max_element(logits.begin(), logits.end()) - logits.begin());
+                    const int next = compact_next >= 0 ? compact_next : pick(logits, decoder.token_position());
                     ++sent;
                     std::cout << "T " << next << '\n' << std::flush;
                     if (std::find(stops.begin(), stops.end(), next) != stops.end()) {
@@ -11221,16 +11415,21 @@ static int serve(int argc, char **argv) {
                         break;
                     }
                     if (generated + 1 < count) {
-                        if (compact_greedy) compact_next = decoder.step_greedy(next);
+                        if (compact_greedy && !request_sampling.active) compact_next = decoder.step_greedy(next);
                         else logits = decoder.step(next);
                     }
                 }
+            // `held` stays the prompt: checkpoints are only saved inside it, so the generated tokens never decide
+            // a resume.  A request cancelled before its prompt was read leaves the rows unknown: start from zero.
+            // (A STOP after the prompt - the server sends one when it sees the stop token - changes nothing here.)
+            if (!prompt_done) prefixes.clear();
             std::cout << "DONE " << generated << ' ' << tokens.size() << ' ' << millis(start, prefilled)
-                      << ' ' << millis(prefilled, Clock::now()) << ' ' << finish << " 0 0 0\n"
+                      << ' ' << millis(prefilled, Clock::now()) << ' ' << finish << " 0 0 " << resumed << '\n'
                       << std::flush;
         } catch (const std::exception &e) {
             decoder.set_cancel({});
             std::cerr << "GLM request failed: " << e.what() << '\n';
+            prefixes.clear();
             try { decoder.reset(); }
             catch (const std::exception &reset_error) {
                 std::cout << "ERR " << e.what() << "; reset failed: " << reset_error.what() << '\n' << std::flush;

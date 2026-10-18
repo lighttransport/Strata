@@ -1,7 +1,10 @@
 // GLM's independent-sequence scheduler. Included after the generation helpers so the
 // single-request path uses the same verified MTP implementation as ordinary serving.
+// --prefix-cache=K: every slot keeps its own prompt tokens and K checkpoints (src/program/glm_prefix_cache.hpp), so
+// a conversation that comes back to its slot resumes there.  BGEN / GEN take the single-stream keys: pin=N, ckpt=0,
+// temperature= top_p= top_k= min_p= seed= (per slot; a token is drawn at its absolute position).
 static int serve_sequences(Decoder &decoder, int count, int context, int width,
-                           const std::vector<int> &stops, bool mtp, int depth) {
+                           const std::vector<int> &stops, bool mtp, int depth, int prefix_entries = 0) {
     const char *spec = std::getenv("STRATA_GLM_BATCH_MTP");
     const bool batch_mtp = mtp && spec && std::string(spec) == "1";
     if (batch_mtp && depth > 2) throw std::invalid_argument("GLM: batch MTP supports depth 1 or 2");
@@ -11,6 +14,14 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         bool active = false;
         int token = 0, generated = 0, limit = 0;
         Clock::time_point start;
+        strata::spec::HostSampler sampler;   // greedy unless the request's keys set a temperature
+        int64_t next = 0;                    // the absolute position of the next token drawn
+    };
+    std::vector<strata::glm::PrefixCache<Decoder::HostCheckpoint>> prefixes;
+    for (int i = 0; i < count; ++i) prefixes.emplace_back(size_t(prefix_entries));
+    auto draw = [&](Slot &s, const std::vector<float> &logits, size_t offset, int64_t position) {
+        if (s.sampler.greedy()) return greedy(logits, offset, decoder.vocabulary());
+        return s.sampler.pick(logits.data() + offset, decoder.vocabulary(), uint64_t(position));
     };
     struct Request { std::string line; std::shared_ptr<std::atomic<bool>> cancel; };
     std::vector<Slot> slots(count);
@@ -72,6 +83,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                     const int k = decoder.draft_ready() ? std::min(depth, slot.limit - slot.generated - 1) : 0;
                     if (input.size() + k + 1 > 8) break;
                     work.push_back({id, (int)input.size(), decoder.token_position(), {slot.token}, {}});
+                    // row a of this window draws position token_position() + a + 1 (slot.next before the round)
                     auto &w = work.back();
                     // A one-row tail cannot reject a draft and needs no rollback allocation.
                     // In particular, eight one-token tails must not allocate eight full checkpoints.
@@ -93,13 +105,15 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                         else if (slot.generated == slot.limit) finish(w.slot, "length");
                     };
                     while (accepted + 1 < (int)w.window.size() &&
-                           w.window[accepted + 1] == greedy(logits, (size_t)(w.offset + accepted) * decoder.vocabulary(), decoder.vocabulary())) {
+                           w.window[accepted + 1] == draw(slot, logits, (size_t)(w.offset + accepted) * decoder.vocabulary(),
+                                                          w.position + accepted + 1)) {
                         emit(w.window[++accepted]);
                         if (!slot.active) break;
                     }
                     accepted_total += accepted;
                     if (!slot.active) continue;
-                    const int next = greedy(logits, (size_t)(w.offset + accepted) * decoder.vocabulary(), decoder.vocabulary());
+                    const int next = draw(slot, logits, (size_t)(w.offset + accepted) * decoder.vocabulary(),
+                                          w.position + accepted + 1);
                     decoder.select_sequence(w.slot);
                     const int verified = w.window.size();
                     w.window.resize(accepted + 1);
@@ -131,8 +145,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         auto logits = decoder.step_sequences(ids, tokens);
         for (size_t row = 0; row < ids.size(); ++row) {
             auto &s = slots[ids[row]];
-            auto first = logits.begin() + row * decoder.vocabulary();
-            s.token = std::max_element(first, first + decoder.vocabulary()) - first;
+            s.token = draw(s, logits, row * decoder.vocabulary(), s.next++);
             ++s.generated;
             std::cout << "BT " << ids[row] << ' ' << s.token << '\n';
             if (is_stop(s.token)) finish(ids[row], "stop");
@@ -150,7 +163,8 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         }
     };
     std::cout << "INFO engine=glm-experimental sampling=greedy batch_slots=" << count
-              << "\nREADY " << context << " stop prefill-includes-reset\n" << std::flush;
+              << "\nREADY " << context << " stop prefill-includes-reset" << (prefix_entries ? " resume" : "") << '\n'
+              << std::flush;
     for (;;) {
         Request request;
         {
@@ -178,49 +192,99 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
         int slot = -1, delivered_control = 0;
         try {
             std::istringstream in(request.line);
-            std::string op, text, extra; int limit;
+            std::string op; int limit;
             in >> op;
             batched = op == "BGEN";
             if (batched) in >> slot;
             else if (op == "GEN") slot = 0;
-            if (slot < 0 || slot >= count || !(in >> limit >> text) || in >> extra || limit < 1 ||
-                (batched ? slots[slot].active : running()))
-                throw std::invalid_argument("expected GEN <max_new> <ids> or BGEN <free-slot> <max_new> <ids>");
-            const auto prompt = token_ids(text);
+            std::vector<std::string> words;
+            if (slot >= 0 && slot < count && (in >> limit)) for (std::string w; in >> w;) words.push_back(w);
+            if (slot < 0 || slot >= count || words.empty() || limit < 1 || (batched ? slots[slot].active : running()))
+                throw std::invalid_argument("expected GEN <max_new> [key=value ...] <ids> or BGEN <free-slot> <max_new> [key=value ...] <ids>");
+            int pin = 0;
+            bool save_prompt = true;
+            strata::spec::HostSampler sampler;
+            uint64_t seed = 0;
+            for (size_t i = 0; i + 1 < words.size(); ++i) {
+                const auto eq = words[i].find('=');
+                const std::string key = words[i].substr(0, eq), value = eq == std::string::npos ? "" : words[i].substr(eq + 1);
+                if (value.empty()) throw std::invalid_argument("GLM: GEN key without a value: " + words[i]);
+                if (key == "pin" && prefix_entries) pin = std::stoi(value);
+                else if (key == "ckpt" && prefix_entries && (value == "0" || value == "1")) save_prompt = value == "1";
+                else if (key == "temperature") sampler.temperature = std::stof(value);
+                else if (key == "top_p") sampler.top_p = std::stof(value);
+                else if (key == "top_k") sampler.top_k = std::stoi(value);
+                else if (key == "min_p") sampler.min_p = std::stof(value);
+                else if (key == "seed") seed = std::stoull(value);
+                else throw std::invalid_argument("GLM: unknown GEN key " + words[i]);
+            }
+            if (!sampler.greedy())
+                sampler.seed = seed ? seed : std::random_device{}() | (uint64_t(std::random_device{}()) << 32);
+            const auto prompt = token_ids(words.back());
             if (prompt.empty() || prompt.size() + (size_t)limit > (size_t)context ||
                 std::any_of(prompt.begin(), prompt.end(), [&](int t) { return t < 0 || t >= decoder.vocabulary(); }))
                 throw std::invalid_argument("request exceeds context or has invalid token counts");
             decoder.select_sequence(slot);
-            decoder.reset();
-            decoder.enable_mtp_capture(mtp && (!batched || batch_mtp));
+            const bool slot_mtp = mtp && (!batched || batch_mtp);
+            auto &cache = prefixes[slot];
+            auto *entry = prefix_entries ? cache.choose(prompt) : nullptr;
+            if (entry && slot_mtp && !entry->store.draft_at(entry->pos)) entry = nullptr;
+            int resumed = 0;
+            if (entry) {
+                decoder.begin_request(true);
+                decoder.restore_host(entry->store);
+                resumed = entry->pos;
+                cache.truncate(resumed);
+            } else {
+                decoder.reset();
+                cache.clear();
+            }
+            if (prefix_entries) std::cout << "RESUME " << resumed << '\n' << std::flush;
+            request_sampling = {sampler, !sampler.greedy()};    // the solo GEN path's generate_mtp draws with it
+            decoder.enable_mtp_capture(slot_mtp);
             const auto start = Clock::now();
             auto cancelled = [&] { return bool(*request.cancel) || (batched && stopped[slot].load()); };
             decoder.set_cancel(cancelled);
             std::vector<float> logits;
             bool did_yield = false;
-            for (size_t at = 0; at < prompt.size() && !cancelled(); at += width) {
-                const size_t end = std::min(prompt.size(), at + width);
+            for (size_t at = resumed; at < prompt.size() && !cancelled();) {
+                size_t end = std::min(prompt.size(), at + width);
+                const bool at_pin = prefix_entries && !slot_mtp && pin > (int)at && (size_t)pin < end;
+                if (at_pin) end = pin;
                 logits = decoder.batch(std::vector<int>(prompt.begin() + at, prompt.begin() + end));
+                if (at_pin) {
+                    cache.held.assign(prompt.begin(), prompt.begin() + end);
+                    if (auto *e = cache.slot_for(pin, true)) { decoder.save_host(e->store); cache.commit(e); }
+                }
+                at = end;
                 std::cout << "PP " << end << ' ' << prompt.size() << '\n' << std::flush;
                 if (batched && yielded[slot].exchange(false) && end < prompt.size()) {
                     std::cout << "YIELDED " << slot << ' ' << end << '\n'; did_yield = true; break;
                 }
                 // A long admission allows already admitted sequences a decode step per chunk.
                 decoder.set_cancel({}); if (!batch_mtp) safe_pump(); decoder.set_cancel(cancelled);
+                decoder.select_sequence(slot);         // the pump may have selected another slot
             }
             auto prefilled = Clock::now();
             int generated = 0;
             bool cont = false;
             std::string reason = cancelled() ? "cancel" : did_yield ? "yield" : "stop";
-            if (!cancelled() && !did_yield) {
-                if (mtp && (!batched || batch_mtp)) { decoder.prepare_mtp(prompt); if (!batched) decoder.prepare_mtp_history(depth); }
+            const bool prompt_done = !cancelled() && !did_yield;
+            if (prefix_entries && prompt_done) cache.held = prompt;
+            else if (prefix_entries) cache.clear();
+            if (prompt_done) {
+                if (slot_mtp) { decoder.prepare_mtp(prompt, resumed); if (!batched) decoder.prepare_mtp_history(depth); }
+                if (prefix_entries && save_prompt)
+                    if (auto *e = cache.slot_for((int)prompt.size(), false)) { decoder.save_host(e->store); cache.commit(e); }
                 decoder.prepare_decode_cache(); decoder.freeze_cache(); decoder.prepare_cpu(0);
                 prefilled = Clock::now();
                 if (batched) {
-                    const int token = std::max_element(logits.begin(), logits.end()) - logits.begin();
+                    Slot admitted{false, 0, 1, limit, Clock::now(), sampler, (int64_t)prompt.size()};
+                    const int token = draw(admitted, logits, 0, admitted.next++);
                     std::cout << "T " << token << '\n'; generated = delivered_control = 1;
                     cont = !is_stop(token) && limit > 1;
-                    slots[slot] = {cont, token, 1, limit, Clock::now()};
+                    admitted.active = cont; admitted.token = token;
+                    slots[slot] = admitted;
                     reason = is_stop(token) ? "stop" : "length";
                 } else if (mtp) {
                     auto result = generate_mtp(decoder, logits, limit, stops, depth, [&](int token) {
@@ -232,7 +296,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                 } else {
                     reason = "length";
                     for (; generated < limit && !cancelled();) {
-                        const int token = std::max_element(logits.begin(), logits.end()) - logits.begin();
+                        const int token = pick(logits, decoder.token_position());
                         ++generated; ++delivered_control; std::cout << "T " << token << '\n' << std::flush;
                         if (is_stop(token)) { reason = "stop"; break; }
                         if (generated < limit) logits = decoder.step(token);
@@ -241,7 +305,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                 }
             }
             std::cout << "DONE " << generated << ' ' << prompt.size() << ' ' << std::chrono::duration<double, std::milli>(prefilled - start).count()
-                      << ' ' << ms(prefilled) << ' ' << reason << " 0 0 0\n";
+                      << ' ' << ms(prefilled) << ' ' << reason << " 0 0 " << resumed << '\n';
             if (batched) std::cout << "BADM " << slot << ' ' << int(cont) << '\n';
             std::cout << std::flush;
         } catch (const std::exception &e) {
@@ -254,6 +318,7 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
             } else {
                 std::cout << "ERR " << e.what() << '\n' << std::flush;
             }
+            if (slot >= 0 && slot < count) prefixes[slot].clear();
         }
         decoder.set_cancel({});
         { std::lock_guard lock(mutex); active.reset(); }

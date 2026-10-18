@@ -57,9 +57,9 @@ from urllib.parse import parse_qs, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT))   # run as a script (run-<model>.bat) as well as a module
-from serve.frontend import (THINK_END, ChatTemplate, Event, OutputParser, anthropic_to_messages,  # noqa: E402
-                            forced_call, images_of, literal_tags, mark_think_literals, openai_to_messages,
-                            tool_choice_of, unmark_think_literals)
+from serve.frontend import (GLM_TOOL_TAGS, THINK_END, ChatTemplate, Event, OutputParser,  # noqa: E402
+                            anthropic_to_messages, forced_call, images_of, literal_tags, make_parser,
+                            mark_think_literals, openai_to_messages, tool_choice_of, unmark_think_literals)
 from serve.mcp import McpCancelled, hub_from_config  # noqa: E402
 from serve import runconfig  # noqa: E402
 from serve import logit_bias as bias_api  # noqa: E402
@@ -2204,7 +2204,7 @@ def vision_start_error(line: str, log=None) -> str:
 
 
 class GlmEngine(StrataEngine):
-    """Experimental GLM resident process; greedy text requests only."""
+    """Experimental GLM resident process; text requests, greedy unless the config's "glm_sampling" says otherwise."""
 
     # GLM has no reusable prefix cache. Admit parallel requests directly into slots:
     # promotion would re-prefill generated tokens and can change rounding and logits.
@@ -2212,6 +2212,7 @@ class GlmEngine(StrataEngine):
     # A yielded admission (BYIELD) is abandoned by the GLM engine and its next BGEN reads the whole prompt again
     # (decoder.reset(), no prefix reuse), so giving way to a shorter request only multiplies prompt reads.
     YIELDS_MAX = 0
+    sampling_mode = "reject"            # the config's "glm_sampling" (set_sampling_mode)
 
     @staticmethod
     def sampling_keys(sampling):
@@ -2237,6 +2238,47 @@ class GlmEngine(StrataEngine):
             if key not in neutral or value != neutral[key]:
                 raise ValueError(f"GLM currently supports greedy decoding only; unsupported setting {key}")
         return ""
+
+    prefix_cache = False                # the config's "prefix_cache" (serve --prefix-cache)
+
+    def set_sampling_mode(self, mode: str, prefix_cache: bool = False):
+        """The config's "glm_sampling": "reject" (the default: non-greedy settings are a 400), "ignore" (any settings
+        are accepted and the reply is greedy - agents that always send a temperature can connect), "honor"
+        (temperature, top_p, top_k, min_p and seed are sampled by the engine; penalties and other settings are still a
+        400).  With the engine's prefix cache on, the request's pinned prefix and checkpoint choice go along (pin=N,
+        ckpt=0)."""
+        if mode not in ("reject", "ignore", "honor"):
+            raise ValueError(f'"glm_sampling" must be "reject", "ignore" or "honor", not {mode!r}')
+        self.sampling_mode, self.prefix_cache = mode, prefix_cache
+        strict = GlmEngine.sampling_keys
+        base = {"ignore": lambda sampling: "", "honor": GlmEngine.honored_keys}.get(mode, strict)
+        if mode != "reject" or prefix_cache:          # instance attribute: shadows the strict staticmethod
+            self.sampling_keys = lambda sampling: base(sampling) + (self.prefix_keys(sampling) if prefix_cache else "")
+
+    HONORED = ("temperature", "top_p", "top_k", "min_p", "seed")
+
+    @staticmethod
+    def honored_keys(sampling) -> str:
+        """glm_sampling "honor": the engine's GEN keys for temperature / top_p / top_k / min_p / seed (the Qwen engine's
+        format: top_k capped to the 64-candidate list, unset or neutral values left out).  Other non-neutral settings
+        (penalties, typical_p, mirostat) are still refused."""
+        settings = sampling or {}
+        rest = {k: v for k, v in settings.items() if k not in GlmEngine.HONORED}
+        GlmEngine.sampling_keys(rest)          # the strict check for everything this mode does not sample
+        return StrataEngine.sampling_keys({k: settings[k] for k in GlmEngine.HONORED if k in settings})
+
+    @staticmethod
+    def prefix_keys(sampling) -> str:
+        """pin=N (the request's resolved "strata_prefix") and ckpt=0 ("strata_checkpoint": false), as the Qwen engine
+        sends them."""
+        sampling = sampling or {}
+        keys = " ckpt=0" if sampling.get("strata_checkpoint") is False else ""
+        prefix = sampling.get("strata_prefix")
+        if isinstance(prefix, dict):
+            pn = prefix.get("tokens")
+            if isinstance(pn, int) and not isinstance(pn, bool) and pn > 0:
+                keys += f" pin={pn}"
+        return keys
 
     def session_file(self, action, path):
         # The GLM engine has no SAVE/RESTORE: sending one would desynchronize its line protocol and end it.
@@ -3077,6 +3119,11 @@ class Service:
                  fit_max_tokens: bool = False, stop_ids: set[int] | None = None):
         self.engine, self.tok, self.template, self.model, self.vision = engine, tokenizer, template, model_name, vision
         self.literals = literal_tags(getattr(tokenizer, "control_tokens", ()))   # texts that stay text inside a message
+        self.dialect = getattr(template, "dialect", "qwen")   # the template's tool-call syntax (ChatTemplate.dialect)
+        if self.dialect == "glm":                     # GLM's argument tags are special tokens: quoted ones stay text
+            self.literals = dict(sorted({**self.literals, **GLM_TOOL_TAGS}.items(), key=lambda t: -len(t[0])))
+        self.glm_clear_thinking = None                # opt-in (GLM): the template's clear_thinking
+        self.reasoning_effort_lock = None             # opt-in (GLM): every request rendered at this effort
         self.fit_max_tokens = fit_max_tokens          # --fit-max-tokens: clamp the output cap instead of 400
         self.aliases: list[str] = []                  # #297: other names of the model (the config's `aliases`)
         self.reasoning_close_retry = False            # #1053 (opt-in): close the thinking once when a reply ends inside it
@@ -3822,6 +3869,8 @@ class Service:
         thinking) is rendered as a default one up to the answer - the same prompt start, so the conversation cache
         keeps it - and its effort follows in a short system turn right before the answer (thinking off: the template's
         empty thinking block).  The engine (--tail-role-token) checkpoints in front of that turn."""
+        if self.dialect == "glm":
+            return self._render_glm(messages, tools, kwargs)
         effort = kwargs.get("reasoning_effort")
         off = kwargs.get("enable_thinking") is False
         if not self.effort_end or (not off and effort in (None, "", "xhigh", "high")):
@@ -3834,6 +3883,29 @@ class Service:
             return full
         tail = "" if off else EFFORT_TURN.format(EFFORT_TEXT.get(effort, EFFORT_TEXT["medium"]))
         return history + tail + full[len(mine):]
+
+    GLM_EFFORT = {"low": "low", "medium": "high"}     # the template's levels: low, high, and max (its default)
+
+    def _render_glm(self, messages, tools, kwargs) -> str:
+        """GLM-5.x's template knows reasoning_effort low / high (anything else is Max) and has no enable_thinking: the
+        generation prompt always opens <think>.  The client's effort maps onto those levels (minimal..low -> Low,
+        medium -> High, high / xhigh / max / none given -> Max); thinking off closes the block at once, the template's
+        own form for a past turn without reasoning.  "reasoning_effort_lock" renders every request at one level (the
+        effort line comes first in the prompt, so a change re-reads the whole conversation); "glm_clear_thinking"
+        passes the template's clear_thinking."""
+        kw = {k: v for k, v in kwargs.items() if k not in ("reasoning_effort", "enable_thinking")}
+        if self.reasoning_effort_lock:
+            effort = None if self.reasoning_effort_lock == "max" else self.reasoning_effort_lock
+        else:
+            effort = self.GLM_EFFORT.get(kwargs.get("reasoning_effort"))
+        if effort:
+            kw["reasoning_effort"] = effort
+        if self.glm_clear_thinking is not None:
+            kw["clear_thinking"] = self.glm_clear_thinking
+        prompt = self.template.render(messages, tools=tools, **kw)
+        if kwargs.get("enable_thinking") is False and prompt.endswith("<think>"):
+            prompt += "</think>"
+        return prompt
 
     def encode_prompt(self, messages, tools, kwargs) -> list[int]:
         """The request's prompt: the template rendered and tokenized.  #537: a <think> / </think> written inside a
@@ -3897,8 +3969,6 @@ class Service:
         """-> (ids, thinking, max_new). An unset or non-positive max_new (some clients send -1) means "unlimited":
         the rest of the context.  `force` (forced_call): without thinking the reply starts with it, so it ends the
         prompt; with thinking, Service.run writes it once the thinking is over."""
-        if isinstance(self.engine, GlmEngine) and tools:
-            raise ValueError("GLM tool-call parsing is not implemented; use text requests")
         # `cancel` (#1999): set when the client hangs up; the downloads, the wait for the turn and the encodes stop
         # between pictures and raise ClientGone
         fetched = self._note_unreadable_tool_images(messages, cancel)
@@ -4140,7 +4210,8 @@ class Service:
                 print(f"[strata] thinking capped at {max_new - reserve} of max_tokens {max_new} to leave room for "
                       f"the answer (budget {budget})", flush=True)
                 budget = max(1, max_new - reserve)
-        parser = OutputParser(thinking=thinking, tools=tools, stream_tools=True, recover=self.tool_call_recovery)
+        parser = make_parser(self.dialect, thinking=thinking, tools=tools, stream_tools=True,
+                             recover=self.tool_call_recovery)
         detok, n, finish = Detokenizer(self.tok), 0, "length"
         run_tok, run_len, repeated = None, 0, False     # #606: the current run of one repeated token
         thinking_n = 0                                  # tokens written while thinking (Responses' reasoning_tokens)
@@ -4445,7 +4516,9 @@ class Service:
                             budget = st["thinking_budget"] = None
                             text = REASONING_WRAP_UP + (force or "")
                         else:
-                            text = "\n" * (2 - (len(tail) - len(tail.rstrip("\n")))) + force
+                            # the blank line Qwen's template puts before a call; GLM's writes the call right after
+                            text = force if self.dialect == "glm" else \
+                                "\n" * (2 - (len(tail) - len(tail.rstrip("\n")))) + force
                         force = None
                         extra = self.tok.encode(text, parse_special=True)
                         if max_new - n - len(extra) < 1:
@@ -5389,7 +5462,8 @@ def make_handler(svc: Service):
             elif path in ("/health", "/api/health"):
                 self._json(200, {"status": "ok", "max_context": svc.reported_ctx(), "model": svc.model,
                                  "images": svc.vision is not None, "api_key": bool(svc.api_key),
-                                 "greedy_only": isinstance(svc.engine, GlmEngine),
+                                 "greedy_only": isinstance(svc.engine, GlmEngine) and
+                                                getattr(svc.engine, "sampling_mode", "reject") != "honor",
                                  "image_generation": svc.images is not None,
                                  "loaded": svc.loaded(), "service": "strata"})
             elif path.startswith("/v1/images/files/"):
@@ -5860,11 +5934,11 @@ def make_handler(svc: Service):
         def _openai(self, req):
             req = svc.with_shared(req, "openai")
             bias_api.normalize(req.get("logit_bias"), len(getattr(svc.tok, "tokens", ())) or None)
-            messages, tools, kw = openai_to_messages(req)
+            messages, tools, kw = openai_to_messages(req, keep_ids=svc.template.uses_tool_ids)
             self._no_local_images(messages)
             if tool_choice_of(req.get("tool_choice"))[0] == "none":   # as the Responses route: no tools are offered
                 tools = None
-            force = forced_call(req.get("tool_choice"), tools)      # a bad value is a 400 before anything is sent
+            force = forced_call(req.get("tool_choice"), tools, svc.dialect)   # a bad value is a 400 before anything is sent
             messages, validator = prepare_format(req.get("response_format"), messages)
             if validator is not None and (tools or req.get("strata_mcp")):
                 raise ValueError("structured response_format with tools/MCP is not supported")
@@ -6095,7 +6169,8 @@ def make_handler(svc: Service):
             """Anthropic's token count, which Claude Code asks for its context figures: the prompt this server would
             read for the same request, rendered and tokenized - the model does not run."""
             req = svc.with_shared(req, "anthropic")
-            messages, tools, kw = anthropic_to_messages(req, svc.anthropic_think_unasked)
+            messages, tools, kw = anthropic_to_messages(req, svc.anthropic_think_unasked,
+                                                        keep_ids=svc.template.uses_tool_ids)
             stop_strings(req)                                 # the same 400 as the request itself would get
             check_request_sampling(req)                       # ... likewise a sampling field of the wrong type
             self._json(200, {"input_tokens": len(svc.encode_prompt(messages, tools, kw))})
@@ -6103,11 +6178,12 @@ def make_handler(svc: Service):
         def _anthropic(self, req):
             svc.load()
             req = svc.with_shared(req, "anthropic")
-            messages, tools, kw = anthropic_to_messages(req, svc.anthropic_think_unasked)
+            messages, tools, kw = anthropic_to_messages(req, svc.anthropic_think_unasked,
+                                                        keep_ids=svc.template.uses_tool_ids)
             self._no_local_images(messages)
             if tool_choice_of(req.get("tool_choice"))[0] == "none":   # Anthropic's {"type": "none"}: no tools offered
                 tools = None
-            force = forced_call(req.get("tool_choice"), tools)        # "any" / {"type": "tool", "name": N}
+            force = forced_call(req.get("tool_choice"), tools, svc.dialect)   # "any" / {"type": "tool", "name": N}
             max_new = int(req.get("max_tokens") or 0)                  # 0/-1: the rest of the context
             svc.reasoning_budget(req)                         # a bad value is a 400 before anything is sent
             stop_strings(req)                                 # ... and so is a bad stop / stop_sequences
@@ -6922,16 +6998,36 @@ def main() -> int:
                 if cfg["mtp_experts"] not in ("cpu", "gpu"):
                     ap.error("GLM layer mtp_experts must be cpu or gpu")
                 layer_args.append(f"--mtp-experts={cfg['mtp_experts']}")
-        if batch_args or layer_args:
+        prefix_args = []                                # opt-in: "prefix_cache": true | K | {"checkpoints": K}
+        pc = cfg.get("prefix_cache")
+        if pc not in (None, False):
+            k = 2 if pc is True else pc.get("checkpoints", 2) if isinstance(pc, dict) else pc
+            if isinstance(k, bool) or not isinstance(k, int) or not 1 <= k <= 16:
+                ap.error('GLM "prefix_cache" must be true, a checkpoint count 1..16, or {"checkpoints": K}')
+            if glm_native or layer_args:
+                ap.error("GLM prefix_cache requires GGUF weights and the legacy layout")
+            prefix_args = [f"--prefix-cache={k}"]
+            print(f"[strata] prefix cache: {k} checkpoint(s) in pinned host memory (~146 MiB each)", flush=True)
+        if batch_args or layer_args or prefix_args:
             if glm_native:
                 ap.error("GLM parallel requests currently require GGUF weights")
             # Preserve all positional fields before appending named batch options.
             defaults = ["mmq", "4k", "", "", "auto"]
             while len(args) < 27:
                 args.append(defaults[len(args) - 22])
-            args += batch_args + layer_args
+            args += batch_args + layer_args + prefix_args
         engine = GlmEngine(cfg["exe"], args, cwd=cfg.get("cwd"), log=cfg.get("log"), env=child_env(cfg))
-        vision, sampling_defaults = None, {}
+        try:
+            engine.set_sampling_mode(cfg.get("glm_sampling", "reject"), prefix_cache=bool(prefix_args))
+        except ValueError as e:
+            raise SystemExit(f"[strata] config {e}")
+        if engine.sampling_mode == "ignore":
+            print("[strata] glm_sampling: ignore (sampling settings are accepted, replies are greedy)", flush=True)
+        elif engine.sampling_mode == "honor":
+            print("[strata] glm_sampling: honor (temperature, top_p, top_k, min_p and seed are sampled)", flush=True)
+        vision = None
+        # with sampling honored, the config's "sampling" block gives the defaults for requests that set none
+        sampling_defaults = sampling_defaults_from_config(cfg) if engine.sampling_mode == "honor" else {}
     elif a.engine == "strata":
         if not cfg:
             ap.error("--engine strata needs --config")
@@ -7106,6 +7202,15 @@ def main() -> int:
     if not isinstance(recovery, bool):
         raise SystemExit(f"[strata] config \"tool_call_recovery\" must be true or false, not {recovery!r}")
     svc.tool_call_recovery = recovery
+    if svc.dialect == "glm":                           # GLM template options (see Service._render_glm)
+        ct = cfg.get("glm_clear_thinking")
+        if ct is not None and not isinstance(ct, bool):
+            raise SystemExit(f"[strata] config \"glm_clear_thinking\" must be true or false, not {ct!r}")
+        svc.glm_clear_thinking = ct
+        lock = cfg.get("reasoning_effort_lock")
+        if lock is not None and lock not in ("low", "high", "max"):
+            raise SystemExit(f"[strata] config \"reasoning_effort_lock\" must be \"low\", \"high\" or \"max\", not {lock!r}")
+        svc.reasoning_effort_lock = lock
     etu = cfg.get("env_to_user", False)                # opt-in: see frontend._env_to_user
     if not isinstance(etu, bool):
         raise SystemExit(f"[strata] config \"env_to_user\" must be true or false, not {etu!r}")

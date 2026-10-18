@@ -206,6 +206,11 @@ B550-class machines (64 GB, one RX 9070 XT): [GLM_B550_REAP50.md](GLM_B550_REAP5
 the 60 GiB cgroup and the `tools/glm_b550_60g.sh start` launcher. The V100 server: the `build-glm-v100`
 recipe and profile in [GLM53_V100.md](GLM53_V100.md).
 
+### Coding agents (Claude Code, OpenAI-compatible, Codex)
+
+Tool calls, prefix reuse between turns, sampling and several conversations at once are opt-in settings of the same
+server: [GLM_AGENT_SERVE.md](GLM_AGENT_SERVE.md), profile `configs/experimental/glm53f-q23fp8-tr16-9070xt-agent.json`.
+
 ### Run on two GPUs (TR16)
 
 One process is the primary (it runs the model) and a second process on the other card is the expert
