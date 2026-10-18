@@ -15,7 +15,11 @@
 # Prints `SENTINEL DS41F_PACK_BUILD=OK dir=... sha256=<strata-ds41f-pack sha256> pfetch=<sha256|none>`.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-[ -d "$HOME/local/bin" ] && export PATH=$HOME/local/bin:$PATH   # user-installed cmake/ninja (batch jobs may not inherit the login PATH)
+# user-installed cmake/ninja (batch jobs may not inherit the login PATH), but only where they run: $HOME/local/bin on
+# the login node holds x86 binaries, and on an A64FX compute node they shadow the node's own tools ("cannot execute")
+if [ -d "$HOME/local/bin" ] && { [ ! -e "$HOME/local/bin/ninja" ] || "$HOME/local/bin/ninja" --version > /dev/null 2>&1; }; then
+    export PATH=$HOME/local/bin:$PATH
+fi
 STRATA=${STRATA:-$(cd "$here/../.." && pwd)}
 GGML_SRC=${GGML_SRC:?set GGML_SRC to a directory containing ggml/}
 DS41F_BIN_ROOT=${DS41F_BIN_ROOT:?set DS41F_BIN_ROOT to the shared directory for published binaries}
@@ -27,10 +31,10 @@ quants_sha=$(sha256sum "$GGML_SRC/ggml/src/ggml-quants.c" | cut -d' ' -f1)
 if [ -n "${DS41F_GGML_QUANTS_SHA256:-}" ] && [ "$quants_sha" != "$DS41F_GGML_QUANTS_SHA256" ]; then
     echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=ggml-quants.c sha256 $quants_sha != pinned $DS41F_GGML_QUANTS_SHA256"; exit 2
 fi
-echo "BUILD ggml from $GGML_SRC (ggml-quants.c $quants_sha) into $B"
+echo "BUILD ggml from $GGML_SRC (ggml-quants.c $quants_sha) into $B with $GGML_GENERATOR"
 ggml_configure "$GGML_SRC/ggml" "$B/ggml" -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF > "$B/ggml-cmake.log" 2>&1 \
     || { tail -20 "$B/ggml-cmake.log"; echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=ggml cmake"; exit 1; }
-ninja -C "$B/ggml" -j "${JOBS:-24}" ggml-base ggml-cpu > "$B/ggml-build.log" 2>&1 \
+ggml_build "$B/ggml" -j "${JOBS:-24}" ggml-base ggml-cpu > "$B/ggml-build.log" 2>&1 \
     || { tail -30 "$B/ggml-build.log"; echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=ggml build"; exit 1; }
 base=$(find "$B/ggml" -name 'libggml-base.a' | head -1); cpu=$(find "$B/ggml" -name 'libggml-cpu.a' | head -1)
 [ -n "$base" ] && [ -n "$cpu" ] || { echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=ggml archives not found"; exit 1; }
@@ -39,9 +43,18 @@ CXXFLAGS="-Nclang -O2 -std=c++17 -DNDEBUG"
 "$A64FX_CXX" $CXXFLAGS -I"$STRATA/include" -I"$GGML_SRC/ggml/include" -c "$STRATA/tools/ds41f_pack.cpp" -o "$B/ds41f_pack.o"
 link() { "$A64FX_CXX" -Nclang -o "$B/strata-ds41f-pack" "$B/ds41f_pack.o" "$B/ds41f_names.o" "$cpu" "$base" -lpthread -lm "$@"; }
 link > "$B/link.log" 2>&1 || link -lstdc++fs > "$B/link.log" 2>&1 || { tail -20 "$B/link.log"; echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=link"; exit 1; }
-"$B/strata-ds41f-pack" 2>&1 | grep -q "usage: strata-ds41f-pack" || { echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=binary does not run"; exit 1; }
+# the usage text proves it runs; it exits 1 without arguments, so the output is captured (a pipe fails under pipefail)
+usage=$("$B/strata-ds41f-pack" 2>&1 || true)
+grep -q "usage: strata-ds41f-pack" <<< "$usage" || { echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=binary does not run: ${usage:0:200}"; exit 1; }
 PF=$STRATA/tools/pfetch; PFSRC="$PF/strata_pfetch.c $PF/pf_plan.c $PF/pf_hash.c"; pfsha=none
-if ${A64FX_MPICC:-mpifcc} -Nclang -O2 -std=c11 $PFSRC -lpthread -o "$B/strata-pfetch" > "$B/pfetch.log" 2>&1 &&
+# DS41F_PFETCH_PREBUILT: an strata-pfetch already built for A64FX (mpifcc does not run on a compute node; the login
+# node's cross compiler mpifccpx does); strata-pput needs no MPI and is still built here
+if [ -n "${DS41F_PFETCH_PREBUILT:-}" ]; then
+    if [ -x "$DS41F_PFETCH_PREBUILT" ] && cp "$DS41F_PFETCH_PREBUILT" "$B/strata-pfetch" &&
+       "$A64FX_CC" -Nclang -O2 -std=c11 -DPFETCH_NO_MPI $PFSRC -lpthread -o "$B/strata-pput" > "$B/pfetch.log" 2>&1; then
+        pfsha=$(sha256sum "$B/strata-pfetch" | cut -d' ' -f1); echo "BUILD strata-pfetch prebuilt $DS41F_PFETCH_PREBUILT ($pfsha)"
+    else echo "BUILD strata-pfetch prebuilt unusable: $DS41F_PFETCH_PREBUILT $(tail -1 "$B/pfetch.log" 2>/dev/null)"; rm -f "$B/strata-pfetch" "$B/strata-pput"; fi
+elif ${A64FX_MPICC:-mpifcc} -Nclang -O2 -std=c11 $PFSRC -lpthread -o "$B/strata-pfetch" > "$B/pfetch.log" 2>&1 &&
    "$A64FX_CC" -Nclang -O2 -std=c11 -DPFETCH_NO_MPI $PFSRC -lpthread -o "$B/strata-pput" >> "$B/pfetch.log" 2>&1; then
     pfsha=$(sha256sum "$B/strata-pfetch" | cut -d' ' -f1)
 else echo "BUILD strata-pfetch skipped (no MPI compiler?): $(tail -1 "$B/pfetch.log")"; rm -f "$B/strata-pfetch" "$B/strata-pput"; fi

@@ -33,10 +33,17 @@ struct Json {
         return boolean;
     }
     uint64_t integer() const {
+        // digits only, overflow is an error (std::from_chars' rules); a plain loop, because the integer from_chars of
+        // GCC 8's headers needs __muloti4, which Fujitsu's clang runtime on A64FX does not provide
         uint64_t value = 0;
-        auto [p, e] = std::from_chars(text.data(), text.data() + text.size(), value);
-        if (kind != Number || text.empty() || e != std::errc() || p != text.data() + text.size())
-            throw std::runtime_error("JSON: expected nonnegative integer");
+        bool ok = kind == Number && !text.empty();
+        for (char c : text) {
+            if (!ok) break;
+            const unsigned d = (unsigned) (c - '0');
+            ok = d < 10 && value <= (UINT64_MAX - d) / 10;
+            value = value * 10 + d;
+        }
+        if (!ok) throw std::runtime_error("JSON: expected nonnegative integer");
         return value;
     }
     float real() const {
