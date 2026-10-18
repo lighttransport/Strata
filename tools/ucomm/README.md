@@ -15,6 +15,7 @@ The only build dependency is libc (`-ldl` on older glibc).
 ```sh
 make                 # build/libucomm.a, build/libucomm.so, build/test_loopback, build/ucomm_bench
 make test            # 2, 3 and 4 ranks on 127.0.0.1, plus a run with 5% induced packet loss
+make test-relay      # relay/API/error-path tests without running the full suite
 ```
 
 CMake works too (`add_subdirectory(tools/ucomm)`, target `ucomm`).
@@ -47,7 +48,8 @@ ucomm_mr_t *mr; ucomm_mr_reg(c, big_buf, size, &mr);  /* IB: register long-lived
 ucomm_finalize(c);                   /* drains traffic, then a barrier */
 ```
 
-Rules: one context per process, driven from one thread; messages between two ranks with the same tag match
+Rules: one rank per context, driven from one thread; independent contexts may coexist for relaying.
+Messages between two ranks with the same tag match
 in order; user tags must be below `UCOMM_TAG_RESERVED`; a send buffer must stay unchanged until its request
 completes; a too-small receive buffer gives `UCOMM_ERR_TRUNC` with the full size in `nbytes`.
 
@@ -175,3 +177,210 @@ Measured 2026-10-17, node-a → node-b, ConnectX-3 QDR, 1 GiB from tmpfs to tmpf
 
 To node-b's disk, which was 99% full and under load, ib ran at 0.12 GB/s: the destination disk sets the rate there.
 `make test` adds `test_file`: whole ranges, CRC32C, resume and sub-ranges, also over udp with 2% induced loss.
+
+## Buffered verbs relay between separate fabrics
+
+`include/ucomm_relay.h` adds an opt-in application relay. The middle host opens two independent two-rank
+contexts, one per HCA port. Each endpoint is rank 1 of its own context; the relay is rank 0 of both.
+Each fabric still needs its own subnet manager. No IB switch, IP forwarding, or cross-subnet IPoIB route
+is needed for payload transport. TCP connectivity to both bootstrap ports is required; Ethernet may be used.
+
+```text
+left endpoint -- fabric A -- relay port 2 | registered RAM | relay port 1 -- fabric B -- right endpoint
+```
+
+The relay has a bounded ring of `min(depth, message_count)` slots in one buffer pool, registered once
+with each context. A zero-message relay allocates no payload buffers. It receives a complete
+message, forwards its actual length in receive order, and reuses that slot only when the outgoing send
+completes. Both contexts are polled on every progress call, so simultaneous forward/reverse transfers
+can progress. For large messages, each hop uses the existing rendezvous RDMA READ protocol: the payload
+lands in relay memory and is read from that same memory on the second hop, without a CPU payload copy.
+Small eager messages still use the existing copies. The CPU handles completions and posting work.
+
+```c
+#include "ucomm_relay.h"
+
+/* a and b are independently initialized contexts, on different local ports. */
+ucomm_relay_t *forward;
+ucomm_relay_create(a, 1, source_tag, b, 1, destination_tag,
+                   max_message_bytes, 3, message_count, &forward);
+int done = 0;
+while (!done) {
+    /* Check the status, enforce a deadline, and progress a reverse relay here if used. */
+    ucomm_status status = ucomm_relay_progress(forward, &done);
+    if (status != UCOMM_OK) { /* terminate the communicating session */ break; }
+}
+/* Destroy only after successful completion (or before any progress call). */
+if (done) ucomm_relay_destroy(forward);
+```
+
+Use a separate relay object per direction/tag stream. The caller supplies matching source/destination
+peers, tags, maximum message size, and finite message count; this API does not discover arbitrary tags or
+rewrite QPs, addresses, memory keys, reads, writes, or atomics. Existing applications must explicitly use
+the relay protocol. `ucfile` and collectives are not automatically relayed by this addition.
+
+Relay slots apply backpressure to buffer reuse. Keep endpoint send windows bounded as well: the existing
+backend can queue unexpected eager messages outside this pool. The relay API itself has no timeout and
+the caller must enforce a session deadline. On a transport or truncation error, end the session; there is
+no pending-request cancellation API. Destroy refuses to release buffers with outstanding requests because
+verbs may still reference them. An errored relay can be destroyed if it has no outstanding requests;
+otherwise terminate the communicating process/session. Do not finalize either context while a relay using
+it is active. `ucomm_test` now reports progress errors with `done=0`, preserving the request; `ucomm_waitall`
+also preserves the current and remaining request pointers on a timeout or progress error.
+
+### Build and exercise three hosts
+
+Build the same sources on all hosts with `make -C tools/ucomm`. The standalone `build/ucomm_relay` tool
+forces IB by default and never silently falls back to UDP. It first runs 8-byte ping-pongs (10 warmups,
+1000 measured exchanges by default, independently controlled by `-l`), then a pipelined bandwidth phase
+and a terminal acknowledgement from the destination. Pool allocation, registration and initialization
+finish on all roles before the bandwidth timer starts. RTT output includes p50 and p99; `-J` emits JSON
+lines for automation. Use matching `-l` values on all roles as well as the other protocol settings.
+
+In three terminals, use the same roots, size, count, depth and verification options. Here `relay-host`
+is a configured hostname reachable by both endpoints; replace it with your own bootstrap hostname.
+
+On the middle host (left cable on port 2, right cable on port 1):
+
+```sh
+UCOMM_VERBOSE=1 tools/ucomm/build/ucomm_relay -r relay \
+  -a relay-host:29681 -z relay-host:29682 -p 2 -q 1 \
+  -s 1048576 -n 512 -d 3 -V
+```
+
+On the left endpoint (its cable on port 1):
+
+```sh
+UCOMM_VERBOSE=1 tools/ucomm/build/ucomm_relay -r left \
+  -a relay-host:29681 -z relay-host:29682 -p 1 \
+  -s 1048576 -n 512 -d 3 -V
+```
+
+On the right endpoint (its cable on port 1):
+
+```sh
+UCOMM_VERBOSE=1 tools/ucomm/build/ucomm_relay -r right \
+  -a relay-host:29681 -z relay-host:29682 -p 1 \
+  -s 1048576 -n 512 -d 3 -V
+```
+
+`-V` verifies every bulk payload byte and, for messages at least 8 bytes long, its sequence number.
+Remove `-V` on all roles to time bulk transfer without the receiver's verification loop. Add `-R` on
+all three roles to reverse bandwidth direction. The latency phase always originates on the left.
+`-b udp` on all roles exercises the same relay logic without verbs for testing. `UCOMM_IB_DEV` selects
+the local HCA if more than one exists. `UCOMM_TIMEOUT_MS` controls bootstrap/wait timeouts and the
+relay tool's overall deadline per phase; choose a value appropriate to the entire message count.
+
+Check `ulimit -l` before increasing buffer sizes. Endpoint registered bulk memory is `size * depth`,
+plus transport buffers. During bulk transfer the relay tool allocates a forward pool of
+`size * min(depth, messages)` bytes and an 8-byte acknowledgement pool, plus both contexts' transport
+buffers. Each pool is registered once per context. Registration failure commonly indicates
+insufficient locked-memory allowance. Large existing regression tests can exceed an 8 MiB allowance.
+
+### Validation and initial measurements
+
+Measured 2026-10-18 with three ConnectX-3 adapters, native IB, both links reporting 40 Gb/s (4X QDR),
+GCC `-O2`, one relay progress thread, no CPU pinning. Relay CPU: Ryzen 9 3950X; right CPU: Threadripper
+1950X. Linux kernels: left/relay 7.0.0-38-generic, right 6.8.0-147-generic. These are single runs, not
+hardware peak claims. Both relay contexts logged backend `ib`; Ethernet addresses were used only for
+bootstrap. The library's pre-existing wire format and transport implementation were unchanged.
+
+| Test | Result |
+|---|---:|
+| Left → right, 512 × 1 MiB, depth 3, verification off | 810.7 MB/s (6.485 Gbit/s) |
+| Right → left, same settings | 874.6 MB/s (6.997 Gbit/s) |
+| 8-byte RTT, 512 measured exchanges, forward run: min / mean / max | 12.159 / 15.187 / 160.143 µs |
+| 8-byte RTT, reverse run: min / mean / max | 12.069 / 16.676 / 927.208 µs |
+| Full-byte and sequence verification, 32 × 1,048,579 bytes, depth 3, left → right | passed; 733.6 MB/s |
+| Full-byte and sequence verification, same settings, right → left | passed; 660.5 MB/s |
+| Eager payload, 2 × 1 byte, depth 8 | passed |
+
+Half RTT is approximately 7.6–8.3 µs in these runs; it is not a directly measured one-way latency.
+These initial timings predate the ready handshake and include endpoint setup skew and the final
+acknowledgement. The repeatable measurements below use the handshake. The software relay stages
+every message in host memory; it does not create end-to-end one-sided RDMA semantics.
+
+Validation commands:
+
+```sh
+make -C tools/ucomm
+UCOMM_BACKEND=udp make -C tools/ucomm test
+cmake -S tools/ucomm -B /tmp/ucomm-cmake
+cmake --build /tmp/ucomm-cmake -j4
+ctest --test-dir /tmp/ucomm-cmake --output-on-failure
+```
+
+The UDP suite covers the existing point-to-point/collective/file tests plus three-process relay tests:
+depth 1, pipeline wraparound, eager boundary sizes, odd-sized large payloads, count below depth,
+reverse traffic and induced loss. `test_relay_api` additionally checks zero/variable-length forwarding,
+message order, zero message count, truncation and sticky errors, invalid peers/tags/depth, byte accounting,
+and refusal to free a busy relay. `test_progress` injects registration/progress failures and checks request
+lifetime, pool rollback, and completed/empty fast paths. The runner test checks structured output, metadata,
+hashes and alternating repeat order. An unqualified `make test` on an active HCA selects IB automatically; the existing 16/64 MiB
+tests failed under the left host's 8 MiB locked-memory limit. Explicit UDP regression tests passed.
+The test runner uses Python 3; the library and executable build do not require Python.
+
+### Repeated measurements and the PCIe ×1 limit
+
+`python/relay_bench.py` runs the three roles locally or over SSH, alternates direction order between
+repeats, validates JSON results and byte counts, and saves per-role logs and a compact `results.json`.
+It records source/binary hashes, CPU/kernel, locked-memory limits, negotiated PCIe width/speed, and IB
+link rates. Reports do not embed connection settings. SSH targets use quoted argument lists and each
+remote process has a bounded lifetime via GNU `timeout`. Local and remote hosts need Python 3 for
+metadata collection; the runner does not build or copy binaries.
+
+Keep actual connection settings outside the repository or in an ignored `.local` file. Example config:
+
+```json
+{
+  "roots": ["relay-host:29681", "relay-host:29682"],
+  "left": {"exe": "/path/to/ucomm_relay", "port": 1, "ib_dev": "mlx4_0"},
+  "relay": {"host": "relay-host", "exe": "/path/to/ucomm_relay", "left_port": 2, "right_port": 1},
+  "right": {"host": "right-host", "exe": "/path/to/ucomm_relay", "port": 1}
+}
+```
+
+Omit `host` for local execution, and use an absolute executable path or a path relative to the remote
+login directory; `~` is not expanded. `ib_dev` is optional; specify it on hosts with multiple HCAs.
+Run from the repository root, choosing a new results directory each time:
+
+```sh
+python3 tools/ucomm/python/relay_bench.py --config /path/to/relay-config.json \
+  --output /tmp/relay-x1-results --size 1048576 --depth 3 \
+  --messages 512 --latency-iters 1000 --repeats 3
+```
+
+Use `--verify --messages 32 --repeats 1` for a separate byte/sequence verification run in both directions.
+The runner's `--timeout` is an overall session bound; keep it long enough for bootstrap and both phases.
+Partial results and raw logs are retained after failure; review error logs before sharing, as diagnostics
+may contain private connection settings. Preserve this baseline and repeat the same settings after a lane
+width change, recording the newly negotiated PCIe width rather than assuming a BIOS setting took effect.
+
+Measured on the same three-host setup on 2026-10-18, still using PCIe 3.0 ×1 at the left endpoint and
+PCIe 3.0 ×8 at the relay/right endpoint. Both active IB cables negotiated 40 Gb/s QDR. One progress
+thread, GCC `-O2`, no affinity or clock changes, 1 MiB messages, depth 3, 512 messages per transfer,
+three repeats per direction, verification off in timed bulk runs:
+
+| Direction | Minimum / median / maximum MB/s | Median Gbit/s |
+|---|---:|---:|
+| Left → relay → right | 819.45 / 819.54 / 819.66 | 6.556 |
+| Right → relay → left | 880.51 / 880.55 / 880.59 | 7.044 |
+
+Across the six latency runs (1000 measured 8-byte exchanges each), RTT p50 ranged from 13.29 to
+14.37 µs and p99 from 24.91 to 29.97 µs. Separate full-byte/sequence checks passed both directions
+with 32 odd-sized 1,048,579-byte messages. Address/undefined-behavior sanitizer checks passed on the
+loopback/API/error-path tests; they were not used for hardware performance measurements.
+
+For context, direct-link `ib_write_bw` at 64 KiB measured 6.85 Gbit/s left → relay and 7.17 Gbit/s
+relay → left; the right ↔ relay link measured 31.52–31.53 Gbit/s. `ib_read_bw` measured 7.16 and
+31.53 Gbit/s respectively. These perftest 6.20 runs used one RC QP, 2048-byte IB MTU, five-second
+duration with one-second margins. The relay is close to the measured left-link ceiling; the ×1 PCIe
+connection, rather than QDR negotiation, limits these end-to-end results. The small changes from the
+initial single-run numbers are not evidence of a transport speedup.
+
+Compact evidence: [repeated results](../../docs/benchmarks/ucomm_relay_x1_20261018/results.json) and
+[byte-verified results](../../docs/benchmarks/ucomm_relay_x1_20261018/verified.json). Historical source
+and binary hashes are preserved as measured. RAM timings were not collected. CUDA/HIP/SYCL engine
+backends, automatic failover, transparent `ucfile` relaying and PCIe ×4 operation were not tested here.
+The existing IB/UDP/bootstrap wire implementations are unchanged; the shared core changes affect error
+propagation and request lifetime, with regression coverage for the successful paths.
