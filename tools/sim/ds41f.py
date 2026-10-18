@@ -538,7 +538,9 @@ A64FX_SDOT_GATEUP_GBPS = {"Q2_K": 192.2, "Q3_K": 171.8, "IQ2_XXS": 84.8, "IQ1_S"
 A64FX_SDOT_DOWN_GBPS = {"Q2_K": 133.4, "Q3_K": 138.0, "IQ2_XXS": 84.8, "IQ1_S": 60.3}
 # time per weight byte at 1..4 tokens per expert relative to one token (GLM shapes, same session): compute-bound kernels
 A64FX_SDOT_WIDTH_COST = {"Q2_K": (1.0, 1.508, 2.265, 3.158), "Q3_K": (1.0, 1.538, 1.936, 2.551),
-                         "IQ2_XXS": (1.0, 1.438, 1.683, 2.324), "IQ1_S": (1.0, 1.381, 1.698, 2.139)}
+                         "IQ2_XXS": (1.0, 1.372, 1.541, 1.696), "IQ1_S": (1.0, 1.381, 1.698, 2.139)}
+# IQ2_XXS: the best equal-size kernel per width (gather at one token, the gather-free svtbl decode at 2-4 tokens, job
+# 52439675 "iq_gather_free"); the repacked/expanded layouts cost memory the 6-node plans do not have
 
 
 def a64fx_sdot_cost(fmt, tpe):

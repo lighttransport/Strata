@@ -802,5 +802,153 @@
    "Q2_K down 5120x2304": "v1 (v2 within 2 %)",
    "row pairs": "slower everywhere at 1-2 tokens (register spills); not used"
   }
+ },
+ "iq_gather_free": {
+  "what": "job 52439675 (one node, 2026-10-18, one session, best of 3, 48 threads): gather-free IQ kernels (tools/a64fx_probe/iq_sdot_sve.c) against the gather kernels and ggml. tbl = ggml's IQ2_XXS layout decoded in registers (the 256-entry grid as 2-bit codes in eight 64-byte svtbl tables, signs from ksigns via two svtbl); rp = repacked at load, 74 B/block (+12 %: indices, resolved sign bytes, scale bytes); rpc = codes expanded at load (IQ2_XXS 106 B +61 %, IQ1_S 82 B +64 %), the decode floor. GBps in source-format bytes (pack size); streamed = bytes read. 105 parity checks pass.",
+  "node48_gbps_tokens_1_to_4": {
+   "iq2_xxs_2048x4096": {
+    "ggml": [
+     11.1,
+     5.5,
+     3.7,
+     2.8
+    ],
+    "gather": [
+     77.5,
+     54.2,
+     47.7,
+     35.2
+    ],
+    "tbl": [
+     69.1,
+     56.5,
+     50.3,
+     45.7
+    ],
+    "rp": [
+     80.7,
+     61.6,
+     55.2,
+     50.3
+    ],
+    "rpc": [
+     114.8,
+     86.4,
+     71.1,
+     62.1
+    ]
+   },
+   "iq2_xxs_2304x5120": {
+    "ggml": [
+     11.1,
+     null,
+     null,
+     2.8
+    ],
+    "gather": [
+     80.2,
+     null,
+     null,
+     39.1
+    ],
+    "tbl": [
+     72.0,
+     null,
+     null,
+     46.0
+    ],
+    "rp": [
+     85.2,
+     null,
+     null,
+     50.5
+    ],
+    "rpc": [
+     125.1,
+     null,
+     null,
+     63.0
+    ]
+   },
+   "iq1_s_2048x4096": {
+    "ggml": [
+     8.1,
+     4.1,
+     2.7,
+     2.0
+    ],
+    "iq": [
+     54.2,
+     40.4,
+     36.0,
+     27.6
+    ],
+    "rpc": [
+     109.9,
+     75.1,
+     67.2,
+     54.8
+    ]
+   },
+   "iq1_s_2304x5120": {
+    "ggml": [
+     8.2,
+     null,
+     null,
+     2.0
+    ],
+    "iq": [
+     57.5,
+     null,
+     null,
+     30.4
+    ],
+    "rpc": [
+     119.7,
+     null,
+     null,
+     53.8
+    ]
+   },
+   "q2_K_2048x4096": {
+    "ggml": [
+     90.4,
+     44.6,
+     30.7,
+     23.4
+    ],
+    "v2": [
+     173.8,
+     117.1,
+     93.2,
+     63.1
+    ]
+   },
+   "q2_K_2304x5120": {
+    "ggml": [
+     93.9,
+     null,
+     null,
+     24.0
+    ],
+    "v2": [
+     189.7,
+     null,
+     null,
+     59.9
+    ]
+   }
+  },
+  "rpc_streamed_gbps_1_token": {
+   "iq2_xxs_2048x4096": 184.4,
+   "iq1_s_2048x4096": 180.3
+  },
+  "findings": [
+   "at equal size the in-register grid decode (tbl) costs about as much as the gathers: 69-72 vs 78-80 GB/s at one token; it wins only when the decode is amortized over 2-4 tokens (+4 to +30 %)",
+   "rp (+12 % memory) is +4-6 % at one token and +14-43 % at 2-4 tokens over gather",
+   "expanded codes double the rate (IQ2_XXS 115-125, IQ1_S 110-120 GB/s source-equivalent) but cost 61-64 % more memory: IQ1_S then has Q2_K's size and speed, so neither expanded layout is a useful format",
+   "IQ1_S has no compact gather-free form (2048-entry grid = 64 svtbl tables)"
+  ],
+  "simulator": "ds41f.py IQ2_XXS width curve = best equal-size kernel per width (gather at 1 token, tbl at 2-4): 77.5 / 56.5 / 50.3 / 45.7 GB/s -> 1 / 1.372 / 1.541 / 1.696; absolute one-token rates stay from job 52438878 so formats remain comparable within one session"
  }
 }

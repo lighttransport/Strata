@@ -25,8 +25,10 @@ typedef struct {
 int  q23s_vl_bytes(void);
 /* q8k_row: `cols/256` ggml block_q8_K (float d, int8 qs[256], int16 bsums[16]) */
 void q23s_prepare(const void *q8k_row, int cols, q23s_act *out);
-/* natural order (x[k] = q[k]) for the IQ kernels, same struct */
+/* natural order (x[k] = q[k]) for the IQ gather kernels, same struct */
 void q23s_prepare_natural(const void *q8k_row, int cols, q23s_act *out);
+/* quad order for the gather-free IQ kernels: lane L of plane j holds weight 4 L + j (x[64 j + L] = q[4 L + j]) */
+void q23s_prepare_quad(const void *q8k_row, int cols, q23s_act *out);
 
 /* v1: dot of one weight row with nt (1..4) prepared activations; out[t] */
 void q2k_sdot_row(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
@@ -42,6 +44,21 @@ void q3k_sdot_rows_v2(int cols, const void *w, size_t stride, int nrows, const q
  * iq2xxs variant 0: signs from popcount parity in registers; variant 1: signs gathered from ksigns64. */
 void iq2xxs_sdot_row(int cols, const void *w, const q23s_act *const *acts, int nt, float *out, int variant);
 void iq1s_sdot_row(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
+
+/* Gather-free IQ (iq_sdot_sve.c), quad-order activations. A block's 32 grid entries become 64 bytes of 2-bit codes
+ * (byte L = weights 4L..4L+3), one plane per 2-bit field, values by a 64-byte svtbl.
+ *   IQ2_XXS layout 0: the ggml block as stored; the codes come from eight 64-byte svtbl tables (the 256-entry grid
+ *                     as 2-bit codes = 512 B) and the signs from ksigns via two svtbl. No repack, no gather.
+ *   IQ2_XXS layout 1: repacked at load, 74 B per block (+12 %): d, 8 scale bytes (2s+1), 32 grid indices, 32 sign
+ *                     bytes (parity resolved). Codes still from the svtbl tables.
+ *   IQ2_XXS layout 2: repacked at load, 106 B (+61 %): codes expanded (the decode floor; a reference, not a format).
+ *   IQ1_S rpc:        repacked at load, 82 B (+64 %): 2-bit ternary codes, 8 scale bytes, 8 delta signs. IQ1_S has no
+ *                     compact gather-free form: its 2048-entry grid would need 64 svtbl tables. */
+enum { IQ2XXS_RP_BYTES = 74, IQ2XXS_RPC_BYTES = 106, IQ1S_RPC_BYTES = 82 };
+void iq2xxs_repack(const void *src, void *dst, int nblocks, int layout);   /* layout 1 or 2 */
+void iq1s_repack(const void *src, void *dst, int nblocks);
+void iq2xxs_sdot_row_tbl(int cols, const void *w, const q23s_act *const *acts, int nt, float *out, int layout);
+void iq1s_sdot_row_rpc(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
 
 #ifdef __cplusplus
 }

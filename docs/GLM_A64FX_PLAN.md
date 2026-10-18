@@ -368,7 +368,10 @@ bench on rank subsets of one 12-node 2x3x2 allocation).
    count and the redesign charges the measured cost per extra token in the MTP verify step. What did not help: the
    first Q3_K version unpacked its scales through the stack (88 GB/s, fixed); processing two rows per call to share
    the activation loads is slower everywhere at 1-2 tokens (register spills; 120 vs 180 GB/s on Q2_K). Node spread:
-   the same Q2_K kernel ran 198 GB/s on another node (ggml 96 vs 92), so compare kernels within one run. In the
+   the same Q2_K kernel ran 198 GB/s on another node (ggml 96 vs 92), so compare kernels within one run. Gather-free
+   IQ kernels (job 52439675): an in-register `svtbl` decode of the IQ2_XXS grid matches the gathers only once the
+   decode is amortized over 2-4 tokens, a +12 % repack adds 4-6 % at one token, and expanded 2-bit codes double the
+   rate at +61-64 % memory (data: `iq_gather_free`). In the
    simulator: `current` uses ggml's mix (78 GB/s), `redesign` the SDOT q23 mix (160.8 GB/s, derived from the data file).
 2. **Node constants, measured** (`node_probe.c`): HBM read 915 GB/s at 48 threads, 229 per CMG; libhwb hardware
    barrier 1.38 us hierarchical over 48 threads, 0.12 us inside one CMG; a flat OpenMP barrier 5.29 us at 48 threads

@@ -39,6 +39,17 @@ void q23s_prepare_natural(const void *q8k_row, int cols, q23s_act *out)
     }
 }
 
+void q23s_prepare_quad(const void *q8k_row, int cols, q23s_act *out)
+{
+    const blk_q8k *b = (const blk_q8k *) q8k_row;
+    for (int i = 0; i < cols / 256; ++i) {
+        for (int j = 0; j < 4; ++j)
+            for (int L = 0; L < 64; ++L) out[i].x[64 * j + L] = b[i].qs[4 * L + j];
+        for (int g = 0; g < 16; ++g) out[i].bsum[g] = b[i].bsums[g];
+        out[i].d = b[i].d;
+    }
+}
+
 /* int32 lane k of an SDOT result sums bytes 4k..4k+3: lanes 0-3 -> group 2j, 4-7 -> 2j+1, 8-11 -> 8+2j, 12-15 -> 9+2j */
 static const uint32_t IDX[4][16] = {
     {0,0,0,0, 1,1,1,1,  8, 8, 8, 8,  9, 9, 9, 9},

@@ -169,3 +169,228 @@ void iq1s_sdot_row(int cols, const void *w, const q23s_act *const *acts, int nt,
     switch (nt) { case 1: iq1s_row(nb, b, acts, 1, out); break; case 2: iq1s_row(nb, b, acts, 2, out); break;
                   case 3: iq1s_row(nb, b, acts, 3, out); break; default: iq1s_row(nb, b, acts, 4, out); }
 }
+
+/* ================================================================================================ gather-free */
+typedef struct { uint16_t d; uint8_t ls[8]; uint8_t idx[32]; uint8_t sgn[32]; } iq2rp;     /* 74 B */
+typedef struct { uint16_t d; uint8_t ls[8]; uint8_t sgn[32]; uint8_t codes[64]; } iq2rpc;  /* 106 B */
+typedef struct { uint16_t d; uint8_t ls[8]; int8_t dsg[8]; uint8_t codes[64]; } iq1rpc;    /* 82 B */
+_Static_assert(sizeof(iq2rp) == IQ2XXS_RP_BYTES, "iq2rp");
+_Static_assert(sizeof(iq2rpc) == IQ2XXS_RPC_BYTES, "iq2rpc");
+_Static_assert(sizeof(iq1rpc) == IQ1S_RPC_BYTES, "iq1rpc");
+
+/* T2[k][h][m]: the 2-bit codes (8 -> 0, 25 -> 1, 43 -> 2) of grid entry 64 k + m, weights 4 h .. 4 h + 3 */
+static uint8_t T2[4][2][64], LIDX2[64], SLO[64], SHI[64], SHR[64], SHL[64], KSLO[64], KSHI[64], H4[64], HALF[64],
+               SUB8[64], VAL2[64], VAL1[64];
+static uint32_t SL2[16];
+static int ready2;
+
+static uint8_t code_byte(uint64_t entry, int h, int ternary)
+{
+    uint8_t c = 0;
+    for (int j = 0; j < 4; ++j) {
+        const int8_t v = (int8_t) (entry >> (8 * (4 * h + j)));
+        const int code = ternary ? v + 1 : (v == 8 ? 0 : v == 25 ? 1 : 2);
+        c |= (uint8_t) (code << (2 * j));
+    }
+    return c;
+}
+
+static void init_tables2(void)
+{
+    if (ready2) return;
+    init_tables();
+    for (int k = 0; k < 4; ++k)
+        for (int h = 0; h < 2; ++h)
+            for (int m = 0; m < 64; ++m) T2[k][h][m] = code_byte(iq2xxs_grid[64 * k + m], h, 0);
+    static const int lo_off[4] = {0, 0, 1, 2}, rsh[4] = {0, 7, 6, 5};
+    for (int L = 0; L < 64; ++L) {
+        const int g = L >> 1, sb = g >> 2, ll = g & 3;
+        LIDX2[L] = (uint8_t) (8 * sb + ll);
+        SLO[L] = (uint8_t) (8 * sb + 4 + lo_off[ll]); SHI[L] = (uint8_t) (SLO[L] + 1);
+        SHR[L] = (uint8_t) rsh[ll]; SHL[L] = (uint8_t) (8 - rsh[ll]);
+        KSLO[L] = ksigns_iq2xs[L]; KSHI[L] = ksigns_iq2xs[64 + L];
+        H4[L] = (uint8_t) ((L & 1) * 4); HALF[L] = (uint8_t) g; SUB8[L] = (uint8_t) (L >> 3);
+        VAL2[L] = L == 0 ? 8 : L == 1 ? 25 : L == 2 ? 43 : 0;
+        VAL1[L] = (uint8_t) (L == 0 ? -8 : L == 2 ? 8 : 0);
+    }
+    for (int k = 0; k < 16; ++k) SL2[k] = (uint32_t) (k >> 1);
+    ready2 = 1;
+}
+
+void iq2xxs_repack(const void *src, void *dst, int nblocks, int layout)
+{
+    init_tables2();
+    const blk_iq2xxs *b = (const blk_iq2xxs *) src;
+    for (int i = 0; i < nblocks; ++i) {
+        uint8_t ls[8], idx[32], sgn[32];
+        for (int sb = 0; sb < 8; ++sb) {
+            uint32_t aux[2]; memcpy(aux, b[i].qs + 8 * sb, 8);
+            ls[sb] = (uint8_t) (2 * (aux[1] >> 28) + 1);
+            for (int l = 0; l < 4; ++l) {
+                idx[4 * sb + l] = (uint8_t) (aux[0] >> (8 * l));
+                sgn[4 * sb + l] = ksigns_iq2xs[(aux[1] >> (7 * l)) & 127];
+            }
+        }
+        if (layout == 1) {
+            iq2rp *o = (iq2rp *) dst + i; o->d = b[i].d;
+            memcpy(o->ls, ls, 8); memcpy(o->idx, idx, 32); memcpy(o->sgn, sgn, 32);
+        } else {
+            iq2rpc *o = (iq2rpc *) dst + i; o->d = b[i].d;
+            memcpy(o->ls, ls, 8); memcpy(o->sgn, sgn, 32);
+            for (int L = 0; L < 64; ++L) o->codes[L] = code_byte(iq2xxs_grid[idx[L >> 1]], L & 1, 0);
+        }
+    }
+}
+
+void iq1s_repack(const void *src, void *dst, int nblocks)
+{
+    init_tables2();
+    const blk_iq1s *b = (const blk_iq1s *) src;
+    for (int i = 0; i < nblocks; ++i) {
+        iq1rpc *o = (iq1rpc *) dst + i; o->d = b[i].d;
+        for (int sb = 0; sb < 8; ++sb) {
+            const uint16_t qh = b[i].qh[sb];
+            o->ls[sb] = (uint8_t) (2 * ((qh >> 12) & 7) + 1);
+            o->dsg[sb] = (int8_t) (qh & 0x8000 ? -1 : 1);
+        }
+        for (int L = 0; L < 64; ++L) {
+            const int g = L >> 1, sb = g >> 2, l = g & 3;
+            const int gi = b[i].qs[g] | (((b[i].qh[sb] >> (3 * l)) & 7) << 8);
+            o->codes[L] = code_byte(iq1s_grid[gi], L & 1, 1);
+        }
+    }
+}
+
+/* the shared tail: 2-bit codes r (byte L = weights 4L..4L+3), sign nibbles (or none), int32 scale lanes S */
+#define QUAD_TOK(k)                                                                                     \
+    if (NT > k) {                                                                                       \
+        const q23s_act *x = a##k + i;                                                                   \
+        const svint32_t v = svadd_s32_x(p32, svdot_s32(svdot_s32(z, W0, svld1_s8(p8, x->x)), W1, svld1_s8(p8, x->x + 64)), \
+                                              svdot_s32(svdot_s32(z, W2, svld1_s8(p8, x->x + 128)), W3, svld1_s8(p8, x->x + 192))); \
+        A##k = svmla_n_f32_x(p32, A##k, svcvt_f32_s32_x(p32, svmul_s32_x(p32, v, S)), d * x->d);        \
+    }
+
+static inline __attribute__((always_inline)) svint8_t iq2_signed(svbool_t p8, svuint8_t c, svuint8_t nib, int j, svuint8_t Val)
+{
+    const svint8_t v = svreinterpret_s8_u8(svtbl_u8(Val, c));
+    const svbool_t neg = svcmpne_n_u8(p8, svand_n_u8_x(p8, nib, (uint8_t) (1u << j)), 0);
+    return svneg_s8_m(v, neg, v);
+}
+
+static inline __attribute__((always_inline)) void iq2xxs_tbl_row(int nb, const void *wr, const q23s_act *const *acts,
+                                                                 const int NT, const int LAYOUT, float *out)
+{
+    const svbool_t p8 = svptrue_b8(), p32 = svptrue_b32(), p8l = svwhilelt_b32_s32(0, 8);
+    const svbool_t podd = svcmpne_n_u8(p8, svand_n_u8_x(p8, svindex_u8(0, 1), 1), 0);
+    const svuint8_t Val = svld1_u8(p8, VAL2), H4v = svld1_u8(p8, H4);
+    const svuint32_t Sl2 = svld1_u32(p32, SL2);
+    const svint32_t z = svdup_s32(0);
+    const q23s_act *a0 = acts[0], *a1 = NT > 1 ? acts[1] : acts[0], *a2 = NT > 2 ? acts[2] : acts[0], *a3 = NT > 3 ? acts[3] : acts[0];
+    svfloat32_t A0 = svdup_f32(0), A1 = A0, A2 = A0, A3 = A0;
+    for (int i = 0; i < nb; ++i) {
+        svuint8_t r, nib; svint32_t ls; float d;
+        if (LAYOUT == 2) {
+            const iq2rpc *b = (const iq2rpc *) wr + i;
+            r = svld1_u8(p8, b->codes);
+            nib = svlsr_u8_x(p8, svtbl_u8(svld1_u8(svwhilelt_b8_s32(0, 32), b->sgn), svld1_u8(p8, HALF)), H4v);
+            ls = svreinterpret_s32_u32(svld1ub_u32(p8l, b->ls));
+            d = h2f(b->d) * 0.125f;
+        } else {
+            svuint8_t idx, s8;
+            if (LAYOUT == 1) {
+                const iq2rp *b = (const iq2rp *) wr + i;
+                const svbool_t p32b = svwhilelt_b8_s32(0, 32);
+                const svuint8_t half = svld1_u8(p8, HALF);
+                idx = svtbl_u8(svld1_u8(p32b, b->idx), half);
+                s8 = svtbl_u8(svld1_u8(p32b, b->sgn), half);
+                ls = svreinterpret_s32_u32(svld1ub_u32(p8l, b->ls));
+                d = h2f(b->d) * 0.125f;
+            } else {
+                const blk_iq2xxs *b = (const blk_iq2xxs *) wr + i;
+                const svuint8_t Q = svld1_u8(p8, b->qs);
+                idx = svtbl_u8(Q, svld1_u8(p8, LIDX2));
+                const svuint8_t s7 = svand_n_u8_x(p8, svorr_u8_x(p8,
+                    svlsr_u8_x(p8, svtbl_u8(Q, svld1_u8(p8, SLO)), svld1_u8(p8, SHR)),
+                    svlsl_u8_x(p8, svtbl_u8(Q, svld1_u8(p8, SHI)), svld1_u8(p8, SHL))), 127);
+                s8 = svorr_u8_x(p8, svtbl_u8(svld1_u8(p8, KSLO), s7), svtbl_u8(svld1_u8(p8, KSHI), svsub_n_u8_x(p8, s7, 64)));
+                const svuint32_t s4 = svlsr_n_u32_x(p32, svreinterpret_u32_u8(svtbl_u8(Q, svld1_u8(p8, SCIDX))), 4);
+                ls = svreinterpret_s32_u32(svadd_n_u32_x(p32, svlsl_n_u32_x(p32, s4, 1), 1));
+                d = h2f(b->d) * 0.125f;
+            }
+            /* 256-entry grid as 2-bit codes: OR of four 64-entry svtbl per half (out-of-range lanes read 0) */
+            svuint8_t r0 = svtbl_u8(svld1_u8(p8, T2[0][0]), idx), r1 = svtbl_u8(svld1_u8(p8, T2[0][1]), idx);
+            for (int k = 1; k < 4; ++k) {
+                const svuint8_t ik = svsub_n_u8_x(p8, idx, (uint8_t) (64 * k));
+                r0 = svorr_u8_x(p8, r0, svtbl_u8(svld1_u8(p8, T2[k][0]), ik));
+                r1 = svorr_u8_x(p8, r1, svtbl_u8(svld1_u8(p8, T2[k][1]), ik));
+            }
+            r = svsel_u8(podd, r1, r0);
+            nib = svlsr_u8_x(p8, s8, H4v);
+        }
+        const svint32_t S = svtbl_s32(ls, Sl2);
+        const svint8_t W0 = iq2_signed(p8, svand_n_u8_x(p8, r, 3), nib, 0, Val);
+        const svint8_t W1 = iq2_signed(p8, svand_n_u8_x(p8, svlsr_n_u8_x(p8, r, 2), 3), nib, 1, Val);
+        const svint8_t W2 = iq2_signed(p8, svand_n_u8_x(p8, svlsr_n_u8_x(p8, r, 4), 3), nib, 2, Val);
+        const svint8_t W3 = iq2_signed(p8, svlsr_n_u8_x(p8, r, 6), nib, 3, Val);
+        QUAD_TOK(0) QUAD_TOK(1) QUAD_TOK(2) QUAD_TOK(3)
+    }
+    out[0] = svaddv_f32(p32, A0);
+    if (NT > 1) out[1] = svaddv_f32(p32, A1);
+    if (NT > 2) out[2] = svaddv_f32(p32, A2);
+    if (NT > 3) out[3] = svaddv_f32(p32, A3);
+}
+
+#define DISPATCH_NT(fn, ...)                                                                            \
+    switch (nt) { case 1: fn(__VA_ARGS__, 1, LAYOUT_ARG out); break; case 2: fn(__VA_ARGS__, 2, LAYOUT_ARG out); break; \
+                  case 3: fn(__VA_ARGS__, 3, LAYOUT_ARG out); break; default: fn(__VA_ARGS__, 4, LAYOUT_ARG out); }
+
+void iq2xxs_sdot_row_tbl(int cols, const void *w, const q23s_act *const *acts, int nt, float *out, int layout)
+{
+    init_tables2();
+    const int nb = cols / 256;
+#define LAYOUT_ARG 0,
+    if (layout == 0) { DISPATCH_NT(iq2xxs_tbl_row, nb, w, acts) }
+#undef LAYOUT_ARG
+#define LAYOUT_ARG 1,
+    else if (layout == 1) { DISPATCH_NT(iq2xxs_tbl_row, nb, w, acts) }
+#undef LAYOUT_ARG
+#define LAYOUT_ARG 2,
+    else { DISPATCH_NT(iq2xxs_tbl_row, nb, w, acts) }
+#undef LAYOUT_ARG
+}
+
+static inline __attribute__((always_inline)) void iq1s_rpc_row(int nb, const iq1rpc *wr, const q23s_act *const *acts,
+                                                               const int NT, float *out)
+{
+    const svbool_t p8 = svptrue_b8(), p32 = svptrue_b32(), p8l = svwhilelt_b32_s32(0, 8), p8b = svwhilelt_b8_s32(0, 8);
+    const svuint8_t Val = svld1_u8(p8, VAL1), Sub8 = svld1_u8(p8, SUB8);
+    const svuint32_t Sl2 = svld1_u32(p32, SL2);
+    const svint32_t z = svdup_s32(0);
+    const q23s_act *a0 = acts[0], *a1 = NT > 1 ? acts[1] : acts[0], *a2 = NT > 2 ? acts[2] : acts[0], *a3 = NT > 3 ? acts[3] : acts[0];
+    svfloat32_t A0 = svdup_f32(0), A1 = A0, A2 = A0, A3 = A0;
+    for (int i = 0; i < nb; ++i) {
+        const iq1rpc *b = wr + i;
+        const svuint8_t r = svld1_u8(p8, b->codes);
+        const svint8_t ds = svreinterpret_s8_u8(svtbl_u8(svld1_u8(p8b, (const uint8_t *) b->dsg), Sub8));
+        const svint32_t S = svtbl_s32(svreinterpret_s32_u32(svld1ub_u32(p8l, b->ls)), Sl2);
+        const float d = h2f(b->d) * 0.125f;
+        /* 8 (g + delta) = 8 g +- 1: value table {-8, 0, 8} plus the sub-block's delta sign */
+        const svint8_t W0 = svadd_s8_x(p8, svreinterpret_s8_u8(svtbl_u8(Val, svand_n_u8_x(p8, r, 3))), ds);
+        const svint8_t W1 = svadd_s8_x(p8, svreinterpret_s8_u8(svtbl_u8(Val, svand_n_u8_x(p8, svlsr_n_u8_x(p8, r, 2), 3))), ds);
+        const svint8_t W2 = svadd_s8_x(p8, svreinterpret_s8_u8(svtbl_u8(Val, svand_n_u8_x(p8, svlsr_n_u8_x(p8, r, 4), 3))), ds);
+        const svint8_t W3 = svadd_s8_x(p8, svreinterpret_s8_u8(svtbl_u8(Val, svlsr_n_u8_x(p8, r, 6))), ds);
+        QUAD_TOK(0) QUAD_TOK(1) QUAD_TOK(2) QUAD_TOK(3)
+    }
+    out[0] = svaddv_f32(p32, A0);
+    if (NT > 1) out[1] = svaddv_f32(p32, A1);
+    if (NT > 2) out[2] = svaddv_f32(p32, A2);
+    if (NT > 3) out[3] = svaddv_f32(p32, A3);
+}
+
+void iq1s_sdot_row_rpc(int cols, const void *w, const q23s_act *const *acts, int nt, float *out)
+{
+    init_tables2();
+    const int nb = cols / 256; const iq1rpc *b = (const iq1rpc *) w;
+    switch (nt) { case 1: iq1s_rpc_row(nb, b, acts, 1, out); break; case 2: iq1s_rpc_row(nb, b, acts, 2, out); break;
+                  case 3: iq1s_rpc_row(nb, b, acts, 3, out); break; default: iq1s_rpc_row(nb, b, acts, 4, out); }
+}

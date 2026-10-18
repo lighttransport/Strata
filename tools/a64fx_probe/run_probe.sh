@@ -93,13 +93,16 @@ GI="-I$LLAMA_SRC/ggml/src -Itools/a64fx_probe"
 S="$ROOT/q23_sdot_bench"
 "$S" --check-only --threads 1 | tee "$OUT/sdot-check.log"
 grep -q FAIL "$OUT/sdot-test.log" "$OUT/sdot-check.log" && { echo "A64FX_PROBE FAIL sdot parity"; exit 1; }
-for th in 1 48; do
+SDOT_TYPES=${SDOT_TYPES:-q2_k,q3_k,iq2_xxs,iq1_s}     # e.g. SDOT_TYPES=q2_k,iq2_xxs,iq1_s for an IQ round
+has_t() { case ",$SDOT_TYPES," in *",$1,"*) return 0;; esac; return 1; }
+for th in ${SDOT_THREADS:-1 48}; do
   MB=$((th == 1 ? 128 : 2048))
-  "$S" --threads $th --mb $MB --rows 2048 --cols 4096 | tee -a "$OUT/sdot-glm-gateup.log"
-  "$S" --threads $th --mb $MB --rows 4096 --cols 2048 --types q3_k | tee -a "$OUT/sdot-glm-down.log"
+  "$S" --threads $th --mb $MB --rows 2048 --cols 4096 --types "$SDOT_TYPES" | tee -a "$OUT/sdot-glm-gateup.log"
+  has_t q3_k && "$S" --threads $th --mb $MB --rows 4096 --cols 2048 --types q3_k | tee -a "$OUT/sdot-glm-down.log"
 done
-"$S" --threads 48 --mb 2048 --rows 2304 --cols 5120 --types q2_k,iq2_xxs,iq1_s --tokens 1,4 | tee "$OUT/sdot-ds41f.log"
-"$S" --threads 48 --mb 2048 --rows 5120 --cols 2304 --types q2_k --tokens 1,4 | tee -a "$OUT/sdot-ds41f.log"
+DS=$(echo "$SDOT_TYPES" | tr ',' '\n' | grep -E '^(q2_k|iq2_xxs|iq1_s)$' | paste -sd, -)
+[ -n "$DS" ] && "$S" --threads 48 --mb 2048 --rows 2304 --cols 5120 --types "$DS" --tokens 1,4 | tee "$OUT/sdot-ds41f.log"
+has_t q2_k && "$S" --threads 48 --mb 2048 --rows 5120 --cols 2304 --types q2_k --tokens 1,4 | tee -a "$OUT/sdot-ds41f.log"
 fi
 
 # ---- 5. node constants: HBM stream, barriers, fork-join

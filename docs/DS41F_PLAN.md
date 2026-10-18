@@ -293,8 +293,12 @@ kernels (`tools/a64fx_probe/q23_sdot_sve.c`, `iq_sdot_sve.c`, parity with ggml w
 The IQ kernels are 7x ggml but still 2-3x slower per byte than Q2_K, so in the simulator the 6-node IQ packs drop from
 the old 250 GB/s hypothesis (~70 tok/s) to 51-54 tok/s redesigned (data: `tools/sim/data/measured_a64fx_kernels.json`;
 ggml's 11/8 GB/s are why the `current` A64FX rows for IQ packs are slow). The IQ kernels fetch eight grid entries per
-512-bit vector with one 64-bit gather and fold IQ1_S's delta into the weights as 8g +- 1; a further IQ lever would be a
-gather-free layout repacked at load time. Engram as gemm does (owned rows per rank, prefetch thread,
+512-bit vector with one 64-bit gather and fold IQ1_S's delta into the weights as 8g +- 1. Gather-free variants were
+measured too (job 52439675): decoding IQ2_XXS's grid in registers from eight 64-byte `svtbl` tables costs about as much as
+the gathers at one token (72 vs 80 GB/s) and wins only at 2-4 tokens (+4 to +30 %, used for the MTP width curve); a load-time
+repack with resolved sign bytes (+12 % memory) adds 4-6 % at one token; expanding the codes doubles the rate (IQ2_XXS 125,
+IQ1_S 120 GB/s) but costs 61-64 % more memory, which leaves IQ1_S at Q2_K's size and speed with worse quality. IQ1_S has
+no compact gather-free form (64 tables). So the gather kernels stay for one-token decode. Engram as gemm does (owned rows per rank, prefetch thread,
 scale cache); CSA2 per gemm's `ds41f_attention.c`.
 
 ## 8. Runner (phase 2, design)
