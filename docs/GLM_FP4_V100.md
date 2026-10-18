@@ -371,6 +371,11 @@ Workers spin while the engine lives, including between requests. The profile
 binds the API to `127.0.0.1`. The 20 tok/s decode target was met for this
 protocol; the original 800 tok/s prefill target remains unmet.
 
+The [native simulator and roofline gap report](GLM_FP4_V100_ROOFLINE.md) imports
+these observations without a timing fit. It separates compressed PCIe traffic
+from expanded GPU allocations and records the missing measurements needed for
+tighter decode and prefill estimates.
+
 ## Qualification protocol
 
 Use batch one, a frozen 8192-token prompt, 512 generated tokens, capacity

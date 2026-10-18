@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """GLM runner simulator with explicit hardware and measured kernel profiles.
 
-Subcommands: calibrate, validate, decode, prefill, sweep, manifest, probe-plan.
+Subcommands: calibrate, validate, decode, prefill, sweep, manifest, probe-plan, native-fp4.
 Defaults retain the TR16 tables. Other machines use explicit --hardware,
 --kernels and --params profiles grounded in their own measurements. No quality claim.
 
@@ -395,9 +395,35 @@ def cmd_split_model(args):
                      scope='Throughput model; expert sizes scaled from Q23; no quality prediction'))
 
 
+def cmd_native_fp4(args):
+    from sim import glm_fp4
+    result = glm_fp4.analyze(glm_fp4.load_profile(args.profile), cpu_gbps=args.cpu_gbps,
+                             hbm_gbps=args.hbm_gbps, tensor_tflops=args.tensor_tflops,
+                             h2d_gbps=args.h2d_gbps, target_decode=args.target_decode,
+                             target_prefill=args.target_prefill)
+    result['provenance'] = []
+    for filename in (args.profile, __file__, glm_fp4.__file__):
+        path = pathlib.Path(filename).resolve()
+        label = str(path.relative_to(glm_fp4.ROOT)) if path.is_relative_to(glm_fp4.ROOT) else '<external-profile>'
+        result['provenance'].append(dict(path=label, sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
+    print(json.dumps({key: result[key] for key in ('rates', 'decode', 'prefill')}, indent=2))
+    write(args, result)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='command', required=True)
+    p = sub.add_parser('native-fp4', help='recorded V100 native FP4 workload and conditional rooflines; no GGUF fit')
+    from sim import glm_fp4
+    p.add_argument('--profile', default=str(glm_fp4.DEFAULT_PROFILE))
+    p.add_argument('--cpu-gbps', type=float, help='assumed streaming bandwidth; default is an optimistic CPU specification peak')
+    p.add_argument('--hbm-gbps', type=float, help='per-GPU HBM bandwidth; default is the V100 PCIe specification peak')
+    p.add_argument('--tensor-tflops', type=float, help='per-GPU tensor peak; projection-only compute comparison')
+    p.add_argument('--h2d-gbps', type=float, nargs=2, help='per-GPU H2D bandwidth scenario')
+    p.add_argument('--target-decode', type=float, default=50.0)
+    p.add_argument('--target-prefill', type=float, default=800.0)
+    p.add_argument('--output')
+    p.set_defaults(func=cmd_native_fp4)
     p = sub.add_parser('calibrate'); common(p); p.add_argument('--rounds', type=int, default=3); p.add_argument('--free'); p.add_argument('--context-filter',type=int,choices=(2048,8192)); p.set_defaults(func=cmd_calibrate)
     p = sub.add_parser('validate'); common(p); p.add_argument('--add-record'); p.add_argument('--context-filter',type=int,choices=(2048,8192)); p.set_defaults(func=cmd_validate)
     p = sub.add_parser('decode'); common(p); topology_args(p); p.set_defaults(func=cmd_decode)

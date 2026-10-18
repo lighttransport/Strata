@@ -1,0 +1,182 @@
+{
+ "schema": "strata.glm.native_fp4.analysis.v1",
+ "profile": "dual-v100-native-fp4-20261018",
+ "fitted": false,
+ "rates": {
+  "cpu_gbps": 281.568,
+  "cpu_bandwidth_is_measured": false,
+  "hbm_gbps_per_gpu": 900,
+  "tensor_tflops_per_gpu": 112,
+  "h2d_gbps_per_gpu": [
+   12.3075,
+   12.3355
+  ]
+ },
+ "observations": [
+  {
+   "name": "preserved-greedy",
+   "decode_tok_s": 5.260860433799639,
+   "prefill_tok_s": 393.8045014469623,
+   "fit": false,
+   "protocol": "8192 to 512, one full warmup, three clean timed requests; 35 CPU workers."
+  },
+  {
+   "name": "q8-drop-greedy",
+   "decode_tok_s": 19.084610931635265,
+   "prefill_tok_s": 394.7400122392533,
+   "fit": false,
+   "protocol": "8192 to 512, one full warmup, three clean timed requests; 32 CPU workers."
+  },
+  {
+   "name": "q8-drop-mtp-lookup",
+   "decode_tok_s": 31.01951619267308,
+   "prefill_tok_s": 390.7017560594065,
+   "fit": false,
+   "protocol": {
+    "prompt": "Same frozen 8192 token IDs as the reference; SHA256 recorded per run.",
+    "generation": "512 token IDs, fixed length with stop IDs disabled. Decode times 511 advances after the prefill token.",
+    "warmup": "Two complete requests, then a discarded prefill request; three timed requests in one process.",
+    "residency": "All timed major faults and observed swap must be zero. Decoder must exit successfully.",
+    "cgroup_scope": "before/after numeric memory-controller records; peaks include the whole allocation, not only the selected run.",
+    "quality_selection": "Select using throughput and three training tasks, then evaluate the frozen twenty held-out tasks once. No held-out tuning."
+   }
+  }
+ ],
+ "decode": {
+  "observed_tok_s": 31.019516192673077,
+  "observed_seconds": 16.4735,
+  "work": {
+   "cpu_expert_groups": 27590,
+   "cpu_code_bytes": 347162542080,
+   "cpu_code_GB_per_output": 0.6793787516242662,
+   "main_target_rows": 625.0,
+   "cpu_retained_route_rows": 32351.0,
+   "output_advances": 511,
+   "rounds": 146.0,
+   "advances_per_round": 3.5
+  },
+  "conditional_streaming_roof": {
+   "seconds": 1.2329616365496079,
+   "tok_s": 414.4492292801683,
+   "limiting_resource": "cpu_code_stream",
+   "resource_seconds": {
+    "cpu_code_stream": 1.2329616365496079,
+    "primary_mandatory_matrices": 0.6985386757688888
+   }
+  },
+  "observed_fraction_of_roof": 0.07484515352229992,
+  "observed_exceeds_roof_assumptions": false,
+  "phases_seconds": {
+   "prepare": 0.000604191,
+   "draft": 1.28071,
+   "verify": 14.328100000000001,
+   "resync": 0.5371910000000001,
+   "other": 0.3268948089999988
+  },
+  "verification_fraction": 0.8697665948341275,
+  "ceiling_if_only_nonverification_is_removed_tok_s": 35.664184364989076,
+  "target": {
+   "tok_s": 50.0,
+   "required_verification_speedup": 1.7744656082035024,
+   "feasible_with_fixed_nonverification": true
+  }
+ },
+ "prefill": {
+  "observed_tok_s": 390.7017560594065,
+  "observed_seconds": 20.9674,
+  "traffic_scope": "Delta around the discarded one-token request after two full warmups; includes 56 CPU groups and an internal two-token MTP statistic. Same prompt/settings, not an exact timed-prefill wire trace.",
+  "source_wire_bytes": {
+   "min": [
+    69525276300,
+    53268054190
+   ],
+   "mean": [
+    69618742967.87791,
+    53340829160.08721
+   ],
+   "max": [
+    73256140800,
+    56127651840
+   ]
+  },
+  "expanded_allocation_bytes": [
+   73256140800,
+   56127651840
+  ],
+  "conditional_proxy_roof": {
+   "seconds": 5.656611250690872,
+   "tok_s": 1448.2168982355765,
+   "limiting_resource": "gpu0_h2d",
+   "resource_seconds": {
+    "gpu0_h2d": 5.656611250690872,
+    "gpu1_h2d": 4.324172442145613,
+    "aggregate_h2d": 4.995310669427793,
+    "ideal_projection_compute": 1.778135634505143
+   }
+  },
+  "conditional_proxy_roof_tok_s_interval": [
+   1376.3083735909825,
+   1450.1638161774554
+  ],
+  "ideal_projection_only_tok_s": 4607.072622038669,
+  "observed_fraction_of_proxy_roof": 0.26978124377323237,
+  "observed_exceeds_roof_assumptions": false,
+  "elapsed_above_proxy_floor_seconds": 15.310788749309129,
+  "target": {
+   "tok_s": 800.0,
+   "measured_speedup_required": 2.0475976562500002,
+   "primary_h2d_gbps_required": 6.798705367956827,
+   "below_conditional_proxy_roof": true
+  }
+ },
+ "cpu_bandwidth_scenarios": [
+  {
+   "cpu_gbps": 80,
+   "conditional_roof_tok_s": 117.75463952726682
+  },
+  {
+   "cpu_gbps": 120,
+   "conditional_roof_tok_s": 176.63195929090023
+  },
+  {
+   "cpu_gbps": 180,
+   "conditional_roof_tok_s": 264.94793893635034
+  },
+  {
+   "cpu_gbps": 281.568,
+   "conditional_roof_tok_s": 414.4492292801683
+  }
+ ],
+ "findings": [
+  "CPU Q8, sparse borrowed scale codes, fused dispatch and spin workers are opt-in; prefill stays W4A16 and retains routes.",
+  "Drop fraction bounds original routing mass, not expert count or output error; never scale compute directly by 0.5 or mean discarded mass.",
+  "Native uploaded_bytes counts expanded GPU allocation bytes; infer upload count, then use compressed source extents for PCIe. Global FP4 scales are kernel arguments, not DMA payloads.",
+  "The three timed MTP requests have identical round/acceptance work, but different timing.",
+  "Native cpu_expert_ms fields are zero because this run did not enable phase profiling; they do not mean zero CPU cost.",
+  "All timed major faults and swap are zero; executable/shared-library prefault was untimed.",
+  "CUDA graphs and smaller reserve controls were slower; no speedup multiplier is applied to them.",
+  "Coding 18/20 versus 19/20 is observed, not a quality prediction; no held-out tuning."
+ ],
+ "limitations": [
+  "All resource roofs are optimistic conditional workload bounds, not forecasts of achievable end-to-end speed.",
+  "CPU streaming roof assumes original FP4 code bytes are read once per CPU expert group, without cross-call LLC retention. Scale metadata, activation traffic, integer unpack and dot instructions are omitted.",
+  "Installed DRAM rate/population and sustained expert-stream bandwidth are unknown; the CPU spec-derived peak is only an optimistic scenario.",
+  "Prefill PCIe traffic is a discarded-request proxy, with compressed extents bounded across experts; exact timed-phase traffic, route-weighted compression and per-layer overlap were not captured.",
+  "Projection FLOPs omit attention contractions, KDA recurrence, normalization, mHC, dequantization and launches; prefill fixed/head projections may use different invocation counts.",
+  "No independent timing holdout exists for a fitted native simulator. Existing GGUF/RPC fits and defaults remain unchanged."
+ ],
+ "provenance": [
+  {
+   "path": "tools/sim/data/glm_fp4_v100.json",
+   "sha256": "d9d6f55c2f12fb11f15d723dacf2e815c390bb2afb84d1475742c6e632921a95"
+  },
+  {
+   "path": "tools/glm_runner_sim.py",
+   "sha256": "70338026952ae0ba61f82990ef01e9faa0fedc8c0fb4c3a44e885ac716379c16"
+  },
+  {
+   "path": "tools/sim/glm_fp4.py",
+   "sha256": "aa43744bf51826bb785b9002d5fc4dea0a763ca7624045a1e170c2bba14b596f"
+  }
+ ]
+}

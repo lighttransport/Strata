@@ -14,6 +14,11 @@ frozen 2K/8K prompts and explicit training/holdout imports. It uses the measured
 PCIe 3.0 x8 link and current desktop memory footprint. Its experimental records
 and fits do not replace the historical defaults below.
 
+Native ModelOpt FP4 has a separate [V100 workload and roofline report](GLM_FP4_V100_ROOFLINE.md).
+Use `python3 tools/glm_runner_sim.py native-fp4` for the preserved 5.26 tok/s
+reference, measured 31.02 tok/s lossy decode and conditional decode/prefill
+ceilings. It does not reuse GGUF byte sizes or change the historical fits below.
+
 Run it with the system `python3` (numpy is needed only for routing-trace replay):
 
 ```sh
