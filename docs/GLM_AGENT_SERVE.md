@@ -2,7 +2,7 @@
 
 The GLM server (`python3 -m serve.server --engine glm --config ...`) can serve Claude Code (`/v1/messages`),
 OpenAI-compatible agents (`/v1/chat/completions` with tools) and Codex (`/v1/responses`). Four opt-in pieces make
-that work; without them the server behaves as before (greedy text only, no tools, every request read from scratch).
+that work, and a fifth (`"state_cache"`) keeps states in RAM and on disk; without them the server behaves as before (greedy text only, no tools, every request read from scratch).
 
 | Piece | Config key | What it does |
 |---|---|---|
@@ -68,6 +68,43 @@ request reads the whole prompt (~120 s); later turns reuse 15.9K tokens and take
 
 Limits: one GPU, GGUF weights, device KV, no remote TP, legacy GPU layout.
 
+## State cache: system prompts and conversations in RAM and on disk
+
+Checkpoints live in a slot: a new conversation in the slot drops them, and a restart drops everything. The opt-in
+`"state_cache"` (with `"prefix_cache"`) keeps whole states beyond their slot:
+
+```json
+"state_cache": {"ram_mib": 8192, "disk_dir": "glm-states", "disk_gib": 64, "root_min_tokens": 2048}
+```
+
+- A state at position P holds the KDA states, the index rings, the draft block, the MLA latent rows [0, P) and pooled
+  index rows of every MLA layer, the last hidden row (MTP continues from it) and the route counts: about 26 KB per
+  token plus 146 MiB (0.57 GB for a 16K-token prefix).
+- **Root**: the system prompt with its tool definitions, up to the first `<|user|>` (rounded down to the index pool),
+  when it is at least `root_min_tokens` long. Taken during the prefill, stored once per distinct prefix. Claude Code,
+  Codex and subagents share theirs, so a new conversation, another slot or the first turn after a restart starts there.
+- **Turn end**: the state at the end of each prompt of at least `root_min_tokens`.
+- A request resumes from the longest of: the slot's live state (the new prompt extends what the slot was fed, prompt
+  plus reply), its checkpoints, the RAM tier, the disk tier. The engine logs `RESPONSE_PREPARE kind=state_ram` /
+  `state_disk` and `STATE_SAVE` / `STATE_STATS` lines; `cached_tokens` reports the reuse as before.
+- RAM and disk are LRU under their caps. Disk writes run in a background thread. Files are named
+  `<model>-<config>-<prefix hash>-<P>.glmstate`; the config fingerprint covers the serve arguments and every
+  `STRATA_*` setting, so a state from another model or setting is never used. A file that fails its checks (header,
+  sizes, payload hash) is a miss and is deleted. Put `disk_dir` on another disk than the model if you can.
+- With `disk_dir` set, the server also keeps the first-seen order of each tool set in `disk_dir/tool-orders.json`, so
+  after a restart the same tools render in the same order and the stored root still matches.
+- `POST /slots/0?action=save|restore` (`--slot-save-path`) saves the slot's current state to a file or restores it,
+  as with the Qwen engine; it needs `"prefix_cache"`, and one slot.
+
+Exactness, checked through a restart (root at 856 tokens, a turn at 871, the next prompt 889 tokens, greedy):
+- A state restored from disk gives bit-identical first-token logits to a fresh read whose prefill is split at the same
+  positions. A fresh read with other splits differs by the chunk boundaries' summation order, as with checkpoints.
+- Without MTP all 16 generated tokens matched. With MTP, token 16 differed: the draft block reads only the new tokens
+  after a resume, so its drafts, and with them the verify windows' rounding, can differ.
+- The state also carries the prefill's route counts, which decide expert placement; without them a resume differed.
+
+Measured on TR16: a 0.17 GB state is written in ~130 ms and restored from disk in 0.3-1.2 s.
+
 ## Sampling
 
 `"glm_sampling"`:
@@ -129,4 +166,5 @@ With the profile above on the RX 9070 XT:
 - `serve/test_glm_tools.py`: the real GLM template (`serve/fixtures/glm53f_chat_template.jinja`) rendered and parsed
   back, streamed one character at a time and whole, forced calls, id ordering, effort and thinking, sampling modes,
   prefix keys.
-- `tests/host/glm_prefix_cache_test.cpp`, `tests/host/glm_sampler_test.cpp` (ctest label `glm`).
+- `tests/host/glm_prefix_cache_test.cpp`, `tests/host/glm_sampler_test.cpp`, `tests/host/glm_state_store_test.cpp`
+  (ctest label `glm`).

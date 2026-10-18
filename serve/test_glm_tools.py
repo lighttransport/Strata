@@ -170,6 +170,47 @@ class GlmRequestMapping(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.set_sampling_mode("sometimes")
 
+    def test_state_cache_args(self):
+        import tempfile
+        from serve.server import glm_state_args
+        meta = {"tokenizer.ggml.tokens": ["a", "<|user|>", "b", "<|observation|>", "<|assistant|>", "<think>"]}
+        self.assertEqual(glm_state_args({}, meta), [])
+        with tempfile.TemporaryDirectory() as d:
+            args = glm_state_args({"state_cache": {"ram_mib": 512, "disk_dir": d + "/states", "disk_gib": 8}}, meta)
+            self.assertIn("--state-boundary=1,3,4,5", args)        # <|user|> first: the root is before it
+            self.assertIn("--state-ram-mib=512", args)
+            self.assertIn(f"--state-dir={d}/states", args)
+            self.assertIn("--state-disk-gib=8.0", args)
+        for bad in ({"state_cache": 1}, {"state_cache": {"ram_mib": -1}}, {"state_cache": {"disk_dir": "/tmp/x"}},
+                    {"state_cache": {}}):
+            with self.assertRaises(SystemExit):
+                glm_state_args(bad, meta)
+        with self.assertRaises(SystemExit):                          # a model without the role tokens
+            glm_state_args({"state_cache": {"ram_mib": 512}}, {"tokenizer.ggml.tokens": ["a"]})
+
+    def test_tool_orders_survive_a_restart(self):
+        import tempfile
+        import serve.frontend as fe
+        tools = [{"name": "Zeta"}, {"name": "Alpha"}, {"name": "Mid"}]
+        with tempfile.TemporaryDirectory() as d:
+            path = d + "/tool-orders.json"
+            saved = dict(fe._TOOL_ORDERS)
+            try:
+                fe._TOOL_ORDERS.clear(); fe.keep_tool_orders(path)
+                fe._stable_tool_order(tools, lambda t: t["name"])           # first sight: Zeta, Alpha, Mid
+                fe._TOOL_ORDERS.clear(); fe.keep_tool_orders(path)          # a restart
+                again = fe._stable_tool_order(list(reversed(tools)), lambda t: t["name"])
+                self.assertEqual([t["name"] for t in again], ["Zeta", "Alpha", "Mid"])
+            finally:
+                fe.keep_tool_orders(None); fe._TOOL_ORDERS.clear(); fe._TOOL_ORDERS.update(saved)
+
+    def test_session_file_needs_prefix_cache(self):
+        from serve.server import SessionRefused
+        engine = GlmEngine.__new__(GlmEngine)
+        engine.set_sampling_mode("reject")
+        with self.assertRaisesRegex(SessionRefused, "prefix_cache"):
+            engine.session_file("save", "/tmp/x")
+
     def test_honored_sampling(self):
         engine = GlmEngine.__new__(GlmEngine)
         engine.set_sampling_mode("honor")

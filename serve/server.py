@@ -2204,10 +2204,12 @@ def vision_start_error(line: str, log=None) -> str:
 
 
 class GlmEngine(StrataEngine):
-    """Experimental GLM resident process; text requests, greedy unless the config's "glm_sampling" says otherwise."""
+    """Experimental GLM resident process; text requests, greedy unless the config's "glm_sampling" says otherwise.
+    With "prefix_cache" a request resumes from a slot's saved prefix, and "state_cache" keeps states in RAM and on disk
+    (docs/GLM_AGENT_SERVE.md)."""
 
-    # GLM has no reusable prefix cache. Admit parallel requests directly into slots:
-    # promotion would re-prefill generated tokens and can change rounding and logits.
+    # Admit parallel requests directly into slots: promotion would re-prefill generated tokens and can change
+    # rounding and logits.
     solo_promotion = False
     # A yielded admission (BYIELD) is abandoned by the GLM engine and its next BGEN reads the whole prompt again
     # (decoder.reset(), no prefix reuse), so giving way to a shorter request only multiplies prompt reads.
@@ -2281,8 +2283,11 @@ class GlmEngine(StrataEngine):
         return keys
 
     def session_file(self, action, path):
-        # The GLM engine has no SAVE/RESTORE: sending one would desynchronize its line protocol and end it.
-        raise SessionRefused("invalid", "slot save/restore is not supported by the GLM engine")
+        """SAVE / RESTORE of the slot's state (the engine needs "prefix_cache"; the replies are the Qwen engine's)."""
+        if not self.prefix_cache:
+            # without the prefix cache the engine has no SAVE/RESTORE: sending one would end it
+            raise SessionRefused("invalid", 'slot save/restore needs "prefix_cache" in the GLM config')
+        return super().session_file(action, path)
 
     def generate(self, ids, max_new, sampling, cancel, embeddings=None):
         if embeddings is not None:
@@ -2694,6 +2699,49 @@ def engine_args(cfg: dict) -> list[str]:
 
 
 PARALLEL_MAX = 8      # the engine's batch window holds at most 8 rows (kVerifyMaxT); --batch-mtp waves more through it
+
+
+def glm_state_args(cfg: dict, metadata: dict) -> list[str]:
+    """The config's "state_cache" (GLM, with "prefix_cache"): conversation states kept beyond their slot - in host RAM
+    ("ram_mib") and in a directory ("disk_dir", "disk_gib") - so a system prompt with its tools, or a conversation whose
+    slot went to another one, resumes from there, also after a restart.  {"ram_mib": M, "disk_dir": D, "disk_gib": G,
+    "root_min_tokens": 2048}.  The role tokens that mark where states are kept come from this model's vocabulary."""
+    sc = cfg.get("state_cache")
+    if sc in (None, False):
+        return []
+    if not isinstance(sc, dict):
+        raise SystemExit('[strata] config "state_cache" must be an object: {"ram_mib": M, "disk_dir": D, "disk_gib": G}')
+    ram, disk, gib, root = sc.get("ram_mib", 0), sc.get("disk_dir"), sc.get("disk_gib"), sc.get("root_min_tokens", 2048)
+    if isinstance(ram, bool) or not isinstance(ram, int) or ram < 0:
+        raise SystemExit('[strata] config state_cache.ram_mib must be a whole number of MiB')
+    if disk is not None and (not isinstance(disk, str) or not disk.strip()):
+        raise SystemExit('[strata] config state_cache.disk_dir must be a directory path')
+    if disk is not None and (isinstance(gib, bool) or not isinstance(gib, (int, float)) or gib <= 0):
+        raise SystemExit('[strata] config state_cache.disk_dir needs "disk_gib" > 0 (the most it may hold)')
+    if isinstance(root, bool) or not isinstance(root, int) or root < 1:
+        raise SystemExit('[strata] config state_cache.root_min_tokens must be a whole number > 0')
+    if not ram and disk is None:
+        raise SystemExit('[strata] config "state_cache" needs "ram_mib" or "disk_dir"')
+    vocab = metadata.get("tokenizer.ggml.tokens", []) if metadata else []
+    ids = {t: i for i, t in enumerate(vocab) if t in ("<|user|>", "<|observation|>", "<|assistant|>", "<think>")}
+    if "<|user|>" not in ids:
+        raise SystemExit('[strata] config "state_cache": this model has no <|user|> token')
+    order = [ids[t] for t in ("<|user|>", "<|observation|>", "<|assistant|>", "<think>") if t in ids]
+    args = [f"--state-boundary={','.join(map(str, order))}", f"--state-root-min={root}"]
+    if ram:
+        args.append(f"--state-ram-mib={ram}")
+    if disk is not None:
+        path = os.path.abspath(os.path.join(cfg.get("cwd") or "", disk) if not os.path.isabs(disk) else disk)
+        if any(c in path for c in " \r\n\0"):
+            raise SystemExit("[strata] config state_cache.disk_dir must not contain spaces")
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        args += [f"--state-dir={path}", f"--state-disk-gib={float(gib)!r}"]
+    if disk is not None:          # the tool orders too: a restart renders the same tools in the same order
+        import serve.frontend as _frontend
+        _frontend.keep_tool_orders(os.path.join(path, "tool-orders.json"))
+    print(f"[strata] state cache: {ram} MiB in RAM" + (f", up to {gib} GiB in {path}" if disk is not None else "")
+          + " (about 26 KB per token + 146 MiB per stored state)", flush=True)
+    return args
 
 
 def parallel_args(cfg: dict, args: list[str]) -> list[str]:
@@ -7008,6 +7056,7 @@ def main() -> int:
                 ap.error("GLM prefix_cache requires GGUF weights and the legacy layout")
             prefix_args = [f"--prefix-cache={k}"]
             print(f"[strata] prefix cache: {k} checkpoint(s) in pinned host memory (~146 MiB each)", flush=True)
+            prefix_args += glm_state_args(cfg, glm_metadata)
         if batch_args or layer_args or prefix_args:
             if glm_native:
                 ap.error("GLM parallel requests currently require GGUF weights")

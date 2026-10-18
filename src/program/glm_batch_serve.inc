@@ -4,7 +4,8 @@
 // a conversation that comes back to its slot resumes there.  BGEN / GEN take the single-stream keys: pin=N, ckpt=0,
 // temperature= top_p= top_k= min_p= seed= (per slot; a token is drawn at its absolute position).
 static int serve_sequences(Decoder &decoder, int count, int context, int width,
-                           const std::vector<int> &stops, bool mtp, int depth, int prefix_entries = 0) {
+                           const std::vector<int> &stops, bool mtp, int depth, int prefix_entries = 0,
+                           ServeStateCache *state = nullptr) {
     const char *spec = std::getenv("STRATA_GLM_BATCH_MTP");
     const bool batch_mtp = mtp && spec && std::string(spec) == "1";
     if (batch_mtp && depth > 2) throw std::invalid_argument("GLM: batch MTP supports depth 1 or 2");
@@ -229,8 +230,21 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
             auto &cache = prefixes[slot];
             auto *entry = prefix_entries ? cache.choose(prompt) : nullptr;
             if (entry && slot_mtp && !entry->store.draft_at(entry->pos)) entry = nullptr;
+            // a stored state shared by every slot (--state-*): a system prompt, a parked conversation, after a restart
+            std::shared_ptr<const strata::glm::GlmStateImage> image;
+            if (state && state->on()) {
+                image = state->store->find(prompt, state->candidates(prompt));
+                if (image && (image->position <= (entry ? entry->pos : 0) || (slot_mtp && !image->draft_synced()))) image.reset();
+            }
             int resumed = 0;
-            if (entry) {
+            if (image) {
+                decoder.reset();
+                decoder.import_state(*image);
+                resumed = image->position;
+                std::cerr << "BATCH_STATE_HIT slot=" << slot << " pos=" << resumed << '\n';
+                cache.clear();
+                cache.held.assign(prompt.begin(), prompt.begin() + resumed);
+            } else if (entry) {
                 decoder.begin_request(true);
                 decoder.restore_host(entry->store);
                 resumed = entry->pos;
@@ -247,11 +261,21 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
             decoder.set_cancel(cancelled);
             std::vector<float> logits;
             bool did_yield = false;
+            const int root_at = state && state->on() ? state->root(prompt) : 0;
+            const bool want_root = root_at > resumed && !state->store->contains(prompt, root_at);
+            std::shared_ptr<strata::glm::GlmStateImage> root_image;
             for (size_t at = resumed; at < prompt.size() && !cancelled();) {
                 size_t end = std::min(prompt.size(), at + width);
                 const bool at_pin = prefix_entries && !slot_mtp && pin > (int)at && (size_t)pin < end;
                 if (at_pin) end = pin;
+                const bool at_root = want_root && root_at > (int)at && (size_t)root_at < end;
+                if (at_root) end = root_at;
                 logits = decoder.batch(std::vector<int>(prompt.begin() + at, prompt.begin() + end));
+                if (at_root) {
+                    root_image = std::make_shared<strata::glm::GlmStateImage>();
+                    decoder.export_fixed(*root_image);
+                    root_image->tokens.assign(prompt.begin(), prompt.begin() + root_at);
+                }
                 if (at_pin) {
                     cache.held.assign(prompt.begin(), prompt.begin() + end);
                     if (auto *e = cache.slot_for(pin, true)) { decoder.save_host(e->store); cache.commit(e); }
@@ -276,6 +300,24 @@ static int serve_sequences(Decoder &decoder, int count, int context, int width,
                 if (slot_mtp) { decoder.prepare_mtp(prompt, resumed); if (!batched) decoder.prepare_mtp_history(depth); }
                 if (prefix_entries && save_prompt)
                     if (auto *e = cache.slot_for((int)prompt.size(), false)) { decoder.save_host(e->store); cache.commit(e); }
+                if (state && state->on()) {
+                    decoder.select_sequence(slot);
+                    if (root_image) {
+                        decoder.export_rows(*root_image);
+                        state->store->put(root_image);
+                        std::cerr << "STATE_SAVE kind=root slot=" << slot << " pos=" << root_image->position << '\n';
+                    }
+                    if ((int)prompt.size() >= state->root_min && save_prompt) {
+                        auto turn = std::make_shared<strata::glm::GlmStateImage>();
+                        decoder.export_fixed(*turn);
+                        decoder.export_rows(*turn);
+                        turn->tokens = prompt;
+                        state->store->put(turn);
+                        const auto st = state->store->stats();
+                        std::cerr << "STATE_SAVE kind=turn slot=" << slot << " pos=" << turn->position << " ram_hits="
+                                  << st.ram_hits << " disk_hits=" << st.disk_hits << " misses=" << st.misses << '\n';
+                    }
+                }
                 decoder.prepare_decode_cache(); decoder.freeze_cache(); decoder.prepare_cpu(0);
                 prefilled = Clock::now();
                 if (batched) {

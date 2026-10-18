@@ -459,6 +459,37 @@ def _object_list(value, name: str) -> list[dict]:
 _TOOL_ORDERS: "OrderedDict[frozenset, tuple]" = OrderedDict()   # a set of tool names -> the order it first came in
 _TOOL_ORDERS_LOCK = threading.Lock()
 _TOOL_ORDERS_MAX = 64
+_TOOL_ORDERS_FILE: str | None = None   # opt-in (GLM "state_cache"): the orders are kept here across restarts
+
+
+def keep_tool_orders(path: str | None):
+    """Keep the first-seen tool orders in `path` (JSON) and load the ones already there: after a restart the same tool
+    set renders in the same order, so a conversation state stored on disk (GLM "state_cache") still matches its
+    prompt.  None: in memory only, as before.  A file that cannot be read starts empty."""
+    global _TOOL_ORDERS_FILE
+    _TOOL_ORDERS_FILE = path
+    if not path:
+        return
+    try:
+        saved = json.loads(Path(path).read_text(encoding="utf-8"))
+        with _TOOL_ORDERS_LOCK:
+            for names in saved[-_TOOL_ORDERS_MAX:]:
+                if isinstance(names, list) and all(isinstance(n, str) for n in names) and len(set(names)) == len(names):
+                    _TOOL_ORDERS[frozenset(names)] = tuple(names)
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def _save_tool_orders():
+    """With the lock held: write the orders (temp file + rename, so a crash never leaves half a file)."""
+    if not _TOOL_ORDERS_FILE:
+        return
+    try:
+        tmp = _TOOL_ORDERS_FILE + ".tmp"
+        Path(tmp).write_text(json.dumps([list(v) for v in _TOOL_ORDERS.values()]), encoding="utf-8")
+        os.replace(tmp, _TOOL_ORDERS_FILE)
+    except OSError:
+        pass
 
 
 def _stable_tool_order(tools: list[dict], name_of) -> list[dict]:
@@ -480,6 +511,7 @@ def _stable_tool_order(tools: list[dict], name_of) -> list[dict]:
             _TOOL_ORDERS[key] = tuple(names)
             while len(_TOOL_ORDERS) > _TOOL_ORDERS_MAX:
                 _TOOL_ORDERS.popitem(last=False)
+            _save_tool_orders()
             return tools
         _TOOL_ORDERS.move_to_end(key)
     pos = {n: k for k, n in enumerate(order)}
