@@ -2078,6 +2078,8 @@ target_link_libraries(strata-mimo-q2-pack PRIVATE strata_kernels_cpu strata_arti
 # DeepSeek V4.1 Flash (deepseek4): safetensors MXFP4 experts -> Strata sidecar, FP8/BF16 trunk -> GGUF; Engram untouched.
 add_executable(strata-ds41f-pack tools/ds41f_pack.cpp)
 target_link_libraries(strata-ds41f-pack PRIVATE strata_kernels_cpu strata_artifact strata_host)
+# C++17 only: the same source builds outside CMake on aarch64 with older compilers (tools/a64fx_probe/build_ds41f_pack.sh)
+set_target_properties(strata-ds41f-pack PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 # IQ1_S W1A8 row kernel (DeepSeek V4.1 Flash expert shapes) vs a double reference and the engine's decode: parity + bench
 add_executable(iq1s_w1a8_bench src/kernels/cpu/iq1s_w1a8_bench.cpp)
 target_link_libraries(iq1s_w1a8_bench PRIVATE strata_kernels_cpu)

@@ -6,7 +6,9 @@ projection with E8M0 block scales, BF16 embed/head/norms), then checks:
   1. `dequant` reproduces an independent NumPy MXFP4 decode bit for bit;
   2. `experts --uncalibrated` with K-quants packs, verifies, honours a REAP keep list, and its quality.json is sane;
   3. `experts --imatrix` with IQ1_S (needs an imatrix) packs and verifies when gguf-py is importable (llama.cpp checkout);
-  4. `trunk` packs the non-expert tensors and skips the Engram table; verify passes; a corrupted payload fails.
+  4. `trunk` packs the non-expert tensors and skips the Engram table; verify passes; a corrupted payload fails;
+  5. several processes filling one chunk directory (racing on plan.json, scoped stale-partial cleanup), `--plan-only`,
+     imatrix counts as [experts] or {1, experts}, a seeded deadline, and a threaded trunk byte-identical to one thread.
 
     python3 tools/test_ds41f_pack.py --converter build-ds41f/strata-ds41f-pack
 """
@@ -51,11 +53,11 @@ def mxfp4_decode(packed, scales, rows, cols):
     return mag * sign * scale
 
 
-def make_checkpoint(root, rng):
+def make_checkpoint(root, rng, layers=LAYERS, n_experts=EXPERTS):
     experts, dense = {}, {}
     expected = {}
-    for layer in range(LAYERS):
-        for e in range(EXPERTS):
+    for layer in range(layers):
+        for e in range(n_experts):
             for w, rows, cols in ((1, FF, HIDDEN), (3, FF, HIDDEN), (2, HIDDEN, FF)):
                 packed = rng.integers(0, 256, (rows, cols // 2), dtype=np.uint8)
                 scales = rng.integers(120, 128, (rows, cols // 32), dtype=np.uint8)
@@ -98,14 +100,15 @@ def gguf_py():
     return None
 
 
-def write_imatrix(path, gg, layers, cols_by_proj, experts):
+def write_imatrix(path, gg, layers, cols_by_proj, experts, counts_shape=None):
+    """counts_shape: None -> [experts] (1-D); (experts, 1) -> ggml {1, experts} as llama-imatrix writes it."""
     writer = gg.GGUFWriter(str(path), "imatrix")
     writer.add_type("imatrix")
     for layer in range(layers):
         for proj, cols in cols_by_proj.items():
             name = f"blk.{layer}.ffn_{proj}_exps.weight"
             writer.add_tensor(name + ".in_sum2", np.full((experts, cols), 100.0, np.float32))
-            writer.add_tensor(name + ".counts", np.full((experts,), 10.0, np.float32))
+            writer.add_tensor(name + ".counts", np.full(counts_shape or (experts,), 10.0, np.float32))
     writer.write_header_to_file()
     writer.write_kv_data_to_file()
     writer.write_tensors_to_file()
@@ -176,7 +179,11 @@ def main():
         assert not (cdir / "blk.1.ffn_up_exps.weight.chunk.partial").exists()
         run(args.converter, "experts", ckpt, f"--chunk-dir={cdir}", "--gate=q2_k", "--up=q2_k", "--down=q2_k", "--uncalibrated", "--layers=0-1", expect_fail="plan mismatch")
         assembled = root / "assembled.gguf"
-        run(args.converter, "assemble", cdir, assembled)
+        # the default range is the whole model: a 2-layer directory needs an explicit --layers
+        run(args.converter, "assemble", cdir, assembled, expect_fail="layers missing")
+        r = subprocess.run([args.converter, "assemble", str(cdir), "--check"], capture_output=True, text=True)
+        assert r.returncode == 3 and "range=0-39" in r.stdout, r.stdout
+        run(args.converter, "assemble", cdir, assembled, "--layers=0-1")
         run(args.converter, "verify", assembled)                 # hashes only, no source
         run(args.converter, "verify", ckpt, assembled)           # with the source identity
         a, b = GGUFFile(assembled), GGUFFile(pack)
@@ -204,7 +211,76 @@ def main():
         bad = root / "bad.gguf"
         bad.write_bytes(data)
         run(args.converter, "verify", ckpt, bad, expect_fail="payload checksum mismatch")
-        print("ds41f pack PASS: exact MXFP4 dequant, Q2_K/Q3_K pack + REAP keep + verify, chunk pipeline stop/resume/plan-mismatch/assemble, mtime-independent identity, trunk Q4_K/Q8_0 without Engram, corruption caught;", iq1_report)
+        multi_report = multiprocess_checks(args.converter, root, gg)
+        print("ds41f pack PASS: exact MXFP4 dequant, Q2_K/Q3_K pack + REAP keep + verify, chunk pipeline stop/resume/plan-mismatch/assemble, mtime-independent identity, trunk Q4_K/Q8_0 without Engram, corruption caught;", iq1_report + ";", multi_report)
+
+
+def multiprocess_checks(converter, root, gg):
+    """One chunk directory filled by several processes, --plan-only, imatrix count shapes, deadline seed, trunk threads."""
+    import time
+    rng = np.random.default_rng(7)
+    ck4 = root / "ckpt4"
+    ck4.mkdir(exist_ok=True)
+    make_checkpoint(ck4, rng, layers=4, n_experts=2)
+    kq = ["--gate=q2_k", "--up=q2_k", "--down=q3_k", "--uncalibrated"]
+    single = root / "single4.gguf"
+    run(converter, "experts", ck4, single, *kq, "--layers=0-3", "--threads=2")
+    # 4 processes, one layer each, started together on a fresh directory: they race on plan.json
+    for rep_i in range(3):
+        d = root / f"shared{rep_i}"
+        procs = [subprocess.Popen([converter, "experts", str(ck4), f"--chunk-dir={d}", *kq, f"--layers={l}-{l}", "--threads=2"],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for l in range(4)]
+        outs = [pr.communicate(timeout=1800) for pr in procs]
+        for pr, (_, err) in zip(procs, outs):
+            assert pr.returncode == 0, err
+        json.loads((d / "plan.json").read_text())
+        assert not list(d.glob("plan.json.*partial")), list(d.glob("plan.json.*"))
+        r = subprocess.run([converter, "assemble", str(d), "--check", "--layers=0-3"], capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout
+    out = root / "shared0.gguf"
+    run(converter, "assemble", root / "shared0", out, "--layers=0-3")
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from gguf_reader import GGUFFile
+    a, b = GGUFFile(out), GGUFFile(single)
+    assert out.read_bytes()[a.data_start:] == single.read_bytes()[b.data_start:], "multi-process pack differs from the single-process pack"
+    # --plan-only writes the plan and nothing else; other formats are refused
+    d = root / "planonly"
+    run(converter, "experts", ck4, f"--chunk-dir={d}", *kq, "--layers=0-3", "--plan-only")
+    assert (d / "plan.json").exists() and not list(d.glob("*.chunk*"))
+    run(converter, "experts", ck4, f"--chunk-dir={d}", "--gate=q2_k", "--up=q2_k", "--down=q2_k", "--uncalibrated", "--plan-only", expect_fail="plan mismatch")
+    # stale-partial cleanup is scoped to the invocation's own layers
+    (d / "blk.2.ffn_gate_exps.weight.chunk.partial").write_bytes(b"in flight elsewhere")
+    (d / "blk.0.ffn_up_exps.weight.chunk.partial").write_bytes(b"stale")
+    run(converter, "experts", ck4, f"--chunk-dir={d}", *kq, "--layers=0-0")      # default --threads
+    assert (d / "blk.2.ffn_gate_exps.weight.chunk.partial").exists(), "removed another process's in-flight partial"
+    assert not (d / "blk.0.ffn_up_exps.weight.chunk.partial").exists()
+    # a seeded per-layer estimate makes the deadline apply to the first layer of an invocation
+    r = subprocess.run([converter, "experts", str(ck4), f"--chunk-dir={d}", *kq, "--layers=1-1", f"--deadline={int(time.time()) + 10}", "--layer-seconds=1000"],
+                       capture_output=True, text=True)
+    assert r.returncode == 3 and not (d / "blk.1.ffn_gate_exps.weight.chunk.json").exists(), (r.returncode, r.stderr)
+    # trunk: threads change nothing in the file
+    t1, t3 = root / "trunk-t1.gguf", root / "trunk-t3.gguf"
+    run(converter, "trunk", ck4, t1, "--threads=1")
+    run(converter, "trunk", ck4, t3, "--threads=3")
+    assert t1.read_bytes() == t3.read_bytes(), "threaded trunk differs from the single-threaded trunk"
+    report = "multi-process chunk dir x3 == single pack, --plan-only, scoped cleanup, deadline seed, trunk threads identical"
+    if gg is not None:
+        # imatrix counts as [experts] and as {1, experts} give the same IQ1_S chunk; other shapes are refused
+        cols = dict(gate=HIDDEN, up=HIDDEN, down=FF)
+        write_imatrix(root / "im1d.gguf", gg, 4, cols, 2)
+        write_imatrix(root / "im2d.gguf", gg, 4, cols, 2, counts_shape=(2, 1))
+        write_imatrix(root / "imbad.gguf", gg, 4, cols, 2, counts_shape=(2, 2))
+        write_imatrix(root / "im3.gguf", gg, 3, cols, 2)                       # no entries for layer 3
+        iq = ["--gate=iq1_s", "--up=iq1_s", "--down=iq1_s"]
+        for name in ("im1d", "im2d"):
+            run(converter, "experts", ck4, f"--chunk-dir={root / ('iq-' + name)}", *iq, f"--imatrix={root / (name + '.gguf')}", "--layers=0-0", "--threads=2")
+        for proj in ("gate", "up", "down"):
+            f = f"blk.0.ffn_{proj}_exps.weight.chunk"
+            assert (root / "iq-im1d" / f).read_bytes() == (root / "iq-im2d" / f).read_bytes(), f
+        run(converter, "experts", ck4, f"--chunk-dir={root / 'iq-bad'}", *iq, f"--imatrix={root / 'imbad.gguf'}", "--layers=0-0", "--threads=2", expect_fail="geometry mismatch")
+        run(converter, "experts", ck4, f"--chunk-dir={root / 'iq-l3'}", *iq, f"--imatrix={root / 'im3.gguf'}", "--layers=0-3", "--plan-only", expect_fail="imatrix has no entry")
+        report += ", imatrix counts 1-D == 2-D, bad shape and missing layer refused"
+    return report
 
 
 if __name__ == "__main__":

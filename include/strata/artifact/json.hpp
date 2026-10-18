@@ -18,7 +18,7 @@ struct Json {
     std::vector<Json> array;
     std::map<std::string, Json> object;
     const Json& at(const std::string& name) const {
-        if (kind != Object || !object.contains(name)) throw std::runtime_error("JSON: missing key " + name);
+        if (kind != Object || object.count(name) == 0) throw std::runtime_error("JSON: missing key " + name);
         return object.at(name);
     }
     const Json* find(const std::string& name) const {
