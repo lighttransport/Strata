@@ -193,6 +193,20 @@ int main(int argc, char** argv) {
         bool okd = maxe < 2e-3;
         fails += !okd;
         std::printf("%s gpu dequant f16 vs cpu: max relative error %.2e\n", okd ? "ok" : "FAIL", maxe);
+        float* df = nullptr;
+        cudaMalloc(&df, size_t(rows) * cols * 4);
+        kernels::llvq_tetra_dequant_f32(d, md, df, nullptr);
+        std::vector<float> f(size_t(rows) * cols);
+        cudaMemcpy(f.data(), df, f.size() * 4, cudaMemcpyDeviceToHost);
+        cudaFree(df);
+        double maxf = 0;
+        for (uint32_t r = 0; r < rows; ++r) {
+            dequant_row(T, m, r, wrow.data());
+            for (uint32_t c = 0; c < cols; ++c) maxf = std::max(maxf, double(std::fabs(f[size_t(r) * cols + c] - wrow[c]) / (std::fabs(wrow[c]) + 1e-3)));
+        }
+        const bool okf = maxf < 1e-5;
+        fails += !okf;
+        std::printf("%s gpu dequant f32 vs cpu: max relative error %.2e\n", okf ? "ok" : "FAIL", maxf);
         kernels::llvq_tetra_decode_destroy(d);
     } else {
         std::printf("no GPU: skipped the GPU kernels\n");

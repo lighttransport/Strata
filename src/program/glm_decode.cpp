@@ -2,6 +2,8 @@
 #include "strata/kernels/cpu/exl3/pool.hpp"
 #include "strata/kernels/cpu/exl3/dense_q8.hpp"
 #include "strata/kernels/exl3.hpp"
+#include "strata/kernels/llvq_tetra.hpp"
+#include "strata/llvq/tetra_decode.hpp"
 // Experimental GLM decode and streamed GPU prefill. CPU experts overlap resident GPU experts.
 // Greedy decoding with verified speculation and optional recurrent CUDA graphs.
 #include "ggml.h"
@@ -71,6 +73,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <filesystem>
 #include <mutex>
 #include <numeric>
 #include <queue>
@@ -2151,7 +2154,120 @@ class Decoder {
     static constexpr int kFp8Prefetch=6;
     static constexpr size_t kFp8Weights=size_t(4096)*2048,kFp8Scales=size_t(32)*16*4,kFp8Projection=kFp8Weights+kFp8Scales;
     std::vector<std::unique_ptr<Pinned>> fp8_slots;
+    // STRATA_GLM_EXPERT_LLVQ=DIR (FP8 model only, evaluation): the routed experts come from llvq Tetra unit files
+    // (strata-glm-llvq-encode: Lxx.eyyy.llvq, 16 experts each) instead of the FP8 weights; everything else stays the
+    // exact FP8 path. A matrix is stored rotated, W' = W Q^T, so y = W' (Q x): W' is decoded to f32 on the GPU and the
+    // input rotated in double on the host. This measures the llvq expert quantization alone against the FP8 logits.
+    struct LlvqState {
+        std::unique_ptr<strata::llvq::Tetra> tetra;strata::llvq::DecodeTables tables{};
+        strata::kernels::LlvqTetraDecodeGpu* gpu=nullptr;
+        std::mutex mutex;std::map<std::pair<size_t,uint64_t>,std::unique_ptr<strata::llvq::Rotation>> rotations;
+        ~LlvqState(){if(gpu)strata::kernels::llvq_tetra_decode_destroy(gpu);}
+    };
+    std::unique_ptr<LlvqState> llvq;
+    static const std::string& llvq_dir() {static const std::string d=[]{const char* v=std::getenv("STRATA_GLM_EXPERT_LLVQ");return std::string(v?v:"");}();return d;}
+    // Record size of one matrix (TetraMatrix::parse): header 24, row scales, words, BF16 tail.
+    static size_t llvq_record_bytes(size_t rows,size_t cols) {
+        const size_t nb=cols/24,tail=cols-24*nb,stride=(nb*6+7)/8*8;return 24+4*rows+stride*rows+2*rows*tail;
+    }
+    // Slot layout per projection (kFp8Projection bytes): u64 seed, then the record.
+    void llvq_read_expert(int layer,int expert,uint8_t* dst) {
+        char name[32];std::snprintf(name,sizeof name,"L%02d.e%03d.llvq",layer,expert/16*16);
+        const auto path=std::filesystem::path(llvq_dir())/name;
+        const int fd=::open(path.c_str(),O_RDONLY);if(fd<0)throw std::runtime_error("llvq experts: cannot open "+path.string());
+        struct Close{int fd;~Close(){::close(fd);}} close_fd{fd};
+        uint8_t head[40];if(::pread(fd,head,40,0)!=40||std::memcmp(head,"LLVQTET1",8))throw std::runtime_error("llvq experts: not a unit file "+path.string());
+        uint32_t h[6];std::memcpy(h,head+8,24);uint64_t seed;std::memcpy(&seed,head+32,8);
+        if(h[0]!=1||int(h[1])!=layer||int(h[2])>expert||expert>=int(h[2]+h[3]))throw std::runtime_error("llvq experts: unit header mismatch in "+path.string());
+        const size_t gu=llvq_record_bytes(2048,4096),dn=llvq_record_bytes(4096,2048),per=2*gu+dn;
+        off_t at=40+off_t(expert-int(h[2]))*per;
+        for(unsigned i=0;i<3;++i) {
+            const size_t bytes=i<2?gu:dn;uint8_t* slot=dst+i*kFp8Projection;
+            if(8+bytes>kFp8Projection)throw std::logic_error("llvq experts: record exceeds the slot");
+            std::memcpy(slot,&seed,8);
+            for(size_t done=0;done<bytes;) {
+                const ssize_t n=::pread(fd,slot+8+done,bytes-done,at+off_t(done));
+                if(n<=0)throw std::runtime_error("llvq experts: short read in "+path.string());
+                done+=size_t(n);
+            }
+            uint32_t rc[2];std::memcpy(rc,slot+8,8);
+            if(rc[0]!=(i<2?2048u:4096u)||rc[1]!=(i<2?4096u:2048u))throw std::runtime_error("llvq experts: unexpected matrix shape in "+path.string());
+            ::posix_fadvise(fd,at,bytes,POSIX_FADV_DONTNEED);at+=off_t(bytes);
+        }
+    }
+    void llvq_gpu_linear(unsigned slot,const uint8_t* expert_host,const char* projection,const float* x,float* y,int nt) {
+        const bool down=std::string(projection)=="down_proj";const int in=down?2048:4096,out=down?4096:2048;
+        const uint8_t* host=expert_host+slot*kFp8Projection;uint64_t seed;std::memcpy(&seed,host,8);
+        const size_t bytes=llvq_record_bytes(out,in);
+        strata::llvq::TetraMatrix matrix;
+        if(matrix.parse(host+8)!=host+8+bytes||matrix.rows!=uint32_t(out)||matrix.cols!=uint32_t(in))throw std::runtime_error("llvq experts: bad record");
+        auto& raw=buf("llvq_raw"+std::to_string(slot),(bytes+3)/4);
+        check(cudaMemcpyAsync(raw.p,host+8,bytes,cudaMemcpyHostToDevice,stream));
+        const auto* base=static_cast<const uint8_t*>(raw.p);
+        strata::kernels::LlvqTetraMatrixDev dev{base+(matrix.words-(host+8)),reinterpret_cast<const float*>(base+24),
+            reinterpret_cast<const uint16_t*>(base+(reinterpret_cast<const uint8_t*>(matrix.tail_bf16)-(host+8))),
+            float(matrix.centroids[0]),float(matrix.centroids[1]),matrix.rows,matrix.cols,matrix.stride};
+        auto& w=buf("fp8_weights",size_t(in)*out);
+        strata::kernels::llvq_tetra_dequant_f32(llvq->gpu,dev,w.f(),stream);
+        // Q x per token, in double, from the rotation of this unit's seed
+        const strata::llvq::Rotation* rot;
+        {std::lock_guard lock(llvq->mutex);auto& r=llvq->rotations[{size_t(in),seed}];if(!r)r=std::make_unique<strata::llvq::Rotation>(in,seed);rot=r.get();}
+        std::vector<float> xs(size_t(in)*nt);check(cudaMemcpyAsync(xs.data(),x,xs.size()*4,cudaMemcpyDeviceToHost,stream));check(cudaStreamSynchronize(stream));
+        std::vector<double> v(in);
+        for(int t=0;t<nt;++t){float* row=xs.data()+size_t(t)*in;for(int c=0;c<in;++c)v[c]=row[c];rot->apply(v.data());for(int c=0;c<in;++c)row[c]=float(v[c]);}
+        auto& xr=buf("llvq_rotated",size_t(in)*nt);xr.put(xs.data(),xs.size()*4);
+        const float one=1,zero=0;
+        check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,out,nt,in,&one,w.f(),in,xr.f(),in,&zero,y,out));
+        check(cudaGetLastError());
+    }
+    // STRATA_GLM_EXPERT_GGUF=PACK (FP8 model only, evaluation): the routed experts come from a GGUF expert pack or
+    // assembled model (e.g. experts-q23-fp8.gguf), dequantized on the host by ggml and multiplied in f32 like the FP8
+    // experts, so a GGUF quantization is measured on the same exact-FP8 path as the llvq units.
+    std::unique_ptr<strata::GgufFile> gguf_experts;
+    static const std::string& gguf_experts_path() {static const std::string d=[]{const char* v=std::getenv("STRATA_GLM_EXPERT_GGUF");return std::string(v?v:"");}();return d;}
+    const strata::TensorInfo& gguf_expert_tensor(int layer,const char* part) const {
+        const std::string name="blk."+std::to_string(layer)+".ffn_"+part+"_exps.weight";
+        for(const auto& t:gguf_experts->tensors())if(t.name==name)return t;
+        throw std::runtime_error("GGUF experts: no "+name+" in "+gguf_experts_path());
+    }
+    // Slot layout per projection: u32 ggml type, then the expert's rows.
+    void gguf_read_expert(int layer,int expert,uint8_t* dst) {
+        const char* parts[]={"gate","up","down"};
+        const int fd=::open(gguf_experts_path().c_str(),O_RDONLY);if(fd<0)throw std::runtime_error("GGUF experts: cannot open "+gguf_experts_path());
+        struct Close{int fd;~Close(){::close(fd);}} close_fd{fd};
+        for(unsigned i=0;i<3;++i) {
+            const auto& t=gguf_expert_tensor(layer,parts[i]);
+            const bool down=i==2;
+            if(t.shape.size()!=3||t.shape[0]!=(down?2048u:4096u)||t.shape[1]!=(down?4096u:2048u)||int(t.shape[2])<=expert)
+                throw std::runtime_error("GGUF experts: unexpected geometry of "+t.name);
+            const size_t bytes=ggml_row_size(ggml_type(t.type),t.shape[0])*t.shape[1];
+            if(4+bytes>kFp8Projection)throw std::logic_error("GGUF experts: projection exceeds the slot");
+            uint8_t* slot=dst+i*kFp8Projection;const uint32_t type=t.type;std::memcpy(slot,&type,4);
+            const off_t at=off_t(gguf_experts->data_start()+t.offset+uint64_t(expert)*bytes);
+            for(size_t done=0;done<bytes;) {
+                const ssize_t n=::pread(fd,slot+4+done,bytes-done,at+off_t(done));
+                if(n<=0)throw std::runtime_error("GGUF experts: short read of "+t.name);
+                done+=size_t(n);
+            }
+            ::posix_fadvise(fd,at,bytes,POSIX_FADV_DONTNEED);
+        }
+    }
+    void gguf_gpu_linear(unsigned slot,const uint8_t* expert_host,const char* projection,const float* x,float* y,int nt) {
+        const bool down=std::string(projection)=="down_proj";const int in=down?2048:4096,out=down?4096:2048;
+        const uint8_t* host=expert_host+slot*kFp8Projection;uint32_t type;std::memcpy(&type,host,4);
+        // the quantized rows go to the GPU and are dequantized there (llama.cpp's dequantizers, iq_kernels.cu)
+        const size_t bytes=ggml_row_size(ggml_type(type),in)*out;
+        auto& raw=buf("gguf_raw"+std::to_string(slot),(bytes+3)/4);
+        check(cudaMemcpyAsync(raw.p,host+4,bytes,cudaMemcpyHostToDevice,stream));
+        auto& w=buf("fp8_weights",size_t(in)*out);
+        k::iq_dequant_f32(int(type),raw.p,int64_t(in)*out,w.f(),stream);
+        const float one=1,zero=0;
+        check(cublasSgemm(blas,CUBLAS_OP_T,CUBLAS_OP_N,out,nt,in,&one,w.f(),in,x,in,&zero,y,out));
+        check(cudaGetLastError());
+    }
     void fp8_read_expert(int layer,int expert,uint8_t* dst) {
+        if(gguf_experts){gguf_read_expert(layer,expert,dst);return;}
+        if(!llvq_dir().empty()){llvq_read_expert(layer,expert,dst);return;}
         const char* projections[]={"gate_proj","up_proj","down_proj"};
         for(unsigned i=0;i<3;++i) {
             uint8_t* host=dst+i*kFp8Projection;
@@ -2195,6 +2311,17 @@ class Decoder {
             auto* dst=static_cast<uint8_t*>(fp8_slots[slot]->p);
             reads[slot]=std::async(std::launch::async,[this,layer_id,expert,dst]{fp8_read_expert(layer_id,expert,dst);});
         };
+        if(fp8&&!gguf_experts_path().empty()&&!gguf_experts) {
+            if(!llvq_dir().empty())throw std::runtime_error("STRATA_GLM_EXPERT_GGUF and STRATA_GLM_EXPERT_LLVQ are exclusive");
+            gguf_experts=std::make_unique<strata::GgufFile>(gguf_experts_path());
+            std::cerr<<"GLM: routed experts from "<<gguf_experts_path()<<" (FP8 for everything else)\n";
+        }
+        if(fp8&&!llvq_dir().empty()&&!llvq) {
+            llvq=std::make_unique<LlvqState>();llvq->tetra=std::make_unique<strata::llvq::Tetra>();
+            llvq->tables=strata::llvq::DecodeTables::build(*llvq->tetra);const auto& T=llvq->tables;
+            llvq->gpu=strata::kernels::llvq_tetra_decode_create(&T.pre[0][0],&T.suf[0][0],&T.br_c[0][0],&T.br_s[0][0],T.rows,&T.vals[0][0],T.order);
+            std::cerr<<"GLM: routed experts from llvq units in "<<llvq_dir()<<" (FP8 for everything else)\n";
+        }
         if(fp8) {
             while(fp8_slots.size()<size_t(kFp8Prefetch))fp8_slots.push_back(std::make_unique<Pinned>(3*kFp8Projection));
             reads.resize(kFp8Prefetch);
@@ -2211,7 +2338,9 @@ class Decoder {
             auto& dx=buf("exl_group_x",count*m.hidden);auto& gate=buf("exl_gate",count*layer.intermediate);
             auto& up=buf("exl_up",count*layer.intermediate);auto& dy=buf("exl_group_y",count*m.hidden);dx.put(input.data(),input.size()*4);
             auto linear=[&](unsigned slot,const char* projection,const float* in,float* outp) {
-                if(fp8)fp8_gpu_linear(slot,fp8_host,projection,in,outp,count);
+                if(fp8&&gguf_experts)gguf_gpu_linear(slot,fp8_host,projection,in,outp,count);
+                else if(fp8&&llvq)llvq_gpu_linear(slot,fp8_host,projection,in,outp,count);
+                else if(fp8)fp8_gpu_linear(slot,fp8_host,projection,in,outp,count);
                 else exl_gpu_linear(exl_matrix(layer_id,expert,projection),in,outp,count);
             };
             linear(0,"gate_proj",dx.f(),gate.f());

@@ -35,6 +35,8 @@ struct LlvqTetraMatrixDev {
 void llvq_tetra_gemv(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDev& m, const float* xp, int ntok, float* y, void* stream);
 // W' as FP16 (rows x cols, natural rotated column order) for prefill GEMMs against Q x.
 void llvq_tetra_dequant_f16(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDev& m, void* out_f16, void* stream);
+// The same values in f32 (no FP16 rounding), e.g. for exact-reference evaluation.
+void llvq_tetra_dequant_f32(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDev& m, float* out, void* stream);
 // xp = trio-permute(Q x) for ntok tokens of a power-of-two width (llvq Rotation with one WHT group); signs: the
 // rotation's +-1 per column (device, cols floats).
 void llvq_tetra_prepare(const LlvqTetraDecodeGpu* d, const float* signs, const float* x, int ntok, int cols, float* xp, void* stream);
