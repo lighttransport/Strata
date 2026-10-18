@@ -1,0 +1,261 @@
+{
+  "created_utc": "2026-10-18T16:47:40.237821+00:00",
+  "config_sha256": "7cb02c2eced3d921edf192d3142016409792b593d7f096dc842c1f89bd071a01",
+  "settings": {
+    "backend": "ib",
+    "size": 1048576,
+    "depth": 4,
+    "messages": 1024,
+    "latency_iters": 10000,
+    "repeats": 3,
+    "timeout": 60,
+    "verify": false,
+    "paired": false,
+    "ib_inline": 64,
+    "direction": "both"
+  },
+  "runs": [
+    {
+      "latency": {
+        "event": "latency",
+        "backend": "ib",
+        "iterations": 10000,
+        "rtt_min_us": 5.78,
+        "rtt_mean_us": 8.50788,
+        "rtt_max_us": 1120.219,
+        "rtt_p50_us": 6.95,
+        "rtt_p99_us": 18.83
+      },
+      "bandwidth": {
+        "event": "bandwidth",
+        "backend": "ib",
+        "reverse": 0,
+        "verify": 0,
+        "messages": 1024,
+        "size": 1048576,
+        "depth": 4,
+        "seconds": 0.345318408,
+        "MBps": 3109.425386,
+        "Gbps": 24.875403
+      },
+      "repeat": 1,
+      "direction": "forward"
+    },
+    {
+      "latency": {
+        "event": "latency",
+        "backend": "ib",
+        "iterations": 10000,
+        "rtt_min_us": 5.27,
+        "rtt_mean_us": 8.588635,
+        "rtt_max_us": 1168.998,
+        "rtt_p50_us": 7.009,
+        "rtt_p99_us": 19.07
+      },
+      "bandwidth": {
+        "event": "bandwidth",
+        "backend": "ib",
+        "reverse": 1,
+        "verify": 0,
+        "messages": 1024,
+        "size": 1048576,
+        "depth": 4,
+        "seconds": 0.335201831,
+        "MBps": 3203.269567,
+        "Gbps": 25.626157
+      },
+      "repeat": 1,
+      "direction": "reverse"
+    },
+    {
+      "latency": {
+        "event": "latency",
+        "backend": "ib",
+        "iterations": 10000,
+        "rtt_min_us": 5.78,
+        "rtt_mean_us": 7.361301,
+        "rtt_max_us": 44.62,
+        "rtt_p50_us": 6.96,
+        "rtt_p99_us": 15.63
+      },
+      "bandwidth": {
+        "event": "bandwidth",
+        "backend": "ib",
+        "reverse": 1,
+        "verify": 0,
+        "messages": 1024,
+        "size": 1048576,
+        "depth": 4,
+        "seconds": 0.307853156,
+        "MBps": 3487.837636,
+        "Gbps": 27.902701
+      },
+      "repeat": 2,
+      "direction": "reverse"
+    },
+    {
+      "latency": {
+        "event": "latency",
+        "backend": "ib",
+        "iterations": 10000,
+        "rtt_min_us": 5.42,
+        "rtt_mean_us": 7.30533,
+        "rtt_max_us": 25.7,
+        "rtt_p50_us": 6.95,
+        "rtt_p99_us": 15.51
+      },
+      "bandwidth": {
+        "event": "bandwidth",
+        "backend": "ib",
+        "reverse": 0,
+        "verify": 0,
+        "messages": 1024,
+        "size": 1048576,
+        "depth": 4,
+        "seconds": 0.345386976,
+        "MBps": 3108.808087,
+        "Gbps": 24.870465
+      },
+      "repeat": 2,
+      "direction": "forward"
+    },
+    {
+      "latency": {
+        "event": "latency",
+        "backend": "ib",
+        "iterations": 10000,
+        "rtt_min_us": 5.02,
+        "rtt_mean_us": 8.317829,
+        "rtt_max_us": 41.249,
+        "rtt_p50_us": 6.94,
+        "rtt_p99_us": 18.57
+      },
+      "bandwidth": {
+        "event": "bandwidth",
+        "backend": "ib",
+        "reverse": 0,
+        "verify": 0,
+        "messages": 1024,
+        "size": 1048576,
+        "depth": 4,
+        "seconds": 0.345308506,
+        "MBps": 3109.514551,
+        "Gbps": 24.876116
+      },
+      "repeat": 3,
+      "direction": "forward"
+    },
+    {
+      "latency": {
+        "event": "latency",
+        "backend": "ib",
+        "iterations": 10000,
+        "rtt_min_us": 5.15,
+        "rtt_mean_us": 8.341217,
+        "rtt_max_us": 58.8,
+        "rtt_p50_us": 7.01,
+        "rtt_p99_us": 18.59
+      },
+      "bandwidth": {
+        "event": "bandwidth",
+        "backend": "ib",
+        "reverse": 1,
+        "verify": 0,
+        "messages": 1024,
+        "size": 1048576,
+        "depth": 4,
+        "seconds": 0.336631849,
+        "MBps": 3189.662022,
+        "Gbps": 25.517296
+      },
+      "repeat": 3,
+      "direction": "reverse"
+    }
+  ],
+  "source_sha256": {
+    "include/ucomm.h": "04a77b3c542077e4817621960ae71b39b79f5f10247ddfdc304ba0575681ed38",
+    "include/ucomm_file.h": "928ec4af03119a38fb14a66a23b865fa66d9ac553b7458466758bbb0d3a5c8b1",
+    "include/ucomm_relay.h": "c72c749ecbcd9813681ab2fdeb660bdd51101c97e5c134ce145cec38591aa7b9",
+    "src/ibvew.c": "50457477e5ac0f0db2397d131cc535dd3248c16a59de507ddd20384ffe5c9028",
+    "src/ibvew.h": "d4b70256d80ad7d424d963a4c8a93eaeaf40bb6a6a88a36f9af19bc6f1524822",
+    "src/ucomm.c": "756f5c0eb28d9399daa38d988cb3be52e9e95240fc7d4c518828843ba09c2bfe",
+    "src/ucomm_boot.c": "142b6d6a20fc128227bb1f0cd7daf3e20b26932cc9f52b07da3f7610a4388381",
+    "src/ucomm_file.c": "22e67abec245129e72532e4332be2a1e5aaf5721ecc8b11baf7fa1f0b7352508",
+    "src/ucomm_ib.c": "0cd822d77ddeef5e314dc561004a289fcf1f726a754b230ffc83c8a90d85f3ed",
+    "src/ucomm_internal.h": "bef8a3f86771c3f4a2447efc4f7a593889e8ac8057ff0643824e3fac0e2649b3",
+    "src/ucomm_relay.c": "3a21aa38a1c7c17533440fecf4937f692df11ea77b58a399de40db2927d86824",
+    "src/ucomm_udp.c": "eb479a0ad41b02dfe2de9138a57ec4af93b7d0fdd119facf752bac25f2fc174f",
+    "tools/ucfile.c": "94b765984f003184078dc02e52b44bc82bb800e4c704658c1c39ad3cd414d240",
+    "tools/ucomm_bench.c": "caca5de29b9b560868d9eca2e2e9a97fe7c511c970faef11e41ac007137ff231",
+    "tools/ucomm_relay.c": "dd6bd0bdd8df19cd46a4b509ce6d4f678437ca0afc158781b5009ae6e05c1ecd",
+    "tools/ujson.h": "b41e2b000294f341db1c27af0bf2b295064972d2e5604225dde02147721c2250",
+    "python/relay_bench.py": "1891a474e062938cc2a51cdfa307daf8a5bc19e4393f1369751267428e442df6",
+    "python/ucfile.py": "7709034753acb8c4b1c300826381e621198e7c1f8673b1c8703407540553c83d",
+    "Makefile": "74c70f758ea5b10f8363536e0fa244a232016b593a42e9008f8c783a97f32d08",
+    "CMakeLists.txt": "9a031a661acbf3b816387999128e525af48b950880470e658cc826ae9b304d08"
+  },
+  "hosts": {
+    "left": {
+      "binary_sha256": "5d9d70ff4abded0447458f675eaf960c8bb60aa05d0aeace6bf8f711402f08e2",
+      "kernel": "7.0.0-38-generic",
+      "cpu": "AMD Ryzen 9 3950X 16-Core Processor",
+      "memlock": [
+        8388608,
+        8388608
+      ],
+      "pci_width": "4",
+      "pci_speed": "8.0 GT/s PCIe",
+      "ib_rates": {
+        "1": "40 Gb/sec (4X QDR)",
+        "2": "40 Gb/sec (4X QDR)"
+      },
+      "configured_cpu": 2
+    },
+    "relay": {
+      "binary_sha256": "c9c7ff5cd24588c6c2323558e57727a7f95a2b42f66780f47999468cef2003b6",
+      "kernel": "7.0.0-38-generic",
+      "cpu": "AMD Ryzen 9 3950X 16-Core Processor",
+      "memlock": [
+        8412577792,
+        8412577792
+      ],
+      "pci_width": "8",
+      "pci_speed": "8.0 GT/s PCIe",
+      "ib_rates": {
+        "1": "40 Gb/sec (4X QDR)",
+        "2": "40 Gb/sec (4X QDR)"
+      },
+      "configured_cpu": 2
+    },
+    "right": {
+      "binary_sha256": "8ca112cfe1018f2f0f60ad9550667b008375a89402978c13313807d472ccaf66",
+      "kernel": "7.0.0-38-generic",
+      "cpu": "AMD Ryzen Threadripper 1950X 16-Core Processor",
+      "memlock": [
+        8388608,
+        8388608
+      ],
+      "pci_width": "8",
+      "pci_speed": "8.0 GT/s PCIe",
+      "ib_rates": {
+        "1": "40 Gb/sec (4X QDR)",
+        "2": "40 Gb/sec (4X QDR)"
+      },
+      "configured_cpu": 2
+    }
+  },
+  "summary": {
+    "forward": {
+      "MBps_min": 3108.808087,
+      "MBps_median": 3109.425386,
+      "MBps_max": 3109.514551,
+      "repeats": 3
+    },
+    "reverse": {
+      "MBps_min": 3189.662022,
+      "MBps_median": 3203.269567,
+      "MBps_max": 3487.837636,
+      "repeats": 3
+    }
+  }
+}

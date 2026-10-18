@@ -38,7 +38,7 @@ static int compare_double(const void *a, const void *b) {
   return (x > y) - (x < y);
 }
 static void pump(ucomm_t *a, ucomm_t *b, size_t cap, int depth,
-                 uint64_t count, uint64_t replies, uint32_t tag, int timeout, int json) {
+                 uint64_t count, uint64_t replies, uint32_t tag, int timeout, int json, int paired) {
   ucomm_relay_t *f, *r;
   OK(ucomm_relay_create(a, 1, tag, b, 1, tag, cap, depth, count, &f));
   OK(ucomm_relay_create(b, 1, tag + 1, a, 1, tag + 1, 8, tag == 20 ? 1 : depth, replies, &r));
@@ -55,8 +55,11 @@ static void pump(ucomm_t *a, ucomm_t *b, size_t cap, int depth,
   int fd = 0, rd = 0;
   double start = now();
   while (!fd || !rd) {
-    if (!fd) OK(ucomm_relay_progress(f, &fd));
-    if (!rd) OK(ucomm_relay_progress(r, &rd));
+    if (paired) OK(ucomm_relay_progress_pair(f, r, &fd, &rd));
+    else {
+      if (!fd) OK(ucomm_relay_progress(f, &fd));
+      if (!rd) OK(ucomm_relay_progress(r, &rd));
+    }
     if (timeout > 0 && (now() - start) * 1000 > timeout) die("relay phase deadline exceeded");
   }
   printf(json ? "{\"event\":\"relay\",\"tag\":%u,\"forward_bytes\":%llu,\"reverse_bytes\":%llu}\n"
@@ -67,11 +70,12 @@ static void pump(ucomm_t *a, ucomm_t *b, size_t cap, int depth,
 static void usage(const char *p) {
   fprintf(stderr, "usage: %s -r relay|left|right -a LEFT_ROOT:PORT -z RIGHT_ROOT:PORT\n"
           "  [-b ib|udp] [-p LOCAL_PORT] [-q RELAY_RIGHT_PORT] [-s BYTES]\n"
-          "  [-n MESSAGES] [-l LATENCY_ITERS] [-d DEPTH] [-R] [-V] [-J]\n"
+          "  [-n MESSAGES] [-l LATENCY_ITERS] [-d DEPTH] [-R] [-V] [-J] [-P]\n"
           "Defaults: ib, port 1 (relay right 2), 1048576 bytes, 100 messages, depth 4.\n"
           "Latency defaults to 1000 exchanges, independent of bulk message count.\n"
           "-R reverses bandwidth direction; -V checks every received payload byte;\n"
-          "-J emits JSON lines on stdout (diagnostics remain on stderr).\n", p);
+          "-J emits JSON lines on stdout (diagnostics remain on stderr).\n"
+          "-P uses paired duplex polling on the relay (opt-in).\n", p);
 }
 int main(int argc, char **argv) {
   ucomm_config cfg; ucomm_config_default(&cfg);
@@ -79,8 +83,8 @@ int main(int argc, char **argv) {
   const char *role = NULL, *left = NULL, *right = NULL;
   size_t size = 1u << 20;
   uint64_t count = 100, lat_iters = 1000;
-  int depth = 4, reverse = 0, verify = 0, rp = 2, json = 0, opt;
-  while ((opt = getopt(argc, argv, "r:a:z:b:p:q:s:n:l:d:RVJh")) != -1) {
+  int depth = 4, reverse = 0, verify = 0, rp = 2, json = 0, paired = 0, opt;
+  while ((opt = getopt(argc, argv, "r:a:z:b:p:q:s:n:l:d:RVJPh")) != -1) {
     switch (opt) {
       case 'r': role = optarg; break;
       case 'a': left = optarg; break;
@@ -99,6 +103,7 @@ int main(int argc, char **argv) {
       case 'R': reverse = 1; break;
       case 'V': verify = 1; break;
       case 'J': json = 1; break;
+      case 'P': paired = 1; break;
       default: usage(argv[0]); return opt == 'h' ? 0 : 2;
     }
   }
@@ -129,8 +134,8 @@ int main(int argc, char **argv) {
     if (!json) printf("relay: left/right backends %s/%s, size %zu, depth %d\n",
            ucomm_backend_name(a), ucomm_backend_name(b), size, depth);
     /* Small ping-pongs first, then pipelined bulk traffic and a terminal ack. */
-    pump(a, b, 8, depth, lat_iters + 10, lat_iters + 10, 10, cfg.timeout_ms, json);
-    pump(reverse ? b : a, reverse ? a : b, size, depth, count, 1, 20, cfg.timeout_ms, json);
+    pump(a, b, 8, depth, lat_iters + 10, lat_iters + 10, 10, cfg.timeout_ms, json, paired);
+    pump(reverse ? b : a, reverse ? a : b, size, depth, count, 1, 20, cfg.timeout_ms, json, paired);
     ucomm_finalize(a); ucomm_finalize(b);
     return 0;
   }

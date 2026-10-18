@@ -23,7 +23,8 @@ with tempfile.TemporaryDirectory() as tmp:
         sock.close()
     subprocess.run([sys.executable, str(runner), "--config", str(path), "--output", str(directory / "results"),
                     "--backend", "udp", "--size", "8153", "--messages", "7", "--depth", "3",
-                    "--latency-iters", "16", "--repeats", "2", "--timeout", "10", "--verify"],
+                    "--latency-iters", "16", "--repeats", "2", "--timeout", "10", "--verify",
+                    "--paired", "--ib-inline", "64"],
                    check=True, timeout=45)
     report = json.loads((directory / "results" / "results.json").read_text())
     assert len(report["runs"]) == 4
@@ -33,5 +34,6 @@ with tempfile.TemporaryDirectory() as tmp:
     assert all(summary["repeats"] == 2 for summary in report["summary"].values())
     assert report["config_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert "src/ucomm_relay.c" in report["source_sha256"]
+    assert report["settings"]["paired"] and report["settings"]["ib_inline"] == 64
     assert str(path) not in json.dumps(report)
 print("relay repeat runner: PASS")

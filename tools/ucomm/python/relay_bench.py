@@ -25,7 +25,10 @@ def on_host(spec, argv):
     if host:
         if host.startswith("-"):
             raise ValueError("host cannot start with '-'")
-        return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, shlex.join(argv)]
+        ssh = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+        if spec.get("host_key_alias"):
+            ssh += ["-o", "HostKeyAlias=" + spec["host_key_alias"]]
+        return ssh + [host, shlex.join(argv)]
     return argv
 
 
@@ -46,9 +49,16 @@ print(json.dumps(dict(binary_sha256=hashlib.sha256(p(sys.argv[1]).read_bytes()).
 
 def command(role, spec, roots, args, reverse):
     argv = ["env", f"UCOMM_TIMEOUT_MS={args.timeout * 1000}", "UCOMM_VERBOSE=0"]
+    argv.append(f"UCOMM_IB_INLINE={args.ib_inline}")
     if spec.get("ib_dev"):
         argv.append("UCOMM_IB_DEV=" + spec["ib_dev"])
-    argv += ["timeout", str(args.timeout + 5) + "s", spec["exe"], "-r", role,
+    argv += ["timeout", str(args.timeout + 5) + "s"]
+    if spec.get("cpu") is not None:
+        cpu = spec["cpu"]
+        if not isinstance(cpu, int) or cpu < 0:
+            raise ValueError("cpu must be a nonnegative integer")
+        argv += ["taskset", "-c", str(cpu)]
+    argv += [spec["exe"], "-r", role,
              "-a", roots[0], "-z", roots[1], "-b", args.backend,
              "-s", str(args.size), "-n", str(args.messages), "-d", str(args.depth),
              "-l", str(args.latency_iters), "-J"]
@@ -58,6 +68,8 @@ def command(role, spec, roots, args, reverse):
         argv += ["-p", str(spec.get("port", 1))]
     if args.verify:
         argv.append("-V")
+    if args.paired:
+        argv.append("-P")
     if reverse:
         argv.append("-R")
     return on_host(spec, argv)
@@ -130,6 +142,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True, help="new directory for results and raw logs")
+    parser.add_argument("--source-root", type=Path, help="ucomm source snapshot matching the tested binaries")
     parser.add_argument("--backend", choices=("ib", "udp"), default="ib")
     parser.add_argument("--size", type=int, default=1048576)
     parser.add_argument("--depth", type=int, default=3)
@@ -138,11 +151,13 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=60, help="seconds per session")
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--paired", action="store_true", help="opt-in paired duplex polling")
+    parser.add_argument("--ib-inline", type=int, default=0, help="opt-in inline send limit, 0..256 bytes")
     parser.add_argument("--direction", choices=("forward", "reverse", "both"), default="both")
     args = parser.parse_args()
     if not (1 <= args.size <= 268435456 and 1 <= args.depth <= 64 and
             1 <= args.messages <= 10000000 and 1 <= args.latency_iters <= 1000000 and
-            1 <= args.repeats <= 100 and 1 <= args.timeout <= 3600):
+            1 <= args.repeats <= 100 and 1 <= args.timeout <= 3600 and 0 <= args.ib_inline <= 256):
         parser.error("size/depth/count/repeats/timeout out of range")
     raw_config = args.config.read_bytes()
     config = json.loads(raw_config)
@@ -151,17 +166,19 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     report = {"created_utc": datetime.now(timezone.utc).isoformat(),
               "config_sha256": hashlib.sha256(raw_config).hexdigest(),
-              "settings": {k: v for k, v in vars(args).items() if k not in ("config", "output")},
+              "settings": {k: v for k, v in vars(args).items() if k not in ("config", "output", "source_root")},
               "runs": []}
     # No connection settings are embedded in the summary. Keep private configs
     # and raw error logs local when sharing the summary.
     try:
-        root = Path(__file__).resolve().parents[1]
+        root = args.source_root or Path(__file__).resolve().parents[1]
         sources = [path for directory in ("include", "src", "tools", "python")
                    for path in sorted((root / directory).glob("*")) if path.suffix in (".c", ".h", ".py")]
         sources += [root / "Makefile", root / "CMakeLists.txt"]
         report["source_sha256"] = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
         report["hosts"] = {role: metadata(config[role]) for role in ("left", "relay", "right")}
+        for role, host in report["hosts"].items():
+            host["configured_cpu"] = config[role].get("cpu")
         for i in range(args.repeats):
             directions = [False, True] if args.direction == "both" else [args.direction == "reverse"]
             if i % 2:

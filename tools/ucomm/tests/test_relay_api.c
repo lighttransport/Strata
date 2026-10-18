@@ -17,7 +17,8 @@ static size_t length(int i) {
 }
 static ucomm_t *init(int rank, const char *root) {
   ucomm_config cfg; ucomm_config_default(&cfg);
-  cfg.backend = UCOMM_BACKEND_UDP; cfg.rank = rank; cfg.world = 2;
+  if (!getenv("UCOMM_BACKEND")) cfg.backend = UCOMM_BACKEND_UDP;
+  cfg.rank = rank; cfg.world = 2;
   cfg.root_addr = root; cfg.timeout_ms = 10000;
   ucomm_t *c; CHECK(ucomm_init(&cfg, &c) == UCOMM_OK); return c;
 }
@@ -40,11 +41,20 @@ static void endpoint(int source, const char *root) {
   if (source) {
     CHECK(ucomm_waitall(4, req) == UCOMM_OK);
     CHECK(ucomm_send(c, 0, 40, buf[0], CAP) == UCOMM_OK);
+    CHECK(ucomm_send(c, 0, 42, buf[0], CAP) == UCOMM_OK);
   }
   ucomm_finalize(c);
   exit(0);
 }
-int main(void) {
+static ucomm_relay_t *reverse_relay;
+static ucomm_status advance(ucomm_relay_t *relay, int *done) {
+  int reverse_done;
+  return reverse_relay ? ucomm_relay_progress_pair(relay, reverse_relay, done, &reverse_done)
+                       : ucomm_relay_progress(relay, done);
+}
+int main(int argc, char **argv) {
+  int paired = argc == 2 && !strcmp(argv[1], "paired");
+  if (argc > 1 && !paired) return 2;
   char left[64], right[64];
   int port = 32000 + (getpid() % 10000) * 2;
   snprintf(left, sizeof left, "127.0.0.1:%d", port);
@@ -52,6 +62,7 @@ int main(void) {
   pid_t l = fork(); CHECK(l >= 0); if (!l) endpoint(1, left);
   pid_t r = fork(); CHECK(r >= 0); if (!r) endpoint(0, right);
   ucomm_t *a = init(0, left), *b = init(0, right);
+  if (paired) CHECK(ucomm_relay_create(b, 1, 50, a, 1, 51, CAP, 1, 0, &reverse_relay) == UCOMM_OK);
   ucomm_relay_t *relay = NULL;
   CHECK(ucomm_relay_create(a, 1, 30, a, 1, 31, CAP, 3, COUNT, &relay) == UCOMM_ERR_ARG);
   CHECK(ucomm_relay_create(a, 1, 30, b, 1, 31, CAP, 65, COUNT, &relay) == UCOMM_ERR_ARG);
@@ -59,14 +70,14 @@ int main(void) {
   CHECK(ucomm_relay_create(a, 0, 30, b, 1, 31, CAP, 3, COUNT, &relay) == UCOMM_ERR_ARG);
   CHECK(ucomm_relay_create(a, 1, 32, b, 1, 33, CAP, 1, 0, &relay) == UCOMM_OK);
   int done = 0;
-  CHECK(ucomm_relay_progress(relay, &done) == UCOMM_OK && done);
+  CHECK(advance(relay, &done) == UCOMM_OK && done);
   CHECK(ucomm_relay_destroy(relay) == UCOMM_OK);
   CHECK(ucomm_relay_create(a, 1, 30, b, 1, 31, CAP, 3, COUNT, &relay) == UCOMM_OK);
-  CHECK(ucomm_relay_progress(relay, &done) == UCOMM_OK && !done);
+  CHECK(advance(relay, &done) == UCOMM_OK && !done);
   CHECK(ucomm_relay_destroy(relay) == UCOMM_ERR_ARG);
   time_t start = time(NULL);
   while (!done) {
-    CHECK(ucomm_relay_progress(relay, &done) == UCOMM_OK);
+    CHECK(advance(relay, &done) == UCOMM_OK);
     CHECK(time(NULL) - start < 15);
   }
   uint64_t bytes = 0; for (int i = 0; i < COUNT; i++) bytes += length(i);
@@ -76,12 +87,15 @@ int main(void) {
   ucomm_status trunc = UCOMM_OK;
   start = time(NULL);
   while (trunc == UCOMM_OK) {
-    trunc = ucomm_relay_progress(relay, &done);
+    trunc = advance(relay, &done);
     CHECK(time(NULL) - start < 15);
   }
   CHECK(trunc == UCOMM_ERR_TRUNC && !done && ucomm_relay_bytes(relay) == 0);
-  CHECK(ucomm_relay_progress(relay, &done) == UCOMM_ERR_TRUNC && !done);
+  CHECK(advance(relay, &done) == UCOMM_ERR_TRUNC && !done);
   CHECK(ucomm_relay_destroy(relay) == UCOMM_OK);
+  CHECK(ucomm_relay_destroy(reverse_relay) == UCOMM_OK);
+  size_t discarded = 0;
+  CHECK(ucomm_recv(a, 1, 42, NULL, 0, &discarded) == UCOMM_ERR_TRUNC && discarded == CAP);
   ucomm_finalize(a); ucomm_finalize(b);
   int status;
   CHECK(waitpid(l, &status, 0) == l && WIFEXITED(status) && WEXITSTATUS(status) == 0);

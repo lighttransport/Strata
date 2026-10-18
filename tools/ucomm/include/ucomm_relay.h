@@ -23,6 +23,11 @@ ucomm_status ucomm_relay_create(ucomm_t *src, int src_peer, uint32_t src_tag,
  * allocated; on transport/truncation errors terminate the communicating session.
  * No implicit timeout: caller owns the overall deadline. */
 ucomm_status ucomm_relay_progress(ucomm_relay_t *r, int *done);
+/* Opt-in duplex path: forward/reverse must use the same two contexts in opposite
+ * directions. Polls each context once, then advances both rings without per-slot
+ * CQ polling. fd/rd must be distinct outputs. Context ownership is unchanged. */
+ucomm_status ucomm_relay_progress_pair(ucomm_relay_t *forward, ucomm_relay_t *reverse,
+                                      int *forward_done, int *reverse_done);
 /* Payload bytes whose outgoing sends have completed (not merely been queued). */
 uint64_t ucomm_relay_bytes(const ucomm_relay_t *r);
 /* Valid before progress, after completion, or after an error with no outstanding

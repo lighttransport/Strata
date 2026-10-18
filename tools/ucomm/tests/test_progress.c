@@ -62,6 +62,18 @@ int main(void) {
   CHECK(ucomm_relay_progress(relay, &done) == UCOMM_ERR_IO && !done && polls == previous);
   CHECK(ucomm_relay_bytes(relay) == 0);
   CHECK(ucomm_relay_destroy(relay) == UCOMM_OK && !a.mrs && !b.mrs);
+  ucomm_relay_t *reverse;
+  CHECK(ucomm_relay_create(&a, 1, 1, &b, 1, 2, 64, 1, 1, &relay) == UCOMM_OK);
+  CHECK(ucomm_relay_create(&b, 1, 2, &a, 1, 1, 64, 1, 0, &reverse) == UCOMM_OK);
+  int rd = 0;
+  CHECK(ucomm_relay_progress_pair(relay, relay, &done, &rd) == UCOMM_ERR_ARG);
+  CHECK(ucomm_relay_progress_pair(relay, reverse, &done, &done) == UCOMM_ERR_ARG);
+  previous = polls;
+  CHECK(ucomm_relay_progress_pair(relay, reverse, &done, &rd) == UCOMM_ERR_IO && !done && !rd);
+  CHECK(polls == previous + 1);
+  CHECK(ucomm_relay_progress_pair(relay, reverse, &done, &rd) == UCOMM_ERR_IO && polls == previous + 1);
+  CHECK(ucomm_relay_destroy(relay) == UCOMM_OK);
+  CHECK(ucomm_relay_destroy(reverse) == UCOMM_OK);
   puts("progress and registration failures: PASS");
   return 0;
 }

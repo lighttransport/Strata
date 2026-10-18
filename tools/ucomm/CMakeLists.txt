@@ -25,7 +25,9 @@ include(CTest)
 if(BUILD_TESTING)
   add_test(NAME ucomm_progress COMMAND ucomm_test_progress)
   add_test(NAME ucomm_relay_api COMMAND ucomm_test_relay_api)
+  add_test(NAME ucomm_relay_api_pair COMMAND ucomm_test_relay_api paired)
   set_tests_properties(ucomm_relay_api PROPERTIES TIMEOUT 25)
+  set_tests_properties(ucomm_relay_api_pair PROPERTIES TIMEOUT 25)
   find_package(Python3 COMPONENTS Interpreter QUIET)
   if(Python3_Interpreter_FOUND)
     add_test(NAME ucomm_relay_integration COMMAND ${Python3_EXECUTABLE}
@@ -34,5 +36,8 @@ if(BUILD_TESTING)
     add_test(NAME ucomm_relay_runner COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_relay_runner.py $<TARGET_FILE:ucomm_relay>)
     set_tests_properties(ucomm_relay_runner PROPERTIES TIMEOUT 60)
+    add_test(NAME ucomm_bench_args COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bench.py $<TARGET_FILE:ucomm_bench>)
+    set_tests_properties(ucomm_bench_args PROPERTIES TIMEOUT 25)
   endif()
 endif()

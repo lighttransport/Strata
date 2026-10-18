@@ -60,6 +60,7 @@ completes; a too-small receive buffer gives `UCOMM_ERR_TRUNC` with the full size
 | `UCOMM_RANK`, `UCOMM_WORLD`, `UCOMM_ROOT` | defaults for the config fields |
 | `UCOMM_BACKEND` | `auto` (default), `ib`, `udp` |
 | `UCOMM_IB_DEV`, `UCOMM_IB_PORT`, `UCOMM_IB_GID_INDEX` | HCA choice; GID index only matters for RoCE |
+| `UCOMM_IB_INLINE` | opt-in maximum inline SEND/credit bytes, including the 40-byte message header; 0 (default) disables it; 64 was tested on ConnectX-3 |
 | `UCOMM_IBVERBS_LIB` | path to libibverbs if it is not `libibverbs.so.1` on the loader path |
 | `UCOMM_UDP_MTU` | UDP payload per datagram (default 1400; use ~8900 on a jumbo-frame network) |
 | `UCOMM_UDP_DROP` | test hook: drop this fraction of outgoing datagrams |
@@ -384,3 +385,81 @@ and binary hashes are preserved as measured. RAM timings were not collected. CUD
 backends, automatic failover, transparent `ucfile` relaying and PCIe ×4 operation were not tested here.
 The existing IB/UDP/bootstrap wire implementations are unchanged; the shared core changes affect error
 propagation and request lifetime, with regression coverage for the successful paths.
+
+### Opt-in inline sends and paired polling (PCIe ×4)
+
+The inline path avoids fetching a small SEND or credit payload from host RAM after posting the work
+request. Set `UCOMM_IB_INLINE=64` to request inline capacity when creating QPs; 8-byte messages plus
+the existing 40-byte header fit this limit. Larger messages keep the existing eager/rendezvous protocol.
+The provider must support the requested capacity; unsupported requests can fail initialization. Values
+must be 0..256 bytes. The default is zero, preserving the previous posting flags, QP capacities, wire
+format, READ/FIN rendezvous and credit protocol. No change to `ibvew` or verbs headers is required.
+
+`ucomm_relay_progress_pair(forward, reverse, &forward_done, &reverse_done)` is an additional opt-in API
+for rings using the same two contexts in opposite directions. It polls each context once and then
+examines completed requests without polling again for each pending slot. It preserves both directions'
+order, bounded pool, error propagation, and buffer lifetime. The existing single-ring progress API
+continues to use its previous behavior. The tool selects paired polling with `-P`; the repeat runner
+selects it with `--paired`.
+
+For the runner, optional `cpu` integers in each role's local config pin only that benchmark process
+using `taskset`; they do not change system-wide affinity or clocks. Optional `host_key_alias` selects
+an existing SSH known-host identity when reaching a machine by an alternate address. Connection
+settings remain in the external config. `--source-root` records hashes from a preserved source snapshot
+when benchmarking a separately built baseline; the private path is omitted from the result summary.
+
+```sh
+python3 tools/ucomm/python/relay_bench.py --config /path/to/relay-config.json \
+  --output /tmp/relay-inline-results --size 1048576 --depth 4 \
+  --messages 1024 --latency-iters 10000 --repeats 3 --ib-inline 64 --paired
+```
+
+The direct-link asymmetric benchmark now allocates/registers only the larger of the request/reply
+sizes. This permits small latency tests under an 8 MiB locked-memory limit; the original full benchmark
+still uses its 64 MiB buffer. Invalid `-p` shapes and nonpositive iteration counts are rejected before
+bootstrap. On two endpoints in the same direct fabric, select their connected ports and the same root:
+
+```sh
+UCOMM_IB_INLINE=64 UCOMM_IB_PORT=2 tools/ucomm/build/ucomm_bench \
+  -r 0 -w 2 -a root-host:29811 -b ib -p 8:8 -n 10000
+UCOMM_IB_INLINE=64 UCOMM_IB_PORT=2 tools/ucomm/build/ucomm_bench \
+  -r 1 -w 2 -a root-host:29811 -b ib -p 8:8 -n 10000
+```
+
+Matched measurements on 2026-10-19: same ConnectX-3/QDR hardware as above, left endpoint now PCIe
+3.0 ×4, relay/right ×8, firmware 2.42.5000, one progress thread, GCC `-O2`. Each role was pinned to
+CPU 2. All relay arms used 1 MiB messages, depth 4, 1024 messages, 10000 measured 8-byte round trips
+after 10 warmups, and three repeats in each bandwidth direction. Arms ran baseline, inline-only, then
+inline+paired; system-wide clocks, IRQ placement and background load were not controlled. This is a
+same-day comparison against the clean committed `f5d7b3a3` sources, not a comparison against the old ×1
+hardware numbers. Bulk verification was disabled for the timed runs and tested separately.
+
+| Arm | Median of six RTT p50 values | Median of six RTT p99 values | Forward / reverse median Gbit/s |
+|---|---:|---:|---:|
+| Committed baseline | 11.855 µs | 23.325 µs | 24.872 / 25.281 |
+| Inline 64, existing polling | 6.955 µs | 18.580 µs | 24.875 / 25.626 |
+| Inline 64, paired polling | 5.850 µs | 16.155 µs | 24.873 / 26.485 |
+
+On the newly connected direct fabric between the same endpoints, the retained inline implementation
+measured **3.0 µs RTT p50** in each of three CPU-matched 10000-exchange runs (1000 warmups). Thus the
+paired relay median is **1.95× direct**, approximately half the previous relay latency. These are round
+trips, not independently measured one-way latencies. Direct benchmark output has 0.1 µs precision.
+
+The reverse direction exceeds 25 Gbit/s; forward is approximately 24.9 Gbit/s, **0.5% below a strict
+25.0 Gbit/s target**. Forward rates were 24.870–24.874 Gbit/s. Reverse rates varied more under the
+uncontrolled load: 25.374–26.646 Gbit/s with paired polling. Do not infer a bandwidth speedup from those
+reverse medians. Deeper/larger buffers and exploratory WRITE/read-pipeline variants did not establish
+a useful gain; only inline sends and paired polling are retained. No global default was changed.
+
+Validation: full UDP regression suite; native IB variable/zero-length, zero-capacity truncation and
+file CRC/resume tests; native three-host byte/sequence checks in both directions at 1, 8152, 8153 and
+1048579 bytes (129 messages for the small/eager-boundary cases, exercising credit rollover); and six
+ASan/UBSan CTest checks including both polling paths and benchmark argument handling. RoCE and other
+HCA families were not exercised. The default bootstrap/control header layouts and payload matching
+are unchanged; defaults and both opt-in modes were covered by the regression tests.
+
+Evidence: [baseline](../../docs/benchmarks/ucomm_relay_inline_20261019/baseline.json),
+[inline](../../docs/benchmarks/ucomm_relay_inline_20261019/inline.json),
+[paired](../../docs/benchmarks/ucomm_relay_inline_20261019/paired.json),
+[direct](../../docs/benchmarks/ucomm_relay_inline_20261019/direct.json), and
+[native integrity checks](../../docs/benchmarks/ucomm_relay_inline_20261019/verified.json).

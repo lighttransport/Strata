@@ -12,7 +12,7 @@ import sys
 import tempfile
 
 
-def run(binary, size, depth, count, reverse=False, loss=False):
+def run(binary, size, depth, count, reverse=False, loss=False, paired=False):
     # Reserve two distinct bootstrap ports until immediately before launch.
     sockets = [socket.socket(), socket.socket()]
     for sock in sockets:
@@ -24,6 +24,8 @@ def run(binary, size, depth, count, reverse=False, loss=False):
             "-b", "udp", "-s", str(size), "-d", str(depth), "-n", str(count), "-l", "16", "-V", "-J"]
     if reverse:
         args.append("-R")
+    if paired:
+        args.append("-P")
     env = dict(os.environ, UCOMM_TIMEOUT_MS="15000", UCOMM_UDP_DROP="0.02" if loss else "0")
     procs = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -51,7 +53,7 @@ def run(binary, size, depth, count, reverse=False, loss=False):
             assert bw[0]["backend"] == "udp" and bw[0]["reverse"] == int(reverse) and bw[0]["verify"] == 1
             assert bw[0]["seconds"] > 0 and bw[0]["MBps"] > 0
             assert relay[0]["forward_bytes"] == size * count and relay[0]["reverse_bytes"] == 8
-            print(f"PASS size={size} depth={depth} count={count} reverse={reverse} loss={loss}")
+            print(f"PASS size={size} depth={depth} count={count} reverse={reverse} loss={loss} paired={paired}")
         except BaseException:
             for log in logs:
                 log.flush()
@@ -73,6 +75,10 @@ if __name__ == "__main__":
         run(binary, *case)
     run(binary, 65539, 3, 13, reverse=True)
     run(binary, 32771, 3, 11, loss=True)
+    for case in [(1, 1, 9), (8152, 3, 17), (8153, 4, 19), (1048579, 3, 11), (17, 8, 2)]:
+        run(binary, *case, paired=True)
+    run(binary, 65539, 3, 13, reverse=True, paired=True)
+    run(binary, 32771, 3, 11, loss=True, paired=True)
     for invalid in [("-s", "0"), ("-n", "-1"), ("-d", "65"), ("-l", "0"), ("-b", "auto")]:
         result = subprocess.run([str(binary), *invalid], capture_output=True, timeout=3)
         assert result.returncode != 0, invalid

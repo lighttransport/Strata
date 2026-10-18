@@ -33,18 +33,21 @@ $(B)/test_progress: tests/test_progress.c include/ucomm_relay.h src/ucomm_intern
 $(B):
 	mkdir -p $(B)
 
-test: $(B)/test_loopback $(B)/test_file $(B)/ucomm_relay $(B)/test_relay_api $(B)/test_progress
+test: $(B)/test_loopback $(B)/test_file $(B)/ucomm_relay $(B)/test_relay_api $(B)/test_progress $(B)/ucomm_bench
 	$(B)/test_loopback 2 && $(B)/test_loopback 3 && $(B)/test_loopback 4
 	UCOMM_UDP_DROP=0.05 $(B)/test_loopback 3
 	$(B)/test_file && UCOMM_UDP_DROP=0.02 $(B)/test_file
 	python3 tests/test_relay.py $(B)/ucomm_relay
 	$(B)/test_relay_api
+	$(B)/test_relay_api paired
 	$(B)/test_progress
 	python3 tests/test_relay_runner.py $(B)/ucomm_relay
+	python3 tests/test_bench.py $(B)/ucomm_bench
 
 test-relay: $(B)/ucomm_relay $(B)/test_relay_api $(B)/test_progress
 	python3 tests/test_relay.py $(B)/ucomm_relay
 	$(B)/test_relay_api
+	$(B)/test_relay_api paired
 	$(B)/test_progress
 	python3 tests/test_relay_runner.py $(B)/ucomm_relay
 

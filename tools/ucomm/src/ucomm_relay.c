@@ -61,19 +61,23 @@ ucomm_status ucomm_relay_create(ucomm_t *src, int sp, uint32_t st,
   return UCOMM_OK;
 }
 
-ucomm_status ucomm_relay_progress(ucomm_relay_t *r, int *done) {
+static ucomm_status relay_progress(ucomm_relay_t *r, int *done, int already_polled) {
   if (!r || !done) return UCOMM_ERR_ARG;
   *done = 0;
   if (r->error) return r->error;
   if (r->completed == r->count) { *done = 1; return UCOMM_OK; }
   r->started = 1;
-  ucomm_status s = r->src->ops->progress(r->src, 0);
-  if (s != UCOMM_OK) goto fail;
-  s = r->dst->ops->progress(r->dst, 0);
-  if (s != UCOMM_OK) goto fail;
+  ucomm_status s = UCOMM_OK;
+  if (!already_polled) {
+    s = r->src->ops->progress(r->src, 0);
+    if (s != UCOMM_OK) goto fail;
+    s = r->dst->ops->progress(r->dst, 0);
+    if (s != UCOMM_OK) goto fail;
+  }
   for (int i = 0; i < r->depth; i++) {
     relay_slot *b = &r->slot[i];
     if (b->state != RECEIVING && b->state != SENDING) continue;
+    if (already_polled && !b->req->done) continue;
     int ready = 0;
     size_t len = 0;
     s = ucomm_test(b->req, &ready, &len);
@@ -109,3 +113,21 @@ fail:
 }
 
 uint64_t ucomm_relay_bytes(const ucomm_relay_t *r) { return r ? r->bytes : 0; }
+
+ucomm_status ucomm_relay_progress(ucomm_relay_t *r, int *done) { return relay_progress(r, done, 0); }
+
+ucomm_status ucomm_relay_progress_pair(ucomm_relay_t *f, ucomm_relay_t *r, int *fd, int *rd) {
+  if (!f || !r || !fd || !rd || fd == rd || f->src != r->dst || f->dst != r->src)
+    return UCOMM_ERR_ARG;
+  *fd = *rd = 0;
+  if (f->error) return f->error;
+  if (r->error) return r->error;
+  if (f->completed != f->count || r->completed != r->count) {
+    ucomm_status s = f->src->ops->progress(f->src, 0);
+    if (s == UCOMM_OK) s = f->dst->ops->progress(f->dst, 0);
+    if (s != UCOMM_OK) { f->error = r->error = s; return s; }
+  }
+  ucomm_status s = relay_progress(f, fd, 1);
+  if (s != UCOMM_OK) return s;
+  return relay_progress(r, rd, 1);
+}
