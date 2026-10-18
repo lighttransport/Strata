@@ -67,6 +67,32 @@ class NativeFp4Tests(unittest.TestCase):
         self.assertEqual(slower['prefill']['observed_tok_s'], prefill['observed_tok_s'])
         self.assertEqual(slower['decode']['observed_tok_s'], result['decode']['observed_tok_s'])
 
+    def test_measured_phase_bytes_are_deltas_not_allocations(self):
+        profile = copy.deepcopy(self.profile)
+        profile['prefill_transfer'] = dict(scope='one request preparation and prefill',
+            before=[dict(device=i, prefill_bytes=10) for i in range(2)],
+            after=[dict(device=i, prefill_bytes=10 + 80_000_000_000) for i in range(2)])
+        exact = sim.analyze(profile)['prefill']['measured_matrix_transfer']
+        self.assertEqual(exact['source_wire_bytes'], [80_000_000_000] * 2)
+        self.assertGreater(exact['conditional_roof']['seconds'], 6)
+        profile['prefill_transfer']['after'][0]['prefill_bytes'] = 9
+        with self.assertRaises(ValueError):
+            sim.analyze(profile)
+
+    def test_measured_cpu_capacity_and_explicit_override(self):
+        profile = copy.deepcopy(self.profile)
+        profile['hardware']['cpu_stream_gbps'] = 117.816
+        measured = sim.analyze(profile)
+        self.assertTrue(measured['rates']['cpu_bandwidth_is_measured'])
+        self.assertEqual(measured['rates']['cpu_gbps'], 117.816)
+        override = sim.analyze(profile, cpu_gbps=180)
+        self.assertFalse(override['rates']['cpu_bandwidth_is_measured'])
+        self.assertEqual(override['rates']['cpu_gbps'], 180)
+        self.assertEqual(measured['decode']['observed_tok_s'], override['decode']['observed_tok_s'])
+        profile['hardware']['cpu_stream_gbps'] = 0
+        with self.assertRaises(ValueError):
+            sim.analyze(profile)
+
     def test_invalid_rates_faulted_runs_and_census_rejected(self):
         for rate in (0, -1, float('nan'), float('inf')):
             with self.assertRaises(ValueError):

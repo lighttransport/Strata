@@ -376,6 +376,11 @@ these observations without a timing fit. It separates compressed PCIe traffic
 from expanded GPU allocations and records the missing measurements needed for
 tighter decode and prefill estimates.
 
+The [follow-up optimization campaign](GLM_FP4_V100_EXPERIMENTS.md) adds an
+opt-in GPU reduction profile and a new measured-bandwidth simulator profile.
+It records the successful prefill change, rejected decode experiments, and
+remaining gaps to 50 decode and 800–1000 prefill tok/s.
+
 ## Qualification protocol
 
 Use batch one, a frozen 8192-token prompt, 512 generated tokens, capacity

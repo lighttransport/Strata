@@ -416,7 +416,7 @@ def main(argv=None):
     p = sub.add_parser('native-fp4', help='recorded V100 native FP4 workload and conditional rooflines; no GGUF fit')
     from sim import glm_fp4
     p.add_argument('--profile', default=str(glm_fp4.DEFAULT_PROFILE))
-    p.add_argument('--cpu-gbps', type=float, help='assumed streaming bandwidth; default is an optimistic CPU specification peak')
+    p.add_argument('--cpu-gbps', type=float, help='bandwidth scenario; default uses the profile read probe when present, otherwise the optimistic CPU specification peak')
     p.add_argument('--hbm-gbps', type=float, help='per-GPU HBM bandwidth; default is the V100 PCIe specification peak')
     p.add_argument('--tensor-tflops', type=float, help='per-GPU tensor peak; projection-only compute comparison')
     p.add_argument('--h2d-gbps', type=float, nargs=2, help='per-GPU H2D bandwidth scenario')

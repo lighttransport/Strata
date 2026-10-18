@@ -124,6 +124,20 @@ int main(int argc,char** argv){try {
             if(std::abs(qinput[i]-float(q8.values[i])*scale)>scale*.5001f+1.e-6f)
                 throw std::runtime_error("Q8 activation exceeds half-scale error bound");
         }
+        for(bool prepared:{false,true}) {
+            auto source=q8;if(prepared)strata::kernels::cpu::glm_fp4_prepare_q8(source);
+            const int order[]={7,1,7,0};std::vector<float> picked(size_t(columns)*4);
+            for(int t=0;t<4;++t)std::copy_n(qinput.data()+size_t(order[t])*columns,columns,picked.data()+size_t(t)*columns);
+            auto expected=strata::kernels::cpu::glm_fp4_quantize_q8(picked.data(),columns,4);
+            if(prepared)strata::kernels::cpu::glm_fp4_prepare_q8(expected);
+            const auto actual=strata::kernels::cpu::glm_fp4_gather_q8(source,order,4);
+            if(actual.values!=expected.values||actual.scales!=expected.scales||actual.magnitudes!=expected.magnitudes||actual.negative!=expected.negative)
+                throw std::runtime_error("Q8 input reuse changes duplicate/reordered rows");
+            for(int bad:{-1,8}) {
+                bool rejected=false;try{strata::kernels::cpu::glm_fp4_gather_q8(source,&bad,1);}catch(const std::invalid_argument&){rejected=true;}
+                if(!rejected)throw std::runtime_error("Q8 gather accepts an invalid row");
+            }
+        }
         if(q8.scales[2]!=0)throw std::runtime_error("Q8 zero block has nonzero scale");
         std::vector<float> qfirst;
         for(int tokens=1;tokens<=8;++tokens) {
@@ -132,6 +146,16 @@ int main(int argc,char** argv){try {
             auto borrowed_output=got;
             strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),borrowed,table,q8,borrowed_output.data(),columns,rows,tokens,13,rows-1);
             if(std::memcmp(got.data(),borrowed_output.data(),got.size()*4))throw std::runtime_error("borrowed Q8 rows differ from owning scales");
+            for(bool cached:{false,true})for(bool prepared:{false,true})for(int tile:{1,2,4}) {
+                auto layout=borrowed;
+                if(cached)strata::kernels::cpu::glm_fp4_cache_scale_quartets(layout);
+                auto operands=q8;
+                if(prepared)strata::kernels::cpu::glm_fp4_prepare_q8(operands);
+                std::vector<float> tiled(got.size(),-777.f);
+                strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,operands,tiled.data(),columns,rows,tokens,13,rows-1,tile);
+                if(std::memcmp(got.data(),tiled.data(),got.size()*4))
+                    throw std::runtime_error("tiled/prepared Q8 differs from original row kernel");
+            }
             double error=0,norm=0;
             for(int t=0;t<tokens;++t)for(int row=13;row<rows-1;++row) {
                 double sum=0;

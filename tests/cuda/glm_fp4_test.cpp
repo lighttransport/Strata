@@ -175,7 +175,7 @@ static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::
         ref[size_t(t)*N+r]=float(v);
     }
     Buffer partials(k::glm_fp4_partial_bytes(N));
-    const bool small=fmt!=k::GlmPackedFormat::Nvfp4 && N<=512 && K>=4096;
+    const bool small=fmt!=k::GlmPackedFormat::Nvfp4 && N<=8192 && K>=4096;
     for(bool cached:{false,true})for(bool split:{false,true}) {
     if((cached && fmt!=k::GlmPackedFormat::Bf16 && !packed_fp8) || (split && !small))continue;
     const auto active=cached?cached_format:fmt;
@@ -248,13 +248,15 @@ int main(int argc,char** argv) {
         routing();
         if(argc==2 && std::string(argv[1])=="--routing-only")return 0;
         csf32();
+        const bool dense_split=argc==2 && std::string(argv[1])=="--dense-split";
         if(argc==3 || argc==4) {
             a::Safetensors tensors(argv[1],true);const auto cfg=a::read_json((std::filesystem::path(argv[1])/"config.json").string());
             a::GlmModelOpt model(tensors,cfg);const auto m=model.matrix(argv[2]);
             auto c=model.has_csf32(m)?std::make_unique<a::ModelOptCsf32>(model.csf32(m)):nullptr;
             run(model.load(m),true,argc==4&&std::string(argv[3])=="--bench",c.get());
-        }else for(int format=0;format<5;++format)for(int K:{64,256,512,4096})for(bool outliers:{false,true}) {
-            const int N=format==4?24:128;
+        }else for(int format=0;format<5;++format)for(int K:dense_split?std::vector<int>{4096}:std::vector<int>{64,256,512,4096})
+        for(int N:dense_split?std::vector<int>{1024,2048,4096,8192}:std::vector<int>{format==4?24:128})for(bool outliers:{false,true}) {
+            if(dense_split&&(format==0||format==4))continue;
             a::ModelOptPacked h{static_cast<a::ModelOptFormat>(format),size_t(N),size_t(K),.00061f,{},{}};
             h.weights.resize(size_t(N)*K*(format==0?1:format==3?4:format==4?8:2)/2);
             if(format==0) {h.scales.resize(N*K/16);for(size_t i=0;i<h.weights.size();++i)h.weights[i]=uint8_t(i*53+17);for(size_t i=0;i<h.scales.size();++i)h.scales[i]=uint8_t(24+i%80);}

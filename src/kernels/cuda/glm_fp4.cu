@@ -360,11 +360,13 @@ void small_gemm(const void* w,const void* scales,const half* x,float* y,float* p
 }
 template<GlmPackedFormat FORMAT>
 void scaled_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream) {
-    if(partials && N<=512 && K>=4096) {
+    if(partials && N<=8192 && K>=4096) {
         if(N<=32)small_gemm<FORMAT,64>(w,scales,x,y,partials,N,K,M,stream);
         else if(N<=64)small_gemm<FORMAT,32>(w,scales,x,y,partials,N,K,M,stream);
         else if(N<=128)small_gemm<FORMAT,16>(w,scales,x,y,partials,N,K,M,stream);
-        else small_gemm<FORMAT,8>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=1024)small_gemm<FORMAT,8>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=2048)small_gemm<FORMAT,4>(w,scales,x,y,partials,N,K,M,stream);
+        else small_gemm<FORMAT,2>(w,scales,x,y,partials,N,K,M,stream);
     }else scaled_qpn<FORMAT,8><<<(N+31)/32,256,0,stream>>>(w,scales,x,y,N,K,M);
 }
 __global__ void route_gather(const float* x,const int* routes,half* out,int count,int K,int stride) {

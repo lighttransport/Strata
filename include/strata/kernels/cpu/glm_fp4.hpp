@@ -37,13 +37,15 @@ struct GlmFp4Csf32SparseRows {
     std::vector<uint8_t> bases,codes;
     std::vector<uint32_t> offsets;
     std::vector<uint16_t> exceptions;
+    std::vector<uint32_t> quartets;
     // Optional immutable checkpoint views; their owner must outlive this layout.
     const uint8_t* borrowed_bases=nullptr;
     const uint8_t* borrowed_codes=nullptr;
-    size_t bytes()const {return bases.capacity()+codes.capacity()+offsets.capacity()*4+exceptions.capacity()*2;}
+    size_t bytes()const {return bases.capacity()+codes.capacity()+offsets.capacity()*4+exceptions.capacity()*2+quartets.capacity()*4;}
 };
 GlmFp4Csf32SparseRows glm_fp4_csf32_sparse_rows(const uint8_t* logical,const uint8_t* bases,
                                               const uint8_t* codes,int rows,int groups,bool borrow=false);
+void glm_fp4_cache_scale_quartets(GlmFp4Csf32SparseRows& scales);
 void glm_fp4_rows_csf32_sparse_table(const uint8_t* weights,const GlmFp4Csf32SparseRows& scales,
                                     const float* table,const float* x,float* y,int columns,
                                     int rows,int tokens,int first,int last);
@@ -54,12 +56,17 @@ struct GlmFp4Q8 {
     int columns=0,tokens=0;
     std::vector<int8_t> values;
     std::vector<float> scales;
+    // Optional reusable VNNI operands; preparation does not change quantization.
+    std::vector<uint8_t> magnitudes;
+    std::vector<uint64_t> negative;
 };
 GlmFp4Q8 glm_fp4_quantize_q8(const float* x,int columns,int tokens);
+void glm_fp4_prepare_q8(GlmFp4Q8& x);
+GlmFp4Q8 glm_fp4_gather_q8(const GlmFp4Q8& x,const int* rows,int tokens);
 // In-place FP16 rounding, with the scalar codec's values on every ISA.
 void glm_fp4_round_f16(float* x,size_t count);
 bool glm_fp4_q8_vnni_available();
 void glm_fp4_rows_csf32_q8(const uint8_t* weights,const GlmFp4Csf32SparseRows& scales,
                           const float* table,const GlmFp4Q8& x,float* y,int columns,
-                          int rows,int tokens,int first,int last);
+                          int rows,int tokens,int first,int last,int row_tile=1);
 }

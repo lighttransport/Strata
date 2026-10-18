@@ -80,18 +80,46 @@ class Fp4NativeExecutor {
         bool stop=false;
         std::map<std::pair<int,int>,Expert> experts;
         std::unique_ptr<Expert> temporary;
+        std::unique_ptr<Pinned> result_host;size_t result_host_bytes=0;
         std::map<int,std::set<int>> keep;
         std::map<int,std::vector<uint64_t>> frequency;
         std::map<std::string,Matrix> dense;
         std::map<std::string,std::unique_ptr<Device>> scratch;
+        struct Trace {cudaEvent_t first=nullptr,last=nullptr;const char* stage;};
+        std::vector<Trace> traces;bool tracing=false;
+        size_t trace_start(const char* stage,cudaStream_t s) {
+            if(!tracing)return SIZE_MAX;
+            cudaStreamCaptureStatus capture;check(cudaStreamIsCapturing(s,&capture));
+            if(capture!=cudaStreamCaptureStatusNone)return SIZE_MAX;
+            Trace t{};t.stage=stage;
+            check(cudaEventCreate(&t.first));
+            try {check(cudaEventCreate(&t.last));check(cudaEventRecord(t.first,s));traces.push_back(t);}
+            catch(...){cudaEventDestroy(t.first);if(t.last)cudaEventDestroy(t.last);throw;}
+            return traces.size()-1;
+        }
+        void trace_end(size_t index,cudaStream_t s){if(index!=SIZE_MAX)check(cudaEventRecord(traces[index].last,s));}
+        void trace_report(int layer,int tokens) {
+            if(traces.empty())return;
+            std::map<std::string,std::pair<double,size_t>> totals;
+            for(const auto& t:traces) {
+                float ms=0;check(cudaEventElapsedTime(&ms,t.first,t.last));
+                auto& value=totals[t.stage];value.first+=ms;++value.second;
+            }
+            for(auto& t:traces){cudaEventDestroy(t.first);cudaEventDestroy(t.last);}traces.clear();
+            for(const auto& [stage,value]:totals)std::cerr<<"FP4_GPU_INTERVAL layer="<<layer<<" tokens="<<tokens
+                <<" device="<<device<<" stage="<<stage<<" ms="<<value.first<<" calls="<<value.second<<'\n';
+        }
         cudaStream_t copy_stream=nullptr;
         static constexpr size_t upload_capacity=16*MiB;
-        std::array<std::unique_ptr<Pinned>,2> upload_host;
-        std::array<cudaEvent_t,2> upload_ready{};
+        std::array<std::unique_ptr<Pinned>,8> upload_host;
+        std::array<cudaEvent_t,8> upload_ready{}, consumed{};
+        int upload_slots=2;bool async_eviction=false;
         std::unique_ptr<Device> upload_device;
         std::set<std::pair<int,int>> protected_experts;
         int upload_slot=0;
         size_t cache_bytes=0,cache_limit=0,prefill_cache_limit=0;
+        std::array<uint64_t,3> wire_bytes{};int phase=0;
+        uint64_t batch_groups=0,batch_experts=0,batch_actual_rows=0,batch_padded_rows=0;
         uint64_t clock=0,hits=0,misses=0,uploaded=0,mma_calls=0,reference_calls=0,prefill_calls=0;
         explicit Context(int device):device(device) {
             DeviceScope scope(device);
@@ -116,7 +144,9 @@ class Fp4NativeExecutor {
             {std::lock_guard lock(work_mutex);stop=true;}wake.notify_one();if(worker.joinable())worker.join();
             DeviceScope scope(device);if(stream)cudaStreamSynchronize(stream);if(copy_stream)cudaStreamSynchronize(copy_stream);
             temporary.reset();experts.clear();dense.clear();scratch.clear();release_upload();
+            for(auto& t:traces){cudaEventDestroy(t.first);cudaEventDestroy(t.last);}
             for(auto e:upload_ready)if(e)cudaEventDestroy(e);
+            for(auto e:consumed)if(e)cudaEventDestroy(e);
             if(copy_stream)cudaStreamDestroy(copy_stream);
             if(blas)cublasDestroy(blas);
             if(stream)cudaStreamDestroy(stream);
@@ -139,12 +169,13 @@ class Fp4NativeExecutor {
             for(auto it=experts.begin();it!=experts.end();++it)
                 if(!protected_experts.count(it->first)&&(victim==experts.end()||it->second.use<victim->second.use))victim=it;
             if(victim==experts.end())throw std::runtime_error("GLM FP4: insufficient GPU memory for bounded working set");
-            check(cudaStreamSynchronize(stream));cache_bytes-=victim->second.bytes;experts.erase(victim);
+            if(!async_eviction)check(cudaStreamSynchronize(stream));cache_bytes-=victim->second.bytes;experts.erase(victim);
         }
         void init_upload() {
             if(!copy_stream)check(cudaStreamCreateWithFlags(&copy_stream,cudaStreamNonBlocking));
             if(!upload_device){room(upload_capacity);upload_device=std::make_unique<Device>(upload_capacity);}
-            for(int i=0;i<2;++i) {
+            for(int i=0;i<upload_slots;++i) {
+                if(!consumed[i])check(cudaEventCreateWithFlags(&consumed[i],cudaEventDisableTiming));
                 if(!upload_host[i])upload_host[i]=std::make_unique<Pinned>(upload_capacity,true);
                 if(!upload_ready[i])check(cudaEventCreateWithFlags(&upload_ready[i],cudaEventDisableTiming));
             }
@@ -172,13 +203,23 @@ class Fp4NativeExecutor {
     strata::cpu::exl3::Pool& cpu_pool;
     bool sm70,reserve_draft;
     const bool profile=strata_env_is_one("STRATA_GLM_FP4_PROFILE");
+    const bool dense_split_enabled=strata_env_is_one("STRATA_GLM_FP4_DENSE_SPLIT");
+    const bool gpu_reduce_enabled=strata_env_is_one("STRATA_GLM_FP4_GPU_REDUCE");
+    bool peer_enabled=false;
     const bool device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DEVICE_ROUTING");
     bool decode_device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DECODE_ROUTING");
     const bool async_upload_enabled=strata_env_is_one("STRATA_GLM_FP4_ASYNC_UPLOAD");
+    const long long prefill_batch_experts=strata_env_value_ll("STRATA_GLM_FP4_PREFILL_BATCH_EXPERTS",1);
+    const long long prefill_queue_depth=strata_env_value_ll("STRATA_GLM_FP4_PREFILL_QUEUE",1);
     const bool cpu_csf32_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_CSF32");
     const bool cpu_sparse_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_SPARSE")||strata_env_is_one("STRATA_GLM_FP4_CPU_Q8");
     const bool cpu_q8_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8");
     const bool cpu_fused_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_FUSED");
+    const bool cpu_scale_quartets=strata_env_is_one("STRATA_GLM_FP4_CPU_SCALE_QUARTETS");
+    const bool cpu_input_reuse=strata_env_is_one("STRATA_GLM_FP4_CPU_INPUT_REUSE");
+    const bool cpu_q8_prepare=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_PREPARE");
+    const long long cpu_team_size=strata_env_value_ll("STRATA_GLM_FP4_CPU_TEAM_SIZE",0);
+    const long long cpu_row_tile=strata_env_value_ll("STRATA_GLM_FP4_CPU_ROW_TILE",1);
     const bool cpu_borrow_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_BORROW");
     const double route_drop_fraction=strata_env_value_double("STRATA_GLM_FP4_ROUTE_DROP",0);
     const long long route_drop_max=strata_env_value_ll("STRATA_GLM_FP4_ROUTE_DROP_MAX",2);
@@ -255,6 +296,7 @@ class Fp4NativeExecutor {
                 const auto* codes=artifact.exl3().tensors.data(stem+"codes");
                 if(cpu_sparse_enabled) {
                     e->sparse[p]=std::make_unique<cpu::GlmFp4Csf32SparseRows>(cpu::glm_fp4_csf32_sparse_rows(h.scales.data(),bases,codes,h.rows,h.columns/16,cpu_borrow_enabled));
+                    if(cpu_scale_quartets)cpu::glm_fp4_cache_scale_quartets(*e->sparse[p]);
                     e->bytes+=sizeof(cpu::GlmFp4Csf32SparseRows)+e->sparse[p]->bytes();
                 }else {
                     e->csf32[p]=std::make_unique<cpu::GlmFp4Csf32Rows>(cpu::glm_fp4_csf32_rows(h.scales.data(),bases,codes,h.rows,h.columns/16));
@@ -272,15 +314,19 @@ class Fp4NativeExecutor {
         }
         cpu_lru.push_front(key);e->order=cpu_lru.begin();cpu_cache_bytes+=e->bytes;cpu_cache.emplace(key,e);return e;
     }
-    static void cpu_product(const CpuExpert& e,int projection,const float* x,float* y,
+    void cpu_product(const CpuExpert& e,int projection,const float* x,float* y,
                             int columns,int rows,int tokens,int first,int last,const cpu::GlmFp4Q8* q8=nullptr) {
         const auto& packed=e.projection[projection];
-        if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last);
+        if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last,int(cpu_row_tile));
         else if(e.sparse[projection])cpu::glm_fp4_rows_csf32_sparse_table(packed.data(),*e.sparse[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else if(e.csf32[projection])cpu::glm_fp4_rows_csf32_table(packed.data(),*e.csf32[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else cpu::glm_fp4_rows_table(packed.data(),packed.scales.data(),e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
     }
     Matrix upload(Context& c,const strata::artifact::ModelOptMatrix& desc) {
+        auto copy=[&](void* dst,const void* src,size_t bytes,cudaMemcpyKind kind,cudaStream_t stream) {
+            if(kind==cudaMemcpyHostToDevice)c.wire_bytes[c.phase]+=bytes;
+            return cudaMemcpyAsync(dst,src,bytes,kind,stream);
+        };
         if(model.has_csf32(desc)) {
             const auto h=model.csf32(desc);
             Matrix m;m.format=k::GlmPackedFormat::Nvfp4;m.rows=desc.rows;m.columns=desc.columns;m.global=h.global;
@@ -296,17 +342,17 @@ class Fp4NativeExecutor {
             auto& staging=c.buffer("packed_source",flag+sizeof(int));
             auto* p=static_cast<uint8_t*>(staging.p);
             const auto* raw=artifact.exl3().tensors.data(*desc.weights);
-            check(cudaMemcpyAsync(p,raw,bytes,cudaMemcpyHostToDevice,c.stream));
-            check(cudaMemcpyAsync(p+base,h.bases,desc.rows,cudaMemcpyHostToDevice,c.stream));
-            check(cudaMemcpyAsync(p+code,h.codes,h.codes_count,cudaMemcpyHostToDevice,c.stream));
-            check(cudaMemcpyAsync(p+offset,scale_source(desc,"offsets",h.offsets.data()),h.offsets.size()*2,cudaMemcpyHostToDevice,c.stream));
-            check(cudaMemcpyAsync(p+page,scale_source(desc,"page_bases",h.pages.data()),h.pages.size()*4,cudaMemcpyHostToDevice,c.stream));
-            if(!h.exceptions.empty())check(cudaMemcpyAsync(p+exception,scale_source(desc,"exceptions",h.exceptions.data()),h.exceptions.size()*2,cudaMemcpyHostToDevice,c.stream));
+            check(copy(p,raw,bytes,cudaMemcpyHostToDevice,c.stream));
+            check(copy(p+base,h.bases,desc.rows,cudaMemcpyHostToDevice,c.stream));
+            check(copy(p+code,h.codes,h.codes_count,cudaMemcpyHostToDevice,c.stream));
+            check(copy(p+offset,scale_source(desc,"offsets",h.offsets.data()),h.offsets.size()*2,cudaMemcpyHostToDevice,c.stream));
+            check(copy(p+page,scale_source(desc,"page_bases",h.pages.data()),h.pages.size()*4,cudaMemcpyHostToDevice,c.stream));
+            if(!h.exceptions.empty())check(copy(p+exception,scale_source(desc,"exceptions",h.exceptions.data()),h.exceptions.size()*2,cudaMemcpyHostToDevice,c.stream));
             k::glm_fp4_prepack(p,nullptr,static_cast<uint8_t*>(m.data->p),nullptr,m.rows,m.columns,c.stream);
             k::glm_fp4_csf32_scales(p+base,p+code,reinterpret_cast<const uint16_t*>(p+offset),
                 reinterpret_cast<const uint32_t*>(p+page),reinterpret_cast<const uint16_t*>(p+exception),
                 static_cast<uint8_t*>(m.data->p)+m.scale_offset,reinterpret_cast<int*>(p+flag),m.rows,m.columns,c.stream);
-            int invalid=0;check(cudaMemcpyAsync(&invalid,p+flag,sizeof(int),cudaMemcpyDeviceToHost,c.stream));
+            int invalid=0;check(copy(&invalid,p+flag,sizeof(int),cudaMemcpyDeviceToHost,c.stream));
             check(cudaStreamSynchronize(c.stream));
             if(invalid)throw std::runtime_error("GLM ModelOpt: invalid FP4 group scale: "+desc.name);
             c.uploaded+=m.data->bytes;return m;
@@ -323,20 +369,20 @@ class Fp4NativeExecutor {
             if(sm70 && (!std::isfinite(h.global*16384.f) || h.global*16384.f>65504.f))
                 throw std::runtime_error("GLM FP4: global scale exceeds SM70 decoder range");
             auto& staging=c.buffer("packed_source",bytes+h.scales.size());
-            check(cudaMemcpyAsync(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
-            check(cudaMemcpyAsync(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
+            check(copy(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
+            check(copy(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
             k::glm_fp4_prepack(static_cast<const uint8_t*>(staging.p),static_cast<const uint8_t*>(staging.p)+bytes,
                 static_cast<uint8_t*>(m.data->p),static_cast<uint8_t*>(m.data->p)+m.scale_offset,m.rows,m.columns,c.stream);
         }else if(packed_mxfp8) {
             auto& staging=c.buffer("packed_source",bytes+h.scales.size());
-            check(cudaMemcpyAsync(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
-            check(cudaMemcpyAsync(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
+            check(copy(staging.p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
+            check(copy(static_cast<char*>(staging.p)+bytes,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
             k::glm_fp8_prepack(m.format,static_cast<const uint8_t*>(staging.p),static_cast<char*>(staging.p)+bytes,
                 static_cast<uint8_t*>(m.data->p),static_cast<char*>(m.data->p)+m.scale_offset,m.rows,m.columns,c.stream);
             m.format=k::GlmPackedFormat::Mxfp8Qpn;
         }else {
-            check(cudaMemcpyAsync(m.data->p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
-            if(!h.scales.empty())check(cudaMemcpyAsync(static_cast<char*>(m.data->p)+m.scale_offset,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
+            check(copy(m.data->p,h.data(),bytes,cudaMemcpyHostToDevice,c.stream));
+            if(!h.scales.empty())check(copy(static_cast<char*>(m.data->p)+m.scale_offset,h.scales.data(),h.scales.size(),cudaMemcpyHostToDevice,c.stream));
             if(h.format==Format::Bf16) {
                 // Cache the exact FP16 operand the W4A16 product would form.
                 // BF16 and FP16 occupy the same bytes; no second matrix lives
@@ -373,13 +419,13 @@ class Fp4NativeExecutor {
         Expert* value=nullptr;
         std::unique_ptr<Expert> owned;
         std::pair<int,int> key;
-        int slot=-1;
+        int slot=-1,done_slot=-1;bool completed=false;
         PendingExpert()=default;
         PendingExpert(PendingExpert&&)=default;
         PendingExpert& operator=(PendingExpert&&)=default;
         ~PendingExpert() {
             // An exception may leave either DMA or a matrix reader queued.
-            if(owned&&context) {
+            if(owned&&context&&!completed) {
                 cudaStreamSynchronize(context->copy_stream);
                 cudaStreamSynchronize(context->stream);
             }
@@ -399,7 +445,7 @@ class Fp4NativeExecutor {
             result.value=&cached->second;return result;
         }
         ++c.misses;c.init_upload();
-        result.slot=c.upload_slot;c.upload_slot^=1;
+        result.slot=c.upload_slot;c.upload_slot=(c.upload_slot+1)%c.upload_slots;
         // The previous consumer of this slot has already waited for its event.
         auto* host=static_cast<uint8_t*>(c.upload_host[result.slot]->p);
         auto* device=static_cast<uint8_t*>(c.upload_device->p);
@@ -453,9 +499,12 @@ class Fp4NativeExecutor {
             m.data=std::make_unique<Device>(m.scale_offset+size_t(m.rows)*m.columns/16);
             result.value->bytes+=m.data->bytes;
         }
+        const auto copy_trace=c.trace_start("matrix_h2d",c.copy_stream);
         if(registered_ram) {
-            for(const auto& copy:copies)check(cudaMemcpyAsync(device+copy.offset,copy.source,copy.bytes,cudaMemcpyHostToDevice,c.copy_stream));
-        }else check(cudaMemcpyAsync(device,host,used,cudaMemcpyHostToDevice,c.copy_stream));
+            for(const auto& copy:copies){c.wire_bytes[c.phase]+=copy.bytes;check(cudaMemcpyAsync(device+copy.offset,copy.source,copy.bytes,cudaMemcpyHostToDevice,c.copy_stream));}
+        }else {c.wire_bytes[c.phase]+=used;check(cudaMemcpyAsync(device,host,used,cudaMemcpyHostToDevice,c.copy_stream));}
+        c.trace_end(copy_trace,c.copy_stream);
+        const auto pack_trace=c.trace_start("prepack_scales",c.copy_stream);
         check(cudaMemsetAsync(device+flag,0,3*sizeof(int),c.copy_stream));
         for(int i=0;i<3;++i) {
             const auto& s=sources[i];auto& m=result.value->projection[i];
@@ -468,6 +517,7 @@ class Fp4NativeExecutor {
                 reinterpret_cast<int*>(device+flag)+i,m.rows,m.columns,c.copy_stream);
         }
         check(cudaGetLastError());
+        c.trace_end(pack_trace,c.copy_stream);
         check(cudaMemcpyAsync(host+flag,device+flag,3*sizeof(int),cudaMemcpyDeviceToHost,c.copy_stream));
         check(cudaEventRecord(c.upload_ready[result.slot],c.copy_stream));
         c.uploaded+=result.value->bytes;return result;
@@ -490,22 +540,29 @@ class Fp4NativeExecutor {
     }
     void product(Context& c,const Matrix& w,const uint16_t* x,float* y,int tokens) {
         if(tokens<=8) {
+            const auto trace=c.trace_start("skinny",c.stream);
             float* partials=nullptr;
-            if(sm70 && w.format!=k::GlmPackedFormat::Nvfp4 && w.rows<=512 && w.columns>=4096)
+            if(sm70 && w.format!=k::GlmPackedFormat::Nvfp4 && w.rows<=(dense_split_enabled?8192:512) && w.columns>=4096)
+                // The largest medium split (8192 rows, 8 tokens, 2 parts) also fits this scratch.
                 partials=c.buffer("matrix_partial",k::glm_fp4_partial_bytes(512)).f();
             k::glm_fp4_gemm(w.format,w.data->p,w.scales(),w.global,x,y,w.rows,w.columns,tokens,sm70,c.stream,partials);
+            c.trace_end(trace,c.stream);
             (sm70?c.mma_calls:c.reference_calls)++;
         }else {
             const void* operand=w.data->p;
             if(w.format!=k::GlmPackedFormat::F16) {
                 auto& half=c.buffer("dequant_half",size_t(w.rows)*w.columns*2);
+                const auto trace=c.trace_start("reconstruct",c.stream);
                 k::glm_fp4_dequant_f16(w.format,w.data->p,w.scales(),w.global,static_cast<uint16_t*>(half.p),w.rows,w.columns,c.stream,sm70);
+                c.trace_end(trace,c.stream);
                 operand=half.p;
             }
             const float one=1,zero=0;
+            const auto trace=c.trace_start("gemm",c.stream);
             check(cublasGemmEx(c.blas,CUBLAS_OP_T,CUBLAS_OP_N,w.rows,tokens,w.columns,&one,
                 operand,CUDA_R_16F,w.columns,x,CUDA_R_16F,w.columns,&zero,y,CUDA_R_32F,w.rows,
                 CUBLAS_COMPUTE_32F,CUBLAS_GEMM_DEFAULT_TENSOR_OP));++c.prefill_calls;
+            c.trace_end(trace,c.stream);
         }
         check(cudaGetLastError());
     }
@@ -514,6 +571,15 @@ public:
                               const std::vector<int>& devices,size_t gpu_budget,int width,bool draft)
         :artifact(a),model(*a.exl3().modelopt),cpu_pool(pool),sm70(fp4_sm70_kernel),reserve_draft(draft) {
         if(devices.empty()||devices.size()>2)throw std::invalid_argument("GLM FP4: expected one or two GPUs");
+        if(prefill_batch_experts!=1&&prefill_batch_experts!=2&&prefill_batch_experts!=4)
+            throw std::invalid_argument("GLM FP4: PREFILL_BATCH_EXPERTS must be 1, 2 or 4");
+        if(prefill_queue_depth!=1&&prefill_queue_depth!=2&&prefill_queue_depth!=4)
+            throw std::invalid_argument("GLM FP4: PREFILL_QUEUE must be 1, 2 or 4");
+        if(cpu_team_size!=0&&cpu_team_size!=2&&cpu_team_size!=4&&cpu_team_size!=8)
+            throw std::invalid_argument("GLM FP4: CPU_TEAM_SIZE must be 0, 2, 4 or 8");
+        if(cpu_row_tile!=1&&cpu_row_tile!=2&&cpu_row_tile!=4)
+            throw std::invalid_argument("GLM FP4: CPU_ROW_TILE must be 1, 2 or 4");
+        if(cpu_row_tile!=1||cpu_q8_prepare)std::cerr<<"FP4_CPU_REUSE row_tile="<<cpu_row_tile<<" prepared="<<cpu_q8_prepare<<'\n';
         if(decode_device_routing_enabled)std::cerr<<"FP4_DECODE_ROUTING enabled=1 deferred_expert_sync=1\n";
         if(!std::isfinite(route_drop_fraction)||route_drop_fraction<0||route_drop_fraction>0.5||route_drop_max<0||route_drop_max>7)
             throw std::invalid_argument("GLM FP4: ROUTE_DROP must be in [0,0.5], ROUTE_DROP_MAX in [0,7]");
@@ -528,9 +594,22 @@ public:
             DeviceScope scope(d);cudaDeviceProp p{};check(cudaGetDeviceProperties(&p,d));
             if(p.major<7)throw std::invalid_argument("GLM FP4: tensor core path requires SM70 or newer");
             auto c=std::make_unique<Context>(d);
+            c->upload_slots=int(std::max<long long>(2*prefill_batch_experts,prefill_queue_depth));c->tracing=profile;
             if(Device::limit()==SIZE_MAX)Device::limit()=std::min<size_t>(gpu_budget,p.totalGlobalMem)-Device::budget_reserve();
             contexts.push_back(std::move(c));
         }
+        if(gpu_reduce_enabled&&contexts.size()==2) {
+            int forward=0,backward=0;
+            check(cudaDeviceCanAccessPeer(&forward,devices[0],devices[1]));
+            check(cudaDeviceCanAccessPeer(&backward,devices[1],devices[0]));
+            peer_enabled=forward&&backward;
+            if(peer_enabled)for(size_t i=0;i<2;++i) {
+                DeviceScope scope(devices[i]);
+                const auto status=cudaDeviceEnablePeerAccess(devices[1-i],0);
+                if(status==cudaErrorPeerAccessAlreadyEnabled)cudaGetLastError();else check(status);
+            }
+        }
+        if(gpu_reduce_enabled)std::cerr<<"FP4_GPU_REDUCE peer="<<peer_enabled<<'\n';
         // Compressed fixed matrices are resident, not expanded into FP32 on
         // the host. Their exact published scale grids accompany their codes.
         Context& c=*contexts.front();
@@ -563,7 +642,7 @@ public:
     }
     void begin_request() {
         decode_phase=false;
-        for(auto& c:contexts){c->frequency.clear();c->keep.clear();}
+        for(auto& c:contexts){c->phase=1;c->frequency.clear();c->keep.clear();}
     }
     void begin_prefill(size_t coordinator_bytes) {
         decode_phase=false;
@@ -593,6 +672,7 @@ public:
     void compact() {
         decode_phase=true;
         for(auto& c:contexts) {
+            c->phase=2;
             DeviceScope scope(c->device);check(cudaStreamSynchronize(c->stream));c->scratch.clear();c->release_upload();
             size_t free,total;check(Device::mem_info(&free,&total));
             const size_t reserve=size_t(decode_reserve_mib<0?
@@ -648,7 +728,9 @@ public:
             host_routes=std::make_unique<Pinned>(size_t(nt)*8*4,true);
             host_weights=std::make_unique<Pinned>(size_t(nt)*8*4,true);
         }
-        check(cudaMemcpyAsync(host_x->p,x,size_t(nt)*4096*4,cudaMemcpyDeviceToHost,caller));
+        const bool skip_activation=gpu_reduce_enabled&&nt>8&&device_routing_enabled&&
+            (contexts.size()==1||peer_enabled);
+        if(!skip_activation)check(cudaMemcpyAsync(host_x->p,x,size_t(nt)*4096*4,cudaMemcpyDeviceToHost,caller));
         check(cudaMemcpyAsync(host_routes->p,ids,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
         check(cudaMemcpyAsync(host_weights->p,weights,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
         check(cudaStreamSynchronize(caller));
@@ -664,6 +746,11 @@ public:
         bool device_routing=decode?decode_device_routing_enabled:device_routing_enabled;
         if(device_routing)for(const auto& [id,routes]:grouped)
             for(size_t j=1;j<routes.size();++j)if(routes[j]/8==routes[j-1]/8)device_routing=false;
+        if(skip_activation&&!device_routing) {
+            check(cudaMemcpyAsync(host_x->p,x,size_t(nt)*4096*4,cudaMemcpyDeviceToHost,caller));
+            check(cudaStreamSynchronize(caller));
+        }
+        const bool gpu_reduce=gpu_reduce_enabled&&device_routing;
         if(decode){if(device_routing)++decode_device_calls;else ++decode_host_calls;}
         for(auto& c:contexts)if(!decode || !c->frequency.count(layer)) {
             auto& counts=c->frequency[layer];counts.assign(288,0);
@@ -717,14 +804,29 @@ public:
             if(cpu_jobs.empty())return;
             cpu_experts+=cpu_jobs.size();
             auto begin=tick();
+            cpu::GlmFp4Q8 shared_input;
+            if(cpu_input_reuse&&cpu_q8_enabled) {
+                std::vector<float> rounded(activation,activation+size_t(nt)*4096);
+                cpu::glm_fp4_round_f16(rounded.data(),rounded.size());
+                shared_input=cpu::glm_fp4_quantize_q8(rounded.data(),4096,nt);
+                if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(shared_input);
+            }
             // Packed codes stay mapped. A bounded LRU retains logical
             // scale planes so repeat CPU misses do not re-expand CSF32.
             cpu_pool.run([&](size_t rank) {
                 for(size_t i=rank;i<cpu_jobs.size();i+=cpu_pool.size()) {
                     auto& job=cpu_jobs[i];const size_t count=job.routes->size();
                     job.weights=cpu_expert(layer,job.id);
-                    job.input.resize(count*4096);job.gate.resize(count*2048);job.up.resize(count*2048);
+                    const bool reuse=shared_input.tokens&&job.weights->sparse[0]&&job.weights->sparse[1];
+                    if(!reuse)job.input.resize(count*4096);
+                    job.gate.resize(count*2048);job.up.resize(count*2048);
                     job.hidden.resize(count*2048);job.result.resize(count*4096);
+                    if(reuse) {
+                        std::array<int,8> rows{};
+                        if(count>rows.size())throw std::runtime_error("GLM FP4: Q8 route width exceeds eight");
+                        for(size_t t=0;t<count;++t)rows[t]=(*job.routes)[t]/8;
+                        job.qinput=cpu::glm_fp4_gather_q8(shared_input,rows.data(),int(count));
+                    }else {
                     for(size_t t=0;t<count;++t) {
                         const auto* source=activation+size_t((*job.routes)[t]/8)*4096;
                         auto* dest=job.input.data()+t*4096;
@@ -733,14 +835,16 @@ public:
                         }else for(int h=0;h<4096;++h)
                             dest[h]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(source[h]));
                     }
-                    if(cpu_q8_enabled)job.qinput=cpu::glm_fp4_quantize_q8(job.input.data(),4096,count);
+                    if(cpu_q8_enabled){job.qinput=cpu::glm_fp4_quantize_q8(job.input.data(),4096,count);if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qinput);}
+                    }
                 }
             });
             if(profile)cpu_times.upload+=elapsed(begin);
             begin=tick();
-            auto gate_up=[&](size_t rank) {
-                const int first=2048*rank/cpu_pool.size(),last=2048*(rank+1)/cpu_pool.size();
-                for(auto& job:cpu_jobs) {
+            auto gate_up_range=[&](size_t rank,size_t workers,size_t begin_job,size_t end_job) {
+                const int first=2048*rank/workers,last=2048*(rank+1)/workers;
+                for(size_t j=begin_job;j<end_job;++j) {
+                    auto& job=cpu_jobs[j];
                     const int count=job.routes->size();
                     for(int p=0;p<2;++p)cpu_product(*job.weights,p,
                         job.input.data(),p?job.up.data():job.gate.data(),4096,2048,count,first,last,cpu_q8_enabled?&job.qinput:nullptr);
@@ -759,14 +863,61 @@ public:
             auto quant_hidden=[&](size_t rank) {
                 for(size_t i=rank;i<cpu_jobs.size();i+=cpu_pool.size()) {
                     auto& job=cpu_jobs[i];job.qhidden=cpu::glm_fp4_quantize_q8(job.hidden.data(),2048,job.routes->size());
+                    if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
                 }
             };
-            auto down=[&](size_t rank) {
-                const int first=4096*rank/cpu_pool.size(),last=4096*(rank+1)/cpu_pool.size();
-                for(auto& job:cpu_jobs)cpu_product(*job.weights,2,
+            auto down_range=[&](size_t rank,size_t workers,size_t begin_job,size_t end_job) {
+                const int first=4096*rank/workers,last=4096*(rank+1)/workers;
+                for(size_t j=begin_job;j<end_job;++j) {
+                    auto& job=cpu_jobs[j];cpu_product(*job.weights,2,
                     job.hidden.data(),job.result.data(),2048,4096,job.routes->size(),first,last,cpu_q8_enabled?&job.qhidden:nullptr);
+                }
             };
-            if(cpu_fused_enabled) {
+            auto gate_up=[&](size_t rank){gate_up_range(rank,cpu_pool.size(),0,cpu_jobs.size());};
+            auto down=[&](size_t rank){down_range(rank,cpu_pool.size(),0,cpu_jobs.size());};
+            if(cpu_team_size) {
+                const size_t size=size_t(cpu_team_size),teams=(cpu_pool.size()+size-1)/size;
+                struct alignas(64) TeamCounter {std::atomic<size_t> value{0};};
+                auto arrived=std::make_unique<TeamCounter[]>(teams);
+                std::atomic<bool> cancelled{false};
+                auto team_work=[&](size_t rank) {
+                    // Spread small teams across the worker pool so a short expert list
+                    // does not leave every worker on the second socket idle.
+                    const size_t team=rank%teams,member=rank/teams;
+                    const size_t workers=(cpu_pool.size()-1-team)/teams+1;
+                    size_t phase=0;
+                    auto barrier=[&] {
+                        const size_t target=workers*(++phase);
+                        arrived[team].value.fetch_add(1,std::memory_order_acq_rel);
+                        while(arrived[team].value.load(std::memory_order_acquire)<target) {
+                            if(cancelled.load(std::memory_order_acquire))return false;
+#if defined(__x86_64__)
+                            _mm_pause();
+#else
+                            std::this_thread::yield();
+#endif
+                        }
+                        return !cancelled.load(std::memory_order_acquire);
+                    };
+                    try {
+                        for(size_t j=team;j<cpu_jobs.size();j+=teams) {
+                            if(cancelled.load(std::memory_order_acquire))return;
+                            gate_up_range(member,workers,j,j+1);if(!barrier())return;
+                            if(cpu_q8_enabled) {
+                                if(member==0) {
+                                    auto& job=cpu_jobs[j];
+                                    job.qhidden=cpu::glm_fp4_quantize_q8(job.hidden.data(),2048,job.routes->size());
+                                    if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
+                                }
+                                if(!barrier())return;
+                            }
+                            down_range(member,workers,j,j+1);
+                        }
+                    }catch(...){cancelled.store(true,std::memory_order_release);throw;}
+                };
+                cpu_pool.run(std::ref(team_work));
+                if(profile)cpu_times.fused+=elapsed(begin);
+            }else if(cpu_fused_enabled) {
                 // Keep the same row partitions and arithmetic while avoiding
                 // sleeping and waking every worker between the small products.
                 // A failed phase releases peers before Pool rethrows its error.
@@ -814,17 +965,19 @@ public:
                 Context& c;
                 ~Drain(){if(c.copy_stream||!c.protected_experts.empty())cudaStreamSynchronize(c.stream);if(c.copy_stream)cudaStreamSynchronize(c.copy_stream);c.protected_experts.clear();}
             } drain{c};
-            auto& sum=sums[rank];sum.assign(size_t(nt)*4096,0);
+            const size_t sum_count=size_t(nt)*4096;auto& sum=sums[rank];
+            if(gpu_reduce)sum.clear();else sum.assign(sum_count,0);
             std::vector<float> input,result;
             const float* device_input=x;const float* device_weights=weights;
             float* device_sum=nullptr;
             if(device_routing) {
-                device_sum=c.buffer("prefill_route_sum",sum.size()*4).f();
-                check(cudaMemsetAsync(device_sum,0,sum.size()*4,c.stream));
+                device_sum=c.buffer("prefill_route_sum",sum_count*4).f();
+                check(cudaMemsetAsync(device_sum,0,sum_count*4,c.stream));
                 if(rank) {
                     device_input=c.buffer("prefill_route_input",size_t(nt)*4096*4).f();
                     device_weights=c.buffer("prefill_route_weights",size_t(nt)*8*4).f();
-                    check(cudaMemcpyAsync(const_cast<float*>(device_input),host_x->p,size_t(nt)*4096*4,cudaMemcpyHostToDevice,c.stream));
+                    if(gpu_reduce&&peer_enabled)check(cudaMemcpyPeerAsync(const_cast<float*>(device_input),c.device,x,contexts.front()->device,size_t(nt)*4096*4,c.stream));
+                    else check(cudaMemcpyAsync(const_cast<float*>(device_input),host_x->p,size_t(nt)*4096*4,cudaMemcpyHostToDevice,c.stream));
                     check(cudaMemcpyAsync(const_cast<float*>(device_weights),host_weights->p,size_t(nt)*8*4,cudaMemcpyHostToDevice,c.stream));
                 }
                 if(decode && !rank) {
@@ -843,23 +996,8 @@ public:
                 if(decode&&!c.keep.at(layer).count(id))continue;
                 jobs.push_back(id);
             }
-            PendingExpert pending;
-            if(pipeline&&!jobs.empty())pending=prepare_expert(c,layer,jobs.front());
-            for(size_t job=0;job<jobs.size();++job) {
-                const int id=jobs[job];const auto& routes=grouped.at(id);
-                const bool admit=c.keep.at(layer).count(id);
-                auto begin=tick();
-                if(pipeline)pending.wait();
-                auto& e=pipeline?*pending.value:expert(c,layer,id,admit);const int count=routes.size();
-                c.protected_experts.insert({layer,id});
-                if(profile)times[rank].upload+=elapsed(begin);
-                begin=tick();
-                if(!device_routing) {
-                    input.resize(size_t(count)*4096);result.resize(size_t(count)*4096);
-                    for(int j=0;j<count;++j)std::copy_n(activation+size_t(routes[j]/8)*4096,4096,input.data()+size_t(j)*4096);
-                }
-                if(profile)times[rank].gather+=elapsed(begin);
-                begin=tick();
+            auto execute=[&](Expert& e,const std::vector<int>& routes) {
+                const int count=int(routes.size());
                 auto& hx=c.buffer("expert_x_half",size_t(count)*4096*2);
                 auto& gate=c.buffer("expert_gate",size_t(count)*2048*4);
                 auto& up=c.buffer("expert_up",size_t(count)*2048*4);
@@ -882,6 +1020,169 @@ public:
                 product(c,e.projection[2],static_cast<uint16_t*>(hidden.p),dy.f(),count);
                 if(device_routing)k::glm_fp4_route_scatter(dy.f(),device_routes,device_weights,device_sum,count,4096,8,c.stream);
                 else check(cudaMemcpyAsync(result.data(),dy.p,result.size()*4,cudaMemcpyDeviceToHost,c.stream));
+            };
+            auto execute_batch=[&](std::vector<PendingExpert>& experts,const std::vector<int>& ids) {
+                const int batch=int(ids.size());int count=0;
+                for(int id:ids)count=std::max(count,int(grouped.at(id).size()));
+                const int padded=(count+15)/16*16;
+                ++c.batch_groups;c.batch_experts+=batch;c.batch_padded_rows+=size_t(batch)*padded;
+                for(int id:ids)c.batch_actual_rows+=grouped.at(id).size();
+                constexpr size_t elements=size_t(2048)*4096;
+                size_t bytes=0;
+                auto reserve=[&](size_t n){const size_t at=(bytes+255)/256*256;bytes=at+n;return at;};
+                const size_t wo=reserve(2*batch*elements*2),xo=reserve(size_t(batch)*padded*4096*2);
+                const size_t go=reserve(size_t(2*batch)*padded*2048*4),ho=reserve(size_t(batch)*padded*2048*2);
+                const size_t yo=reserve(size_t(batch)*padded*4096*4),ro=reserve(size_t(batch)*padded*4);
+                const size_t po=reserve(size_t(9*batch)*sizeof(void*));
+                if(bytes+size_t(4)*expert_bytes>256*MiB)throw std::logic_error("GLM FP4: batch scratch admission mismatch");
+                auto* base=static_cast<uint8_t*>(c.buffer("prefill_batch_workspace",bytes).p);
+                auto* half=reinterpret_cast<uint16_t*>(base+wo);auto* hx=reinterpret_cast<uint16_t*>(base+xo);
+                auto* gu=reinterpret_cast<float*>(base+go);auto* hidden=reinterpret_cast<uint16_t*>(base+ho);
+                auto* result=reinterpret_cast<float*>(base+yo);auto* routes=reinterpret_cast<int*>(base+ro);
+                auto* pointers=reinterpret_cast<void**>(base+po);
+                std::vector<void*> host(9*batch);
+                // Keep pointer-table sources alive while unwinding a failed enqueue.
+                struct DrainOnFailure {cudaStream_t stream;int exceptions=std::uncaught_exceptions();
+                    ~DrainOnFailure(){if(std::uncaught_exceptions()>exceptions)cudaStreamSynchronize(stream);}} drain{c.stream};
+                check(cudaMemsetAsync(hx,0,size_t(batch)*padded*4096*2,c.stream));
+                for(int b=0;b<batch;++b) {
+                    const auto& route=grouped.at(ids[b]);
+                    check(cudaMemcpyAsync(routes+size_t(b)*padded,route.data(),route.size()*4,cudaMemcpyHostToDevice,c.stream));
+                    k::glm_fp4_route_gather(device_input,routes+size_t(b)*padded,hx+size_t(b)*padded*4096,route.size(),4096,8,c.stream);
+                    for(int p=0;p<2;++p) {
+                        const int i=2*b+p;const auto& w=experts[b].value->projection[p];
+                        const auto trace=c.trace_start("reconstruct",c.stream);
+                        k::glm_fp4_dequant_f16(w.format,w.data->p,w.scales(),w.global,half+size_t(i)*elements,w.rows,w.columns,c.stream,sm70);
+                        c.trace_end(trace,c.stream);
+                        host[i]=half+size_t(i)*elements;host[2*batch+i]=hx+size_t(b)*padded*4096;
+                        host[4*batch+i]=gu+size_t(i)*padded*2048;
+                    }
+                    host[6*batch+b]=half+size_t(b)*elements;
+                    host[7*batch+b]=hidden+size_t(b)*padded*2048;
+                    host[8*batch+b]=result+size_t(b)*padded*4096;
+                }
+                check(cudaMemcpyAsync(pointers,host.data(),host.size()*sizeof(void*),cudaMemcpyHostToDevice,c.stream));
+                const float one=1,zero=0;
+                auto trace=c.trace_start("batched_gemm",c.stream);
+                check(cublasGemmBatchedEx(c.blas,CUBLAS_OP_T,CUBLAS_OP_N,2048,padded,4096,&one,
+                    reinterpret_cast<const void* const*>(pointers),CUDA_R_16F,4096,
+                    reinterpret_cast<const void* const*>(pointers+2*batch),CUDA_R_16F,4096,
+                    &zero,pointers+4*batch,CUDA_R_32F,2048,2*batch,CUBLAS_COMPUTE_32F,CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+                c.trace_end(trace,c.stream);
+                for(int b=0;b<batch;++b) {
+                    auto* gate=gu+size_t(2*b)*padded*2048;auto* up=gate+size_t(padded)*2048;
+                    k::glm_swiglu(gate,up,gate,padded*2048,limit,c.stream);
+                    k::glm_f16(gate,hidden+size_t(b)*padded*2048,size_t(padded)*2048,c.stream);
+                    const auto& w=experts[b].value->projection[2];
+                    trace=c.trace_start("reconstruct",c.stream);
+                    k::glm_fp4_dequant_f16(w.format,w.data->p,w.scales(),w.global,half+size_t(b)*elements,w.rows,w.columns,c.stream,sm70);
+                    c.trace_end(trace,c.stream);
+                }
+                trace=c.trace_start("batched_gemm",c.stream);
+                check(cublasGemmBatchedEx(c.blas,CUBLAS_OP_T,CUBLAS_OP_N,4096,padded,2048,&one,
+                    reinterpret_cast<const void* const*>(pointers+6*batch),CUDA_R_16F,2048,
+                    reinterpret_cast<const void* const*>(pointers+7*batch),CUDA_R_16F,2048,
+                    &zero,pointers+8*batch,CUDA_R_32F,4096,batch,CUBLAS_COMPUTE_32F,CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+                c.trace_end(trace,c.stream);c.prefill_calls+=3*batch;
+                for(int b=0;b<batch;++b)k::glm_fp4_route_scatter(result+size_t(b)*padded*4096,
+                    routes+size_t(b)*padded,device_weights,device_sum,grouped.at(ids[b]).size(),4096,8,c.stream);
+                return host; // Keep asynchronous pointer-table upload sources alive until retirement.
+            };
+            size_t max_rows=0;for(int id:jobs)max_rows=std::max(max_rows,grouped.at(id).size());
+            const size_t working_bytes=max_rows*(4096*2+2048*4*2+2048*2+4096*4+4)+16*MiB;
+            const size_t queue_depth=pipeline&&prefill_queue_depth>1&&
+                working_bytes+size_t(prefill_queue_depth)*expert_bytes<=256*MiB?size_t(prefill_queue_depth):1;
+            size_t batch_limit=pipeline?size_t(prefill_batch_experts):1;
+            // Two pairs or one quartet retain at most four uploaded experts.
+            // Admit each group by its own row count, not the hottest expert in the layer.
+            const size_t batch_window=prefill_batch_experts==4?1:2;
+            if(batch_limit>1) {
+                const auto batch_begin=tick();c.init_upload();
+                struct EvictionMode {Context& c;~EvictionMode(){c.async_eviction=false;}} eviction_mode{c};
+                c.async_eviction=true;
+                struct Batch {
+                    std::vector<PendingExpert> experts;std::vector<void*> pointers;int slot;
+                    Context* context=nullptr;bool completed=false;
+                    Batch()=default;Batch(Batch&&)=default;
+                    ~Batch(){if(context&&!completed&&!pointers.empty())cudaStreamSynchronize(context->stream);}
+                };
+                std::deque<Batch> retired;
+                auto retire=[&] {
+                    auto& b=retired.front();
+                    for(auto& p:b.experts)p.wait();
+                    check(cudaEventSynchronize(c.consumed[b.slot]));
+                    for(auto& p:b.experts){p.completed=true;finish_expert(c,p,c.keep.at(layer).count(p.key.second));}
+                    b.completed=true;retired.pop_front();
+                };
+                size_t serial=0;
+                for(size_t j=0;j<jobs.size();) {
+                    if(retired.size()==batch_window)retire();
+                    size_t n=std::min(batch_limit,jobs.size()-j);
+                    while(n>1) {
+                        size_t total=0,largest=0,smallest=SIZE_MAX;
+                        for(size_t b=0;b<n;++b) {const auto count=grouped.at(jobs[j+b]).size();total+=count;largest=std::max(largest,count);smallest=std::min(smallest,count);}
+                        const size_t padded=(largest+15)/16*16;
+                        if(smallest>8&&padded*n*4<=total*5&&
+                           n*(32*MiB+padded*45060)+4*expert_bytes+4096<=256*MiB)break;
+                        n/=2;
+                    }
+                    Batch batch;batch.context=&c;batch.slot=int(serial++%2);batch.experts.reserve(n);
+                    std::vector<int> ids(jobs.begin()+j,jobs.begin()+j+n);
+                    for(int id:ids) {
+                        auto p=prepare_expert(c,layer,id);c.protected_experts.insert(p.key);
+                        if(p.slot>=0)check(cudaStreamWaitEvent(c.stream,c.upload_ready[p.slot],0));
+                        batch.experts.push_back(std::move(p));
+                    }
+                    if(n==1)execute(*batch.experts[0].value,grouped.at(ids[0]));
+                    else batch.pointers=execute_batch(batch.experts,ids);
+                    check(cudaEventRecord(c.consumed[batch.slot],c.stream));
+                    retired.push_back(std::move(batch));j+=n;
+                }
+                while(!retired.empty())retire();
+                if(profile)times[rank].product+=elapsed(batch_begin);
+            }else if(queue_depth>1) {
+                const auto queue_begin=tick();
+                c.init_upload();
+                struct EvictionMode {Context& c;~EvictionMode(){c.async_eviction=false;}} eviction_mode{c};
+                c.async_eviction=true;
+                std::deque<PendingExpert> retired;
+                auto retire=[&] {
+                    auto& p=retired.front();p.wait();
+                    check(cudaEventSynchronize(c.consumed[p.done_slot]));p.completed=true;
+                    finish_expert(c,p,c.keep.at(layer).count(p.key.second));
+                    retired.pop_front();
+                };
+                for(size_t j=0;j<jobs.size();++j) {
+                    if(retired.size()==queue_depth)retire();
+                    auto p=prepare_expert(c,layer,jobs[j]);
+                    c.protected_experts.insert(p.key);
+                    if(p.slot>=0)check(cudaStreamWaitEvent(c.stream,c.upload_ready[p.slot],0));
+                    execute(*p.value,grouped.at(jobs[j]));
+                    p.done_slot=int(j%queue_depth);
+                    check(cudaEventRecord(c.consumed[p.done_slot],c.stream));
+                    retired.push_back(std::move(p));
+                }
+                while(!retired.empty())retire();
+                if(profile)times[rank].product+=elapsed(queue_begin);
+            }else {
+            PendingExpert pending;
+            if(pipeline&&!jobs.empty())pending=prepare_expert(c,layer,jobs.front());
+            for(size_t job=0;job<jobs.size();++job) {
+                const int id=jobs[job];const auto& routes=grouped.at(id);
+                const bool admit=c.keep.at(layer).count(id);
+                auto begin=tick();
+                if(pipeline)pending.wait();
+                auto& e=pipeline?*pending.value:expert(c,layer,id,admit);const int count=routes.size();
+                c.protected_experts.insert({layer,id});
+                if(profile)times[rank].upload+=elapsed(begin);
+                begin=tick();
+                if(!device_routing) {
+                    input.resize(size_t(count)*4096);result.resize(size_t(count)*4096);
+                    for(int j=0;j<count;++j)std::copy_n(activation+size_t(routes[j]/8)*4096,4096,input.data()+size_t(j)*4096);
+                }
+                if(profile)times[rank].gather+=elapsed(begin);
+                begin=tick();
+                execute(e,routes);
                 PendingExpert next;
                 if(pipeline&&job+1<jobs.size())next=prepare_expert(c,layer,jobs[job+1]);
                 if(!decode||!device_routing)check(cudaStreamSynchronize(c.stream));
@@ -896,9 +1197,15 @@ public:
                 }
                 if(profile)times[rank].reduce+=elapsed(begin);
             }
+            }
             if(device_routing) {
                 const auto begin=tick();
-                check(cudaMemcpyAsync(sum.data(),device_sum,sum.size()*4,cudaMemcpyDeviceToHost,c.stream));
+                if(gpu_reduce) {
+                    if(rank&&!peer_enabled) {
+                        if(!c.result_host||c.result_host_bytes<sum_count*4){c.result_host=std::make_unique<Pinned>(sum_count*4,true);c.result_host_bytes=sum_count*4;}
+                        check(cudaMemcpyAsync(c.result_host->p,device_sum,sum_count*4,cudaMemcpyDeviceToHost,c.stream));
+                    }
+                }else check(cudaMemcpyAsync(sum.data(),device_sum,sum_count*4,cudaMemcpyDeviceToHost,c.stream));
                 check(cudaStreamSynchronize(c.stream));
                 if(profile)times[rank].product+=elapsed(begin);
             }
@@ -911,6 +1218,24 @@ public:
             run_cpu();for(auto& f:work)f.get();
         }catch(...){for(auto& f:work)if(f.valid())f.wait();throw;}
         auto& c=*contexts.front();DeviceScope scope(c.device);
+        if(gpu_reduce) {
+            const size_t count=size_t(nt)*4096;
+            float* sum=c.scratch.at("prefill_route_sum")->f();
+            const float one=1;check(cublasSetStream(c.blas,caller));
+            if(contexts.size()==2) {
+                auto& second=*contexts[1];auto& other=c.buffer("route_other_sum",count*4);
+                if(peer_enabled)check(cudaMemcpyPeerAsync(other.p,c.device,second.scratch.at("prefill_route_sum")->p,second.device,count*4,caller));
+                else check(cudaMemcpyAsync(other.p,second.result_host->p,count*4,cudaMemcpyHostToDevice,caller));
+                check(cublasSaxpy(c.blas,count,&one,other.f(),1,sum,1));
+            }
+            if(!cpu_jobs.empty()) {
+                auto& cpu=c.buffer("route_cpu_sum",count*4);
+                check(cudaMemcpyAsync(cpu.p,cpu_sum.data(),count*4,cudaMemcpyHostToDevice,caller));
+                check(cublasSaxpy(c.blas,count,&one,cpu.f(),1,sum,1));
+            }
+            check(cublasSaxpy(c.blas,count,&one,sum,1,out,1));
+            check(cublasSetStream(c.blas,c.stream));
+        }else {
         if(sums.size()==2)for(size_t i=0;i<sums[0].size();++i)sums[0][i]+=sums[1][i];
         if(!cpu_jobs.empty())for(size_t i=0;i<sums[0].size();++i)sums[0][i]+=cpu_sum[i];
         auto& result=c.buffer("route_sum",sums[0].size()*4);
@@ -919,8 +1244,10 @@ public:
         check(cublasSetStream(c.blas,caller));
         check(cublasSaxpy(c.blas,sums[0].size(),&one,result.f(),1,out,1));
         check(cublasSetStream(c.blas,c.stream));
+        }
         check(cudaGetLastError());
         if(profile) {
+            for(auto& context:contexts){DeviceScope scope(context->device);context->trace_report(layer,nt);}
             std::ostringstream line;
             line<<"FP4_PROFILE layer="<<layer<<" tokens="<<nt<<" wall_ms="<<elapsed(started)
                 <<" input_wait_ms="<<input_wait_ms<<" cpu_groups="<<cpu_jobs.size()
@@ -945,6 +1272,12 @@ public:
         std::cerr<<"FP4_CPU expert_groups="<<cpu_experts<<" activation_format="
             <<(cpu_q8_enabled?"q8_block64_from_f16":"f16")<<" weight_format=native_nvfp4\n";
         std::cerr<<"FP4_CPU_SCALES hits="<<cpu_cache_hits<<" misses="<<cpu_cache_misses<<" bytes="<<cpu_cache_bytes<<'\n';
+        for(const auto& c:contexts)if(prefill_batch_experts>1)std::cerr<<"FP4_BATCH device="<<c->device
+            <<" groups="<<c->batch_groups<<" experts="<<c->batch_experts<<" actual_rows="<<c->batch_actual_rows
+            <<" padded_rows="<<c->batch_padded_rows<<'\n';
+        for(const auto& c:contexts)std::cerr<<"FP4_TRANSFER device="<<c->device
+            <<" startup_bytes="<<c->wire_bytes[0]<<" prefill_bytes="<<c->wire_bytes[1]
+            <<" decode_bytes="<<c->wire_bytes[2]<<'\n';
         for(const auto& c:contexts)std::cerr<<"FP4_ROUTES device="<<c->device<<" hits="<<c->hits<<" misses="<<c->misses
             <<" uploaded_bytes="<<c->uploaded<<" cache_bytes="<<c->cache_bytes<<" mma="<<c->mma_calls
             <<" reference="<<c->reference_calls<<" prefill="<<c->prefill_calls<<'\n';

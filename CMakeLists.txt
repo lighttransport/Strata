@@ -1405,6 +1405,8 @@ set_property(SOURCE src/kernels/cpu/q2_avx2.cpp APPEND PROPERTY COMPILE_DEFINITI
 find_package(Threads REQUIRED)
 target_link_libraries(strata_kernels_cpu PUBLIC Threads::Threads strata_host)
 target_sources(strata_kernels_cpu PRIVATE src/kernels/cpu/glm_fp4.cpp)
+add_executable(strata-glm-fp4-cpu-bench tools/glm_fp4_cpu_bench.cpp)
+target_link_libraries(strata-glm-fp4-cpu-bench PRIVATE strata_kernels_cpu)
 if(STRATA_BUILD_TESTS AND STRATA_NATIVE_EXPERTS)
   add_executable(glm_fp4_cpu_test tests/host/glm_fp4_cpu_test.cpp)
   target_link_libraries(glm_fp4_cpu_test PRIVATE strata_kernels_cpu)

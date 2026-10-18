@@ -33,7 +33,7 @@ def load_profile(path=DEFAULT_PROFILE):
     return profile
 
 
-def counter_delta(before, after):
+def counter_delta(before, after, fields=('uploaded_bytes', 'misses')):
     """Deduplicate repeated shutdown reports; never count them as extra devices."""
     def unique(rows):
         result = {}
@@ -49,7 +49,7 @@ def counter_delta(before, after):
     out = []
     for device in sorted(before):
         row = {'device': device}
-        for key in ('uploaded_bytes', 'misses'):
+        for key in fields:
             row[key] = after[device][key] - before[device][key]
             if row[key] < 0:
                 raise ValueError('native cumulative counter decreased')
@@ -94,8 +94,10 @@ def analyze(profile, *, cpu_gbps=None, hbm_gbps=None, tensor_tflops=None,
             h2d_gbps=None, target_decode=50.0, target_prefill=800.0):
     hw, geometry = profile['hardware'], profile['geometry']
     row = _median_request(profile)
+    measured_cpu = cpu_gbps is None and 'cpu_stream_gbps' in hw
     if cpu_gbps is None:
-        cpu_gbps = hw['sockets'] * hw['cpu_memory_channels_per_socket'] * hw['cpu_max_supported_mt_s'] * 8 / 1000
+        cpu_gbps = (hw['cpu_stream_gbps'] if measured_cpu else
+                    hw['sockets'] * hw['cpu_memory_channels_per_socket'] * hw['cpu_max_supported_mt_s'] * 8 / 1000)
     hbm_gbps = hw['hbm_gbps_per_gpu'] if hbm_gbps is None else hbm_gbps
     tensor_tflops = hw['tensor_tflops_per_gpu'] if tensor_tflops is None else tensor_tflops
     links = hw['h2d_gbps_per_gpu'] if h2d_gbps is None else h2d_gbps
@@ -200,6 +202,29 @@ def analyze(profile, *, cpu_gbps=None, hbm_gbps=None, tensor_tflops=None,
                    target=dict(tok_s=target_prefill, measured_speedup_required=target_prefill / (prompt / prefill_seconds),
                                primary_h2d_gbps_required=wire['mean'][0] * target_prefill / prompt / 1e9,
                                below_conditional_proxy_roof=target_prefill <= roof['tok_s']))
+    # Keep measured matrix DMA separate from the frozen proxy evidence.
+    # The caller must bracket one request, including its preparation/reset phase.
+    measured = profile.get('prefill_transfer')
+    if measured is not None:
+        exact = counter_delta(measured['before'], measured['after'], ('prefill_bytes',))
+        if [d['device'] for d in exact] != [d['device'] for d in proxy['devices']]:
+            raise ValueError('measured transfer must cover the same GPU devices')
+        amounts = [d['prefill_bytes'] for d in exact]
+        work = {f'gpu{i}_h2d': value for i, value in enumerate(amounts)}
+        capacity = {f'gpu{i}_h2d': rate * 1e9 for i, rate in enumerate(links)}
+        work.update(aggregate_h2d=sum(amounts), ideal_projection_compute=compute_seconds)
+        capacity.update(aggregate_h2d=min(sum(links), aggregate) * 1e9,
+                        ideal_projection_compute=1)
+        exact_roof = resource_roof(work, capacity, prompt)
+        prefill['measured_matrix_transfer'] = dict(
+            scope=measured['scope'], source_wire_bytes=amounts,
+            conditional_roof=exact_roof,
+            observed_fraction_of_roof=exact_roof['seconds'] / prefill_seconds,
+            target_below_conditional_roof=target_prefill <= exact_roof['tok_s'],
+            target_primary_h2d_gbps_required=amounts[0] * target_prefill / prompt / 1e9,
+            elapsed_above_floor_seconds=prefill_seconds - exact_roof['seconds'],
+            limitations='Matrix DMA only; excludes activation traffic and reconstruction. '
+                        'Independent resources are optimistically overlapped.')
     sensitivity = []
     for bandwidth in (80, 120, 180, cpu_gbps):
         candidate = resource_roof({'cpu_code_stream': cpu_bytes, 'primary_mandatory_matrices': primary_bytes},
@@ -207,7 +232,7 @@ def analyze(profile, *, cpu_gbps=None, hbm_gbps=None, tensor_tflops=None,
                                    'primary_mandatory_matrices': hbm_gbps * 1e9}, tokens)
         sensitivity.append(dict(cpu_gbps=bandwidth, conditional_roof_tok_s=candidate['tok_s']))
     return dict(schema='strata.glm.native_fp4.analysis.v1', profile=profile['name'], fitted=False,
-                rates=dict(cpu_gbps=cpu_gbps, cpu_bandwidth_is_measured=False,
+                rates=dict(cpu_gbps=cpu_gbps, cpu_bandwidth_is_measured=measured_cpu,
                            hbm_gbps_per_gpu=hbm_gbps, tensor_tflops_per_gpu=tensor_tflops,
                            h2d_gbps_per_gpu=links), observations=profile['observations'],
                 decode=decode, prefill=prefill, cpu_bandwidth_scenarios=sensitivity,

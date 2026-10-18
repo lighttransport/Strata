@@ -141,6 +141,11 @@ def request_diagnostics(log):
             keys = ("device", "hits", "misses", "uploaded_bytes", "cache_bytes", "mma", "reference", "prefill")
             row["native_devices"] = [dict(zip(keys, map(int, values))) for values in native]
             row["native_counter_scope"] = "cumulative since model load"
+        transfers = re.findall(r"FP4_TRANSFER device=(\d+) startup_bytes=(\d+) prefill_bytes=(\d+) decode_bytes=(\d+)", section)
+        if transfers:
+            keys = ("device", "startup_bytes", "prefill_bytes", "decode_bytes")
+            row["native_transfer_bytes"] = [dict(zip(keys, map(int, values))) for values in transfers]
+            row["native_transfer_scope"] = "cumulative submitted matrix H2D bytes by execution phase; excludes activations and D2H"
         cpu = re.findall(r"FP4_CPU expert_groups=(\d+)", section)
         if cpu: row["native_cpu_expert_groups"] = int(cpu[-1])
         scales = re.findall(r"FP4_CPU_SCALES hits=(\d+) misses=(\d+) bytes=(\d+)", section)
