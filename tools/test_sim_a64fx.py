@@ -116,9 +116,18 @@ class ValidationTest(unittest.TestCase):
 
     def test_plain_decode_rows(self):
         rows = self.rows_of("decode", "plain decode")
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 6)
         for r in rows:
             self.assertLessEqual(abs(r["error"]), 0.10, r["name"])
+
+    def test_mhc_ab_ratio(self):
+        # the in-model A/B (52449126): local-gram over legacy measured 1.082; the model must predict the gain itself
+        legacy, = self.rows_of("decode", "legacy mHC (in-model A/B")
+        gram, = self.rows_of("decode", "local-gram mHC (in-model A/B")
+        measured = gram["measured"] / legacy["measured"]
+        predicted = gram["predicted"] / legacy["predicted"]
+        self.assertAlmostEqual(measured, 1.082, places=3)
+        self.assertLess(abs(predicted / measured - 1), 0.01)
 
     def test_prefill_rows(self):
         rows = self.rows_of("prefill", "")
@@ -202,7 +211,7 @@ class UntouchedTest(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             code = glm_a64fx_sim.main(["validate"])
         self.assertEqual(code, 0)
-        self.assertIn("13 of 13 rows within tolerance", out.getvalue())
+        self.assertIn("15 of 15 rows within tolerance", out.getvalue())
 
 class MeasuredKernelTest(unittest.TestCase):
     def test_redesign_q2_rate_is_the_measured_sdot_mix(self):

@@ -44,7 +44,8 @@ def sdot_q23_mix():
 
 _Q23_RATE, _Q23_COSTS = sdot_q23_mix()
 _MHC = json.loads((DATA / "measured_a64fx_mhc.json").read_text())
-MHC_LOCAL_GRAM_INMODEL_US = _MHC["per_site_us_mean_over_ranks"]["local_gram"]["end_site"]   # 42.2, 12-node runner
+MHC_LOCAL_GRAM_INMODEL_US = _MHC["per_site_us_mean_over_ranks"]["local_gram"]["end_site"]   # 42.2, 12-node runner, 8K context;
+# confirmed by the in-model A/B 52449126 (43.3 us at 512 context, decode +8.2 % over legacy; predicted +8.5 %)
 GIB = 2 ** 30
 
 # ---------------------------------------------------------------------------------------------------------------

@@ -293,6 +293,54 @@
    "measured": {
     "tok_s": 372.39
    }
+  },
+  {
+   "name": "TP12 Q4 plain decode, 512 context, legacy mHC (in-model A/B, 52449126)",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "Strata tools/sim/data/measured_a64fx_mhc.json ab_52449126 (median decode of 2 trials, mean of 2 pairs)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 512
+   },
+   "profile": "current",
+   "profile_set": {
+    "binary_scale": 1.0
+   },
+   "measured": {
+    "tok_s": 34.452
+   }
+  },
+  {
+   "name": "TP12 Q4 plain decode, 512 context, local-gram mHC (in-model A/B, 52449126)",
+   "kind": "decode",
+   "tolerance": 0.1,
+   "source": "Strata tools/sim/data/measured_a64fx_mhc.json ab_52449126 (median decode of 2 trials, mean of 2 pairs)",
+   "layout": {
+    "nodes": 12,
+    "trunk_tp": 12,
+    "expert_layout": "ep_parts",
+    "parts": 4,
+    "pack": "ud_q4kxl",
+    "trunk_format": "q8",
+    "context": 512
+   },
+   "profile": "current",
+   "profile_set": {
+    "binary_scale": 1.0,
+    "mhc_site_us": [
+     59.5,
+     44.8
+    ]
+   },
+   "measured": {
+    "tok_s": 37.278
+   }
   }
  ],
  "collectives": {
