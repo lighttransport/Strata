@@ -67,6 +67,22 @@ def main():
         assert "state=resubmit" in log3 and "rc=skipped" in "".join(p.read_text() for p in (out3 / "status" / "1003").glob("rank*.status")), log3
         log4 = job(repo, snap, dict(base, PJM_JOBID="1004", DS41F_PACK_SHA256="0" * 64), root / "out4")
         assert "DS41F_STALE_BINARY" in log4 and "state=failed" in log4, log4
+        # two jobs on different packs of one output root run in parallel; a third on a held pack is refused
+        out5 = root / "out5"
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(2) as ex:
+            fa = ex.submit(job, repo, snap, dict(base, PJM_JOBID="1005", DS41F_PACKS="q23:q2_k/q2_k/q3_k", DS41F_TRUNK="none"), out5)
+            fb = ex.submit(job, repo, snap, dict(base, PJM_JOBID="1006", DS41F_PACKS="q2:q2_k/q2_k/q2_k", DS41F_TRUNK="q4_k/q8_0"), out5)
+            la, lb = fa.result(), fb.result()
+        assert "state=complete" in la and "DS41F_PACK_COMPLETE pack=q23" in la, la
+        assert "state=complete" in lb and "DS41F_PACK_COMPLETE pack=q2" in lb and "DS41F_TRUNK_COMPLETE" in lb, lb
+        import time as _t
+        (out5 / "experts-q23.d.lock").write_text(f"job=9999 end={int(_t.time()) + 3600}\n")
+        lc = job(repo, snap, dict(base, PJM_JOBID="1007", DS41F_PACKS="q23:q2_k/q2_k/q3_k", DS41F_TRUNK="none"), out5)
+        assert "DS41F_LOCKED experts-q23.d.lock by job=9999" in lc and "state=failed" in lc, lc
+        (out5 / "experts-q23.d.lock").write_text(f"job=9999 end={int(_t.time()) - 10}\n")      # stale: taken over
+        ld = job(repo, snap, dict(base, PJM_JOBID="1008", DS41F_PACKS="q23:q2_k/q2_k/q3_k", DS41F_TRUNK="none"), out5)
+        assert "DS41F_ALREADY_COMPLETE" in ld and not (out5 / "experts-q23.d.lock").exists(), ld
         # the probe job: every rank packs its layer with its setting, writes/checks copies, decisions are printed
         im = root / "probe-imatrix.gguf"
         subprocess.run([sys.executable, str(repo / "tools" / "ds41f_synth_imatrix.py"), str(im), "--layers", "0-11", "--experts", "1"], check=True, capture_output=True)
@@ -80,7 +96,8 @@ def main():
                      "write_aggregate_MBps=", "chunk_dir=shared coherence_checked=12 mismatches=0", "PROBE_WRITE1 ", "PROBE_CANARY"):
             assert want in plog, (want, plog)
         print("ds41f pjm PASS: 12 fake ranks pack 40 layers x 2 packs + trunk (complete, nmse summary, assembled pack verifies), "
-              "resubmission exits early, a deadline-bound job asks for resubmission, a stale binary is refused; "
+              "resubmission exits early, a deadline-bound job asks for resubmission, a stale binary is refused, "
+              "two jobs on different packs run in parallel, a held pack lock refuses and a stale one is taken over; "
               "probe: 12 settings packed, write/coherence/single-node write measured, decisions printed")
 
 
