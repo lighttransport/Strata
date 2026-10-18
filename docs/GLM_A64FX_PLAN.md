@@ -177,30 +177,30 @@ Hypotheses in `current`: expert_q2k_gbps 78 GB/s is ggml's standalone SVE rate; 
 
 | nodes | layout | 128 ctx plain / MTP2 best / MTP2 sweep | 8K | 32K | 8K step ms |
 |---|---:|---:|---:|---:|---:|
-| 6 | sliced over 4 ranks (runner today) | 73.9 / 96.8 / 71.0 | 66.2 / 82.8 / 60.7 | 59.7 / 72.0 / 52.8 | 15.1 = trunk 2.3 + experts 3.7 + coll 2.3 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
-| 6 | sliced over every rank | 75.0 / 99.6 / 73.0 | 67.1 / 84.8 / 62.2 | 60.5 / 73.5 / 53.9 | 14.9 = trunk 2.3 + experts 3.9 + coll 1.8 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
-| 6 | whole experts (EP) | 68.3 / 85.5 / 62.7 | 61.7 / 74.4 / 54.5 | 56.1 / 65.5 / 48.0 | 16.2 = trunk 2.3 + experts 3.3 + coll 3.8 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
-| 6 | sliced over 2 ranks | 72.9 / 94.4 / 69.2 | 65.4 / 81.0 / 59.4 | 59.1 / 70.6 / 51.8 | 15.3 = trunk 2.3 + experts 3.4 + coll 2.7 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
-| 6 | sliced over 4 ranks (runner today) x4 CMG ranks | 68.6 / 81.0 / 59.4 | 61.9 / 70.9 / 52.0 | 56.2 / 62.8 / 46.1 | 16.1 = trunk 2.2 + experts 3.7 + coll 4.8 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
-| 6 | sliced over every rank x4 CMG ranks | 66.8 / 80.9 / 59.3 | 60.5 / 70.9 / 51.9 | 55.0 / 62.8 / 46.0 | 16.5 = trunk 2.2 + experts 6.2 + coll 2.7 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
-| 6 | whole experts (EP) x4 CMG ranks | 50.7 / 62.9 / 46.1 | 46.9 / 56.7 / 41.5 | 43.6 / 51.4 / 37.7 | 21.3 = trunk 2.2 + experts 3.3 + coll 10.4 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
-| 6 | sliced over 2 ranks x4 CMG ranks | 61.8 / 69.9 / 51.3 | 56.3 / 62.3 / 45.7 | 51.6 / 56.0 / 41.0 | 17.8 = trunk 2.2 + experts 3.4 + coll 6.7 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
-| 8 | sliced over 4 ranks (runner today) | 87.3 / 118.8 / 87.1 | 76.8 / 98.3 / 72.1 | 68.2 / 83.4 / 61.2 | 13.0 = trunk 1.8 + experts 2.8 + coll 1.7 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
-| 8 | sliced over every rank | 87.3 / 119.7 / 87.7 | 76.8 / 98.9 / 72.5 | 68.2 / 83.9 / 61.5 | 13.0 = trunk 1.8 + experts 3.2 + coll 1.3 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
-| 8 | whole experts (EP) | 78.4 / 100.0 / 73.3 | 69.8 / 85.1 / 62.4 | 62.7 / 73.7 / 54.0 | 14.3 = trunk 1.8 + experts 2.5 + coll 3.3 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
-| 8 | sliced over 2 ranks | 84.2 / 111.8 / 81.9 | 74.4 / 93.5 / 68.5 | 66.3 / 79.9 / 58.6 | 13.4 = trunk 1.8 + experts 2.6 + coll 2.3 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
-| 8 | sliced over 4 ranks (runner today) x4 CMG ranks | 78.5 / 92.7 / 68.0 | 69.8 / 79.8 / 58.5 | 62.7 / 69.7 / 51.1 | 14.3 = trunk 1.7 + experts 2.8 + coll 4.5 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
-| 8 | sliced over every rank x4 CMG ranks | 75.6 / 91.8 / 67.3 | 67.6 / 79.1 / 58.0 | 60.9 / 69.1 / 50.7 | 14.8 = trunk 1.7 + experts 5.5 + coll 2.3 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
-| 8 | whole experts (EP) x4 CMG ranks | 55.6 / 69.8 / 51.2 | 51.2 / 62.2 / 45.6 | 47.2 / 55.9 / 41.0 | 19.5 = trunk 1.7 + experts 2.5 + coll 10.0 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
-| 8 | sliced over 2 ranks x4 CMG ranks | 65.8 / 86.2 / 63.2 | 59.6 / 74.9 / 54.9 | 54.3 / 65.9 / 48.3 | 16.8 = trunk 1.7 + experts 2.6 + coll 7.1 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
-| 12 | sliced over 4 ranks (runner today) | 90.7 / 117.5 / 86.1 | 79.4 / 97.4 / 71.4 | 70.3 / 82.8 / 60.7 | 12.6 = trunk 1.3 + experts 1.9 + coll 2.7 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
-| 12 | sliced over every rank | 90.6 / 118.4 / 86.8 | 79.3 / 98.1 / 71.9 | 70.2 / 83.2 / 61.0 | 12.6 = trunk 1.3 + experts 2.4 + coll 2.2 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
-| 12 | whole experts (EP) | 81.0 / 99.3 / 72.8 | 71.9 / 84.6 / 62.0 | 64.3 / 73.3 / 53.8 | 13.9 = trunk 1.3 + experts 1.7 + coll 4.2 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
-| 12 | sliced over 2 ranks | 87.4 / 111.0 / 81.3 | 76.9 / 92.9 / 68.1 | 68.3 / 79.5 / 58.3 | 13.0 = trunk 1.3 + experts 1.8 + coll 3.2 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
-| 12 | sliced over 4 ranks (runner today) x4 CMG ranks | 82.2 / 94.7 / 69.4 | 72.8 / 81.2 / 59.6 | 65.1 / 70.8 / 51.9 | 13.7 = trunk 1.2 + experts 1.9 + coll 5.3 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
-| 12 | sliced over every rank x4 CMG ranks | 78.6 / 92.6 / 67.9 | 70.0 / 79.7 / 58.4 | 62.8 / 69.6 / 51.0 | 14.3 = trunk 1.2 + experts 4.7 + coll 3.1 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
-| 12 | whole experts (EP) x4 CMG ranks | 59.7 / 75.2 / 55.1 | 54.6 / 66.5 / 48.7 | 50.1 / 59.3 / 43.5 | 18.3 = trunk 1.2 + experts 1.7 + coll 10.1 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
-| 12 | sliced over 2 ranks x4 CMG ranks | 70.4 / 92.2 / 67.6 | 63.4 / 79.4 / 58.2 | 57.4 / 69.4 / 50.8 | 15.8 = trunk 1.2 + experts 1.8 + coll 7.5 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
+| 6 | sliced over 4 ranks (runner today) | 73.7 / 97.0 / 71.1 | 66.1 / 82.9 / 60.8 | 59.6 / 72.1 / 52.8 | 15.1 = trunk 2.3 + experts 3.7 + coll 2.3 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
+| 6 | sliced over every rank | 74.9 / 99.8 / 73.1 | 67.0 / 84.9 / 62.3 | 60.4 / 73.6 / 53.9 | 14.9 = trunk 2.3 + experts 4.0 + coll 1.8 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
+| 6 | whole experts (EP) | 68.2 / 85.7 / 62.8 | 61.6 / 74.5 / 54.6 | 56.0 / 65.6 / 48.1 | 16.2 = trunk 2.3 + experts 3.3 + coll 3.8 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
+| 6 | sliced over 2 ranks | 72.7 / 94.6 / 69.3 | 65.3 / 81.2 / 59.5 | 59.0 / 70.7 / 51.8 | 15.3 = trunk 2.3 + experts 3.4 + coll 2.7 + mHC 1.9 + ctx 1.6 + head 1.0 + phases 1.5 |
+| 6 | sliced over 4 ranks (runner today) x4 CMG ranks | 68.5 / 81.2 / 59.5 | 61.8 / 71.1 / 52.1 | 56.1 / 63.0 / 46.1 | 16.2 = trunk 2.2 + experts 3.7 + coll 4.8 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
+| 6 | sliced over every rank x4 CMG ranks | 66.7 / 81.1 / 59.4 | 60.4 / 71.0 / 52.1 | 54.9 / 62.9 / 46.1 | 16.6 = trunk 2.2 + experts 6.3 + coll 2.7 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
+| 6 | whole experts (EP) x4 CMG ranks | 50.5 / 63.1 / 46.3 | 46.8 / 56.8 / 41.7 | 43.5 / 51.5 / 37.8 | 21.4 = trunk 2.2 + experts 3.3 + coll 10.4 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
+| 6 | sliced over 2 ranks x4 CMG ranks | 61.7 / 70.1 / 51.4 | 56.2 / 62.4 / 45.8 | 51.5 / 56.1 / 41.1 | 17.8 = trunk 2.2 + experts 3.4 + coll 6.7 + mHC 1.4 + ctx 1.6 + head 1.0 + phases 1.1 |
+| 8 | sliced over 4 ranks (runner today) | 87.2 / 119.0 / 87.2 | 76.7 / 98.5 / 72.2 | 68.1 / 83.5 / 61.2 | 13.0 = trunk 1.8 + experts 2.8 + coll 1.7 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
+| 8 | sliced over every rank | 87.2 / 119.9 / 87.9 | 76.7 / 99.1 / 72.6 | 68.1 / 84.0 / 61.6 | 13.0 = trunk 1.8 + experts 3.2 + coll 1.3 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
+| 8 | whole experts (EP) | 78.3 / 100.2 / 73.5 | 69.7 / 85.3 / 62.5 | 62.6 / 73.8 / 54.1 | 14.3 = trunk 1.8 + experts 2.5 + coll 3.3 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
+| 8 | sliced over 2 ranks | 84.1 / 112.0 / 82.1 | 74.3 / 93.6 / 68.6 | 66.2 / 80.0 / 58.7 | 13.5 = trunk 1.8 + experts 2.6 + coll 2.3 + mHC 1.9 + ctx 1.6 + head 0.9 + phases 1.5 |
+| 8 | sliced over 4 ranks (runner today) x4 CMG ranks | 78.3 / 93.0 / 68.1 | 69.7 / 80.0 / 58.6 | 62.6 / 69.8 / 51.2 | 14.3 = trunk 1.7 + experts 2.8 + coll 4.5 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
+| 8 | sliced over every rank x4 CMG ranks | 75.5 / 92.0 / 67.4 | 67.5 / 79.2 / 58.1 | 60.8 / 69.3 / 50.8 | 14.8 = trunk 1.7 + experts 5.5 + coll 2.3 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
+| 8 | whole experts (EP) x4 CMG ranks | 55.5 / 70.0 / 51.3 | 51.0 / 62.4 / 45.7 | 47.1 / 56.0 / 41.1 | 19.6 = trunk 1.7 + experts 2.5 + coll 10.0 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
+| 8 | sliced over 2 ranks x4 CMG ranks | 65.6 / 86.4 / 63.3 | 59.5 / 75.1 / 55.0 | 54.2 / 66.1 / 48.4 | 16.8 = trunk 1.7 + experts 2.6 + coll 7.1 + mHC 1.4 + ctx 1.6 + head 0.9 + phases 1.1 |
+| 12 | sliced over 4 ranks (runner today) | 90.6 / 117.6 / 86.2 | 79.3 / 97.5 / 71.5 | 70.2 / 82.9 / 60.7 | 12.6 = trunk 1.3 + experts 1.9 + coll 2.7 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
+| 12 | sliced over every rank | 90.5 / 118.5 / 86.9 | 79.2 / 98.2 / 72.0 | 70.2 / 83.3 / 61.1 | 12.6 = trunk 1.3 + experts 2.4 + coll 2.2 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
+| 12 | whole experts (EP) | 80.9 / 99.5 / 72.9 | 71.8 / 84.7 / 62.1 | 64.2 / 73.4 / 53.8 | 13.9 = trunk 1.3 + experts 1.7 + coll 4.2 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
+| 12 | sliced over 2 ranks | 87.3 / 111.1 / 81.4 | 76.8 / 93.0 / 68.2 | 68.2 / 79.6 / 58.3 | 13.0 = trunk 1.3 + experts 1.8 + coll 3.2 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
+| 12 | sliced over 4 ranks (runner today) x4 CMG ranks | 82.1 / 94.9 / 69.6 | 72.7 / 81.4 / 59.6 | 65.0 / 70.9 / 52.0 | 13.8 = trunk 1.2 + experts 1.9 + coll 5.3 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
+| 12 | sliced over every rank x4 CMG ranks | 78.4 / 92.8 / 68.0 | 69.8 / 79.9 / 58.5 | 62.7 / 69.7 / 51.1 | 14.3 = trunk 1.2 + experts 4.7 + coll 3.1 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
+| 12 | whole experts (EP) x4 CMG ranks | 59.6 / 75.4 / 55.3 | 54.5 / 66.6 / 48.8 | 50.0 / 59.4 / 43.6 | 18.4 = trunk 1.2 + experts 1.7 + coll 10.1 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
+| 12 | sliced over 2 ranks x4 CMG ranks | 70.2 / 92.4 / 67.7 | 63.3 / 79.5 / 58.3 | 57.3 / 69.5 / 50.9 | 15.8 = trunk 1.2 + experts 1.8 + coll 7.5 + mHC 1.4 + ctx 1.6 + head 0.8 + phases 1.1 |
 
 ### Prefill, profile `redesign` (tok/s)
 
@@ -236,9 +236,9 @@ Hypotheses in `redesign`: expert_q2k_gbps and its width costs are the standalone
 With a **Q4_K trunk** instead of Q8_0 (lossy on the trunk; the 0.86x byte scale of `model.DENSE_FORMATS`), the
 `redesign` decode rows of the runner layout become:
 
-| 6 | sliced over 4 ranks (runner today) | 79.1 / 100.4 / 73.6 | 70.4 / 85.4 / 62.6 | 63.1 / 73.9 / 54.2 | 14.2 = trunk 1.5 + experts 3.7 + coll 2.3 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
-| 8 | sliced over 4 ranks (runner today) | 92.8 / 122.8 / 90.0 | 81.0 / 101.1 / 74.1 | 71.5 / 85.4 / 62.6 | 12.3 = trunk 1.2 + experts 2.8 + coll 1.7 + mHC 1.9 + ctx 1.6 + head 0.7 + phases 1.5 |
-| 12 | sliced over 4 ranks (runner today) | 94.6 / 120.1 / 88.0 | 82.3 / 99.2 / 72.7 | 72.6 / 84.1 / 61.6 | 12.1 = trunk 0.9 + experts 1.9 + coll 2.7 + mHC 1.9 + ctx 1.6 + head 0.7 + phases 1.5 |
+| 6 | sliced over 4 ranks (runner today) | 79.0 / 100.6 / 73.7 | 70.3 / 85.5 / 62.7 | 63.0 / 74.0 / 54.3 | 14.2 = trunk 1.5 + experts 3.7 + coll 2.3 + mHC 1.9 + ctx 1.6 + head 0.8 + phases 1.5 |
+| 8 | sliced over 4 ranks (runner today) | 92.7 / 123.0 / 90.2 | 80.9 / 101.2 / 74.2 | 71.4 / 85.5 / 62.7 | 12.4 = trunk 1.2 + experts 2.8 + coll 1.7 + mHC 1.9 + ctx 1.6 + head 0.7 + phases 1.5 |
+| 12 | sliced over 4 ranks (runner today) | 94.5 / 120.2 / 88.1 | 82.3 / 99.3 / 72.8 | 72.5 / 84.1 / 61.7 | 12.2 = trunk 0.9 + experts 1.9 + coll 2.7 + mHC 1.9 + ctx 1.6 + head 0.7 + phases 1.5 |
 
 ### Reading the tables
 
@@ -253,10 +253,10 @@ With a **Q4_K trunk** instead of Q8_0 (lossy on the trunk; the 0.86x byte scale 
 3. **The redesigned runner: about 79 tok/s plain at 12 nodes, 77 at 8 and 66 at 6 (8K context); 97 / 98 / 83 with
    MTP depth 2 at the BEST acceptance, 71 / 72 / 61 at the sweep acceptance; prefill about 700-740 at 12 nodes, 576 at
    8 and 473 at 6.** A Q4_K trunk adds 3-6 %. The step is 12.6-15 ms: trunk 1.3-2.3, experts 1.9-3.7, collectives
-   1.7-2.7, mHC 1.9, context 1.6, phases 1.5, head 0.8-1.0. The expert term uses the measured SDOT kernels (160.8 GB/s
-   per node for the q23 mix; ggml's would cost 8 tok/s at 12 nodes) and their measured per-token cost in the MTP
-   verify step (1.5x at 2 tokens, 2.1x at 3: the kernels are compute-bound, so extra tokens are not free; this is what
-   pulled MTP2 from 107 to 97). Otherwise the gain over today comes from removing the sync-bound fixed costs (mHC 5.9
+   1.7-2.7, mHC 1.9, context 1.6, phases 1.5, head 0.8-1.0. The expert term uses the measured SDOT kernels as the
+   runner would build them (clang 21 -mcpu=a64fx, best kernel per width: 159.9 GB/s per node for the q23 mix; ggml's
+   would cost 8 tok/s at 12 nodes) and their measured per-token cost in the MTP verify step (1.47x at 2 tokens, 1.74x
+   at 3: the kernels are compute-bound, so extra tokens are not free; this is what pulled MTP2 from 107 to 97). Otherwise the gain over today comes from removing the sync-bound fixed costs (mHC 5.9
    -> 1.9, KDA fixed 3.5 -> 0.5, barriers 5.5 -> 1.5).
 4. **How experts are sliced is not the lever at 6-12 nodes.** Slicing every active expert over 4 ranks (today), over
    every rank, or over 2 ranks lands within 3 % of each other under both profiles: wider slices save bandwidth per
@@ -285,7 +285,7 @@ With a **Q4_K trunk** instead of Q8_0 (lossy on the trunk; the 0.86x byte scale 
 
 The `current` 12-node rows are fitted (within 5 %). Moving to 6 nodes relies on the scaling classes; the pessimistic
 edge, every streamed term scaling exactly 1/N with no fixed part, lands at 27-28 tok/s instead of 30. The `redesign`
-numbers rest on the hypotheses printed under each table. The expert kernels are now measured standalone (SDOT, 160.8
+numbers rest on the hypotheses printed under each table. The expert kernels are now measured standalone (SDOT, 159.9
 GB/s per node for the q23 mix on one node; the same Q2_K kernel ran 9 % faster on another node); if they ran in-model
 at ggml's rate instead (97 GB/s) the 12-node step grows 1.5 ms and decode drops to 71 tok/s, at 120 GB/s to 75. The
 largest remaining unknown is the mHC in-model cost (23 us per site assumed; at today's 78 us the step grows 4.6 ms and
@@ -371,8 +371,13 @@ bench on rank subsets of one 12-node 2x3x2 allocation).
    the same Q2_K kernel ran 198 GB/s on another node (ggml 96 vs 92), so compare kernels within one run. Gather-free
    IQ kernels (job 52439675): an in-register `svtbl` decode of the IQ2_XXS grid matches the gathers only once the
    decode is amortized over 2-4 tokens, a +12 % repack adds 4-6 % at one token, and expanded 2-bit codes double the
-   rate at +61-64 % memory (data: `iq_gather_free`). In the
-   simulator: `current` uses ggml's mix (78 GB/s), `redesign` the SDOT q23 mix (160.8 GB/s, derived from the data file).
+   rate at +61-64 % memory (data: `iq_gather_free`). Compiler and pipelining (job 52440185, same sources linked into
+   the same harness): clang 21 with `-mcpu=a64fx` makes 2-4 token steps 25-45 % faster than FCC 4.12 on the K-quants
+   (Q2_K at 4 tokens 59 -> 85 GB/s, Q3_K down 56 -> 70) and ties it at one token; software-pipelined v3 kernels
+   (block i+1 decoded, its gathers issued, before block i's token math) are roughly neutral (+2-7 % for IQ1_S and Q3_K
+   down). The runner configuration the simulator now uses: clang 21 -mcpu=a64fx, best kernel per width (data:
+   `sdot_kernel_v3`). In the
+   simulator: `current` uses ggml's mix (78 GB/s), `redesign` the SDOT q23 mix (159.9 GB/s, derived from the data file).
 2. **Node constants, measured** (`node_probe.c`): HBM read 915 GB/s at 48 threads, 229 per CMG; libhwb hardware
    barrier 1.38 us hierarchical over 48 threads, 0.12 us inside one CMG; a flat OpenMP barrier 5.29 us at 48 threads
    and 1.73 at 12; an empty `omp parallel` fork-join 5.24 us. The redesign's split-phase barrier (1.4 assumed) is the

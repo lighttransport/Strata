@@ -98,7 +98,7 @@ static void deq_iq1s(const uint8_t *b, double *y)          /* ggml dequantize_ro
  * 6 iq2xxs var0, 7 iq2xxs var1, 8 iq1s */
 static const char *NAMES[] = {"q2_K v1", "q3_K v1", "q2_K v2 1row", "q3_K v2 1row", "q2_K v2 2rows", "q3_K v2 2rows",
                               "iq2_xxs regsign", "iq2_xxs gathersign", "iq1_s", "iq2_xxs tbl", "iq2_xxs rp", "iq2_xxs rpc",
-                              "iq1_s rpc"};
+                              "iq1_s rpc", "q2_K v3", "q3_K v3", "iq2_xxs v3", "iq1_s v3"};
 
 int main(void)
 {
@@ -121,8 +121,9 @@ int main(void)
     for (int t = 0; t < 4; ++t) { q23s_prepare_natural(a8[t], COLS, an[t]); q23s_prepare_quad(a8[t], COLS, aq[t]); }
     const q23s_act *ap[4] = {as[0], as[1], as[2], as[3]}, *apn[4] = {an[0], an[1], an[2], an[3]}, *apq[4] = {aq[0], aq[1], aq[2], aq[3]};
     static uint8_t rp[NB * 106];
-    for (int kid = 0; kid < 13; ++kid) {
-        const int fmt = (kid == 8 || kid == 12) ? 3 : (kid >= 6) ? 2 : (kid & 1);      /* 0 q2 1 q3 2 iq2xxs 3 iq1s */
+    for (int kid = 0; kid < 17; ++kid) {
+        static const int FMT[17] = {0, 1, 0, 1, 0, 1, 2, 2, 3, 2, 2, 2, 3, 0, 1, 2, 3};   /* 0 q2 1 q3 2 iq2xxs 3 iq1s */
+        const int fmt = FMT[kid];
         const size_t bs = fmt == 0 ? 84 : fmt == 1 ? 110 : fmt == 2 ? 66 : 50;
         const int rows_per_call = (kid == 4 || kid == 5) ? 2 : 1;
         uint8_t *w = malloc(bs * NB * ROWS); double y[256];
@@ -150,7 +151,11 @@ int main(void)
                 case 9: iq2xxs_sdot_row_tbl(COLS, row, apq, nt, got, 0); break;
                 case 10: iq2xxs_repack(row, rp, NB, 1); iq2xxs_sdot_row_tbl(COLS, rp, apq, nt, got, 1); break;
                 case 11: iq2xxs_repack(row, rp, NB, 2); iq2xxs_sdot_row_tbl(COLS, rp, apq, nt, got, 2); break;
-                default: iq1s_repack(row, rp, NB); iq1s_sdot_row_rpc(COLS, rp, apq, nt, got); break;
+                case 12: iq1s_repack(row, rp, NB); iq1s_sdot_row_rpc(COLS, rp, apq, nt, got); break;
+                case 13: q2k_sdot_row_v3(COLS, row, ap, nt, got); break;
+                case 14: q3k_sdot_row_v3(COLS, row, ap, nt, got); break;
+                case 15: iq2xxs_sdot_row_v3(COLS, row, apn, nt, got); break;
+                default: iq1s_sdot_row_v3(COLS, row, apn, nt, got); break;
                 }
                 for (int rr = 0; rr < rows_per_call; ++rr)
                     for (int t = 0; t < nt; ++t) {

@@ -90,19 +90,38 @@ GI="-I$LLAMA_SRC/ggml/src -Itools/a64fx_probe"
        -L"$LLAMA_BUILD/bin" -lggml-cpu -lggml-base -o "$ROOT/q23_sdot_bench"; } > "$OUT/sdot.build.log" 2>&1 \
   || { tail -30 "$OUT/sdot.build.log"; echo "A64FX_PROBE FAIL sdot build"; exit 1; }
 "$ROOT/q23_sdot_test" | sed 's/^/A64FX_SDOT_TEST /' | tee "$OUT/sdot-test.log"
+# optional: the same kernels compiled by a recent LLVM with the A64FX scheduling model (LLVM_MODULE=LLVM/llvmorg-23.1.0);
+# only the kernel objects change, the harness stays FCC
+BENCHES="$ROOT/q23_sdot_bench"
+if [ -n "${LLVM_MODULE:-}" ]; then
+  ( type module >/dev/null 2>&1 || source /etc/profile.d/modules.sh >/dev/null 2>&1
+    module load "$LLVM_MODULE" >/dev/null 2>&1
+    clang --version | head -1
+    clang -O3 -mcpu=a64fx $GI -c tools/a64fx_probe/q23_sdot_sve.c -o "$ROOT/q23_sdot_sve.llvm.o" \
+      && clang -O3 -mcpu=a64fx $GI -c tools/a64fx_probe/iq_sdot_sve.c -o "$ROOT/iq_sdot_sve.llvm.o" ) > "$OUT/sdot-llvm.build.log" 2>&1 \
+  && $CXX $CFLAGS -std=c++17 -I"$LLAMA_SRC/ggml/include" $GI tools/a64fx_probe/q23_sdot_bench.cpp "$ROOT/q23_sdot_sve.llvm.o" "$ROOT/iq_sdot_sve.llvm.o" \
+       -L"$LLAMA_BUILD/bin" -lggml-cpu -lggml-base -o "$ROOT/q23_sdot_bench_llvm" >> "$OUT/sdot-llvm.build.log" 2>&1 \
+  && BENCHES="$BENCHES $ROOT/q23_sdot_bench_llvm" && echo "A64FX_SDOT llvm build PASS $(head -1 "$OUT/sdot-llvm.build.log")" \
+  || { echo "A64FX_SDOT llvm build FAIL"; tail -5 "$OUT/sdot-llvm.build.log"; }
+fi
 S="$ROOT/q23_sdot_bench"
-"$S" --check-only --threads 1 | tee "$OUT/sdot-check.log"
+for B in $BENCHES; do "$B" --check-only --threads 1 | tee -a "$OUT/sdot-check.log"; done
 grep -q FAIL "$OUT/sdot-test.log" "$OUT/sdot-check.log" && { echo "A64FX_PROBE FAIL sdot parity"; exit 1; }
+KF=${SDOT_KERNELS:+--kernels $SDOT_KERNELS}
+for B in $BENCHES; do
+CC_TAG=fcc; case "$B" in *_llvm) CC_TAG=llvm;; esac
+S() { "$B" "$@" $KF | sed "s/^A64FX_SDOT kernel=/A64FX_SDOT cc=$CC_TAG kernel=/"; }
 SDOT_TYPES=${SDOT_TYPES:-q2_k,q3_k,iq2_xxs,iq1_s}     # e.g. SDOT_TYPES=q2_k,iq2_xxs,iq1_s for an IQ round
 has_t() { case ",$SDOT_TYPES," in *",$1,"*) return 0;; esac; return 1; }
 for th in ${SDOT_THREADS:-1 48}; do
   MB=$((th == 1 ? 128 : 2048))
-  "$S" --threads $th --mb $MB --rows 2048 --cols 4096 --types "$SDOT_TYPES" | tee -a "$OUT/sdot-glm-gateup.log"
-  has_t q3_k && "$S" --threads $th --mb $MB --rows 4096 --cols 2048 --types q3_k | tee -a "$OUT/sdot-glm-down.log"
+  S --threads $th --mb $MB --rows 2048 --cols 4096 --types "$SDOT_TYPES" | tee -a "$OUT/sdot-glm-gateup.log"
+  has_t q3_k && S --threads $th --mb $MB --rows 4096 --cols 2048 --types q3_k | tee -a "$OUT/sdot-glm-down.log"
 done
 DS=$(echo "$SDOT_TYPES" | tr ',' '\n' | grep -E '^(q2_k|iq2_xxs|iq1_s)$' | paste -sd, -)
-[ -n "$DS" ] && "$S" --threads 48 --mb 2048 --rows 2304 --cols 5120 --types "$DS" --tokens 1,4 | tee "$OUT/sdot-ds41f.log"
-has_t q2_k && "$S" --threads 48 --mb 2048 --rows 5120 --cols 2304 --types q2_k --tokens 1,4 | tee -a "$OUT/sdot-ds41f.log"
+[ -n "$DS" ] && S --threads 48 --mb 2048 --rows 2304 --cols 5120 --types "$DS" --tokens 1,4 | tee -a "$OUT/sdot-ds41f.log"
+has_t q2_k && S --threads 48 --mb 2048 --rows 5120 --cols 2304 --types q2_k --tokens 1,4 | tee -a "$OUT/sdot-ds41f.log"
+done
 fi
 
 # ---- 5. node constants: HBM stream, barriers, fork-join

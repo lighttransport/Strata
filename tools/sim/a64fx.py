@@ -33,10 +33,11 @@ _KERN = json.loads((DATA / "measured_a64fx_kernels.json").read_text())
 
 
 def sdot_q23_mix():
-    """The q23 pack (Q2_K gate + up, Q3_K down) through the measured single-row SDOT kernels (v2, one session):
-    node GB/s at one token and the time per byte at 1..4 tokens per expert relative to one token."""
-    t = _KERN["sdot_kernel_v2"]["node48_gbps_tokens_1_to_4"]
-    q2, q3 = t["q2_K_2048x4096"]["v2"], t["q3_K_4096x2048"]["v2"]
+    """The q23 pack (Q2_K gate + up, Q3_K down) through the measured SDOT kernels as the runner would build them
+    (clang 21 -mcpu=a64fx, best kernel per width, one session): node GB/s at one token and the time per byte at 1..4
+    tokens per expert relative to one token."""
+    t = _KERN["sdot_kernel_v3"]["chosen_llvm_best_per_width"]
+    q2, q3 = t["q2_K_2048x4096"], t["q3_K_4096x2048"]
     times = [2 * 84 / a + 110 / b for a, b in zip(q2, q3)]     # bytes per 256 weights of gate + up + down
     return (2 * 84 + 110) / times[0], tuple(round(x / times[0], 3) for x in times)
 
@@ -322,10 +323,10 @@ def redesign():
         mhc_site_us=(23.0, 23.0),      # standalone local-gram mHC kernel (handoff: ~23 us vs 48 legacy)
         router_us=12.0, expert_fixed_us=3.0,
         expert_q4_gbps=400.0,          # Q4_K gate/up measured 156 GB/s standalone v0 kernel; chain-level streaming assumed
-        expert_q2k_gbps=round(_Q23_RATE, 1),   # measured: SDOT v2 Q2_K gate/up 180.3 + Q3_K down 138.0 GB/s per node -> 160.8
-                                       # bytes-weighted (job 52438878; the same Q2_K kernel ran 198 on another node, ~9 %
-                                       # node spread); standalone, the in-model rate is not measured
-        expert_width_cost=_Q23_COSTS,  # same kernels at 2/3/4 tokens per expert (compute-bound, measured): 1.52 / 2.11 / 2.88
+        expert_q2k_gbps=round(_Q23_RATE, 1),   # measured: SDOT Q2_K gate/up 182.3 + Q3_K down 134.6 GB/s per node -> 159.9
+                                       # bytes-weighted (clang 21 -mcpu=a64fx, job 52440185; ~9 % node-to-node spread);
+                                       # standalone, the in-model rate is not measured
+        expert_width_cost=_Q23_COSTS,  # same kernels at 2/3/4 tokens per expert (compute-bound, measured): 1.47 / 1.74 / 2.05
         slice_penalty=0.04,            # HYPOTHESIS: 512-bit tiles keep narrow slices efficient
         moe_skew_frac=0.5, moe_collective="auto", head_fixed_ms=0.3,
         phase_us=1.38 + 1.6, phases_per_moe_layer=8, phases_per_dense_layer=4,   # libhwb barrier (measured) + dispatch

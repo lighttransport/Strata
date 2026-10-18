@@ -155,9 +155,11 @@ class UntouchedTest(unittest.TestCase):
 class A64FXSdotTest(unittest.TestCase):
     def test_width_cost_interpolates_the_measured_points(self):
         self.assertEqual(ds41f.a64fx_sdot_cost("IQ2_XXS", 1), 1.0)
-        self.assertAlmostEqual(ds41f.a64fx_sdot_cost("Q2_K", 2), 1.508)
-        self.assertAlmostEqual(ds41f.a64fx_sdot_cost("Q2_K", 2.5), (1.508 + 2.265) / 2)
-        self.assertGreater(ds41f.a64fx_sdot_cost("Q2_K", 5), 3.158)
+        c = ds41f.A64FX_SDOT_WIDTH_COST["Q2_K"]
+        self.assertAlmostEqual(ds41f.a64fx_sdot_cost("Q2_K", 2), c[1])
+        self.assertAlmostEqual(ds41f.a64fx_sdot_cost("Q2_K", 2.5), (c[1] + c[2]) / 2)
+        self.assertGreater(ds41f.a64fx_sdot_cost("Q2_K", 5), c[3])
+        self.assertTrue(all(b > a for a, b in zip(c, c[1:])))
 
     def test_iq_packs_use_the_measured_kernels(self):
         # IQ2_XXS/IQ1_S stream 3x slower per byte than Q2_K on the SDOT kernels: their expert time is no longer the

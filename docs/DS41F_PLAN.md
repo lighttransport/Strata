@@ -289,7 +289,9 @@ assumes 2 ms per page: a 4 GB RAM row cache and issue-at-token-id with 13 layers
 `svdot_s32`, fused W1/W3 pair ~380 GMAC/s per node; quality cosine 0.988 is an activation-quantization question for the
 gate) inside the Strata A64FX port. 6/8 nodes: SVE Q2_K and IQ kernels. Measured 2026-10-18 on one node: Strata's SDOT
 kernels (`tools/a64fx_probe/q23_sdot_sve.c`, `iq_sdot_sve.c`, parity with ggml within 2.4e-7) stream per node, on the
-2304 x 5120 gate/up shape, Q2_K 192 GB/s, IQ2_XXS 85 and IQ1_S 60 (ggml 95 / 11 / 8), and Q2_K down (5120 x 2304) 133.
+2304 x 5120 gate/up shape, Q2_K 180-192 GB/s, IQ2_XXS 78-85 and IQ1_S 60 (ggml 95 / 11 / 8), and Q2_K down (5120 x 2304)
+133-136; built with clang 21 -mcpu=a64fx the kernels are 25-45 % faster than with FCC at 2-4 tokens (the simulator uses
+that build, job 52440185).
 The IQ kernels are 7x ggml but still 2-3x slower per byte than Q2_K, so in the simulator the 6-node IQ packs drop from
 the old 250 GB/s hypothesis (~70 tok/s) to 51-54 tok/s redesigned (data: `tools/sim/data/measured_a64fx_kernels.json`;
 ggml's 11/8 GB/s are why the `current` A64FX rows for IQ packs are slow). The IQ kernels fetch eight grid entries per

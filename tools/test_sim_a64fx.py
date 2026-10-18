@@ -206,8 +206,8 @@ class UntouchedTest(unittest.TestCase):
 
 class MeasuredKernelTest(unittest.TestCase):
     def test_redesign_q2_rate_is_the_measured_sdot_mix(self):
-        d = json.loads((a64fx.DATA / "measured_a64fx_kernels.json").read_text())["sdot_kernel_v2"]["node48_gbps_tokens_1_to_4"]
-        q2, q3 = d["q2_K_2048x4096"]["v2"][0], d["q3_K_4096x2048"]["v2"][0]
+        d = json.loads((a64fx.DATA / "measured_a64fx_kernels.json").read_text())["sdot_kernel_v3"]["chosen_llvm_best_per_width"]
+        q2, q3 = d["q2_K_2048x4096"][0], d["q3_K_4096x2048"][0]
         mix = (2 * 84 + 110) / (2 * 84 / q2 + 110 / q3)        # gate + up Q2_K, down Q3_K, bytes per 256 weights
         self.assertAlmostEqual(a64fx.redesign().expert_q2k_gbps, mix, delta=0.2)
 

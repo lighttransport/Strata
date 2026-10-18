@@ -15,6 +15,7 @@ What the model is, in bytes:
 - KV 890 B per token (compressed FP4 latent + indexer keys, four source layers), 0.94 GB at 1M tokens.
 """
 import dataclasses
+import json
 import math
 import pathlib
 import sys
@@ -530,17 +531,26 @@ A64FX_CURRENT = dict(attn_us_per_layer=433.0,     # 17.34 ms / 40 (current runne
                      mhc_site_us=0.0, phase_us=0.0, prefill_per_pos_factor=29.9 / 40.7)
 # ggml-cpu SVE vec_dot per node (48 threads), measured 2026-10-18 (tools/sim/data/measured_a64fx_kernels.json); all compute-bound
 A64FX_GGML_NODE_GBPS = {"Q2_K": 97.0, "Q3_K": 55.6, "Q4_K": 76.0, "IQ2_XXS": 11.2, "IQ2_S": 10.5, "IQ1_S": 8.2, "Q8_0": 432.1}
-# The A64FX SDOT kernels per node, 48 threads, one token, measured 2026-10-18 in one session (job 52438878,
-# tools/sim/data/measured_a64fx_kernels.json "sdot_kernel_v2"; tools/a64fx_probe/q23_sdot_sve.c, iq_sdot_sve.c).
-# gate/up on the DS4.1F 2304 x 5120 shape, down on 5120 x 2304 where measured; Q3_K from GLM's shapes; an IQ format used
-# as down takes its gate/up rate (not measured on the down shape).
-A64FX_SDOT_GATEUP_GBPS = {"Q2_K": 192.2, "Q3_K": 171.8, "IQ2_XXS": 84.8, "IQ1_S": 60.3}
-A64FX_SDOT_DOWN_GBPS = {"Q2_K": 133.4, "Q3_K": 138.0, "IQ2_XXS": 84.8, "IQ1_S": 60.3}
-# time per weight byte at 1..4 tokens per expert relative to one token (GLM shapes, same session): compute-bound kernels
-A64FX_SDOT_WIDTH_COST = {"Q2_K": (1.0, 1.508, 2.265, 3.158), "Q3_K": (1.0, 1.538, 1.936, 2.551),
-                         "IQ2_XXS": (1.0, 1.372, 1.541, 1.696), "IQ1_S": (1.0, 1.381, 1.698, 2.139)}
-# IQ2_XXS: the best equal-size kernel per width (gather at one token, the gather-free svtbl decode at 2-4 tokens, job
-# 52439675 "iq_gather_free"); the repacked/expanded layouts cost memory the 6-node plans do not have
+# The A64FX SDOT kernels per node, 48 threads, as the runner would build them: clang 21 -mcpu=a64fx, the best kernel per
+# width, one session (job 52440185; tools/sim/data/measured_a64fx_kernels.json "sdot_kernel_v3"). gate/up on the DS4.1F
+# 2304 x 5120 shape, down on 5120 x 2304 where measured; Q3_K from GLM's shapes; an IQ format used as down takes its
+# gate/up rate (not measured on the down shape).
+def _sdot_tables():
+    data = json.loads((pathlib.Path(__file__).resolve().parent / "data" / "measured_a64fx_kernels.json").read_text())
+    c = data["sdot_kernel_v3"]["chosen_llvm_best_per_width"]
+    gateup = {"Q2_K": c["q2_K_2304x5120"][0], "Q3_K": c["q3_K_2048x4096"][0], "IQ2_XXS": c["iq2_xxs_2304x5120"][0], "IQ1_S": c["iq1_s_2304x5120"][0]}
+    down = {"Q2_K": c["q2_K_5120x2304"][0], "Q3_K": c["q3_K_4096x2048"][0], "IQ2_XXS": gateup["IQ2_XXS"], "IQ1_S": gateup["IQ1_S"]}
+    curve = lambda s: tuple(round(s[0] / v, 3) for v in s)
+    width = {"Q2_K": curve(c["q2_K_2048x4096"]), "Q3_K": curve(c["q3_K_4096x2048"]), "IQ1_S": curve(c["iq1_s_2048x4096"])}
+    # IQ2_XXS: the best equal-size kernel per width across sessions (the in-register svtbl decode won at 2-4 tokens,
+    # job 52439675 "iq_gather_free"), so a width-dispatching runner gets the lower of the two ratios
+    gf = data["iq_gather_free"]["node48_gbps_tokens_1_to_4"]["iq2_xxs_2048x4096"]
+    env_gf = [max(gf["gather"][i], gf["tbl"][i]) for i in range(4)]
+    width["IQ2_XXS"] = tuple(min(a, b) for a, b in zip(curve(c["iq2_xxs_2048x4096"]), curve(env_gf)))
+    return gateup, down, width
+
+
+A64FX_SDOT_GATEUP_GBPS, A64FX_SDOT_DOWN_GBPS, A64FX_SDOT_WIDTH_COST = _sdot_tables()
 
 
 def a64fx_sdot_cost(fmt, tpe):

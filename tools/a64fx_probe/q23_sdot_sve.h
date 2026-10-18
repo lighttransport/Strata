@@ -57,6 +57,12 @@ void iq1s_sdot_row(int cols, const void *w, const q23s_act *const *acts, int nt,
 enum { IQ2XXS_RP_BYTES = 74, IQ2XXS_RPC_BYTES = 106, IQ1S_RPC_BYTES = 82 };
 void iq2xxs_repack(const void *src, void *dst, int nblocks, int layout);   /* layout 1 or 2 */
 void iq1s_repack(const void *src, void *dst, int nblocks);
+/* v3: software-pipelined single-row kernels (block i+1 decoded, its gathers issued, before block i's token math;
+ * per-block scales kept in vector registers). Same activations as v2 / the gather kernels. */
+void q2k_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
+void q3k_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
+void iq2xxs_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
+void iq1s_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
 void iq2xxs_sdot_row_tbl(int cols, const void *w, const q23s_act *const *acts, int nt, float *out, int layout);
 void iq1s_sdot_row_rpc(int cols, const void *w, const q23s_act *const *acts, int nt, float *out);
 

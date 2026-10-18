@@ -63,9 +63,9 @@ Act make_act(int cols, unsigned seed) {
 struct Kernel { std::string name; int rows_per_call; int block_bytes = 0; };   // block_bytes: repacked layout, 0 = source
 
 std::vector<Kernel> kernels_for(ggml_type t) {
-    if (t == GGML_TYPE_Q2_K || t == GGML_TYPE_Q3_K) return {{"ggml", 1}, {"v1", 1}, {"v2", 1}, {"v2r2", 2}};
-    if (t == GGML_TYPE_IQ2_XXS) return {{"ggml", 1}, {"reg", 1}, {"gather", 1}, {"tbl", 1}, {"rp", 1, IQ2XXS_RP_BYTES}, {"rpc", 1, IQ2XXS_RPC_BYTES}};
-    return {{"ggml", 1}, {"iq", 1}, {"rpc", 1, IQ1S_RPC_BYTES}};
+    if (t == GGML_TYPE_Q2_K || t == GGML_TYPE_Q3_K) return {{"ggml", 1}, {"v1", 1}, {"v2", 1}, {"v2r2", 2}, {"v3", 1}};
+    if (t == GGML_TYPE_IQ2_XXS) return {{"ggml", 1}, {"reg", 1}, {"gather", 1}, {"tbl", 1}, {"rp", 1, IQ2XXS_RP_BYTES}, {"rpc", 1, IQ2XXS_RPC_BYTES}, {"v3", 1}};
+    return {{"ggml", 1}, {"iq", 1}, {"rpc", 1, IQ1S_RPC_BYTES}, {"v3", 1}};
 }
 
 // source rows -> the kernel's repacked layout (same row count)
@@ -87,16 +87,20 @@ void run(ggml_type t, const std::string& k, int cols, const uint8_t* row, size_t
         const auto* tr = ggml_get_type_traits_cpu(t);
         for (int i = 0; i < nt; ++i) tr->vec_dot(cols, &out[i], 0, row, 0, acts[i].q8k.data(), 0, 1);
     } else if (t == GGML_TYPE_Q2_K) {
-        if (k == "v1") q2k_sdot_row(cols, row, ap, nt, out); else q2k_sdot_rows_v2(cols, row, rb, k == "v2r2" ? 2 : 1, ap, nt, out);
+        if (k == "v1") q2k_sdot_row(cols, row, ap, nt, out); else if (k == "v3") q2k_sdot_row_v3(cols, row, ap, nt, out);
+        else q2k_sdot_rows_v2(cols, row, rb, k == "v2r2" ? 2 : 1, ap, nt, out);
     } else if (t == GGML_TYPE_Q3_K) {
-        if (k == "v1") q3k_sdot_row(cols, row, ap, nt, out); else q3k_sdot_rows_v2(cols, row, rb, k == "v2r2" ? 2 : 1, ap, nt, out);
+        if (k == "v1") q3k_sdot_row(cols, row, ap, nt, out); else if (k == "v3") q3k_sdot_row_v3(cols, row, ap, nt, out);
+        else q3k_sdot_rows_v2(cols, row, rb, k == "v2r2" ? 2 : 1, ap, nt, out);
     } else if (t == GGML_TYPE_IQ2_XXS) {
         if (k == "tbl") iq2xxs_sdot_row_tbl(cols, row, aq, nt, out, 0);
         else if (k == "rp") iq2xxs_sdot_row_tbl(cols, row, aq, nt, out, 1);
         else if (k == "rpc") iq2xxs_sdot_row_tbl(cols, row, aq, nt, out, 2);
+        else if (k == "v3") iq2xxs_sdot_row_v3(cols, row, an, nt, out);
         else iq2xxs_sdot_row(cols, row, an, nt, out, k == "gather" ? 1 : 0);
     } else {
-        if (k == "rpc") iq1s_sdot_row_rpc(cols, row, aq, nt, out); else iq1s_sdot_row(cols, row, an, nt, out);
+        if (k == "rpc") iq1s_sdot_row_rpc(cols, row, aq, nt, out); else if (k == "v3") iq1s_sdot_row_v3(cols, row, an, nt, out);
+        else iq1s_sdot_row(cols, row, an, nt, out);
     }
 }
 

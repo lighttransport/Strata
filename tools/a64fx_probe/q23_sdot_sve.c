@@ -338,3 +338,124 @@ void q3k_sdot_rows_v2(int cols, const void *w, size_t stride, int nrows, const q
                       case 3: q3k_v2(nb, w0, w0, acts, 3, 1, out); break; default: q3k_v2(nb, w0, w0, acts, 4, 1, out); }
     }
 }
+
+/* ============================================================================================================ v3 */
+/* Software pipelining: the decoded state of block i+1 is produced before block i's token math, so the core's small
+ * scheduling queues always hold independent work; scales stay in vector registers (fp16 broadcast + convert). */
+static inline __attribute__((always_inline)) svfloat32_t h2v(svbool_t p32, const uint16_t *h)
+{
+    return svcvt_f32_f16_x(p32, svreinterpret_f16_u16(svdup_n_u16(*h)));
+}
+
+#define Q2V3_DEC(b, A0_, A1_, A2_, A3_, MN_, D_, DM_)                                                   \
+    {                                                                                                   \
+        const svuint8_t q = svld1_u8(p8, (b)->qs);                                                      \
+        const svuint8_t sc = svand_n_u8_x(p8, svld1_u8(p16, (b)->scales), 15);                          \
+        A0_ = svreinterpret_s8_u8(svmul_u8_x(p8, svand_n_u8_x(p8, q, 3), svtbl_u8(sc, J0)));            \
+        A1_ = svreinterpret_s8_u8(svmul_u8_x(p8, svand_n_u8_x(p8, svlsr_n_u8_x(p8, q, 2), 3), svtbl_u8(sc, J1))); \
+        A2_ = svreinterpret_s8_u8(svmul_u8_x(p8, svand_n_u8_x(p8, svlsr_n_u8_x(p8, q, 4), 3), svtbl_u8(sc, J2))); \
+        A3_ = svreinterpret_s8_u8(svmul_u8_x(p8, svlsr_n_u8_x(p8, q, 6), svtbl_u8(sc, J3)));           \
+        MN_ = svreinterpret_s32_u32(svlsr_n_u32_x(p32, svld1ub_u32(p32, (b)->scales), 4));              \
+        D_ = h2v(p32, &(b)->d); DM_ = h2v(p32, &(b)->dmin);                                             \
+    }
+
+#define Q2V3_TOK(k)                                                                                     \
+    if (NT > k) {                                                                                       \
+        const q23s_act *x = a##k + i;                                                                   \
+        const svint32_t s01 = svdot_s32(svdot_s32(z, c0, svld1_s8(p8, x->x)), c1, svld1_s8(p8, x->x + 64)); \
+        const svint32_t s23 = svdot_s32(svdot_s32(z, c2, svld1_s8(p8, x->x + 128)), c3, svld1_s8(p8, x->x + 192)); \
+        const svint32_t m = svmul_s32_x(p32, cmn, svld1_s32(p32, x->bsum));                             \
+        const svfloat32_t xd = svdup_n_f32(x->d);                                                       \
+        A##k = svmla_f32_x(p32, A##k, svcvt_f32_s32_x(p32, svadd_s32_x(p32, s01, s23)), svmul_f32_x(p32, cd, xd)); \
+        B##k = svmla_f32_x(p32, B##k, svcvt_f32_s32_x(p32, m), svmul_f32_x(p32, cdm, xd));              \
+    }
+
+static inline __attribute__((always_inline)) void q2k_v3(int nb, const blk_q2k *w, const q23s_act *const *acts,
+                                                         const int NT, float *out)
+{
+    const svbool_t p8 = svptrue_b8(), p32 = svptrue_b32(), p16 = svwhilelt_b8_s32(0, 16);
+    const svuint8_t J0 = svld1_u8(p8, JB[0]), J1 = svld1_u8(p8, JB[1]), J2 = svld1_u8(p8, JB[2]), J3 = svld1_u8(p8, JB[3]);
+    const svint32_t z = svdup_s32(0);
+    ACTS
+    svfloat32_t A0 = svdup_f32(0), A1 = A0, A2 = A0, A3 = A0, B0 = A0, B1 = A0, B2 = A0, B3 = A0;
+    svint8_t c0, c1, c2, c3; svint32_t cmn; svfloat32_t cd, cdm;
+    Q2V3_DEC(w, c0, c1, c2, c3, cmn, cd, cdm)
+    for (int i = 0; i < nb; ++i) {
+        svint8_t n0 = c0, n1 = c1, n2 = c2, n3 = c3; svint32_t nmn = cmn; svfloat32_t nd = cd, ndm = cdm;
+        if (i + 1 < nb) Q2V3_DEC(w + i + 1, n0, n1, n2, n3, nmn, nd, ndm)
+        Q2V3_TOK(0) Q2V3_TOK(1) Q2V3_TOK(2) Q2V3_TOK(3)
+        c0 = n0; c1 = n1; c2 = n2; c3 = n3; cmn = nmn; cd = nd; cdm = ndm;
+    }
+    out[0] = svaddv_f32(p32, svsub_f32_x(p32, A0, B0));
+    if (NT > 1) out[1] = svaddv_f32(p32, svsub_f32_x(p32, A1, B1));
+    if (NT > 2) out[2] = svaddv_f32(p32, svsub_f32_x(p32, A2, B2));
+    if (NT > 3) out[3] = svaddv_f32(p32, svsub_f32_x(p32, A3, B3));
+}
+
+void q2k_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out)
+{
+    jb_init();
+    const int nb = cols / 256; const blk_q2k *b = (const blk_q2k *) w;
+    switch (nt) { case 1: q2k_v3(nb, b, acts, 1, out); break; case 2: q2k_v3(nb, b, acts, 2, out); break;
+                  case 3: q2k_v3(nb, b, acts, 3, out); break; default: q2k_v3(nb, b, acts, 4, out); }
+}
+
+#define Q3V3_DEC(b, W0_, W1_, W2_, W3_, SC_, D_)                                                       \
+    {                                                                                                   \
+        const svuint32_t raw = svld1ub_u32(p12, (b)->scales);                                           \
+        SC_ = svsub_n_s32_x(p32, svreinterpret_s32_u32(svorr_u32_x(p32,                                \
+            svand_n_u32_x(p32, svlsr_u32_x(p32, svtbl_u32(raw, L), LS), 15),                           \
+            svlsl_n_u32_x(p32, svand_n_u32_x(p32, svlsr_u32_x(p32, svtbl_u32(raw, H), HS), 3), 4))), 32); \
+        const svuint8_t q = svld1_u8(p8, (b)->qs);                                                      \
+        const svuint8_t hh = svlsr_n_u8_m(phi, svtbl_u8(svld1_u8(plo, (b)->hmask), dup), 4);            \
+        W0_ = svreinterpret_s8_u8(svorr_u8_x(p8, svand_n_u8_x(p8, q, 3), svand_u8_x(p8, svlsl_n_u8_x(p8, hh, 2), four))); \
+        W1_ = svreinterpret_s8_u8(svorr_u8_x(p8, svand_n_u8_x(p8, svlsr_n_u8_x(p8, q, 2), 3), svand_u8_x(p8, svlsl_n_u8_x(p8, hh, 1), four))); \
+        W2_ = svreinterpret_s8_u8(svorr_u8_x(p8, svand_n_u8_x(p8, svlsr_n_u8_x(p8, q, 4), 3), svand_u8_x(p8, hh, four))); \
+        W3_ = svreinterpret_s8_u8(svorr_u8_x(p8, svlsr_n_u8_x(p8, q, 6), svand_u8_x(p8, svlsr_n_u8_x(p8, hh, 1), four))); \
+        D_ = h2v(p32, &(b)->d);                                                                         \
+    }
+
+#define Q3V3_TOK(k)                                                                                     \
+    if (NT > k) {                                                                                       \
+        const q23s_act *x = a##k + i;                                                                   \
+        const svint32_t v01 = svmla_s32_x(p32, svmul_s32_x(p32, svdot_s32(z, c0, svld1_s8(p8, x->x)), svtbl_s32(csc, I0)), \
+                                          svdot_s32(z, c1, svld1_s8(p8, x->x + 64)), svtbl_s32(csc, I1)); \
+        const svint32_t v23 = svmla_s32_x(p32, svmul_s32_x(p32, svdot_s32(z, c2, svld1_s8(p8, x->x + 128)), svtbl_s32(csc, I2)), \
+                                          svdot_s32(z, c3, svld1_s8(p8, x->x + 192)), svtbl_s32(csc, I3)); \
+        const svint32_t cc = svmul_s32_x(p32, csc, svld1_s32(p32, x->bsum));                            \
+        const svfloat32_t dd = svmul_f32_x(p32, cd, svdup_n_f32(x->d));                                 \
+        A##k = svmla_f32_x(p32, A##k, svcvt_f32_s32_x(p32, svadd_s32_x(p32, v01, v23)), dd);            \
+        B##k = svmla_f32_x(p32, B##k, svcvt_f32_s32_x(p32, cc), svmul_n_f32_x(p32, dd, 4.0f));          \
+    }
+
+static inline __attribute__((always_inline)) void q3k_v3(int nb, const blk_q3k *w, const q23s_act *const *acts,
+                                                         const int NT, float *out)
+{
+    const svbool_t p8 = svptrue_b8(), p32 = svptrue_b32();
+    const svbool_t plo = svwhilelt_b8_s32(0, 32), phi = svnot_b_z(p8, plo), p12 = svwhilelt_b32_s32(0, 12);
+    const svuint32_t I0 = svld1_u32(p32, IDX[0]), I1 = svld1_u32(p32, IDX[1]), I2 = svld1_u32(p32, IDX[2]), I3 = svld1_u32(p32, IDX[3]);
+    const svuint32_t L = svld1_u32(p32, SC_L), LS = svld1_u32(p32, SC_LS), H = svld1_u32(p32, SC_H), HS = svld1_u32(p32, SC_HS);
+    const svuint8_t dup = svand_n_u8_x(p8, svindex_u8(0, 1), 31), four = svdup_u8(4);
+    const svint32_t z = svdup_s32(0);
+    ACTS
+    svfloat32_t A0 = svdup_f32(0), A1 = A0, A2 = A0, A3 = A0, B0 = A0, B1 = A0, B2 = A0, B3 = A0;
+    svint8_t c0, c1, c2, c3; svint32_t csc; svfloat32_t cd;
+    Q3V3_DEC(w, c0, c1, c2, c3, csc, cd)
+    for (int i = 0; i < nb; ++i) {
+        svint8_t n0 = c0, n1 = c1, n2 = c2, n3 = c3; svint32_t nsc = csc; svfloat32_t nd = cd;
+        if (i + 1 < nb) Q3V3_DEC(w + i + 1, n0, n1, n2, n3, nsc, nd)
+        Q3V3_TOK(0) Q3V3_TOK(1) Q3V3_TOK(2) Q3V3_TOK(3)
+        c0 = n0; c1 = n1; c2 = n2; c3 = n3; csc = nsc; cd = nd;
+    }
+    out[0] = svaddv_f32(p32, svsub_f32_x(p32, A0, B0));
+    if (NT > 1) out[1] = svaddv_f32(p32, svsub_f32_x(p32, A1, B1));
+    if (NT > 2) out[2] = svaddv_f32(p32, svsub_f32_x(p32, A2, B2));
+    if (NT > 3) out[3] = svaddv_f32(p32, svsub_f32_x(p32, A3, B3));
+}
+
+void q3k_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out)
+{
+    const int nb = cols / 256; const blk_q3k *b = (const blk_q3k *) w;
+    switch (nt) { case 1: q3k_v3(nb, b, acts, 1, out); break; case 2: q3k_v3(nb, b, acts, 2, out); break;
+                  case 3: q3k_v3(nb, b, acts, 3, out); break; default: q3k_v3(nb, b, acts, 4, out); }
+}

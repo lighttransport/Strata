@@ -394,3 +394,103 @@ void iq1s_sdot_row_rpc(int cols, const void *w, const q23s_act *const *acts, int
     switch (nt) { case 1: iq1s_rpc_row(nb, b, acts, 1, out); break; case 2: iq1s_rpc_row(nb, b, acts, 2, out); break;
                   case 3: iq1s_rpc_row(nb, b, acts, 3, out); break; default: iq1s_rpc_row(nb, b, acts, 4, out); }
 }
+
+/* ===================================================================================== v3: pipelined gathers */
+#define IQV3_TOK(k)                                                                                     \
+    if (NT > k) {                                                                                       \
+        const q23s_act *x = a##k + i;                                                                   \
+        const svint32_t v = svmla_s32_x(p32, svmul_s32_x(p32, svdot_s32(z, c0, svld1_s8(p8, x->x)), svtbl_s32(cls, L0)), \
+                                        svdot_s32(z, c1, svld1_s8(p8, x->x + 64)), svtbl_s32(cls, L1)); \
+        const svint32_t u = svmla_s32_x(p32, svmul_s32_x(p32, svdot_s32(z, c2, svld1_s8(p8, x->x + 128)), svtbl_s32(cls, L2)), \
+                                        svdot_s32(z, c3, svld1_s8(p8, x->x + 192)), svtbl_s32(cls, L3)); \
+        A##k = svmla_f32_x(p32, A##k, svcvt_f32_s32_x(p32, svadd_s32_x(p32, v, u)), svmul_f32_x(p32, cd, svdup_n_f32(x->d))); \
+    }
+
+#define IQV3_STORE                                                                                      \
+    out[0] = svaddv_f32(p32, A0);                                                                       \
+    if (NT > 1) out[1] = svaddv_f32(p32, A1);                                                           \
+    if (NT > 2) out[2] = svaddv_f32(p32, A2);                                                           \
+    if (NT > 3) out[3] = svaddv_f32(p32, A3);
+
+static inline __attribute__((always_inline)) svfloat32_t h2v8(svbool_t p32, const uint16_t *h)
+{
+    return svmul_n_f32_x(p32, svcvt_f32_f16_x(p32, svreinterpret_f16_u16(svdup_n_u16(*h))), 0.125f);
+}
+
+#define IQ2V3_DEC(b, W0_, W1_, W2_, W3_, LS_, D_)                                                      \
+    {                                                                                                   \
+        const svuint8_t Q = svld1_u8(p8, (b)->qs);                                                      \
+        const svuint32_t s4 = svlsr_n_u32_x(p32, svreinterpret_u32_u8(svtbl_u8(Q, Sci)), 4);            \
+        LS_ = svreinterpret_s32_u32(svadd_n_u32_x(p32, svlsl_n_u32_x(p32, s4, 1), 1));                  \
+        W0_ = iq2_plane(p8, p64, Q, 0, 1, Rep, Bits); W1_ = iq2_plane(p8, p64, Q, 1, 1, Rep, Bits);     \
+        W2_ = iq2_plane(p8, p64, Q, 2, 1, Rep, Bits); W3_ = iq2_plane(p8, p64, Q, 3, 1, Rep, Bits);     \
+        D_ = h2v8(p32, &(b)->d);                                                                        \
+    }
+
+static inline __attribute__((always_inline)) void iq2xxs_v3(int nb, const blk_iq2xxs *w, const q23s_act *const *acts,
+                                                            const int NT, float *out)
+{
+    const svbool_t p8 = svptrue_b8(), p32 = svptrue_b32(), p64 = svptrue_b64();
+    const svuint8_t Rep = svld1_u8(p8, REP), Bits = svld1_u8(p8, BITS), Sci = svld1_u8(p8, SCIDX);
+    const svuint32_t L0 = svld1_u32(p32, LSIDX[0]), L1 = svld1_u32(p32, LSIDX[1]), L2 = svld1_u32(p32, LSIDX[2]), L3 = svld1_u32(p32, LSIDX[3]);
+    const svint32_t z = svdup_s32(0);
+    const q23s_act *a0 = acts[0], *a1 = NT > 1 ? acts[1] : acts[0], *a2 = NT > 2 ? acts[2] : acts[0], *a3 = NT > 3 ? acts[3] : acts[0];
+    svfloat32_t A0 = svdup_f32(0), A1 = A0, A2 = A0, A3 = A0;
+    svint8_t c0, c1, c2, c3; svint32_t cls; svfloat32_t cd;
+    IQ2V3_DEC(w, c0, c1, c2, c3, cls, cd)
+    for (int i = 0; i < nb; ++i) {
+        svint8_t n0 = c0, n1 = c1, n2 = c2, n3 = c3; svint32_t nls = cls; svfloat32_t nd = cd;
+        if (i + 1 < nb) IQ2V3_DEC(w + i + 1, n0, n1, n2, n3, nls, nd)
+        IQV3_TOK(0) IQV3_TOK(1) IQV3_TOK(2) IQV3_TOK(3)
+        c0 = n0; c1 = n1; c2 = n2; c3 = n3; cls = nls; cd = nd;
+    }
+    IQV3_STORE
+}
+
+void iq2xxs_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out)
+{
+    init_tables();
+    const int nb = cols / 256; const blk_iq2xxs *b = (const blk_iq2xxs *) w;
+    switch (nt) { case 1: iq2xxs_v3(nb, b, acts, 1, out); break; case 2: iq2xxs_v3(nb, b, acts, 2, out); break;
+                  case 3: iq2xxs_v3(nb, b, acts, 3, out); break; default: iq2xxs_v3(nb, b, acts, 4, out); }
+}
+
+#define IQ1V3_DEC(b, W0_, W1_, W2_, W3_, LS_, D_)                                                      \
+    {                                                                                                   \
+        const svuint64_t QH = svld1uh_u64(p64, (b)->qh);                                                \
+        const svuint32_t qh32 = svld1uh_u32(p32h, (b)->qh);                                             \
+        LS_ = svreinterpret_s32_u32(svadd_n_u32_x(p32, svlsl_n_u32_x(p32, svand_n_u32_x(p32, svlsr_n_u32_x(p32, qh32, 12), 7), 1), 1)); \
+        const svuint8_t Dsb = svreinterpret_u8_s32(svsub_s32_x(p32, svdup_s32(1),                       \
+                                  svreinterpret_s32_u32(svlsl_n_u32_x(p32, svlsr_n_u32_x(p32, qh32, 15), 1)))); \
+        W0_ = iq1_plane(p8, p64, b, 0, QH, Sh3, Dsb); W1_ = iq1_plane(p8, p64, b, 1, QH, Sh3, Dsb);     \
+        W2_ = iq1_plane(p8, p64, b, 2, QH, Sh3, Dsb); W3_ = iq1_plane(p8, p64, b, 3, QH, Sh3, Dsb);     \
+        D_ = h2v8(p32, &(b)->d);                                                                        \
+    }
+
+static inline __attribute__((always_inline)) void iq1s_v3(int nb, const blk_iq1s *w, const q23s_act *const *acts,
+                                                          const int NT, float *out)
+{
+    const svbool_t p8 = svptrue_b8(), p32 = svptrue_b32(), p64 = svptrue_b64(), p32h = svwhilelt_b32_s32(0, 8);
+    const svuint64_t Sh3 = svld1_u64(p64, SH3);
+    const svuint32_t L0 = svld1_u32(p32, LSIDX[0]), L1 = svld1_u32(p32, LSIDX[1]), L2 = svld1_u32(p32, LSIDX[2]), L3 = svld1_u32(p32, LSIDX[3]);
+    const svint32_t z = svdup_s32(0);
+    const q23s_act *a0 = acts[0], *a1 = NT > 1 ? acts[1] : acts[0], *a2 = NT > 2 ? acts[2] : acts[0], *a3 = NT > 3 ? acts[3] : acts[0];
+    svfloat32_t A0 = svdup_f32(0), A1 = A0, A2 = A0, A3 = A0;
+    svint8_t c0, c1, c2, c3; svint32_t cls; svfloat32_t cd;
+    IQ1V3_DEC(w, c0, c1, c2, c3, cls, cd)
+    for (int i = 0; i < nb; ++i) {
+        svint8_t n0 = c0, n1 = c1, n2 = c2, n3 = c3; svint32_t nls = cls; svfloat32_t nd = cd;
+        if (i + 1 < nb) IQ1V3_DEC(w + i + 1, n0, n1, n2, n3, nls, nd)
+        IQV3_TOK(0) IQV3_TOK(1) IQV3_TOK(2) IQV3_TOK(3)
+        c0 = n0; c1 = n1; c2 = n2; c3 = n3; cls = nls; cd = nd;
+    }
+    IQV3_STORE
+}
+
+void iq1s_sdot_row_v3(int cols, const void *w, const q23s_act *const *acts, int nt, float *out)
+{
+    init_tables();
+    const int nb = cols / 256; const blk_iq1s *b = (const blk_iq1s *) w;
+    switch (nt) { case 1: iq1s_v3(nb, b, acts, 1, out); break; case 2: iq1s_v3(nb, b, acts, 2, out); break;
+                  case 3: iq1s_v3(nb, b, acts, 3, out); break; default: iq1s_v3(nb, b, acts, 4, out); }
+}
