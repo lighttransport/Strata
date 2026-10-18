@@ -1,0 +1,315 @@
+{
+  "schema": "strata.glm.fp4.cuda_activity.v1",
+  "scope": "One diagnostic, last warmed request. Phase boundary inferred from engine wall time and cuProfilerStart end; boundary uncertainty is small relative to second-scale totals. Kernel/copy sums overlap and do not add to wall time. No throughput or residency qualification.",
+  "hardware": {
+    "gpus": 2,
+    "gpu": "Tesla V100-PCIE-32GB",
+    "cpu": "2 x Xeon Gold 6240",
+    "memory_gib": 181,
+    "workers": 32,
+    "cuda": "12.9",
+    "nsight_systems": "2025.1.3.140",
+    "gpu_clocks_locked": false
+  },
+  "capture": {
+    "request_1based": 6,
+    "full_warmups": 2,
+    "discarded_one_token_request": true,
+    "preceding_timed_requests": 2,
+    "input_tokens": 8192,
+    "generated_tokens": 512,
+    "decode_advances": 511,
+    "cpu_scale_metadata_misses": 0,
+    "decoder_sha256": "052782a551b47a923d23a5f377d2ec8bf273f206b02229a970a7f2e324943b2e",
+    "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+    "result_sha256": "5384a193a4f2cb66e44e5bf0c29b37e0dc898ea2e40b9dcef24359b4cff4fcb5",
+    "sqlite_sha256": "baf0cdcb8c0b6f1b690e9fc8dfd8d18c727b01528ee549a658dff64c14a12923",
+    "statistics_sha256": "36a8242fc7bcace87b910246950d6046b2e9debc63a37fcd2c45bce195b515a9",
+    "complete": true,
+    "instrumented": true,
+    "performance_anchor": false,
+    "residency_qualification": false,
+    "monitor_scope": "Benchmark monitors the profiler launcher, not the model child."
+  },
+  "prefill_ms": 18543.5,
+  "decode_ms": 17118.0,
+  "devices": [
+    {
+      "phase": "decode",
+      "device": 0,
+      "kernel_union_ms": 8975.065721,
+      "copy_union_ms": 571.028087,
+      "all_activity_union_ms": 9544.534636,
+      "idle_ms": 7573.465364,
+      "top_kernels": [
+        {
+          "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)6, (int)8, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+          "calls": 27487,
+          "sum_ms": 2810.030701999988
+        },
+        {
+          "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)2, (int)8, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+          "calls": 23373,
+          "sum_ms": 1254.6300780000045
+        },
+        {
+          "name": "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+          "calls": 15348,
+          "sum_ms": 751.3420050000024
+        },
+        {
+          "name": "void strata::kernels::<unnamed>::kda_chunk<(int)128, (bool)0>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, float *, long long, int, const float *)",
+          "calls": 4998,
+          "sum_ms": 578.2880799999994
+        },
+        {
+          "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)1>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+          "calls": 41268,
+          "sum_ms": 450.64078600001153
+        },
+        {
+          "name": "strata::kernels::<unnamed>::selection(const float *, int *, int *, int, int, int, int, int, const int *, int)",
+          "calls": 7674,
+          "sum_ms": 387.18167200000016
+        },
+        {
+          "name": "strata::kernels::<unnamed>::norm(const float *, const float *, const float *, float *, int, float, bool)",
+          "calls": 37850,
+          "sum_ms": 289.83263599999833
+        },
+        {
+          "name": "volta_sgemm_64x32_sliced1x4_tn",
+          "calls": 15348,
+          "sum_ms": 273.7183880000022
+        },
+        {
+          "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)0>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+          "calls": 20634,
+          "sum_ms": 258.67643400000304
+        },
+        {
+          "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+          "calls": 128767,
+          "sum_ms": 218.09571600014849
+        },
+        {
+          "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)5, (int)8, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+          "calls": 12412,
+          "sum_ms": 217.26975700000014
+        },
+        {
+          "name": "strata::kernels::<unnamed>::conv(const float *, const float *, float *, float *, int, int)",
+          "calls": 63750,
+          "sum_ms": 159.2214659999583
+        }
+      ]
+    },
+    {
+      "phase": "decode",
+      "device": 1,
+      "kernel_union_ms": 1460.807526,
+      "copy_union_ms": 75.278637,
+      "all_activity_union_ms": 1546.557135,
+      "idle_ms": 15571.442865,
+      "top_kernels": [
+        {
+          "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)1>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+          "calls": 72832,
+          "sum_ms": 767.6489890000645
+        },
+        {
+          "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)0>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+          "calls": 36416,
+          "sum_ms": 451.7689830000038
+        },
+        {
+          "name": "strata::kernels::<unnamed>::route_scatter(const float *, const int *, const float *, float *, int, int, int)",
+          "calls": 36416,
+          "sum_ms": 67.44095399998974
+        },
+        {
+          "name": "strata::kernels::<unnamed>::route_gather(const float *, const int *, __half *, int, int, int)",
+          "calls": 36416,
+          "sum_ms": 67.05920399999809
+        },
+        {
+          "name": "strata::kernels::<unnamed>::swiglu(const float *, const float *, float *, int, float)",
+          "calls": 36416,
+          "sum_ms": 54.73682899997544
+        },
+        {
+          "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+          "calls": 36416,
+          "sum_ms": 52.152567000002
+        }
+      ]
+    },
+    {
+      "phase": "prefill",
+      "device": 0,
+      "kernel_union_ms": 11907.690267,
+      "copy_union_ms": 6783.541729,
+      "all_activity_union_ms": 16813.391174,
+      "idle_ms": 1730.1088259999997,
+      "top_kernels": [
+        {
+          "name": "void strata::kernels::<unnamed>::kda_chunk<(int)128, (bool)0>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, float *, long long, int, const float *)",
+          "calls": 4352,
+          "sum_ms": 3355.6609110000004
+        },
+        {
+          "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8>(T1::Params)",
+          "calls": 1767,
+          "sum_ms": 1019.355985
+        },
+        {
+          "name": "volta_s884gemm_fp16_256x128_ldg8_tn",
+          "calls": 4086,
+          "sum_ms": 971.4504119999996
+        },
+        {
+          "name": "strata::kernels::<unnamed>::fp4_sm70_operands(const uint2 *, const unsigned char *, float, __half *, int, int)",
+          "calls": 17664,
+          "sum_ms": 859.5527430000027
+        },
+        {
+          "name": "strata::kernels::<unnamed>::prepack_kernel(const unsigned char *, const unsigned char *, unsigned char *, unsigned char *, int, int)",
+          "calls": 15669,
+          "sum_ms": 711.5209490000007
+        },
+        {
+          "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x64_tn_align2>(T1::Params)",
+          "calls": 1408,
+          "sum_ms": 605.1015970000003
+        },
+        {
+          "name": "volta_s884gemm_fp16_128x64_ldg8_tn",
+          "calls": 6753,
+          "sum_ms": 598.6609180000024
+        },
+        {
+          "name": "strata::kernels::<unnamed>::gather_vector_half8(const float *, const int *, const int *, unsigned short *, int, int)",
+          "calls": 1408,
+          "sum_ms": 512.3400150000004
+        },
+        {
+          "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+          "calls": 12335,
+          "sum_ms": 470.41257600000125
+        },
+        {
+          "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x64_nn_align2>(T1::Params)",
+          "calls": 1408,
+          "sum_ms": 417.3077409999999
+        },
+        {
+          "name": "strata::kernels::<unnamed>::norm(const float *, const float *, const float *, float *, int, float, bool)",
+          "calls": 219,
+          "sum_ms": 240.005534
+        },
+        {
+          "name": "void cutlass::Kernel2<cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+          "calls": 3030,
+          "sum_ms": 226.89927000000006
+        }
+      ]
+    },
+    {
+      "phase": "prefill",
+      "device": 1,
+      "kernel_union_ms": 3450.380873,
+      "copy_union_ms": 5203.686947,
+      "all_activity_union_ms": 7267.534275,
+      "idle_ms": 11275.965725,
+      "top_kernels": [
+        {
+          "name": "strata::kernels::<unnamed>::fp4_sm70_operands(const uint2 *, const unsigned char *, float, __half *, int, int)",
+          "calls": 17736,
+          "sum_ms": 852.3371389999988
+        },
+        {
+          "name": "volta_s884gemm_fp16_128x64_ldg8_tn",
+          "calls": 6845,
+          "sum_ms": 622.9038209999987
+        },
+        {
+          "name": "strata::kernels::<unnamed>::prepack_kernel(const unsigned char *, const unsigned char *, unsigned char *, unsigned char *, int, int)",
+          "calls": 11895,
+          "sum_ms": 531.8499690000048
+        },
+        {
+          "name": "volta_s884gemm_fp16_256x128_ldg8_tn",
+          "calls": 3830,
+          "sum_ms": 408.5134030000013
+        },
+        {
+          "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8>(T1::Params)",
+          "calls": 1699,
+          "sum_ms": 234.015488
+        },
+        {
+          "name": "void cutlass::Kernel2<cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+          "calls": 2852,
+          "sum_ms": 173.46006100000008
+        },
+        {
+          "name": "strata::kernels::<unnamed>::route_scatter(const float *, const int *, const float *, float *, int, int, int)",
+          "calls": 6023,
+          "sum_ms": 110.34324299999962
+        },
+        {
+          "name": "volta_s884gemm_fp16_64x128_ldg8_tn",
+          "calls": 700,
+          "sum_ms": 109.28354199999984
+        },
+        {
+          "name": "strata::kernels::<unnamed>::csf32_kernel(const unsigned char *, const unsigned char *, const unsigned short *, const unsigned int *, const unsigned short *, unsigned char *, int *, int)",
+          "calls": 11895,
+          "sum_ms": 87.62216899999956
+        },
+        {
+          "name": "strata::kernels::<unnamed>::route_gather(const float *, const int *, __half *, int, int, int)",
+          "calls": 6023,
+          "sum_ms": 80.97614600000014
+        },
+        {
+          "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_64x64_tn_align8>(T1::Params)",
+          "calls": 1111,
+          "sum_ms": 79.01121099999982
+        },
+        {
+          "name": "strata::kernels::<unnamed>::swiglu(const float *, const float *, float *, int, float)",
+          "calls": 6023,
+          "sum_ms": 51.389593000000204
+        }
+      ]
+    }
+  ],
+  "kda_shapes": [
+    {
+      "phase": "prefill",
+      "grid_x": 64,
+      "grid_y": 1,
+      "block_x": 128,
+      "registers": 255,
+      "calls": 4352,
+      "sum_ms": 3355.6609110000004
+    },
+    {
+      "phase": "decode",
+      "grid_x": 64,
+      "grid_y": 1,
+      "block_x": 128,
+      "registers": 255,
+      "calls": 4998,
+      "sum_ms": 578.2880799999994
+    }
+  ],
+  "limitations": [
+    "Single instrumented request with unlocked clocks.",
+    "Phase split inferred from engine wall time and cuProfilerStart end; it is not an NVTX marker.",
+    "GPU idle time includes CPU work, scheduling, synchronization and dependencies; it is not all removable overhead.",
+    "Kernel and copy durations overlap. They must not be summed into request latency.",
+    "Retaining observed kernel durations while removing waiting is a conditional scenario, not a hardware roofline."
+  ]
+}

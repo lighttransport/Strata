@@ -171,3 +171,49 @@ compressed transfers, qualified inputs, phase accounting, provenance and CLI
 selection. The combined 131-test run passed with one existing routing-trace
 test skipped because local traces were unavailable. No new GPU inference,
 held-out quality run or hardware calibration was performed for this analysis.
+
+## Warmed CUDA activity
+
+The separate
+[`glm_fp4_v100_activity.json`](../tools/sim/data/glm_fp4_v100_activity.json)
+profile adds one Nsight Systems 2025.1.3 capture on the same two V100 PCIe 32 GB
+cards and 181 GiB allocation. Its throughput anchor remains the qualified
+32.67 decode / 454.29 prefill result. The capture itself is diagnostic: request
+six follows two complete warmups, the discarded request and two timed requests.
+It produced the same frozen 512 IDs and had zero new CPU scale-metadata misses.
+Its instrumented prefill/decode times were 18.544 / 17.118 seconds. Clocks were
+unlocked. The phase boundary is inferred from the engine timer and profiler
+start, with small boundary uncertainty.
+
+| Phase | GPU | Kernel union, s | All GPU activity union, s | GPU idle, s |
+| --- | ---: | ---: | ---: | ---: |
+| Decode | 0 | 8.975 | 9.545 | 7.573 |
+| Decode | 1 | 1.461 | 1.547 | 15.571 |
+| Prefill | 0 | 11.908 | 16.813 | 1.730 |
+| Prefill | 1 | 3.450 | 7.268 | 11.276 |
+
+These unions account for overlapping intervals. Idle time includes CPU work,
+scheduling and dependencies; it is not all removable overhead. Retaining the
+observed durations while removing all idle time would give 53.54 decode and
+487.23 prefill tok/s. At 50 decode tok/s that scenario leaves only 0.675 seconds
+of idle time, requiring a 91% reduction from the captured request. FP8 projections
+alone used 4.065 seconds of primary-GPU decode time, which motivates testing
+independent tensor-core accumulation chains alongside CPU work reductions.
+
+Even with all copies and waiting free, retaining the observed prefill kernel
+durations gives only 687.96 tok/s. Reaching 1000 therefore requires those kernel
+durations to fall by at least 31% for this recorded work.
+The serial KDA recurrence accounts for 3.356 seconds of primary prefill kernel
+time and uses 255 registers per thread. Prefill-only recurrence geometry and
+wider fused FP4 tiles are being screened. These retained-duration scenarios are
+not hardware rooflines; contention and instrumentation can change durations.
+
+```sh
+python3 tools/glm_runner_sim.py native-fp4 \
+  --profile tools/sim/data/glm_fp4_v100_activity.json \
+  --target-decode 50 --target-prefill 1000 --output tmp/fp4-activity.json
+```
+
+The compact [activity evidence](glm_fp4_v100_activity_measurement.json) records
+the source binary, output, raw-report and SQLite hashes. Large raw traces stay
+outside Git. The original reference and resource-only profiles remain intact.

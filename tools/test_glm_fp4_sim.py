@@ -119,6 +119,23 @@ class NativeFp4Tests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'checksum'):
                 sim.load_profile(path)
 
+    def test_activity_unions_do_not_replace_qualified_timing(self):
+        root = Path(__file__).resolve().parents[1]
+        base = sim.analyze(sim.load_profile(root/'tools/sim/data/glm_fp4_v100_optimization.json'), target_prefill=1000)
+        profile = sim.load_profile(root/'tools/sim/data/glm_fp4_v100_activity.json')
+        result = sim.analyze(profile, target_prefill=1000)
+        self.assertEqual(result['decode'], base['decode'])
+        self.assertEqual(result['prefill'], base['prefill'])
+        diagnostic = result['diagnostic_activity']
+        # The observed union already accounts for overlapping kernels/copies.
+        self.assertGreater(diagnostic['prefill']['conditional_kernel_only_ceiling_tok_s'],
+                           diagnostic['prefill']['conditional_ceiling_if_all_gpu_idle_removed_tok_s'])
+        self.assertGreater(diagnostic['prefill']['target']['retained_kernel_duration_speedup_required'], 1.4)
+        self.assertGreater(diagnostic['decode']['target']['idle_reduction_fraction_at_retained_activity'], .9)
+        profile['diagnostic_activity']['devices'][0]['all_activity_union_ms'] = 0
+        with self.assertRaisesRegex(ValueError, 'unions'):
+            sim.analyze(profile)
+
     def test_cli_uses_native_profile_without_changing_gguf_defaults(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:

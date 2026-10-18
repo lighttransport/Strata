@@ -90,6 +90,47 @@ def _median_request(profile):
     return sorted(rows, key=lambda r: r['trial']['decode_ms'])[len(rows) // 2]
 
 
+def activity_scenarios(activity, gpus, target_decode, target_prefill):
+    """Conditional retained-duration scenarios, separate from qualified anchors.
+
+    A union is already corrected for overlap. Copy and kernel unions must never
+    be added, and removing idle time does not remove CPU dependencies in reality.
+    """
+    capture = activity['capture']
+    if not capture['instrumented'] or capture['performance_anchor']:
+        raise ValueError('CUDA activity must be explicitly diagnostic')
+    result = dict(scope='Single instrumented request; retained GPU durations are conditional scenarios, '
+                        'not hardware rooflines or throughput predictions.',
+                  limitations=activity['limitations'])
+    for phase, tokens, target in [('decode', capture['decode_advances'], target_decode),
+                                  ('prefill', capture['input_tokens'], target_prefill)]:
+        wall_ms = positive(activity[phase + '_ms'], 'activity phase time')
+        devices = [d for d in activity['devices'] if d['phase'] == phase]
+        if sorted(d['device'] for d in devices) != list(range(gpus)):
+            raise ValueError('activity must cover each GPU exactly once per phase')
+        for d in devices:
+            kernel, copy, active = (d[k] for k in ('kernel_union_ms', 'copy_union_ms', 'all_activity_union_ms'))
+            if not all(math.isfinite(v) and v >= 0 for v in (kernel, copy, active)):
+                raise ValueError('invalid activity duration')
+            if max(kernel, copy) > active + .01 or active > wall_ms + .01:
+                raise ValueError('activity unions exceed their enclosing interval')
+        kernel_ms = positive(max(d['kernel_union_ms'] for d in devices), 'kernel union')
+        active_ms = positive(max(d['all_activity_union_ms'] for d in devices), 'activity union')
+        target_ms = positive(tokens, 'activity tokens') / target * 1000
+        idle_ms = max(0, wall_ms - active_ms)
+        result[phase] = dict(
+            observed_instrumented_ms=wall_ms,
+            slowest_gpu_kernel_union_ms=kernel_ms,
+            slowest_gpu_activity_union_ms=active_ms,
+            conditional_kernel_only_ceiling_tok_s=tokens * 1000 / kernel_ms,
+            conditional_ceiling_if_all_gpu_idle_removed_tok_s=tokens * 1000 / active_ms,
+            target=dict(tok_s=target, budget_ms=target_ms,
+                        retained_kernel_duration_speedup_required=max(1, kernel_ms / target_ms),
+                        idle_reduction_fraction_at_retained_activity=(
+                            max(0, (wall_ms-target_ms) / idle_ms) if idle_ms and target_ms >= active_ms else None)))
+    return result
+
+
 def analyze(profile, *, cpu_gbps=None, hbm_gbps=None, tensor_tflops=None,
             h2d_gbps=None, target_decode=50.0, target_prefill=800.0):
     hw, geometry = profile['hardware'], profile['geometry']
@@ -231,9 +272,13 @@ def analyze(profile, *, cpu_gbps=None, hbm_gbps=None, tensor_tflops=None,
                                   {'cpu_code_stream': bandwidth * 1e9,
                                    'primary_mandatory_matrices': hbm_gbps * 1e9}, tokens)
         sensitivity.append(dict(cpu_gbps=bandwidth, conditional_roof_tok_s=candidate['tok_s']))
-    return dict(schema='strata.glm.native_fp4.analysis.v1', profile=profile['name'], fitted=False,
+    result = dict(schema='strata.glm.native_fp4.analysis.v1', profile=profile['name'], fitted=False,
                 rates=dict(cpu_gbps=cpu_gbps, cpu_bandwidth_is_measured=measured_cpu,
                            hbm_gbps_per_gpu=hbm_gbps, tensor_tflops_per_gpu=tensor_tflops,
                            h2d_gbps_per_gpu=links), observations=profile['observations'],
                 decode=decode, prefill=prefill, cpu_bandwidth_scenarios=sensitivity,
                 findings=profile['findings'], limitations=profile['limitations'])
+    if 'diagnostic_activity' in profile:
+        result['diagnostic_activity'] = activity_scenarios(
+            profile['diagnostic_activity'], hw['gpus'], target_decode, target_prefill)
+    return result

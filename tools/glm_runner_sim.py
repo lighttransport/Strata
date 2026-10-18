@@ -406,7 +406,10 @@ def cmd_native_fp4(args):
         path = pathlib.Path(filename).resolve()
         label = str(path.relative_to(glm_fp4.ROOT)) if path.is_relative_to(glm_fp4.ROOT) else '<external-profile>'
         result['provenance'].append(dict(path=label, sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
-    print(json.dumps({key: result[key] for key in ('rates', 'decode', 'prefill')}, indent=2))
+    keys = ['rates', 'decode', 'prefill']
+    if 'diagnostic_activity' in result:
+        keys.append('diagnostic_activity')
+    print(json.dumps({key: result[key] for key in keys}, indent=2))
     write(args, result)
 
 
