@@ -64,6 +64,7 @@ class Fp4NativeExecutor {
     struct CpuExpert {
         std::array<Packed,3> projection;
         std::array<std::unique_ptr<cpu::GlmFp4Csf32Rows>,3> csf32;
+        std::array<std::unique_ptr<cpu::GlmFp4Csf32SparseRows>,3> sparse;
         alignas(64) std::array<std::array<float,cpu::glm_fp4_weight_table_floats>,3> scales;
         size_t bytes=0;
         std::list<std::pair<int,int>>::iterator order;
@@ -172,8 +173,22 @@ class Fp4NativeExecutor {
     bool sm70,reserve_draft;
     const bool profile=strata_env_is_one("STRATA_GLM_FP4_PROFILE");
     const bool device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DEVICE_ROUTING");
+    bool decode_device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DECODE_ROUTING");
     const bool async_upload_enabled=strata_env_is_one("STRATA_GLM_FP4_ASYNC_UPLOAD");
     const bool cpu_csf32_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_CSF32");
+    const bool cpu_sparse_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_SPARSE")||strata_env_is_one("STRATA_GLM_FP4_CPU_Q8");
+    const bool cpu_q8_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8");
+    const bool cpu_fused_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_FUSED");
+    const bool cpu_borrow_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_BORROW");
+    const double route_drop_fraction=strata_env_value_double("STRATA_GLM_FP4_ROUTE_DROP",0);
+    const long long route_drop_max=strata_env_value_ll("STRATA_GLM_FP4_ROUTE_DROP_MAX",2);
+    const bool route_renorm_enabled=strata_env_is_one("STRATA_GLM_FP4_ROUTE_RENORM");
+    const long long decode_reserve_mib=strata_env_value_ll("STRATA_GLM_FP4_DECODE_RESERVE_MIB",-1);
+    uint64_t route_drop_tokens=0,route_drop_candidates=0,route_drop_count=0;
+    double route_drop_share_sum=0,route_drop_share_max=0;
+    double route_drop_multiplier_max=1;
+    uint64_t decode_device_calls=0,decode_host_calls=0;
+    bool decode_phase=false;
     using Clock=std::chrono::steady_clock;
     Clock::time_point tick()const {return profile?Clock::now():Clock::time_point{};}
     double elapsed(Clock::time_point start)const {
@@ -234,11 +249,17 @@ class Fp4NativeExecutor {
         for(int p=0;p<3;++p) {
             const auto name=strata::artifact::GlmExl3::prefix(layer,id,parts[p])+".weight";
             e->projection[p]=model.load(name,true);
-            if(cpu_csf32_enabled&&model.has_csf32(model.matrix(name))) {
+            if((cpu_csf32_enabled||cpu_sparse_enabled)&&model.has_csf32(model.matrix(name))) {
                 auto& h=e->projection[p];const auto stem=name+"_scale.csf32_";
-                e->csf32[p]=std::make_unique<cpu::GlmFp4Csf32Rows>(cpu::glm_fp4_csf32_rows(h.scales.data(),
-                    artifact.exl3().tensors.data(stem+"bases"),artifact.exl3().tensors.data(stem+"codes"),h.rows,h.columns/16));
-                e->bytes+=sizeof(cpu::GlmFp4Csf32Rows)+e->csf32[p]->bytes();
+                const auto* bases=artifact.exl3().tensors.data(stem+"bases");
+                const auto* codes=artifact.exl3().tensors.data(stem+"codes");
+                if(cpu_sparse_enabled) {
+                    e->sparse[p]=std::make_unique<cpu::GlmFp4Csf32SparseRows>(cpu::glm_fp4_csf32_sparse_rows(h.scales.data(),bases,codes,h.rows,h.columns/16,cpu_borrow_enabled));
+                    e->bytes+=sizeof(cpu::GlmFp4Csf32SparseRows)+e->sparse[p]->bytes();
+                }else {
+                    e->csf32[p]=std::make_unique<cpu::GlmFp4Csf32Rows>(cpu::glm_fp4_csf32_rows(h.scales.data(),bases,codes,h.rows,h.columns/16));
+                    e->bytes+=sizeof(cpu::GlmFp4Csf32Rows)+e->csf32[p]->bytes();
+                }
                 std::vector<uint8_t>().swap(h.scales);
             }
             e->bytes+=e->projection[p].scales.size();
@@ -252,9 +273,11 @@ class Fp4NativeExecutor {
         cpu_lru.push_front(key);e->order=cpu_lru.begin();cpu_cache_bytes+=e->bytes;cpu_cache.emplace(key,e);return e;
     }
     static void cpu_product(const CpuExpert& e,int projection,const float* x,float* y,
-                            int columns,int rows,int tokens,int first,int last) {
+                            int columns,int rows,int tokens,int first,int last,const cpu::GlmFp4Q8* q8=nullptr) {
         const auto& packed=e.projection[projection];
-        if(e.csf32[projection])cpu::glm_fp4_rows_csf32_table(packed.data(),*e.csf32[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
+        if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last);
+        else if(e.sparse[projection])cpu::glm_fp4_rows_csf32_sparse_table(packed.data(),*e.sparse[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
+        else if(e.csf32[projection])cpu::glm_fp4_rows_csf32_table(packed.data(),*e.csf32[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else cpu::glm_fp4_rows_table(packed.data(),packed.scales.data(),e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
     }
     Matrix upload(Context& c,const strata::artifact::ModelOptMatrix& desc) {
@@ -491,6 +514,14 @@ public:
                               const std::vector<int>& devices,size_t gpu_budget,int width,bool draft)
         :artifact(a),model(*a.exl3().modelopt),cpu_pool(pool),sm70(fp4_sm70_kernel),reserve_draft(draft) {
         if(devices.empty()||devices.size()>2)throw std::invalid_argument("GLM FP4: expected one or two GPUs");
+        if(decode_device_routing_enabled)std::cerr<<"FP4_DECODE_ROUTING enabled=1 deferred_expert_sync=1\n";
+        if(!std::isfinite(route_drop_fraction)||route_drop_fraction<0||route_drop_fraction>0.5||route_drop_max<0||route_drop_max>7)
+            throw std::invalid_argument("GLM FP4: ROUTE_DROP must be in [0,0.5], ROUTE_DROP_MAX in [0,7]");
+        if(decode_reserve_mib!=-1 && (decode_reserve_mib<256 || decode_reserve_mib>8192))
+            throw std::invalid_argument("GLM FP4: DECODE_RESERVE_MIB must be in [256,8192], or -1 for the original per-device reserves");
+        if(route_drop_fraction>0)std::cerr<<"FP4_ROUTE_DROP lossy=1 cpu_only=1 fraction="<<route_drop_fraction
+            <<" max_routes="<<route_drop_max<<" renormalize="<<route_renorm_enabled<<" draft=0\n";
+        if(cpu_q8_enabled)std::cerr<<"FP4_CPU_Q8 lossy=1 mode="<<(cpu::glm_fp4_q8_vnni_available()?"vnni":"scalar")<<'\n';
         if(strata_env_is_one("STRATA_GLM_FP4_REGISTER_WEIGHTS"))
             registered_ram=std::make_unique<RegisteredRam>(artifact.exl3().tensors,devices);
         for(int d:devices) {
@@ -524,13 +555,18 @@ public:
         sums.resize(contexts.size());
     }
     ~Fp4NativeExecutor(){report();}
+    bool set_decode_device_routing(bool enabled) {
+        const bool previous=decode_device_routing_enabled;decode_device_routing_enabled=enabled;return previous;
+    }
     std::vector<int> devices()const {
         std::vector<int> result;for(const auto& c:contexts)result.push_back(c->device);return result;
     }
     void begin_request() {
+        decode_phase=false;
         for(auto& c:contexts){c->frequency.clear();c->keep.clear();}
     }
     void begin_prefill(size_t coordinator_bytes) {
+        decode_phase=false;
         for(size_t rank=0;rank<contexts.size();++rank) {
             auto& c=contexts[rank];
             DeviceScope scope(c->device);check(cudaStreamSynchronize(c->stream));
@@ -555,12 +591,23 @@ public:
         }
     }
     void compact() {
+        decode_phase=true;
         for(auto& c:contexts) {
             DeviceScope scope(c->device);check(cudaStreamSynchronize(c->stream));c->scratch.clear();c->release_upload();
             size_t free,total;check(Device::mem_info(&free,&total));
-            const size_t reserve=(c.get()==contexts.front().get()?3072:1024)*MiB;
+            const size_t reserve=size_t(decode_reserve_mib<0?
+                (c.get()==contexts.front().get()?3072:1024):decode_reserve_mib)*MiB;
+            if(decode_reserve_mib>=0)if(auto* pool=Device::pool()) {
+                // An expert consists of many small allocations, so it can use
+                // separate holes left by prefill. The largest hole is needed
+                // for an individual allocation, not the complete cache budget.
+                std::lock_guard lock(pool->mutex);
+                free=0;for(const auto& [offset,bytes]:pool->free_blocks)free+=bytes;
+            }
             const size_t available=std::min(free,Device::limit()>Device::live()?Device::limit()-Device::live():0);
             c->cache_limit=c->cache_bytes+(available>reserve?available-reserve:0);
+            if(decode_reserve_mib>=0)std::cerr<<"FP4_DECODE_CACHE device="<<c->device
+                <<" reserve_MiB="<<decode_reserve_mib<<" limit_MiB="<<c->cache_limit/MiB<<'\n';
             for(const auto& [layer,_]:c->frequency)select(*c,layer);
         }
         host_x.reset();host_routes.reset();host_weights.reset();host_rows=0;
@@ -593,7 +640,7 @@ public:
     void routed(int layer,const float* x,const int* ids,const float* weights,float* out,int nt,
                 float limit,cudaStream_t caller) {
         const auto started=tick();
-        struct alignas(64) Times {double upload=0,gather=0,product=0,reduce=0;};
+        struct alignas(64) Times {double upload=0,gather=0,product=0,reduce=0,fused=0;};
         std::array<Times,2> times{};Times cpu_times;
         if(size_t(nt)>host_rows) {
             check(cudaStreamSynchronize(caller));host_rows=nt;
@@ -606,7 +653,7 @@ public:
         check(cudaMemcpyAsync(host_weights->p,weights,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
         check(cudaStreamSynchronize(caller));
         const auto* selected=static_cast<const int*>(host_routes->p);
-        const auto* routing=static_cast<const float*>(host_weights->p);
+        auto* routing=static_cast<float*>(host_weights->p);
         const auto* activation=static_cast<const float*>(host_x->p);
         std::map<int,std::vector<int>> grouped;
         for(int i=0;i<nt*8;++i) {
@@ -614,23 +661,55 @@ public:
             grouped[selected[i]].push_back(i);
         }
         const bool decode=nt<=8;
-        bool device_routing=device_routing_enabled&&!decode;
+        bool device_routing=decode?decode_device_routing_enabled:device_routing_enabled;
         if(device_routing)for(const auto& [id,routes]:grouped)
             for(size_t j=1;j<routes.size();++j)if(routes[j]/8==routes[j-1]/8)device_routing=false;
+        if(decode){if(device_routing)++decode_device_calls;else ++decode_host_calls;}
         for(auto& c:contexts)if(!decode || !c->frequency.count(layer)) {
             auto& counts=c->frequency[layer];counts.assign(288,0);
             for(const auto& [id,routes]:grouped)counts[id]=routes.size();
             select(*c,layer);
         }
+        if(decode_phase && decode && layer<45 && route_drop_fraction>0 && route_drop_max>0) {
+            std::array<uint8_t,8> masks{};
+            for(int t=0;t<nt;++t) {
+                uint8_t eligible=0;
+                for(int j=0;j<8;++j) {
+                    const int id=selected[t*8+j];
+                    if(!contexts[size_t(id)%contexts.size()]->keep.at(layer).count(id)) {
+                        eligible|=uint8_t(1u<<j);++route_drop_candidates;
+                    }
+                }
+                double share=0;
+                masks[t]=strata_glm_route_drop(routing+t*8,eligible,route_drop_fraction,
+                                              unsigned(route_drop_max),&share);
+                ++route_drop_tokens;route_drop_share_sum+=share;
+                route_drop_share_max=std::max(route_drop_share_max,share);
+                if(route_renorm_enabled && masks[t]) {
+                    const auto factor=strata_glm_route_renormalize(routing+t*8,masks[t]);
+                    if(!factor)throw std::runtime_error("GLM FP4: invalid route normalization");
+                    route_drop_multiplier_max=std::max(route_drop_multiplier_max,factor);
+                }
+            }
+            for(auto it=grouped.begin();it!=grouped.end();) {
+                auto& routes=it->second;
+                routes.erase(std::remove_if(routes.begin(),routes.end(),[&](int route) {
+                    if(!(masks[route/8]&(1u<<(route%8))))return false;
+                    ++route_drop_count;return true;
+                }),routes.end());
+                if(routes.empty())it=grouped.erase(it);else ++it;
+            }
+        }
         struct CpuJob {
             int id;const std::vector<int>* routes;
             std::shared_ptr<CpuExpert> weights;
             std::vector<float> input,gate,up,hidden,result;
+            cpu::GlmFp4Q8 qinput,qhidden;
         };
         std::vector<CpuJob> cpu_jobs;
         if(decode)for(const auto& [id,routes]:grouped) {
             auto& c=*contexts[size_t(id)%contexts.size()];
-            if(!c.keep.at(layer).count(id))cpu_jobs.push_back({id,&routes,{},{},{},{},{},{}});
+            if(!c.keep.at(layer).count(id))cpu_jobs.push_back({id,&routes,{},{},{},{},{},{},{},{}});
         }
         std::vector<float> cpu_sum(cpu_jobs.empty()?0:size_t(nt)*4096,0);
         const double input_wait_ms=elapsed(started);
@@ -646,34 +725,82 @@ public:
                     job.weights=cpu_expert(layer,job.id);
                     job.input.resize(count*4096);job.gate.resize(count*2048);job.up.resize(count*2048);
                     job.hidden.resize(count*2048);job.result.resize(count*4096);
-                    for(size_t t=0;t<count;++t)for(int h=0;h<4096;++h)
-                        job.input[t*4096+h]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(activation[size_t((*job.routes)[t]/8)*4096+h]));
+                    for(size_t t=0;t<count;++t) {
+                        const auto* source=activation+size_t((*job.routes)[t]/8)*4096;
+                        auto* dest=job.input.data()+t*4096;
+                        if(cpu_q8_enabled||cpu_fused_enabled) {
+                            std::copy_n(source,4096,dest);cpu::glm_fp4_round_f16(dest,4096);
+                        }else for(int h=0;h<4096;++h)
+                            dest[h]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(source[h]));
+                    }
+                    if(cpu_q8_enabled)job.qinput=cpu::glm_fp4_quantize_q8(job.input.data(),4096,count);
                 }
             });
             if(profile)cpu_times.upload+=elapsed(begin);
             begin=tick();
-            cpu_pool.run([&](size_t rank) {
+            auto gate_up=[&](size_t rank) {
                 const int first=2048*rank/cpu_pool.size(),last=2048*(rank+1)/cpu_pool.size();
                 for(auto& job:cpu_jobs) {
                     const int count=job.routes->size();
                     for(int p=0;p<2;++p)cpu_product(*job.weights,p,
-                        job.input.data(),p?job.up.data():job.gate.data(),4096,2048,count,first,last);
-                    for(int t=0;t<count;++t)for(int r=first;r<last;++r) {
-                        const size_t i=size_t(t)*2048+r;
-                        const float g=std::min(job.gate[i],limit),u=std::clamp(job.up[i],-limit,limit);
-                        const float hidden=(g/(1.f+std::exp(-g)))*u;
-                        job.hidden[i]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(hidden));
+                        job.input.data(),p?job.up.data():job.gate.data(),4096,2048,count,first,last,cpu_q8_enabled?&job.qinput:nullptr);
+                    for(int t=0;t<count;++t) {
+                        for(int r=first;r<last;++r) {
+                            const size_t i=size_t(t)*2048+r;
+                            const float g=std::min(job.gate[i],limit),u=std::clamp(job.up[i],-limit,limit);
+                            const float hidden=(g/(1.f+std::exp(-g)))*u;
+                            job.hidden[i]=(cpu_q8_enabled||cpu_fused_enabled)?hidden:
+                                strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(hidden));
+                        }
+                        if(cpu_q8_enabled||cpu_fused_enabled)cpu::glm_fp4_round_f16(job.hidden.data()+size_t(t)*2048+first,last-first);
                     }
                 }
-            });
-            if(profile)cpu_times.gather+=elapsed(begin);
-            begin=tick();
-            cpu_pool.run([&](size_t rank) {
+            };
+            auto quant_hidden=[&](size_t rank) {
+                for(size_t i=rank;i<cpu_jobs.size();i+=cpu_pool.size()) {
+                    auto& job=cpu_jobs[i];job.qhidden=cpu::glm_fp4_quantize_q8(job.hidden.data(),2048,job.routes->size());
+                }
+            };
+            auto down=[&](size_t rank) {
                 const int first=4096*rank/cpu_pool.size(),last=4096*(rank+1)/cpu_pool.size();
                 for(auto& job:cpu_jobs)cpu_product(*job.weights,2,
-                    job.hidden.data(),job.result.data(),2048,4096,job.routes->size(),first,last);
-            });
-            if(profile)cpu_times.product+=elapsed(begin);
+                    job.hidden.data(),job.result.data(),2048,4096,job.routes->size(),first,last,cpu_q8_enabled?&job.qhidden:nullptr);
+            };
+            if(cpu_fused_enabled) {
+                // Keep the same row partitions and arithmetic while avoiding
+                // sleeping and waking every worker between the small products.
+                // A failed phase releases peers before Pool rethrows its error.
+                std::atomic<size_t> arrived{0};std::atomic<bool> cancelled{false};
+                auto barrier=[&](size_t phase) {
+                    arrived.fetch_add(1,std::memory_order_acq_rel);
+                    while(arrived.load(std::memory_order_acquire)<cpu_pool.size()*phase) {
+                        if(cancelled.load(std::memory_order_acquire))return false;
+#if defined(__x86_64__)
+                        _mm_pause();
+#else
+                        std::this_thread::yield();
+#endif
+                    }
+                    return !cancelled.load(std::memory_order_acquire);
+                };
+                auto fused_work=[&](size_t rank) {
+                    try {
+                        gate_up(rank);if(!barrier(1))return;
+                        if(cpu_q8_enabled){quant_hidden(rank);if(!barrier(2))return;}
+                        down(rank);
+                    }catch(...){cancelled.store(true,std::memory_order_release);throw;}
+                };
+                // Worker-side callable copies must not allocate before entering
+                // the cancellation handler: peers may already be at a barrier.
+                cpu_pool.run(std::ref(fused_work));
+                if(profile)cpu_times.fused+=elapsed(begin);
+            }else {
+                cpu_pool.run(gate_up);
+                if(cpu_q8_enabled)cpu_pool.run(quant_hidden);
+                if(profile)cpu_times.gather+=elapsed(begin);
+                begin=tick();cpu_pool.run(down);
+                if(profile)cpu_times.product+=elapsed(begin);
+            }
             begin=tick();
             for(const auto& job:cpu_jobs)for(size_t t=0;t<job.routes->size();++t) {
                 const int route=(*job.routes)[t];float* dst=cpu_sum.data()+size_t(route/8)*4096;
@@ -700,10 +827,16 @@ public:
                     check(cudaMemcpyAsync(const_cast<float*>(device_input),host_x->p,size_t(nt)*4096*4,cudaMemcpyHostToDevice,c.stream));
                     check(cudaMemcpyAsync(const_cast<float*>(device_weights),host_weights->p,size_t(nt)*8*4,cudaMemcpyHostToDevice,c.stream));
                 }
+                if(decode && !rank) {
+                    // Decode may renormalize the copied routing coefficients.
+                    // The checkpoint/router's device coefficients stay intact.
+                    device_weights=c.buffer("decode_route_weights",size_t(nt)*8*4).f();
+                    check(cudaMemcpyAsync(const_cast<float*>(device_weights),host_weights->p,size_t(nt)*8*4,cudaMemcpyHostToDevice,c.stream));
+                }
             }
             // Stable expert ownership prevents duplicated resident expert
             // weights and keeps arithmetic independent of route arrival order.
-            const bool pipeline=async_upload_enabled&&device_routing&&Device::prealloc();
+            const bool pipeline=async_upload_enabled&&device_routing&&!decode&&Device::prealloc();
             std::vector<int> jobs;
             for(const auto& [id,routes]:grouped) {
                 if(size_t(id)%contexts.size()!=rank)continue;
@@ -751,9 +884,9 @@ public:
                 else check(cudaMemcpyAsync(result.data(),dy.p,result.size()*4,cudaMemcpyDeviceToHost,c.stream));
                 PendingExpert next;
                 if(pipeline&&job+1<jobs.size())next=prepare_expert(c,layer,jobs[job+1]);
-                check(cudaStreamSynchronize(c.stream));
+                if(!decode||!device_routing)check(cudaStreamSynchronize(c.stream));
                 if(pipeline){finish_expert(c,pending,admit);pending=std::move(next);}
-                else c.protected_experts.erase({layer,id});
+                else if(!decode||!device_routing)c.protected_experts.erase({layer,id});
                 if(profile)times[rank].product+=elapsed(begin);
                 begin=tick();
                 if(!device_routing)for(int j=0;j<count;++j) {
@@ -792,7 +925,8 @@ public:
             line<<"FP4_PROFILE layer="<<layer<<" tokens="<<nt<<" wall_ms="<<elapsed(started)
                 <<" input_wait_ms="<<input_wait_ms<<" cpu_groups="<<cpu_jobs.size()
                 <<" cpu_load_ms="<<cpu_times.upload<<" cpu_gu_ms="<<cpu_times.gather
-                <<" cpu_down_ms="<<cpu_times.product<<" cpu_reduce_ms="<<cpu_times.reduce;
+                <<" cpu_down_ms="<<cpu_times.product<<" cpu_reduce_ms="<<cpu_times.reduce
+                <<" cpu_fused_ms="<<cpu_times.fused;
             for(size_t rank=0;rank<contexts.size();++rank)line
                 <<" gpu"<<rank<<"_upload_ms="<<times[rank].upload
                 <<" gpu"<<rank<<"_gather_ms="<<times[rank].gather
@@ -802,7 +936,14 @@ public:
         }
     }
     void report()const {
-        std::cerr<<"FP4_CPU expert_groups="<<cpu_experts<<" activation_format=f16 weight_format=native_nvfp4\n";
+        if(decode_device_routing_enabled)std::cerr<<"FP4_DECODE_ROUTING device_calls="<<decode_device_calls
+            <<" host_calls="<<decode_host_calls<<'\n';
+        if(route_drop_fraction>0)std::cerr<<"FP4_ROUTE_DROP_STATS token_layers="<<route_drop_tokens
+            <<" cpu_candidates="<<route_drop_candidates<<" dropped="<<route_drop_count
+            <<" mean_share="<<(route_drop_tokens?route_drop_share_sum/route_drop_tokens:0)
+            <<" max_share="<<route_drop_share_max<<" max_multiplier="<<route_drop_multiplier_max<<'\n';
+        std::cerr<<"FP4_CPU expert_groups="<<cpu_experts<<" activation_format="
+            <<(cpu_q8_enabled?"q8_block64_from_f16":"f16")<<" weight_format=native_nvfp4\n";
         std::cerr<<"FP4_CPU_SCALES hits="<<cpu_cache_hits<<" misses="<<cpu_cache_misses<<" bytes="<<cpu_cache_bytes<<'\n';
         for(const auto& c:contexts)std::cerr<<"FP4_ROUTES device="<<c->device<<" hits="<<c->hits<<" misses="<<c->misses
             <<" uploaded_bytes="<<c->uploaded<<" cache_bytes="<<c->cache_bytes<<" mma="<<c->mma_calls

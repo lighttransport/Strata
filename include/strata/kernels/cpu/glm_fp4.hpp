@@ -30,4 +30,36 @@ GlmFp4Csf32Rows glm_fp4_csf32_rows(const uint8_t* logical,const uint8_t* bases,
 void glm_fp4_rows_csf32_table(const uint8_t* weights,const GlmFp4Csf32Rows& scales,
                              const float* table,const float* x,float* y,int columns,
                              int rows,int tokens,int first,int last);
+// Lossless row-sorted exceptions avoid a mask and rank for every scale word.
+// Group indices fit in one byte for the native expert's 128/256 groups.
+struct GlmFp4Csf32SparseRows {
+    int rows=0,groups=0;
+    std::vector<uint8_t> bases,codes;
+    std::vector<uint32_t> offsets;
+    std::vector<uint16_t> exceptions;
+    // Optional immutable checkpoint views; their owner must outlive this layout.
+    const uint8_t* borrowed_bases=nullptr;
+    const uint8_t* borrowed_codes=nullptr;
+    size_t bytes()const {return bases.capacity()+codes.capacity()+offsets.capacity()*4+exceptions.capacity()*2;}
+};
+GlmFp4Csf32SparseRows glm_fp4_csf32_sparse_rows(const uint8_t* logical,const uint8_t* bases,
+                                              const uint8_t* codes,int rows,int groups,bool borrow=false);
+void glm_fp4_rows_csf32_sparse_table(const uint8_t* weights,const GlmFp4Csf32SparseRows& scales,
+                                    const float* table,const float* x,float* y,int columns,
+                                    int rows,int tokens,int first,int last);
+// Optional W4A8 approximation. Original FP4 codes stay compressed; activations
+// have one signed-int8 scale per 64 values. Weight factors use table[scale*8+1]
+// times twice the E2M1 magnitude, instead of rounding each operand to FP16.
+struct GlmFp4Q8 {
+    int columns=0,tokens=0;
+    std::vector<int8_t> values;
+    std::vector<float> scales;
+};
+GlmFp4Q8 glm_fp4_quantize_q8(const float* x,int columns,int tokens);
+// In-place FP16 rounding, with the scalar codec's values on every ISA.
+void glm_fp4_round_f16(float* x,size_t count);
+bool glm_fp4_q8_vnni_available();
+void glm_fp4_rows_csf32_q8(const uint8_t* weights,const GlmFp4Csf32SparseRows& scales,
+                          const float* table,const GlmFp4Q8& x,float* y,int columns,
+                          int rows,int tokens,int first,int last);
 }

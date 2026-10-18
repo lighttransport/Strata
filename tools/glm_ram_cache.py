@@ -23,13 +23,15 @@ import time
 
 
 class RamCache:
-    def __init__(self, model, destination, *, workers=4, chunk_bytes=64*1024*1024, reserve_bytes=6*1024**3):
+    def __init__(self, model, destination, *, workers=4, chunk_bytes=64*1024*1024, reserve_bytes=6*1024**3,
+                 direct_read=False):
         if sys.platform != 'linux':
             raise RuntimeError('sealed RAM cache requires Linux')
         self.model = pathlib.Path(model).resolve()
         self.destination = pathlib.Path(destination).absolute()
         self.workers, self.chunk_bytes = workers, chunk_bytes
         self.reserve_bytes = reserve_bytes
+        self.direct_read = direct_read
         self.entries = []
         self.created = False
         self.stop = threading.Event()
@@ -48,29 +50,48 @@ class RamCache:
         size = source.stat().st_size
         descriptor = os.memfd_create('strata-fp4', os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
         pointer = None
+        direct_descriptor = None
+        buffer = view = None
         try:
             os.ftruncate(descriptor, size)
             source_hash, cached_hash = hashlib.sha256(), hashlib.sha256()
-            buffer = bytearray(self.chunk_bytes)
+            if self.direct_read:
+                # mmap provides aligned memory for O_DIRECT. Only a final
+                # partial page uses buffered IO, bounding source-cache growth.
+                direct_descriptor = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECT)
+                buffer = mmap.mmap(-1, self.chunk_bytes)
+            else:
+                buffer = bytearray(self.chunk_bytes)
             view = memoryview(buffer)
             with source.open('rb', buffering=0) as stream:
                 offset = 0
                 while offset < size:
                     if self.stop.is_set():
                         raise RuntimeError('RAM cache loading canceled')
-                    count = stream.readinto(view[:min(len(view), size-offset)])
+                    extent = min(len(view), size-offset)
+                    if self.direct_read and extent >= 4096:
+                        extent = extent//4096*4096
+                        count = os.preadv(direct_descriptor, [view[:extent]], offset)
+                        if count % 4096:
+                            raise RuntimeError('checkpoint changed or direct read was unaligned')
+                    else:
+                        count = os.preadv(stream.fileno(), [view[:extent]], offset)
                     if not count:
                         raise RuntimeError('checkpoint changed or truncated during RAM copy')
                     block = view[:count]
-                    source_hash.update(block)
-                    written = 0
-                    while written < count:
-                        n = os.write(descriptor, block[written:])
-                        if n <= 0:
-                            raise RuntimeError('short write to RAM cache')
-                        written += n
+                    try:
+                        source_hash.update(block)
+                        written = 0
+                        while written < count:
+                            n = os.write(descriptor, block[written:])
+                            if n <= 0:
+                                raise RuntimeError('short write to RAM cache')
+                            written += n
+                    finally:
+                        block.release()
                     os.posix_fadvise(stream.fileno(), offset, count, os.POSIX_FADV_DONTNEED)
                     offset += count
+                stream.seek(size)
                 if stream.read(1):
                     raise RuntimeError('checkpoint grew during RAM copy')
             seals = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
@@ -108,6 +129,13 @@ class RamCache:
                 self.libc.munmap(pointer, size)
             os.close(descriptor)
             raise
+        finally:
+            if direct_descriptor is not None:
+                os.close(direct_descriptor)
+            if view is not None:
+                view.release()
+            if isinstance(buffer, mmap.mmap):
+                buffer.close()
 
     def open(self):
         if self.created:
@@ -122,7 +150,7 @@ class RamCache:
             raise ValueError('RAM cache requires a native ModelOpt checkpoint')
         index = json.loads((self.model/'model.safetensors.index.json').read_text())
         names = sorted(set(index['weight_map'].values()))
-        if not names or not 1 <= self.workers <= 16 or self.chunk_bytes < 4096:
+        if not names or not 1 <= self.workers <= 16 or self.chunk_bytes < 4096 or (self.direct_read and self.chunk_bytes % 4096):
             raise ValueError('invalid RAM cache extent or worker count')
         # Validate every source path before creating or allocating anything.
         for relative in names:
@@ -202,6 +230,7 @@ def main():
     parser.add_argument('--cache-dir', type=pathlib.Path, required=True)
     parser.add_argument('--report', type=pathlib.Path, required=True)
     parser.add_argument('--workers', type=int, default=4)
+    parser.add_argument('--direct-read', action='store_true', help='use aligned O_DIRECT reads except the final partial page')
     args, command = parser.parse_known_args()
     if command[:1] == ['--']:
         command = command[1:]
@@ -210,8 +239,9 @@ def main():
     if args.report.exists():
         parser.error('report already exists; choose a fresh path')
     started = time.monotonic()
-    with RamCache(args.model, args.cache_dir, workers=args.workers) as cache:
+    with RamCache(args.model, args.cache_dir, workers=args.workers, direct_read=args.direct_read) as cache:
         record = dict(backing='sealed memfd; one shared physical copy', startup_seconds=time.monotonic()-started,
+                      direct_read=args.direct_read,
                       weights=[{k:v for k,v in entry.items() if k in ('name','bytes','sha256')} for entry in sorted(cache.entries, key=lambda row:row['name'])])
         args.report.write_text(json.dumps(record, indent=2)+'\n')
         environment = dict(os.environ, STRATA_GLM_FP4_RAM_FDS='1', GLM_FP4_MODEL=str(cache.destination))

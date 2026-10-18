@@ -26,6 +26,14 @@ int main() {
         policy = {4.f, 5, 1};
         auto invalid = logits; invalid[3] = std::numeric_limits<float>::quiet_NaN();
         require(!strata::spec::bounded_accept(invalid, 1, 0, policy, 0, stops).accepted);
+        invalid[3] = std::numeric_limits<float>::infinity();
+        require(!strata::spec::bounded_accept(invalid, 1, 0, policy, 0, stops).accepted);
+        auto masked = logits; masked[3] = -std::numeric_limits<float>::infinity();
+        require(strata::spec::bounded_accept(masked, 1, 0, policy, 0, stops).soft);
+        require(!strata::spec::bounded_accept(masked, 3, 0, policy, 0, stops).accepted);
+        policy.margin=0;
+        require(!strata::spec::bounded_accept(masked, 1, 0, policy, 0, stops).accepted);
+        require(strata::spec::bounded_accept(masked, 0, 0, policy, 0, stops).accepted);
         const std::array<int, 5> history{1, 2, 3, 1, 2};
         require(strata::spec::repeats_ngram(history, 3, 3));
         require(!strata::spec::repeats_ngram(history, 4, 3));

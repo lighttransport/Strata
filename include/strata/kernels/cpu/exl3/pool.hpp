@@ -58,8 +58,12 @@ class Pool {
     std::vector<RowArena> arenas;
     std::mutex mutex;std::condition_variable wake,done;
     std::function<void(size_t)> task;size_t epoch=0,pending=0;bool stop=false;std::exception_ptr error;
+    const bool spin_mode;
+    alignas(64) std::atomic<size_t> spin_epoch{0};
+    alignas(64) std::atomic<size_t> spin_pending{0};
+    std::atomic<bool> spin_stop{false};
 public:
-    explicit Pool(size_t count,bool pin) {
+    explicit Pool(size_t count,bool pin,bool spin=false):spin_mode(spin) {
         if(!count||count>256)throw std::runtime_error("EXL3: invalid worker count");
         arenas.resize(count);
         std::vector<int> cpus;
@@ -73,12 +77,35 @@ public:
 #endif
         std::cerr<<"EXL3 workers="<<count<<" placement="<<(pin?"pinned-first-touch":"first-touch")<<" weight_pages="<<(huge_pages?"THP-advice":"4k")<<" cpus=";
         if(pin&&!cpus.empty())for(size_t i=0;i<count;++i)std::cerr<<(i?",":"")<<cpus[(i+1)%cpus.size()];
+        if(spin_mode)std::cerr<<" wait=spin";
         std::cerr<<'\n';
         for(size_t i=0;i<count;++i)workers.emplace_back([&,i,pin,cpus] {
 #ifdef __linux__
             bool affinity_ok=true;
             if(pin&&!cpus.empty()) {cpu_set_t set;CPU_ZERO(&set);CPU_SET(cpus[(i+1)%cpus.size()],&set);affinity_ok=pthread_setaffinity_np(pthread_self(),sizeof(set),&set)==0;}
 #endif
+            if(spin_mode) {
+                size_t seen=0;
+                for(;;) {
+                    size_t next;
+                    while((next=spin_epoch.load(std::memory_order_acquire))==seen) {
+                        if(spin_stop.load(std::memory_order_acquire))return;
+#if defined(__x86_64__)
+                        _mm_pause();
+#else
+                        std::this_thread::yield();
+#endif
+                    }
+                    seen=next;
+                    try {
+#ifdef __linux__
+                        if(!affinity_ok)throw std::runtime_error("EXL3: worker CPU pinning failed");
+#endif
+                        auto job=task;job(i);
+                    }catch(...){std::lock_guard guard(mutex);if(!error)error=std::current_exception();}
+                    spin_pending.fetch_sub(1,std::memory_order_release);
+                }
+            }
             size_t seen_epoch=0;
             std::unique_lock lock(mutex);
             while(true) {
@@ -92,10 +119,23 @@ public:
             }
         });
     }
-    ~Pool() {{std::lock_guard lock(mutex);stop=true;}wake.notify_all();for(auto& w:workers)w.join();}
+    ~Pool() {spin_stop.store(true,std::memory_order_release);{std::lock_guard lock(mutex);stop=true;}wake.notify_all();for(auto& w:workers)w.join();}
     Pool(const Pool&)=delete;
     size_t size()const{return workers.size();}
     void run(std::function<void(size_t)> job) {
+        if(spin_mode) {
+            std::unique_lock lock(mutex);task=std::move(job);error=nullptr;
+            spin_pending.store(workers.size(),std::memory_order_relaxed);
+            spin_epoch.fetch_add(1,std::memory_order_release);lock.unlock();
+            while(spin_pending.load(std::memory_order_acquire)) {
+#if defined(__x86_64__)
+                _mm_pause();
+#else
+                std::this_thread::yield();
+#endif
+            }
+            lock.lock();task={};if(error)std::rethrow_exception(error);return;
+        }
         std::unique_lock lock(mutex);task=std::move(job);error=nullptr;pending=workers.size();++epoch;wake.notify_all();done.wait(lock,[&]{return !pending;});task={};if(error)std::rethrow_exception(error);
     }
     struct Rows {size_t first=0,last=0;RowStorage packed;};

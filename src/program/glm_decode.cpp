@@ -11,6 +11,7 @@
 #include "strata/core/glm_mixed.hpp"
 #include "strata/host/glm_expert_replay.h"
 #include "strata/host/glm_env.h"
+#include "strata/host/glm_route_drop.h"
 #include "strata/core/device.hpp"
 #include "strata/core/runtime_memory.hpp"
 #include "strata/artifact/expert_calibration.hpp"
@@ -2038,7 +2039,7 @@ class Decoder {
     std::map<int, std::unique_ptr<DecodeGraph>> mixer_graphs;
     template<class F> void decode_graph(int layer, F &&enqueue, int key = -1) {
         if (!decode_graphs || !gpu || fast || !row_sequences.empty() || ((batch_tokens!=1 || capturing_history) &&
-            !(verify_graphs && !artifact.is_exl3() && batch_tokens<=4))) {
+            !(verify_graphs && (!artifact.is_exl3() || artifact.is_modelopt()) && batch_tokens<=4))) {
             enqueue(); return;
         }
         auto &entry = mixer_graphs[key >= 0 ? key : graph_key(layer)];
@@ -6988,7 +6989,8 @@ class Decoder {
             if(resident>ram || host_reserve>ram-resident)throw std::runtime_error(artifact.is_modelopt()?"GLM FP4: indexed files plus runtime reserve exceed the memory allowance":"EXL3: main weights plus 6 GiB host reserve exceed system RAM");
 #endif
             if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
-            exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu);
+            exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu,
+                artifact.is_modelopt()&&strata_env_is_one("STRATA_GLM_FP4_CPU_SPIN"));
         }
         if (!artifact.is_exl3() && GpuPrefill::prefetch_groups() && prefetch_geometry_supported())
             for (size_t l = 0; l < m.layers.size(); ++l) {
@@ -8562,6 +8564,20 @@ class Decoder {
         }
     }
     void set_verify_graphs(bool enabled) {verify_graphs=enabled;}
+    bool set_fp4_decode_routing(bool enabled) {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)return modelopt_gpu->set_decode_device_routing(enabled);
+#endif
+        (void)enabled;return false;
+    }
+    size_t captured_mixer_graphs(int width,bool history) const {
+        size_t count=0;
+        // graph_key reserves the ten-thousands digit for width and the low
+        // hundred-thousands bit for history; the other flags use higher bits.
+        for(const auto& [key,graph]:mixer_graphs)
+            if(graph->executable && (key%100000)/10000==width-1 && (key/100000)%2==int(history))++count;
+        return count;
+    }
     void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&!artifact.is_modelopt()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
     // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
     // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
@@ -11756,8 +11772,17 @@ int main(int argc, char **argv) {
             // residency-biased routing or deferred CPU experts, moving resident
             // experts to the CPU changes the target, independently of graphs.
             decoder.set_decode_graphs(false);
+            const bool fp4_device_routes=decoder.set_fp4_decode_routing(false);
             for (int token : window) expected.push_back(decoder.step(token));
             decoder.restore(cp);
+            if(fp4_device_routes) {
+                decoder.set_fp4_decode_routing(true);
+                for(size_t i=0;i<window.size();++i)
+                    if(decoder.step(window[i])!=expected[i])
+                        throw std::runtime_error("GLM FP4: device routing changed decode logits");
+                decoder.restore(cp);
+                std::cerr<<"FP4_DECODE_ROUTING_PARITY steps=8 all_logits=bitwise_equal\n";
+            }
             decoder.set_decode_graphs(true);
             for (size_t i = 0; i < window.size(); ++i) {
                 const auto actual = decoder.step(window[i]);
@@ -11844,6 +11869,9 @@ int main(int argc, char **argv) {
                             decoder.restore(cp);decoder.verify(window);
                         }
                     }
+                    const auto captures=decoder.captured_mixer_graphs(width,history);
+                    if(!captures)throw std::runtime_error("GLM: verification graph check did not capture the requested width/history");
+                    std::cerr<<"VERIFY_GRAPH_CAPTURE width="<<width<<" history="<<history<<" graphs="<<captures<<'\n';
                 }
                 decoder.clear_verify_history();
             }

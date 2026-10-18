@@ -1,0 +1,3648 @@
+{
+  "date": "2026-10-18",
+  "scope": "Opt-in lossy native FP4 decode on two V100 32GB GPUs. Checkpoint files remain unchanged. Performance and the frozen coding check are separate measurements.",
+  "hardware": {
+    "gpus": [
+      "Tesla V100-PCIE-32GB",
+      "Tesla V100-PCIE-32GB"
+    ],
+    "cpu": "2 x Intel Xeon Gold 6240",
+    "physical_cores": 36,
+    "logical_cpus": 72,
+    "numa_nodes": 4,
+    "slurm_memory_GiB": 181,
+    "weight_numa_policy": "interleave=all",
+    "cuda": "12.9",
+    "compiler": "GCC 12.2.1",
+    "driver": "580.178.04",
+    "clocks_locked": false,
+    "ram_speed": "not recorded"
+  },
+  "checkpoint": {
+    "indexed_files": 42,
+    "indexed_file_bytes": 177463841024,
+    "canonical_manifest_sha256": "b1389a9ecaee05ba182687bce9bb217e1f99d21ffe84bb1a5c7fbacc5257039f",
+    "full_source_and_sealed_copy_sha256_verified": true,
+    "loader_seconds": 331.7656324849813,
+    "direct_read": true,
+    "continuation_copies": [
+      {
+        "indexed_files": 42,
+        "indexed_file_bytes": 177463841024,
+        "canonical_manifest_sha256": "b1389a9ecaee05ba182687bce9bb217e1f99d21ffe84bb1a5c7fbacc5257039f",
+        "startup_seconds": 354.82575996790547,
+        "direct_read": true
+      }
+    ]
+  },
+  "reference": {
+    "commit": "a11bf931",
+    "branch": "fp4-v100-reference",
+    "binary_sha256": "7ed82e75f54e543612fb0d0c158f71c15597c2997079a9e2a753b0e7a2e31868",
+    "median_decode_tok_s": 5.260860433799639,
+    "measurement": "docs/glm_fp4_v100_model_measurement.json",
+    "preserved": true,
+    "median_prefill_tok_s": 393.8045014469623,
+    "record_sha256": "24d7dc6debf12006abba62fe017ef38e8a0ea4fd47e20d23d28ea3ef9ccf9cfa",
+    "preserved_experimental_profile": "configs/experimental/glm53f-fp4-dual-v100-sm70.json"
+  },
+  "selected": {
+    "name": "final20-v13-t32-half-mtp3-m3-lookup-512-resident4-libs",
+    "complete": true,
+    "raw_report_sha256": "ec112cb3d4bcf63c5269e02accc35421e3272ad0e109e07c69aa20cc1dc1048c",
+    "raw_log_sha256": "a34fa191cbe0d8b4ad0ee29183ef61f56bb3936b7e62554a0066a7ab2c9c5ea0",
+    "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+    "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+    "configuration": {
+      "fp4_kernel": "sm70",
+      "prompt_tokens": 8192,
+      "generated_tokens": 512,
+      "threads": 32,
+      "context": 12288,
+      "prefill_batch": 8192,
+      "speculative": "mtp",
+      "draft_depth": 3,
+      "decode_graphs": false,
+      "full_warmups": 2,
+      "repetitions": 3,
+      "cpu_affinity": "auto",
+      "gpu_devices": "0,1",
+      "gpu_budget_mib": 32768,
+      "prefill_expert_cache_mib": "0",
+      "stop_ids": "-1"
+    },
+    "environment": {
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+      "STRATA_GLM_FP4_CPU_BORROW": "1",
+      "STRATA_GLM_FP4_CPU_CSF32": "1",
+      "STRATA_GLM_FP4_CPU_FUSED": "1",
+      "STRATA_GLM_FP4_CPU_Q8": "1",
+      "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+      "STRATA_GLM_FP4_CPU_SPARSE": "1",
+      "STRATA_GLM_FP4_CPU_SPIN": "1",
+      "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+      "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+      "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+      "STRATA_GLM_FP4_RAM_FDS": "1",
+      "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+      "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+      "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+      "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+      "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+      "STRATA_GLM_MLA_ABSORB_F16": "1",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+      "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+      "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+      "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_VRAM_PREALLOC": "1",
+      "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+    },
+    "median_decode_tok_s": 31.01951619267308,
+    "median_prefill_tok_s": 390.7017560594065,
+    "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+    "instrumented": false,
+    "repetitions_identical": true,
+    "memory": {
+      "peak_rss_bytes": 179903811584,
+      "peak_swap_bytes": 0,
+      "samples": 602
+    },
+    "trials": [
+      {
+        "prefill_ms": 20938.0,
+        "decode_ms": 18050.6,
+        "prefill_tok_s": 391.2503582004012,
+        "decode_tok_s": 28.309308277841183,
+        "generated_tokens": 512,
+        "requested_tokens": 512,
+        "stop_reason": "length",
+        "major_faults": 0,
+        "minor_faults": 218524,
+        "first_eos_position_1based": null,
+        "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+      },
+      {
+        "prefill_ms": 20967.4,
+        "decode_ms": 16324.7,
+        "prefill_tok_s": 390.7017560594065,
+        "decode_tok_s": 31.302259765876247,
+        "generated_tokens": 512,
+        "requested_tokens": 512,
+        "stop_reason": "length",
+        "major_faults": 0,
+        "minor_faults": 212991,
+        "first_eos_position_1based": null,
+        "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+      },
+      {
+        "prefill_ms": 20976.8,
+        "decode_ms": 16473.5,
+        "prefill_tok_s": 390.5266770908814,
+        "decode_tok_s": 31.01951619267308,
+        "generated_tokens": 512,
+        "requested_tokens": 512,
+        "stop_reason": "length",
+        "major_faults": 0,
+        "minor_faults": 212990,
+        "first_eos_position_1based": null,
+        "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+      }
+    ],
+    "mtp_approx": [
+      {
+        "margin": 3.0,
+        "top_k": 8,
+        "max_soft_per_window": 3,
+        "soft_accepted": 76,
+        "sum_logit_regret": 97.3028
+      },
+      {
+        "margin": 3.0,
+        "top_k": 8,
+        "max_soft_per_window": 3,
+        "soft_accepted": 77,
+        "sum_logit_regret": 94.6948
+      },
+      {
+        "margin": 3.0,
+        "top_k": 8,
+        "max_soft_per_window": 3,
+        "soft_accepted": 0,
+        "sum_logit_regret": 0.0
+      },
+      {
+        "margin": 3.0,
+        "top_k": 8,
+        "max_soft_per_window": 3,
+        "soft_accepted": 93,
+        "sum_logit_regret": 112.629
+      },
+      {
+        "margin": 3.0,
+        "top_k": 8,
+        "max_soft_per_window": 3,
+        "soft_accepted": 93,
+        "sum_logit_regret": 112.629
+      },
+      {
+        "margin": 3.0,
+        "top_k": 8,
+        "max_soft_per_window": 3,
+        "soft_accepted": 93,
+        "sum_logit_regret": 112.629
+      }
+    ],
+    "route_drop": {
+      "token_layers": 130242,
+      "cpu_candidates": 680316,
+      "dropped": 521861,
+      "mean_share": 0.385704,
+      "max_share": 0.499999,
+      "configured_fraction": 0.5,
+      "configured_count": 7,
+      "renormalize": true,
+      "max_multiplier": 2.0,
+      "counter_reports": 7,
+      "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+      "passed": true
+    },
+    "library_prefault": {
+      "passed": true,
+      "scope": "Read executable and shared-library file pages during the second discarded full warmup; no timed request is modified.",
+      "warmups_completed_before": 1,
+      "files": [
+        {
+          "name": "ld-2.28.so",
+          "bytes": 1104064,
+          "sha256": "ea350b06836b9ab15f6c4ff3f09ac54c82db39053f728c4828e6b96020b1385d"
+        },
+        {
+          "name": "libc-2.28.so",
+          "bytes": 2164744,
+          "sha256": "fad8eac96a62e70e04d149ff6e3b719e1eb9122988e0bc4157d8314d31ee65f2"
+        },
+        {
+          "name": "libcuda.so.580.178.04",
+          "bytes": 96284520,
+          "sha256": "dcdf334aeb177c95b3385b797c9b871d03a287895713c6d107f79096b0985aa9"
+        },
+        {
+          "name": "libdl-2.28.so",
+          "bytes": 19128,
+          "sha256": "1b1f37eabfe43191acfde11b5670e9789d968848359367635288a742b07b871e"
+        },
+        {
+          "name": "libgcc_s-8-20210514.so.1",
+          "bytes": 99672,
+          "sha256": "d96c5a7494608e8fea7448bcbb9a6909336de53690e1629b846d6ce05950d4da"
+        },
+        {
+          "name": "libm-2.28.so",
+          "bytes": 1598920,
+          "sha256": "19edf6a2b78b52812f9c07b39ad4b504a203d4d7480b97b1544cd67a5aa31cad"
+        },
+        {
+          "name": "libpthread-2.28.so",
+          "bytes": 149936,
+          "sha256": "11f299e6c3b98fc6b1f1bd408e44e440cd90a781dd72561f02fc0aa825272799"
+        },
+        {
+          "name": "librt-2.28.so",
+          "bytes": 42744,
+          "sha256": "0876f261baa372579eb4a0b104db357ac8206517a2d6817408df1fecb0371537"
+        },
+        {
+          "name": "libstdc++.so.6.0.25",
+          "bytes": 1661456,
+          "sha256": "302050eba993da65a1c4f6e8751292040ea4d82aeacab024c872896220968b68"
+        },
+        {
+          "name": "libcublas.so.12.9.1.4",
+          "bytes": 105140976,
+          "sha256": "d63456d94f1b8e2408a8a9538c8740eb474c9eba48a84f420b15e2e10fbcd048"
+        },
+        {
+          "name": "libcublasLt.so.12.9.1.4",
+          "bytes": 749205904,
+          "sha256": "96ddf4891ca4f4ed1475966783a9185df2abd64a81c3cc713b96d036696fc541"
+        },
+        {
+          "name": "libcudart.so.12.9.79",
+          "bytes": 741088,
+          "sha256": "256e6409e4f06f618e1fb53d4844a6b81cdded1013afa8ade40c22f99eb133b7"
+        },
+        {
+          "name": "strata-glm-decode-q8-v13",
+          "bytes": 80330656,
+          "sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20"
+        }
+      ],
+      "seconds": 3.973006324027665,
+      "total_bytes": 1038543808,
+      "warmups_completed_after": 1
+    },
+    "last_cpu_scale_cache": {
+      "hits": 129387,
+      "misses": 6092,
+      "bytes": 333718828
+    },
+    "cgroup_before": {
+      "step_to_root": [
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "178420723712",
+          "memory.max_usage_in_bytes": "185633251328",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178421514240",
+          "memory.max_usage_in_bytes": "185634041856",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178429632512",
+          "memory.max_usage_in_bytes": "185641734144",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "178429886464",
+          "memory.max_usage_in_bytes": "185641988096",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "179019431936",
+          "memory.max_usage_in_bytes": "191204278272",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "180466413568",
+          "memory.max_usage_in_bytes": "192871321600",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        }
+      ],
+      "matching_181_GiB": [
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178421514240",
+          "memory.max_usage_in_bytes": "185634041856",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178429632512",
+          "memory.max_usage_in_bytes": "185641734144",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        }
+      ],
+      "meminfo": {
+        "MemAvailable": "15282876 kB",
+        "SwapTotal": "0 kB",
+        "SwapFree": "0 kB",
+        "Shmem": "173384248 kB"
+      }
+    },
+    "cgroup_after": {
+      "step_to_root": [
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "179033194496",
+          "memory.max_usage_in_bytes": "185633251328",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "179033985024",
+          "memory.max_usage_in_bytes": "185634041856",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "179041849344",
+          "memory.max_usage_in_bytes": "185641734144",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "179042103296",
+          "memory.max_usage_in_bytes": "185641988096",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "179631628288",
+          "memory.max_usage_in_bytes": "191204278272",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "181086924800",
+          "memory.max_usage_in_bytes": "192871321600",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        }
+      ],
+      "matching_181_GiB": [
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "179033985024",
+          "memory.max_usage_in_bytes": "185634041856",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "179041849344",
+          "memory.max_usage_in_bytes": "185641734144",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        }
+      ],
+      "meminfo": {
+        "MemAvailable": "15285520 kB",
+        "SwapTotal": "0 kB",
+        "SwapFree": "0 kB",
+        "Shmem": "173384248 kB"
+      }
+    }
+  },
+  "controls": [
+    {
+      "name": "q8-v11-device-drop40n4-greedy",
+      "complete": true,
+      "raw_report_sha256": "6ba688a41b29faf82a3e3857e410d43a80c172951eb3eac980e185f6ce86853a",
+      "raw_log_sha256": "1b1ccb3ecd40a67aa015d9d0bbd3e86c4f0922102da6d5baeb152a7e95b98611",
+      "binary_sha256": "80b8ec6476c2a3281f4fbe3b8646a03a4bfed716a16adb278f397d305b4f3a1b",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.4",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "4",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 18.246995352044884,
+      "median_prefill_tok_s": 388.7346667615726,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179528945664,
+        "peak_swap_bytes": 0,
+        "samples": 324
+      },
+      "trials": [
+        {
+          "prefill_ms": 21073.5,
+          "decode_ms": 6960.05,
+          "prefill_tok_s": 388.7346667615726,
+          "decode_tok_s": 18.246995352044884,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "d78da68759130c8c4dcdff75b6439c1d4578aaa37da21635cfa8068b173ba4e1"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 10710,
+        "cpu_candidates": 53187,
+        "dropped": 35516,
+        "mean_share": 0.296989,
+        "max_share": 0.399973,
+        "configured_fraction": 0.4,
+        "configured_count": 4,
+        "renormalize": true,
+        "max_multiplier": 1.66659,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 14730,
+        "misses": 2941,
+        "bytes": 161042442
+      }
+    },
+    {
+      "name": "q8-v11-device-drop50n7-greedy-resume1",
+      "complete": true,
+      "raw_report_sha256": "616803544dc3e8224f2f8a7530227fd1f8ca07388a25d0198413d1c79ff34454",
+      "raw_log_sha256": "edff3a3f4d878c34db7844416517d84648a413302b91f9616c00ed20c9fb3adb",
+      "binary_sha256": "80b8ec6476c2a3281f4fbe3b8646a03a4bfed716a16adb278f397d305b4f3a1b",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 19.393132387905403,
+      "median_prefill_tok_s": 389.2833043461732,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179488964608,
+        "peak_swap_bytes": 0,
+        "samples": 318
+      },
+      "trials": [
+        {
+          "prefill_ms": 21043.8,
+          "decode_ms": 6548.71,
+          "prefill_tok_s": 389.2833043461732,
+          "decode_tok_s": 19.393132387905403,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "59d3e55772d2cfdfced691960aaef90675e80a38e617decec9057e5cfcd757b5"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 10710,
+        "cpu_candidates": 54574,
+        "dropped": 42207,
+        "mean_share": 0.382961,
+        "max_share": 0.499962,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99985,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 10132,
+        "misses": 2235,
+        "bytes": 122333362
+      }
+    },
+    {
+      "name": "q8-v11-t32-half-graphs",
+      "complete": true,
+      "raw_report_sha256": "a13b7a07e2f347c1e6492e0250a00f8aac0d1b9acb6152f589421ea7e8f41a08",
+      "raw_log_sha256": "ffc14cbe57294920210b0a27dfa69ef0a735093cb59f8bea1f3e08d4ef320e83",
+      "binary_sha256": "80b8ec6476c2a3281f4fbe3b8646a03a4bfed716a16adb278f397d305b4f3a1b",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": true,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 18.616705488116825,
+      "median_prefill_tok_s": 388.64614318991573,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179354996736,
+        "peak_swap_bytes": 0,
+        "samples": 319
+      },
+      "trials": [
+        {
+          "prefill_ms": 21078.3,
+          "decode_ms": 6821.83,
+          "prefill_tok_s": 388.64614318991573,
+          "decode_tok_s": 18.616705488116825,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180226,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "59d3e55772d2cfdfced691960aaef90675e80a38e617decec9057e5cfcd757b5"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 10752,
+        "cpu_candidates": 54809,
+        "dropped": 42389,
+        "mean_share": 0.383008,
+        "max_share": 0.499962,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99985,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 10185,
+        "misses": 2235,
+        "bytes": 122333362
+      }
+    },
+    {
+      "name": "q8-v11-t32-half-mtp3-m1",
+      "complete": true,
+      "raw_report_sha256": "99a9200a533eba7d0c9bea801886262c50bdd3858436f341a15b4ea5335f052f",
+      "raw_log_sha256": "1b1cbf97f2d9402f02ef17b83ca05872eecca6a498b11291f279c5363d7f51af",
+      "binary_sha256": "80b8ec6476c2a3281f4fbe3b8646a03a4bfed716a16adb278f397d305b4f3a1b",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 16.163189671849068,
+      "median_prefill_tok_s": 391.46162557880604,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179743952896,
+        "peak_swap_bytes": 0,
+        "samples": 312
+      },
+      "trials": [
+        {
+          "prefill_ms": 20926.7,
+          "decode_ms": 7857.36,
+          "prefill_tok_s": 391.46162557880604,
+          "decode_tok_s": 16.163189671849068,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 221247,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "bc835e63e15d115abc80d4b6ae6d8a7ea975fd3c53d115ca48557f2b3db298a4"
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 1.0,
+          "top_k": 4,
+          "max_soft_per_window": 2,
+          "soft_accepted": 12,
+          "sum_logit_regret": 6.11782
+        },
+        {
+          "margin": 1.0,
+          "top_k": 4,
+          "max_soft_per_window": 2,
+          "soft_accepted": 0,
+          "sum_logit_regret": 0.0
+        },
+        {
+          "margin": 1.0,
+          "top_k": 4,
+          "max_soft_per_window": 2,
+          "soft_accepted": 10,
+          "sum_logit_regret": 4.78621
+        }
+      ],
+      "route_drop": {
+        "token_layers": 15414,
+        "cpu_candidates": 80718,
+        "dropped": 61688,
+        "mean_share": 0.384741,
+        "max_share": 0.499999,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 2.0,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 12980,
+        "misses": 3378,
+        "bytes": 184974052
+      }
+    },
+    {
+      "name": "q8-v11-t32-half-mtp3-m3-lookup",
+      "complete": true,
+      "raw_report_sha256": "b91a10f16a45d9173b14c76dde347f9a6f8efd0f60617d002a7cc68442aa552b",
+      "raw_log_sha256": "ace5d8bfe07fc647626fda9447a1950cc2fab91a625520c3deab085219c132c5",
+      "binary_sha256": "80b8ec6476c2a3281f4fbe3b8646a03a4bfed716a16adb278f397d305b4f3a1b",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 21.96437620306844,
+      "median_prefill_tok_s": 391.0206536421913,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179417419776,
+        "peak_swap_bytes": 0,
+        "samples": 305
+      },
+      "trials": [
+        {
+          "prefill_ms": 20950.3,
+          "decode_ms": 5782.09,
+          "prefill_tok_s": 391.0206536421913,
+          "decode_tok_s": 21.96437620306844,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 218952,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "0efc7e1882f86c5194bc65716dc82201ca2469c100a7bb3d4a2a413e3381bb83"
+        }
+      ],
+      "mtp_approx": [
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 14,
+          "sum_logit_regret": 20.7344
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 0,
+          "sum_logit_regret": 0.0
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 20,
+          "sum_logit_regret": 21.8016
+        }
+      ],
+      "route_drop": {
+        "token_layers": 11928,
+        "cpu_candidates": 65690,
+        "dropped": 48947,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 2.0,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 10511,
+        "misses": 3307,
+        "bytes": 181123482
+      }
+    },
+    {
+      "name": "q8-v12-t32-half-reserve512",
+      "complete": true,
+      "raw_report_sha256": "629c1fda3dd13cf15e01622fc61903fdca7cc4ec95742584cfb92f01c469ede0",
+      "raw_log_sha256": "5a68d90eee97814e4e84c9f025fc7f2c933f6c93e611fd11a49d5d502e8dd148",
+      "binary_sha256": "f76535fcef4a81b656f7cc1280d58ac98c4fa717022099083e731808a93e81e2",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "512",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 10.8004218117495,
+      "median_prefill_tok_s": 386.5956272032695,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179467997184,
+        "peak_swap_bytes": 0,
+        "samples": 325
+      },
+      "trials": [
+        {
+          "prefill_ms": 21190.1,
+          "decode_ms": 11758.8,
+          "prefill_tok_s": 386.5956272032695,
+          "decode_tok_s": 10.8004218117495,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 192084,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "34d048192ba6e9752978ddcf1fa90edfb5a22fd2045b736715994622ed4f9107"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 10710,
+        "cpu_candidates": 50571,
+        "dropped": 40135,
+        "mean_share": 0.366895,
+        "max_share": 0.499982,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99993,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 7739,
+        "misses": 2697,
+        "bytes": 147710000
+      }
+    },
+    {
+      "name": "q8-v12-t35-half-reserve512",
+      "complete": true,
+      "raw_report_sha256": "bfad2ad8d9a3a31acc0c3aa8f7823a0f641c34846ec1e940c93ba7de8512b9b0",
+      "raw_log_sha256": "e8bbe507bb0dbc0e3f77f4f259be9d9d342dd79d9d08f4a2bf29d8925b5a246c",
+      "binary_sha256": "f76535fcef4a81b656f7cc1280d58ac98c4fa717022099083e731808a93e81e2",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "512",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 10.745773611087607,
+      "median_prefill_tok_s": 385.4587203448049,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179204419584,
+        "peak_swap_bytes": 0,
+        "samples": 327
+      },
+      "trials": [
+        {
+          "prefill_ms": 21252.6,
+          "decode_ms": 11818.6,
+          "prefill_tok_s": 385.4587203448049,
+          "decode_tok_s": 10.745773611087607,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 192083,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "34d048192ba6e9752978ddcf1fa90edfb5a22fd2045b736715994622ed4f9107"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 10710,
+        "cpu_candidates": 50571,
+        "dropped": 40135,
+        "mean_share": 0.366895,
+        "max_share": 0.499982,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99993,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 7739,
+        "misses": 2697,
+        "bytes": 147710000
+      }
+    },
+    {
+      "name": "q8-v13-t32-half-reserve512",
+      "complete": true,
+      "raw_report_sha256": "204a76994f7600ade821817c5c3094c0e71559bd6d73008fcc830014c0afd37b",
+      "raw_log_sha256": "bb6760157ecaf81a4c006f88f251838269d48f5dbe270a229bb19100f7e6d9c2",
+      "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "512",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 18.07921829446064,
+      "median_prefill_tok_s": 397.4056088911743,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179474116608,
+        "peak_swap_bytes": 0,
+        "samples": 316
+      },
+      "trials": [
+        {
+          "prefill_ms": 20613.7,
+          "decode_ms": 7024.64,
+          "prefill_tok_s": 397.4056088911743,
+          "decode_tok_s": 18.07921829446064,
+          "generated_tokens": 128,
+          "requested_tokens": 128,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180228,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "c0dbae5977f390fb4e18752063c69685e64572e2f59f757aa85f46e2ed624eb1"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 10710,
+        "cpu_candidates": 49575,
+        "dropped": 39622,
+        "mean_share": 0.363626,
+        "max_share": 0.499891,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99956,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 7983,
+        "misses": 1970,
+        "bytes": 107920022
+      }
+    },
+    {
+      "name": "final20-v11-t32-drop50n7-512",
+      "complete": true,
+      "raw_report_sha256": "72d09e8b6c0a8767540924cbba5a4594c75874b5f7c64be3147ab3e0854cb6c4",
+      "raw_log_sha256": "3cbb2c9207fc962e1c479f6024b1654fbb558df37bd53e16e8d0dbbb71fafeee",
+      "binary_sha256": "80b8ec6476c2a3281f4fbe3b8646a03a4bfed716a16adb278f397d305b4f3a1b",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 19.084610931635265,
+      "median_prefill_tok_s": 394.7400122392533,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179594190848,
+        "peak_swap_bytes": 0,
+        "samples": 704
+      },
+      "trials": [
+        {
+          "prefill_ms": 21086.6,
+          "decode_ms": 26744.8,
+          "prefill_tok_s": 388.49316627621334,
+          "decode_tok_s": 19.10651790254554,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "672bf72f5d23f21a18ba98d2e20105f16262ecebbaef95075509aa1fd52732c8"
+        },
+        {
+          "prefill_ms": 20752.9,
+          "decode_ms": 26780.3,
+          "prefill_tok_s": 394.7400122392533,
+          "decode_tok_s": 19.08119027792818,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "672bf72f5d23f21a18ba98d2e20105f16262ecebbaef95075509aa1fd52732c8"
+        },
+        {
+          "prefill_ms": 20736.0,
+          "decode_ms": 26775.5,
+          "prefill_tok_s": 395.0617283950617,
+          "decode_tok_s": 19.084610931635265,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "672bf72f5d23f21a18ba98d2e20105f16262ecebbaef95075509aa1fd52732c8"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 107352,
+        "cpu_candidates": 513739,
+        "dropped": 408793,
+        "mean_share": 0.366908,
+        "max_share": 0.499987,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99995,
+        "counter_reports": 7,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 100793,
+        "misses": 4153,
+        "bytes": 227572238
+      },
+      "cgroup_before": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178441273344",
+            "memory.max_usage_in_bytes": "180635729920",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178442063872",
+            "memory.max_usage_in_bytes": "180636520448",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178449731584",
+            "memory.max_usage_in_bytes": "180644179968",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178449985536",
+            "memory.max_usage_in_bytes": "180644433920",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179039125504",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180413313024",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178442063872",
+            "memory.max_usage_in_bytes": "180636520448",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178449731584",
+            "memory.max_usage_in_bytes": "180644179968",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15315864 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      },
+      "cgroup_after": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178441736192",
+            "memory.max_usage_in_bytes": "180650373120",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178442526720",
+            "memory.max_usage_in_bytes": "180651163648",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178450219008",
+            "memory.max_usage_in_bytes": "180658855936",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178450472960",
+            "memory.max_usage_in_bytes": "180659109888",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179039678464",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180418478080",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178442526720",
+            "memory.max_usage_in_bytes": "180651163648",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178450219008",
+            "memory.max_usage_in_bytes": "180658855936",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15316636 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      }
+    },
+    {
+      "name": "final20-v11-t35-drop50n7-512",
+      "complete": true,
+      "raw_report_sha256": "08f6ee83ab34819871c3849b03f433d9bc6f4d0fcd16c3f85b04dbb08af58158",
+      "raw_log_sha256": "3d6779f070ba7cb6a65e703689e01b470b93e9c665fe22fabc5541613929c3c0",
+      "binary_sha256": "80b8ec6476c2a3281f4fbe3b8646a03a4bfed716a16adb278f397d305b4f3a1b",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "1",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "2",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "4",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 19.079266699025503,
+      "median_prefill_tok_s": 394.82943098678436,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179594846208,
+        "peak_swap_bytes": 0,
+        "samples": 706
+      },
+      "trials": [
+        {
+          "prefill_ms": 21057.0,
+          "decode_ms": 26730.2,
+          "prefill_tok_s": 389.03927435057227,
+          "decode_tok_s": 19.116953857434662,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180228,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "672bf72f5d23f21a18ba98d2e20105f16262ecebbaef95075509aa1fd52732c8"
+        },
+        {
+          "prefill_ms": 20748.2,
+          "decode_ms": 26783.0,
+          "prefill_tok_s": 394.82943098678436,
+          "decode_tok_s": 19.079266699025503,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "672bf72f5d23f21a18ba98d2e20105f16262ecebbaef95075509aa1fd52732c8"
+        },
+        {
+          "prefill_ms": 20746.5,
+          "decode_ms": 26879.2,
+          "prefill_tok_s": 394.86178391535924,
+          "decode_tok_s": 19.01098246971636,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "672bf72f5d23f21a18ba98d2e20105f16262ecebbaef95075509aa1fd52732c8"
+        }
+      ],
+      "mtp_approx": [],
+      "route_drop": {
+        "token_layers": 107352,
+        "cpu_candidates": 513739,
+        "dropped": 408793,
+        "mean_share": 0.366908,
+        "max_share": 0.499987,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99995,
+        "counter_reports": 7,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 100793,
+        "misses": 4153,
+        "bytes": 227572238
+      },
+      "cgroup_before": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178281488384",
+            "memory.max_usage_in_bytes": "180491517952",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178282278912",
+            "memory.max_usage_in_bytes": "180492308480",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178289946624",
+            "memory.max_usage_in_bytes": "180499980288",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178290200576",
+            "memory.max_usage_in_bytes": "180500234240",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178879336448",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180245692416",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178282278912",
+            "memory.max_usage_in_bytes": "180492308480",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178289946624",
+            "memory.max_usage_in_bytes": "180499980288",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15322628 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      },
+      "cgroup_after": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178421121024",
+            "memory.max_usage_in_bytes": "180635729920",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178421911552",
+            "memory.max_usage_in_bytes": "180636520448",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178429571072",
+            "memory.max_usage_in_bytes": "180644179968",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178429825024",
+            "memory.max_usage_in_bytes": "180644433920",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179019231232",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180391837696",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178421911552",
+            "memory.max_usage_in_bytes": "180636520448",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178429571072",
+            "memory.max_usage_in_bytes": "180644179968",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15316168 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      }
+    },
+    {
+      "name": "final20-v13-t32-half-mtp3-m3-lookup-512",
+      "complete": false,
+      "raw_report_sha256": "378cc5f3c9575150cc10783b9eb5b42da1a4d2fc3f57cb73d027413f7aa5c765",
+      "raw_log_sha256": "0f8e5e7bbf3ef0f811b319311333bf1e4c4364a36692a0ca7cc5d5caa42423ef",
+      "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 30.86140150622965,
+      "median_prefill_tok_s": 390.47083384970307,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179936858112,
+        "peak_swap_bytes": 0,
+        "samples": 604
+      },
+      "trials": [
+        {
+          "prefill_ms": 20925.3,
+          "decode_ms": 17881.8,
+          "prefill_tok_s": 391.4878161842363,
+          "decode_tok_s": 28.576541511480947,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 218524,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        },
+        {
+          "prefill_ms": 20979.8,
+          "decode_ms": 16302.0,
+          "prefill_tok_s": 390.47083384970307,
+          "decode_tok_s": 31.34584713532082,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        },
+        {
+          "prefill_ms": 21455.5,
+          "decode_ms": 16557.9,
+          "prefill_tok_s": 381.8135210085992,
+          "decode_tok_s": 30.86140150622965,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 30,
+          "minor_faults": 213077,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        }
+      ],
+      "error": "native FP4 timed requests swapped or faulted weight pages; residency qualification failed",
+      "mtp_approx": [
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 76,
+          "sum_logit_regret": 97.3028
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 77,
+          "sum_logit_regret": 94.6948
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 0,
+          "sum_logit_regret": 0.0
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        }
+      ],
+      "route_drop": {
+        "token_layers": 130242,
+        "cpu_candidates": 680316,
+        "dropped": 521861,
+        "mean_share": 0.385704,
+        "max_share": 0.499999,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 2.0,
+        "counter_reports": 7,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 129387,
+        "misses": 6092,
+        "bytes": 333718828
+      },
+      "cgroup_before": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178706698240",
+            "memory.max_usage_in_bytes": "180817121280",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178707488768",
+            "memory.max_usage_in_bytes": "180817911808",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178715181056",
+            "memory.max_usage_in_bytes": "180825604096",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178715693056",
+            "memory.max_usage_in_bytes": "180825858048",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179304923136",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180706906112",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178707488768",
+            "memory.max_usage_in_bytes": "180817911808",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178715181056",
+            "memory.max_usage_in_bytes": "180825604096",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15308016 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      },
+      "cgroup_after": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178621440000",
+            "memory.max_usage_in_bytes": "181262512128",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178622230528",
+            "memory.max_usage_in_bytes": "181263302656",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178629922816",
+            "memory.max_usage_in_bytes": "181271257088",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178630176768",
+            "memory.max_usage_in_bytes": "181271511040",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179219410944",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180628504576",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178622230528",
+            "memory.max_usage_in_bytes": "181263302656",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178629922816",
+            "memory.max_usage_in_bytes": "181271257088",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15295348 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      }
+    },
+    {
+      "name": "final20-v13-t32-half-mtp3-m3-lookup-512-resident2",
+      "complete": false,
+      "raw_report_sha256": "41dc05d27f42a680fca2ad5484171f2a1e6b92acb3a38aecfe821ee5c9780f3b",
+      "raw_log_sha256": "48497dd327878d19999fc02c084a540c0defd0b29713f6895e60213263472810",
+      "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 31.030064549821166,
+      "median_prefill_tok_s": 390.72970871748885,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179936538624,
+        "peak_swap_bytes": 0,
+        "samples": 609
+      },
+      "trials": [
+        {
+          "prefill_ms": 20910.8,
+          "decode_ms": 17843.4,
+          "prefill_tok_s": 391.7592822847524,
+          "decode_tok_s": 28.638039835457366,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 218524,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        },
+        {
+          "prefill_ms": 20965.9,
+          "decode_ms": 16262.4,
+          "prefill_tok_s": 390.72970871748885,
+          "decode_tok_s": 31.422176308539946,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        },
+        {
+          "prefill_ms": 21606.0,
+          "decode_ms": 16467.9,
+          "prefill_tok_s": 379.1539387207257,
+          "decode_tok_s": 31.030064549821166,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 32,
+          "minor_faults": 213026,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        }
+      ],
+      "error": "native FP4 timed requests swapped or faulted weight pages; residency qualification failed",
+      "mtp_approx": [
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 76,
+          "sum_logit_regret": 97.3028
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 77,
+          "sum_logit_regret": 94.6948
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 0,
+          "sum_logit_regret": 0.0
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        }
+      ],
+      "route_drop": {
+        "token_layers": 130242,
+        "cpu_candidates": 680316,
+        "dropped": 521861,
+        "mean_share": 0.385704,
+        "max_share": 0.499999,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 2.0,
+        "counter_reports": 7,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "last_cpu_scale_cache": {
+        "hits": 129387,
+        "misses": 6092,
+        "bytes": 333718828
+      },
+      "cgroup_before": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178453848064",
+            "memory.max_usage_in_bytes": "185633251328",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178454638592",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178462330880",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178462584832",
+            "memory.max_usage_in_bytes": "185641988096",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179051827200",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180478898176",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178454638592",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178462330880",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15294828 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      },
+      "cgroup_after": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178382016512",
+            "memory.max_usage_in_bytes": "185633251328",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178382807040",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178390499328",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178390753280",
+            "memory.max_usage_in_bytes": "185641988096",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178980261888",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180411088896",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178382807040",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178390499328",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15275388 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      }
+    },
+    {
+      "name": "final20-v13-t32-half-mtp3-m3-lookup-512-resident3-libs",
+      "complete": false,
+      "raw_report_sha256": "8b3ce71c8bb56e6b7d121953ead5ffa1056f3761f1c26faa48c85df7967abe11",
+      "raw_log_sha256": "57345dce49fc4e7329aef373054fa57036732646be2e89d4d0c967a952d07ee6",
+      "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 32,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "decode_graphs": false,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 31.426427719216246,
+      "median_prefill_tok_s": 390.6328232663046,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 179935555584,
+        "peak_swap_bytes": 0,
+        "samples": 604
+      },
+      "trials": [
+        {
+          "prefill_ms": 20900.6,
+          "decode_ms": 18442.3,
+          "prefill_tok_s": 391.9504703214262,
+          "decode_tok_s": 27.708040754135872,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 91,
+          "minor_faults": 218600,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        },
+        {
+          "prefill_ms": 21308.0,
+          "decode_ms": 16260.2,
+          "prefill_tok_s": 384.45654214379573,
+          "decode_tok_s": 31.426427719216246,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 26,
+          "minor_faults": 213014,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        },
+        {
+          "prefill_ms": 20971.1,
+          "decode_ms": 16237.2,
+          "prefill_tok_s": 390.6328232663046,
+          "decode_tok_s": 31.470943266080358,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 212991,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+        }
+      ],
+      "error": "native FP4 timed requests swapped or faulted weight pages; residency qualification failed",
+      "mtp_approx": [
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 76,
+          "sum_logit_regret": 97.3028
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 77,
+          "sum_logit_regret": 94.6948
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 0,
+          "sum_logit_regret": 0.0
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        },
+        {
+          "margin": 3.0,
+          "top_k": 8,
+          "max_soft_per_window": 3,
+          "soft_accepted": 93,
+          "sum_logit_regret": 112.629
+        }
+      ],
+      "route_drop": {
+        "token_layers": 130242,
+        "cpu_candidates": 680316,
+        "dropped": 521861,
+        "mean_share": 0.385704,
+        "max_share": 0.499999,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 2.0,
+        "counter_reports": 7,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      },
+      "library_prefault": {
+        "passed": false,
+        "scope": "Read executable and shared-library file pages during the second discarded full warmup; no timed request is modified."
+      },
+      "last_cpu_scale_cache": {
+        "hits": 129387,
+        "misses": 6092,
+        "bytes": 333718828
+      },
+      "cgroup_before": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178453188608",
+            "memory.max_usage_in_bytes": "185633251328",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178453979136",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178461708288",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178461962240",
+            "memory.max_usage_in_bytes": "185641988096",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179051216896",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180493651968",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178453979136",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178461708288",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15312868 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      },
+      "cgroup_after": {
+        "step_to_root": [
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178420387840",
+            "memory.max_usage_in_bytes": "185633251328",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178421178368",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178429300736",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "178429554688",
+            "memory.max_usage_in_bytes": "185641988096",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "179019100160",
+            "memory.max_usage_in_bytes": "191204278272",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "9223372036854771712",
+            "memory.usage_in_bytes": "180466544640",
+            "memory.max_usage_in_bytes": "192871321600",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "matching_181_GiB": [
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178421178368",
+            "memory.max_usage_in_bytes": "185634041856",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          },
+          {
+            "memory.limit_in_bytes": "194347270144",
+            "memory.usage_in_bytes": "178429300736",
+            "memory.max_usage_in_bytes": "185641734144",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        ],
+        "meminfo": {
+          "MemAvailable": "15287368 kB",
+          "SwapTotal": "0 kB",
+          "SwapFree": "0 kB",
+          "Shmem": "173384248 kB"
+        }
+      }
+    },
+    {
+      "name": "reference-resident",
+      "complete": false,
+      "raw_report_sha256": "1a9b0c940c722cb5fe52b511f6983399689175561e8f6f684131766c549449d8",
+      "raw_log_sha256": "8a9ecbb45c0cc9c115431f953911e226fef4260eaa6a46ce29910d770eebd027",
+      "binary_sha256": "7ed82e75f54e543612fb0d0c158f71c15597c2997079a9e2a753b0e7a2e31868",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "decode_graphs": false,
+        "full_warmups": 1,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_decode_tok_s": 5.246040317513767,
+      "median_prefill_tok_s": 391.5233661833163,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 186326827008,
+        "peak_swap_bytes": 0,
+        "samples": 1199
+      },
+      "trials": [
+        {
+          "prefill_ms": 21067.6,
+          "decode_ms": 98013.5,
+          "prefill_tok_s": 388.8435322485713,
+          "decode_tok_s": 5.213567518760171,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 1,
+          "minor_faults": 216591,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "54e4e84b75d48b36841fdd406a397a502b25694fcb5c873d1e313e1944d89078"
+        },
+        {
+          "prefill_ms": 20923.4,
+          "decode_ms": 97313.8,
+          "prefill_tok_s": 391.5233661833163,
+          "decode_tok_s": 5.251053807373672,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 25,
+          "minor_faults": 182664,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "54e4e84b75d48b36841fdd406a397a502b25694fcb5c873d1e313e1944d89078"
+        },
+        {
+          "prefill_ms": 20704.8,
+          "decode_ms": 97406.8,
+          "prefill_tok_s": 395.6570457092075,
+          "decode_tok_s": 5.246040317513767,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 180225,
+          "first_eos_position_1based": null,
+          "tokens_sha256": "54e4e84b75d48b36841fdd406a397a502b25694fcb5c873d1e313e1944d89078"
+        }
+      ],
+      "error": "native FP4 timed requests swapped or faulted weight pages; residency qualification failed",
+      "mtp_approx": [],
+      "last_cpu_scale_cache": {
+        "hits": 369123,
+        "misses": 28710,
+        "bytes": 6442362496
+      }
+    }
+  ],
+  "protocol": {
+    "prompt": "Same frozen 8192 token IDs as the reference; SHA256 recorded per run.",
+    "generation": "512 token IDs, fixed length with stop IDs disabled. Decode times 511 advances after the prefill token.",
+    "warmup": "Two complete requests, then a discarded prefill request; three timed requests in one process.",
+    "residency": "All timed major faults and observed swap must be zero. Decoder must exit successfully.",
+    "cgroup_scope": "before/after numeric memory-controller records; peaks include the whole allocation, not only the selected run.",
+    "quality_selection": "Select using throughput and three training tasks, then evaluate the frozen twenty held-out tasks once. No held-out tuning."
+  },
+  "coding": {
+    "training": {
+      "complete": true,
+      "passed": 2,
+      "attempted": 3,
+      "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "oracle_sha256": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "raw_report_sha256": "ea26f41f514fdfd9f33b6e63a9f414d20794f6e5ab6b2e29a627dd707a0fb7f1",
+      "configuration": {
+        "label": "q8-v13-half-mtp3-m3-lookup",
+        "cases": "training",
+        "speculative": "mtp",
+        "depth": 3,
+        "margin": 3.0,
+        "graphs": false,
+        "threads": 32
+      },
+      "environment": {
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024",
+        "STRATA_GLM_FP4_CPU_BORROW": "1"
+      },
+      "decoder_returncode": 0,
+      "tasks": [
+        {
+          "name": "parse_u64",
+          "prompt_tokens": 163,
+          "prompt_sha256": "84326a4a328b739cd35a63491c629d0084a2e4a33f14304403b257f6396d8efa",
+          "output_tokens": 358,
+          "tokens_sha256": "7d5f775663fd712917e1fe3c64248914d1a2810b070934a99df6700697f18394",
+          "wall_seconds": 30.113302618963644,
+          "passed": false
+        },
+        {
+          "name": "checked_slice",
+          "prompt_tokens": 151,
+          "prompt_sha256": "b75a07974afebe89309d230f6dbde602318ca5b9440b24b14d11f2a00d0bd427",
+          "output_tokens": 142,
+          "tokens_sha256": "2df32a4ed7c6cd97a697202a9ed9c37a33d5b309106d574b9d7db8a8ef62f142",
+          "wall_seconds": 13.968897977028973,
+          "passed": true
+        },
+        {
+          "name": "reduce_routed",
+          "prompt_tokens": 162,
+          "prompt_sha256": "388ec65a2e5a0e807261aa124e4c8bb73161b230a5e68208de762e4b0d290ca6",
+          "output_tokens": 223,
+          "tokens_sha256": "219bb10731ae5b53f9e3b9b1f069f091fd47c92ca0c1f1948e07d0647f6bbbac",
+          "wall_seconds": 17.41677534999326,
+          "passed": true
+        }
+      ],
+      "route_drop": {
+        "token_layers": 33768,
+        "cpu_candidates": 144201,
+        "dropped": 121520,
+        "mean_share": 0.338597,
+        "max_share": 0.499984,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99994,
+        "counter_reports": 4,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      }
+    },
+    "holdout": {
+      "complete": true,
+      "passed": 18,
+      "attempted": 20,
+      "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "oracle_sha256": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "raw_report_sha256": "7ebe7764563413f6a903918cf3ca8c15f118f3bc363c97e8bdf49a9375793731",
+      "configuration": {
+        "label": "q8-v13-half-mtp3-m3-lookup",
+        "cases": "holdout",
+        "speculative": "mtp",
+        "depth": 3,
+        "margin": 3.0,
+        "graphs": false,
+        "threads": 32
+      },
+      "environment": {
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024",
+        "STRATA_GLM_FP4_CPU_BORROW": "1"
+      },
+      "decoder_returncode": 0,
+      "tasks": [
+        {
+          "name": "add_i64",
+          "prompt_tokens": 83,
+          "prompt_sha256": "f45064f9388bfc85e58fa002ad419cb614698567eaf365fcc02afa67b3c8671d",
+          "output_tokens": 110,
+          "tokens_sha256": "291934325dbe38f06f1410c42ec3abf9e68e73271c6d6ec3b20c50d753e4d2d2",
+          "wall_seconds": 16.196953752893023,
+          "passed": true
+        },
+        {
+          "name": "add_u64",
+          "prompt_tokens": 83,
+          "prompt_sha256": "952ae0143b39ae220fbcd50e1d423a96d914addfe2b1c5407983129a76ee501f",
+          "output_tokens": 81,
+          "tokens_sha256": "ea65b6113859af489fc1378fd771bb9d3e0e71b75bf9b3ab76e2923fa803a99a",
+          "wall_seconds": 8.29298026394099,
+          "passed": true
+        },
+        {
+          "name": "mul_i64",
+          "prompt_tokens": 83,
+          "prompt_sha256": "9cda83ff56d96200ba9d7968bdecb1a60df42f33f618efb876b2ae407b2dad78",
+          "output_tokens": 371,
+          "tokens_sha256": "3e3df648852ad1d786ccf7971e5e92a149b999414f775a7c4dd41c3d0939d303",
+          "wall_seconds": 23.189173038932495,
+          "passed": true
+        },
+        {
+          "name": "mul_u64",
+          "prompt_tokens": 83,
+          "prompt_sha256": "b4add884dbc274c316845b21901ce0e5ca5f44aa2be2b640bbaec08a48425e54",
+          "output_tokens": 154,
+          "tokens_sha256": "51f3e3314200821892714c7c6975d752de51232254e6c781ec00e92fe794ce1f",
+          "wall_seconds": 11.846065338002518,
+          "passed": false
+        },
+        {
+          "name": "parse_i64",
+          "prompt_tokens": 93,
+          "prompt_sha256": "e452822a7139d37d317be98c7b5e61f3c8553a59594dd6dbac1222e07cafac28",
+          "output_tokens": 403,
+          "tokens_sha256": "a81c2760b608be83c9a21e455e6ca7eb9c97d21b74fd3f8c91d1db2ff9b90a83",
+          "wall_seconds": 23.02524067205377,
+          "passed": true
+        },
+        {
+          "name": "parse_hex",
+          "prompt_tokens": 91,
+          "prompt_sha256": "78aad77802d85d6f2378bf3fa768ec36689daa1190bf890bf7b12741d059486b",
+          "output_tokens": 1202,
+          "tokens_sha256": "0ebb89d5d33aaeddd51c8f4b1b7a21dd065eb234be76b664f12d60d5b8462b87",
+          "wall_seconds": 47.00345593690872,
+          "passed": true
+        },
+        {
+          "name": "lower_index",
+          "prompt_tokens": 79,
+          "prompt_sha256": "c10575c25a2b4bfca2ca9cdd626cbbecbdb1fbc52d283fa8176f36777737237a",
+          "output_tokens": 65,
+          "tokens_sha256": "245edc772bfdfba01cc8e4074c1bee558749da3ccba4926da8a34e4c230c1604",
+          "wall_seconds": 7.191321049001999,
+          "passed": true
+        },
+        {
+          "name": "upper_index",
+          "prompt_tokens": 79,
+          "prompt_sha256": "b68f5ffd076f6bf8dc95fae9f0a7d6f7d3275638bfd38f5556811ea27bf5d500",
+          "output_tokens": 121,
+          "tokens_sha256": "00b3a3f8ff88fd5678155742ff3555a379f0ade3e60bce6a668fe2f1b4ca2cf0",
+          "wall_seconds": 8.579086550977081,
+          "passed": true
+        },
+        {
+          "name": "stable_unique",
+          "prompt_tokens": 68,
+          "prompt_sha256": "a1228dc610a2b8ff69e26f82815abcc1724336cec410f33b21b6897ba8059148",
+          "output_tokens": 88,
+          "tokens_sha256": "6f2f769747af22b7417348d3ddeddf4a5d3e65192aaac93e426709c6062162d5",
+          "wall_seconds": 7.320771136903204,
+          "passed": true
+        },
+        {
+          "name": "sorted_unique",
+          "prompt_tokens": 67,
+          "prompt_sha256": "480b6f31a86f60420e484f0710e9061bb22878805876090420875783473876d2",
+          "output_tokens": 69,
+          "tokens_sha256": "9c4e830970ec15a5c6febadcc5c2314260cbbbd391905a45379fc82a097be169",
+          "wall_seconds": 6.173084637965076,
+          "passed": true
+        },
+        {
+          "name": "rotate_left",
+          "prompt_tokens": 77,
+          "prompt_sha256": "ed0dd434bbddd8261800406c2ff2be2726f56b38e18324c49176f03b7679748f",
+          "output_tokens": 179,
+          "tokens_sha256": "6cb47b0a2e79375403b46430f0c67a568d52261aacff1202b1058f3e248f1eb4",
+          "wall_seconds": 11.481619323021732,
+          "passed": true
+        },
+        {
+          "name": "rotate_right",
+          "prompt_tokens": 77,
+          "prompt_sha256": "1196cd1be6a285135c45a7467c46dd360956a9072a1424c747e234be65a24f12",
+          "output_tokens": 186,
+          "tokens_sha256": "9e862e558e6fbd0866f24d057ba44fb484e47483b9da8d46df6ff20e5a30643f",
+          "wall_seconds": 10.355650116922334,
+          "passed": true
+        },
+        {
+          "name": "replace_all",
+          "prompt_tokens": 94,
+          "prompt_sha256": "ed41912a11cd01b14e2517c8f1a3b44be259793a543d748eaf99e99238583223",
+          "output_tokens": 164,
+          "tokens_sha256": "c5d81d442a474d50a67f47737c3826c9f545c6ced8365854059f8101a6d0424b",
+          "wall_seconds": 10.703367743059061,
+          "passed": true
+        },
+        {
+          "name": "remove_all",
+          "prompt_tokens": 88,
+          "prompt_sha256": "45794b735b00d7a614b5183e1a92d000b37ba6bb81250b1f3a1b2df8bf7c6321",
+          "output_tokens": 139,
+          "tokens_sha256": "1b9d04191150ede8384fafcecbaf8bf8c744a2d4b977c3a4cdcea8f5786afc3c",
+          "wall_seconds": 9.1665443679085,
+          "passed": true
+        },
+        {
+          "name": "merge_overlap",
+          "prompt_tokens": 92,
+          "prompt_sha256": "410350ef02f3caf91e2dd0b0228948aa1338253ceabe62bad5700ad7fbbdb8f7",
+          "output_tokens": 506,
+          "tokens_sha256": "7b3864e4eb87bdb7f760f9348ef005525796eff509c3d8e98cc2c4d368d14745",
+          "wall_seconds": 20.764893877902068,
+          "passed": false
+        },
+        {
+          "name": "merge_touching",
+          "prompt_tokens": 89,
+          "prompt_sha256": "fbfb278ace93429e13d03569cd8fb7b5b4de5a0cade1fdff3fb3041b46f6a097",
+          "output_tokens": 127,
+          "tokens_sha256": "a839415a3a1ae2232df4d4cbf872e785f7b6394b77a2cbdd83cb1c43975111af",
+          "wall_seconds": 8.65358029899653,
+          "passed": true
+        },
+        {
+          "name": "hex_lower",
+          "prompt_tokens": 70,
+          "prompt_sha256": "d9133b16ed8baed2fa06ebfd9a3b23f83198602fc55b18ceee59dc47fc9d9c2b",
+          "output_tokens": 104,
+          "tokens_sha256": "c3d80b4dc9d06eeb99682ed01c28b589a3b81ee20ea8c626996f27dcb791cbc4",
+          "wall_seconds": 7.85263999493327,
+          "passed": true
+        },
+        {
+          "name": "hex_upper",
+          "prompt_tokens": 70,
+          "prompt_sha256": "02db11bb38121e430e4adb67f1f0a09ed5963a040e55937c0e80da39c4a220c2",
+          "output_tokens": 105,
+          "tokens_sha256": "5dcb2eca9c606ed338bc187ce2eab47ffec12cbf9fbf9c2514319dc4948552a8",
+          "wall_seconds": 7.1899823429994285,
+          "passed": true
+        },
+        {
+          "name": "fnv1a32",
+          "prompt_tokens": 99,
+          "prompt_sha256": "1e57a8c9a5e1b9b7f410595773af331b03c8024898fd336031c0e121ea23a7db",
+          "output_tokens": 89,
+          "tokens_sha256": "3bd61b82fa5c1588e04f8c00449db47d48082256d1de8aa67102c8d4086731dc",
+          "wall_seconds": 7.989794161985628,
+          "passed": true
+        },
+        {
+          "name": "adler32",
+          "prompt_tokens": 104,
+          "prompt_sha256": "76fe5745276faffd8dd20a3a597179ad50eac1331e94d00d51253abf88bcc8df",
+          "output_tokens": 106,
+          "tokens_sha256": "4102cd999ccb39c65d01aa5b446d14f93ff917fdc49ac98c040cc0a461f94723",
+          "wall_seconds": 8.593211846076883,
+          "passed": true
+        }
+      ],
+      "route_drop": {
+        "token_layers": 211554,
+        "cpu_candidates": 1009149,
+        "dropped": 804610,
+        "mean_share": 0.356156,
+        "max_share": 0.499995,
+        "configured_fraction": 0.5,
+        "configured_count": 7,
+        "renormalize": true,
+        "max_multiplier": 1.99998,
+        "counter_reports": 21,
+        "scope": "cumulative across all warmup and measured requests; every reported bound checked",
+        "passed": true
+      }
+    },
+    "reference_training": {
+      "complete": true,
+      "passed": 2,
+      "attempted": 3,
+      "binary_sha256": "4fc4db759cb033bc1cdcbad7e86610d4f493a997725dfdcbc21c9d4e43654eca",
+      "oracle_sha256": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "raw_report_sha256": "5a03839b4e2d908bebb014ca1d0cf7688982a5e10e03ca5dcd23a6185c74d2d2",
+      "tasks": [
+        {
+          "name": "parse_u64",
+          "passed": true,
+          "prompt_tokens": 163,
+          "output_tokens": 137,
+          "tokens_sha256": "8487df6faaa02ff63c6c43044d01a8f7f09df5da7728ca26f3642647f95cfdeb",
+          "prompt_ids_sha256": "84326a4a328b739cd35a63491c629d0084a2e4a33f14304403b257f6396d8efa"
+        },
+        {
+          "name": "checked_slice",
+          "passed": false,
+          "prompt_tokens": 151,
+          "output_tokens": 133,
+          "tokens_sha256": "6836bdcfc5877167ef3860c49f2a7fc61584ef5a6c0f63bdcedec2b88edc9fa2",
+          "prompt_ids_sha256": "b75a07974afebe89309d230f6dbde602318ca5b9440b24b14d11f2a00d0bd427"
+        },
+        {
+          "name": "reduce_routed",
+          "passed": true,
+          "prompt_tokens": 162,
+          "output_tokens": 201,
+          "tokens_sha256": "592782176f4e29aa874656965f95ccbfa76639a3c913fad546b04b79e428c7ff",
+          "prompt_ids_sha256": "388ec65a2e5a0e807261aa124e4c8bb73161b230a5e68208de762e4b0d290ca6"
+        }
+      ]
+    },
+    "reference_holdout": {
+      "complete": true,
+      "passed": 19,
+      "attempted": 20,
+      "binary_sha256": "4fc4db759cb033bc1cdcbad7e86610d4f493a997725dfdcbc21c9d4e43654eca",
+      "oracle_sha256": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "raw_report_sha256": "cef24ff0f6e9c1f253f76f3218a09437d38f5623480a171dc53edc0772edc5a3",
+      "tasks": [
+        {
+          "name": "add_i64",
+          "passed": true,
+          "prompt_tokens": 83,
+          "output_tokens": 101,
+          "tokens_sha256": "4d05ee54c3de426187349f3256eb05991b8d061c13edd3fcc88ed8a0970fe3dd",
+          "prompt_ids_sha256": "f45064f9388bfc85e58fa002ad419cb614698567eaf365fcc02afa67b3c8671d"
+        },
+        {
+          "name": "add_u64",
+          "passed": true,
+          "prompt_tokens": 83,
+          "output_tokens": 82,
+          "tokens_sha256": "8091d432b8387274836769d2687bb4a53dbc32b287075d47575ca6a057891b16",
+          "prompt_ids_sha256": "952ae0143b39ae220fbcd50e1d423a96d914addfe2b1c5407983129a76ee501f"
+        },
+        {
+          "name": "mul_i64",
+          "passed": false,
+          "prompt_tokens": 83,
+          "output_tokens": 786,
+          "tokens_sha256": "c009f3312fc5957a679b31dd8cd3ff62b26ef43769ad1893ceb1d739f8c50a26",
+          "prompt_ids_sha256": "9cda83ff56d96200ba9d7968bdecb1a60df42f33f618efb876b2ae407b2dad78"
+        },
+        {
+          "name": "mul_u64",
+          "passed": true,
+          "prompt_tokens": 83,
+          "output_tokens": 387,
+          "tokens_sha256": "b26147f5f1dbee7a411321fc33da23ce3ead07ffab0e9e6aaa3a10a3f8eebddc",
+          "prompt_ids_sha256": "b4add884dbc274c316845b21901ce0e5ca5f44aa2be2b640bbaec08a48425e54"
+        },
+        {
+          "name": "parse_i64",
+          "passed": true,
+          "prompt_tokens": 93,
+          "output_tokens": 352,
+          "tokens_sha256": "a2f769f0acde6dcc8de6e08cb47295f510c286b4081d22f3064789044c714c29",
+          "prompt_ids_sha256": "e452822a7139d37d317be98c7b5e61f3c8553a59594dd6dbac1222e07cafac28"
+        },
+        {
+          "name": "parse_hex",
+          "passed": true,
+          "prompt_tokens": 91,
+          "output_tokens": 208,
+          "tokens_sha256": "52e89988bd9823781e25f40dc94730be6d916ef25fc287f818c4e9b8c336c874",
+          "prompt_ids_sha256": "78aad77802d85d6f2378bf3fa768ec36689daa1190bf890bf7b12741d059486b"
+        },
+        {
+          "name": "lower_index",
+          "passed": true,
+          "prompt_tokens": 79,
+          "output_tokens": 74,
+          "tokens_sha256": "35337e8e2b60eb37403168762fa1ba7758f8015863e9174de041170a81e39424",
+          "prompt_ids_sha256": "c10575c25a2b4bfca2ca9cdd626cbbecbdb1fbc52d283fa8176f36777737237a"
+        },
+        {
+          "name": "upper_index",
+          "passed": true,
+          "prompt_tokens": 79,
+          "output_tokens": 74,
+          "tokens_sha256": "15c9bb030413ad72fa4aa004d0cd15ab375ff178e0794d3baba7da5602533453",
+          "prompt_ids_sha256": "b68f5ffd076f6bf8dc95fae9f0a7d6f7d3275638bfd38f5556811ea27bf5d500"
+        },
+        {
+          "name": "stable_unique",
+          "passed": true,
+          "prompt_tokens": 68,
+          "output_tokens": 88,
+          "tokens_sha256": "ae29f264ac672dfa9fc2318ebed0bc7981305ebe72b7bee766bc57d4aa58958f",
+          "prompt_ids_sha256": "a1228dc610a2b8ff69e26f82815abcc1724336cec410f33b21b6897ba8059148"
+        },
+        {
+          "name": "sorted_unique",
+          "passed": true,
+          "prompt_tokens": 67,
+          "output_tokens": 69,
+          "tokens_sha256": "6d30bf8c08214659923c4673abda9c151d3728f77279c15c1fe7dcae71f83055",
+          "prompt_ids_sha256": "480b6f31a86f60420e484f0710e9061bb22878805876090420875783473876d2"
+        },
+        {
+          "name": "rotate_left",
+          "passed": true,
+          "prompt_tokens": 77,
+          "output_tokens": 140,
+          "tokens_sha256": "c3ee1fb7b2d6512315c47c01fc0aa00bb52487dbb9dcb894f164a4337ba05998",
+          "prompt_ids_sha256": "ed0dd434bbddd8261800406c2ff2be2726f56b38e18324c49176f03b7679748f"
+        },
+        {
+          "name": "rotate_right",
+          "passed": true,
+          "prompt_tokens": 77,
+          "output_tokens": 130,
+          "tokens_sha256": "5848ce742eb11f66fd3566b7f4802cedb1fd6f98cb6dd2226179673f2fd76607",
+          "prompt_ids_sha256": "1196cd1be6a285135c45a7467c46dd360956a9072a1424c747e234be65a24f12"
+        },
+        {
+          "name": "replace_all",
+          "passed": true,
+          "prompt_tokens": 94,
+          "output_tokens": 154,
+          "tokens_sha256": "0d19dada46f6c70e580435c23f6697629c900f817e9a1b64c303c3bf28614540",
+          "prompt_ids_sha256": "ed41912a11cd01b14e2517c8f1a3b44be259793a543d748eaf99e99238583223"
+        },
+        {
+          "name": "remove_all",
+          "passed": true,
+          "prompt_tokens": 88,
+          "output_tokens": 157,
+          "tokens_sha256": "1cd533e99ca3bd0b8464a573a0cead600272216b4ffd9c9a46e629bde6c3da62",
+          "prompt_ids_sha256": "45794b735b00d7a614b5183e1a92d000b37ba6bb81250b1f3a1b2df8bf7c6321"
+        },
+        {
+          "name": "merge_overlap",
+          "passed": true,
+          "prompt_tokens": 92,
+          "output_tokens": 187,
+          "tokens_sha256": "1f62c78a221548a269c1f75d6288e687237db04fd6d4b44b418cc593b8ec8c9e",
+          "prompt_ids_sha256": "410350ef02f3caf91e2dd0b0228948aa1338253ceabe62bad5700ad7fbbdb8f7"
+        },
+        {
+          "name": "merge_touching",
+          "passed": true,
+          "prompt_tokens": 89,
+          "output_tokens": 188,
+          "tokens_sha256": "5085cc9bcf5dff45c4c7a1d40549a9beed236ec3b1c3ea5119cce1aa5ad18af7",
+          "prompt_ids_sha256": "fbfb278ace93429e13d03569cd8fb7b5b4de5a0cade1fdff3fb3041b46f6a097"
+        },
+        {
+          "name": "hex_lower",
+          "passed": true,
+          "prompt_tokens": 70,
+          "output_tokens": 100,
+          "tokens_sha256": "b33a81127a12ac7fbc45084d3bf05bb5fb365ab06abf62543bc0f77ab905c510",
+          "prompt_ids_sha256": "d9133b16ed8baed2fa06ebfd9a3b23f83198602fc55b18ceee59dc47fc9d9c2b"
+        },
+        {
+          "name": "hex_upper",
+          "passed": true,
+          "prompt_tokens": 70,
+          "output_tokens": 105,
+          "tokens_sha256": "12ad08a04df7f560e87678a7957148caed2cbf16ef42df4ea0606cf927b720fe",
+          "prompt_ids_sha256": "02db11bb38121e430e4adb67f1f0a09ed5963a040e55937c0e80da39c4a220c2"
+        },
+        {
+          "name": "fnv1a32",
+          "passed": true,
+          "prompt_tokens": 99,
+          "output_tokens": 94,
+          "tokens_sha256": "8a63ce184d714a7c394495f0d438a08222b5e83ace60aaf48d0f325619ad5a3a",
+          "prompt_ids_sha256": "1e57a8c9a5e1b9b7f410595773af331b03c8024898fd336031c0e121ea23a7db"
+        },
+        {
+          "name": "adler32",
+          "passed": true,
+          "prompt_tokens": 104,
+          "output_tokens": 101,
+          "tokens_sha256": "a39f83d068d6c9fb9485975bc02d23b9998719b2ea10b6fee9375b567166860f",
+          "prompt_ids_sha256": "76fe5745276faffd8dd20a3a597179ad50eac1331e94d00d51253abf88bcc8df"
+        }
+      ]
+    },
+    "scope": "Text-only C++ tasks with independent compiled execution oracles, temperature zero, real EOS stops, 1536-token answer cap. This is a small functional check, not a general quality or perplexity qualification."
+  },
+  "validation": {
+    "final_target_host_tests": {
+      "passed": true,
+      "tests_log_sha256": "29b3ecae4d9bbceeb3e0a1108a019a4467248cbdd7cb8c16611f93b221165038",
+      "build_log_sha256": "8bdecc53713f8184301adaca00bbcfd6c3cddffe326855e9ba450a2575ee0685",
+      "inputs_sha256": {
+        "tests/artifact/exl3_test.cpp": "ef23ab1039a8c0cfc9ceaf2f3d241808540c84e8b970a03a5d7b89b3d4cdc5bf",
+        "tests/host/glm_bounded_accept_test.cpp": "5e840db79f490a6d0417570c3e49588e4396bdf66e85de6454c94a10952545e8",
+        "tests/host/glm_fp4_cpu_test.cpp": "1b12a15137b45a3c62053118f42a0df473af86cb0622e739811c5742e96b55a6",
+        "tests/host/glm_route_drop_test.c": "d33c8492a60296cd0c4dab29b37207244020b1d59c5a22659cdbf56a961ecb80"
+      },
+      "scope": "Final CPU tests rebuilt on the target Xeon: native VNNI, forced AVX2, scalar, pool, route policy and C11 contracts."
+    },
+    "q8-v7": {
+      "complete": true,
+      "raw_log_sha256": "17fb58de0ffe087d03b02b0e3fe1f6fda8cee5ad1793d36778e3b20e257a6d8a",
+      "widths": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "history_modes": [
+        0,
+        1
+      ],
+      "minimum_captured_layers": 45,
+      "capture_reports": 32,
+      "graph_replay_history_and_rollback_bitwise": true,
+      "device_vs_host_routing_all_logits_bitwise": false
+    },
+    "q8-v11": {
+      "complete": true,
+      "raw_log_sha256": "16d62f8bd3d34e43468ee345a1691a1688c1dfedd817b9e12063b16cf13c4197",
+      "widths": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "history_modes": [
+        0,
+        1
+      ],
+      "minimum_captured_layers": 45,
+      "capture_reports": 32,
+      "graph_replay_history_and_rollback_bitwise": true,
+      "device_vs_host_routing_all_logits_bitwise": true
+    },
+    "q8-v13": {
+      "complete": true,
+      "raw_log_sha256": "0fe8fe78d10dd3071338eefa571d9084f62eed69636802b0e40751251bf8bffe",
+      "widths": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "history_modes": [
+        0,
+        1
+      ],
+      "minimum_captured_layers": 45,
+      "capture_reports": 32,
+      "graph_replay_history_and_rollback_bitwise": true,
+      "device_vs_host_routing_all_logits_bitwise": true
+    },
+    "all_new_flags_off": {
+      "passed": true,
+      "tokens": 128,
+      "reference_commit": "a11bf931",
+      "reference_executable_sha256": "7ed82e75f54e543612fb0d0c158f71c15597c2997079a9e2a753b0e7a2e31868",
+      "candidate_executable_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "scope": "Native FP4, all new CPU options off, same frozen 8192-token prompt. Output check only; no speed qualification."
+    },
+    "excluded_attempts": "Earlier q8-v2/v3/v4/v5 attempts had stale source/object timestamps or failed builds. No rates from those attempts are included. Original private raw evidence was retained.",
+    "local_checks": {
+      "host_tests": {
+        "passed": true,
+        "tests": 9,
+        "scope": "Ryzen 9 3950X; native AVX2 and scalar execution. Real VNNI execution is recorded separately for the target Xeon."
+      },
+      "ram_cache_tests": {
+        "passed": true,
+        "tests": 4,
+        "direct_read_executed": true
+      },
+      "pool_thread_sanitizer": {
+        "passed": true,
+        "scope": "Actual pool dispatch/exception/reuse/callable-copy test."
+      },
+      "additional_engine_builds": {
+        "CUDA_13_2_SM86": "passed, compile-only",
+        "HIP_gfx1201": "passed, compile-only"
+      }
+    }
+  },
+  "policy_freeze": {
+    "selected_before_heldout": true,
+    "frozen_unix_seconds": 1792316314.1793609,
+    "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+    "performance_report_sha256": "ec112cb3d4bcf63c5269e02accc35421e3272ad0e109e07c69aa20cc1dc1048c",
+    "training_report_sha256": "ea26f41f514fdfd9f33b6e63a9f414d20794f6e5ab6b2e29a627dd707a0fb7f1",
+    "configuration": {
+      "fp4_kernel": "sm70",
+      "compute_sanitizer": false,
+      "prompt_tokens": 8192,
+      "prompt_ids": true,
+      "generated_tokens": 512,
+      "context": 12288,
+      "threads": 32,
+      "cpu_affinity": "auto",
+      "gpu_budget_mib": 32768,
+      "gpu_devices": "0,1",
+      "gpu_layout": "legacy",
+      "layer_split": "auto",
+      "layer_pipeline": "none",
+      "layer_memory": null,
+      "layer_plan": null,
+      "layer_workers": null,
+      "layer_cache_mib": null,
+      "layer_pin_coordinator": false,
+      "prefill_batch": 8192,
+      "prefill_expert_cache_mib": "0",
+      "decode_prefill_cache": false,
+      "decode_cache_mib": "0",
+      "decode_graphs": false,
+      "decode_cache_window": 256,
+      "decode_cache_adapt": false,
+      "prefill_experts": "mmq",
+      "repetitions": 3,
+      "full_warmups": 2,
+      "validation_tokens": 0,
+      "validation_repetitions": 3,
+      "prefill_text": null,
+      "prefill_tokens": 8192,
+      "speculative": "mtp",
+      "draft_depth": 3,
+      "worker_decoder": null,
+      "primary_device": 0,
+      "worker_device": 1,
+      "worker_cache_mib": 24576,
+      "worker_gpu_budget_mib": 32768,
+      "worker_combine": "strict",
+      "primary_cpus": null,
+      "worker_cpus": null,
+      "stop_ids": "-1"
+    },
+    "environment": {
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+      "STRATA_GLM_FP4_CPU_BORROW": "1",
+      "STRATA_GLM_FP4_CPU_CSF32": "1",
+      "STRATA_GLM_FP4_CPU_FUSED": "1",
+      "STRATA_GLM_FP4_CPU_Q8": "1",
+      "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+      "STRATA_GLM_FP4_CPU_SPARSE": "1",
+      "STRATA_GLM_FP4_CPU_SPIN": "1",
+      "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+      "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+      "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+      "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+      "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+      "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+      "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+      "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+      "STRATA_GLM_MLA_ABSORB_F16": "1",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+      "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+      "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+      "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_VRAM_PREALLOC": "1",
+      "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+    },
+    "decision": "Select on repeated throughput and training only. Greedy and CUDA-graph controls were below 20 tok/s; the MTP candidate must meet 20 tok/s with clean residency and at least the baseline 2/3 training count.",
+    "heldout_tuning": false
+  },
+  "source": {
+    "base_commit": "a11bf931",
+    "exact_target_build": {
+      "archive_sha256": "c3de421d00323db693422d2c15a9f8de1595179d6615546aa6a41efc02ac324a",
+      "binary_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+      "snapshot_sha256": {
+        "CMakeLists.txt": "dfc496f288677a0f96c701be54ee054a708a9a0c4e9d305b780ea35690d7c823",
+        "include/strata/kernels/cpu/glm_fp4.hpp": "2b493153e4ef3cef64e45f5012f6dabb6269ce922cf9a36e96f78ac98ec352bf",
+        "include/strata/kernels/cpu/exl3/pool.hpp": "381c367b3a21ba3116c391e4880767d952fd203acff0533297ad4f2a76ba1f81",
+        "include/strata/host/glm_route_drop.h": "bf880fc7450a8a4596c267f0c17d278913745ad1c9cc581136dcf195cf1bda18",
+        "include/strata/spec/bounded_accept.hpp": "19f609db57a06f9633e51684a74dd6160f538311024630a343857e7530deb2db",
+        "src/kernels/cpu/glm_fp4.cpp": "f6a5ff436d469cac0919095b0fedc3d9032bb1817d2d2d654ecc937605e5c091",
+        "src/program/glm_decode.cpp": "5787701459a548dccead71928c2cd89fe6bea8bfeea89f61da478b4a94ff2cdf",
+        "src/program/glm_fp4_native.inc": "f8429e5a7fd2e0dee8fceef3f969ddac16df4e2b92df9797a6f7a7ff5887125f",
+        "tests/artifact/exl3_test.cpp": "ef23ab1039a8c0cfc9ceaf2f3d241808540c84e8b970a03a5d7b89b3d4cdc5bf",
+        "tests/host/glm_bounded_accept_test.cpp": "5e840db79f490a6d0417570c3e49588e4396bdf66e85de6454c94a10952545e8",
+        "tests/host/glm_fp4_cpu_test.cpp": "1b12a15137b45a3c62053118f42a0df473af86cb0622e739811c5742e96b55a6",
+        "tests/host/glm_route_drop_test.c": "d33c8492a60296cd0c4dab29b37207244020b1d59c5a22659cdbf56a961ecb80"
+      },
+      "source_manifest_sha256": "2386a81874671d2bb77d6b2e1476e032520164a093e18c04ef099fc4ae10e0e7",
+      "source-audit_json_sha256": "9666ce2795db86ceaa5177cb3f703edc797945ae2a372112377a34a0ddf1ebf2",
+      "host-tests_log_sha256": "75e1b54d96ae5e72734b2aeac47d7964a52a6ed3ebcbe82cf1b3c0ff47b4e2e9",
+      "build_log_sha256": "b32772ff69197b54f2441c766186301960356c95c5123d31db039a00d28e767d",
+      "source_audit": {
+        "files": 482,
+        "mismatches": []
+      },
+      "cmake_cache_sha256": "6486f623a4970bbaf8f840ee71a14d62d74991a3910765c132838e170f44476d"
+    },
+    "local_sha256": {
+      "CMakeLists.txt": "dfc496f288677a0f96c701be54ee054a708a9a0c4e9d305b780ea35690d7c823",
+      "include/strata/kernels/cpu/exl3/pool.hpp": "381c367b3a21ba3116c391e4880767d952fd203acff0533297ad4f2a76ba1f81",
+      "include/strata/kernels/cpu/glm_fp4.hpp": "2b493153e4ef3cef64e45f5012f6dabb6269ce922cf9a36e96f78ac98ec352bf",
+      "include/strata/host/glm_route_drop.h": "bf880fc7450a8a4596c267f0c17d278913745ad1c9cc581136dcf195cf1bda18",
+      "include/strata/spec/bounded_accept.hpp": "19f609db57a06f9633e51684a74dd6160f538311024630a343857e7530deb2db",
+      "src/kernels/cpu/glm_fp4.cpp": "f6a5ff436d469cac0919095b0fedc3d9032bb1817d2d2d654ecc937605e5c091",
+      "src/program/glm_decode.cpp": "5787701459a548dccead71928c2cd89fe6bea8bfeea89f61da478b4a94ff2cdf",
+      "src/program/glm_fp4_native.inc": "f8429e5a7fd2e0dee8fceef3f969ddac16df4e2b92df9797a6f7a7ff5887125f",
+      "tests/artifact/exl3_test.cpp": "ef23ab1039a8c0cfc9ceaf2f3d241808540c84e8b970a03a5d7b89b3d4cdc5bf",
+      "tests/host/glm_bounded_accept_test.cpp": "5e840db79f490a6d0417570c3e49588e4396bdf66e85de6454c94a10952545e8",
+      "tests/host/glm_fp4_cpu_test.cpp": "1b12a15137b45a3c62053118f42a0df473af86cb0622e739811c5742e96b55a6",
+      "tests/host/glm_route_drop_test.c": "d33c8492a60296cd0c4dab29b37207244020b1d59c5a22659cdbf56a961ecb80",
+      "tools/glm_ram_cache.py": "38b9bb0809f5f0b6319c84005a10183fe86202aefe63dd947bdb5e319ca21fb6",
+      "tools/test_glm_ram_cache.py": "39c4369d9f107bf506551a1ce562ad8d079ce0a9c073b2eb7ae0e649776483b1"
+    },
+    "experimental_profile": {
+      "path": "configs/experimental/glm53f-fp4-dual-v100-fast.json",
+      "sha256": "6a6fbba1a922532a2d02ccbe0afbb7e8a0e8aa47e760df54a439d9d5b79e8834"
+    }
+  },
+  "targets": {
+    "latest_decode_tok_s": 20,
+    "latest_decode_achieved": true,
+    "original_decode_tok_s": 30,
+    "original_decode_achieved": true,
+    "original_prefill_tok_s": 800,
+    "original_prefill_achieved": false
+  },
+  "limitations": [
+    "GPU arithmetic is W4A16; optional CPU arithmetic is W4A8. ModelOpt FP4 activation emulation is not implemented.",
+    "Routing mass is bounded per token and main layer; that bound is not a bound on logits or output error. Renormalization changes retained CPU and GPU routing coefficients.",
+    "Cold loading, registration, first-use caches and process shutdown are excluded from timed decode. Short-run and instrumented controls are not repeated 512-token qualification.",
+    "The same-day reference rerun had timed major faults in two samples; its median is diagnostic. The original clean three-repeat 5.2608604 tok/s record is preserved.",
+    "The pre-existing short-prefill sequence/batch relative-L2 gate failed for both original kernels; FP16 long-prompt attention is also lossy. These original limitations remain.",
+    "Teacher-forced perplexity/KL for the selected route-dropping policy was not measured. Vision, multiple concurrent requests and full GGUF/EXL3 model regressions were not tested.",
+    "No new full-model ComputeSanitizer run was performed for this selected policy.",
+    "CUDA 12.9 SM70 was executed on V100. Additional CUDA 13.2 SM86 and HIP gfx1201 checks were compile-only. SYCL uses a separate backend and does not compile the changed engine files.",
+    "GPU clocks were not locked; RAM speed was not recorded. Rates apply to this prompt, hardware, configuration and resident timing protocol."
+  ],
+  "evidence_corrections": [
+    "Earlier V2-V5 builds used stale source timestamps or failed to link; their rates were excluded. Later archives were extracted without restoring timestamps and source files were hashed.",
+    "The V11 build script initially compared correct V11 source against the V10 manifest. A corrected audit matched all 482 source files without changing source or executable; original failed audit logs were retained privately.",
+    "An early route-statistics guard assumed one summary, but the engine emits cumulative per-request reports. The corrected guard checks all reports; original failed guard output was retained.",
+    "The first attempted library-prefetch run did not start its helper correctly; its phase guard rejected a late preparation attempt. It is excluded from qualified results. A later run uses an explicit readiness handshake and records preparation before any timed request.",
+    "The first full MTP qualification had 30 timed major faults in its third sample; an unchanged rerun had 32 in its third sample; all three outputs matched but the run failed residency qualification. Its raw record is retained and listed as an unqualified control.",
+    "Runs interrupted by allocation expiry and an intentionally interrupted reference control remain private raw evidence and are excluded from qualified rates."
+  ]
+}

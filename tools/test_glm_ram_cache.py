@@ -1,5 +1,6 @@
 """Sealed cache lifetime and child-process access, without a model or GPU."""
 import hashlib
+import errno
 import json
 import os
 import pathlib
@@ -56,6 +57,21 @@ class CacheTest(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 RamCache(source, destination).open()
             self.assertEqual((destination/'keep').read_text(), 'owned by caller')
+
+    @unittest.skipUnless(hasattr(os, 'O_DIRECT'), 'O_DIRECT required')
+    def test_direct_read_aligned_blocks_and_partial_tail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            source, payload = self.fixture(root)
+            try:
+                with RamCache(source, root/'cache', workers=1, chunk_bytes=4096,
+                              reserve_bytes=0, direct_read=True) as cache:
+                    self.assertEqual(cache.entries[0]['sha256'], hashlib.sha256(payload).hexdigest())
+                    self.assertEqual((root/'cache/tensors/a.safetensors').read_bytes(), payload)
+            except OSError as error:
+                if error.errno in (errno.EINVAL, errno.EOPNOTSUPP):
+                    self.skipTest('filesystem does not support O_DIRECT')
+                raise
 
     def test_escape_and_budget_rejected_before_creation(self):
         with tempfile.TemporaryDirectory() as directory:

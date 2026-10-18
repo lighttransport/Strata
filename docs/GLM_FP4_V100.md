@@ -9,7 +9,7 @@ block FP8 with FP32 128x128 scales, and protected BF16/FP32 tensors.
 
 `--fp4-kernel=reference` is the default for this format. The opt-in
 `--fp4-kernel=sm70` uses Volta FP16 tensor cores and FP32 accumulation.
-Both use W4A16 arithmetic: inputs and reconstructed matrix operands are FP16;
+By default, both use W4A16 arithmetic: inputs and reconstructed matrix operands are FP16;
 this does not emulate ModelOpt's FP4 activation quantizer. Original weight
 codes and scales retain their compressed checkpoint values. GGUF, EXL3 and
 FP8-reference invocations retain their existing selection and defaults.
@@ -78,6 +78,10 @@ descriptors. The cache directory contains metadata and links to the owner's
 descriptors; it contains no second weight set. The owner removes that directory
 and releases the RAM after its child exits. Choose a fresh cache directory and
 report path. This tool requires Linux and Python 3.9 or newer with `os.memfd_create`.
+`--direct-read` uses aligned `O_DIRECT` reads for complete pages and buffered
+reads for each shard's final partial page. It avoids populating a second source
+page cache; the filesystem must support direct reads. Source and sealed-copy
+SHA256 checks still cover every byte.
 
 `STRATA_GLM_FP4_RAM_FDS=1` is set by the cache tool. The loader accepts only
 write-sealed tmpfs files owned by the current user in this mode. Its normal
@@ -122,7 +126,17 @@ The following options apply only to the native experiment:
 | --- | --- |
 | `STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB` | CPU scale-cache limit, 128–10240 MiB; default 2048. Host admission reserves at least this limit plus 4 GiB. |
 | `STRATA_GLM_FP4_CPU_CSF32=1` | Lossless CPU row layout for CSF32 scales: original row bases, packed scale nibbles and sparse exceptions. It retains the exact logical scale bytes and does not change weight codes. |
+| `STRATA_GLM_FP4_CPU_SPARSE=1` | Experimental lossless row layout with sorted exception records instead of a mask and rank for every group. Supports native expert matrices with up to 256 scale groups per row. |
+| `STRATA_GLM_FP4_CPU_Q8=1` | Experimental lossy CPU W4A8 arithmetic; implies the sparse scale layout. Activations use signed int8 blocks of 64 values. Original FP4 codes are retained; their integer E2M1 magnitudes use a shared scale factor instead of per-weight FP16 rounding. AVX-512 VNNI accelerates the dot products; other CPUs use a scalar reference. GPU arithmetic is unchanged. |
+| `STRATA_GLM_FP4_CPU_BORROW=1` | With the sparse or Q8 path, read original tiled scale bases and nibbles from the checkpoint mapping. Only exception records and row offsets occupy the CPU scale cache. The mapping owner outlives the cached views. |
+| `STRATA_GLM_FP4_CPU_FUSED=1` | Run CPU gate/up, hidden quantization and down products in one worker dispatch, with barriers between phases. It also enables vector FP16 conversion with the scalar codec's rounding. Q8 uses vector conversion with either schedule. |
+| `STRATA_GLM_FP4_CPU_SPIN=1` | Keep native FP4 workers active between dispatches. This uses CPU cores while the decoder lives, including between requests; use dedicated cores and measure the worker count. Other formats retain sleeping workers. |
+| `STRATA_GLM_FP4_ROUTE_DROP=0.20` | Opt-in lossy decode: discard the smallest CPU expert contributions while their combined weight is at most this fraction of the token's original total routing weight. Range 0–0.5; default 0 disables dropping. GPU-resident experts, prompt prefill and the MTP draft layer retain all routes. Remaining weights are not renormalized. This bounds routing mass, not output error. |
+| `STRATA_GLM_FP4_ROUTE_DROP_MAX=2` | Also cap the number of dropped experts per token and main layer. Range 0–7, default 2. Ties use the original route order. Reports include discarded counts and actual mean/maximum routing-mass shares. |
+| `STRATA_GLM_FP4_ROUTE_RENORM=1` | After dropping, rescale retained CPU and GPU routing coefficients to restore the token's original total routing weight. Default off. The drop budget and reported discarded share refer to the original coefficients. Checkpoint weights, prefill and the draft layer retain their existing behavior. |
 | `STRATA_GLM_FP4_DEVICE_ROUTING=1` | Gather prefill inputs and accumulate each GPU's expert results on the device, in expert order. Duplicate routes use the host path. |
+| `STRATA_GLM_FP4_DECODE_RESERVE_MIB` | Opt-in reserve for allocations made after decode-cache selection, 256–8192 MiB per GPU. Unset or `-1` retains the original 3072 MiB primary and 1024 MiB secondary reserves. Explicit settings count all free preallocated pool blocks for the cache budget. Individual allocations still require a large enough block. A smaller reserve admits more resident experts; prefill limits and the allocator's memory checks still apply. |
+| `STRATA_GLM_FP4_DECODE_ROUTING=1` | Gather narrow decode inputs and accumulate resident expert outputs on each GPU. Defer per-expert synchronization until the device sum is copied back; keep in-flight expert buffers protected until completion. Default off; duplicate routes retain the host path. |
 | `STRATA_GLM_FP4_REGISTER_WEIGHTS=1` | Register immutable RAM mappings for read-only DMA. Requires RAM copy or sealed-RAM mode and GPU support for read-only registration. |
 | `STRATA_GLM_FP4_ASYNC_UPLOAD=1` | Prepare the next expert on a separate copy stream. Requires device routing and VRAM preallocation. Host staging is bounded to two 16 MiB frames per GPU. Registered sources bypass the staging copies and cache validated immutable metadata. |
 | `STRATA_GLM_FP4_TENSOR_ATTENTION=1` | Supply the existing MLA tensor helper for native prefill. With `STRATA_GLM_MLA_F16=1`, it uses FP16 attention operands and FP32 accumulation for long prompts. `STRATA_GLM_MLA_ABSORB_F16=1` also enables FP16 absorb operands. Native short prompts retain the original path below `STRATA_PREFILL_LOSSY_MIN_TOKENS` (default 4096). |
@@ -146,6 +160,22 @@ across verification widths. CPU AVX2/AVX-512 and scalar implementations also
 keep each row's arithmetic independent of verification width. Backend and
 kernel choices still have different floating point reduction orders; compare
 quality and generated tokens before claiming equivalence.
+
+The measured 5.26 tokens/s reference is commit `a11bf931`, with the sparse and
+Q8 CPU options unset. Its measurement record below remains the reference for
+later decode experiments. MTP with a positive `STRATA_GLM_MTP_ACCEPT_MARGIN`
+is also lossy: it can accept a draft token within the configured logit margin
+and rank, subject to the per-window limit and repetition guard. These options
+require their own full-model quality and throughput measurements.
+Unused vocabulary slots masked with negative infinity do not disable bounded
+acceptance. A masked draft cannot be softly accepted; soft acceptance also
+rejects NaNs and positive infinity. A zero margin retains exact greedy acceptance.
+`STRATA_GLM_VERIFY_GRAPHS` permits native ModelOpt verification graphs at widths
+1 through 4 when decode graphs are enabled. As with the existing switch, its
+presence enables it, including a value of `0`. `--check-verify-graphs` requires
+actual captures and compares mixed widths, history reallocation, replay and
+accepted-prefix rollback against direct execution. Ordinary EXL3 verification
+graphs retain their existing restriction.
 
 ## Component measurements
 
@@ -252,6 +282,95 @@ Reference greedy decoding also passed two of three training tasks. Its two
 passing outputs matched SM70 bitwise; the failing task's outputs differed.
 The reference mode was not run on the 20 held-out tasks.
 
+## Opt-in decode measurement
+
+A later run on the same two V100-PCIE-32GB GPUs and two Xeon Gold 6240
+sockets used 32 CPU workers, the same frozen 8192-token prompt and a `181G`
+allocation. Weights occupied one sealed, locked RAM copy with interleaved NUMA
+placement. All 42 source shards and their sealed copies passed full SHA256
+checks; their canonical manifest matched the preserved reference.
+
+| Mode | Output tokens | Timed requests | Median prefill tok/s | Median decode tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| Preserved W4A16 reference, 35 workers | 512 | 3 | 393.80 | 5.26 |
+| Q8 CPU arithmetic, bounded route dropping, greedy | 512 | 3 | 394.74 | 19.08 |
+| Q8 CPU arithmetic, bounded route dropping, MTP and suffix lookup | 512 | 3 | 390.70 | 31.02 |
+
+The last two rows followed two full warmup requests and a discarded prefill request.
+Thirteen mapped executable and shared-library files (1,038,543,808 bytes) were
+read into the OS page cache in 3.97 seconds during the second discarded warmup.
+The preparation record verifies that these reads finished before timed requests.
+This preparation does not change weights or inference settings.
+Decode ranged from 28.31 to 31.30 tokens/s; timing covers 511 advances after the
+prefill token. Its three output sequences matched, with no EOS inside the
+512-token window. Every timed request had zero major faults; sampled swap was
+zero. Peak sampled decoder RSS was 167.55 GiB.
+The 181 GiB memory controller recorded a whole-job peak of 172.89 GiB,
+with no limit failures or OOM kills. Startup, the RAM copy, registration and
+shutdown are outside these rates. The reference used one full warmup. Its
+same-day rerun had timed major faults in two samples, so the table retains
+the earlier clean reference measurement. Earlier attempts with the selected
+settings failed the residency gate because their third timed requests had
+30 and 32 major faults. Those attempts and an
+unsuccessful preparation run remain excluded controls in the report.
+
+This profile is lossy and opt-in. CPU products use block-64 int8 activations
+with original FP4 codes. Runtime route dropping is limited to 50% of the
+original routing mass and seven CPU contributions per token and main layer;
+retained coefficients are renormalized. Actual mean discarded mass was
+38.57%, with a maximum of 49.9999% and a maximum coefficient multiplier of 2.
+Those counters include warmups and all evaluated verification rows, including
+rejected rows.
+Checkpoint files stay intact, and prefill and the draft layer retain all routes.
+
+MTP uses depth 3, a logit margin of 3, rank limit 8, at most three soft accepts
+per window and a four-token repetition guard. Suffix lookup uses depth 7,
+minimum match 6, chaining and the existing cost policy. GPU decode routing
+uses device gather/scatter and defers per-expert synchronization. Decode graphs
+are off. The original GPU cache reserves are retained: smaller-reserve controls
+measured slower. CUDA graphs and the narrower MTP-margin control were also
+slower in 128-token trials; these short controls are not 512-token qualification.
+
+Settings were selected from throughput and three training tasks, then frozen
+before the held-out run. The selected build passed 2/3 training tasks
+and 18/20 held-out coding tasks, compared with the preserved baseline's
+2/3 and 19/20. The selected policy failed `mul_u64` and `merge_overlap`; no
+settings were tuned on these held-out results. Each answer used temperature
+zero, real EOS stops, a 1536-token cap and an independent compiled C++ execution
+oracle. This small check does not establish general quality or perplexity.
+The earlier prefill consistency failure and FP16-attention limitations remain
+open.
+
+The final V100 build passed rebuilt CPU tests in native VNNI, forced AVX2 and
+scalar modes, plus the pool and C11 policy checks. Host/device routing logits,
+mixed-width graph replay, verification history and prefix rollback passed
+bitwise checks. With all new options off, 128 generated tokens matched the
+frozen `a11bf931` reference. Additional CUDA SM86 and HIP gfx1201 builds passed
+compile checks; GPU execution on those backends, full-model GGUF/EXL3
+regressions and a new full-model Compute Sanitizer run were not performed.
+The [decode evidence](glm_fp4_v100_decode20_measurement.json)
+records configurations, all repeats, source/build hashes, failed controls and
+quality results. The original [5.26 tok/s record](glm_fp4_v100_model_measurement.json),
+profile and `fp4-v100-reference` branch remain preserved.
+
+The experimental [fast profile](../configs/experimental/glm53f-fp4-dual-v100-fast.json)
+expects a sealed RAM cache at `tmp/glm-fp4-ram`. From the repository root, with
+the rebuilt executable and two GPUs allocated:
+
+```sh
+numactl --interleave=all python3 tools/glm_ram_cache.py models/glm53f-fp4 \
+  --cache-dir tmp/glm-fp4-ram --report tmp/glm-fp4-ram-load.json --direct-read -- \
+  python3 -m serve.server --engine glm \
+    --config configs/experimental/glm53f-fp4-dual-v100-fast.json
+```
+
+Choose a fresh cache directory/report, and keep the profile's model directory
+equal to the cache directory. The owner must stay alive while the server runs.
+The first request is slower; the table measures warm resident requests.
+Workers spin while the engine lives, including between requests. The profile
+binds the API to `127.0.0.1`. The 20 tok/s decode target was met for this
+protocol; the original 800 tok/s prefill target remains unmet.
+
 ## Qualification protocol
 
 Use batch one, a frozen 8192-token prompt, 512 generated tokens, capacity
@@ -307,5 +426,6 @@ numactl --interleave=all python3 tools/glm_ram_cache.py models/glm53f-fp4 \
 The benchmark allows a longer untimed shutdown when read-only RAM registration
 is enabled. Startup, registration and cleanup are excluded from request rates.
 
-The 30 tokens/s decode and 800 tokens/s prefill numbers are qualification
-targets. They are not measured results in this document.
+The opt-in profile met the 30 tokens/s decode target with a 31.02 tokens/s
+median under the resident protocol above. The 800 tokens/s prefill target
+remains unmet.
