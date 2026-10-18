@@ -8,7 +8,10 @@ projection with E8M0 block scales, BF16 embed/head/norms), then checks:
   3. `experts --imatrix` with IQ1_S (needs an imatrix) packs and verifies when gguf-py is importable (llama.cpp checkout);
   4. `trunk` packs the non-expert tensors and skips the Engram table; verify passes; a corrupted payload fails;
   5. several processes filling one chunk directory (racing on plan.json, scoped stale-partial cleanup), `--plan-only`,
-     imatrix counts as [experts] or {1, experts}, a seeded deadline, and a threaded trunk byte-identical to one thread.
+     imatrix counts as [experts] or {1, experts}, a seeded deadline, and a threaded trunk byte-identical to one thread;
+  6. with strata-pfetch (tools/pfetch/build, or PFETCH=...) and mpirun: a sparse node-local mirror built from `ranges`
+     by tools/ds41f_pfetch_plan.py packs the same chunks and trunk as the shared checkpoint, a missing range fails
+     closed (--coverage), and layers already complete are not fetched.
 
     python3 tools/test_ds41f_pack.py --converter build-ds41f/strata-ds41f-pack
 """
@@ -53,7 +56,7 @@ def mxfp4_decode(packed, scales, rows, cols):
     return mag * sign * scale
 
 
-def make_checkpoint(root, rng, layers=LAYERS, n_experts=EXPERTS):
+def make_checkpoint(root, rng, layers=LAYERS, n_experts=EXPERTS, shard_per_layer=False):
     experts, dense = {}, {}
     expected = {}
     for layer in range(layers):
@@ -73,6 +76,13 @@ def make_checkpoint(root, rng, layers=LAYERS, n_experts=EXPERTS):
     dense["head.weight"] = ("BF16", (rng.standard_normal((512, HIDDEN)).astype(np.float32).view(np.uint32) >> 16).astype(np.uint16))
     dense["layers.1.engram.embed.weight"] = ("F8_E4M3", rng.integers(0, 256, (1024, 256), dtype=np.uint8) & 0x7E)
     dense["layers.1.engram.embed.scale"] = ("F8_E8M0", rng.integers(120, 128, (1024, 8), dtype=np.uint8))
+    if shard_per_layer:   # the release layout: one shard holds one layer's experts
+        n = layers + 1
+        for layer in range(layers):
+            write_safetensors(root / f"model-{layer + 1:05d}-of-{n:05d}.safetensors",
+                              {k: v for k, v in experts.items() if k.startswith(f"layers.{layer}.")})
+        write_safetensors(root / f"model-{n:05d}-of-{n:05d}.safetensors", dense)
+        return expected
     write_safetensors(root / "model-00001-of-00002.safetensors", experts)
     write_safetensors(root / "model-00002-of-00002.safetensors", dense)
     return expected
@@ -212,7 +222,8 @@ def main():
         bad.write_bytes(data)
         run(args.converter, "verify", ckpt, bad, expect_fail="payload checksum mismatch")
         multi_report = multiprocess_checks(args.converter, root, gg)
-        print("ds41f pack PASS: exact MXFP4 dequant, Q2_K/Q3_K pack + REAP keep + verify, chunk pipeline stop/resume/plan-mismatch/assemble, mtime-independent identity, trunk Q4_K/Q8_0 without Engram, corruption caught;", iq1_report + ";", multi_report)
+        mirror_report = mirror_checks(args.converter, root)
+        print("ds41f pack PASS: exact MXFP4 dequant, Q2_K/Q3_K pack + REAP keep + verify, chunk pipeline stop/resume/plan-mismatch/assemble, mtime-independent identity, trunk Q4_K/Q8_0 without Engram, corruption caught;", iq1_report + ";", multi_report + ";", mirror_report)
 
 
 def multiprocess_checks(converter, root, gg):
@@ -281,6 +292,58 @@ def multiprocess_checks(converter, root, gg):
         run(converter, "experts", ck4, f"--chunk-dir={root / 'iq-l3'}", *iq, f"--imatrix={root / 'im3.gguf'}", "--layers=0-3", "--plan-only", expect_fail="imatrix has no entry")
         report += ", imatrix counts 1-D == 2-D, bad shape and missing layer refused"
     return report
+
+
+def mirror_checks(converter, root):
+    """Pack from a strata-pfetch sparse mirror (2 ranks): same chunks and trunk as from the shared checkpoint."""
+    import shlex
+    repo = pathlib.Path(__file__).resolve().parents[1]
+    pfetch = os.environ.get("PFETCH", str(repo / "tools" / "pfetch" / "build" / "strata-pfetch"))
+    mpirun = shlex.split(os.environ.get("MPIRUN", "mpirun --oversubscribe"))
+    if not os.access(pfetch, os.X_OK):
+        return "mirror checks SKIPPED (no strata-pfetch; make -C tools/pfetch)"
+    ck = root / "ckpt-split"
+    ck.mkdir(exist_ok=True)
+    make_checkpoint(ck, np.random.default_rng(11), layers=4, n_experts=2, shard_per_layer=True)
+    local = root / "local"
+    plan = [sys.executable, str(repo / "tools" / "ds41f_pfetch_plan.py"), "--bin", converter, "--ckpt", str(ck), "--ranks", "2",
+            "--rank-layers", "0:0-1,1:2-3", "--trunk-rank", "1", "--mirror", "@L/n{rank}/ckpt", "--block-mib", "1"]
+    man = root / "mirror.manifest"
+    man.write_text(subprocess.run(plan, capture_output=True, text=True, check=True).stdout)
+    r = subprocess.run(mpirun + ["-np", "2", pfetch, f"--manifest={man}", f"--local-root={local}", "--streams=2",
+                                 "--coverage-out=@L/n{rank}/coverage"], capture_output=True, text=True)
+    assert r.returncode == 0 and "PFETCH_END state=ok" in r.stdout, r.stdout[-3000:] + r.stderr[-2000:]
+    mirror = [local / f"n{k}" / "ckpt" for k in range(2)]
+    assert (mirror[0] / "model-00005-of-00005.safetensors").is_symlink()          # rank 0 does not read the trunk shard
+    st = os.stat(mirror[1] / "model-00005-of-00005.safetensors")                   # rank 1 mirrors it sparsely (no Engram)
+    assert st.st_blocks * 512 < st.st_size, (st.st_blocks, st.st_size)
+    kq = ["--gate=q2_k", "--up=q2_k", "--down=q3_k", "--uncalibrated", "--threads=2"]
+    for k, layers in ((0, "0-1"), (1, "2-3")):
+        run(converter, "experts", ck, f"--chunk-dir={root / 'mirror-ref'}", *kq, f"--layers={layers}")
+        run(converter, "experts", mirror[k], f"--chunk-dir={root / 'mirror-pack'}", *kq, f"--layers={layers}",
+            f"--coverage={local / f'n{k}' / 'coverage'}")
+    names = sorted(p.name for p in (root / "mirror-ref").iterdir())
+    assert names == sorted(p.name for p in (root / "mirror-pack").iterdir()) and len(names) == 4 * 6 + 1, names
+    for name in names:
+        assert (root / "mirror-ref" / name).read_bytes() == (root / "mirror-pack" / name).read_bytes(), name
+    run(converter, "trunk", ck, root / "trunk-ref.gguf")
+    run(converter, "trunk", mirror[1], root / "trunk-mirror.gguf", f"--coverage={local / 'n1' / 'coverage'}")
+    assert (root / "trunk-ref.gguf").read_bytes() == (root / "trunk-mirror.gguf").read_bytes()
+    # fail closed: the last 4 KiB of a fetched range missing, or a mirrored shard missing from the coverage
+    lines = (local / "n0" / "coverage").read_text().splitlines()
+    path, off, n = lines[-1].split()
+    cut = root / "coverage-cut"
+    cut.write_text("\n".join(lines[:-1] + [f"{path} {off} {int(n) - 4096}"]) + "\n")
+    run(converter, "experts", mirror[0], f"--chunk-dir={root / 'mirror-cut'}", *kq, "--layers=0-1", f"--coverage={cut}",
+        expect_fail="read outside fetched coverage")
+    cut.write_text("\n".join(lines[:-1]) + "\n")
+    run(converter, "experts", mirror[0], f"--chunk-dir={root / 'mirror-cut2'}", *kq, "--layers=0-1", f"--coverage={cut}",
+        expect_fail="without fetched coverage")
+    # complete layers are not fetched again: only symlinks remain for rank 0
+    again = subprocess.run(plan + ["--chunk-dirs", str(root / "mirror-pack")], capture_output=True, text=True, check=True)
+    assert not [l for l in again.stdout.splitlines() if l.startswith("D ") and l.split()[2] == "0"], again.stdout[:2000]
+    assert "0:0L/0.0GB" in again.stderr, again.stderr
+    return "pfetch mirror pack == shared pack (chunks, plan, trunk), missing range fails closed, complete layers not fetched"
 
 
 if __name__ == "__main__":

@@ -7,9 +7,12 @@
 # The tool needs only ggml-base (quantizers, type traits) and ggml_cpu_init; ggml is built static with OpenMP off, so
 # the binary needs no Fujitsu runtime library at run time. Quantizer output depends on ggml's ggml-quants.c: give the
 # same ggml tree the x86 builds use and pin it with DS41F_GGML_QUANTS_SHA256 (the build refuses another one).
-# Publishes $DS41F_BIN_ROOT/strata-ds41f-pack-<sha12>/ with the binary, BUILD.txt and the PJM job scripts; a published
-# directory is never edited (compute nodes may see stale shared files), a new build gets a new directory.
-# Prints `SENTINEL DS41F_PACK_BUILD=OK dir=... sha256=...`.
+# Also builds strata-pfetch (tools/pfetch, with ${A64FX_MPICC:-mpifcc}) and strata-pput for the node-local staging of the
+# pack jobs; without an MPI compiler they are left out and the jobs read the shared checkpoint directly.
+# Publishes $DS41F_BIN_ROOT/strata-ds41f-pack-<key12>/ with the binaries, BUILD.txt, the PJM job scripts and
+# ds41f_pfetch_plan.py, keyed by the hash of all of them; a published directory is never edited (compute nodes may see
+# stale shared files), a new build gets a new directory.
+# Prints `SENTINEL DS41F_PACK_BUILD=OK dir=... sha256=<strata-ds41f-pack sha256> pfetch=<sha256|none>`.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 [ -d "$HOME/local/bin" ] && export PATH=$HOME/local/bin:$PATH   # user-installed cmake/ninja (batch jobs may not inherit the login PATH)
@@ -37,19 +40,29 @@ CXXFLAGS="-Nclang -O2 -std=c++17 -DNDEBUG"
 link() { "$A64FX_CXX" -Nclang -o "$B/strata-ds41f-pack" "$B/ds41f_pack.o" "$B/ds41f_names.o" "$cpu" "$base" -lpthread -lm "$@"; }
 link > "$B/link.log" 2>&1 || link -lstdc++fs > "$B/link.log" 2>&1 || { tail -20 "$B/link.log"; echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=link"; exit 1; }
 "$B/strata-ds41f-pack" 2>&1 | grep -q "usage: strata-ds41f-pack" || { echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=binary does not run"; exit 1; }
+PF=$STRATA/tools/pfetch; PFSRC="$PF/strata_pfetch.c $PF/pf_plan.c $PF/pf_hash.c"; pfsha=none
+if ${A64FX_MPICC:-mpifcc} -Nclang -O2 -std=c11 $PFSRC -lpthread -o "$B/strata-pfetch" > "$B/pfetch.log" 2>&1 &&
+   "$A64FX_CC" -Nclang -O2 -std=c11 -DPFETCH_NO_MPI $PFSRC -lpthread -o "$B/strata-pput" >> "$B/pfetch.log" 2>&1; then
+    pfsha=$(sha256sum "$B/strata-pfetch" | cut -d' ' -f1)
+else echo "BUILD strata-pfetch skipped (no MPI compiler?): $(tail -1 "$B/pfetch.log")"; rm -f "$B/strata-pfetch" "$B/strata-pput"; fi
 sha=$(sha256sum "$B/strata-ds41f-pack" | cut -d' ' -f1)
-out=$DS41F_BIN_ROOT/strata-ds41f-pack-${sha:0:12}
+SCRIPTS=$(ls "$STRATA"/tools/ds41f_pjm_*.sh "$STRATA/tools/ds41f_pfetch_plan.py")
+key=$( { echo "$sha"; for f in "$B/strata-pfetch" "$B/strata-pput" $SCRIPTS; do [ -f "$f" ] && sha256sum < "$f"; done; } | sha256sum | cut -c1-12)
+out=$DS41F_BIN_ROOT/strata-ds41f-pack-$key
 if [ -e "$out/strata-ds41f-pack" ]; then
     [ "$(sha256sum "$out/strata-ds41f-pack" | cut -d' ' -f1)" = "$sha" ] || { echo "SENTINEL DS41F_PACK_BUILD=FAIL reason=$out exists with other content"; exit 1; }
 else
     mkdir -p "$out.partial"
-    cp "$B/strata-ds41f-pack" "$out.partial/"
-    cp "$STRATA"/tools/ds41f_pjm_*.sh "$out.partial/" 2>/dev/null || true
+    cp "$B/strata-ds41f-pack" $SCRIPTS "$out.partial/"
+    [ "$pfsha" != none ] && cp "$B/strata-pfetch" "$B/strata-pput" "$out.partial/"
     { echo "binary_sha256 $sha"; echo "ggml_quants_sha256 $quants_sha"; echo "ggml_src $GGML_SRC"
       echo "compiler $("$A64FX_CXX" --version 2>&1 | head -1)"; echo "cxxflags $CXXFLAGS"; echo "built $(date -Is) on $(hostname) job ${PJM_JOBID:-none}"
       for f in tools/ds41f_pack.cpp src/host/ds41f_names.c include/strata/host/ds41f_names.h include/strata/artifact/json.hpp \
-               include/strata/artifact/gguf_reader.hpp include/strata/artifact/fp8_experts.hpp; do echo "source $(sha256sum "$STRATA/$f")"; done
-      echo "ldd:"; ldd "$B/strata-ds41f-pack" 2>&1 | sed 's/^/  /'; } > "$out.partial/BUILD.txt"
+               include/strata/artifact/gguf_reader.hpp include/strata/artifact/fp8_experts.hpp tools/pfetch/strata_pfetch.c \
+               tools/pfetch/pf_plan.c tools/pfetch/pf_plan.h tools/pfetch/pf_hash.c tools/pfetch/pf_hash.h; do echo "source $(sha256sum "$STRATA/$f")"; done
+      echo "pfetch_sha256 $pfsha"
+      echo "ldd:"; ldd "$B/strata-ds41f-pack" 2>&1 | sed 's/^/  /'
+      [ "$pfsha" != none ] && { echo "ldd strata-pfetch:"; ldd "$B/strata-pfetch" 2>&1 | sed 's/^/  /'; }; } > "$out.partial/BUILD.txt"
     mv "$out.partial" "$out"
 fi
-echo "SENTINEL DS41F_PACK_BUILD=OK dir=$out sha256=$sha"
+echo "SENTINEL DS41F_PACK_BUILD=OK dir=$out sha256=$sha pfetch=$pfsha"
