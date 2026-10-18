@@ -530,10 +530,29 @@ A64FX_CURRENT = dict(attn_us_per_layer=433.0,     # 17.34 ms / 40 (current runne
                      mhc_site_us=0.0, phase_us=0.0, prefill_per_pos_factor=29.9 / 40.7)
 # ggml-cpu SVE vec_dot per node (48 threads), measured 2026-10-18 (tools/sim/data/measured_a64fx_kernels.json); all compute-bound
 A64FX_GGML_NODE_GBPS = {"Q2_K": 97.0, "Q3_K": 55.6, "Q4_K": 76.0, "IQ2_XXS": 11.2, "IQ2_S": 10.5, "IQ1_S": 8.2, "Q8_0": 432.1}
-# the SDOT Q2_K/Q3_K kernel (tools/a64fx_probe/q23_sdot_sve.c) per node, measured 2026-10-18: Q2_K on the DS4.1F gate/up shape
-# (2304 x 5120), Q3_K on GLM's down shape; time per byte at 1..4 tokens per expert relative to 1 token (GLM q23 mix)
-A64FX_SDOT_NODE_GBPS = {"Q2_K": 208.1, "Q3_K": 137.3}
-A64FX_SDOT_WIDTH_COST = (1.0, 1.581, 2.162, 2.944)
+# The A64FX SDOT kernels per node, 48 threads, one token, measured 2026-10-18 in one session (job 52438878,
+# tools/sim/data/measured_a64fx_kernels.json "sdot_kernel_v2"; tools/a64fx_probe/q23_sdot_sve.c, iq_sdot_sve.c).
+# gate/up on the DS4.1F 2304 x 5120 shape, down on 5120 x 2304 where measured; Q3_K from GLM's shapes; an IQ format used
+# as down takes its gate/up rate (not measured on the down shape).
+A64FX_SDOT_GATEUP_GBPS = {"Q2_K": 192.2, "Q3_K": 171.8, "IQ2_XXS": 84.8, "IQ1_S": 60.3}
+A64FX_SDOT_DOWN_GBPS = {"Q2_K": 133.4, "Q3_K": 138.0, "IQ2_XXS": 84.8, "IQ1_S": 60.3}
+# time per weight byte at 1..4 tokens per expert relative to one token (GLM shapes, same session): compute-bound kernels
+A64FX_SDOT_WIDTH_COST = {"Q2_K": (1.0, 1.508, 2.265, 3.158), "Q3_K": (1.0, 1.538, 1.936, 2.551),
+                         "IQ2_XXS": (1.0, 1.438, 1.683, 2.324), "IQ1_S": (1.0, 1.381, 1.698, 2.139)}
+
+
+def a64fx_sdot_cost(fmt, tpe):
+    """Relative time per byte of the SDOT kernel for `fmt` at `tpe` tokens per distinct expert (linear between the
+    measured 1..4-token points, extrapolated beyond 4)."""
+    c = A64FX_SDOT_WIDTH_COST[fmt]
+    if tpe <= 1:
+        return 1.0
+    k = int(tpe)
+    if k >= len(c):
+        return c[-1] + (c[-1] - c[-2]) * (tpe - len(c))
+    return c[k - 1] + (c[k] - c[k - 1]) * (tpe - k)
+
+
 A64FX_REDESIGN = dict(attn_us_per_layer=60.0,     # trunk stream at the chain rate + one fused phase per sub-layer (hypothesis)
                       expert_gbps=250.0, comm_ms=0.0, other_ms=0.0, mhc_site_us=23.0, phase_us=3.0, prefill_int8_eff=0.7)
 
@@ -572,17 +591,16 @@ def a64fx_decode(ap):
             n = g.hidden * g.expert_ff
             bytes_ = [tensor_bytes(n, f) for f in pk.formats]
             rate = sum(bytes_) / sum(b / A64FX_GGML_NODE_GBPS.get(f, 20.0) for b, f in zip(bytes_, pk.formats)) / (1 + 0.12 * (parts - 1))
-        elif all(f in A64FX_SDOT_NODE_GBPS for f in pk.formats):
-            # redesign with K-quant experts: the measured SDOT kernel, bytes-weighted, compute-bound in the token count
+        elif all(f in A64FX_SDOT_GATEUP_GBPS for f in pk.formats):
+            # redesign with K-quant or IQ2_XXS/IQ1_S experts: the measured SDOT kernels per projection, bytes-weighted,
+            # each at its measured cost for `width / union` tokens per distinct expert
             n = g.hidden * g.expert_ff
+            tpe = width / union
+            rates = [A64FX_SDOT_GATEUP_GBPS[pk.formats[0]], A64FX_SDOT_GATEUP_GBPS[pk.formats[1]], A64FX_SDOT_DOWN_GBPS[pk.formats[2]]]
             bytes_ = [tensor_bytes(n, f) for f in pk.formats]
-            rate = sum(bytes_) / sum(b / A64FX_SDOT_NODE_GBPS[f] for b, f in zip(bytes_, pk.formats)) / (1 + 0.04 * (parts - 1))
-            tpe = width / union                                  # tokens per distinct expert
-            if tpe > 1:
-                k = min(int(tpe), len(A64FX_SDOT_WIDTH_COST) - 1)
-                c = A64FX_SDOT_WIDTH_COST
-                rate /= c[k - 1] + (c[k] - c[k - 1]) * (tpe - k)
-        # IQ and MXFP4 packs keep the redesign's SDOT-tile hypothesis rate
+            secs = sum(b / r * a64fx_sdot_cost(f, tpe) for b, r, f in zip(bytes_, rates, pk.formats))
+            rate = sum(bytes_) / secs / (1 + 0.04 * (parts - 1))
+        # other IQ formats (IQ1_M, IQ2_S, IQ3_XXS), Tetra and MXFP4 keep the redesign's SDOT-tile hypothesis rate
     per_layer_experts = pk.expert_bytes() * g.top_k * union / R
     t_exp = per_layer_experts / (rate * 1e6) * g.layers
     skew = (0.72 if ap.profile == "current" else 0.5) * max(0.0, ratio - 1) * t_exp / g.layers * 1e3
@@ -611,7 +629,7 @@ def a64fx_decode(ap):
     return dict(tok_s=tokens / round_ms * 1e3, step_ms=step, experts_ms=t_exp, trunk_ms=t_trunk, attn_ms=t_attn, comm_ms=t_comm,
                 engram_ms=engram, other_ms=other, head_ms=head, ctx_ms=ctx, load_ratio=ratio, fit=fit, notes=fit["notes"],
                 hypotheses=[f"a64fx {ap.profile} profile constants (see A64FX_CURRENT / A64FX_REDESIGN)",
-                            "current: ggml SVE dots measured per node (Q2_K 97, IQ2_XXS 11, IQ1_S 8 GB/s); redesign: measured SDOT kernel for Q2_K/Q3_K (208/137 GB/s standalone), SDOT-tile hypothesis for IQ formats"] if pk.formats[0] != "MXFP4" else
+                            "current: ggml SVE dots measured per node (Q2_K 97, IQ2_XXS 11, IQ1_S 8 GB/s); redesign: measured SDOT kernels for Q2_K/Q3_K/IQ2_XXS/IQ1_S (192/172/85/60 GB/s gate-up, standalone), SDOT-tile hypothesis for other formats"] if pk.formats[0] != "MXFP4" else
                            [f"a64fx {ap.profile} profile constants (see A64FX_CURRENT / A64FX_REDESIGN)"])
 
 

@@ -182,8 +182,8 @@ tr16: iq1s (1.56 bpw, 106.2 GB, 384 experts), trunk q4, head q4, context 8192, w
 | **TR16 + B550 (IB)** | **2.25 bpw, all 384 experts (153 GB)**: 2.25 bpw is the smallest full-expert pack that fits two nodes; IQ1_S also fits and is faster today | Q4_K on the TR16 GPU | **17 / 32** (IQ1_S 15 / 28) | ~190-270 | the B550's 26 GB/s carries 28 % of the expert bytes; the two streams balance at ~80 ms; the value of the second node is capacity (full experts at 2.25 bpw), not speed |
 | **Xeon 181 GB + 2x V100** | **2.25 bpw, all 384 experts (153 GB) in RAM**; IQ2_S/Q2_K (175 GB) also fits; Q23 (197 GB) and IQ3 (208 GB) do not | **Q8_0 / Q8_0 split over the two cards** (7.7 + 0.7 GB), ~52 GB of expert tier serving ~74 % of the bytes | **34 / 68** | ~570 | the best machine of the three: 150 GB/s DRAM and two 720 GB/s cards; a lossless Q8 trunk; still compute-bound on the IQ2_XXS codebook kernel (36 AVX-512 cores) |
 | **A64FX 12 nodes** | **native MXFP4 (lossless), 24.6 GB per node** | FP8 as released | 24.6 measured today (gemm); **~70 / 90** with the GLM-plan redesign | 33 measured; ~590 redesign | no quantization decision at all; the runner's synchronization is the whole gap (see docs/GLM_A64FX_PLAN.md) |
-| **A64FX 8 nodes** | 2.25 bpw (19 GB) or IQ3_XXS (26 GB) per node; MXFP4 (36 GB) does not fit | FP8 | ~24 today / **~78** redesign | ~410 redesign | 8 = 2x2x2 torus, 3 tree steps per allreduce |
-| **A64FX 6 nodes** | 2.25 bpw (25.5 GB per node, 2 GB of margin); IQ1_M or Tetra for room | FP8 | ~22 today / **~69** redesign | ~320 redesign | the only way onto 6 nodes is a 2-bit expert pack |
+| **A64FX 8 nodes** | 2.25 bpw (19 GB) or IQ3_XXS (26 GB) per node; MXFP4 (36 GB) does not fit | FP8 | ~24 today / **~62** redesign (2.25 bpw; ~68 with the Q2_K/Q3_K pack, which fits) | ~410 redesign | 8 = 2x2x2 torus, 3 tree steps per allreduce |
+| **A64FX 6 nodes** | 2.25 bpw (25.5 GB per node, 2 GB of margin); IQ1_M or Tetra for room | FP8 | ~22 today / **~54** redesign (measured IQ2_XXS kernel) | ~320 redesign | the only way onto 6 nodes is a 2-bit expert pack |
 
 Engram on every machine: 203 GB of SSD, read-only, in the released shards (or repacked once into one contiguous
 264 B-per-row file per table for O_DIRECT reads); 48 page reads per token cost 0.3-0.5 ms on TR16's NVMe and are
@@ -287,12 +287,14 @@ assumes 2 ms per page: a 4 GB RAM row cache and issue-at-token-id with 13 layers
 
 **A64FX.** 12 nodes: gemm's MXFP4 SDOT path (FP4 -> exact integer grid via `svtbl_s8`, int8 group-32 activations, two
 `svdot_s32`, fused W1/W3 pair ~380 GMAC/s per node; quality cosine 0.988 is an activation-quantization question for the
-gate) inside the Strata A64FX port. 6/8 nodes: SVE Q2_K. Measured 2026-10-18: Strata's SDOT Q2_K/Q3_K kernel
-(`tools/a64fx_probe/q23_sdot_sve.c`, parity with ggml within 2.4e-7) streams 208 GB/s per node on the 2304 x 5120 gate/up
-shape and 137 on Q3_K down, twice ggml's (ggml: 97 GB/s = 296 GMAC/s per node,
-`tools/sim/data/measured_a64fx_kernels.json`; ggml's IQ2_XXS/IQ1_S manage only 11/8 GB/s per node, which is why the `current`
-A64FX rows for IQ packs are slow) and an SVE IQ2_XXS/IQ1_S kernel with the same
-integer scheme (`svtbl` over the `g+1` grid, `svdot_s32`); Engram as gemm does (owned rows per rank, prefetch thread,
+gate) inside the Strata A64FX port. 6/8 nodes: SVE Q2_K and IQ kernels. Measured 2026-10-18 on one node: Strata's SDOT
+kernels (`tools/a64fx_probe/q23_sdot_sve.c`, `iq_sdot_sve.c`, parity with ggml within 2.4e-7) stream per node, on the
+2304 x 5120 gate/up shape, Q2_K 192 GB/s, IQ2_XXS 85 and IQ1_S 60 (ggml 95 / 11 / 8), and Q2_K down (5120 x 2304) 133.
+The IQ kernels are 7x ggml but still 2-3x slower per byte than Q2_K, so in the simulator the 6-node IQ packs drop from
+the old 250 GB/s hypothesis (~70 tok/s) to 51-54 tok/s redesigned (data: `tools/sim/data/measured_a64fx_kernels.json`;
+ggml's 11/8 GB/s are why the `current` A64FX rows for IQ packs are slow). The IQ kernels fetch eight grid entries per
+512-bit vector with one 64-bit gather and fold IQ1_S's delta into the weights as 8g +- 1; a further IQ lever would be a
+gather-free layout repacked at load time. Engram as gemm does (owned rows per rank, prefetch thread,
 scale cache); CSA2 per gemm's `ds41f_attention.c`.
 
 ## 8. Runner (phase 2, design)

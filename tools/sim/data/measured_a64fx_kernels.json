@@ -572,5 +572,235 @@
    "12_one_cmg": 0.12,
    "48_hierarchical": 1.38
   }
+ },
+ "sdot_kernel_v2": {
+  "what": "job 52438878 (one node, 2026-10-18, one session, best of 3, 48 threads): every kernel variant on the same node. tools/a64fx_probe/q23_sdot_sve.c (Q2_K/Q3_K v1, v2 = int8 pre-scaled Q2_K weights + split SDOT chains, v2r2 = row pairs) and iq_sdot_sve.c (IQ2_XXS with signs rebuilt in registers or gathered from ksigns64, IQ1_S with the delta folded into 8g+-1). 73 parity checks vs ggml vec_dot and a scalar double reference pass (<= 2.4e-7). Node spread: on job 52428924's node the same Q2_K kernel ran 198 GB/s and ggml 96; here 180 and 92, so compare kernels within one run.",
+  "node48_gbps_tokens_1_to_4": {
+   "q2_K_2048x4096": {
+    "ggml": [
+     91.6,
+     44.4,
+     29.9,
+     21.7
+    ],
+    "v1": [
+     180.5,
+     113.4,
+     77.7,
+     51.3
+    ],
+    "v2": [
+     180.3,
+     119.6,
+     79.6,
+     57.1
+    ],
+    "v2r2": [
+     120.1,
+     71.6,
+     72.0,
+     60.2
+    ]
+   },
+   "q3_K_2048x4096": {
+    "ggml": [
+     54.5,
+     26.7,
+     17.9,
+     13.0
+    ],
+    "v1": [
+     153.0,
+     112.7,
+     82.8,
+     57.7
+    ],
+    "v2": [
+     171.8,
+     113.8,
+     84.9,
+     58.4
+    ],
+    "v2r2": [
+     106.4,
+     83.8,
+     75.4,
+     57.2
+    ]
+   },
+   "q3_K_4096x2048": {
+    "ggml": [
+     52.4,
+     25.6,
+     17.5,
+     13.3
+    ],
+    "v1": [
+     129.6,
+     88.0,
+     70.3,
+     54.3
+    ],
+    "v2": [
+     138.0,
+     89.7,
+     71.3,
+     54.1
+    ],
+    "v2r2": [
+     81.5,
+     69.4,
+     61.2,
+     50.9
+    ]
+   },
+   "iq2_xxs_2048x4096": {
+    "ggml": [
+     11.1,
+     5.5,
+     3.7,
+     2.8
+    ],
+    "reg": [
+     72.0,
+     54.2,
+     47.3,
+     35.0
+    ],
+    "gather": [
+     81.1,
+     56.4,
+     48.2,
+     34.9
+    ]
+   },
+   "iq1_s_2048x4096": {
+    "ggml": [
+     8.2,
+     4.1,
+     2.7,
+     2.0
+    ],
+    "iq": [
+     58.4,
+     42.3,
+     34.4,
+     27.3
+    ]
+   },
+   "q2_K_2304x5120": {
+    "ggml": [
+     94.7,
+     null,
+     null,
+     24.0
+    ],
+    "v1": [
+     192.1,
+     null,
+     null,
+     56.6
+    ],
+    "v2": [
+     192.2,
+     null,
+     null,
+     57.5
+    ],
+    "v2r2": [
+     112.0,
+     null,
+     null,
+     59.8
+    ]
+   },
+   "q2_K_5120x2304": {
+    "ggml": [
+     81.2,
+     null,
+     null,
+     21.0
+    ],
+    "v1": [
+     133.4,
+     null,
+     null,
+     45.3
+    ],
+    "v2": [
+     130.3,
+     null,
+     null,
+     47.4
+    ],
+    "v2r2": [
+     89.1,
+     null,
+     null,
+     51.5
+    ]
+   },
+   "iq2_xxs_2304x5120": {
+    "ggml": [
+     11.1,
+     null,
+     null,
+     2.8
+    ],
+    "reg": [
+     75.2,
+     null,
+     null,
+     37.9
+    ],
+    "gather": [
+     84.8,
+     null,
+     null,
+     39.4
+    ]
+   },
+   "iq1_s_2304x5120": {
+    "ggml": [
+     8.2,
+     null,
+     null,
+     2.0
+    ],
+    "iq": [
+     60.3,
+     null,
+     null,
+     29.7
+    ]
+   }
+  },
+  "per_thread_gbps_1_token": {
+   "ggml_q2_K_2048x4096": 1.9,
+   "v1_q2_K_2048x4096": 3.8,
+   "v2_q2_K_2048x4096": 3.8,
+   "v2r2_q2_K_2048x4096": 2.7,
+   "ggml_q3_K_2048x4096": 1.1,
+   "v1_q3_K_2048x4096": 3.2,
+   "v2_q3_K_2048x4096": 3.6,
+   "v2r2_q3_K_2048x4096": 2.3,
+   "ggml_iq2_xxs_2048x4096": 0.2,
+   "reg_iq2_xxs_2048x4096": 1.5,
+   "gather_iq2_xxs_2048x4096": 1.7,
+   "ggml_iq1_s_2048x4096": 0.2,
+   "iq_iq1_s_2048x4096": 1.2,
+   "ggml_q3_K_4096x2048": 1.1,
+   "v1_q3_K_4096x2048": 2.7,
+   "v2_q3_K_4096x2048": 2.9,
+   "v2r2_q3_K_4096x2048": 1.8
+  },
+  "chosen": {
+   "Q2_K gate/up": "v2 (= v1 at 1 token, better at 2-4)",
+   "Q3_K": "v2",
+   "IQ2_XXS": "gather (ksigns64)",
+   "IQ1_S": "iq",
+   "Q2_K down 5120x2304": "v1 (v2 within 2 %)",
+   "row pairs": "slower everywhere at 1-2 tokens (register spills); not used"
+  }
  }
 }

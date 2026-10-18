@@ -29,6 +29,19 @@ from model import GEOMETRY, FIXED_BYTES  # noqa: E402
 
 DATA = pathlib.Path(__file__).resolve().parent / "data"
 _COMM = json.loads((DATA / "measured_a64fx_comm.json").read_text())
+_KERN = json.loads((DATA / "measured_a64fx_kernels.json").read_text())
+
+
+def sdot_q23_mix():
+    """The q23 pack (Q2_K gate + up, Q3_K down) through the measured single-row SDOT kernels (v2, one session):
+    node GB/s at one token and the time per byte at 1..4 tokens per expert relative to one token."""
+    t = _KERN["sdot_kernel_v2"]["node48_gbps_tokens_1_to_4"]
+    q2, q3 = t["q2_K_2048x4096"]["v2"], t["q3_K_4096x2048"]["v2"]
+    times = [2 * 84 / a + 110 / b for a, b in zip(q2, q3)]     # bytes per 256 weights of gate + up + down
+    return (2 * 84 + 110) / times[0], tuple(round(x / times[0], 3) for x in times)
+
+
+_Q23_RATE, _Q23_COSTS = sdot_q23_mix()
 GIB = 2 ** 30
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -309,10 +322,10 @@ def redesign():
         mhc_site_us=(23.0, 23.0),      # standalone local-gram mHC kernel (handoff: ~23 us vs 48 legacy)
         router_us=12.0, expert_fixed_us=3.0,
         expert_q4_gbps=400.0,          # Q4_K gate/up measured 156 GB/s standalone v0 kernel; chain-level streaming assumed
-        expert_q2k_gbps=168.7,         # measured 2026-10-18: the SDOT kernel (tools/a64fx_probe/q23_sdot_sve.c) streams Q2_K
-                                       # gate/up at 198.4 GB/s and Q3_K down at 137.3 per node -> 168.7 bytes-weighted (was a
-                                       # 250 hypothesis); standalone, the in-model rate is not measured
-        expert_width_cost=(1.0, 1.581, 2.162, 2.944),   # same kernel, 2/3/4 tokens per expert (compute-bound, measured)
+        expert_q2k_gbps=round(_Q23_RATE, 1),   # measured: SDOT v2 Q2_K gate/up 180.3 + Q3_K down 138.0 GB/s per node -> 160.8
+                                       # bytes-weighted (job 52438878; the same Q2_K kernel ran 198 on another node, ~9 %
+                                       # node spread); standalone, the in-model rate is not measured
+        expert_width_cost=_Q23_COSTS,  # same kernels at 2/3/4 tokens per expert (compute-bound, measured): 1.52 / 2.11 / 2.88
         slice_penalty=0.04,            # HYPOTHESIS: 512-bit tiles keep narrow slices efficient
         moe_skew_frac=0.5, moe_collective="auto", head_fixed_ms=0.3,
         phase_us=1.38 + 1.6, phases_per_moe_layer=8, phases_per_dense_layer=4,   # libhwb barrier (measured) + dispatch
@@ -320,7 +333,7 @@ def redesign():
         stream_rate_mode="chain", sparse_front_sharded=True,
         prefill_int8_eff=0.70, prefill_layer_fixed_ms=0.3, prefill_ctx_us_per_1k=12.0,
         prefill_collectives_per_layer=1, cmg_fixed_scale=0.7,
-        hypotheses=("expert_q2k_gbps 168.7 GB/s and its width costs are the standalone SDOT kernel; in-model rate unmeasured",
+        hypotheses=("expert_q2k_gbps and its width costs are the standalone SDOT kernels (one node); in-model rate unmeasured",
                     "mHC 23 us per site in-model (standalone kernel time; the in-model cost was never reproduced)",
                     "KDA small steps 12 us as one full-team phase (today 82 us on 6 threads)",
                     "prefill int8 efficiency 0.70 (today 0.40 fitted; the 94 % CMG microkernel exists only standalone)",

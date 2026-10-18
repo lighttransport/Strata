@@ -80,22 +80,26 @@ done
 "$B" --threads 48 --mb 2048 --reps 3 --rows 2304 --cols 5120 --types q2_k,iq2_xxs,iq1_s --tokens 4 | tee -a "$OUT/bench-ds41f.log"
 fi
 
-# ---- 4. the SVE SDOT Q2_K/Q3_K kernel against ggml (parity, then 1/12/48 threads x 1..4 tokens)
+# ---- 4. the SDOT kernels (Q2_K/Q3_K v1, v2, row pairs; IQ2_XXS, IQ1_S gathers) against ggml: parity, then timing
 if has sdot; then
-$CC -Nclang -O3 -march=armv8.2-a+sve -c tools/a64fx_probe/q23_sdot_sve.c -o "$ROOT/q23_sdot_sve.o" > "$OUT/sdot.build.log" 2>&1 \
-  && $CXX $CFLAGS -std=c++17 -I"$LLAMA_SRC/ggml/include" -Itools/a64fx_probe tools/a64fx_probe/q23_sdot_bench.cpp "$ROOT/q23_sdot_sve.o" \
-       -L"$LLAMA_BUILD/bin" -lggml-cpu -lggml-base -o "$ROOT/q23_sdot_bench" >> "$OUT/sdot.build.log" 2>&1 \
+GI="-I$LLAMA_SRC/ggml/src -Itools/a64fx_probe"
+{ $CC -Nclang -O3 -march=armv8.2-a+sve $GI -c tools/a64fx_probe/q23_sdot_sve.c -o "$ROOT/q23_sdot_sve.o" \
+  && $CC -Nclang -O3 -march=armv8.2-a+sve $GI -c tools/a64fx_probe/iq_sdot_sve.c -o "$ROOT/iq_sdot_sve.o" \
+  && $CC -Nclang -O3 -march=armv8.2-a+sve $GI tools/a64fx_probe/q23_sdot_test.c "$ROOT/q23_sdot_sve.o" "$ROOT/iq_sdot_sve.o" -lm -o "$ROOT/q23_sdot_test" \
+  && $CXX $CFLAGS -std=c++17 -I"$LLAMA_SRC/ggml/include" $GI tools/a64fx_probe/q23_sdot_bench.cpp "$ROOT/q23_sdot_sve.o" "$ROOT/iq_sdot_sve.o" \
+       -L"$LLAMA_BUILD/bin" -lggml-cpu -lggml-base -o "$ROOT/q23_sdot_bench"; } > "$OUT/sdot.build.log" 2>&1 \
   || { tail -30 "$OUT/sdot.build.log"; echo "A64FX_PROBE FAIL sdot build"; exit 1; }
-$CC -Nclang -O3 -march=armv8.2-a+sve tools/a64fx_probe/q23_sdot_test.c "$ROOT/q23_sdot_sve.o" -lm -o "$ROOT/q23_sdot_test" >> "$OUT/sdot.build.log" 2>&1 \
-  && "$ROOT/q23_sdot_test" | sed 's/^/A64FX_SDOT_TEST /' | tee "$OUT/sdot-test.log"
+"$ROOT/q23_sdot_test" | sed 's/^/A64FX_SDOT_TEST /' | tee "$OUT/sdot-test.log"
 S="$ROOT/q23_sdot_bench"
-"$S" --check --threads 1 --mb 16 --reps 1 --tokens 1 --kernels sdot | tee "$OUT/sdot-check.log"
-grep -q FAIL "$OUT/sdot-check.log" && { echo "A64FX_PROBE FAIL sdot parity"; exit 1; }
-for th in 1 12 48; do
-  "$S" --threads $th --mb $((th == 1 ? 256 : 2048)) --rows 2048 --cols 4096 | tee -a "$OUT/sdot-glm-gateup.log"
-  "$S" --threads $th --mb $((th == 1 ? 256 : 2048)) --rows 4096 --cols 2048 --types q3_k | tee -a "$OUT/sdot-glm-down.log"
+"$S" --check-only --threads 1 | tee "$OUT/sdot-check.log"
+grep -q FAIL "$OUT/sdot-test.log" "$OUT/sdot-check.log" && { echo "A64FX_PROBE FAIL sdot parity"; exit 1; }
+for th in 1 48; do
+  MB=$((th == 1 ? 128 : 2048))
+  "$S" --threads $th --mb $MB --rows 2048 --cols 4096 | tee -a "$OUT/sdot-glm-gateup.log"
+  "$S" --threads $th --mb $MB --rows 4096 --cols 2048 --types q3_k | tee -a "$OUT/sdot-glm-down.log"
 done
-"$S" --threads 48 --mb 2048 --rows 2304 --cols 5120 --types q2_k --tokens 1,4 | tee "$OUT/sdot-ds41f.log"
+"$S" --threads 48 --mb 2048 --rows 2304 --cols 5120 --types q2_k,iq2_xxs,iq1_s --tokens 1,4 | tee "$OUT/sdot-ds41f.log"
+"$S" --threads 48 --mb 2048 --rows 5120 --cols 2304 --types q2_k --tokens 1,4 | tee -a "$OUT/sdot-ds41f.log"
 fi
 
 # ---- 5. node constants: HBM stream, barriers, fork-join

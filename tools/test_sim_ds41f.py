@@ -152,6 +152,20 @@ class UntouchedTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("5 of 5 rows within tolerance", out.getvalue())
 
+class A64FXSdotTest(unittest.TestCase):
+    def test_width_cost_interpolates_the_measured_points(self):
+        self.assertEqual(ds41f.a64fx_sdot_cost("IQ2_XXS", 1), 1.0)
+        self.assertAlmostEqual(ds41f.a64fx_sdot_cost("Q2_K", 2), 1.508)
+        self.assertAlmostEqual(ds41f.a64fx_sdot_cost("Q2_K", 2.5), (1.508 + 2.265) / 2)
+        self.assertGreater(ds41f.a64fx_sdot_cost("Q2_K", 5), 3.158)
+
+    def test_iq_packs_use_the_measured_kernels(self):
+        # IQ2_XXS/IQ1_S stream 3x slower per byte than Q2_K on the SDOT kernels: their expert time is no longer the
+        # 250 GB/s hypothesis and exceeds q23's at the same node count
+        iq = ds41f.a64fx_decode(ds41f.A64FXPlan(nodes=8, pack="iq2xxs_q2k", profile="redesign"))
+        q23 = ds41f.a64fx_decode(ds41f.A64FXPlan(nodes=8, pack="q23", profile="redesign"))
+        self.assertGreater(iq["experts_ms"], q23["experts_ms"])
+
 
 if __name__ == "__main__":
     unittest.main()

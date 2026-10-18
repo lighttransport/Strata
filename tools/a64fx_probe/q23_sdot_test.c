@@ -1,8 +1,14 @@
-/* tools/a64fx_probe/q23_sdot_test.c - q23_sdot_sve.c against a scalar double reference written from ggml's
- * dequantize_row_q2_K / q3_K, on random blocks and random Q8_K activations, 1..4 tokens. No ggml needed, so it
- * also runs under qemu-aarch64 (-cpu max,sve512=on) on an x86 host:
- *   clang --target=aarch64-linux-gnu -march=armv8.2-a+sve -O2 q23_sdot_test.c q23_sdot_sve.c -o t && qemu-aarch64 -cpu max,sve512=on -L /usr/aarch64-linux-gnu t */
+/* tools/a64fx_probe/q23_sdot_test.c - every SDOT kernel (q23_sdot_sve.c, iq_sdot_sve.c) against a scalar double
+ * reference written from ggml's dequantize_row_{q2_K,q3_K,iq2_xxs,iq1_s}, on random blocks and random Q8_K
+ * activations, 1..4 tokens, one and two rows. Needs only ggml-common.h (grid tables), so it also runs under
+ * qemu-aarch64 (-cpu max,sve512=on) on an x86 host:
+ *   clang --target=aarch64-linux-gnu -fuse-ld=lld -march=armv8.2-a+sve -O2 -I<ggml-common.h dir> \
+ *       q23_sdot_test.c q23_sdot_sve.c iq_sdot_sve.c -lm -o t && qemu-aarch64 -cpu max,sve512=on -L /usr/aarch64-linux-gnu t */
 #include "q23_sdot_sve.h"
+
+#define GGML_COMMON_DECL_C
+#define GGML_COMMON_IMPL_C
+#include "ggml-common.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -57,6 +63,42 @@ static void deq_q3k(const uint8_t *b, double *y)          /* ggml dequantize_row
     }
 }
 
+static void deq_iq2xxs(const uint8_t *b, double *y)       /* ggml dequantize_row_iq2_xxs, one block */
+{
+    uint16_t hd; memcpy(&hd, b, 2); const float d = h2f(hd);
+    for (int ib32 = 0; ib32 < 8; ++ib32) {
+        uint32_t aux32[2]; memcpy(aux32, b + 2 + 8 * ib32, 8); const uint8_t *aux8 = (const uint8_t *) aux32;
+        const float db = d * (0.5f + (aux32[1] >> 28)) * 0.25f;
+        for (int l = 0; l < 4; ++l) {
+            const uint8_t *grid = (const uint8_t *) (iq2xxs_grid + aux8[l]);
+            const uint8_t signs = ksigns_iq2xs[(aux32[1] >> 7 * l) & 127];
+            for (int j = 0; j < 8; ++j) y[j] = db * grid[j] * (signs & kmask_iq2xs[j] ? -1.f : 1.f);
+            y += 8;
+        }
+    }
+}
+
+static void deq_iq1s(const uint8_t *b, double *y)          /* ggml dequantize_row_iq1_s, one block */
+{
+    uint16_t hd; memcpy(&hd, b, 2); const float d = h2f(hd);
+    const uint8_t *qs = b + 2; uint16_t qh[8]; memcpy(qh, b + 34, 16);
+    for (int ib = 0; ib < 8; ++ib) {
+        const float dl = d * (2 * ((qh[ib] >> 12) & 7) + 1);
+        const float delta = qh[ib] & 0x8000 ? -IQ1S_DELTA : IQ1S_DELTA;
+        for (int l = 0; l < 4; ++l) {
+            const int8_t *grid = (const int8_t *) (iq1s_grid + (qs[l] | (((qh[ib] >> 3 * l) & 7) << 8)));
+            for (int j = 0; j < 8; ++j) y[j] = dl * (grid[j] + delta);
+            y += 8;
+        }
+        qs += 4;
+    }
+}
+
+/* kernel ids: 0 q2 v1, 1 q3 v1, 2 q2 v2 (1 row), 3 q3 v2 (1 row), 4 q2 v2 (2 rows), 5 q3 v2 (2 rows),
+ * 6 iq2xxs var0, 7 iq2xxs var1, 8 iq1s */
+static const char *NAMES[] = {"q2_K v1", "q3_K v1", "q2_K v2 1row", "q3_K v2 1row", "q2_K v2 2rows", "q3_K v2 2rows",
+                              "iq2_xxs regsign", "iq2_xxs gathersign", "iq1_s"};
+
 int main(void)
 {
     enum { COLS = 4096, NB = COLS / 256, ROWS = 32 };
@@ -74,29 +116,50 @@ int main(void)
         }
         q23s_prepare(a8[t], COLS, as[t]);
     }
-    const q23s_act *ap[4] = {as[0], as[1], as[2], as[3]};
-    for (int fmt = 0; fmt < 2; ++fmt) {
-        const size_t bs = fmt == 0 ? 84 : 110;
+    static q23s_act an[4][NB];
+    for (int t = 0; t < 4; ++t) q23s_prepare_natural(a8[t], COLS, an[t]);
+    const q23s_act *ap[4] = {as[0], as[1], as[2], as[3]}, *apn[4] = {an[0], an[1], an[2], an[3]};
+    for (int kid = 0; kid < 9; ++kid) {
+        const int fmt = kid >= 8 ? 3 : kid >= 6 ? 2 : (kid & 1);      /* 0 q2 1 q3 2 iq2xxs 3 iq1s */
+        const size_t bs = fmt == 0 ? 84 : fmt == 1 ? 110 : fmt == 2 ? 66 : 50;
+        const int rows_per_call = (kid == 4 || kid == 5) ? 2 : 1;
         uint8_t *w = malloc(bs * NB * ROWS); double y[256];
         for (size_t i = 0; i < bs * NB * ROWS; ++i) w[i] = (uint8_t) rnd();
         for (int r = 0; r < ROWS * NB; ++r) {
             uint8_t *b = w + (size_t) r * bs; const float d = 0.002f + (rnd() % 1000) * 1e-5f;
             if (fmt == 0) { uint16_t h = f2h(d), h2 = f2h(d * 0.5f); memcpy(b + 80, &h, 2); memcpy(b + 82, &h2, 2); }
-            else { uint16_t h = f2h(d); memcpy(b + 108, &h, 2); }
+            else if (fmt == 1) { uint16_t h = f2h(d); memcpy(b + 108, &h, 2); }
+            else { uint16_t h = f2h(d); memcpy(b, &h, 2); }
         }
         for (int nt = 1; nt <= 4; ++nt) {
             double num = 0, den = 0;
-            for (int r = 0; r < ROWS; ++r) {
-                const uint8_t *row = w + (size_t) r * NB * bs; float got[4];
-                (fmt == 0 ? q2k_sdot_row : q3k_sdot_row)(COLS, row, ap, nt, got);
-                for (int t = 0; t < nt; ++t) {
-                    double ref = 0;
-                    for (int i = 0; i < NB; ++i) { (fmt == 0 ? deq_q2k : deq_q3k)(row + i * bs, y); for (int k = 0; k < 256; ++k) ref += y[k] * xf[t][256 * i + k]; }
-                    num += (got[t] - ref) * (got[t] - ref); den += ref * ref;
+            for (int r = 0; r < ROWS; r += rows_per_call) {
+                const uint8_t *row = w + (size_t) r * NB * bs; float got[8];
+                switch (kid) {
+                case 0: q2k_sdot_row(COLS, row, ap, nt, got); break;
+                case 1: q3k_sdot_row(COLS, row, ap, nt, got); break;
+                case 2: q2k_sdot_rows_v2(COLS, row, NB * bs, 1, ap, nt, got); break;
+                case 3: q3k_sdot_rows_v2(COLS, row, NB * bs, 1, ap, nt, got); break;
+                case 4: q2k_sdot_rows_v2(COLS, row, NB * bs, 2, ap, nt, got); break;
+                case 5: q3k_sdot_rows_v2(COLS, row, NB * bs, 2, ap, nt, got); break;
+                case 6: iq2xxs_sdot_row(COLS, row, apn, nt, got, 0); break;
+                case 7: iq2xxs_sdot_row(COLS, row, apn, nt, got, 1); break;
+                default: iq1s_sdot_row(COLS, row, apn, nt, got); break;
                 }
+                for (int rr = 0; rr < rows_per_call; ++rr)
+                    for (int t = 0; t < nt; ++t) {
+                        const uint8_t *rw = row + (size_t) rr * NB * bs; double ref = 0;
+                        for (int i = 0; i < NB; ++i) {
+                            if (fmt == 0) deq_q2k(rw + i * bs, y); else if (fmt == 1) deq_q3k(rw + i * bs, y);
+                            else if (fmt == 2) deq_iq2xxs(rw + i * bs, y); else deq_iq1s(rw + i * bs, y);
+                            for (int k = 0; k < 256; ++k) ref += y[k] * xf[t][256 * i + k];
+                        }
+                        const double g = got[rr * nt + t];
+                        num += (g - ref) * (g - ref); den += ref * ref;
+                    }
             }
             const double rel = sqrt(num / den); const int ok = rel < 1e-5;
-            printf("%s tokens=%d rel %.2e %s\n", fmt == 0 ? "q2_K" : "q3_K", nt, rel, ok ? "PASS" : "FAIL");
+            printf("%-18s tokens=%d rel %.2e %s\n", NAMES[kid], nt, rel, ok ? "PASS" : "FAIL");
             fails += !ok;
         }
         free(w);
