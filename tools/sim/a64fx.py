@@ -43,6 +43,8 @@ def sdot_q23_mix():
 
 
 _Q23_RATE, _Q23_COSTS = sdot_q23_mix()
+_MHC = json.loads((DATA / "measured_a64fx_mhc.json").read_text())
+MHC_LOCAL_GRAM_INMODEL_US = _MHC["per_site_us_mean_over_ranks"]["local_gram"]["end_site"]   # 42.2, 12-node runner
 GIB = 2 ** 30
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -271,7 +273,8 @@ class Profile:
     sparse_skew_us: float = 50.0       # 73 us per sparse allreduce
     ctx_us_per_token_lo: float = 0.39  # (28.2 - 25.06) ms / (8192 - 128) tokens
     ctx_us_per_token_hi: float = 0.136 # (31.55 - 28.2) ms / (32768 - 8192)
-    mhc_site_us: tuple = (86.0, 70.0)  # FFN site, end-of-layer site
+    mhc_site_us: tuple = (86.0, 70.0)  # FFN site (incl. the fused router), end-of-layer site; the uninstrumented 12-node runner
+                                       # measured 82.6 / 66.9 us (legacy kernel, data/measured_a64fx_mhc.json)
     router_us: float = 18.0            # 0.76 ms / 42 layers, replicated F32 router
     expert_fixed_us: float = 0.0
     expert_q4_gbps: float = 120.0      # whole-expert Q4_K/Q5_K rate: 88 GB/s measured in-model at parts=4 x the 1.36 slice penalty
@@ -320,7 +323,9 @@ def redesign():
         name="redesign", binary_scale=1.0,
         kda_fixed_us=5.0, kda_small_us=12.0, kda_oproj_us=3.0, kda_skew_us=5.0,
         sparse_front_gbps=504.0, sparse_fixed_us=25.0, sparse_skew_us=5.0,
-        mhc_site_us=(23.0, 23.0),      # standalone local-gram mHC kernel (handoff: ~23 us vs 48 legacy)
+        mhc_site_us=(MHC_LOCAL_GRAM_INMODEL_US, MHC_LOCAL_GRAM_INMODEL_US),  # measured in-model: the local-gram kernel on the
+                                       # 12-node runner costs 42.2 us per site (end-of-layer site, 8K context; 23-26 us standalone,
+                                       # 31 us with 90 cold sites); was a 23 us hypothesis
         router_us=12.0, expert_fixed_us=3.0,
         expert_q4_gbps=400.0,          # Q4_K gate/up measured 156 GB/s standalone v0 kernel; chain-level streaming assumed
         expert_q2k_gbps=round(_Q23_RATE, 1),   # measured: SDOT Q2_K gate/up 182.3 + Q3_K down 134.6 GB/s per node -> 159.9
@@ -335,7 +340,7 @@ def redesign():
         prefill_int8_eff=0.70, prefill_layer_fixed_ms=0.3, prefill_ctx_us_per_1k=12.0,
         prefill_collectives_per_layer=1, cmg_fixed_scale=0.7,
         hypotheses=("expert_q2k_gbps and its width costs are the standalone SDOT kernels (one node); in-model rate unmeasured",
-                    "mHC 23 us per site in-model (standalone kernel time; the in-model cost was never reproduced)",
+                    "mHC 42.2 us per site is today's runner in-model; a fused-phase runner might recover part of the gap to the 23-26 us standalone kernel (not assumed)",
                     "KDA small steps 12 us as one full-team phase (today 82 us on 6 threads)",
                     "prefill int8 efficiency 0.70 (today 0.40 fitted; the 94 % CMG microkernel exists only standalone)",
                     "4 ranks per node: collective costs scaled from the 6/8/12-rank measurements to 24/48 ranks"),
