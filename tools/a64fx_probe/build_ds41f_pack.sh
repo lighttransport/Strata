@@ -12,6 +12,7 @@
 # Prints `SENTINEL DS41F_PACK_BUILD=OK dir=... sha256=...`.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
+[ -d "$HOME/local/bin" ] && export PATH=$HOME/local/bin:$PATH   # user-installed cmake/ninja (batch jobs may not inherit the login PATH)
 STRATA=${STRATA:-$(cd "$here/../.." && pwd)}
 GGML_SRC=${GGML_SRC:?set GGML_SRC to a directory containing ggml/}
 DS41F_BIN_ROOT=${DS41F_BIN_ROOT:?set DS41F_BIN_ROOT to the shared directory for published binaries}
