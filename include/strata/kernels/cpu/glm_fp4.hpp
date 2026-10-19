@@ -72,5 +72,6 @@ void glm_fp4_round_f16(float* x,size_t count);
 bool glm_fp4_q8_vnni_available();
 void glm_fp4_rows_csf32_q8(const uint8_t* weights,const GlmFp4Csf32SparseRows& scales,
                           const float* table,const GlmFp4Q8& x,float* y,int columns,
-                          int rows,int tokens,int first,int last,int row_tile=1);
+                          int rows,int tokens,int first,int last,int row_tile=1,
+                          bool local_scales=false);
 }

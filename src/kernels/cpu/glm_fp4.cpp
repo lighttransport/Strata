@@ -50,7 +50,7 @@ struct SparseScales {
         const uint16_t* end;
         mutable const uint16_t* next;
         uint8_t base;
-        int quartet_stride,pair_stride;
+        int quartet_stride,pair_stride,byte_shift;
         const uint32_t* cached;
         uint8_t at(int group)const {
             // Dot products visit groups in order. Repeated reads of the same
@@ -87,9 +87,9 @@ struct SparseScales {
         const auto* cached=data.quartets.empty()?nullptr:data.quartets.data()+size_t(index)*(groups/4);
         if(data.borrowed_codes) {
             const auto* codes=data.borrowed_codes+size_t(index/128)*(groups/4)*256+(index/32%4)*32+index%32;
-            return {codes,end,begin,data.borrowed_bases[index],256,128,cached};
+            return {codes,end,begin,data.borrowed_bases[index],256,128,index%4,cached};
         }
-        return {data.codes.data()+size_t(index)*(groups/2),end,begin,data.bases[index],2,1,cached};
+        return {data.codes.data()+size_t(index)*(groups/2),end,begin,data.bases[index],2,1,0,cached};
     }
 };
 static void scale_table(float global,bool qpn,float* table) {
@@ -204,7 +204,45 @@ void rows256(const uint8_t* w,const Scales& scales,const float* table,const floa
         }
     }
 }
-template<int M>
+// Expand at most 256 scale bytes into a bounded row-local quartet buffer.
+// Borrowed codes use containing logical words, including at the last matrix
+// byte. The logical byte position is independent of the tensor's alignment.
+__attribute__((target("avx512f,avx512bw")))
+void local_scale_quartets(SparseScales::Row row,int groups,uint32_t* out) {
+    const auto* exceptions=row.next;
+    const auto mask=_mm512_set1_epi32(255),nibble=_mm512_set1_epi32(15);
+    const auto base=_mm512_set1_epi32(row.base);
+    const auto positions=_mm512_mullo_epi32(_mm512_setr_epi32(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15),
+        _mm512_set1_epi32(row.quartet_stride));
+    int q=0;
+    for(;q+16<=groups/4;q+=16) {
+        __m512i a,b;
+        if(row.quartet_stride==2) {
+            const auto pairs=_mm512_cvtepu16_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(row.codes+q*2)));
+            a=pairs;b=_mm512_srli_epi32(pairs,8);
+        }else {
+            const auto* words=row.codes-row.byte_shift+q*row.quartet_stride;
+            const auto shift=_mm512_set1_epi32(row.byte_shift*8);
+            a=_mm512_srlv_epi32(_mm512_i32gather_epi32(positions,words,1),shift);
+            b=_mm512_srlv_epi32(_mm512_i32gather_epi32(positions,words+row.pair_stride,1),shift);
+        }
+        const auto a0=_mm512_and_si512(_mm512_add_epi32(base,_mm512_and_si512(a,nibble)),mask);
+        const auto a1=_mm512_and_si512(_mm512_add_epi32(base,_mm512_and_si512(_mm512_srli_epi32(a,4),nibble)),mask);
+        const auto b0=_mm512_and_si512(_mm512_add_epi32(base,_mm512_and_si512(b,nibble)),mask);
+        const auto b1=_mm512_and_si512(_mm512_add_epi32(base,_mm512_and_si512(_mm512_srli_epi32(b,4),nibble)),mask);
+        const auto packed=_mm512_or_si512(_mm512_or_si512(a0,_mm512_slli_epi32(a1,8)),
+            _mm512_or_si512(_mm512_slli_epi32(b0,16),_mm512_slli_epi32(b1,24)));
+        _mm512_storeu_si512(out+q,packed);
+    }
+    // Complete short rows without loading beyond their allocation. Keep the
+    // original exception iterator for vector-prefix and scalar-tail patches.
+    for(;q<groups/4;++q)out[q]=row.quartet(q*4);
+    for(auto* p=exceptions;p!=row.end;++p) {
+        const unsigned group=*p>>8,shift=(group%4)*8;
+        out[group/4]=(out[group/4]&~(uint32_t(255)<<shift))|(uint32_t(uint8_t(*p))<<shift);
+    }
+}
+template<int M,bool LOCAL=false>
 __attribute__((target("avx512f,avx512bw,avx512vnni,fma")))
 void rows_q8_vnni(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
                    const GlmFp4Q8& x,float* y,int K,int N,int first,int last) {
@@ -212,7 +250,15 @@ void rows_q8_vnni(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* t
     const __m512i lut=_mm512_broadcast_i32x4(lut128),zero=_mm512_setzero_si512();
     const SparseScales source{s};
     for(int row=first;row<last;++row) {
-        const auto groups=source.row(row,K/16);
+        alignas(64) uint32_t local[LOCAL?64:1];
+        auto groups=source.row(row,K/16);
+        if constexpr(LOCAL) {
+            // The sparse layout supports up to 256 groups. Retain the original
+            // path if an independently supplied layout has a larger extent.
+            if(!groups.cached&&K/16<=256) {
+                local_scale_quartets(groups,K/16,local);groups.cached=local;
+            }
+        }
         const auto* weights=w+size_t(row)*(K/2);
         __m512 acc[M];for(int t=0;t<M;++t)acc[t]=_mm512_setzero_ps();
         for(int j=0;j<K;j+=64) {
@@ -240,7 +286,7 @@ void rows_q8_vnni(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* t
 }
 // Reuse activation operands across output rows without changing any row's
 // sequence of dot products, scale multiplication, FMA or horizontal reduction.
-template<int M,int TILE,bool BIASED=false>
+template<int M,int TILE,bool BIASED=false,bool LOCAL=false>
 __attribute__((target("avx512f,avx512bw,avx512vnni,fma")))
 void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
                    const GlmFp4Q8& x,float* y,int K,int N,int first,int last) {
@@ -251,10 +297,16 @@ void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* 
     const SparseScales source{s};
     const bool prepared=!x.magnitudes.empty();
     for(int row=first;row<last;row+=TILE) {
+        alignas(64) uint32_t local[TILE][LOCAL?64:1];
         SparseScales::Row groups[TILE];
         __m512 acc[TILE][M];
         for(int r=0;r<TILE;++r) {
-            if(row+r<last)groups[r]=source.row(row+r,K/16);
+            if(row+r<last) {
+                groups[r]=source.row(row+r,K/16);
+                if constexpr(LOCAL)if(!groups[r].cached&&K/16<=256) {
+                    local_scale_quartets(groups[r],K/16,local[r]);groups[r].cached=local[r];
+                }
+            }
             for(int t=0;t<M;++t)acc[r][t]=_mm512_setzero_ps();
         }
         for(int j=0;j<K;j+=64) {
@@ -297,17 +349,23 @@ void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* 
             for(int t=0;t<M;++t)y[size_t(t)*N+row+r]=_mm512_reduce_add_ps(acc[r][t]);
     }
 }
-template<int M>
-void dispatch_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
+template<int M,bool LOCAL>
+void dispatch_q8_mode(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
                  const GlmFp4Q8& x,float* y,int K,int N,int first,int last,int tile) {
     if(!x.dot_bias.empty()) {
-        if(tile==4)rows_q8_tiled<M,4,true>(w,s,table,x,y,K,N,first,last);
-        else if(tile==2)rows_q8_tiled<M,2,true>(w,s,table,x,y,K,N,first,last);
-        else rows_q8_tiled<M,1,true>(w,s,table,x,y,K,N,first,last);
-    }else if(tile==4)rows_q8_tiled<M,4>(w,s,table,x,y,K,N,first,last);
-    else if(tile==2)rows_q8_tiled<M,2>(w,s,table,x,y,K,N,first,last);
-    else if(!x.magnitudes.empty())rows_q8_tiled<M,1>(w,s,table,x,y,K,N,first,last);
-    else rows_q8_vnni<M>(w,s,table,x,y,K,N,first,last);
+        if(tile==4)rows_q8_tiled<M,4,true,LOCAL>(w,s,table,x,y,K,N,first,last);
+        else if(tile==2)rows_q8_tiled<M,2,true,LOCAL>(w,s,table,x,y,K,N,first,last);
+        else rows_q8_tiled<M,1,true,LOCAL>(w,s,table,x,y,K,N,first,last);
+    }else if(tile==4)rows_q8_tiled<M,4,false,LOCAL>(w,s,table,x,y,K,N,first,last);
+    else if(tile==2)rows_q8_tiled<M,2,false,LOCAL>(w,s,table,x,y,K,N,first,last);
+    else if(!x.magnitudes.empty())rows_q8_tiled<M,1,false,LOCAL>(w,s,table,x,y,K,N,first,last);
+    else rows_q8_vnni<M,LOCAL>(w,s,table,x,y,K,N,first,last);
+}
+template<int M>
+void dispatch_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
+                 const GlmFp4Q8& x,float* y,int K,int N,int first,int last,int tile,bool local_scales) {
+    if(local_scales)dispatch_q8_mode<M,true>(w,s,table,x,y,K,N,first,last,tile);
+    else dispatch_q8_mode<M,false>(w,s,table,x,y,K,N,first,last,tile);
 }
 __attribute__((target("avx512f,avx512bw")))
 void prepare_q8_avx512(GlmFp4Q8& x) {
@@ -559,7 +617,7 @@ bool glm_fp4_q8_vnni_available() {
 #endif
 }
 void glm_fp4_rows_csf32_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
-                          const GlmFp4Q8& x,float* y,int K,int N,int M,int first,int last,int row_tile) {
+                          const GlmFp4Q8& x,float* y,int K,int N,int M,int first,int last,int row_tile,bool local_scales) {
     if(K<64||K%64||N<1||M<1||M>8||first<0||last<first||last>N||s.rows!=N||s.groups!=K/16||
        x.columns!=K||x.tokens<M||x.values.size()<size_t(K)*M||x.scales.size()<size_t(K/64)*M||
        (row_tile!=1&&row_tile!=2&&row_tile!=4)||
@@ -569,14 +627,14 @@ void glm_fp4_rows_csf32_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
     if(glm_fp4_q8_vnni_available()) {
         switch(M) {
-            case 1:dispatch_q8<1>(w,s,table,x,y,K,N,first,last,row_tile);return;
-            case 2:dispatch_q8<2>(w,s,table,x,y,K,N,first,last,row_tile);return;
-            case 3:dispatch_q8<3>(w,s,table,x,y,K,N,first,last,row_tile);return;
-            case 4:dispatch_q8<4>(w,s,table,x,y,K,N,first,last,row_tile);return;
-            case 5:dispatch_q8<5>(w,s,table,x,y,K,N,first,last,row_tile);return;
-            case 6:dispatch_q8<6>(w,s,table,x,y,K,N,first,last,row_tile);return;
-            case 7:dispatch_q8<7>(w,s,table,x,y,K,N,first,last,row_tile);return;
-            case 8:dispatch_q8<8>(w,s,table,x,y,K,N,first,last,row_tile);return;
+            case 1:dispatch_q8<1>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 2:dispatch_q8<2>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 3:dispatch_q8<3>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 4:dispatch_q8<4>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 5:dispatch_q8<5>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 6:dispatch_q8<6>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 7:dispatch_q8<7>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 8:dispatch_q8<8>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
         }
     }
 #endif

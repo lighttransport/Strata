@@ -9,6 +9,31 @@
 #include <limits>
 #include <stdexcept>
 #include <vector>
+#if defined(__unix__)
+#include <sys/mman.h>
+#include <unistd.h>
+namespace {
+struct GuardedCodes {
+    void* mapping=nullptr;size_t bytes=0;uint8_t* data=nullptr;
+    explicit GuardedCodes(size_t count) {
+        const long page=sysconf(_SC_PAGESIZE);
+        if(page<=0)throw std::runtime_error("cannot read guard page size");
+        const size_t payload=(count+size_t(page)-1)/size_t(page)*size_t(page);
+        bytes=payload+2*size_t(page);
+        mapping=mmap(nullptr,bytes,PROT_NONE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+        if(mapping==MAP_FAILED){mapping=nullptr;throw std::runtime_error("cannot map CPU scale guards");}
+        auto* begin=static_cast<uint8_t*>(mapping)+page;
+        if(mprotect(begin,payload,PROT_READ|PROT_WRITE)) {
+            munmap(mapping,bytes);mapping=nullptr;throw std::runtime_error("cannot enable CPU scale fixture");
+        }
+        data=begin+payload-count;
+    }
+    GuardedCodes(const GuardedCodes&)=delete;
+    GuardedCodes& operator=(const GuardedCodes&)=delete;
+    ~GuardedCodes(){if(mapping)munmap(mapping,bytes);}
+};
+}
+#endif
 int main(int argc,char** argv){try {
     {
         std::vector<float> original(65536+137),rounded;
@@ -63,7 +88,7 @@ int main(int argc,char** argv){try {
         }
     }
     std::cout<<"FP4 CPU W4A16 PASS (1..8 tokens, disjoint rows, outliers, fixed weight scales)\n";
-    for(int groups:{16,128,256})for(int rows:{128,256}) {
+    for(int groups:{4,16,64,128,256})for(int rows:{128,256}) {
         const int columns=groups*16;
         std::vector<uint8_t> bases(rows),codes(size_t(rows)*groups/2),logical(size_t(rows)*groups),w(size_t(rows)*columns/2);
         for(int i=0;i<rows;++i)bases[i]=30+i%20;
@@ -150,16 +175,16 @@ int main(int argc,char** argv){try {
             auto borrowed_output=got;
             strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),borrowed,table,q8,borrowed_output.data(),columns,rows,tokens,13,rows-1);
             if(std::memcmp(got.data(),borrowed_output.data(),got.size()*4))throw std::runtime_error("borrowed Q8 rows differ from owning scales");
-            for(bool owned:{false,true})for(bool cached:{false,true})for(int mode:{0,1,2,3})for(int tile:{1,2,4}) {
+            for(bool owned:{false,true})for(bool cached:{false,true})for(int mode:{0,1,2,3})for(int tile:{1,2,4})for(bool local:{false,true}) {
                 auto layout=owned?sparse:borrowed;
                 if(cached)strata::kernels::cpu::glm_fp4_cache_scale_quartets(layout);
                 auto operands=q8;
                 if(mode&1)strata::kernels::cpu::glm_fp4_prepare_q8(operands);
                 if(mode&2)strata::kernels::cpu::glm_fp4_prepare_q8_bias(operands);
                 std::vector<float> tiled(got.size(),-777.f);
-                strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,operands,tiled.data(),columns,rows,tokens,13,rows-1,tile);
+                strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,operands,tiled.data(),columns,rows,tokens,13,rows-1,tile,local);
                 if(std::memcmp(got.data(),tiled.data(),got.size()*4))
-                    throw std::runtime_error("tiled/prepared/biased Q8 differs from original row kernel");
+                    throw std::runtime_error("tiled/prepared/biased/local Q8 differs from original row kernel");
             }
             double error=0,norm=0;
             for(int t=0;t<tokens;++t)for(int row=13;row<rows-1;++row) {
@@ -194,12 +219,32 @@ int main(int argc,char** argv){try {
         }
         if(biased.values!=extreme.values||biased.scales!=extreme.scales)
             throw std::runtime_error("Q8 bias preparation changes quantization");
-        for(int tokens=1;tokens<=8;++tokens)for(int tile:{1,2,4}) {
+        for(int tokens=1;tokens<=8;++tokens)for(int tile:{1,2,4})for(bool local:{false,true}) {
             std::fill(expected.begin(),expected.end(),-777.f);std::fill(got.begin(),got.end(),-777.f);
             strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),empty_sparse,table,extreme,expected.data(),columns,rows,tokens,1,rows-1);
-            strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),empty_sparse,table,biased,got.data(),columns,rows,tokens,1,rows-1,tile);
+            strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),empty_sparse,table,biased,got.data(),columns,rows,tokens,1,rows-1,tile,local);
             if(std::memcmp(expected.data(),got.data(),got.size()*4))throw std::runtime_error("biased Q8 extreme operands change outputs or guards");
         }
+#if defined(__unix__)
+        // End the code span at a protected page, or 1..3 bytes before it to
+        // exercise tensor bases with every alignment. Never read a word from
+        // the last CSF byte; gather its containing logical word instead.
+        for(int padding:{0,1,2,3})for(bool exceptions:{false,true}) {
+            GuardedCodes guarded(source_codes.size()+padding);
+            std::copy(source_codes.begin(),source_codes.end(),guarded.data);
+            const auto layout=strata::kernels::cpu::glm_fp4_csf32_sparse_rows(
+                (exceptions?logical:clean).data(),source_bases.data(),guarded.data,rows,groups,true);
+            for(int tokens=1;tokens<=8;++tokens)for(int tile:{1,2,4})for(int first:{0,1,2,3,rows-1}) {
+                const int last=std::min(first+5,rows);
+                std::fill(expected.begin(),expected.end(),-777.f);std::fill(got.begin(),got.end(),-777.f);
+                strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),exceptions?sparse:empty_sparse,
+                    table,q8,expected.data(),columns,rows,tokens,first,last);
+                strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,q8,got.data(),columns,rows,tokens,first,last,tile,true);
+                if(std::memcmp(expected.data(),got.data(),got.size()*4))
+                    throw std::runtime_error("local scales differ at guarded or unaligned code boundary");
+            }
+        }
+#endif
         biased.dot_bias.pop_back();
         bool bad_gather=false,bad_product=false;
         const int pick=0;

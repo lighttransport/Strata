@@ -30,16 +30,18 @@ int main(int argc,char** argv) {try {
         const auto q=c::glm_fp4_quantize_q8(x.data(),K,8);auto prepared=q;c::glm_fp4_prepare_q8(prepared);
         auto biased=q;c::glm_fp4_prepare_q8_bias(biased);
         alignas(64)float table[c::glm_fp4_weight_table_floats];c::glm_fp4_weight_table(.00061f,true,table);
-        struct Variant {const char* name;int tile;bool prepare,cache,bias=false;};
+        struct Variant {const char* name;int tile;bool prepare,cache,bias=false,local=false;};
         const Variant variants[]={{"baseline",1,false,false},{"prepared",1,true,false},{"tile2",2,false,false},
             {"tile4",4,false,false},{"tile2_prepared",2,true,false},{"quartets",1,false,true},
             {"biased",1,false,false,true},{"biased_tile2",2,false,false,true},
-            {"biased_quartets",1,false,true,true},{"biased_quartets_tile2",2,false,true,true}};
+            {"biased_quartets",1,false,true,true},{"biased_quartets_tile2",2,false,true,true},
+            {"local",1,false,false,false,true},{"local_tile2",2,false,false,false,true},
+            {"biased_local",1,false,false,true,true},{"biased_local_tile2",2,false,false,true,true}};
         constexpr int count=sizeof(variants)/sizeof(variants[0]);
         auto run=[&](const Variant& v,int width,int copy) {
             pool.run([&](size_t rank) {
                 c::glm_fp4_rows_csf32_q8(w.data()+wb*copy,v.cache?cached:sparse,table,v.bias?biased:(v.prepare?prepared:q),
-                    out.data(),K,N,width,N*rank/pool.size(),N*(rank+1)/pool.size(),v.tile);
+                    out.data(),K,N,width,N*rank/pool.size(),N*(rank+1)/pool.size(),v.tile,v.local);
             });
         };
         std::cout<<"{\"kind\":\"configuration\",\"rows\":"<<N<<",\"columns\":"<<K

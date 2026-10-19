@@ -283,6 +283,7 @@ class Fp4NativeExecutor {
     const bool cpu_q8_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8");
     const bool cpu_fused_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_FUSED");
     const bool cpu_scale_quartets=strata_env_is_one("STRATA_GLM_FP4_CPU_SCALE_QUARTETS");
+    const bool cpu_scale_local=strata_env_is_one("STRATA_GLM_FP4_CPU_SCALE_LOCAL");
     const bool cpu_input_reuse=strata_env_is_one("STRATA_GLM_FP4_CPU_INPUT_REUSE");
     const bool cpu_q8_prepare=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_PREPARE");
     const bool cpu_q8_bias=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_BIAS");
@@ -402,7 +403,7 @@ class Fp4NativeExecutor {
     void cpu_product(const CpuExpert& e,int projection,const float* x,float* y,
                             int columns,int rows,int tokens,int first,int last,const cpu::GlmFp4Q8* q8=nullptr) {
         const auto& packed=e.projection[projection];
-        if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last,int(cpu_row_tile));
+        if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last,int(cpu_row_tile),cpu_scale_local);
         else if(e.sparse[projection])cpu::glm_fp4_rows_csf32_sparse_table(packed.data(),*e.sparse[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else if(e.csf32[projection])cpu::glm_fp4_rows_csf32_table(packed.data(),*e.csf32[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else cpu::glm_fp4_rows_table(packed.data(),packed.scales.data(),e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
@@ -1005,7 +1006,9 @@ public:
         if(cpu_row_tile!=1&&cpu_row_tile!=2&&cpu_row_tile!=4)
             throw std::invalid_argument("GLM FP4: CPU_ROW_TILE must be 1, 2 or 4");
         if(cpu_q8_bias&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_Q8_BIAS requires CPU_Q8=1");
+        if(cpu_scale_local&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_SCALE_LOCAL requires CPU_Q8=1");
         if(cpu_q8_bias)std::cerr<<"FP4_CPU_Q8_BIAS enabled=1\n";
+        if(cpu_scale_local)std::cerr<<"FP4_CPU_SCALE_LOCAL enabled=1 max_row_bytes=256\n";
         if(cpu_row_tile!=1||cpu_q8_prepare)std::cerr<<"FP4_CPU_REUSE row_tile="<<cpu_row_tile<<" prepared="<<cpu_q8_prepare<<'\n';
         if(decode_device_routing_enabled)std::cerr<<"FP4_DECODE_ROUTING enabled=1 deferred_expert_sync=1\n";
         if(!std::isfinite(route_drop_cap)||route_drop_cap<0.5||route_drop_cap>0.75||
