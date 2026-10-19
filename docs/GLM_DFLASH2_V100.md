@@ -473,8 +473,12 @@ batched products at N=8,192 and K=4,096: sixteen warmups, three samples of
 64 calls. Forty-eight bitwise cases and twelve changed-input CUDA graph replays
 passed, with zero Compute Sanitizer memory errors or race hazards. CUDA and HIP
 decoder builds passed; the native FP4 implementation is excluded from HIP.
-The original default 128-token output remained identical. The full-model timing
-pair is still running; the component result alone establishes no model gain.
+The original default 128-token output remained identical. The matched full-model
+pair measured 36.44 / 37.41 decode and 519.95 / 519.62 prefill tok/s, with
+three full warmups and three timed 512-output requests per side. All six output
+streams matched the earlier mild policy. The 2.65% decode gain missed the 3%
+gate; the option stays off and no additional coding panel was queued. The
+component speedup must not be applied to model throughput.
 
 The candidate used 20,455 CPU expert groups and 134 verification rounds per
 timed request, versus 27,590 groups and 146 rounds for its control. In its
