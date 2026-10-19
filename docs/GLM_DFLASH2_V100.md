@@ -4,9 +4,11 @@ The opt-in `dflash2` decoder mode uses the published
 [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2)
 drafter. It is separate from the qualified MTP preset, which measured 32.10
 decode / 520.89 prefill tok/s on two V100 PCIe 32 GB GPUs and a dual Xeon Gold
-6240 host with 181 GiB RAM. A repeated DFlash2 trial measured 26.84 decode /
-514.77 prefill tok/s, versus 32.44 / 519.98 for its same-day MTP control.
-The MTP preset remains selected. The 50 tok/s target remains unmet.
+6240 host with 181 GiB RAM. The fastest repeated DFlash2 trial measured
+38.56 decode / 515.68 prefill tok/s, but failed all eight reused coding checks.
+Its route-drop cap of 0.75 is rejected. A less aggressive DFlash2 trial passed
+eight checks at 26.84 decode tok/s. The MTP preset remains selected, and the
+50 tok/s target remains unmet.
 
 The pinned checkpoint revision is
 `bf582e4eacc1810f76656d1811693ff6c6737d2a`. Its safetensors payload is
@@ -37,6 +39,12 @@ worker arguments. Add `--cuda-graph` to replay the five-layer forward pass for
 complete 2,048-row windows; shorter windows use eager execution. Graph inputs
 receive the current committed K/V, embeddings and absolute position on every
 replay. Neither option changes the checkpoint on disk.
+
+`STRATA_GLM_DFLASH_GPU_TOP16=1` optionally selects the sixteen finite, allowed
+head candidates per slot on the GPU. This reduces the head readback from
+4,336,640 bytes to 896 bytes per neural draft. Ties retain the lowest token ID,
+and selected logits retain their original FP32 bits. The default CPU selection
+remains available for exact candidate and generated-output comparisons.
 
 Download the checkpoint revision above to a local directory.
 Create the worker configuration inside the ignored build directory, with paths
@@ -148,6 +156,20 @@ python tools/test_glm_dflash2_cuda.py \
   --skinny-library build-dflash2-skinny-local/strata_dflash2_skinny.so --graph
 ```
 
+On V100, `glm_top16_test` passed 240 comparisons against an independent CPU stable sort,
+including masked IDs, ties, signed zero, subnormals, nonfinite values, partial
+blocks and buffer guards. Three graph replays with changed inputs also passed;
+32-case sanitizer runs reported zero memory errors and zero race hazards. The
+selector averaged 0.128 ms over twenty GPU-only iterations after two warmups.
+These are kernel measurements, not model throughput. Build this target with the
+CUDA or HIP backend.
+
+The first CPU/GPU selector comparison produced identical 512 token IDs, but the
+GPU timing had four draft-worker major faults and failed qualification. It is
+retained as output-parity evidence. Its apparent 29.10 versus 27.82 tok/s supplies
+no qualified speedup claim. Repeated trials add bounded target and child library
+preparation during a discarded warmup; residency gates remain enabled.
+
 Numerical tests, compute-sanitizer memcheck and racecheck passed on V100.
 
 ## Measurements and remaining gap
@@ -158,24 +180,37 @@ timings. The host RAM clock was not measured and GPU clocks were unlocked.
 All model timings below use the same frozen 8,192 input IDs. Full trials use two
 complete warmups, a discarded two-output request and three 512-output requests;
 decode throughput counts 511 advances. Initialization and shutdown are excluded.
+Both RAM owners loaded identical payloads: 42 indexed files totaling
+177,463,841,024 bytes, verified by their per-file SHA-256 manifests.
 The trials use the environment from the
 [KDA/MTP preset](../configs/experimental/glm53f-fp4-dual-v100-kda.json), with
 DFlash2 acceptance set separately as shown below. Unless explicitly labeled,
 decode route dropping remains bounded at 0.5 with at most seven routes dropped
 and retained weights renormalized; prefill uses all routes.
 
-| Mode | Decode tok/s | Prefill tok/s | Scope |
-| --- | ---: | ---: | --- |
-| MTP depth 3 control | 32.44 | 519.98 | Full trial, median of three |
-| DFlash2 depth 3, margin 3, at most three soft accepts | 26.84 | 514.77 | Full trial, median of three |
-| DFlash2 depth 7, greedy acceptance | 12.81 | 503.10 | One 128-output screen; worker residency not separately sampled |
-| DFlash2 depth 7, margin 3, at most seven soft accepts | 21.61 | 503.26 | One 128-output screen; target and worker residency checked |
+| Mode | Decode tok/s | Prefill tok/s | Reused coding checks | Scope |
+| --- | ---: | ---: | ---: | --- |
+| MTP depth 3, early control | 32.44 | 519.98 | 8/8 | Full trial, median of three |
+| DFlash2 depth 3, route-drop cap 0.5 | 26.84 | 514.77 | 8/8 | Full trial, median of three |
+| MTP depth 3, packed/graph comparison control | 32.08 | 520.94 | 8/8 | Full trial, median of three |
+| DFlash2 packed/graph depth 3, cap 0.75, exact suffix lookup | 38.56 | 515.68 | 0/8 | Rejected; full trial, median of three |
+| MTP depth 3, wider-window comparison control | 32.65 | 520.58 | Same-build 8/8 panel reused | Full trial, median of three |
+| DFlash2 packed/graph depth 7, cap 0.75, exact suffix lookup | 35.99 | 512.46 | 1/8 | Rejected; full trial, median of three |
+| DFlash2 packed/graph depth 5, cap 0.75, exact suffix lookup | 34.47 | 514.65 | 0/8 | Rejected; full trial, median of three |
+| DFlash2 depth 7, greedy acceptance | 12.81 | 503.10 | Unscored | One 128-output screen; worker residency not separately sampled |
+| DFlash2 depth 7, margin 3, at most seven soft accepts | 21.61 | 503.26 | Unscored | One 128-output screen; target and worker residency checked |
 
-The full DFlash2 trial and its MTP control exited successfully, had no timed
-major faults or observed swap, and emitted no real EOS IDs in the fixed-length
-timings. Both passed all eight reused coding tasks at roughly 4,096 input tokens
-with real EOS stopping. Their output hashes differ. These checks do not establish
-general quality equivalence. The fresh twenty holdouts remain unscored.
+The repeated trials exited successfully, had no timed major faults or observed
+swap, and emitted no real EOS IDs in the fixed-length timings. Neural bounded
+acceptance uses margin three and at most the configured draft depth in soft
+accepts; suffix proposals require exact greedy acceptance. The coding panel uses
+roughly 4,096 input tokens, real EOS stopping and a 1,536-output cap. Failures
+include incomplete answers and missing compilable code. The fast depth-three
+trial repeated 40.86% of its output four-grams, versus 8.25% for its MTP control.
+That performance prompt supplies no evidence of useful answer throughput.
+The small coding checks do not establish general quality equivalence.
+These higher-cap policies failed selection before fresh testing, so the fresh twenty
+holdouts remain unscored.
 
 The paired 128-output screens below use two complete warmups and one timed
 request. All four emitted identical 128 IDs. They measure the same bounded
@@ -202,6 +237,32 @@ and are retained as failed qualifications. A short full-route diagnostic accepte
 18 of 73 proposals, but faulted pages and cannot establish a speed result or
 attribute the acceptance gap to route dropping alone.
 
+Native cache-affinity screens add a selection bonus to GPU-resident experts,
+while retaining their original sigmoid weights. The bonus applies only during
+target decode; prefill and MTP draft routing keep their existing behavior.
+`STRATA_GLM_FP4_ROUTE_AFFINITY` defaults to zero. The following same-build screens
+used two full warmups and one timed 512-output request, with no timed major faults,
+swap or EOS IDs. They are screening observations; candidate quality and repeated
+timing qualification are still pending.
+
+| Mode and affinity bonus | Decode tok/s | CPU expert groups | Verify ms per round |
+| --- | ---: | ---: | ---: |
+| MTP, zero bonus control | 28.76 | 27,590 | 107.58 |
+| MTP, 0.025 | 31.95 | 20,455 | 105.23 |
+| MTP, 0.10 | 26.91 | 14,229 | 110.10 |
+| MTP, 0.15 | 34.14 | 9,700 | 98.36 |
+| DFlash2 depth 7, 0.05 | 28.35 | 25,840 | 125.41 |
+
+Reducing CPU groups does not remove the verification bottleneck. The 0.10 MTP
+screen halved those groups but took longer per verification round. Changes in
+GPU work, routing and accepted proposals must be measured together. The control's
+output matched the frozen 512 IDs; its timed request created 333 CPU scale-cache
+entries. The last two reference requests created none. These single timings do
+not establish a gain over the repeated reference. On the later same-build pair,
+secondary-only bonuses of 0.025, 0.05 and 0.10 measured 28.80, 28.95 and 29.65
+tok/s against a 28.74 control. Its 0.15 trial had six major faults and failed
+timing qualification. Neither experiment changes a selected preset.
+
 The simulator keeps the selected 32.10 / 520.89 measurements and resource
 capacities unchanged. It adds measured speculative phases as separate scenarios:
 
@@ -216,6 +277,9 @@ capacities unchanged. It adds measured speculative phases as separate scenarios:
   gives 48.97 tok/s if cost per verified row and draft call stay fixed. Acceptance,
   routing and window cost change together, so this is neither a forecast nor a
   speed qualification.
+- In the 0.15 affinity screen, deleting all nonverification work would yield
+  39.06 tok/s for that proposal stream. Reaching 50 with other work fixed requires
+  1.57 times faster verification. Candidate quality remains unscored.
 
 The selected MTP path still needs 1.56 times its measured decode rate for 50,
 1.54 times its prefill rate for 800, and 1.92 times for 1,000. The simulator's

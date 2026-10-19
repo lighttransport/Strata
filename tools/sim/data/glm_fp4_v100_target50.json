@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "98b5c48db1fe7c28e76526cbf73211a4d93d4182a199b33a97908d0a8f4c7137"
+      "sha256": "e32910c20cafd0ed1c63620fd44baa9b117bf9056527d12eaec6c35081f2f28e"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6358,6 +6358,126 @@
       "fit": false
     },
     {
+      "name": "dflash2-affinity-control-v52",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.759729624772763,
+      "prefill_tok_s": 522.3723560957258,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-control-v65",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.73886439305318,
+      "prefill_tok_s": 521.544259957217,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-dflash2-005-v52",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.35344708003884,
+      "prefill_tok_s": 503.7975462009163,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-dflash2-01-v52",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.335995031496765,
+      "prefill_tok_s": 502.860510226631,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-dual-mtp-0025-v65",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 32.36778929899349,
+      "prefill_tok_s": 522.1359644090915,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-mtp-0025-v52",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 31.949081542058995,
+      "prefill_tok_s": 520.6128894905087,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-mtp-005-v52",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 29.18849139482147,
+      "prefill_tok_s": 521.5010981315849,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-mtp-01-v52",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 26.914426870183977,
+      "prefill_tok_s": 521.5210180864406,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-mtp-015-v52",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 34.1426910587575,
+      "prefill_tok_s": 521.2323276026622,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-secondary-mtp-0025-v65",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.801713448314732,
+      "prefill_tok_s": 521.6472131481587,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-secondary-mtp-005-v65",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.95167732760721,
+      "prefill_tok_s": 522.4223253915617,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-secondary-mtp-01-v65",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 29.65464811945426,
+      "prefill_tok_s": 522.6623111474071,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-control-v25",
       "experiment_family": "dflash2",
       "decode_tok_s": 21.943086200044924,
@@ -6458,6 +6578,56 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-graph-candidate-full-v34",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 38.56429142831268,
+      "prefill_tok_s": 515.6806707877475,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v43",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 35.99098464572475,
+      "prefill_tok_s": 512.4644208814237,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v47",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 34.47043030699595,
+      "prefill_tok_s": 514.6536830532433,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-graph-control-full-v34",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 32.08408415950373,
+      "prefill_tok_s": 520.937331086452,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-graph-control-full-v43",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 32.64716781027587,
+      "prefill_tok_s": 520.5831140936185,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-graph-cublas-depth3-v32",
       "experiment_family": "dflash2",
       "decode_tok_s": 31.553265390291532,
@@ -6528,6 +6698,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-lookup6-depth5-drop075-v42",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 34.195011944832935,
+      "prefill_tok_s": 504.85628358724057,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-lookup6-depth7-drop075-v42",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 35.101939880200035,
+      "prefill_tok_s": 501.5704690590043,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-lookup6-drop05-v39",
       "experiment_family": "dflash2",
       "decode_tok_s": 28.235649842369483,
@@ -6536,6 +6726,26 @@
       "performance_anchor": false,
       "worker_residency_checked": true,
       "protocol": "8192 frozen input IDs / 128 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-lookup6-drop05-v41",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.37296850100777,
+      "prefill_tok_s": 504.57952732625824,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-lookup6-drop075-v41",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 38.37171756613677,
+      "prefill_tok_s": 504.1851304775972,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
       "name": "dflash2-margin15-depth7-v26",
@@ -6626,6 +6836,26 @@
       "performance_anchor": false,
       "worker_residency_checked": false,
       "protocol": "8192 frozen input IDs / 128 outputs; 1 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-top16-cpu-depth3-v50",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 27.822848493428143,
+      "prefill_tok_s": 505.4450100262224,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-top16-gpu-drop025-depth7-v50",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 19.099233788076994,
+      "prefill_tok_s": 503.0148964128259,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
       "name": "dflash2-unary-depth7-v27",
@@ -7164,6 +7394,7 @@
     "Prepared ordered four-part KDA prefill measured 520.894 tok/s against the same-binary 454.220 tok/s control, 14.68% faster. Decode 32.099 tok/s versus 31.872 tok/s is not claimed as a general gain.",
     "Three timed512-ID outputs and eight reused training outputs are identical to the matched control. Newly frozen 20 holdouts remain unscored.",
     "The separate old activity profile retains the original measured capture. Its KDA durations are not copied to this optimized profile.",
+    "DFlash2: a 38.56 tok/s timing passed residency checks but its reused coding panel passed 0/8. It is not selected as a usable preset.",
     "DFlash2: real weights run on SM70 using FP16 tensor operands and FP32 GEMM outputs. FP16 outputs overflowed; no model weights were changed. All new observations are non-fitted screens and do not replace the qualified MTP anchor."
   ],
   "limitations": [
@@ -7212,6 +7443,30 @@
     "scope": "Exact submitted matrix H2D bytes between request diagnostics; prefill phase ends at compact, before post-compact cache preparation. Excludes activations, D2H and expanded GPU allocation bytes."
   },
   "experimental_speculative_requests": [
+    {
+      "name": "dflash2-affinity-dflash2-005-v52",
+      "advances": 511,
+      "decode_ms": 18022.5,
+      "verify_ms": 15926.5,
+      "draft_ms": 1809.93,
+      "restore_ms": 69.5721,
+      "rounds": 127,
+      "verification_rows": 1008,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-affinity-dflash2-01-v52",
+      "advances": 511,
+      "decode_ms": 18033.6,
+      "verify_ms": 15877.1,
+      "draft_ms": 1869.22,
+      "restore_ms": 72.2749,
+      "rounds": 132,
+      "verification_rows": 1048,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
     {
       "name": "dflash2-cublas-depth3-v30",
       "advances": 127,
@@ -7309,6 +7564,114 @@
       "block_size": 4
     },
     {
+      "name": "dflash2-graph-candidate-full-v34-trial0",
+      "advances": 511,
+      "decode_ms": 13250.6,
+      "verify_ms": 11064.5,
+      "draft_ms": 1944.57,
+      "restore_ms": 41.8622,
+      "rounds": 137,
+      "verification_rows": 650,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v34-trial1",
+      "advances": 511,
+      "decode_ms": 13207.7,
+      "verify_ms": 11031.1,
+      "draft_ms": 1934.69,
+      "restore_ms": 42.0482,
+      "rounds": 137,
+      "verification_rows": 650,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v34-trial2",
+      "advances": 511,
+      "decode_ms": 13305.0,
+      "verify_ms": 11093.8,
+      "draft_ms": 1968.7,
+      "restore_ms": 42.1147,
+      "rounds": 137,
+      "verification_rows": 650,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v43-trial0",
+      "advances": 511,
+      "decode_ms": 14187.0,
+      "verify_ms": 12118.8,
+      "draft_ms": 1797.7,
+      "restore_ms": 60.7644,
+      "rounds": 115,
+      "verification_rows": 913,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v43-trial1",
+      "advances": 511,
+      "decode_ms": 14198.0,
+      "verify_ms": 12147.7,
+      "draft_ms": 1779.9,
+      "restore_ms": 60.6063,
+      "rounds": 115,
+      "verification_rows": 913,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v43-trial2",
+      "advances": 511,
+      "decode_ms": 14486.7,
+      "verify_ms": 12404.5,
+      "draft_ms": 1812.58,
+      "restore_ms": 60.4485,
+      "rounds": 115,
+      "verification_rows": 913,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v47-trial0",
+      "advances": 511,
+      "decode_ms": 14824.3,
+      "verify_ms": 12244.2,
+      "draft_ms": 2243.19,
+      "restore_ms": 60.1251,
+      "rounds": 132,
+      "verification_rows": 800,
+      "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v47-trial1",
+      "advances": 511,
+      "decode_ms": 14615.4,
+      "verify_ms": 12070.0,
+      "draft_ms": 2209.66,
+      "restore_ms": 60.1903,
+      "rounds": 132,
+      "verification_rows": 800,
+      "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-candidate-full-v47-trial2",
+      "advances": 511,
+      "decode_ms": 14825.1,
+      "verify_ms": 12223.7,
+      "draft_ms": 2262.35,
+      "restore_ms": 60.6718,
+      "rounds": 132,
+      "verification_rows": 800,
+      "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
       "name": "dflash2-graph-cublas-depth3-v32",
       "advances": 127,
       "decode_ms": 4024.94,
@@ -7393,6 +7756,30 @@
       "block_size": 8
     },
     {
+      "name": "dflash2-lookup6-depth5-drop075-v42",
+      "advances": 511,
+      "decode_ms": 14943.7,
+      "verify_ms": 12364.7,
+      "draft_ms": 2244.18,
+      "restore_ms": 59.2223,
+      "rounds": 132,
+      "verification_rows": 800,
+      "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-lookup6-depth7-drop075-v42",
+      "advances": 511,
+      "decode_ms": 14557.6,
+      "verify_ms": 12481.8,
+      "draft_ms": 1807.74,
+      "restore_ms": 59.7093,
+      "rounds": 115,
+      "verification_rows": 913,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
       "name": "dflash2-lookup6-drop05-v39",
       "advances": 127,
       "decode_ms": 4497.86,
@@ -7402,6 +7789,30 @@
       "rounds": 40,
       "verification_rows": 164,
       "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-lookup6-drop05-v41",
+      "advances": 511,
+      "decode_ms": 18010.1,
+      "verify_ms": 14746.5,
+      "draft_ms": 2966.96,
+      "restore_ms": 65.0594,
+      "rounds": 171,
+      "verification_rows": 698,
+      "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-lookup6-drop075-v41",
+      "advances": 511,
+      "decode_ms": 13317.1,
+      "verify_ms": 11120.5,
+      "draft_ms": 1954.11,
+      "restore_ms": 41.9113,
+      "rounds": 137,
+      "verification_rows": 650,
+      "single_tail_steps": 0,
       "block_size": 8
     },
     {
@@ -7486,6 +7897,30 @@
       "rounds": 64,
       "verification_rows": 499,
       "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-top16-cpu-depth3-v50",
+      "advances": 511,
+      "decode_ms": 18366.2,
+      "verify_ms": 15011.8,
+      "draft_ms": 3013.25,
+      "restore_ms": 64.8761,
+      "rounds": 173,
+      "verification_rows": 691,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-top16-gpu-drop025-depth7-v50",
+      "advances": 511,
+      "decode_ms": 26755.0,
+      "verify_ms": 24480.1,
+      "draft_ms": 1976.1,
+      "restore_ms": 76.979,
+      "rounds": 139,
+      "verification_rows": 1106,
+      "single_tail_steps": 0,
       "block_size": 8
     },
     {
