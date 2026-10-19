@@ -2383,6 +2383,8 @@ class Decoder {
     std::vector<cpu::ExpertJobMulti> host_jobs;
     bool capture_hidden = false;
     bool dflash_enabled = false;
+    bool dflash_gpu_top16 = false;
+    std::unique_ptr<Device> dflash_allowed_tokens;
     std::vector<float> dflash_features;
     std::unique_ptr<Device> dflash_capture_buffer;
     static constexpr std::array<int,5> dflash_layers{5,14,24,33,42};
@@ -2393,6 +2395,13 @@ public:
             capture_hidden || defer_experts || split_verify || !row_sequences.empty())
             throw std::invalid_argument("DFlash2 requires native GLM FP4, no MTP, deferred experts, or split verification");
         dflash_enabled=true;
+        dflash_gpu_top16=strata_env_is_one("STRATA_GLM_DFLASH_GPU_TOP16");
+        if(dflash_gpu_top16) {
+            std::vector<uint8_t> allowed(m.vocab);
+            for(int id=0;id<m.vocab;++id)allowed[id]=artifact.exl3().token_ids[id];
+            dflash_allowed_tokens=std::make_unique<Device>(allowed.size());
+            dflash_allowed_tokens->put(allowed.data(),allowed.size());
+        }
     }
     void prepare_dflash(strata::spec::ExternalWorker& worker) {
         const int first=std::max(0,position-2048);
@@ -2427,12 +2436,24 @@ public:
         batch_tokens=7;fast=false;reset_phase();
         auto& input=buf("dflash_head_input",7*4096);input.put(hidden.data(),hidden.size()*4);
         auto& output=buf("dflash_head_output",size_t(7)*m.vocab);
-        try { mat("output.weight",input.f(),output.f(),false,7);check(cudaStreamSynchronize(stream)); }
+        std::vector<k::GlmLogitCandidate> candidates(7*16);
+        try {
+            mat("output.weight",input.f(),output.f(),false,7);
+            if(dflash_gpu_top16) {
+                auto& work=buf("dflash_top16_work",k::glm_top16_scratch_bytes(m.vocab,7)/4);
+                auto& selected=buf("dflash_top16",candidates.size()*sizeof(k::GlmLogitCandidate)/4);
+                k::glm_top16(output.f(),static_cast<const uint8_t*>(dflash_allowed_tokens->p),m.vocab,7,
+                    work.p,static_cast<k::GlmLogitCandidate*>(selected.p),stream);
+                check(cudaMemcpyAsync(candidates.data(),selected.p,candidates.size()*sizeof(k::GlmLogitCandidate),
+                    cudaMemcpyDeviceToHost,stream));
+            }
+            check(cudaStreamSynchronize(stream));
+        }
         catch(...) {batch_tokens=saved_batch;fast=saved_fast;throw;}
         batch_tokens=saved_batch;fast=saved_fast;
-        const auto values=output.floats(size_t(7)*m.vocab);
-        std::ostringstream ids,scores;ids<<'[';scores<<'[';scores<<std::setprecision(9);
-        for(int row=0;row<7;++row) {
+        if(!dflash_gpu_top16) {
+          const auto values=output.floats(size_t(7)*m.vocab);
+          for(int row=0;row<7;++row) {
             std::array<std::pair<float,int>,16> top;
             top.fill({-std::numeric_limits<float>::infinity(),-1});
             for(int id=0;id<m.vocab;++id) {
@@ -2442,9 +2463,14 @@ public:
                 while(at && value>top[at-1].first){top[at]=top[at-1];--at;}
                 top[at]={value,id};
             }
-            if(top.back().second<0)throw std::runtime_error("DFlash2 insufficient finite head candidates");
+            for(int i=0;i<16;++i)candidates[row*16+i]={top[i].first,top[i].second};
+          }
+        }
+        std::ostringstream ids,scores;ids<<'[';scores<<'[';scores<<std::setprecision(9);
+        for(int row=0;row<7;++row) {
+            if(candidates[row*16+15].token<0)throw std::runtime_error("DFlash2 insufficient finite head candidates");
             if(row){ids<<',';scores<<',';}ids<<'[';scores<<'[';
-            for(int i=0;i<16;++i){if(i){ids<<',';scores<<',';}ids<<top[i].second;scores<<top[i].first;}
+            for(int i=0;i<16;++i){if(i){ids<<',';scores<<',';}const auto& value=candidates[row*16+i];ids<<value.token;scores<<value.logit;}
             ids<<']';scores<<']';
         }
         ids<<']';scores<<']';

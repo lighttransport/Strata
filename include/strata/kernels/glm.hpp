@@ -11,6 +11,13 @@ struct GlmGreedyPick { int32_t token; int32_t nonfinite; };
 uint64_t glm_greedy_pick_scratch_bytes(int vocabulary);
 void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
                      GlmGreedyPick *result, void *stream);
+// Sixteen finite, allowed candidates per row, highest logit first, lowest ID
+// first on ties. Preserve original FP32 bits (including zeros/subnormals).
+// Missing candidates have token=-1. allowed is an optional vocabulary-byte mask.
+struct GlmLogitCandidate { float logit; int32_t token; };
+uint64_t glm_top16_scratch_bytes(int vocabulary, int tokens);
+void glm_top16(const float *logits, const uint8_t *allowed, int vocabulary, int tokens,
+               void *scratch, GlmLogitCandidate *result, void *stream);
 void glm_rms_norm(const float *x, const float *weight, float *y, int width, int tokens, float eps,
                   void *stream);
 // Same result to rounding with 1024 threads and float4 traffic per row; the sum order differs from glm_rms_norm,
