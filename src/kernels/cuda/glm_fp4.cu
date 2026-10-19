@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#include <mma.h>
+#include <algorithm>
 #include <stdexcept>
 namespace strata::kernels {
 namespace {
@@ -240,6 +242,148 @@ __global__ void fp4_sm70_operands(const uint2* codes,const uint8_t* scales,float
     target[0]=reinterpret_cast<const uint4*>(values)[0];
     target[1]=reinterpret_cast<const uint4*>(values)[1];
 }
+// Each block reuses a reconstructed 64x64 weight tile across 32/64 tokens.
+// Operand buffers alias the output tile only after every WMMA reader finishes.
+// Transposed weight stores are contiguous across output rows. Both half leading
+// dimensions are 72, with 32-byte-aligned WMMA tile origins.
+template<int MT>
+__global__ void fp4_prefill_mma(const uint2* codes,const uint8_t* scales,float global,
+                               const half* x,float* y,int N,int K,int M) {
+#if __CUDA_ARCH__ >= 700
+    namespace wm=nvcuda::wmma;
+    constexpr int NT=64,BK=64,LD=72,ACC=MT/32;
+    extern __shared__ __align__(32) unsigned char storage[];
+    auto* sw=reinterpret_cast<half*>(storage);
+    auto* sx=sw+BK*LD;
+    auto* output=reinterpret_cast<float*>(storage);
+    const int tid=threadIdx.x,warp=tid/32;
+    const int n0=blockIdx.x*NT,m0=blockIdx.y*MT;
+    const int wn=(warp%4)*16,wm0=(warp/4)*(MT/2);
+    wm::fragment<wm::accumulator,16,16,16,float> acc[ACC];
+    #pragma unroll
+    for(int a=0;a<ACC;++a)wm::fill_fragment(acc[a],0.f);
+    const half2 gm=__float2half2_rn(global*16384.f);
+    for(int k0=0;k0<K;k0+=BK) {
+        if(tid<NT*(BK/16)) {
+            const int r=tid%NT,g=tid/NT,row=n0+r;
+            half2 values[8];
+            if(row<N) {
+                const int rr=row&7,lane=((row&31)>>3)*4+(rr&3)+((rr&4)?16:0);
+                const size_t group=(size_t(row/32)*(K/16)+k0/16+g)*32+lane;
+                const uint2 q=codes[group];
+                const half2 scale=__hmul2(fp8e4m3_to_half2(scales[group]),gm);
+                dequant8_tm(q.x,scale,values);dequant8_tm(q.y,scale,values+4);
+            }else {
+                #pragma unroll
+                for(int j=0;j<8;++j)values[j]=__float2half2_rn(0.f);
+            }
+            #pragma unroll
+            for(int j=0;j<8;++j) {
+                sw[(g*16+2*j)*LD+r]=__low2half(values[j]);
+                sw[(g*16+2*j+1)*LD+r]=__high2half(values[j]);
+            }
+        }
+        for(int i=tid;i<MT*BK/8;i+=256) {
+            const int r=i/(BK/8),c=(i%(BK/8))*8;
+            const uint4 v=m0+r<M?*reinterpret_cast<const uint4*>(x+size_t(m0+r)*K+k0+c):make_uint4(0,0,0,0);
+            *reinterpret_cast<uint4*>(sx+r*LD+c)=v;
+        }
+        __syncthreads();
+        #pragma unroll
+        for(int kk=0;kk<BK;kk+=16) {
+            wm::fragment<wm::matrix_b,16,16,16,half,wm::row_major> b;
+            wm::load_matrix_sync(b,sw+kk*LD+wn,LD);
+            #pragma unroll
+            for(int a=0;a<ACC;++a) {
+                wm::fragment<wm::matrix_a,16,16,16,half,wm::row_major> operand;
+                wm::load_matrix_sync(operand,sx+(wm0+a*16)*LD+kk,LD);
+                wm::mma_sync(acc[a],operand,b,acc[a]);
+            }
+        }
+        __syncthreads();
+    }
+    #pragma unroll
+    for(int a=0;a<ACC;++a)wm::store_matrix_sync(output+(wm0+a*16)*NT+wn,acc[a],NT,wm::mem_row_major);
+    __syncthreads();
+    for(int i=tid;i<MT*NT;i+=256) {
+        const int m=m0+i/NT,n=n0+i%NT;
+        if(m<M&&n<N)y[size_t(m)*N+n]=output[i];
+    }
+#else
+    asm volatile("trap;");
+#endif
+}
+// Reuse each reconstructed weight across up to 128 tokens. Splitting K
+// supplies enough blocks for the narrow 32-output tile on a V100.
+__global__ void fp4_prefill_split(const uint2* codes,const uint8_t* scales,float global,
+                                 const half* x,float* y,int N,int K,int M,int parts) {
+#if __CUDA_ARCH__ >= 700
+    namespace wm=nvcuda::wmma;
+    constexpr int MT=128,NT=32,BK=64,LDW=40,LDX=72;
+    extern __shared__ __align__(32) unsigned char storage[];
+    auto* sw=reinterpret_cast<half*>(storage);
+    auto* sx=sw+BK*LDW;
+    auto* output=reinterpret_cast<float*>(storage);
+    const int tid=threadIdx.x,warp=tid/32;
+    const int n0=blockIdx.x*NT,m0=blockIdx.y*MT;
+    const int wn=(warp%2)*16,wm0=(warp/2)*32;
+    const int slice=((K/BK+parts-1)/parts)*BK;
+    const int first=int(blockIdx.z)*slice,last=min(K,first+slice);
+    wm::fragment<wm::accumulator,16,16,16,float> acc[2];
+    wm::fill_fragment(acc[0],0.f);wm::fill_fragment(acc[1],0.f);
+    const half2 gm=__float2half2_rn(global*16384.f);
+    for(int k0=first;k0<last;k0+=BK) {
+        if(tid<NT*(BK/16)) {
+            const int r=tid%NT,g=tid/NT,row=n0+r;
+            const int rr=row&7,lane=((row&31)>>3)*4+(rr&3)+((rr&4)?16:0);
+            const size_t group=(size_t(row/32)*(K/16)+k0/16+g)*32+lane;
+            const uint2 q=codes[group];
+            const half2 scale=__hmul2(fp8e4m3_to_half2(scales[group]),gm);
+            half2 values[8];dequant8_tm(q.x,scale,values);dequant8_tm(q.y,scale,values+4);
+            #pragma unroll
+            for(int j=0;j<8;++j) {
+                sw[(g*16+2*j)*LDW+r]=__low2half(values[j]);
+                sw[(g*16+2*j+1)*LDW+r]=__high2half(values[j]);
+            }
+        }
+        for(int i=tid;i<MT*BK/8;i+=256) {
+            const int r=i/(BK/8),c=(i%(BK/8))*8;
+            const uint4 v=m0+r<M?*reinterpret_cast<const uint4*>(x+size_t(m0+r)*K+k0+c):make_uint4(0,0,0,0);
+            *reinterpret_cast<uint4*>(sx+r*LDX+c)=v;
+        }
+        __syncthreads();
+        #pragma unroll
+        for(int kk=0;kk<BK;kk+=16) {
+            wm::fragment<wm::matrix_b,16,16,16,half,wm::row_major> b;
+            wm::load_matrix_sync(b,sw+kk*LDW+wn,LDW);
+            #pragma unroll
+            for(int a=0;a<2;++a) {
+                wm::fragment<wm::matrix_a,16,16,16,half,wm::row_major> operand;
+                wm::load_matrix_sync(operand,sx+(wm0+a*16)*LDX+kk,LDX);
+                wm::mma_sync(acc[a],operand,b,acc[a]);
+            }
+        }
+        __syncthreads();
+    }
+    #pragma unroll
+    for(int a=0;a<2;++a)wm::store_matrix_sync(output+(wm0+a*16)*NT+wn,acc[a],NT,wm::mem_row_major);
+    __syncthreads();
+    const size_t base=size_t(blockIdx.z)*M*N;
+    for(int i=tid;i<MT*NT;i+=256) {
+        const int m=m0+i/NT,n=n0+i%NT;
+        if(m<M)y[base+size_t(m)*N+n]=output[i];
+    }
+#else
+    asm volatile("trap;");
+#endif
+}
+__global__ void reduce_prefill_partials(const float* partials,float* y,int count,int parts) {
+    const int i=blockIdx.x*blockDim.x+threadIdx.x;
+    if(i>=count)return;
+    float sum=0;
+    for(int part=0;part<parts;++part)sum+=partials[size_t(part)*count+i];
+    y[i]=sum;
+}
 __device__ __forceinline__ half2 fp8_pair(unsigned q) {
     unsigned bits=((q&0x80u)<<8)|((q&0x7fu)<<7)|
                   ((q&0x8000u)<<16)|((q&0x7f00u)<<15);
@@ -290,7 +434,7 @@ __device__ __forceinline__ bool fp8_operands(const void* weights,const void* sca
 // applied before each MMA operand conversion, rather than as a single matrix
 // epilogue scale: MXFP8 varies along K and block FP8 varies along both axes.
 // SPLITK is fixed across M=1..8 so verification does not change the K reduction.
-template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1>
+template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1,int NACC=1>
 __global__ void scaled_qpn(const void* w,const void* scales,
                             const half* x,float* y,int N,int K,int M) {
     __shared__ float sums[SPLITK][256];
@@ -298,7 +442,7 @@ __global__ void scaled_qpn(const void* w,const void* scales,
     const int r=(lane&3)+((lane&16)?4:0),n=blockIdx.x*32+qp*8+r;
     const int groups=K/16,part=blockIdx.y*SPLITK+warp;
     const int first=groups*part/(SPLITK*OUTER),last=groups*(part+1)/(SPLITK*OUTER);
-    float c[8]={};
+    float c[NACC][8]={};
     for(int g=first;g<last;++g) {
         alignas(16) half b[16];
         if constexpr(FORMAT==GlmPackedFormat::F16) {
@@ -326,16 +470,20 @@ __global__ void scaled_qpn(const void* w,const void* scales,
         if(r<M) {a0=*reinterpret_cast<const uint4*>(x+size_t(r)*K+g*16);a1=*reinterpret_cast<const uint4*>(x+size_t(r)*K+g*16+8);}
         const unsigned* A0=reinterpret_cast<const unsigned*>(&a0);
         const unsigned* A1=reinterpret_cast<const unsigned*>(&a1);
-        MMA_8N8K4(c,A0[0],A0[1],B[0],B[1]);
-        MMA_8N8K4(c,A0[2],A0[3],B[2],B[3]);
-        MMA_8N8K4(c,A1[0],A1[1],B[4],B[5]);
-        MMA_8N8K4(c,A1[2],A1[3],B[6],B[7]);
+        MMA_8N8K4(c[0],A0[0],A0[1],B[0],B[1]);
+        MMA_8N8K4(c[1%NACC],A0[2],A0[3],B[2],B[3]);
+        MMA_8N8K4(c[2%NACC],A1[0],A1[1],B[4],B[5]);
+        MMA_8N8K4(c[3%NACC],A1[2],A1[3],B[6],B[7]);
     }
+    #pragma unroll
+    for(int a=1;a<NACC;++a)
+    #pragma unroll
+    for(int i=0;i<8;++i)c[0][i]+=c[a][i];
     #pragma unroll
     for(int i=0;i<8;++i) {
         const int row=(i&2)|((lane&16)?4:0)|(lane&1);
         const int col=(i&1)|(((lane>>1)&1)<<1)|((i>>2)<<2);
-        sums[warp][row*32+qp*8+col]=c[i];
+        sums[warp][row*32+qp*8+col]=c[0][i];
     }
     __syncthreads();
     for(int e=threadIdx.x;e<256;e+=blockDim.x) {
@@ -353,21 +501,27 @@ __global__ void reduce_partials(const float* partials,float* y,int N,int M,int p
     for(int part=0;part<parts;++part)sum+=partials[size_t(part)*8*N+i];
     y[i]=sum;
 }
-template<GlmPackedFormat FORMAT,int PARTS>
+template<GlmPackedFormat FORMAT,int PARTS,int NACC=1>
 void small_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream) {
-    scaled_qpn<FORMAT,8,PARTS><<<dim3((N+31)/32,PARTS),256,0,stream>>>(w,scales,x,partials,N,K,M);
+    scaled_qpn<FORMAT,8,PARTS,NACC><<<dim3((N+31)/32,PARTS),256,0,stream>>>(w,scales,x,partials,N,K,M);
     reduce_partials<<<(N*M+255)/256,256,0,stream>>>(partials,y,N,M,PARTS);
 }
-template<GlmPackedFormat FORMAT>
+template<GlmPackedFormat FORMAT,int NACC=1>
 void scaled_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream) {
     if(partials && N<=8192 && K>=4096) {
-        if(N<=32)small_gemm<FORMAT,64>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=64)small_gemm<FORMAT,32>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=128)small_gemm<FORMAT,16>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=1024)small_gemm<FORMAT,8>(w,scales,x,y,partials,N,K,M,stream);
-        else if(N<=2048)small_gemm<FORMAT,4>(w,scales,x,y,partials,N,K,M,stream);
-        else small_gemm<FORMAT,2>(w,scales,x,y,partials,N,K,M,stream);
-    }else scaled_qpn<FORMAT,8><<<(N+31)/32,256,0,stream>>>(w,scales,x,y,N,K,M);
+        if(N<=32)small_gemm<FORMAT,64,NACC>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=64)small_gemm<FORMAT,32,NACC>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=128)small_gemm<FORMAT,16,NACC>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=1024)small_gemm<FORMAT,8,NACC>(w,scales,x,y,partials,N,K,M,stream);
+        else if(N<=2048)small_gemm<FORMAT,4,NACC>(w,scales,x,y,partials,N,K,M,stream);
+        else small_gemm<FORMAT,2,NACC>(w,scales,x,y,partials,N,K,M,stream);
+    }else scaled_qpn<FORMAT,8,1,NACC><<<(N+31)/32,256,0,stream>>>(w,scales,x,y,N,K,M);
+}
+template<GlmPackedFormat FORMAT>
+void fp8_gemm(const void* w,const void* scales,const half* x,float* y,float* partials,int N,int K,int M,cudaStream_t stream,int accumulators) {
+    if(accumulators==4)scaled_gemm<FORMAT,4>(w,scales,x,y,partials,N,K,M,stream);
+    else if(accumulators==2)scaled_gemm<FORMAT,2>(w,scales,x,y,partials,N,K,M,stream);
+    else scaled_gemm<FORMAT>(w,scales,x,y,partials,N,K,M,stream);
 }
 __global__ void route_gather(const float* x,const int* routes,half* out,int count,int K,int stride) {
     const int column=blockIdx.x*blockDim.x+threadIdx.x;
@@ -411,8 +565,10 @@ void glm_fp4_csf32_scales(const uint8_t* bases,const uint8_t* codes,const uint16
     csf32_kernel<<<(N/128)*(K/64),256,0,s>>>(bases,codes,offsets,pages,exceptions,out,invalid,K/16);
 }
 void glm_fp4_gemm(GlmPackedFormat format,const void* w,const void* scales,float global,
-                  const uint16_t* x,float* y,int N,int K,int M,bool sm70,void* stream,float* partials) {
+                  const uint16_t* x,float* y,int N,int K,int M,bool sm70,void* stream,float* partials,int fp8_accumulators) {
     valid(N,K,M);auto s=static_cast<cudaStream_t>(stream);const half* h=reinterpret_cast<const half*>(x);
+    if(fp8_accumulators!=1&&fp8_accumulators!=2&&fp8_accumulators!=4)
+        throw std::invalid_argument("GLM FP4: FP8 accumulators must be 1, 2 or 4");
     if(!sm70) {reference_kernel<<<dim3((N+7)/8,M),256,0,s>>>(format,w,scales,global,h,y,N,K,M);return;}
     if(M>8)throw std::invalid_argument("GLM FP4: skinny MMA supports M<=8");
     if(format==GlmPackedFormat::Nvfp4) {
@@ -425,13 +581,13 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* w,const void* scales,float 
         else fp4_qpn<8,2><<<N/32,256,0,s>>>(static_cast<const uint8_t*>(w),static_cast<const uint8_t*>(scales),h,y,N,K,M,global);
     }else {
         switch(format) {
-        case GlmPackedFormat::Mxfp8:scaled_gemm<GlmPackedFormat::Mxfp8>(w,scales,h,y,partials,N,K,M,s);break;
-        case GlmPackedFormat::BlockFp8:scaled_gemm<GlmPackedFormat::BlockFp8>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::Mxfp8:fp8_gemm<GlmPackedFormat::Mxfp8>(w,scales,h,y,partials,N,K,M,s,fp8_accumulators);break;
+        case GlmPackedFormat::BlockFp8:fp8_gemm<GlmPackedFormat::BlockFp8>(w,scales,h,y,partials,N,K,M,s,fp8_accumulators);break;
         case GlmPackedFormat::Bf16:scaled_gemm<GlmPackedFormat::Bf16>(w,scales,h,y,partials,N,K,M,s);break;
         case GlmPackedFormat::F32:scaled_gemm<GlmPackedFormat::F32>(w,scales,h,y,partials,N,K,M,s);break;
         case GlmPackedFormat::F16:scaled_gemm<GlmPackedFormat::F16>(w,scales,h,y,partials,N,K,M,s);break;
-        case GlmPackedFormat::Mxfp8Qpn:scaled_gemm<GlmPackedFormat::Mxfp8Qpn>(w,scales,h,y,partials,N,K,M,s);break;
-        case GlmPackedFormat::BlockFp8Qpn:scaled_gemm<GlmPackedFormat::BlockFp8Qpn>(w,scales,h,y,partials,N,K,M,s);break;
+        case GlmPackedFormat::Mxfp8Qpn:fp8_gemm<GlmPackedFormat::Mxfp8Qpn>(w,scales,h,y,partials,N,K,M,s,fp8_accumulators);break;
+        case GlmPackedFormat::BlockFp8Qpn:fp8_gemm<GlmPackedFormat::BlockFp8Qpn>(w,scales,h,y,partials,N,K,M,s,fp8_accumulators);break;
         default:throw std::invalid_argument("GLM FP4: unknown packed format");
         }
     }
@@ -450,6 +606,32 @@ void glm_fp4_dequant_f16(GlmPackedFormat format,const void* w,const void* s,floa
         return;
     }
     dequant_kernel<<<(count+255)/256,256,0,static_cast<cudaStream_t>(stream)>>>(format,w,s,global,reinterpret_cast<half*>(out),N,K);
+}
+void glm_fp4_prefill_mma(const uint8_t* weights,const uint8_t* scales,float global,
+                        const uint16_t* x,float* y,int N,int K,int M,int tile,void* stream) {
+    valid(N,K,M);
+    if(N%32||K%32||M<=8||(tile!=32&&tile!=64))
+        throw std::invalid_argument("GLM FP4: prefill MMA requires N/K multiples of32, M>8 and tile32/64");
+    const auto s=static_cast<cudaStream_t>(stream);
+    if(tile==32)fp4_prefill_mma<32><<<dim3((N+63)/64,(M+31)/32),256,13824,s>>>(
+        reinterpret_cast<const uint2*>(weights),scales,global,reinterpret_cast<const half*>(x),y,N,K,M);
+    else fp4_prefill_mma<64><<<dim3((N+63)/64,(M+63)/64),256,18432,s>>>(
+        reinterpret_cast<const uint2*>(weights),scales,global,reinterpret_cast<const half*>(x),y,N,K,M);
+}
+void glm_fp4_prefill_split_mma(const uint8_t* weights,const uint8_t* scales,float global,
+                              const uint16_t* x,float* y,int N,int K,int M,
+                              int k_parts,float* scratch,void* stream) {
+    valid(N,K,M);
+    if(N%32||N>8192||K>8192||M<=8||M>512||
+       (k_parts!=1&&k_parts!=2&&k_parts!=4)||!weights||!scales||!x||!y)
+        throw std::invalid_argument("GLM FP4: split prefill requires aligned bounded matrices and k_parts1/2/4");
+    const int parts=std::min(k_parts,K/64);
+    if(parts>1&&!scratch)throw std::invalid_argument("GLM FP4: split prefill needs partial output scratch");
+    const auto s=static_cast<cudaStream_t>(stream);
+    fp4_prefill_split<<<dim3(N/32,(M+127)/128,parts),256,23552,s>>>(
+        reinterpret_cast<const uint2*>(weights),scales,global,reinterpret_cast<const half*>(x),
+        parts>1?scratch:y,N,K,M,parts);
+    if(parts>1)reduce_prefill_partials<<<(N*M+255)/256,256,0,s>>>(scratch,y,N*M,parts);
 }
 void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* out,int count,int K,int stride,void* stream) {
     if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route gather extent");

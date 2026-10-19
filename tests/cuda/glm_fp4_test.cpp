@@ -1,4 +1,5 @@
 #include "strata/kernels/glm_fp4.hpp"
+#include "strata/host/glm_env.h"
 #include "strata/artifact/glm_modelopt.hpp"
 #include "strata/kernels/cpu/exl3/math.hpp"
 #include <cuda_runtime.h>
@@ -114,6 +115,42 @@ static void real_scales(const a::ModelOptCsf32& h,int N,int K,const void* expect
     if(invalid || got!=want)throw std::runtime_error("real GPU CSF32 scales differ from host reference");
     std::cout<<"real CSF32 scale packing PASS\n";
 }
+static void head_partition() {
+    // Both halves remain above the dense-split threshold, as on the real head.
+    // Check the separate QPN code/scale offsets and every verification width.
+    constexpr int N=16448,K=256,half=N/2;
+    std::vector<uint8_t> codes(size_t(N)*K),scales(size_t(N)*K/32,125);
+    for(size_t i=0;i<codes.size();++i)codes[i]=uint8_t(i*7%127)|uint8_t((i&1)*128);
+    std::vector<uint16_t> input(size_t(8)*K);
+    for(size_t i=0;i<input.size();++i)input[i]=strata::cpu::exl3::half_round(std::sin(float(i)*.17f)*2);
+    Buffer raw(codes.size()),rs(scales.size()),packed(codes.size()),ps(scales.size()*2),
+        tail(codes.size()/2),tail_scales(scales.size()),
+        x(input.size()*2),whole(size_t(8)*N*4),part(size_t(8)*half*4);
+    check(cudaMemcpy(raw.p,codes.data(),codes.size(),cudaMemcpyHostToDevice));
+    check(cudaMemcpy(rs.p,scales.data(),scales.size(),cudaMemcpyHostToDevice));
+    check(cudaMemcpy(x.p,input.data(),input.size()*2,cudaMemcpyHostToDevice));
+    k::glm_fp8_prepack(k::GlmPackedFormat::Mxfp8,static_cast<uint8_t*>(raw.p),rs.p,
+        static_cast<uint8_t*>(packed.p),ps.p,N,K,nullptr);
+    k::glm_fp8_prepack(k::GlmPackedFormat::Mxfp8,static_cast<uint8_t*>(raw.p)+size_t(half)*K,
+        static_cast<uint8_t*>(rs.p)+size_t(half)*K/32,
+        static_cast<uint8_t*>(tail.p),tail_scales.p,half,K,nullptr);
+    std::vector<float> expected(size_t(8)*N),got(size_t(8)*half);
+    for(int acc:{1,2,4})for(int M=1;M<=8;++M) {
+        k::glm_fp4_gemm(k::GlmPackedFormat::Mxfp8Qpn,packed.p,ps.p,1,
+            static_cast<uint16_t*>(x.p),static_cast<float*>(whole.p),N,K,M,true,nullptr,nullptr,acc);
+        check(cudaMemcpy(expected.data(),whole.p,size_t(M)*N*4,cudaMemcpyDeviceToHost));
+        for(int rank=0;rank<2;++rank) {
+            k::glm_fp4_gemm(k::GlmPackedFormat::Mxfp8Qpn,
+                rank?tail.p:packed.p,rank?tail_scales.p:ps.p,1,
+                static_cast<uint16_t*>(x.p),static_cast<float*>(part.p),half,K,M,true,nullptr,nullptr,acc);
+            check(cudaMemcpy(got.data(),part.p,size_t(M)*half*4,cudaMemcpyDeviceToHost));
+            for(int t=0;t<M;++t)if(std::memcmp(got.data()+size_t(t)*half,
+                expected.data()+size_t(t)*N+rank*half,size_t(half)*4))
+                throw std::runtime_error("head row partition changes FP8 output bits");
+        }
+    }
+    std::cout<<"FP8 head partition bits=identical widths=1..8 accumulators=1,2,4 PASS\n";
+}
 static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::ModelOptCsf32* csf=nullptr) {
     const int N=h.rows,K=h.columns;
     const size_t bytes=h.weights.size();
@@ -181,9 +218,10 @@ static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::
     const auto active=cached?cached_format:fmt;
     const void* operand=cached?packed.p:w;
     const void* active_scales=cached&&packed_fp8?ps.p:s;
-    for(bool sm70:{false,true})for(int M=1;M<=8;++M) {
+    for(int accumulators:{1,2,4})for(bool sm70:{false,true})for(int M=1;M<=8;++M) {
+        if(accumulators!=1&&(!sm70||(fmt!=k::GlmPackedFormat::Mxfp8&&fmt!=k::GlmPackedFormat::BlockFp8)))continue;
         if(split&&!sm70)continue;
-        k::glm_fp4_gemm(active,operand,active_scales,h.global,static_cast<uint16_t*>(x.p),static_cast<float*>(y.p),N,K,M,sm70,nullptr,split?static_cast<float*>(partials.p):nullptr);
+        k::glm_fp4_gemm(active,operand,active_scales,h.global,static_cast<uint16_t*>(x.p),static_cast<float*>(y.p),N,K,M,sm70,nullptr,split?static_cast<float*>(partials.p):nullptr,accumulators);
         check(cudaMemcpy(got.data(),y.p,size_t(M)*N*4,cudaMemcpyDeviceToHost));
         double error=0,energy=0;
         for(int i=0;i<M*N;++i) {
@@ -196,7 +234,7 @@ static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::
             if(M==1)one.assign(got.begin(),got.begin()+N);
             else if(std::memcmp(one.data(),got.data(),N*sizeof(float)))throw std::runtime_error("verification width changes first-row MMA arithmetic");
         }
-        std::cout<<"format="<<int(active)<<" N="<<N<<" K="<<K<<" M="<<M<<" sm70="<<sm70<<" split="<<split<<" outliers="<<outliers<<" rel_l2="<<rel<<'\n';
+        std::cout<<"format="<<int(active)<<" N="<<N<<" K="<<K<<" M="<<M<<" sm70="<<sm70<<" split="<<split<<" accumulators="<<accumulators<<" outliers="<<outliers<<" rel_l2="<<rel<<'\n';
     }
     }
     const size_t stride=(bytes+255)/256*256,scale_stride=(packed_scale_bytes+255)/256*256;
@@ -212,17 +250,18 @@ static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::
         check(cudaMemcpy(static_cast<char*>(ring.p)+i*stride,operand,bytes,cudaMemcpyDeviceToDevice));
         if(scale_bytes)check(cudaMemcpy(static_cast<char*>(ring_scales.p)+i*scale_stride,active_scales,scale_bytes,cudaMemcpyDeviceToDevice));
     }
-    for(bool rotate:{false,true})for(bool split:{false,true})for(bool sm70:{false,true})for(int M:{1,4,8}) {
+    for(int accumulators:{1,2,4})for(bool rotate:{false,true})for(bool split:{false,true})for(bool sm70:{false,true})for(int M:{1,4,8}) {
+        if(accumulators!=1&&(!sm70||(fmt!=k::GlmPackedFormat::Mxfp8&&fmt!=k::GlmPackedFormat::BlockFp8)))continue;
         if((rotate&&copies==1) || (split&&(!small||!sm70)))continue;
         float* scratch=split?static_cast<float*>(partials.p):nullptr;
-        for(int i=0;i<10;++i)k::glm_fp4_gemm(active,operand,active_scales,h.global,static_cast<uint16_t*>(x.p),static_cast<float*>(y.p),N,K,M,sm70,nullptr,scratch);
+        for(int i=0;i<10;++i)k::glm_fp4_gemm(active,operand,active_scales,h.global,static_cast<uint16_t*>(x.p),static_cast<float*>(y.p),N,K,M,sm70,nullptr,scratch,accumulators);
         check(cudaDeviceSynchronize());
         cudaStream_t stream;check(cudaStreamCreate(&stream));
         check(cudaStreamBeginCapture(stream,cudaStreamCaptureModeThreadLocal));
         for(int i=0;i<100;++i) {
             const size_t slot=rotate?i%copies:0;
             k::glm_fp4_gemm(active,static_cast<char*>(ring.p)+slot*stride,static_cast<char*>(ring_scales.p)+slot*scale_stride,
-                h.global,static_cast<uint16_t*>(x.p),static_cast<float*>(y.p),N,K,M,sm70,stream,scratch);
+                h.global,static_cast<uint16_t*>(x.p),static_cast<float*>(y.p),N,K,M,sm70,stream,scratch,accumulators);
         }
         cudaGraph_t graph;check(cudaStreamEndCapture(stream,&graph));
         cudaGraphExec_t exec;check(cudaGraphInstantiate(&exec,graph,nullptr,nullptr,0));
@@ -232,7 +271,7 @@ static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::
         check(cudaEventRecord(start,stream));for(int i=0;i<10;++i)check(cudaGraphLaunch(exec,stream));
         check(cudaEventRecord(end,stream));check(cudaEventSynchronize(end));
         float ms=0;check(cudaEventElapsedTime(&ms,start,end));const double us=ms;
-        std::cout<<"KERNEL_BENCH format="<<int(active)<<" N="<<N<<" K="<<K<<" M="<<M<<" sm70="<<sm70<<" split="<<split
+        std::cout<<"KERNEL_BENCH format="<<int(active)<<" N="<<N<<" K="<<K<<" M="<<M<<" sm70="<<sm70<<" split="<<split<<" accumulators="<<accumulators
                  <<" us="<<us<<" compressed_GB_s="<<(bytes+scale_bytes)/(us*1000.)
                  <<" operand_copies="<<(rotate?copies:1)<<" working_set_bytes="<<(rotate?copies:1)*(bytes+scale_bytes)
                  <<" launches=1000 cuda_graph=1\n";
@@ -247,10 +286,13 @@ int main(int argc,char** argv) {
     try {
         routing();
         if(argc==2 && std::string(argv[1])=="--routing-only")return 0;
+        head_partition();
+        if(argc==2 && std::string(argv[1])=="--head-partition-only")return 0;
         csf32();
         const bool dense_split=argc==2 && std::string(argv[1])=="--dense-split";
         if(argc==3 || argc==4) {
-            a::Safetensors tensors(argv[1],true);const auto cfg=a::read_json((std::filesystem::path(argv[1])/"config.json").string());
+            a::Safetensors tensors(argv[1],true,false,strata_env_is_one("STRATA_GLM_FP4_RAM_FDS"));
+            const auto cfg=a::read_json((std::filesystem::path(argv[1])/"config.json").string());
             a::GlmModelOpt model(tensors,cfg);const auto m=model.matrix(argv[2]);
             auto c=model.has_csf32(m)?std::make_unique<a::ModelOptCsf32>(model.csf32(m)):nullptr;
             run(model.load(m),true,argc==4&&std::string(argv[3])=="--bench",c.get());

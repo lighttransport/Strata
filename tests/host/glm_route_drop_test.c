@@ -13,6 +13,11 @@ int main(void) {
     assert(strata_glm_route_drop(w,252,0.1,2,&share)==4 && share==3.0/36);
     assert(strata_glm_route_drop(w,255,0.5,0,&share)==0);
     for(unsigned i=0;i<8;++i)w[i]=1;
+    assert(strata_glm_route_drop(w,255,0.6,7,&share)==0 && share==0);
+    assert(strata_glm_route_drop_capped(w,255,0.75,7,0.75,&share)==63 && share==0.75);
+    assert(strata_glm_route_drop_capped(w,255,0.6,7,0.5,&share)==0 && share==0);
+    assert(strata_glm_route_drop_capped(w,255,0.6,7,0.8,&share)==0 && share==0);
+    assert(strata_glm_route_drop_capped(w,255,0.6,7,NAN,&share)==0 && share==0);
     assert(strata_glm_route_drop(w,255,0.25,7,&share)==3 && share==0.25);
     assert(strata_glm_route_drop(w,255,0.124,7,&share)==0);
     w[2]=NAN;assert(strata_glm_route_drop(w,255,0.5,7,&share)==0);
@@ -50,6 +55,18 @@ int main(void) {
             restored+=copy[i];
         }
         assert(fabs(restored-total)<=total*1.e-6);
+        const double extended=(trial%76)/100.0;
+        const uint8_t extra=strata_glm_route_drop_capped(w,eligible,extended,limit,0.75,&share);
+        total=removed=0;count=0;
+        for(unsigned i=0;i<8;++i) {
+            total+=w[i];
+            if(extra&(1u<<i)){removed+=w[i];++count;}
+        }
+        assert(!(extra & (uint8_t)~eligible));
+        assert(count<=limit && count<8 && removed<=extended*total && share==removed/total);
+        memcpy(copy,w,sizeof copy);
+        const double extra_multiplier=strata_glm_route_renormalize(copy,extra);
+        assert(extra_multiplier>=1 && extra_multiplier<=4.000001);
     }
     return 0;
 }

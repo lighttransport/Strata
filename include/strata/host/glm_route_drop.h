@@ -6,14 +6,17 @@
 #include <math.h>
 #include <float.h>
 #include <stdint.h>
-static inline uint8_t strata_glm_route_drop(const float weights[8], uint8_t eligible,
-                                           double fraction, unsigned max_drop,
-                                           double *dropped_share) {
+/* An explicit experimental cap may extend the original 0.5 bound, up to 0.75.
+ * The original entry point below always retains its original cap. */
+static inline uint8_t strata_glm_route_drop_capped(const float weights[8], uint8_t eligible,
+                                                  double fraction, unsigned max_drop,
+                                                  double cap, double *dropped_share) {
     unsigned order[8], count=0, dropped=0;
     double total=0, removed=0;
     uint8_t mask=0;
     if(dropped_share)*dropped_share=0;
-    if(!weights || !isfinite(fraction) || fraction<=0 || fraction>0.5 || !max_drop)return 0;
+    if(!weights || !isfinite(cap) || cap<=0 || cap>0.75 ||
+       !isfinite(fraction) || fraction<=0 || fraction>cap || !max_drop)return 0;
     if(max_drop>7)max_drop=7;
     for(unsigned i=0;i<8;++i) {
         if(!isfinite(weights[i]) || weights[i]<0)return 0;
@@ -32,6 +35,11 @@ static inline uint8_t strata_glm_route_drop(const float weights[8], uint8_t elig
     }
     if(dropped_share)*dropped_share=removed/total;
     return mask;
+}
+static inline uint8_t strata_glm_route_drop(const float weights[8], uint8_t eligible,
+                                           double fraction, unsigned max_drop,
+                                           double *dropped_share) {
+    return strata_glm_route_drop_capped(weights,eligible,fraction,max_drop,0.5,dropped_share);
 }
 /* Optional compensation after selection: restore the original total routing
  * weight across retained routes. The drop budget always refers to the original

@@ -76,6 +76,7 @@ def diagnostic_environment(environment=None):
              "STRATA_GLM_MIXED_PROFILE", "STRATA_GLM_MIXED_DECODE_PROFILE",
              "STRATA_GLM_MIXED_PROFILE_DECODE", "STRATA_GLM_MTP_TIMING",
              "STRATA_GLM_FP4_PROFILE",
+             "STRATA_GLM_CUDA_PROFILE_REQUEST",
              "STRATA_GLM_LAYER_VERIFY_CACHE")
     values = os.environ if environment is None else environment
     return [name for name in names if name in values]

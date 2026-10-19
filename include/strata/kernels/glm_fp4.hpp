@@ -20,15 +20,30 @@ void glm_fp4_csf32_scales(const uint8_t* bases,const uint8_t* codes,
                           uint8_t* packed_scales,int* invalid,int rows,int columns,void* stream);
 // Inputs are FP16, outputs FP32. Both paths consume the same packed bytes.
 // SM70 supports 1..8 rows per call; reference supports arbitrary rows.
+// FP8 may use 1 (default), 2 or 4 independent accumulator chains. Extra
+// chains preserve K partitioning but change the floating-point reduction tree.
 void glm_fp4_gemm(GlmPackedFormat format,const void* weights,const void* scales,float global,
                   const uint16_t* x,float* y,int rows,int columns,int tokens,
-                  bool sm70,void* stream,float* partials=nullptr);
+                  bool sm70,void* stream,float* partials=nullptr,int fp8_accumulators=1);
 // Optional scratch for small fixed projections: 64 K partitions, eight rows.
 // Passing it keeps K splitting fixed across all verification widths.
 constexpr size_t glm_fp4_partial_bytes(int rows) {return size_t(64)*8*rows*sizeof(float);}
 // Bounded prefill reconstruction from the same resident compressed matrix.
 void glm_fp4_dequant_f16(GlmPackedFormat format,const void* weights,const void* scales,
                          float global,uint16_t* output,int rows,int columns,void* stream,bool sm70=false);
+// SM70 FP4 prefill: reconstruct tiles in shared memory, then accumulate with
+// FP16 WMMA / FP32 accumulators. Same rounded operands as dequant_f16(sm70).
+// Requires rows%32=0, columns%64=0, tokens>8, tile_tokens in {32,64}.
+void glm_fp4_prefill_mma(const uint8_t* weights,const uint8_t* scales,float global,
+                        const uint16_t* x,float* y,int rows,int columns,int tokens,
+                        int tile_tokens,void* stream);
+// Experimental 128-token / 32-output tile with independent K partitions.
+// Not used by the executor. Requires rows%32=0, columns%64=0,
+// rows/columns<=8192, 8<tokens<=512, and k_parts in {1,2,4}.
+// For k_parts>1, scratch holds k_parts*rows*tokens floats.
+void glm_fp4_prefill_split_mma(const uint8_t* weights,const uint8_t* scales,float global,
+                              const uint16_t* x,float* y,int rows,int columns,int tokens,
+                              int k_parts,float* scratch,void* stream);
 // Route indices address [token][route_stride]. Rows within one expert must
 // refer to distinct tokens. Scatter calls on one stream preserve expert order
 // and round multiply and add separately, matching the host accumulation.

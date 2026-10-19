@@ -46,6 +46,73 @@ non-verification work would reach only 37.12 decode tok/s. The earlier activity
 capture measured the control configuration and is not reused as this preset's
 kernel-duration bound.
 
+## Further optimization screens
+
+The following same-binary comparisons used the same two V100 PCIe 32 GB cards,
+dual Xeon Gold 6240 host and 181 GiB allocation. Each used one full warmup, a
+discarded one-token request and one timed 8,192-input / 128-output request, with
+zero timed major faults. They are short screens, not the 512-output qualification
+above. Clocks were unlocked; RAM speed was not measured.
+
+| Experiment | Matched control decode tok/s | Candidate decode tok/s |
+| --- | ---: | ---: |
+| Global cache admission, parity ownership | 21.65 | 17.02 |
+| Global cache admission, flexible ownership | 21.65 | 15.36 |
+| Global admission ranked by surviving routes | 21.67 | 15.88 |
+| FP8 accumulator chains, two / four | 21.73 | 17.55 / 18.43 |
+| GPU submission worker placement, primary / both | 22.20 | 22.04 / 22.22 |
+| Adaptive cache, 32 / 64 verification rows | 22.64 | 18.67 / 19.35 |
+| Vocabulary projection split across GPUs | 22.01 | 19.05 |
+| Vocabulary split charged to scratch reserve | 22.73 | 22.90 |
+| Vocabulary accumulators, two / four | 22.73 | 22.52 / 22.64 |
+| Shared gate packing and K splitting | 21.67 | 17.37 |
+| Compact verification history | 22.73 | 22.55 |
+| Prefill expert bank | 22.73 | 17.76 |
+| Aggregate arena capacity accounting | 22.21 | 17.70 |
+| Expert bank with aggregate accounting | 22.21 | 17.41 |
+
+None of these variants is selected. Real-matrix FP8 microbenchmarks found faster
+individual products, but the global accumulator change lost throughput on the
+model. The head copy also reduced secondary expert capacity. A separate reserve
+experiment recovered capacity and identical output IDs, but its 0.74% decode
+difference does not establish an improvement. The bank increased prefill from
+520.85 to 538.07 tok/s, while reducing cached experts and decode throughput.
+Its combined throughput tradeoff was rejected. All four bank memory diagnostics
+were interrupted because of instrumentation cost and the rejected tradeoff;
+none establishes a clean bank memory check. Aggregate accounting also lost
+decode throughput, and its compact-history combination exhausted a 512 MiB
+allocation with only a 145.61 MiB largest free hole. It has no qualified timing.
+
+Synthetic prefill tests compared reconstruction plus cuBLAS with fused WMMA at
+twelve expert shapes, using six rotated samples each. The new 128-row split-K
+kernel passed numerical, complete synthetic memcheck and racecheck runs, but
+lost every shape and remains unused by the executor. The existing 32-row kernel
+won only the down projection with 16, 32 or 64 token rows: medians were
+63.50 / 64.50 / 80.26 microseconds, versus 79.58 / 83.66 / 102.09 for cuBLAS and
+reconstruction. These kernel results require a selective model trial.
+
+Distinct logical-CPU placement, reconstruction/GEMM overlap, selective fused
+prefill and larger bounded route-drop budgets are still being measured. The
+selected preset's loss bounds stay unchanged during these experiments.
+
+[Screen evidence](glm_fp4_v100_target50_screens.json) records binary and raw-log
+hashes, output hashes, settings and matching controls. The separate
+[simulator profile](../tools/sim/data/glm_fp4_v100_target50.json) imports screens
+as observations with `fit: false` and retains the qualified KDA workload as its
+performance anchor. These observations add no predicted speedups or quality
+claims. The new twenty holdouts remain unscored.
+
+Current CUDA SM70 and HIP decoder builds pass. Native FP4 execution is CUDA
+only; the HIP build checks compatibility of the shared decoder and host code.
+Eight relevant C11 tests, 26 benchmark tests and 134 simulator tests pass, with
+one existing simulator fixture skip. Adaptive-cache memcheck completed with
+155 actual promotions, and the reserve-adjusted head and packed shared-gate
+checks also completed without reported memory errors. Their instrumented
+timings are excluded. The latest completed default-output check, before the
+logical-CPU and two new prefill trials, preserved all 128 original token IDs;
+its cold-runtime residency rejection remains in the raw record and supplies
+no throughput claim. GPU validation of those remaining trials is pending.
+
 ## Earlier GPU reduction qualification
 
 GPU reduction alone measured **32.67 decode tok/s and 454.29 prefill tok/s** on
@@ -105,6 +172,20 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_DENSE_SPLIT` | `1` | Increase independent K partitions for dense matrices with 513–8192 rows and at least 4096 columns. |
 | `STRATA_GLM_FP4_GPU_REDUCE` | `1` | Sum routed GPU contributions on the primary GPU; use peer copies when available. |
 | `STRATA_GLM_FP4_PREFILL_BATCH_EXPERTS` | `1` (default), `2`, `4` | Group compatible prefill expert projections into batched cuBLAS calls. |
+| `STRATA_GLM_FP4_PREFILL_MMA` | `0` (default), `1`, `32`, `64` | Reconstruct FP4 tiles in shared memory and use FP16 WMMA with FP32 accumulation. Mode 1 uses tile 32 only for 4096-by-2048 matrices with 16–64 token rows. |
+| `STRATA_GLM_FP4_PREFILL_OPERAND_PIPELINE` | `1` | Reconstruct the next expert on the upload stream while cuBLAS processes the current expert. |
+| `STRATA_GLM_FP4_GLOBAL_CACHE` | `0` (default), `1`, `2`, `3` | Rank decode admissions across layers; modes 2 and 3 can move selected experts between GPUs. |
+| `STRATA_GLM_FP4_FP8_ACCUMULATORS` | `1` (default), `2`, `4` | Give narrow FP8 tensor-core products independent accumulation chains. |
+| `STRATA_GLM_FP4_WORKER_CPU0`, `STRATA_GLM_FP4_WORKER_CPU1` | `-1` (default), allocated CPU ID | Pin a GPU submission worker on Linux while retaining its GPU memory locality policy. |
+| `STRATA_GLM_FP4_CACHE_ADAPT_ROWS` | `0` (default), `32`, `64`, `128` | Reconsider each layer's parity-owned decode cache after this many verification rows. |
+| `STRATA_GLM_FP4_CACHE_TOTAL_FREE` | `1` | Size the decode cache from all arena holes that can hold packed projections, retaining the existing per-device scratch reserves. |
+| `STRATA_GLM_FP4_CPU_LOGICAL` | `1` | Repin native FP4 CPU workers to distinct allocated logical CPUs on Linux, reserving the first allocated CPU for the coordinator. |
+| `STRATA_GLM_FP4_HEAD_TP` | `1` | Split narrow MXFP8 vocabulary products across two peer-accessible GPUs. |
+| `STRATA_GLM_FP4_HEAD_TP_BORROW` | `1` | Charge the secondary head copy to that GPU's original scratch reserve. Requires head partitioning and the original decode reserves. |
+| `STRATA_GLM_FP4_HEAD_ACCUMULATORS` | `0` (inherit default), `1`, `2`, `4` | Override FP8 accumulation chains for vocabulary products only. |
+| `STRATA_GLM_FP4_BLOCK_GATE_PACK` | `1` | Pack and split K for the 2048-by-4096 block-FP8 shared gate/up projections. |
+| `STRATA_GLM_FP4_PREFILL_BANK` | `1` | Prefetch the next main layer's experts during fixed projections for passes with at least 4096 rows. |
+| `STRATA_GLM_FP4_ROUTE_DROP_CAP` | `0.5` (default) through `0.75` | Explicitly extend the permitted original routing-mass budget for a separate lossy experiment. Does not change `ROUTE_DROP` by itself. |
 
 CPU tiling preserves each row's dot-product and reduction order. Prepared Q8
 operands and quartet caches preserve the existing W4A8 representation; they do
@@ -122,6 +203,15 @@ in flight within the same bound. Grouping may change cuBLAS arithmetic and there
 checks. Reconstruction and GEMM still share one compute stream; this experiment
 does not overlap those two stages.
 
+The separate operand pipeline uses two 48 MiB sets of reconstructed FP16 expert
+weights. It retains the existing GEMM shapes and scatter order, fences each
+slot's reuse, and protects packed sources until retirement. All activation and
+operand buffers are allocated before readers are queued. It requires SM70,
+device routing, asynchronous uploads and the arena, with queue/batch one and
+the bank and fused prefill disabled. Its admitted working set remains bounded
+by 256 MiB per GPU; unsupported groups retain the existing path. The operand
+buffers are released during the existing prefill-to-decode compaction.
+
 Dense splitting keeps the same partitioning across verification widths 1–8,
 but changes the reduction tree relative to the original kernel. It therefore
 needs numerical and model quality checks. The default retains the original
@@ -130,6 +220,102 @@ partitioning, including its existing small-matrix splits.
 GPU reduction uses ordered additions. When peer access is unavailable, secondary
 results pass through pinned host memory. Decode still needs CPU activation data
 for nonresident experts. Unsupported route shapes use the existing host path.
+
+Fused prefill uses the same rounded FP16 weight operands as the existing SM70
+reconstruction, with a different accumulation order. It requires complete kernel
+and model checks before selection. `glm_fp4_prefill_cuda_test` checks boundary
+tiles and large activation outliers against reconstructed operands and cuBLAS;
+`--bench` rotates three compressed matrices in CUDA graphs. Those synthetic
+timings exclude host scheduling and do not establish model throughput.
+
+Global cache admission keeps the current draft reserve and per-device expert
+budget. Mode 1 retains parity ownership; mode 2 fills the combined capacity,
+preferring parity until that device is full. Prefill still evaluates every route
+with its existing ownership. Mode 3 ranks the prompt contributions that would
+survive the current drop budget if every route used CPU execution. This avoids
+ranking a weak contribution solely by frequency when it could be dropped during
+decode. Admission can change which decode contributions
+use CPU Q8 or GPU FP16 arithmetic and which are eligible for bounded route
+dropping, so model quality must be checked even when the loss bounds stay fixed.
+`FP4_CACHE_POLICY` reports selected slots, moved owners and prompt coverage.
+
+FP8 accumulator chains leave K partitioning fixed across verification widths
+1–8 and add no weight copies. They change the floating-point reduction tree.
+
+Worker placement is a scheduling experiment. Explicit CPU IDs must belong to
+the original process allocation; other platforms retain the default `-1`.
+
+Adaptive caching uses decode routes that would survive the existing all-CPU
+drop budget as its heat signal. It permits at most two promotions per GPU per
+update, requires a score advantage of at least two, halves scores after each
+update and keeps each layer's selected count and parity ownership. It retires
+GPU readers before reclaiming demoted weights. It cannot be combined with
+global cache admission. Admission changes CPU/GPU arithmetic and drop
+eligibility, so it requires performance and quality checks; it is not enabled
+in a selected preset.
+
+Total-free cache sizing requires the GPU arena. It counts complete packed
+projection allocations within each free hole and excludes smaller tails. It
+retains the original 3072 / 1024 MiB decode reserves unless an explicit reserve
+setting is provided. More cache admissions can change CPU/GPU arithmetic and
+route-drop eligibility; output and quality checks remain necessary. The switch
+is off by default.
+
+Logical CPU placement is a separate worker-count experiment. The existing pool
+first selects one CPU per physical core and repeats those IDs for larger worker
+counts. This opt-in mapping uses distinct allocated logical CPUs instead. It
+leaves one logical CPU for the coordinator and requires the worker count to fit
+the remaining allocation. It changes placement before model execution and does
+not change the row or reduction order. Higher worker counts still need measured
+performance and output checks; they are not enabled in the selected preset.
+
+The head partition retains the complete primary matrix for products wider than
+eight rows, and places a packed copy of its second half on the secondary GPU.
+On this checkpoint the extra matrix occupies about 321 MiB, plus bounded input
+and output scratch. Narrow products use the original K reduction on each half;
+the primary stream joins both output ranges before consuming logits. It
+requires SM70 and peer access and does not support CUDA graph capture. The
+extra allocation can change expert admission, so kernel parity alone does not
+establish model quality or throughput. It is not selected in a preset.
+
+The optional head reserve experiment subtracts the secondary head's allocation
+from that GPU's original prefill and decode scratch reserves. It retains at least
+256 MiB for scratch and leaves the primary reserve unchanged. It aims to keep
+expert capacity from falling when the head copy is added; measured admission,
+memory checks and model output still determine whether this succeeds. Head-only
+accumulator overrides change the reduction tree and require separate quality
+checks. Both experiments are off by default.
+
+Block gate packing uses the existing FP8 lane layout and fixed-width K
+partitioning on that measured matrix shape. It keeps one accumulator chain and
+the original scale grid, without another resident weight copy. The reduction
+tree changes, so its model performance and quality need separate checks.
+
+The prefill bank borrows 1960 MiB per GPU from the main pass's draft reserve,
+then releases it before draft priming. It requires two peer-accessible GPUs,
+MTP, registered RAM, the GPU arena, device routing, GPU reduction, asynchronous
+uploads and queue/batch one. Its stream uses preallocated buffers while the
+coordinator runs fixed projections. Expert execution retains the original order
+and packed weights; kept cache entries use separate storage after readers retire.
+The allocation layout can affect later cache admission, so model output and
+quality still require checking. Memory checks and quality checks must use at
+least 4096 input tokens to exercise this path. It is not selected in a preset.
+
+The original route-drop entry point and selected presets retain their 0.5 cap.
+An explicit higher cap permits a separate native-FP4 experiment using a larger
+`STRATA_GLM_FP4_ROUTE_DROP` value. Selection still applies only to CPU routes,
+retains at least one route, and measures discarded mass before renormalization.
+The hard maximum is 0.75, which permits a renormalization factor as large as four;
+this is not an output-error bound. Prefill routes and checkpoint weights stay
+intact. Larger budgets need paired performance and quality measurements and are
+not enabled by the KDA preset.
+The CUDA parity test covers every chain count, native and prepacked FP8, partial
+splits and large activation outliers. A model-level check remains necessary.
+
+`STRATA_GLM_CUDA_PROFILE_REQUEST=N` captures a one-based valid serving request
+with the CUDA profiler API; zero disables it. For two complete warmups, the
+discarded one-token request and three timed requests, request six is the last
+timed request. Activity traces are diagnostic runs, not throughput qualification.
 
 `STRATA_GLM_FP4_PROFILE=1` adds `FP4_GPU_INTERVAL` diagnostics for reconstruction,
 GEMM, skinny products, matrix copies and scale preparation. Event intervals can
@@ -274,10 +460,9 @@ bound assumes optimistic overlap. The phase counter ends at `compact`, so
 post-compact cache preparation remains outside its prefill-byte count.
 
 Further work should measure kernel-active time and host enqueue gaps separately
-before replacing the decode kernels or prefill schedule. A tiled prefill kernel
-that consumes compressed weights directly, or overlap between reconstruction
-and GEMM, remains an experiment to investigate. Neither was implemented or
-measured here, and neither is assigned a speculative speedup. Simply increasing
+before replacing the decode kernels or prefill schedule. The subsequent screens
+above tested tiled prefill kernels and added an opt-in reconstruction/GEMM
+pipeline. Neither supplies a qualified model speedup so far. Simply increasing
 queue depth or grouping cuBLAS calls did not improve the measured workload.
 
 ## Validation and limits

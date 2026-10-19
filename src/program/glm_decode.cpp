@@ -12,6 +12,7 @@
 #include "strata/host/glm_expert_replay.h"
 #include "strata/host/glm_env.h"
 #include "strata/host/glm_route_drop.h"
+#include "strata/host/glm_fp4_cache.h"
 #include "strata/core/device.hpp"
 #include "strata/core/runtime_memory.hpp"
 #include "strata/artifact/expert_calibration.hpp"
@@ -10920,6 +10921,8 @@ static int serve(int argc, char **argv) {
     if(std::filesystem::is_directory(argv[2])&&lookup_depth)throw std::invalid_argument("EXL3: lookup speculation is not qualified");
     const bool stream_decode = argc > 11 && std::stoi(argv[11]) != 0;
     const bool use_mtp = argc > 12 && std::string(argv[12]) == "mtp";
+    const long long cuda_profile_request=strata_env_value_ll("STRATA_GLM_CUDA_PROFILE_REQUEST",0);
+    if(cuda_profile_request<0)throw std::invalid_argument("GLM: CUDA_PROFILE_REQUEST must be nonnegative");
     const int draft_depth = argc > 13 ? std::stoi(argv[13]) : 3;
     if(argc>25) {
         std::string pages=argv[25];if(pages!="4k"&&pages!="huge")throw std::invalid_argument("weight_pages must be 4k or huge");
@@ -11037,6 +11040,7 @@ static int serve(int argc, char **argv) {
     auto millis = [](auto begin, auto end) {
         return std::chrono::duration<double, std::milli>(end - begin).count();
     };
+    long long request_number=0;
     for (;;) {
         Request request;
         {
@@ -11092,6 +11096,17 @@ static int serve(int argc, char **argv) {
             const auto tokens = token_ids(ids);
             if (tokens.empty() || count < 1 || tokens.size() + (size_t)count > (size_t)ctx)
                 throw std::invalid_argument("request exceeds context or has invalid token counts");
+            if(cuda_profile_request>0)++request_number;
+            struct CudaProfileRange {
+                bool active;long long request;
+                CudaProfileRange(bool enabled,long long number):active(enabled),request(number) {
+                    if(active){check(cudaProfilerStart());std::cerr<<"CUDA_PROFILE request="<<request<<" range=start\n";}
+                }
+                ~CudaProfileRange() {
+                    if(active){const auto status=cudaProfilerStop();std::cerr<<"CUDA_PROFILE request="<<request
+                        <<" range=stop status="<<int(status)<<'\n';}
+                }
+            } cuda_range(cuda_profile_request>0&&request_number==cuda_profile_request,request_number);
             request_prompt = tokens.size();
             auto start = Clock::now();
             decoder.reset();
