@@ -217,3 +217,36 @@ python3 tools/glm_runner_sim.py native-fp4 \
 The compact [activity evidence](glm_fp4_v100_activity_measurement.json) records
 the source binary, output, raw-report and SQLite hashes. Large raw traces stay
 outside Git. The original reference and resource-only profiles remain intact.
+
+## Ordered KDA prefill measurement
+
+The subsequent uninstrumented qualification measured **32.10 decode / 520.89
+prefill tok/s**, compared with **31.87 / 454.22** for its same-binary control.
+Prepared inputs and four ordered KDA row partitions improved prefill by 14.68%.
+All three timed 512-token outputs and eight reused training outputs match the
+control. New holdouts remain unscored. See the
+[qualification and limits](GLM_FP4_V100_EXPERIMENTS.md) and
+[compact evidence](glm_fp4_v100_kda_measurement.json).
+
+```sh
+python3 tools/glm_runner_sim.py native-fp4 \
+  --profile tools/sim/data/glm_fp4_v100_kda.json \
+  --target-decode 50 --target-prefill 1000 --output tmp/fp4-kda.json
+```
+
+| Target | Measured tok/s | Further throughput factor | Request time to remove |
+| --- | ---: | ---: | ---: |
+| Decode 50 | 32.10 | 1.56× | 5.70 s from 15.92 s |
+| Prefill 800 | 520.89 | 1.54× | 5.49 s from 15.73 s |
+| Prefill 1000 | 520.89 | 1.92× | 7.53 s from 15.73 s |
+
+Expert work and matrix transfer bytes are unchanged on this input. The loose
+173.4 tok/s CPU streaming and 1436.7 tok/s matrix-DMA bounds therefore remain
+unchanged. Verification still takes 86.5% of decode time: removing all other
+work reaches only 37.12 tok/s; with that other work fixed, verification needs a
+1.71× speedup to reach 50. No timing constants were fitted.
+
+The KDA profile uses its measured requests and transfer counters. It deliberately
+omits the older control's activity intervals. The 687.96 tok/s retained-kernel
+scenario above belongs to that earlier capture; an optimized KDA activity
+capture is needed to update it.

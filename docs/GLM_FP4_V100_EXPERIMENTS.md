@@ -1,6 +1,52 @@
 # Opt-in V100 FP4 experiments
 
-## Qualified result
+## Current round: ordered KDA prefill
+
+Prepared inputs with four ordered KDA row partitions measured **32.10 decode
+tok/s and 520.89 prefill tok/s** on two V100 PCIe 32 GB cards, a dual Xeon Gold
+6240 host and a 181 GiB allocation. The same-binary control measured
+31.87 / 454.22. Prefill improved **14.68%**; the small decode difference is not
+claimed as an improvement with unlocked clocks. The 50 decode and 800–1000
+prefill targets remain unmet.
+
+| Configuration, same binary | Decode tok/s, median | Prefill tok/s, median |
+| --- | ---: | ---: |
+| GPU reduction control | 31.87 | 454.22 |
+| Four ordered KDA row partitions | 31.89 | 490.58 |
+| Ordered partitions and prepared inputs | 32.10 | 520.89 |
+
+Each configuration used two complete warmups, a discarded prefill request and
+three timed 8,192-input / 512-output requests. All timed requests had zero major
+faults and zero swap, exited cleanly and kept the frozen fast profile's 512 token
+IDs. All three configurations passed the same eight reused training tasks with
+identical generated IDs. The newly frozen twenty holdouts remain unscored while
+other candidates are investigated; this is an interim selection, with no new
+held-out quality claim.
+
+Use the opt-in
+[`glm53f-fp4-dual-v100-kda.json`](../configs/experimental/glm53f-fp4-dual-v100-kda.json)
+preset. It adds `STRATA_GLM_PREFILL_KDA_ROW_PARTS=4`,
+`STRATA_GLM_KDA_ORDERED_ROWS=1` and `STRATA_GLM_KDA_PREPARE=1` to the GPU
+reduction preset. The route-drop and MTP bounds below are unchanged. All prefill
+routes and checkpoint weights are retained. The original reference, fast and
+GPU reduction presets remain unchanged.
+
+[Compact evidence](glm_fp4_v100_kda_measurement.json) records source and binary
+hashes, all three timings, expert work, transfer counts and training checks. The
+first timed request still creates 333 CPU scale-cache entries; the last two
+create none. The reported median includes the slower first request.
+
+The separate simulator profile
+[`glm_fp4_v100_kda.json`](../tools/sim/data/glm_fp4_v100_kda.json) uses these
+measurements without fitting timing constants. It reports **1.56×** more decode
+throughput needed for 50, **1.54×** more prefill throughput for 800 and **1.92×**
+for 1000. Its loose streaming and matrix-DMA bounds remain 173.4 and 1436.7 tok/s;
+they omit arithmetic, reconstruction, scheduling and dependencies. Removing all
+non-verification work would reach only 37.12 decode tok/s. The earlier activity
+capture measured the control configuration and is not reused as this preset's
+kernel-duration bound.
+
+## Earlier GPU reduction qualification
 
 GPU reduction alone measured **32.67 decode tok/s and 454.29 prefill tok/s** on
 two V100 PCIe 32 GB cards with the 181 GiB allocation. The same-build control
