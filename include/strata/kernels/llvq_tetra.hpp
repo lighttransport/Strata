@@ -40,4 +40,9 @@ void llvq_tetra_dequant_f32(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDe
 // xp = trio-permute(Q x) for ntok tokens of a power-of-two width (llvq Rotation with one WHT group); signs: the
 // rotation's +-1 per column (device, cols floats).
 void llvq_tetra_prepare(const LlvqTetraDecodeGpu* d, const float* signs, const float* x, int ntok, int cols, float* xp, void* stream);
+// MoE glue for llvq experts in decode. h[k][r] = silu(clamp(g)) * clamp(u) from token-minor g/u (rows x ntok; limit 0
+// = no clamp). out[k][r] += w[k] * y[r * ntok + k] for the first w.tokens tokens (a zero weight skips the token).
+struct LlvqTokenWeights { float w[8]; int tokens; };
+void llvq_moe_swiglu(const float* g, const float* u, int rows, int ntok, float limit, float* h, void* stream);
+void llvq_moe_accumulate(const float* y, int rows, int ntok, const LlvqTokenWeights& w, float* out, void* stream);
 }  // namespace strata::kernels

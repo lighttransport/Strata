@@ -139,6 +139,25 @@ int main(int argc, char** argv) {
         std::printf("   avx2 %ux%u, %d token(s), %u threads: %.1f us, %.1f GB/s of words\n", rows, cols, nt, threads, s * 1e6, mbytes / 1e3 / s);
 #endif
     }
+#if defined(__AVX2__) && defined(__FMA__)
+    // No model fixture is needed to catch batch-dependent rounding in routed CPU experts.
+    std::vector<float> singles(size_t(rows) * NT);
+    for (int k = 0; k < NT; ++k)
+        gemv_avx2(T, m, xp.data() + size_t(k) * cols, 1, 0, rows, singles.data() + size_t(k) * rows);
+    for (int nt : {1, 2, 3, 4, 5, 8}) {
+        std::vector<float> batched(size_t(rows) * nt);
+        // Different row partitions must preserve the result as well.
+        gemv_avx2(T, m, xp.data(), nt, 0, rows / 3, batched.data(), true);
+        gemv_avx2(T, m, xp.data(), nt, rows / 3, rows, batched.data(), true);
+        bool same = true;
+        for (uint32_t r = 0; r < rows; ++r)
+            for (int k = 0; k < nt; ++k)
+                same &= std::memcmp(&batched[size_t(r) * nt + k], &singles[size_t(k) * rows + r], sizeof(float)) == 0;
+        fails += !same;
+        std::printf("%s cpu batch invariance, %d tokens\n", same ? "ok" : "FAIL", nt);
+        check("cpu batch-invariant gemv", batched, nt);
+    }
+#endif
 #ifdef STRATA_LLVQ_GPU
     int dev = 0;
     if (cudaGetDevice(&dev) == cudaSuccess) {

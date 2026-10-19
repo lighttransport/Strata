@@ -58,6 +58,25 @@ bool kq256_supported(int type) noexcept { return type == 12 || type == 7 || type
 
 bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt& f, std::string& err) {
     init_once();
+    if (gu_type == kLlvqType || d_type == kLlvqType) {
+        if (gu_type != d_type || n_embd <= 0 || n_ff <= 0 || n_ff > kNativeFF || (n_embd & (n_embd - 1)) || (n_ff & (n_ff - 1))) {
+            err = "native experts: llvq needs llvq gate/up and down with power-of-two widths";
+            return false;
+        }
+        if (!llvq_expert_ready()) { err = "native experts: llvq_expert_init was not called"; return false; }
+        f = NativeFmt{};
+        f.gu_type = f.d_type = kLlvqType;
+        f.n_embd = n_embd;
+        f.n_ff = n_ff;
+        f.gu_row = f.up_off = llvq_record_bytes(n_ff, n_embd);   // whole records: llvq rows are not addressed singly
+        f.d_row = llvq_record_bytes(n_embd, n_ff);
+        f.down_off = 2 * f.up_off;
+        f.bytes = f.down_off + f.d_row;
+        f.act_bytes = size_t(n_embd) * sizeof(float);
+        f.h_bytes = size_t(n_ff) * sizeof(float);
+        if (f.act_bytes > kNativeActBytes || f.h_bytes > kNativeHBytes) { err = "native experts: activation larger than the pool's buffers"; return false; }
+        return true;
+    }
     if (gu_type < 0 || gu_type >= GGML_TYPE_COUNT || d_type < 0 || d_type >= GGML_TYPE_COUNT ||
         n_embd <= 0 || n_ff <= 0 || n_ff > kNativeFF) {
         err = "native experts: unsupported type or geometry";
@@ -136,6 +155,7 @@ bool q8k_avx1(int type) {
 }  // namespace
 
 void native_quant_act(const NativeFmt& f, const float* x, void* dst) {
+    if (f.gu_type == kLlvqType) { llvq_prepare(x, int(f.n_embd), static_cast<float*>(dst)); return; }
     if (f.canon) { canon_check(f); canon_quant_q8k(x, dst, (int) f.n_embd); return; }
     if (q8k_avx2(f.gu_act)) { q8k_quant_avx2(x, dst, f.n_embd); return; }
     if (q8k_avx1(f.gu_act)) { q8k_quant_avx1(x, dst, f.n_embd); return; }
@@ -143,12 +163,14 @@ void native_quant_act(const NativeFmt& f, const float* x, void* dst) {
 }
 
 void native_quant_h(const NativeFmt& f, const float* h, void* dst) {
+    if (f.d_type == kLlvqType) { llvq_prepare(h, int(f.n_ff), static_cast<float*>(dst)); return; }
     if (f.canon) { canon_check(f); canon_quant_q8k(h, dst, (int) f.n_ff); return; }
     if (q8k_avx2(f.d_act)) { q8k_quant_avx2(h, dst, f.n_ff); return; }
     if (q8k_avx1(f.d_act)) { q8k_quant_avx1(h, dst, f.n_ff); return; }
     traits(f.d_act)->from_float(h, dst, f.n_ff);
 }
 void native_quant_h_rows(const NativeFmt& f,const float* h,void* dst,int first,int last) {
+    if(f.d_type==kLlvqType)throw std::invalid_argument("llvq experts: the rotation needs the whole hidden (no fused chunks)");
     const int block=ggml_blck_size(ggml_type(f.d_act));
     if(first<0||last<first||last>f.n_ff||first%block||last%block)throw std::invalid_argument("unaligned hidden quantization chunk");
     if(f.canon){canon_quant_q8k(h+first,static_cast<uint8_t*>(dst)+ggml_row_size(ggml_type(f.d_act),first),last-first);return;}
@@ -176,6 +198,10 @@ int native_gu_mt_min(int gu_type) {
 
 void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* act, int nt, float* const* ff,
                     int r0, int r1, const uint8_t* separate_up) {
+    if (f.gu_type == kLlvqType) {
+        llvq_gu_rows(blob, separate_up ? separate_up : blob + f.up_off, act, nt, ff, r0, r1, f.swiglu_limit);
+        return;
+    }
     if (f.q23_layout && (f.gu_type==10 || f.gu_type==11)) {
         thread_local float up[8][kNativeFF];float* ptr[8];for(int t=0;t<nt;++t)ptr[t]=up[t];
         q23_packed_rows(f.gu_type,blob,int(f.n_embd),act,nt,ff,r0,r1,f.q23_layout==2);
@@ -296,6 +322,7 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
 
 void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const* hq, int nt, float* const* out,
                       int r0, int r1, const uint8_t* separate_down) {
+    if (f.d_type == kLlvqType) { llvq_down_rows(separate_down ? separate_down : blob + f.down_off, hq, nt, out, r0, r1); return; }
     if (f.q23_layout && (f.d_type==10 || f.d_type==11)) {
         q23_packed_rows(f.d_type,separate_down?separate_down:blob+f.down_off,int(f.n_ff),hq,nt,out,r0,r1,f.q23_layout==2);return;
     }

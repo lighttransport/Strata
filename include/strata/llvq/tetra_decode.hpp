@@ -160,7 +160,8 @@ inline void gemv_scalar(const DecodeTables& T, const TetraMatrix& m, const float
 #if defined(__AVX2__) && defined(__FMA__)
 // AVX2+FMA (Zen1/Zen2): per word, the three sections' nibbles unpacked to bytes, the pattern bits added as +8, one
 // pshufb into the parity's 16-value table, int8 -> f32, FMAs against up to 8 tokens.
-inline void gemv_avx2(const DecodeTables& T, const TetraMatrix& m, const float* xp, int ntok, uint32_t r0, uint32_t r1, float* y) {
+inline void gemv_avx2(const DecodeTables& T, const TetraMatrix& m, const float* xp, int ntok, uint32_t r0, uint32_t r1, float* y,
+                      bool batch_invariant = false) {
     const __m128i lut[2] = {_mm_loadu_si128(reinterpret_cast<const __m128i*>(T.vals[0])),
                             _mm_loadu_si128(reinterpret_cast<const __m128i*>(T.vals[1]))};
     const __m128i bitsel = _mm_setr_epi8(1, 2, 4, 8, 16, 32, 64, char(128), 1, 2, 4, 8, 16, 32, 64, char(128));
@@ -200,12 +201,15 @@ inline void gemv_avx2(const DecodeTables& T, const TetraMatrix& m, const float* 
             const __m256 y0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v01));
             const __m256 y1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(_mm_srli_si128(v01, 8)));
             const __m256 y2 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(v2));
-            if (ntok == 1) {  // dot first, then one scaled accumulate
-                const float* xk = xp + 24 * size_t(b);
-                __m256 d = _mm256_mul_ps(y0, _mm256_loadu_ps(xk));
-                d = _mm256_fmadd_ps(y1, _mm256_loadu_ps(xk + 8), d);
-                d = _mm256_fmadd_ps(y2, _mm256_loadu_ps(xk + 16), d);
-                acc[0] = _mm256_fmadd_ps(_mm256_set1_ps(sc), d, acc[0]);
+            if (ntok == 1 || batch_invariant) {  // dot first, then one scaled accumulate
+                // Routed CPU experts request the same arithmetic regardless of job grouping.
+                for (int k = 0; k < ntok; ++k) {
+                    const float* xk = xp + size_t(k) * m.cols + 24 * size_t(b);
+                    __m256 d = _mm256_mul_ps(y0, _mm256_loadu_ps(xk));
+                    d = _mm256_fmadd_ps(y1, _mm256_loadu_ps(xk + 8), d);
+                    d = _mm256_fmadd_ps(y2, _mm256_loadu_ps(xk + 16), d);
+                    acc[k] = _mm256_fmadd_ps(_mm256_set1_ps(sc), d, acc[k]);
+                }
                 continue;
             }
             const __m256 s = _mm256_set1_ps(sc);

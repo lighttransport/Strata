@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include "strata/artifact/glm_exl3.hpp"
 #include "strata/kernels/cpu/exl3/mcg_avx2.hpp"
 #include <atomic>

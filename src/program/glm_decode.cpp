@@ -5,6 +5,7 @@
 #include "strata/kernels/llvq_tetra.hpp"
 #include "glm_prefix_cache.hpp"
 #include "glm_state_store.hpp"
+#include "strata/llvq/unit_file.hpp"
 #include "strata/core/conversation_file.hpp"
 #include "strata/spec/host_sampler.hpp"
 #include "strata/llvq/tetra_decode.hpp"
@@ -2171,6 +2172,23 @@ class Decoder {
         ~LlvqState(){if(gpu)strata::kernels::llvq_tetra_decode_destroy(gpu);}
     };
     std::unique_ptr<LlvqState> llvq;
+    // STRATA_GLM_EXPERT_LLVQ=DIR with a GGUF model: the routed experts of the units' layers come from the llvq units
+    // (mapped in place) instead of the GGUF; everything else is the GGUF's. CPU expert lane (kLlvqType) in decode,
+    // the evaluator's dequantize + GEMM path in prefill. The GPU expert tiers do not hold llvq experts yet: a run that
+    // would use them is refused rather than computing those experts from the GGUF.
+    std::unique_ptr<strata::llvq::UnitSet> llvq_units;
+    bool llvq_layer(int l) const { return llvq_units && llvq_units->has(l); }
+    template <class Tensor>
+    bool layer_fmt(int l, const Tensor& G, const Tensor& D, int64_t ff, cpu::NativeFmt& f, std::string& error) const {
+        return llvq_layer(l) ? cpu::native_fmt(cpu::kLlvqType, cpu::kLlvqType, m.hidden, ff, f, error)
+                             : cpu::native_fmt(G.tensor->type, D.tensor->type, m.hidden, ff, f, error);
+    }
+    // the GGUF-only options of a layer's CPU format, off for llvq experts
+    void llvq_plain(int l, cpu::NativeFmt& f) const {
+        if (!llvq_layer(l)) return;
+        f.q23_layout = 0; f.fuse_h_quant = false; f.canon = false; f.gate_skip = 0.f; f.lossless = false;
+        if (f.observer || f.hidden_transform) throw std::runtime_error("llvq experts: expert observation/transforms are not supported");
+    }
     static const std::string& llvq_dir() {static const std::string d=[]{const char* v=std::getenv("STRATA_GLM_EXPERT_LLVQ");return std::string(v?v:"");}();return d;}
     // Record size of one matrix (TetraMatrix::parse): header 24, row scales, words, BF16 tail.
     static size_t llvq_record_bytes(size_t rows,size_t cols) {
@@ -2178,6 +2196,19 @@ class Decoder {
     }
     // Slot layout per projection (kFp8Projection bytes): u64 seed, then the record.
     void llvq_read_expert(int layer,int expert,uint8_t* dst) {
+        if (llvq_layer(layer)) {
+            const uint8_t* src = llvq_units->expert(layer, expert);
+            const uint64_t seed = llvq_units->seed();
+            for (unsigned i = 0; i < 3; ++i) {
+                const size_t bytes = i < 2 ? llvq_units->gate_bytes() : llvq_units->down_bytes();
+                if (8 + bytes > kFp8Projection) throw std::logic_error("llvq experts: record exceeds the slot");
+                uint8_t* slot = dst + i * kFp8Projection;
+                std::memcpy(slot, &seed, 8);
+                std::memcpy(slot + 8, src, bytes);
+                src += bytes;
+            }
+            return;
+        }
         char name[32];std::snprintf(name,sizeof name,"L%02d.e%03d.llvq",layer,expert/16*16);
         const auto path=std::filesystem::path(llvq_dir())/name;
         const int fd=::open(path.c_str(),O_RDONLY);if(fd<0)throw std::runtime_error("llvq experts: cannot open "+path.string());
@@ -2355,7 +2386,7 @@ class Decoder {
         // FP8: read the experts in group order on background threads, kFp8Prefetch ahead of the GPU.
         std::vector<int> order;for(const auto& g:groups)order.push_back(g.first);
         std::vector<std::future<void>> reads;
-        const bool fp8=artifact.is_fp8();
+        const bool fp8=artifact.is_fp8()||llvq_layer(layer_id);   // slots: FP8 projections or llvq records
         auto start_read=[&](size_t index) {
             const int slot=int(index%kFp8Prefetch),expert=order[index];
             auto* dst=static_cast<uint8_t*>(fp8_slots[slot]->p);
@@ -2371,7 +2402,7 @@ class Decoder {
             llvq=std::make_unique<LlvqState>();llvq->tetra=std::make_unique<strata::llvq::Tetra>();
             llvq->tables=strata::llvq::DecodeTables::build(*llvq->tetra);const auto& T=llvq->tables;
             llvq->gpu=strata::kernels::llvq_tetra_decode_create(&T.pre[0][0],&T.suf[0][0],&T.br_c[0][0],&T.br_s[0][0],T.rows,&T.vals[0][0],T.order);
-            std::cerr<<"GLM: routed experts from llvq units in "<<llvq_dir()<<" (FP8 for everything else)\n";
+            std::cerr<<"GLM: routed experts from llvq units in "<<llvq_dir()<<(artifact.is_fp8()?" (FP8 for everything else)\n":" (prefill: dequantized GEMM)\n");
         }
         if(fp8) {
             while(fp8_slots.size()<size_t(kFp8Prefetch))fp8_slots.push_back(std::make_unique<Pinned>(3*kFp8Projection));
@@ -2406,6 +2437,180 @@ class Decoder {
         }
         auto& routed=buf("moe_sum",sum.size());routed.put(sum.data(),sum.size()*4);const float one=1;
         check(cublasSaxpy(blas,sum.size(),&one,routed.f(),1,out,1));
+    }
+    // llvq experts on the GPU in decode (STRATA_GLM_EXPERT_LLVQ with a GGUF model; STRATA_GLM_LLVQ_DECODE=gpu, the
+    // default with a GPU; =cpu keeps the CPU lane). Each selected expert's [gate | up | down] records come from a VRAM
+    // slot (LRU across layers; STRATA_GLM_LLVQ_GPU_MIB, default the GPU budget's room less 1 GiB) or, on a miss, from its
+    // mapped unit through a pinned ring (host copies on 4 threads) and a copy stream. Per expert: gemv gate and up on
+    // Q x (rotated once per layer), SwiGLU, Q_ff h, gemv down, out[t] += w[t] y. Every token of the step runs through
+    // every selected expert (padded to 1/2/4/8 tokens); a token not routed to it has weight 0.
+    struct LlvqGpuDecode {
+        std::unique_ptr<Device> signs, slots;
+        size_t slot_bytes = 0;
+        int nslots = 0;
+        std::vector<long> owner;
+        std::unordered_map<long, int> where;
+        std::vector<uint64_t> last;
+        std::vector<cudaEvent_t> freed, ready, pin_done;
+        std::vector<std::unique_ptr<Pinned>> pin;
+        int pin_next = 0;
+        cudaStream_t copy = nullptr;
+        uint64_t tick = 0, hits = 0, misses = 0, layers = 0;
+        ~LlvqGpuDecode() {
+            for (auto *v : {&freed, &ready, &pin_done}) for (auto e : *v) cudaEventDestroy(e);
+            if (copy) cudaStreamDestroy(copy);
+        }
+    };
+    std::unique_ptr<LlvqGpuDecode> llvq_gpu;
+    bool llvq_gpu_decode = false;
+    void llvq_gpu_init() {
+        if (llvq_gpu) return;
+        if (!llvq) {
+            llvq = std::make_unique<LlvqState>();
+            llvq->tetra = std::make_unique<strata::llvq::Tetra>();
+            llvq->tables = strata::llvq::DecodeTables::build(*llvq->tetra);
+            const auto &T = llvq->tables;
+            llvq->gpu = strata::kernels::llvq_tetra_decode_create(&T.pre[0][0], &T.suf[0][0], &T.br_c[0][0], &T.br_s[0][0], T.rows, &T.vals[0][0], T.order);
+        }
+        auto g = std::make_unique<LlvqGpuDecode>();
+        const strata::llvq::Rotation rot(size_t(m.hidden), llvq_units->seed());   // Q_ff's signs are the first ff of these
+        std::vector<float> signs(rot.signs().begin(), rot.signs().end());
+        g->signs = std::make_unique<Device>(signs.size() * sizeof(float));
+        g->signs->put(signs.data(), signs.size() * sizeof(float));
+        g->slot_bytes = (llvq_units->expert_bytes() + 255) / 256 * 256;
+        size_t want = 0;
+        if (const char *v = std::getenv("STRATA_GLM_LLVQ_GPU_MIB")) want = size_t(std::stoull(v)) << 20;
+        else {   // the engine's own budget (and the driver's free memory), less 1 GiB for the decode buffers
+            size_t free_bytes = 0, total = 0;
+            check(Device::mem_info(&free_bytes, &total));
+            const size_t budget = Device::limit() > Device::live() ? Device::limit() - Device::live() : 0;
+            const size_t room = std::min(free_bytes, budget), margin = size_t(1024) << 20;
+            want = room > margin ? room - margin : 0;
+        }
+        g->nslots = int(std::min<size_t>(want / g->slot_bytes, size_t(m.experts) * m.layers.size()));
+        // a step of n tokens touches at most n x top_k experts per layer; 2 x top_k keeps one-token decode going
+        if (g->nslots < 2 * m.top_k) throw std::runtime_error("llvq experts: the GPU has room for fewer than 2 x top_k expert slots; set STRATA_GLM_LLVQ_DECODE=cpu");
+        g->slots = std::make_unique<Device>(size_t(g->nslots) * g->slot_bytes);
+        g->owner.assign(size_t(g->nslots), -1);
+        g->last.assign(size_t(g->nslots), 0);
+        g->freed.resize(size_t(g->nslots));
+        g->ready.resize(size_t(g->nslots));
+        for (int i = 0; i < g->nslots; ++i) {
+            check(cudaEventCreateWithFlags(&g->freed[size_t(i)], cudaEventDisableTiming));
+            check(cudaEventCreateWithFlags(&g->ready[size_t(i)], cudaEventDisableTiming));
+        }
+        g->pin_done.resize(64);
+        for (int i = 0; i < 64; ++i) {
+            g->pin.push_back(std::make_unique<Pinned>(llvq_units->expert_bytes()));
+            check(cudaEventCreateWithFlags(&g->pin_done[size_t(i)], cudaEventDisableTiming));
+        }
+        check(cudaStreamCreateWithFlags(&g->copy, cudaStreamNonBlocking));
+        std::cerr << "LLVQ_GPU slots=" << g->nslots << " slot_MiB=" << g->slot_bytes / double(1 << 20)
+                  << " cache_GiB=" << double(g->nslots) * g->slot_bytes / double(1ull << 30) << " pinned_MiB="
+                  << 64 * llvq_units->expert_bytes() / double(1 << 20) << '\n';
+        llvq_gpu = std::move(g);
+    }
+    void moe_llvq_gpu(int l, const float *x, float *out, const strata::core::LayerDescriptor &layer) {
+        llvq_gpu_init();
+        auto &G = *llvq_gpu;
+        const int nt = batch_tokens, K = m.top_k, H = m.hidden, F = layer.intermediate;
+        if (nt < 1 || nt > 8) throw std::runtime_error("llvq experts: 1..8 tokens per GPU decode step");
+        cudaStreamCaptureStatus capturing;
+        check(cudaStreamIsCapturing(stream, &capturing));
+        if (capturing == cudaStreamCaptureStatusActive) throw std::runtime_error("llvq experts: the GPU decode path cannot run inside a captured graph");
+        const int ntp = nt == 1 ? 1 : nt == 2 ? 2 : nt <= 4 ? 4 : 8;
+        check(cudaEventSynchronize(moe_ready));
+        const auto *ids = (const int *)host_moe->p;
+        const auto *routing = (const float *)(ids + cpu::MAXT * K);
+        std::map<int, strata::kernels::LlvqTokenWeights> experts;
+        for (int j = 0; j < nt * K; ++j) {
+            const int e = ids[j];
+            if (e < 0 || e >= m.experts) throw std::runtime_error("llvq experts: invalid route");
+            auto &w = experts[e];
+            w.tokens = nt;
+            w.w[j / K] += routing[j];
+        }
+        trace_routes(l, position, nt, K, ids);
+        auto *dec = llvq->gpu;
+        auto &xp = buf("llvq_xp", size_t(ntp) * H);
+        if (ntp > nt) check(cudaMemsetAsync(xp.p, 0, size_t(ntp) * H * sizeof(float), stream));
+        strata::kernels::llvq_tetra_prepare(dec, G.signs->f(), x, nt, H, xp.f(), stream);
+        auto &yg = buf("llvq_yg", size_t(ntp) * F), &yu = buf("llvq_yu", size_t(ntp) * F), &h = buf("llvq_h", size_t(ntp) * F),
+             &hp = buf("llvq_hp", size_t(ntp) * F), &yd = buf("llvq_yd", size_t(ntp) * H);
+        // slots: this layer's experts are the newest (last == tick), so the LRU victim is never one of them
+        ++G.tick;
+        ++G.layers;
+        struct Item { int e, slot, pin; std::atomic<int> copied{0}; };
+        std::vector<Item> items(experts.size());
+        size_t n = 0;
+        std::vector<size_t> miss;
+        for (const auto &[e, w] : experts) {
+            const long key = long(l) * m.experts + e;
+            int slot;
+            if (auto it = G.where.find(key); it != G.where.end()) { slot = it->second; ++G.hits; }
+            else {
+                slot = 0;
+                for (int i = 1; i < G.nslots; ++i) if (G.last[size_t(i)] < G.last[size_t(slot)]) slot = i;
+                if (G.last[size_t(slot)] == G.tick) throw std::logic_error("llvq experts: no free GPU slot in this layer");
+                if (G.owner[size_t(slot)] >= 0) G.where.erase(G.owner[size_t(slot)]);
+                G.owner[size_t(slot)] = key;
+                G.where[key] = slot;
+                miss.push_back(n);
+                ++G.misses;
+            }
+            G.last[size_t(slot)] = G.tick;
+            items[n].e = e;
+            items[n].slot = slot;
+            items[n].pin = -1;
+            ++n;
+        }
+        if (miss.size() > G.pin.size()) throw std::logic_error("llvq experts: more misses than pinned slots");
+        for (size_t i : miss) {
+            const int ps = G.pin_next;
+            G.pin_next = (G.pin_next + 1) % int(G.pin.size());
+            check(cudaEventSynchronize(G.pin_done[size_t(ps)]));   // its previous upload has left the pinned buffer
+            items[i].pin = ps;
+        }
+        // host copies: 4 tasks over the misses, each item flagged when its bytes are in its pinned buffer
+        std::vector<std::future<void>> tasks;
+        const size_t workers = std::min<size_t>(4, miss.size());
+        for (size_t w = 0; w < workers; ++w)
+            tasks.push_back(std::async(std::launch::async, [&, w] {
+                for (size_t k = w; k < miss.size(); k += workers) {
+                    Item &it = items[miss[k]];
+                    std::memcpy(G.pin[size_t(it.pin)]->p, llvq_units->expert(l, it.e), llvq_units->expert_bytes());
+                    it.copied.store(1, std::memory_order_release);
+                }
+            }));
+        struct Join { std::vector<std::future<void>> &t; ~Join() { for (auto &f : t) if (f.valid()) f.wait(); } } join{tasks};
+        const size_t gu = llvq_units->gate_bytes();
+        auto matrix = [](const uint8_t *host, const uint8_t *dev) {
+            strata::llvq::TetraMatrix t;
+            t.parse(host);
+            return strata::kernels::LlvqTetraMatrixDev{dev + (t.words - host), reinterpret_cast<const float *>(dev + 24),
+                reinterpret_cast<const uint16_t *>(dev + (reinterpret_cast<const uint8_t *>(t.tail_bf16) - host)),
+                float(t.centroids[0]), float(t.centroids[1]), t.rows, t.cols, t.stride};
+        };
+        for (size_t i = 0; i < n; ++i) {
+            Item &it = items[i];
+            auto *dev = static_cast<uint8_t *>(G.slots->p) + size_t(it.slot) * G.slot_bytes;
+            if (it.pin >= 0) {
+                while (!it.copied.load(std::memory_order_acquire)) std::this_thread::yield();
+                check(cudaStreamWaitEvent(G.copy, G.freed[size_t(it.slot)], 0));   // kernels of its previous expert are done
+                check(cudaMemcpyAsync(dev, G.pin[size_t(it.pin)]->p, llvq_units->expert_bytes(), cudaMemcpyHostToDevice, G.copy));
+                check(cudaEventRecord(G.pin_done[size_t(it.pin)], G.copy));
+                check(cudaEventRecord(G.ready[size_t(it.slot)], G.copy));
+                check(cudaStreamWaitEvent(stream, G.ready[size_t(it.slot)], 0));
+            }
+            const uint8_t *host = llvq_units->expert(l, it.e);
+            strata::kernels::llvq_tetra_gemv(dec, matrix(host, dev), xp.f(), ntp, yg.f(), stream);
+            strata::kernels::llvq_tetra_gemv(dec, matrix(host + gu, dev + gu), xp.f(), ntp, yu.f(), stream);
+            strata::kernels::llvq_moe_swiglu(yg.f(), yu.f(), F, ntp, layer.swiglu_limit, h.f(), stream);
+            strata::kernels::llvq_tetra_prepare(dec, G.signs->f(), h.f(), ntp, F, hp.f(), stream);
+            strata::kernels::llvq_tetra_gemv(dec, matrix(host + 2 * gu, dev + 2 * gu), hp.f(), ntp, yd.f(), stream);
+            strata::kernels::llvq_moe_accumulate(yd.f(), H, ntp, experts.at(it.e), out, stream);
+            check(cudaEventRecord(G.freed[size_t(it.slot)], stream));
+        }
     }
     struct NativeGpuExpert {
         std::unique_ptr<Device> data;
@@ -4398,6 +4603,8 @@ class Decoder {
             moe_mtp(p, x, out, layer);
             return;
         }
+        if (llvq_layer(l) && fast) { moe_exl3_gpu(p, l, x, out, layer); return; }
+        if (llvq_layer(l) && gpu_decode_experts) throw std::runtime_error("llvq experts: GPU decode experts are not supported");
         if (!fast && gpu_decode_experts) {
             moe_streamed(p, x, out, layer);
             return;
@@ -4409,6 +4616,7 @@ class Decoder {
         const int nt = batch_tokens;
         if (prepared_moe_layer != l) enqueue_moe_prefix(p, l, x, out, layer);
         prepared_moe_layer = -1;
+        if (llvq_layer(l) && llvq_gpu_decode) { moe_llvq_gpu(l, x, out, layer); return; }
         const auto prefix = moe_prefixes.at(l);
         auto *host_ids = (int *)host_moe->p;
         auto *routing = (float *)(host_ids + cpu::MAXT * m.top_k);
@@ -4477,7 +4685,7 @@ class Decoder {
         }
         cpu::NativeFmt f;
         std::string error;
-        if (!cpu::native_fmt(G.tensor->type, D.tensor->type, m.hidden, layer.intermediate, f, error))
+        if (!layer_fmt(l, G, D, layer.intermediate, f, error))
             throw std::runtime_error(error);
         f.swiglu_limit = layer.swiglu_limit;
         f.q23_layout=q23_layout;
@@ -4488,6 +4696,9 @@ class Decoder {
         f.canon = canon_types(G.tensor->type, D.tensor->type);
         f.gate_skip = f.canon ? gate_skip[l] : 0.f;
         if(block_screen){f.hidden_transform=block_screen.get();f.observer_layer=l;f.fuse_h_quant=false;}
+        llvq_plain(l, f);
+        if (llvq_layer(l) && (prepared != prepared_experts.end() || remote_tp || direct || expert_cache[l] || numa_experts.count(l)))
+            throw std::runtime_error("llvq experts: only the plain CPU expert lane is supported (no GPU tier, cache, NUMA rows, remote TP)");
         layout.gate_skip = f.gate_skip;
         if (f.canon) cpu::canon_gate_stats_layer(l);
         if (f.canon && (prepared != prepared_experts.end() || remote_tp || direct || expert_cache[l]))
@@ -4521,7 +4732,7 @@ class Decoder {
             const int e = selected[j], t = j / m.top_k;
             if (decode_cache_adapt) ++decode_seen[l][e];
             ++cache_entries;
-            if (primary_address(e)) {
+            if (!llvq_layer(l) && primary_address(e)) {
                 hits[e].push_back(j);
                 ++cache_hits;
                 continue;
@@ -4542,6 +4753,11 @@ class Decoder {
                 job.blob = gate + (size_t)e * f.up_off;
                 job.native_up = up + (size_t)e * f.up_off;
                 job.native_down = down + (size_t)e * (f.bytes - f.down_off);
+                if (llvq_layer(l)) {   // the expert's [gate | up | down] records in its unit
+                    job.blob = llvq_units->expert(l, e);
+                    job.native_up = job.blob + f.up_off;
+                    job.native_down = job.blob + f.down_off;
+                }
                 if(auto owned=numa_experts.find(l);owned!=numa_experts.end())for(int node=0;node<2;++node)
                     job.numa[node]={owned->second.gate->shard(e,node),owned->second.up->shard(e,node),owned->second.down->shard(e,node)};
             } else if (inserted) {
@@ -4819,7 +5035,7 @@ class Decoder {
         const auto &D = artifact.at(p + "ffn_down_exps.weight");
         cpu::NativeFmt f;
         std::string error;
-        if (!cpu::native_fmt(G.tensor->type, D.tensor->type, H, layer.intermediate, f, error))
+        if (!layer_fmt(l, G, D, layer.intermediate, f, error))
             throw std::runtime_error(error);
         f.swiglu_limit = layer.swiglu_limit;
         f.q23_layout = q23_layout;
@@ -4832,6 +5048,7 @@ class Decoder {
         f.canon = canon_types(G.tensor->type, D.tensor->type);
         f.gate_skip = f.canon ? gate_skip[l] : 0.f;
         if(block_screen){f.hidden_transform=block_screen.get();f.observer_layer=l;f.fuse_h_quant=false;}
+        llvq_plain(l, f);
         if (f.canon && primary) cpu::canon_gate_stats_layer(l);
         if (f.canon && (prepared != prepared_experts.end() || remote_tp))
             throw std::runtime_error("GLM: canonical experts cannot be combined with prepared experts or remote TP");
@@ -4848,6 +5065,10 @@ class Decoder {
         job_of.fill(-1);
         const auto owned = numa_experts.find(l);
         const auto *resident = pipeline_residents ? (const unsigned long long *)cached_decode->host_lookup->p + (size_t)l * 288 : nullptr;
+        if (llvq_layer(l) && llvq_gpu_decode)
+            throw std::runtime_error("llvq experts on the GPU need the plain decode path: set STRATA_GLM_STEP_PIPELINE=0 (or STRATA_GLM_LLVQ_DECODE=cpu)");
+        if (llvq_layer(l) && (prepared != prepared_experts.end() || remote_tp || resident || owned != numa_experts.end()))
+            throw std::runtime_error("llvq experts: only the plain CPU expert lane is supported (no GPU tier, NUMA rows, remote TP)");
 #ifdef __linux__
         bool mixed_pending = false;
         const bool mixed_decode_partial=mixed && !canon_strict() && strata_env_truthy_one("STRATA_GLM_MIXED_DECODE_PARTIAL");
@@ -4917,6 +5138,7 @@ class Decoder {
                 continue;
             }
 #ifdef __linux__
+            if (mixed_pending && mixed_route[j] && llvq_layer(l)) throw std::runtime_error("llvq experts: the mixed GPU worker is not supported");
             if (mixed_pending && mixed_route[j]) {
                 cpu_weights[j] = 0.f;
                 if (!f.canon) std::fill_n(results + size_t(j)*H, H, 0.f);
@@ -4934,6 +5156,11 @@ class Decoder {
                 job.blob = gate + (size_t)e * f.up_off;
                 job.native_up = up + (size_t)e * f.up_off;
                 job.native_down = down + (size_t)e * (f.bytes - f.down_off);
+                if (llvq_layer(l)) {
+                    job.blob = llvq_units->expert(l, e);
+                    job.native_up = job.blob + f.up_off;
+                    job.native_down = job.blob + f.down_off;
+                }
                 if (owned != numa_experts.end())
                     for (int node = 0; node < 2; ++node)
                         job.numa[node] = {owned->second.gate->shard(e, node), owned->second.up->shard(e, node),
@@ -7082,6 +7309,23 @@ class Decoder {
         } else if(artifact.has_expert_pack())
             // An assembled single file carries the pack inside; owned NUMA arenas may use 2 MiB pages here too.
             packed_huge_pages=strata_env_is_one("STRATA_GLM_PACK_HUGE");
+        if(!llvq_dir().empty()&&!artifact.is_exl3()) {
+            if(!expert_pack.empty())throw std::invalid_argument("llvq experts replace the model's routed experts: no --expert-pack");
+            int first=-1,last=-1;   // the MoE layers (the MTP draft layer is not in m.layers and keeps the GGUF's experts)
+            for(size_t l=0;l<m.layers.size();++l)if(m.layers[l].ffn==strata::core::FfnKind::Moe){if(first<0)first=int(l);last=int(l);}
+            if(first<0)throw std::invalid_argument("llvq experts: the model has no MoE layers");
+            llvq_units=std::make_unique<strata::llvq::UnitSet>();
+            llvq_units->open(llvq_dir(),first,last,int(m.experts),m.hidden,m.layers[size_t(first)].intermediate);
+            cpu::llvq_expert_init(llvq_units->seed());
+            {
+                const char* mode=std::getenv("STRATA_GLM_LLVQ_DECODE");
+                const std::string d=mode?mode:"gpu";
+                if(d!="gpu"&&d!="cpu")throw std::invalid_argument("STRATA_GLM_LLVQ_DECODE must be gpu or cpu");
+                llvq_gpu_decode=d=="gpu";
+            }
+            std::cerr<<"LLVQ_EXPERTS dir="<<llvq_dir()<<" layers="<<first<<"-"<<last<<" experts="<<m.experts<<" seed="<<llvq_units->seed()
+                     <<" GiB="<<llvq_units->mapped_bytes()/double(1ull<<30)<<" decode="<<(llvq_gpu_decode?"gpu":"cpu")<<" (prefill: dequantized GEMM)\n";
+        }
         // Opt-in for small GPUs: size staging from the effective artifact, after
         // overlays. The historical 208 MiB floor needlessly occupies two slots
         // when every group in this model is smaller. The projection bytes and
@@ -8180,6 +8424,7 @@ class Decoder {
         std::cerr<<"BLOCK_SCREEN mode=oracle diagnostic_only=1 profile="<<profile<<'\n';
     }
     void prepare_numa_weights() {
+        if (llvq_units) { std::cerr << "LLVQ_EXPERTS NUMA owned rows off: the experts are read from their mapped units\n"; return; }
         if (layer_stage) return; // the shared mapping is owned and locked once by the layer coordinator
         const char* enabled=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS");
         if (pool.socket_rows() && (!enabled || std::string(enabled) != "1"))
@@ -9835,7 +10080,8 @@ class Decoder {
             m.index_dim != 128)
             throw std::invalid_argument("GLM: GPU prefill requires the inspected GLM-5.3-Flash geometry");
         for (size_t l = 3; l < m.layers.size(); ++l) {
-            if (!owns_layer(l)) continue;
+            // LLVQ prefill dequantizes its unit records; the GGUF expert format is not used.
+            if (!owns_layer(l) || llvq_layer(int(l))) continue;
             auto p = "blk." + std::to_string(l) + ".";
             // Tensor prefill dequantizes these blocks directly; it does not need
             // the optional K-quant MMQ library. A configured small-row MMQ

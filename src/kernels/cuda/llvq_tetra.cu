@@ -882,6 +882,24 @@ __global__ void prepare_kernel(const DecodeTablesDev* __restrict__ tg, const flo
         o[i] = (b < nb ? v[24 * b + order[t]] : v[i]) * s;
     }
 }
+// Expert MoE glue for llvq decode on the GPU (llvq_moe_*): gemv outputs are token-minor, y[r * ntok + k].
+__global__ void swiglu_tm_kernel(const float* __restrict__ g, const float* __restrict__ u, int rows, int ntok, float limit,
+                                 float* __restrict__ h) {
+    const int n = rows * ntok;
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += gridDim.x * blockDim.x) {
+        const int r = i / ntok, k = i % ntok;
+        float gv = g[i], uv = u[i];
+        if (limit > 0) { gv = fminf(gv, limit); uv = fmaxf(-limit, fminf(uv, limit)); }
+        h[size_t(k) * rows + r] = gv / (1.f + expf(-gv)) * uv;
+    }
+}
+__global__ void accumulate_tm_kernel(const float* __restrict__ y, int rows, int ntok, LlvqTokenWeights w, float* __restrict__ out) {
+    const int n = rows * ntok;
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; i += gridDim.x * blockDim.x) {
+        const int r = i / ntok, k = i % ntok;
+        if (k < w.tokens && w.w[k] != 0.f) out[size_t(k) * rows + r] += w.w[k] * y[i];
+    }
+}
 }  // namespace
 
 struct LlvqTetraDecodeGpu {
@@ -933,6 +951,14 @@ void llvq_tetra_dequant_f16(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDe
 void llvq_tetra_dequant_f32(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDev& m, float* out, void* stream) {
     dequant_kernel<float><<<1024, 256, 0, (cudaStream_t)stream>>>(d->tables, m, out);
     check(cudaGetLastError(), "dequant launch");
+}
+void llvq_moe_swiglu(const float* g, const float* u, int rows, int ntok, float limit, float* h, void* stream) {
+    swiglu_tm_kernel<<<std::max(1, std::min(1024, (rows * ntok + 255) / 256)), 256, 0, (cudaStream_t)stream>>>(g, u, rows, ntok, limit, h);
+    check(cudaGetLastError(), "swiglu launch");
+}
+void llvq_moe_accumulate(const float* y, int rows, int ntok, const LlvqTokenWeights& w, float* out, void* stream) {
+    accumulate_tm_kernel<<<std::max(1, std::min(1024, (rows * ntok + 255) / 256)), 256, 0, (cudaStream_t)stream>>>(y, rows, ntok, w, out);
+    check(cudaGetLastError(), "accumulate launch");
 }
 void llvq_tetra_prepare(const LlvqTetraDecodeGpu* d, const float* signs, const float* x, int ntok, int cols, float* xp, void* stream) {
     if (cols <= 0 || (cols & (cols - 1))) throw std::runtime_error("llvq tetra prepare: width must be a power of two");

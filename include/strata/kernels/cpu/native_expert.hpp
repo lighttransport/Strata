@@ -11,13 +11,14 @@
 #include <cstdint>
 #include <string>
 #include "strata/kernels/cpu/expert_observer.hpp"
+#include "strata/kernels/cpu/llvq_expert.hpp"
 
 namespace strata::kernels::cpu {
 
-/// Scratch capacity includes GLM's 4096 values as Q8_K (16 x 292 bytes).
-inline constexpr size_t kNativeActBytes = 8192;
-/// Scratch capacity includes GLM's 2048 values as Q8_K (8 x 292 bytes).
-inline constexpr size_t kNativeHBytes = 4096;
+/// Scratch capacity: GLM's 4096 values as Q8_K (16 x 292 bytes), or as llvq's rotated f32 (16384 bytes).
+inline constexpr size_t kNativeActBytes = 16384;
+/// Scratch capacity: GLM's 2048 values as Q8_K (8 x 292 bytes), or as llvq's rotated f32 (8192 bytes).
+inline constexpr size_t kNativeHBytes = 8192;
 inline constexpr int kNativeFF = 2048;
 
 /// One layer's native expert geometry.
@@ -49,7 +50,8 @@ constexpr size_t kNvfp4Tail = 16;
 
 /// Whether this build has the ggml-cpu path.
 bool native_experts_available() noexcept;
-/// Fills `f` for a layer; false (with a reason) when ggml-cpu has no dot product for a type.
+/// Fills `f` for a layer; false (with a reason) when ggml-cpu has no dot product for a type. kLlvqType for both types:
+/// llvq Tetra records (llvq_expert.hpp; llvq_expert_init first), blob = [gate record | up record | down record].
 bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt& f, std::string& err);
 
 /// x (n_embd floats) -> the gate/up activation (act_bytes).
