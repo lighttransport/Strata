@@ -223,6 +223,8 @@ and retained weights renormalized; prefill uses all routes.
 | DFlash2 depth 7, margin 3, at most seven soft accepts | 21.61 | 503.26 | Unscored | One 128-output screen; target and worker residency checked |
 | DFlash2 depth 7, native graphs up to four rows | 24.87 | 514.23 | Unscored | Full trial, median of three |
 | DFlash2 depth 7, native graphs up to eight rows | 24.94 | 514.53 | Unscored | Full trial, median of three |
+| MTP depth 3, affinity comparison control | 32.05 | 520.11 | 8/8 long and 8/8 short | Full trial, median of three |
+| MTP depth 3, routing affinity 0.025 on both GPUs | 36.33 | 519.76 | 8/8 long and 8/8 short | Full trial, median of three; fresh holdout unscored |
 
 The repeated trials exited successfully, had no timed major faults or observed
 swap, and emitted no real EOS IDs in the fixed-length timings. Neural bounded
@@ -256,6 +258,25 @@ request. Its first warmup retained 7.69 GB of scale metadata; peak process RSS
 was 174.4 GiB. The exit cause was not captured, and the later allocation-level
 memory snapshot reported zero OOM kills. This experiment supplies no throughput
 result and does not change the 181 GiB allocation or the selected preset.
+
+The opt-in `STRATA_GLM_FP4_CPU_Q8_BIAS=1` path instead changes VNNI integer
+operands: unsigned FP4 integers include an offset of 12, canceled by a
+precomputed signed activation-sum correction. The existing Q8 quantization,
+floating-point factors and reduction order stay the same. CPU bitwise checks
+passed on the Xeon's VNNI path and forced AVX2/scalar fallbacks, including widths
+1–8, row tiles, borrowed and owned scales, sparse exceptions, extreme signed
+bytes and output guards. CUDA and HIP decoder builds passed; HIP GPU execution
+was not tested. The native GLM path is excluded from the SYCL build. With the
+option off, the original 128 output IDs also matched exactly.
+
+Its CPU-only microbenchmark used 32 pinned workers, a rotating 64 MiB code set,
+16 discarded calls and 64 timed calls in each of three samples. Median
+one-token gate/up product time changed from 497.50 to 501.75 microseconds and
+down-product time from 573.06 to 641.86, so it failed the gate for a full-model
+trial. Eight-token products improved from 999.41 to 544.90 and from 1,000.69 to
+594.10 microseconds. Activation quantization and model execution are excluded;
+these component results supply no model throughput claim. The option remains
+off and no selected profile uses it.
 
 The paired 128-output screens below use two complete warmups and one timed
 request. All four emitted identical 128 IDs. They measure the same bounded
@@ -307,6 +328,27 @@ not establish a gain over the repeated reference. On the later same-build pair,
 secondary-only bonuses of 0.025, 0.05 and 0.10 measured 28.80, 28.95 and 29.65
 tok/s against a 28.74 control. Its 0.15 trial had six major faults and failed
 timing qualification. Neither experiment changes a selected preset.
+
+The later repeated affinity pair measured 32.05 / 520.11 tok/s for the control
+and 36.33 / 519.76 for the 0.025 candidate: 13.36% higher median decode throughput
+on the same source-65 binary. Each passed all eight reused long coding checks
+and all eight reused natural-length checks. The stronger 0.15 candidate passed
+only seven long checks and was rejected. The mild candidate changed the timed
+output IDs; this is a lossy routing policy. All three requests in each mode
+repeated their respective outputs, with zero timed major faults or observed
+swap. Their first timed requests created 333 and 305 CPU scale-cache entries;
+the next two created none. The individual candidate timings were 32.30, 36.83
+and 36.33 tok/s. These reused panels do not establish general quality, and the
+fresh twenty-case holdout remains unscored. The selected preset stays unchanged.
+
+The candidate used 20,455 CPU expert groups and 134 verification rounds per
+timed request, versus 27,590 groups and 146 rounds for its control. In its
+median request, verification took 12,093.4 ms of 14,067.0 ms. Removing all
+nonverification work for that same proposal stream would give 42.25 tok/s;
+reaching 50 with the other work fixed requires 1.47 times faster verification.
+The measured throughput still needs a 1.38 times decode gain and a 1.54 times
+prefill gain to reach 50 / 800, or 1.92 times prefill to reach 1,000. These are
+gaps and conditional phase calculations, not forecasts for a new policy.
 
 The simulator keeps the selected 32.10 / 520.89 measurements and resource
 capacities unchanged. It adds measured speculative phases as separate scenarios:

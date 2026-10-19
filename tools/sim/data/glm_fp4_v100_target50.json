@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "b0042559d1625a380d2b0cf15b564333a0085d3e55525a5f58815bc80a747a5d"
+      "sha256": "346c9daf6e8b37b8560169dd8405a98f5a1a3460ec1532d20de7df539c4e2f6e"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6358,6 +6358,26 @@
       "fit": false
     },
     {
+      "name": "dflash2-affinity-candidate-full-v65",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 36.326153408687,
+      "prefill_tok_s": 519.7573788797807,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-affinity-control-full-v65",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 32.046056014749965,
+      "prefill_tok_s": 520.1137748882568,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-affinity-control-v52",
       "experiment_family": "dflash2",
       "decode_tok_s": 28.759729624772763,
@@ -7467,7 +7487,9 @@
     "DFlash2: a 38.56 tok/s timing passed residency checks but its reused coding panel passed 0/8. It is not selected as a usable preset.",
     "DFlash2: real weights run on SM70 using FP16 tensor operands and FP32 GEMM outputs. FP16 outputs overflowed; no model weights were changed. All new observations are non-fitted screens and do not replace the qualified MTP anchor.",
     "DFlash2: native verification graph widths4/8 measured 24.87 / 24.94 tok/s with identical three512-ID outputs in each mode. These observations do not replace the qualified MTP anchor.",
-    "DFlash2: MLA graphs off/on measured 24.94 / 24.92 tok/s with identical three512-ID outputs in each mode. These observations do not replace the qualified MTP anchor."
+    "DFlash2: MLA graphs off/on measured 24.94 / 24.92 tok/s with identical three512-ID outputs in each mode. These observations do not replace the qualified MTP anchor.",
+    "DFlash2: MTP3 routing affinity 0.025 measured 32.05 / 36.33 tok/s in a repeated same-build pair; both passed eight reused long and eight reused natural-length coding checks. Fresh20 remain unscored and the qualified MTP anchor is unchanged.",
+    "DFlash2: exact activation-bias VNNI operands passed CPU bitwise checks but failed the predeclared one-token CPU product speed gate. Eight-token component improvements do not establish model throughput; no full-model candidate timing was run and the option remains off."
   ],
   "limitations": [
     "Conditional resource roofs are optimistic workload bounds, not forecasts or fitted timing predictions.",
@@ -7516,6 +7538,54 @@
   },
   "experimental_speculative_requests": [
     {
+      "name": "dflash2-affinity-candidate-full-v65-trial0",
+      "advances": 511,
+      "decode_ms": 15821.0,
+      "verify_ms": 13927.0
+    },
+    {
+      "name": "dflash2-affinity-candidate-full-v65-trial1",
+      "advances": 511,
+      "decode_ms": 13873.2,
+      "verify_ms": 11909.1
+    },
+    {
+      "name": "dflash2-affinity-candidate-full-v65-trial2",
+      "advances": 511,
+      "decode_ms": 14067.0,
+      "verify_ms": 12093.4
+    },
+    {
+      "name": "dflash2-affinity-control-full-v65-trial0",
+      "advances": 511,
+      "decode_ms": 18016.8,
+      "verify_ms": 15942.0
+    },
+    {
+      "name": "dflash2-affinity-control-full-v65-trial1",
+      "advances": 511,
+      "decode_ms": 15745.5,
+      "verify_ms": 13610.9
+    },
+    {
+      "name": "dflash2-affinity-control-full-v65-trial2",
+      "advances": 511,
+      "decode_ms": 15945.8,
+      "verify_ms": 13808.5
+    },
+    {
+      "name": "dflash2-affinity-control-v52",
+      "advances": 511,
+      "decode_ms": 17767.9,
+      "verify_ms": 15705.9
+    },
+    {
+      "name": "dflash2-affinity-control-v65",
+      "advances": 511,
+      "decode_ms": 17780.8,
+      "verify_ms": 15698.7
+    },
+    {
       "name": "dflash2-affinity-dflash2-005-v52",
       "advances": 511,
       "decode_ms": 18022.5,
@@ -7538,6 +7608,78 @@
       "verification_rows": 1048,
       "single_tail_steps": 0,
       "block_size": 8
+    },
+    {
+      "name": "dflash2-affinity-dual-mtp-0025-v65",
+      "advances": 511,
+      "decode_ms": 15787.3,
+      "verify_ms": 13896.5
+    },
+    {
+      "name": "dflash2-affinity-dual-mtp-015-v65",
+      "advances": 511,
+      "decode_ms": 15253.4,
+      "verify_ms": 13359.5
+    },
+    {
+      "name": "dflash2-affinity-mtp-0025-v52",
+      "advances": 511,
+      "decode_ms": 15994.2,
+      "verify_ms": 14101.3
+    },
+    {
+      "name": "dflash2-affinity-mtp-005-v52",
+      "advances": 511,
+      "decode_ms": 17506.9,
+      "verify_ms": 15545.0
+    },
+    {
+      "name": "dflash2-affinity-mtp-01-v52",
+      "advances": 511,
+      "decode_ms": 18986.1,
+      "verify_ms": 16844.9
+    },
+    {
+      "name": "dflash2-affinity-mtp-015-v52",
+      "advances": 511,
+      "decode_ms": 14966.6,
+      "verify_ms": 13082.1
+    },
+    {
+      "name": "dflash2-affinity-secondary-mtp-0025-v65",
+      "advances": 511,
+      "decode_ms": 17742.0,
+      "verify_ms": 15767.6
+    },
+    {
+      "name": "dflash2-affinity-secondary-mtp-005-v65",
+      "advances": 511,
+      "decode_ms": 17650.1,
+      "verify_ms": 15755.3
+    },
+    {
+      "name": "dflash2-affinity-secondary-mtp-01-v65",
+      "advances": 511,
+      "decode_ms": 17231.7,
+      "verify_ms": 15264.1
+    },
+    {
+      "name": "dflash2-control-v25",
+      "advances": 127,
+      "decode_ms": 5787.7,
+      "verify_ms": 5311.6
+    },
+    {
+      "name": "dflash2-control-v26",
+      "advances": 127,
+      "decode_ms": 5727.04,
+      "verify_ms": 5260.54
+    },
+    {
+      "name": "dflash2-control-v27",
+      "advances": 127,
+      "decode_ms": 5723.32,
+      "verify_ms": 5260.67
     },
     {
       "name": "dflash2-cublas-depth3-v30",
@@ -7598,6 +7740,24 @@
       "verification_rows": 499,
       "single_tail_steps": 1,
       "block_size": 8
+    },
+    {
+      "name": "dflash2-early-control-v28-trial0",
+      "advances": 511,
+      "decode_ms": 17751.4,
+      "verify_ms": 15666.9
+    },
+    {
+      "name": "dflash2-early-control-v28-trial1",
+      "advances": 511,
+      "decode_ms": 15753.7,
+      "verify_ms": 13608.3
+    },
+    {
+      "name": "dflash2-early-control-v28-trial2",
+      "advances": 511,
+      "decode_ms": 15731.4,
+      "verify_ms": 13588.6
     },
     {
       "name": "dflash2-early-margin3-depth3-v28-trial0",
@@ -7742,6 +7902,42 @@
       "verification_rows": 800,
       "single_tail_steps": 1,
       "block_size": 8
+    },
+    {
+      "name": "dflash2-graph-control-full-v34-trial0",
+      "advances": 511,
+      "decode_ms": 17507.4,
+      "verify_ms": 15427.9
+    },
+    {
+      "name": "dflash2-graph-control-full-v34-trial1",
+      "advances": 511,
+      "decode_ms": 15638.2,
+      "verify_ms": 13508.1
+    },
+    {
+      "name": "dflash2-graph-control-full-v34-trial2",
+      "advances": 511,
+      "decode_ms": 15926.9,
+      "verify_ms": 13786.7
+    },
+    {
+      "name": "dflash2-graph-control-full-v43-trial0",
+      "advances": 511,
+      "decode_ms": 17598.3,
+      "verify_ms": 15527.5
+    },
+    {
+      "name": "dflash2-graph-control-full-v43-trial1",
+      "advances": 511,
+      "decode_ms": 15652.2,
+      "verify_ms": 13524.9
+    },
+    {
+      "name": "dflash2-graph-control-full-v43-trial2",
+      "advances": 511,
+      "decode_ms": 15649.6,
+      "verify_ms": 13524.2
     },
     {
       "name": "dflash2-graph-cublas-depth3-v32",
@@ -7936,6 +8132,36 @@
       "block_size": 8
     },
     {
+      "name": "dflash2-mtp-depth3-drop065-v37",
+      "advances": 127,
+      "decode_ms": 5423.29,
+      "verify_ms": 4870.96
+    },
+    {
+      "name": "dflash2-mtp-depth3-drop075-v37",
+      "advances": 127,
+      "decode_ms": 4658.44,
+      "verify_ms": 4146.17
+    },
+    {
+      "name": "dflash2-quartet-cache-control-full-v81-trial0",
+      "advances": 511,
+      "decode_ms": 17731.1,
+      "verify_ms": 15660.0
+    },
+    {
+      "name": "dflash2-quartet-cache-control-full-v81-trial1",
+      "advances": 511,
+      "decode_ms": 15902.2,
+      "verify_ms": 13765.6
+    },
+    {
+      "name": "dflash2-quartet-cache-control-full-v81-trial2",
+      "advances": 511,
+      "decode_ms": 15862.7,
+      "verify_ms": 13727.6
+    },
+    {
       "name": "dflash2-skinny-depth3-v30",
       "advances": 127,
       "decode_ms": 4206.78,
@@ -8006,6 +8232,42 @@
       "verification_rows": 488,
       "single_tail_steps": 1,
       "block_size": 8
+    },
+    {
+      "name": "dflash2-verify-graphs-candidate-full-v67-trial0",
+      "advances": 511,
+      "decode_ms": 17795.8,
+      "verify_ms": 15731.7
+    },
+    {
+      "name": "dflash2-verify-graphs-candidate-full-v67-trial1",
+      "advances": 511,
+      "decode_ms": 15546.9,
+      "verify_ms": 13417.6
+    },
+    {
+      "name": "dflash2-verify-graphs-candidate-full-v67-trial2",
+      "advances": 511,
+      "decode_ms": 15537.8,
+      "verify_ms": 13408.1
+    },
+    {
+      "name": "dflash2-verify-graphs-control-full-v67-trial0",
+      "advances": 511,
+      "decode_ms": 18017.5,
+      "verify_ms": 15937.9
+    },
+    {
+      "name": "dflash2-verify-graphs-control-full-v67-trial1",
+      "advances": 511,
+      "decode_ms": 15901.8,
+      "verify_ms": 13761.3
+    },
+    {
+      "name": "dflash2-verify-graphs-control-full-v67-trial2",
+      "advances": 511,
+      "decode_ms": 15871.1,
+      "verify_ms": 13731.8
     },
     {
       "name": "dflash2-wide-graphs-candidate-full-v72-trial0",
