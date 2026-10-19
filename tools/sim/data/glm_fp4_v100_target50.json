@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "3460b43d2f9aa88917902a4beaa21ec2137a4b6616ae378626c1f120a7e92a3b"
+      "sha256": "b67e76f7ee20adf36e398ff4bbb78551e08f3e3b2118fe02365e526c43ea489e"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6958,10 +6958,30 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-mtp-calibration-candidate-full-v136",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 39.40955083909181,
+      "prefill_tok_s": 519.4969909506566,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-mtp-calibration-control-full-v123",
       "experiment_family": "dflash2",
       "decode_tok_s": 36.17263762945345,
       "prefill_tok_s": 520.3351181742538,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-mtp-calibration-control-full-v136",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 36.39341927213162,
+      "prefill_tok_s": 520.0180279687431,
       "fit": false,
       "performance_anchor": false,
       "worker_residency_checked": false,
@@ -7725,6 +7745,7 @@
     "DFlash2: bounded CPU scale decoding only for one-token groups measured 36.41 / 36.84 decode tok/s in a same-build pair, three warmups and three timed512-output requests per side, with all six output streams identical. Timing alone does not establish coding quality or change a selected anchor or resource capacity.",
     "DFlash2: batching KDA query/key/value projections measured 36.44 / 37.41 decode tok/s in a same-build pair, three warmups and three timed512-output requests per side, with all six output streams identical. Timing alone does not establish coding quality or change a selected anchor or resource capacity.",
     "DFlash2: MTP calibration measured 36.17 / 41.29 decode tok/s with three full warmups and three timed512 requests per side. Candidate passed only7/8 reused long coding checks and is rejected as a usable preset; short quality was skipped. No fitted capacity or selected anchor changed.",
+    "DFlash2: MTP calibration measured 36.39 / 39.41 decode tok/s with three full warmups and three timed512 requests per side. Reused coding quality is pending. No fitted capacity or selected anchor changed.",
     "DFlash2: named fixed-projection profiling separates target prefill from decode/preparation. Attention projections are the largest fixed narrow GPU groups; timing endpoints include input conversion and host enqueue gaps and overlap broader product timers. These diagnostics do not change a throughput anchor or hardware capacity.",
     "DFlash2: the separately instrumented hot512-output request had zero new CPU metadata entries; target CPU setup totaled271ms, fused CPU products4147ms, and routing/input preparation plus coordinator waiting4857ms. Profiling synchronizes streams, phase sums overlap and must not be added, used as model timing, or fitted to capacities.",
     "DFlash2: the later CPU microbenchmark gives variants identical activation/scales storage. Earlier copies changed storage as well as kernels; the apparent eight-token gain did not persist in the controlled comparison. CPU component rows remain diagnostic, not model forecasts or fitted resource capacities.",
@@ -8575,6 +8596,24 @@
       "verify_ms": 10279.8
     },
     {
+      "name": "dflash2-mtp-calibration-candidate-full-v136-trial0",
+      "advances": 511,
+      "decode_ms": 12966.4,
+      "verify_ms": 11053.2
+    },
+    {
+      "name": "dflash2-mtp-calibration-candidate-full-v136-trial1",
+      "advances": 511,
+      "decode_ms": 12948.9,
+      "verify_ms": 11037.0
+    },
+    {
+      "name": "dflash2-mtp-calibration-candidate-full-v136-trial2",
+      "advances": 511,
+      "decode_ms": 13014.8,
+      "verify_ms": 11095.0
+    },
+    {
       "name": "dflash2-mtp-calibration-control-full-v123-trial0",
       "advances": 511,
       "decode_ms": 14126.7,
@@ -8591,6 +8630,24 @@
       "advances": 511,
       "decode_ms": 14164.5,
       "verify_ms": 12190.9
+    },
+    {
+      "name": "dflash2-mtp-calibration-control-full-v136-trial0",
+      "advances": 511,
+      "decode_ms": 14072.3,
+      "verify_ms": 12103.9
+    },
+    {
+      "name": "dflash2-mtp-calibration-control-full-v136-trial1",
+      "advances": 511,
+      "decode_ms": 14012.9,
+      "verify_ms": 12053.9
+    },
+    {
+      "name": "dflash2-mtp-calibration-control-full-v136-trial2",
+      "advances": 511,
+      "decode_ms": 14041.0,
+      "verify_ms": 12075.6
     },
     {
       "name": "dflash2-mtp-calibration-depth3-margin4-cap05-v122",

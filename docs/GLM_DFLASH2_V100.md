@@ -451,6 +451,13 @@ paragraph until the fixed output limit. Its natural-length panel was skipped.
 The control passed all eight long and eight natural-length checks. The faster
 policy is rejected as a usable preset; the fresh twenty remain unscored.
 
+A lower-depth fallback kept depth three and used margin four with the 0.60
+route-drop cap. Its matched pair measured 36.39 / 39.41 decode and
+520.02 / 519.50 prefill tok/s, with three full warmups and three timed
+512-output requests per side. This 8.29% decode gain passed the timing gate.
+Separate reused coding checks are queued; the changed output stream remains
+experimental until those checks finish. The selected preset is unchanged.
+
 An exact one-token CPU scale-decoding option was also tested with three full
 warmups and three timed 512-output requests per side. Control and candidate
 measured 36.41 / 36.84 decode and 520.38 / 521.00 prefill tok/s. All six output
