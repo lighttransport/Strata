@@ -479,6 +479,12 @@ GEMM, skinny products, matrix copies and scale preparation. Event intervals can
 include host enqueue gaps; intervals on separate streams overlap. A report is
 flushed at a routed layer and can include preceding dense work. Do not sum these
 intervals into request latency or interpret `input_wait_ms` as pure copy time.
+The same opt-in emits `FP4_DENSE_INTERVAL` with the tensor name, dimensions,
+actual token width and packed format. These intervals include FP16 input
+conversion and the matrix product; they overlap the broader product intervals.
+Request-end reporting drains remaining events, including the final vocabulary
+projection, so its timing stays with its request. Profiling waits for the event
+endpoints and is excluded from throughput qualification.
 
 `FP4_TRANSFER` reports cumulative submitted matrix H2D bytes, split into startup,
 request preparation/prefill and decode. Counts include compressed scale metadata

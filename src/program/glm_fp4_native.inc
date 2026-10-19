@@ -117,24 +117,37 @@ class Fp4NativeExecutor {
         std::unique_ptr<PrefillBank> bank;
         uint64_t bank_layers=0,bank_unused_experts=0;
         double bank_wait_ms=0;
-        struct Trace {cudaEvent_t first=nullptr,last=nullptr;const char* stage;};
+        struct Trace {
+            cudaEvent_t first=nullptr,last=nullptr;const char* stage;
+            int rows=0,columns=0,tokens=0,format=-1;bool ended=false;
+        };
         std::vector<Trace> traces;bool tracing=false;
-        size_t trace_start(const char* stage,cudaStream_t s) {
+        size_t trace_start(const char* stage,cudaStream_t s,int rows=0,int columns=0,int tokens=0,int format=-1) {
             if(!tracing)return SIZE_MAX;
             cudaStreamCaptureStatus capture;check(cudaStreamIsCapturing(s,&capture));
             if(capture!=cudaStreamCaptureStatusNone)return SIZE_MAX;
-            Trace t{};t.stage=stage;
+            Trace t{};t.stage=stage;t.rows=rows;t.columns=columns;t.tokens=tokens;t.format=format;
             check(cudaEventCreate(&t.first));
             try {check(cudaEventCreate(&t.last));check(cudaEventRecord(t.first,s));traces.push_back(t);}
             catch(...){cudaEventDestroy(t.first);if(t.last)cudaEventDestroy(t.last);throw;}
             return traces.size()-1;
         }
-        void trace_end(size_t index,cudaStream_t s){if(index!=SIZE_MAX)check(cudaEventRecord(traces[index].last,s));}
+        void trace_end(size_t index,cudaStream_t s){if(index!=SIZE_MAX) {
+            check(cudaEventRecord(traces[index].last,s));traces[index].ended=true;
+        }}
         void trace_report(int layer,int tokens) {
             if(traces.empty())return;
             std::map<std::string,std::pair<double,size_t>> totals;
             for(const auto& t:traces) {
+                if(!t.ended)continue;
+                check(cudaEventSynchronize(t.last));
                 float ms=0;check(cudaEventElapsedTime(&ms,t.first,t.last));
+                if(t.rows) {
+                    std::cerr<<"FP4_DENSE_INTERVAL device="<<device<<" tensor="<<t.stage
+                        <<" rows="<<t.rows<<" columns="<<t.columns<<" tokens="<<t.tokens
+                        <<" format="<<t.format<<" ms="<<ms<<'\n';
+                    continue;
+                }
                 auto& value=totals[t.stage];value.first+=ms;++value.second;
             }
             for(auto& t:traces){cudaEventDestroy(t.first);cudaEventDestroy(t.last);}traces.clear();
@@ -1131,7 +1144,7 @@ public:
         }
         sums.resize(contexts.size());
     }
-    ~Fp4NativeExecutor(){report();}
+    ~Fp4NativeExecutor(){report(false);}
     bool set_decode_device_routing(bool enabled) {
         const bool previous=decode_device_routing_enabled;decode_device_routing_enabled=enabled;return previous;
     }
@@ -1254,6 +1267,10 @@ public:
         // across verification widths and the model's largest (4H) input.
         const size_t input_bytes=nt<=8?size_t(8)*16384*2:size_t(nt)*it->second.columns*2;
         auto& hx=c.buffer("dense_x_half",input_bytes);
+        // std::map keys stay alive until the context is destroyed, including
+        // events flushed after the final head projection of a request.
+        const size_t dense_trace=profile?c.trace_start(it->first.c_str(),caller,
+            it->second.rows,it->second.columns,nt,int(it->second.format)):SIZE_MAX;
         k::glm_f16(x,static_cast<uint16_t*>(hx.p),size_t(nt)*it->second.columns,c.stream);
         if(head_partition&&name=="output.weight"&&nt<=8) {
             cudaStreamCaptureStatus capture;check(cudaStreamIsCapturing(caller,&capture));
@@ -1288,11 +1305,13 @@ public:
                 {DeviceScope scope(other.device);cudaStreamSynchronize(other.stream);}
                 cudaStreamSynchronize(caller);throw;
             }
+            c.trace_end(dense_trace,caller);
             ++split.calls;check(cudaGetLastError());return;
         }
         if(nt>8)check(cublasSetStream(c.blas,caller));
         product(c,it->second,static_cast<uint16_t*>(hx.p),y,nt,
                 name=="output.weight"?int(head_fp8_accumulators):0);
+        c.trace_end(dense_trace,caller);
         if(nt>8)check(cublasSetStream(c.blas,restore.previous));
     }
     void routed(int layer,const float* x,const int* ids,const float* weights,float* out,int nt,
@@ -1994,7 +2013,10 @@ public:
             else release_banks();
         }
     }
-    void report()const {
+    void report(bool flush_profile=true)const {
+        if(profile&&flush_profile)for(const auto& c:contexts) {
+            DeviceScope scope(c->device);c->trace_report(-1,0);
+        }
         if(prefill_bank_enabled)for(const auto& c:contexts)
             std::cerr<<"FP4_PREFILL_BANK_STATS device="<<c->device<<" layers="<<c->bank_layers
                 <<" unused_experts="<<c->bank_unused_experts<<" wait_ms="<<c->bank_wait_ms<<'\n';
