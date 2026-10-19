@@ -6171,11 +6171,26 @@ private:
             mat(p + "attn_output.weight", q.f(), out);
             return;
         }
+        std::array<const float*,3> projected{};
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu && modelopt_gpu->kda_qkv_batch_enabled()) {
+            const std::array<std::string,3> qkv_names={p+"attn_q.weight",p+"attn_k.weight",p+"attn_v.weight"};
+            if(std::none_of(qkv_names.begin(),qkv_names.end(),
+                [&](const auto& name){return prepared_projections.contains(name);}) &&
+               modelopt_gpu->can_batch_kda_qkv(qkv_names,n,m.hidden,batch_tokens)) {
+                std::array<float*,3> outputs;
+                for(int i=0;i<3;++i)outputs[i]=buf("linear_raw_"+names[i],size_t(8)*n).f();
+                modelopt_gpu->batch_kda_qkv(qkv_names,x,outputs,batch_tokens,stream);
+                std::copy(outputs.begin(),outputs.end(),projected.begin());
+            }
+        }
+#endif
         for (int i = 0; i < 3; ++i) {
-            mat(p + "attn_" + names[i] + ".weight", x, tmp.f());
+            if(!projected[i])mat(p + "attn_" + names[i] + ".weight", x, tmp.f());
+            const float* raw=projected[i]?projected[i]:tmp.f();
             auto &W = weight(p + "ssm_conv1d_" + names[i] + ".weight");
             if (fast)
-                k::glm_conv_batch(tmp.f(), W.f(), hist[i]->f(), dest[i], n, m.conv_kernel, batch_tokens,
+                k::glm_conv_batch(raw, W.f(), hist[i]->f(), dest[i], n, m.conv_kernel, batch_tokens,
                                   stream);
             else if (conv_batch_history && batch_tokens > 1 && row_sequences.empty()) {
                 float *snapshots = nullptr;
@@ -6186,7 +6201,7 @@ private:
                                               (size_t)history_token_offset * history_stride);
                         count = std::min(batch_tokens, history_slots - history_token_offset);
                     }
-                k::glm_conv_batch_history(tmp.f(), W.f(), hist[i]->f(), dest[i], n, m.conv_kernel,
+                k::glm_conv_batch_history(raw, W.f(), hist[i]->f(), dest[i], n, m.conv_kernel,
                     batch_tokens, snapshots, history_stride / sizeof(float), count, stream);
             }
             else
@@ -6196,7 +6211,7 @@ private:
                         auto &rs = row_state(t, l);
                         history = i == 0 ? rs.conv_q.get() : i == 1 ? rs.conv_k.get() : rs.conv_v.get();
                     }
-                    k::glm_conv(tmp.f(t * n), W.f(), history->f(), dest[i] + t * n, n, m.conv_kernel, stream);
+                    k::glm_conv(raw+size_t(t)*n, W.f(), history->f(), dest[i] + t * n, n, m.conv_kernel, stream);
                     capture_state(history, t);
                 }
         }

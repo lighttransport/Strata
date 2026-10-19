@@ -265,6 +265,7 @@ class Fp4NativeExecutor {
     bool sm70,reserve_draft;
     const bool profile=strata_env_is_one("STRATA_GLM_FP4_PROFILE");
     const bool dense_split_enabled=strata_env_is_one("STRATA_GLM_FP4_DENSE_SPLIT");
+    const bool kda_qkv_batch=strata_env_is_one("STRATA_GLM_FP4_KDA_QKV_BATCH");
     const bool gpu_reduce_enabled=strata_env_is_one("STRATA_GLM_FP4_GPU_REDUCE");
     const bool expert_fusion=strata_env_is_one("STRATA_GLM_FP4_EXPERT_FUSION");
     const bool head_tp_enabled=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP");
@@ -1247,6 +1248,32 @@ public:
             saved=std::make_unique<Device>(sizeof(bonus));saved->put(bonus.data(),sizeof(bonus));
         }
         return saved->f();
+    }
+    bool kda_qkv_batch_enabled()const {return kda_qkv_batch;}
+    bool can_batch_kda_qkv(const std::array<std::string,3>& names,int rows,int columns,int nt)const {
+        if(!kda_qkv_batch||!sm70||dense_split_enabled||fp8_accumulators!=1||nt<1||nt>8||
+           rows<=512||rows%32||columns%64)return false;
+        const auto& c=*contexts.front();
+        for(const auto& name:names) {
+            const auto it=c.dense.find(name);
+            if(it==c.dense.end()||it->second.format!=k::GlmPackedFormat::Mxfp8Qpn||
+               it->second.rows!=rows||it->second.columns!=columns)return false;
+        }
+        return true;
+    }
+    void batch_kda_qkv(const std::array<std::string,3>& names,const float* x,
+                       const std::array<float*,3>& y,int nt,cudaStream_t caller) {
+        Context& c=*contexts.front();DeviceScope scope(c.device);
+        const auto& a=c.dense.at(names[0]);
+        auto& hx=c.buffer("dense_x_half",size_t(8)*16384*2);
+        const auto trace=profile?c.trace_start("kda_qkv_batch",caller,a.rows,a.columns,nt,int(a.format)):SIZE_MAX;
+        k::glm_f16(x,static_cast<uint16_t*>(hx.p),size_t(nt)*a.columns,caller);
+        std::array<k::GlmFp8Projection,3> p;
+        for(int i=0;i<3;++i) {
+            const auto& w=c.dense.at(names[i]);p[i]={w.data->p,w.scales(),y[i]};
+        }
+        k::glm_mxfp8_gemm_three(p[0],p[1],p[2],static_cast<uint16_t*>(hx.p),a.rows,a.columns,nt,caller);
+        c.trace_end(trace,caller);c.mma_calls+=3;check(cudaGetLastError());
     }
     void dense(const std::string& name,const float* x,float* y,int nt,cudaStream_t caller) {
         if(prefill_bank_enabled&&!decode_phase&&nt>=4096&&name.starts_with("blk.0.")&&!contexts.front()->bank)

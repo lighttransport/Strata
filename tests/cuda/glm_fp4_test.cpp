@@ -11,12 +11,96 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <tuple>
 namespace k=strata::kernels;
 namespace a=strata::artifact;
 static void check(cudaError_t e){if(e!=cudaSuccess)throw std::runtime_error(cudaGetErrorString(e));}
 struct Buffer {void* p=nullptr;explicit Buffer(size_t bytes){check(cudaMalloc(&p,std::max<size_t>(bytes,1)));}~Buffer(){cudaFree(p);}};
+static void qkv_batch(bool bench) {
+    int cases=0,graph_replays=0;
+    for(const auto [N,K]:{std::pair{32,64},std::pair{128,512},std::pair{8192,4096}}) {
+        const size_t count=size_t(N)*K;
+        Buffer raw(count),raw_scales(count/32),w0(count),w1(count),w2(count);
+        Buffer s0(count/16),s1(count/16),s2(count/16);
+        Buffer x(size_t(8)*K*2),ref(size_t(3)*8*N*4),got(size_t(3)*(8*N+2)*4);
+        std::array<k::GlmFp8Projection,3> products={{{w0.p,s0.p,nullptr},{w1.p,s1.p,nullptr},{w2.p,s2.p,nullptr}}};
+        std::vector<uint8_t> codes(count),scales(count/32);
+        for(int p=0;p<3;++p) {
+            for(size_t i=0;i<count;++i)codes[i]=uint8_t((i*31+p*17)%120)|uint8_t((i+p)%2?128:0);
+            for(size_t i=0;i<scales.size();++i)scales[i]=uint8_t(116+(i+p*3)%10);
+            check(cudaMemcpy(raw.p,codes.data(),count,cudaMemcpyHostToDevice));
+            check(cudaMemcpy(raw_scales.p,scales.data(),scales.size(),cudaMemcpyHostToDevice));
+            k::glm_fp8_prepack(k::GlmPackedFormat::Mxfp8,static_cast<uint8_t*>(raw.p),raw_scales.p,
+                static_cast<uint8_t*>(const_cast<void*>(products[p].weights)),const_cast<void*>(products[p].scales),N,K,nullptr);
+            products[p].output=static_cast<float*>(got.p)+size_t(p)*(8*N+2)+1;
+        }
+        check(cudaDeviceSynchronize());
+        cudaStream_t stream;check(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));
+        auto run=[&](bool batch,int M) {
+            if(batch)k::glm_mxfp8_gemm_three(products[0],products[1],products[2],static_cast<uint16_t*>(x.p),N,K,M,stream);
+            else for(int p=0;p<3;++p)k::glm_fp4_gemm(k::GlmPackedFormat::Mxfp8Qpn,
+                products[p].weights,products[p].scales,1,static_cast<uint16_t*>(x.p),
+                static_cast<float*>(ref.p)+size_t(p)*8*N,N,K,M,true,stream);
+        };
+        std::vector<uint16_t> input(size_t(8)*K);
+        std::vector<float> expected(size_t(3)*8*N),actual(size_t(3)*(8*N+2));
+        auto verify=[&](int M) {
+            check(cudaStreamSynchronize(stream));
+            check(cudaMemcpy(expected.data(),ref.p,expected.size()*4,cudaMemcpyDeviceToHost));
+            check(cudaMemcpy(actual.data(),got.p,actual.size()*4,cudaMemcpyDeviceToHost));
+            for(int p=0;p<3;++p) {
+                const size_t start=size_t(p)*(8*N+2);
+                if(std::memcmp(expected.data()+size_t(p)*8*N,actual.data()+start+1,size_t(M)*N*4)||
+                   std::bit_cast<uint32_t>(actual[start])!=0x5a5a5a5a||
+                   !std::all_of(actual.begin()+start+size_t(M)*N+1,actual.begin()+start+8*N+2,
+                     [](float v){return std::bit_cast<uint32_t>(v)==0x5a5a5a5a;}))
+                    throw std::runtime_error("batched QKV differs from individual products or row guards");
+            }
+        };
+        for(int pass=0;pass<2;++pass) {
+            for(size_t i=0;i<input.size();++i)input[i]=strata::cpu::exl3::half_round(std::sin(float(i)*.17f+pass*.31f));
+            check(cudaMemcpyAsync(x.p,input.data(),input.size()*2,cudaMemcpyHostToDevice,stream));
+            for(int M=1;M<=8;++M) {
+                check(cudaMemsetAsync(got.p,0x5a,actual.size()*4,stream));run(false,M);run(true,M);verify(M);++cases;
+            }
+        }
+        for(int M:{1,8}) {
+            cudaGraph_t graph;cudaGraphExec_t exec;
+            check(cudaStreamBeginCapture(stream,cudaStreamCaptureModeGlobal));run(true,M);
+            check(cudaStreamEndCapture(stream,&graph));check(cudaGraphInstantiate(&exec,graph,nullptr,nullptr,0));
+            for(int pass=0;pass<2;++pass) {
+                std::rotate(input.begin(),input.begin()+1,input.end());
+                check(cudaMemcpyAsync(x.p,input.data(),input.size()*2,cudaMemcpyHostToDevice,stream));
+                check(cudaMemsetAsync(got.p,0x5a,actual.size()*4,stream));run(false,M);
+                check(cudaGraphLaunch(exec,stream));verify(M);++graph_replays;
+            }
+            check(cudaGraphExecDestroy(exec));check(cudaGraphDestroy(graph));
+        }
+        if(bench&&N==8192)for(int M:{1,4,8})for(bool batch:{false,true}) {
+            for(int i=0;i<16;++i)run(batch,M);
+            check(cudaStreamSynchronize(stream));
+            for(int sample=0;sample<3;++sample) {
+                cudaEvent_t begin,end;check(cudaEventCreate(&begin));check(cudaEventCreate(&end));
+                check(cudaEventRecord(begin,stream));for(int i=0;i<64;++i)run(batch,M);
+                check(cudaEventRecord(end,stream));check(cudaEventSynchronize(end));float ms;
+                check(cudaEventElapsedTime(&ms,begin,end));
+                std::cout<<"QKV_BATCH_BENCH N="<<N<<" K="<<K<<" M="<<M<<" batch="<<batch
+                    <<" sample="<<sample<<" us="<<ms*1000/64<<'\n';
+                check(cudaEventDestroy(begin));check(cudaEventDestroy(end));
+            }
+        }
+        check(cudaStreamDestroy(stream));
+    }
+    for(const auto [N,K,M]:{std::tuple{40,64,1},std::tuple{32,48,1},std::tuple{32,64,9}}) {
+        bool rejected=false;
+        try {k::glm_mxfp8_gemm_three({},{},{},nullptr,N,K,M,nullptr);}
+        catch(const std::invalid_argument&){rejected=true;}
+        if(!rejected)throw std::runtime_error("batched QKV accepts invalid extent");
+    }
+    std::cout<<"QKV_BATCH passed=1 bitwise_cases="<<cases<<" graph_replays="<<graph_replays<<'\n';
+}
 static void expert_fusion(bool bench) {
     int cases=0;
     for(const auto [N,K,M]:{std::tuple{40,64,1},std::tuple{32,48,1},std::tuple{32,64,9}}) {
@@ -424,6 +508,10 @@ int main(int argc,char** argv) {
     cudaDeviceProp properties{};
     if(cudaGetDeviceProperties(&properties,0)!=cudaSuccess||properties.major<7)return 77;
     try {
+        if(argc==2&&(std::string(argv[1])=="--qkv-batch-only"||std::string(argv[1])=="--qkv-batch-bench")) {
+            qkv_batch(std::string(argv[1])=="--qkv-batch-bench");return 0;
+        }
+        if(argc==1)qkv_batch(false);
         if(argc==2&&(std::string(argv[1])=="--expert-fusion-only"||std::string(argv[1])=="--expert-fusion-bench")) {
             expert_fusion(std::string(argv[1])=="--expert-fusion-bench");return 0;
         }

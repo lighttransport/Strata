@@ -522,9 +522,8 @@ __global__ void half_qpn_cache(const void* w,const void* scales,half* out,int N,
 // epilogue scale: MXFP8 varies along K and block FP8 varies along both axes.
 // SPLITK is fixed across M=1..8 so verification does not change the K reduction.
 template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1,int NACC=1>
-__global__ void scaled_qpn(const void* w,const void* scales,
-                            const half* x,float* y,int N,int K,int M) {
-    __shared__ float sums[SPLITK][256];
+__device__ __forceinline__ void scaled_qpn_body(const void* w,const void* scales,
+                            const half* x,float* y,int N,int K,int M,float (&sums)[SPLITK][256]) {
     const int lane=threadIdx.x&31,warp=threadIdx.x>>5,qp=(lane>>2)&3;
     const int r=(lane&3)+((lane&16)?4:0),n=blockIdx.x*32+qp*8+r;
     const int groups=K/16,part=blockIdx.y*SPLITK+warp;
@@ -587,6 +586,20 @@ __global__ void scaled_qpn(const void* w,const void* scales,
         if((e>>5)<M && blockIdx.x*32+(e&31)<N)
             y[size_t(blockIdx.y)*8*N+size_t(e>>5)*N+blockIdx.x*32+(e&31)]=sum;
     }
+}
+template<GlmPackedFormat FORMAT,int SPLITK,int OUTER=1,int NACC=1>
+__global__ void scaled_qpn(const void* w,const void* scales,
+                            const half* x,float* y,int N,int K,int M) {
+    __shared__ float sums[SPLITK][256];
+    scaled_qpn_body<FORMAT,SPLITK,OUTER,NACC>(w,scales,x,y,N,K,M,sums);
+}
+// Independent matrices share one launch and input, without concatenating or
+// copying resident weights. Each block keeps the ordinary eight-warp K tree.
+__global__ void mxfp8_qpn_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection c,
+                               const half* x,int N,int K,int M) {
+    __shared__ float sums[8][256];
+    const auto p=blockIdx.z==0?a:blockIdx.z==1?b:c;
+    scaled_qpn_body<GlmPackedFormat::Mxfp8Qpn,8>(p.weights,p.scales,x,p.output,N,K,M,sums);
 }
 __global__ void reduce_partials(const float* partials,float* y,int N,int M,int parts) {
     const int i=blockIdx.x*blockDim.x+threadIdx.x;
@@ -686,6 +699,15 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* w,const void* scales,float 
         default:throw std::invalid_argument("GLM FP4: unknown packed format");
         }
     }
+}
+void glm_mxfp8_gemm_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection c,
+                         const uint16_t* x,int N,int K,int M,void* stream) {
+    valid(N,K,M);
+    if(N%32||M>8||!x||!a.weights||!b.weights||!c.weights||!a.scales||!b.scales||!c.scales||
+       !a.output||!b.output||!c.output)
+        throw std::invalid_argument("GLM FP8: three products require packed MXFP8 and tokens1..8");
+    mxfp8_qpn_three<<<dim3(N/32,1,3),256,0,static_cast<cudaStream_t>(stream)>>>(
+        a,b,c,reinterpret_cast<const half*>(x),N,K,M);
 }
 void glm_fp4_gate_up_f16(const uint8_t* gate,const uint8_t* gate_scales,float gate_global,
                          const uint8_t* up,const uint8_t* up_scales,float up_global,

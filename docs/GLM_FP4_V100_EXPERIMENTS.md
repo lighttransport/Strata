@@ -285,6 +285,7 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_DENSE_SPLIT` | `1` | Increase independent K partitions for dense matrices with 513–8192 rows and at least 4096 columns. |
 | `STRATA_GLM_FP4_GPU_REDUCE` | `1` | Sum routed GPU contributions on the primary GPU; use peer copies when available. |
 | `STRATA_GLM_FP4_EXPERT_FUSION` | `1` | Combine narrow SM70 NVFP4 gate/up products, SwiGLU and FP16 conversion. Default off; other formats and prefill use their existing path. |
+| `STRATA_GLM_FP4_KDA_QKV_BATCH` | `1` | Batch three resident MXFP8 KDA projections in one narrow SM70 launch, with the original reduction. Default off; requires one FP8 accumulator and dense splitting off. |
 | `STRATA_GLM_FP4_PREFILL_BATCH_EXPERTS` | `1` (default), `2`, `4` | Group compatible prefill expert projections into batched cuBLAS calls. |
 | `STRATA_GLM_FP4_PREFILL_MMA` | `0` (default), `1`, `32`, `64` | Reconstruct FP4 tiles in shared memory and use FP16 WMMA with FP32 accumulation. Mode 1 uses tile 32 only for 4096-by-2048 matrices with 16–64 token rows. |
 | `STRATA_GLM_FP4_PREFILL_OPERAND_PIPELINE` | `1` | Reconstruct the next expert on the upload stream while cuBLAS processes the current expert. |

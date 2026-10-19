@@ -25,6 +25,12 @@ void glm_fp4_csf32_scales(const uint8_t* bases,const uint8_t* codes,
 void glm_fp4_gemm(GlmPackedFormat format,const void* weights,const void* scales,float global,
                   const uint16_t* x,float* y,int rows,int columns,int tokens,
                   bool sm70,void* stream,float* partials=nullptr,int fp8_accumulators=1);
+struct GlmFp8Projection {const void* weights;const void* scales;float* output;};
+// Three independent resident MXFP8 QPN products in one SM70 launch. Uses the
+// ordinary single-accumulator, eight-warp reduction without outer K splitting.
+// Requires rows%32=0, columns%64=0, tokens1..8; outputs must not alias.
+void glm_mxfp8_gemm_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection c,
+                         const uint16_t* x,int rows,int columns,int tokens,void* stream);
 // Opt-in SM70 NVFP4 gate/up + SwiGLU + FP16 output. Same two accumulator
 // chains and K reduction as gemm; requires rows%32=0, columns%64=0, tokens1..8.
 void glm_fp4_gate_up_f16(const uint8_t* gate,const uint8_t* gate_scales,float gate_global,
