@@ -8,6 +8,21 @@
 #include <cstring>
 #include <iostream>
 namespace c=strata::kernels::cpu;
+namespace {
+// Copies used to prepare auxiliary operands can have different alignment or
+// cache placement. Give every variant the same activation and scale storage.
+struct SharedInputStorage {
+    c::GlmFp4Q8& base; c::GlmFp4Q8& operands;
+    SharedInputStorage(c::GlmFp4Q8& a,c::GlmFp4Q8& b):base(a),operands(b) {
+        if(&base!=&operands){base.values.swap(operands.values);base.scales.swap(operands.scales);}
+    }
+    SharedInputStorage(const SharedInputStorage&)=delete;
+    SharedInputStorage& operator=(const SharedInputStorage&)=delete;
+    ~SharedInputStorage() {
+        if(&base!=&operands){base.values.swap(operands.values);base.scales.swap(operands.scales);}
+    }
+};
+}
 int main(int argc,char** argv) {try {
     const int workers=argc>1?std::stoi(argv[1]):1;
     if(workers<1||workers>72)throw std::invalid_argument("workers must be 1..72");
@@ -39,7 +54,7 @@ int main(int argc,char** argv) {try {
         c::glm_fp4_cache_scale_quartets(cached);
         std::vector<float>x(K*8),reference(N*8),out(N*8);
         for(size_t i=0;i<x.size();++i)x[i]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(std::sin(float(i)*.37f)));
-        const auto q=c::glm_fp4_quantize_q8(x.data(),K,8);auto prepared=q;c::glm_fp4_prepare_q8(prepared);
+        auto q=c::glm_fp4_quantize_q8(x.data(),K,8);auto prepared=q;c::glm_fp4_prepare_q8(prepared);
         auto biased=q;c::glm_fp4_prepare_q8_bias(biased);
         alignas(64)float table[c::glm_fp4_weight_table_floats];c::glm_fp4_weight_table(.00061f,true,table);
         struct Variant {const char* name;int tile;bool prepare,cache,bias=false,local=false,policy=false;};
@@ -52,13 +67,16 @@ int main(int argc,char** argv) {try {
             {"policy",1,false,false,true,false,true}};
         constexpr int count=sizeof(variants)/sizeof(variants[0]);
         auto run=[&](const Variant& v,int width,int copy) {
+            auto& operands=v.bias?biased:(v.prepare?prepared:q);
+            SharedInputStorage shared(q,operands);
             pool.run([&](size_t rank) {
-                for(int step=0;step<batch;++step)c::glm_fp4_rows_csf32_q8(w.data()+wb*((copy+step)%copies),v.cache?cached:sparse,table,v.bias?biased:(v.prepare?prepared:q),
+                for(int step=0;step<batch;++step)c::glm_fp4_rows_csf32_q8(w.data()+wb*((copy+step)%copies),v.cache?cached:sparse,table,operands,
                     out.data(),K,N,width,N*rank/pool.size(),N*(rank+1)/pool.size(),v.tile,v.local,v.policy);
             });
         };
         std::cout<<"{\"kind\":\"configuration\",\"rows\":"<<N<<",\"columns\":"<<K
-            <<",\"workers\":"<<workers<<",\"products_per_wake\":"<<batch<<",\"code_working_set_bytes\":"<<w.size()<<",\"vnni\":"<<c::glm_fp4_q8_vnni_available()<<"}\n";
+            <<",\"workers\":"<<workers<<",\"products_per_wake\":"<<batch<<",\"shared_activation_storage\":true,\"activation_address_mod64\":"<<(reinterpret_cast<uintptr_t>(q.values.data())%64)
+            <<",\"code_working_set_bytes\":"<<w.size()<<",\"vnni\":"<<c::glm_fp4_q8_vnni_available()<<"}\n";
         for(int width:widths) {
             run(variants[0],width,0);reference=out;
             for(const auto& v:variants) {
