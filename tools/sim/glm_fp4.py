@@ -20,6 +20,43 @@ def positive(value, name):
     return value
 
 
+def speculative_phase_scenario(request, target_decode):
+    """Measured phase deletion bound and an explicitly conditional no-waste case."""
+    advances = positive(request['advances'], 'advances')
+    elapsed = positive(request['decode_ms'], 'decode_ms')
+    verify = positive(request['verify_ms'], 'verify_ms')
+    target = positive(target_decode, 'target_decode')
+    if verify > elapsed:
+        raise ValueError('verification exceeds measured decode interval')
+    other = elapsed - verify
+    budget = advances * 1000 / target
+    remaining = budget - other
+    result = dict(name=request['name'], fitted=False, observed_tok_s=advances*1000/elapsed,
+                  verification_fraction=verify/elapsed,
+                  same_work_ceiling_without_nonverification_tok_s=advances*1000/verify,
+                  target=dict(tok_s=target, decode_budget_ms=budget,
+                              feasible_with_fixed_other_work=remaining>0,
+                              verification_speedup_needed=verify/remaining if remaining>0 else None),
+                  scope='Phase deletion for the same measured proposal stream; not a hardware roof.')
+    if all(k in request for k in ('verification_rows','rounds','draft_ms','restore_ms','block_size')):
+        rows = positive(request['verification_rows'], 'verification_rows')
+        rounds = positive(request['rounds'], 'rounds')
+        block = positive(request['block_size'], 'block_size')
+        if int(block)!=block or not 2<=block<=8:
+            raise ValueError('native FP4 block size must be 2..8')
+        draft, restore = request['draft_ms'], request['restore_ms']
+        if not all(math.isfinite(x) and x>=0 for x in (draft,restore)) or verify+draft+restore>elapsed:
+            raise ValueError('invalid measured speculative phases')
+        fixed = elapsed-verify-draft-restore
+        ideal_rounds = math.ceil(advances/block)
+        ideal_ms = verify*advances/rows + draft*ideal_rounds/rounds + fixed
+        result['perfect_acceptance_scenario'] = dict(tok_s=advances*1000/ideal_ms,
+            assumed_verification_rows=advances, assumed_rounds=ideal_rounds,
+            assumptions='Same measured cost per target row and draft call; no restore; remaining overhead fixed. '
+                        'Acceptance and routing change the workload, so this is not a throughput forecast or bound.')
+    return result
+
+
 def load_profile(path=DEFAULT_PROFILE):
     profile = json.loads(Path(path).read_text())
     if profile.get('schema') != 'strata.glm.native_fp4.v1':
@@ -278,6 +315,9 @@ def analyze(profile, *, cpu_gbps=None, hbm_gbps=None, tensor_tflops=None,
                            h2d_gbps_per_gpu=links), observations=profile['observations'],
                 decode=decode, prefill=prefill, cpu_bandwidth_scenarios=sensitivity,
                 findings=profile['findings'], limitations=profile['limitations'])
+    if 'experimental_speculative_requests' in profile:
+        result['experimental_decode'] = [speculative_phase_scenario(row,target_decode)
+                                         for row in profile['experimental_speculative_requests']]
     if 'diagnostic_activity' in profile:
         result['diagnostic_activity'] = activity_scenarios(
             profile['diagnostic_activity'], hw['gpus'], target_decode, target_prefill)

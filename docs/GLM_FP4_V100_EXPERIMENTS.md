@@ -1,5 +1,8 @@
 # Opt-in V100 FP4 experiments
 
+An opt-in [DFlash2 integration](GLM_DFLASH2_V100.md) is under evaluation.
+Its measurements do not replace the qualified MTP result below.
+
 ## Current round: ordered KDA prefill
 
 Prepared inputs with four ordered KDA row partitions measured **32.10 decode

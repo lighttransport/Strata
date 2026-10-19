@@ -409,6 +409,8 @@ def cmd_native_fp4(args):
     keys = ['rates', 'decode', 'prefill']
     if 'diagnostic_activity' in result:
         keys.append('diagnostic_activity')
+    if 'experimental_decode' in result:
+        keys.append('experimental_decode')
     print(json.dumps({key: result[key] for key in keys}, indent=2))
     write(args, result)
 

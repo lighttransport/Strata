@@ -51,6 +51,35 @@ class NativeFp4Tests(unittest.TestCase):
         self.assertFalse(faster['feasible_with_fixed_nonverification'])
         self.assertIsNone(faster['required_verification_speedup'])
 
+    def test_speculative_phase_bound_keeps_unmeasured_acceptance_conditional(self):
+        row=dict(name='draft-test',advances=100,decode_ms=2500,verify_ms=1500,
+                 draft_ms=800,restore_ms=100,rounds=50,verification_rows=200,block_size=4)
+        result=sim.speculative_phase_scenario(row,50)
+        self.assertAlmostEqual(result['observed_tok_s'],40)
+        self.assertAlmostEqual(result['same_work_ceiling_without_nonverification_tok_s'],100/1.5)
+        self.assertAlmostEqual(result['target']['verification_speedup_needed'],1.5)
+        scenario=result['perfect_acceptance_scenario']
+        self.assertEqual(scenario['assumed_rounds'],25)
+        self.assertAlmostEqual(scenario['tok_s'],100/(.75+.4+.1))
+        self.assertIn('not a throughput forecast',scenario['assumptions'])
+        impossible=sim.speculative_phase_scenario(row,200)
+        self.assertFalse(impossible['target']['feasible_with_fixed_other_work'])
+        self.assertIsNone(impossible['target']['verification_speedup_needed'])
+
+    def test_invalid_speculative_phases_cannot_supply_a_roof(self):
+        row=dict(name='invalid',advances=100,decode_ms=2000,verify_ms=1500)
+        for change in ({'verify_ms':2001},{'decode_ms':float('nan')},{'advances':0}):
+            with self.assertRaises(ValueError):sim.speculative_phase_scenario({**row,**change},50)
+        with self.assertRaises(ValueError):sim.speculative_phase_scenario({**row,'draft_ms':600,'restore_ms':0,'rounds':10,'verification_rows':100,'block_size':4},50)
+
+    def test_experimental_phase_rows_leave_selected_model_accounting_unchanged(self):
+        profile=copy.deepcopy(self.profile);baseline=sim.analyze(profile)
+        profile['experimental_speculative_requests']=[dict(name='draft-test',advances=100,decode_ms=2500,verify_ms=1500)]
+        result=sim.analyze(profile)
+        self.assertEqual(result['decode'],baseline['decode'])
+        self.assertEqual(result['prefill'],baseline['prefill'])
+        self.assertFalse(result['experimental_decode'][0]['fitted'])
+
     def test_prefill_uses_compressed_wire_extents_and_slowest_gpu(self):
         result = sim.analyze(self.profile)
         prefill = result['prefill']
