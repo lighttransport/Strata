@@ -8,6 +8,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstring>
+#include <algorithm>
 #ifdef __linux__
 #include <cerrno>
 #include <csignal>
@@ -26,6 +28,7 @@ class ExternalWorker {
     pid_t pid_ = -1;
     int timeout_ms_ = 100;
     uint64_t request_ = 0;
+    int protocol_ = 1;
     std::string buffered_;
     using Clock = std::chrono::steady_clock;
     void ready(short events, Clock::time_point deadline) {
@@ -49,6 +52,19 @@ class ExternalWorker {
             used+=static_cast<size_t>(n);
         }
     }
+    void receive_bytes(void* destination, size_t size, Clock::time_point deadline) {
+        auto* out=static_cast<char*>(destination);
+        const size_t buffered=std::min(size,buffered_.size());
+        std::memcpy(out,buffered_.data(),buffered);buffered_.erase(0,buffered);
+        size_t used=buffered;
+        while(used<size) {
+            ready(POLLIN,deadline);
+            const ssize_t n=recv(fd_,out+used,size-used,MSG_DONTWAIT);
+            if(n<0&&(errno==EINTR||errno==EAGAIN))continue;
+            if(n<=0)throw std::runtime_error("draft binary response closed");
+            used+=static_cast<size_t>(n);
+        }
+    }
     strata::artifact::Json receive(Clock::time_point deadline) {
         for (;;) {
             const auto end=buffered_.find('\n');
@@ -66,8 +82,9 @@ class ExternalWorker {
     }
 #endif
 public:
-    explicit ExternalWorker(const std::string& path) {
+    explicit ExternalWorker(const std::string& path, bool dflash2=false) {
 #ifdef __linux__
+        protocol_=dflash2?2:1;
         auto c=strata::artifact::read_json(path);
         const auto& args=c.at("argv");
         if(args.kind!=strata::artifact::Json::Array||args.array.empty())throw std::runtime_error("draft worker argv required");
@@ -93,15 +110,18 @@ public:
         posix_spawn_file_actions_destroy(&actions);close(pair[1]);fd_=pair[0];
         if(error){stop();throw std::runtime_error("draft spawn failed");}
         try {
-            auto hello=receive(Clock::now()+std::chrono::seconds(30));
-            if(hello.at("protocol").integer()!=1||!hello.at("ready").flag())throw std::runtime_error("draft handshake invalid");
+            auto hello=receive(Clock::now()+std::chrono::seconds(dflash2?180:30));
+            if(hello.at("protocol").integer()!=static_cast<uint64_t>(protocol_)||!hello.at("ready").flag())throw std::runtime_error("draft handshake invalid");
             const double mib=hello.at("vram_mib").real();
-            if(!std::isfinite(mib)||mib<0||mib>768)throw std::runtime_error("draft worker exceeds 768 MiB cap");
+            if(!std::isfinite(mib)||mib<0||mib>(dflash2?4096:768))throw std::runtime_error("draft worker exceeds VRAM cap");
+            if(dflash2 && (hello.at("hidden_size").integer()!=4096 || hello.at("block_size").integer()!=8 ||
+                hello.at("vocab_size").integer()!=154880 || hello.at("mask_token_id").integer()!=154856))
+                throw std::runtime_error("DFlash2 checkpoint geometry mismatch");
             std::cerr<<"EXTERNAL_READY vram_mib="<<mib<<'\n';
         }
         catch(...){stop();throw;}
 #else
-        (void)path;throw std::runtime_error("external draft worker currently requires Linux");
+        (void)path;(void)dflash2;throw std::runtime_error("external draft worker currently requires Linux");
 #endif
     }
     ~ExternalWorker(){
@@ -116,6 +136,34 @@ public:
         return fd_ >= 0;
 #else
         return false;
+#endif
+    }
+    // Protocol 2 uses bounded little-endian float32 frames. Target features are
+    // committed rows only; speculative draft KV is never retained by the worker.
+    // The target's existing embedding and head remain in the engine process.
+    strata::artifact::Json exchange(const std::string& fields, const float* data=nullptr,
+                                   size_t count=0, std::vector<float>* output=nullptr,
+                                   bool prepare=false) {
+#ifdef __linux__
+        if(protocol_!=2||fd_<0||count>size_t(2048)*20480+8*4096)
+            throw std::runtime_error("DFlash2 frame bounds");
+        const auto id=++request_;
+        const auto deadline=Clock::now()+std::chrono::milliseconds(prepare?30000:timeout_ms_);
+        send_line("{\"protocol\":2,\"request_id\":"+std::to_string(id)+","+fields+"}\n",deadline);
+        if(count)send_line(std::string(reinterpret_cast<const char*>(data),count*sizeof(float)),deadline);
+        auto response=receive(deadline);
+        if(response.at("protocol").integer()!=2||response.at("request_id").integer()!=id)
+            throw std::runtime_error("DFlash2 response identity mismatch");
+        if(output) {
+            if(response.at("rows").integer()!=7||response.at("columns").integer()!=4096)
+                throw std::runtime_error("DFlash2 hidden response shape mismatch");
+            output->resize(7*4096);receive_bytes(output->data(),output->size()*sizeof(float),deadline);
+            for(float v:*output)if(!std::isfinite(v))throw std::runtime_error("DFlash2 nonfinite hidden response");
+        }
+        return response;
+#else
+        (void)fields;(void)data;(void)count;(void)output;(void)prepare;
+        throw std::runtime_error("DFlash2 requires Linux");
 #endif
     }
     void prime(const std::vector<int>& history) { (void)propose(history,0,0,true); }

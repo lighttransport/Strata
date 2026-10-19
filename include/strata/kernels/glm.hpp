@@ -45,6 +45,8 @@ void glm_mhc_read(const float *streams, const float *projected, const float *bas
 void glm_mhc_write(const float *streams, const float *coefficients, const float *y, float *out, int width,
                    void *stream);
 void glm_hyper_head(const float *streams, float *out, int width, void *stream);
+// Contract contiguous [tokens, 4, width] residuals with the single-row sum order.
+void glm_hyper_head_tokens(const float *streams, float *out, int width, int tokens, void *stream);
 // Several decode tokens in one launch each: token t uses streams + t*4*width, projections and coefficients
 // + t*24, x/y + t*width; every token computes exactly what the single-token call computes.
 void glm_mhc_read_tokens(const float *streams, const float *projected, const float *base, const float *scale,

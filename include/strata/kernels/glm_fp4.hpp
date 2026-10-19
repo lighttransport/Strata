@@ -49,6 +49,9 @@ void glm_fp4_prefill_split_mma(const uint8_t* weights,const uint8_t* scales,floa
 // Output holds rows*columns half values and needs no scale plane.
 void glm_fp8_cache_f16_qpn(GlmPackedFormat format,const void* weights,const void* scales,
                             uint16_t* output,int rows,int columns,void* stream);
+// Permute row-major FP16 weights to the same lane layout without changing values.
+void glm_f16_prepack_qpn(const uint16_t* weights,uint16_t* output,
+                         int rows,int columns,void* stream);
 // Route indices address [token][route_stride]. Rows within one expert must
 // refer to distinct tokens. Scatter calls on one stream preserve expert order
 // and round multiply and add separately, matching the host accumulation.

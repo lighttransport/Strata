@@ -48,6 +48,25 @@ def native_process_sample(pid):
         return {}
 
 
+def native_worker_samples(pid):
+    """Direct persistent draft children; read cheap status/fault counters only."""
+    try:
+        children = pathlib.Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+    except OSError:
+        return {}
+    return {int(child): sample for child in children if child.isdigit()
+            if (sample := native_process_sample(int(child)))}
+
+
+def worker_residency(before, after):
+    if len(before) != 1 or before.keys() != after.keys():
+        raise RuntimeError("DFlash2 worker residency counters unavailable or worker changed")
+    return dict(major_faults=sum(after[p]['major_faults']-before[p]['major_faults'] for p in before),
+                minor_faults=sum(after[p]['minor_faults']-before[p]['minor_faults'] for p in before),
+                rss_bytes=sum(v['rss_bytes'] for v in after.values()),
+                swap_bytes=sum(v['swap_bytes'] for v in after.values()))
+
+
 def prompt_ids(path):
     fields = re.split(r"[,\s]+", pathlib.Path(path).read_text().strip())
     if not fields or any(not value.isdigit() for value in fields):
@@ -162,6 +181,15 @@ def request_diagnostics(log):
             proposed, accepted, depth = map(int, mtp.groups())
             row["layer_mtp"] = dict(proposed=proposed, accepted=accepted, rejected=proposed-accepted,
                                     depth=depth, acceptance_fraction=accepted/proposed if proposed else None)
+        speculative = re.search(r"SPECULATIVE source=(\w+) generated=(\d+) rounds=(\d+) proposed=(\d+) accepted=(\d+) replayed=(\d+)", section)
+        if speculative:
+            source, generated, rounds, proposed, accepted, replayed = speculative.groups()
+            row["speculative"] = dict(source=source, generated=int(generated), rounds=int(rounds),
+                                      proposed=int(proposed), accepted=int(accepted), replayed=int(replayed))
+        timing = re.search(r"DRAFT_TIMING prepare_ms=([\d.]+) draft_ms=([\d.]+) verify_ms=([\d.]+) restore_ms=([\d.]+) proposal_calls=(\d+)", section)
+        if timing:
+            row["draft_timing"] = dict(zip(("prepare_ms","draft_ms","verify_ms","restore_ms"), map(float,timing.groups()[:4])))
+            row["draft_timing"]["proposal_calls"] = int(timing[5])
         layer_work = []
         for stage, device, count, wall, draft, detail in re.findall(
                 r"LAYER_WORK stage=(\d+) device=(\d+) decode_rows=(\d+) decode_wall_ms=([\d.]+) "
@@ -250,8 +278,9 @@ def main():
     ap.add_argument("--validation-repetitions", type=int, default=3)
     ap.add_argument("--prefill-text", type=pathlib.Path, help="additional long raw-text prefill workload")
     ap.add_argument("--prefill-tokens", type=int, default=8192)
-    ap.add_argument("--speculative", choices=("none", "mtp"), default="none")
+    ap.add_argument("--speculative", choices=("none", "mtp", "dflash2"), default="none")
     ap.add_argument("--draft-depth", type=int, default=1)
+    ap.add_argument("--dflash2-worker-config", type=pathlib.Path)
     ap.add_argument("--worker-decoder", type=pathlib.Path, help="opt-in CUDA+CUDA expert worker binary")
     ap.add_argument("--primary-device", type=int, default=0)
     ap.add_argument("--worker-device", type=int, default=1)
@@ -263,6 +292,10 @@ def main():
     ap.add_argument("--stop-ids", default="-1", help="real stop IDs; -1 retains fixed-length diagnostic timing")
     ap.add_argument("--output", type=pathlib.Path, required=True)
     args = ap.parse_args()
+    if (args.speculative == "dflash2") != (args.dflash2_worker_config is not None):
+        ap.error("DFlash2 requires --dflash2-worker-config")
+    if args.speculative == "dflash2" and args.gpu_layout == "layer":
+        ap.error("DFlash2 currently requires the legacy single-sequence GPU layout")
     modelopt = False
     if args.model.is_dir():
         from glm_artifact import load_metadata
@@ -302,6 +335,8 @@ def main():
                str(args.context), "4096", str(args.threads), "0", str(args.prefill_batch), args.stop_ids,
                str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), args.cpu_affinity, "0", args.gpu_devices,
                args.prefill_expert_cache_mib, "1"]
+    if args.dflash2_worker_config:
+        command.append(f"--dflash2-worker-config={args.dflash2_worker_config.resolve()}")
     command.extend((str(int(args.decode_prefill_cache)), args.decode_cache_mib, str(int(args.decode_graphs)), str(args.decode_cache_window), str(int(args.decode_cache_adapt))))
     command.append(args.prefill_experts)
     if modelopt: command.append(f"--fp4-kernel={args.fp4_kernel or 'reference'}")
@@ -392,6 +427,7 @@ def main():
             stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1) as process:
         monitor_stop = threading.Event()
         memory = dict(peak_rss_bytes=0, peak_swap_bytes=0, samples=0)
+        worker_memory = dict(peak_rss_bytes=0, peak_swap_bytes=0, samples=0)
         def monitor_memory():
             while not monitor_stop.is_set():
                 sample = native_process_sample(process.pid)
@@ -399,10 +435,17 @@ def main():
                     memory["samples"] += 1
                     memory["peak_rss_bytes"] = max(memory["peak_rss_bytes"], sample["rss_bytes"])
                     memory["peak_swap_bytes"] = max(memory["peak_swap_bytes"], sample["swap_bytes"])
+                if args.speculative == "dflash2":
+                    samples = native_worker_samples(process.pid)
+                    if samples:
+                        worker_memory["samples"] += 1
+                        worker_memory["peak_rss_bytes"] = max(worker_memory["peak_rss_bytes"],sum(x["rss_bytes"] for x in samples.values()))
+                        worker_memory["peak_swap_bytes"] = max(worker_memory["peak_swap_bytes"],sum(x["swap_bytes"] for x in samples.values()))
                 monitor_stop.wait(0.5)
         monitor = threading.Thread(target=monitor_memory, daemon=True) if modelopt else None
         if monitor:
             result["native_memory"] = memory
+            if args.speculative == "dflash2":result["native_draft_memory"] = worker_memory
             monitor.start()
         def read():
             line = process.stdout.readline().strip()
@@ -414,6 +457,7 @@ def main():
 
         def request(count, prompt_ids):
             before = native_process_sample(process.pid) if modelopt else {}
+            worker_before = native_worker_samples(process.pid) if args.speculative == "dflash2" else {}
             process.stdin.write(f"GEN {count} {','.join(map(str, prompt_ids))}\n")
             process.stdin.flush()
             generated = []
@@ -438,6 +482,8 @@ def main():
                         row["native_memory_after"] = after
                         row["major_faults"] = after.get("major_faults", 0)-before.get("major_faults", 0)
                         row["minor_faults"] = after.get("minor_faults", 0)-before.get("minor_faults", 0)
+                    if args.speculative == "dflash2":
+                        row["draft_worker_residency"] = worker_residency(worker_before,native_worker_samples(process.pid))
                     return row
 
         try:
@@ -505,6 +551,9 @@ def main():
                 raise RuntimeError("repeated requests produced different token IDs")
             if modelopt and (memory["peak_swap_bytes"] or any(row.get("major_faults", 0) for row in rows)):
                 raise RuntimeError("native FP4 timed requests swapped or faulted weight pages; residency qualification failed")
+            if args.speculative == "dflash2" and (worker_memory["peak_swap_bytes"] or any(
+                    row["draft_worker_residency"]["major_faults"] or row["draft_worker_residency"]["swap_bytes"] for row in rows)):
+                raise RuntimeError("DFlash2 worker timed requests swapped or faulted; residency qualification failed")
             if validation and validation["token_ids"][:args.generated_tokens] != rows[0]["token_ids"][:args.validation_tokens]:
                 raise RuntimeError("validation prefix differs from repeated requests")
         except BaseException as error:

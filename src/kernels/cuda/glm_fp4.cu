@@ -437,7 +437,10 @@ __global__ void half_qpn_cache(const void* w,const void* scales,half* out,int N,
     if(i>=size_t(N)*(K/16))return;
     const int g=i%(K/16),n=i/(K/16);
     alignas(16) half values[16];
-    if(!fp8_operands<FORMAT>(w,scales,n,g,K,values)) {
+    if constexpr(FORMAT==GlmPackedFormat::F16) {
+        const auto* src=reinterpret_cast<const uint4*>(static_cast<const half*>(w)+size_t(n)*K+g*16);
+        auto* dst=reinterpret_cast<uint4*>(values);dst[0]=src[0];dst[1]=src[1];
+    } else if(!fp8_operands<FORMAT>(w,scales,n,g,K,values)) {
         #pragma unroll
         for(int j=0;j<16;++j)values[j]=__float2half_rn(weight_value(FORMAT,w,scales,1.f,n,g*16+j,K));
     }
@@ -663,6 +666,13 @@ void glm_fp8_cache_f16_qpn(GlmPackedFormat format,const void* w,const void* scal
     else if(format==GlmPackedFormat::BlockFp8Qpn)half_qpn_cache<GlmPackedFormat::BlockFp8Qpn><<<(count+255)/256,256,0,s>>>(w,scales,reinterpret_cast<half*>(out),N,K);
     else if(format==GlmPackedFormat::BlockFp8)half_qpn_cache<GlmPackedFormat::BlockFp8><<<(count+255)/256,256,0,s>>>(w,scales,reinterpret_cast<half*>(out),N,K);
     else throw std::invalid_argument("unsupported half QPN source");
+}
+void glm_f16_prepack_qpn(const uint16_t* w,uint16_t* out,int N,int K,void* stream) {
+    valid(N,K,1);
+    if(N%32||!w||!out||w==out)throw std::invalid_argument("FP16 QPN requires aligned distinct matrices");
+    const size_t count=size_t(N)*(K/16);
+    half_qpn_cache<GlmPackedFormat::F16><<<(count+255)/256,256,0,static_cast<cudaStream_t>(stream)>>>(
+        w,nullptr,reinterpret_cast<half*>(out),N,K);
 }
 void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* out,int count,int K,int stride,void* stream) {
     if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route gather extent");

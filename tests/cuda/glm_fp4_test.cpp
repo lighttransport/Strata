@@ -1,4 +1,5 @@
 #include "strata/kernels/glm_fp4.hpp"
+#include "strata/kernels/glm.hpp"
 #include "strata/host/glm_env.h"
 #include "strata/artifact/glm_modelopt.hpp"
 #include "strata/kernels/cpu/exl3/math.hpp"
@@ -14,6 +15,24 @@ namespace k=strata::kernels;
 namespace a=strata::artifact;
 static void check(cudaError_t e){if(e!=cudaSuccess)throw std::runtime_error(cudaGetErrorString(e));}
 struct Buffer {void* p=nullptr;explicit Buffer(size_t bytes){check(cudaMalloc(&p,std::max<size_t>(bytes,1)));}~Buffer(){cudaFree(p);}};
+static void hyper_head_rows() {
+    for(int width:{37,128,4096})for(int rows:{1,3,8,2048}) {
+        std::vector<float> input(size_t(rows)*4*width),expected(size_t(rows)*width),actual(expected.size()+2);
+        for(size_t i=0;i<input.size();++i)input[i]=std::sin(float(i)*.13f)*float(int(i%17)-8);
+        Buffer x(input.size()*4),ref(expected.size()*4),out(actual.size()*4);
+        check(cudaMemcpy(x.p,input.data(),input.size()*4,cudaMemcpyHostToDevice));
+        check(cudaMemset(out.p,0x5a,actual.size()*4));
+        for(int row=0;row<rows;++row)k::glm_hyper_head(static_cast<float*>(x.p)+size_t(row)*4*width,
+            static_cast<float*>(ref.p)+size_t(row)*width,width,nullptr);
+        k::glm_hyper_head_tokens(static_cast<float*>(x.p),static_cast<float*>(out.p)+1,width,rows,nullptr);
+        check(cudaMemcpy(actual.data(),out.p,actual.size()*4,cudaMemcpyDeviceToHost));
+        check(cudaMemcpy(expected.data(),ref.p,expected.size()*4,cudaMemcpyDeviceToHost));
+        if(std::memcmp(expected.data(),actual.data()+1,expected.size()*4) ||
+            std::bit_cast<uint32_t>(actual.front())!=0x5a5a5a5a || std::bit_cast<uint32_t>(actual.back())!=0x5a5a5a5a)
+            throw std::runtime_error("batched mHC contraction differs or overwrites sentinels");
+    }
+    std::cout<<"batched mHC contraction PASS\n";
+}
 static void routing() {
     constexpr int tokens=32,count=17,stride=8;
     for(int columns:{37,4096}) {
@@ -314,6 +333,7 @@ int main(int argc,char** argv) {
     cudaDeviceProp properties{};
     if(cudaGetDeviceProperties(&properties,0)!=cudaSuccess||properties.major<7)return 77;
     try {
+        if(argc==2 && std::string(argv[1])=="--hyper-head-only"){hyper_head_rows();return 0;}
         routing();
         if(argc==2 && std::string(argv[1])=="--routing-only")return 0;
         head_partition();

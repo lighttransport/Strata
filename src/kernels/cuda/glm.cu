@@ -486,6 +486,14 @@ __global__ void hyper_head(const float *r, float *out, int n) {
     if (d < n)
         out[d] = (r[d] + r[n + d] + r[2 * n + d] + r[3 * n + d]) * .25f;
 }
+__global__ void hyper_head_tokens(const float *r, float *out, int n) {
+    const int d=blockIdx.x*blockDim.x+threadIdx.x;
+    const size_t row=blockIdx.y;
+    if(d<n) {
+        r+=row*4*n;
+        out[row*n+d]=(r[d]+r[n+d]+r[2*n+d]+r[3*n+d])*.25f;
+    }
+}
 __global__ void conv(const float *x, const float *w, float *history, float *y, int n, int k) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
@@ -832,6 +840,12 @@ void glm_router_tokens(const float *l, const float *b, int *ids, float *w, int n
 void glm_hyper_head(const float *r, float *out, int n, void *s) {
     width(n);
     hyper_head<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(r, out, n);
+    check();
+}
+void glm_hyper_head_tokens(const float *r,float *out,int n,int tokens,void *s) {
+    width(n);
+    if(tokens<1||tokens>16384)throw std::invalid_argument("GLM: invalid hyper-head rows");
+    hyper_head_tokens<<<dim3((n+255)/256,tokens),256,0,(cudaStream_t)s>>>(r,out,n);
     check();
 }
 void glm_conv(const float *x, const float *w, float *history, float *y, int n, int k, void *s) {

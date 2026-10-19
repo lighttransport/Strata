@@ -96,6 +96,30 @@ resident expert entries=800/1000
         self.assertEqual(row["layer_stages"][0]["decode_rows"], 7)
         self.assertEqual(row["layer_stages"][1]["draft_wall_ms"], 3)
 
+    def test_dflash2_acceptance_and_timing_follow_request_boundaries(self):
+        rows=request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=1\n"
+            "SPECULATIVE source=dflash2 generated=128 rounds=30 proposed=210 accepted=96 replayed=0 ms=2000 tok_s=63.5 verification=batched\n"
+            "DRAFT_TIMING prepare_ms=0 draft_ms=400 verify_ms=1500 restore_ms=100 proposal_calls=30\n"
+            "RESPONSE_PREPARE kind=decode_cache ms=2\n")
+        self.assertEqual(rows[0]['speculative']['source'],'dflash2')
+        self.assertEqual(rows[0]['speculative']['accepted'],96)
+        self.assertEqual(rows[0]['draft_timing']['verify_ms'],1500)
+        self.assertNotIn('speculative',rows[1])
+
+    def test_draft_worker_residency_counts_faults_and_detects_restart(self):
+        before={11:dict(major_faults=1,minor_faults=3,rss_bytes=100,swap_bytes=0)}
+        after={11:dict(major_faults=2,minor_faults=8,rss_bytes=200,swap_bytes=0)}
+        self.assertEqual(glm_v100_bench.worker_residency(before,after),
+                         dict(major_faults=1,minor_faults=5,rss_bytes=200,swap_bytes=0))
+        for invalid in ({},{12:after[11]}):
+            with self.assertRaises(RuntimeError):glm_v100_bench.worker_residency(before,invalid)
+
+    def test_draft_child_sampling_does_not_walk_weight_page_tables(self):
+        sample=dict(major_faults=0,minor_faults=3,rss_bytes=100,swap_bytes=0)
+        with mock.patch.object(pathlib.Path,'read_text',return_value='11 12'), \
+             mock.patch.object(glm_v100_bench,'native_process_sample',side_effect=[sample,{}]):
+            self.assertEqual(glm_v100_bench.native_worker_samples(10),{11:sample})
+
     def test_empty_generation_has_no_hit_fraction(self):
         row, = request_diagnostics("RESPONSE_PREPARE kind=decode_cache ms=0\nresident expert entries=0/0\n")
         self.assertIsNone(row["gpu_expert_hit_fraction"])
