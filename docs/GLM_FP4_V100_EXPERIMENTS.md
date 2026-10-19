@@ -15,7 +15,7 @@ prefill targets remain unmet.
 | Four ordered KDA row partitions | 31.89 | 490.58 |
 | Ordered partitions and prepared inputs | 32.10 | 520.89 |
 
-Each configuration used two complete warmups, a discarded prefill request and
+Each configuration used two complete warmups, a discarded one-step decode request and
 three timed 8,192-input / 512-output requests. All timed requests had zero major
 faults and zero swap, exited cleanly and kept the frozen fast profile's 512 token
 IDs. All three configurations passed the same eight reused training tasks with
@@ -186,8 +186,20 @@ The first engine screens used the same 8192-input / 128-output protocol:
 None qualified for further model validation. Caching all matching MXFP8
 projections with scratch borrowing failed at startup: 139 matrices needed
 4,419,747,840 extra bytes and could not retain the required 256 MiB scratch
-minimum. That run supplies no throughput result. Bounded subsets at 512, 1024
-and 1280 MiB of extra resident bytes are queued; the selected preset is unchanged.
+minimum. That run supplies no throughput result. Bounded subsets also lost in
+the matched short protocol, with zero timed major faults, swap and EOS IDs:
+
+| Extra FP16 cache limit | Matrices cached | Decode tok/s | Prefill tok/s |
+| --- | ---: | ---: | ---: |
+| Matched control | 0 | 22.20 | 521.27 |
+| 512 MiB | 16 | 19.20 | 520.07 |
+| 1024 MiB | 33 | 18.54 | 520.87 |
+| 1280 MiB | 41 | 18.56 | 521.59 |
+
+Actual extra bytes stayed within each limit. These configurations are rejected;
+full 512-output qualification and fresh held-out scoring were skipped. The
+latest default-output check preserved all 128 original IDs with a clean exit.
+The selected preset remains unchanged.
 
 [Screen evidence](glm_fp4_v100_target50_screens.json) records binary and raw-log
 hashes, output hashes, settings and matching controls. The separate

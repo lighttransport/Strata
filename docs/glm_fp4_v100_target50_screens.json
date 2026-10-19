@@ -7603,6 +7603,635 @@
       }
     },
     {
+      "name": "control-v23",
+      "source_archive_sha256": "4ae4dbeb263028c2ff5d266c410e28ba43b00a05125a58261e0af74541566428",
+      "binary_sha256": "4c64e98129af35a99bb8eeefe384fe6e23bfc32287feb3ce11de5fcbca711dbd",
+      "raw_report_sha256": "47e2afe7750ca6001925e9f0e3b30ec0e5343deebdce1a098b0a62123590413e",
+      "raw_log_sha256": "33aec1341cb095b1e6ef4f8b63459961c212f035ca38bee095b1e90a3cc75984",
+      "decode_tok_s": 22.199769961438825,
+      "prefill_tok_s": 521.2721279763799,
+      "tokens_sha256": "0efc7e1882f86c5194bc65716dc82201ca2469c100a7bb3d4a2a413e3381bb83",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5720.09,
+          "tok_s": 22.2024
+        },
+        "timing_ms": {
+          "prepare_ms": 0.587509,
+          "draft_ms": 259.522,
+          "verify_ms": 5257.22,
+          "resync_ms": 147.288
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 515608282
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4887,
+            "misses": 5251,
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      }
+    },
+    {
+      "name": "attention-half-cap512-v23",
+      "source_archive_sha256": "4ae4dbeb263028c2ff5d266c410e28ba43b00a05125a58261e0af74541566428",
+      "binary_sha256": "4c64e98129af35a99bb8eeefe384fe6e23bfc32287feb3ce11de5fcbca711dbd",
+      "raw_report_sha256": "ed9bf88fe541c147835a2c7d3a76070b4dc21aa19224cee2b9c73e58bfb08383",
+      "raw_log_sha256": "6f1b25e46c5e08a9ec7e71e5e6bc8c477598742169a8821597dc60cbf6703ca1",
+      "decode_tok_s": 19.202274033082343,
+      "prefill_tok_s": 520.0675478358029,
+      "tokens_sha256": "f28521580d47bede34ffee91bf25ae69e9b6e2435d0427e5bf4e0d9738fea55e",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_FIXED_HALF": "2",
+        "STRATA_GLM_FP4_FIXED_HALF_BORROW": "1",
+        "STRATA_GLM_FP4_FIXED_HALF_MAX_MIB": "512",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v23",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.8649762617557228,
+        "prefill_ratio": 0.9976891529856904
+      },
+      "fixed_half_cache": {
+        "mask": 2,
+        "matrices": 16,
+        "extra_bytes": 534773760,
+        "borrow": 1,
+        "max_MiB": 512,
+        "skipped": 123
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 121.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 6613.09,
+          "tok_s": 19.2043
+        },
+        "timing_ms": {
+          "prepare_ms": 0.666646,
+          "draft_ms": 279.421,
+          "verify_ms": 6072.1,
+          "resync_ms": 154.666
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12600.0,
+        "cpu_candidates": 68994.0,
+        "dropped": 51260.0,
+        "mean_share": 0.393275,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7071,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 1029058640
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 99090432
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5442,
+            "misses": 5289,
+            "uploaded_bytes": 74869899264,
+            "mma": 38206,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10815,
+            "misses": 3972,
+            "uploaded_bytes": 56226742272,
+            "mma": 26625,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14084997120
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6484,
+          "misses": 587,
+          "bytes_after": 190241678
+        }
+      }
+    },
+    {
+      "name": "attention-half-cap1024-v23",
+      "source_archive_sha256": "4ae4dbeb263028c2ff5d266c410e28ba43b00a05125a58261e0af74541566428",
+      "binary_sha256": "4c64e98129af35a99bb8eeefe384fe6e23bfc32287feb3ce11de5fcbca711dbd",
+      "raw_report_sha256": "101b299afa6458d8e769b34b1bc23f8ab6e00bb571a7d45d92420db36ba99840",
+      "raw_log_sha256": "1f1235dc80f5f1b87f51d42fc83d908eac6cc90cc7418a7b74a815c6b4dbc96a",
+      "decode_tok_s": 18.540957998160504,
+      "prefill_tok_s": 520.8710856779526,
+      "tokens_sha256": "61d07a37a272ec558c7201f761a7f4051b472b9a5b42c2543369d23a18ce5a53",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_FIXED_HALF": "2",
+        "STRATA_GLM_FP4_FIXED_HALF_BORROW": "1",
+        "STRATA_GLM_FP4_FIXED_HALF_MAX_MIB": "1024",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v23",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.8351869424938319,
+        "prefill_ratio": 0.9992306469559686
+      },
+      "fixed_half_cache": {
+        "mask": 2,
+        "matrices": 33,
+        "extra_bytes": 1069547520,
+        "borrow": 1,
+        "max_MiB": 1024,
+        "skipped": 106
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 123.0,
+          "accepted": 94.0,
+          "replayed": 0.0,
+          "ms": 6848.99,
+          "tok_s": 18.5429
+        },
+        "timing_ms": {
+          "prepare_ms": 0.63189,
+          "draft_ms": 287.299,
+          "verify_ms": 6274.41,
+          "resync_ms": 141.35
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12264.0,
+        "cpu_candidates": 65990.0,
+        "dropped": 49459.0,
+        "mean_share": 0.391958,
+        "max_share": 0.499926,
+        "max_multiplier": 1.99971
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7185,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69989025918,
+            "decode_bytes": 1307620728
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5715,
+            "misses": 5306,
+            "uploaded_bytes": 75110547456,
+            "mma": 39753,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10898,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 26871,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14467203072
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31015305216
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6593,
+          "misses": 592,
+          "bytes_after": 185562944
+        }
+      }
+    },
+    {
+      "name": "attention-half-cap1280-v23",
+      "source_archive_sha256": "4ae4dbeb263028c2ff5d266c410e28ba43b00a05125a58261e0af74541566428",
+      "binary_sha256": "4c64e98129af35a99bb8eeefe384fe6e23bfc32287feb3ce11de5fcbca711dbd",
+      "raw_report_sha256": "d50a2a734f58cd56ba493e820914cd40db728fed0d755901e511f2c048926175",
+      "raw_log_sha256": "c4a51ecb9b295aa9e752f49050747dd5b27b10d3e4cbe9f54a119a1acf1980ce",
+      "decode_tok_s": 18.559518329351075,
+      "prefill_tok_s": 521.5940709423967,
+      "tokens_sha256": "61d07a37a272ec558c7201f761a7f4051b472b9a5b42c2543369d23a18ce5a53",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_FIXED_HALF": "2",
+        "STRATA_GLM_FP4_FIXED_HALF_BORROW": "1",
+        "STRATA_GLM_FP4_FIXED_HALF_MAX_MIB": "1280",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v23",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.8360230021116932,
+        "prefill_ratio": 1.0006176101670092
+      },
+      "fixed_half_cache": {
+        "mask": 2,
+        "matrices": 41,
+        "extra_bytes": 1321205760,
+        "borrow": 1,
+        "max_MiB": 1280,
+        "skipped": 98
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 123.0,
+          "accepted": 94.0,
+          "replayed": 0.0,
+          "ms": 6842.14,
+          "tok_s": 18.5614
+        },
+        "timing_ms": {
+          "prepare_ms": 0.585154,
+          "draft_ms": 283.653,
+          "verify_ms": 6276.69,
+          "resync_ms": 136.697
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12264.0,
+        "cpu_candidates": 65990.0,
+        "dropped": 49459.0,
+        "mean_share": 0.391958,
+        "max_share": 0.499926,
+        "max_multiplier": 1.99971
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7185,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69989025918,
+            "decode_bytes": 1307620728
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5715,
+            "misses": 5306,
+            "uploaded_bytes": 75110547456,
+            "mma": 39753,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10898,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 26871,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14467203072
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31015305216
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6593,
+          "misses": 592,
+          "bytes_after": 185562944
+        }
+      }
+    },
+    {
       "name": "control-v22",
       "source_archive_sha256": "0642bb53ca9c7440ee2f15e76103103de9e8c9d7d9075dc294723330172bb606",
       "binary_sha256": "4d5dfdd4530e3e08f654788305035272bacc70f931c146a9963802f9523d2dc7",
@@ -7813,6 +8442,12 @@
         "decode_ratio": 0.9732428975594158,
         "prefill_ratio": 0.9930262526214721
       },
+      "fixed_half_cache": {
+        "mask": 1,
+        "matrices": 1,
+        "extra_bytes": 594739200,
+        "borrow": 0
+      },
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -7965,6 +8600,12 @@
         "same_tokens": true,
         "decode_ratio": 0.9871798939560595,
         "prefill_ratio": 1.000260875651394
+      },
+      "fixed_half_cache": {
+        "mask": 1,
+        "matrices": 1,
+        "extra_bytes": 594739200,
+        "borrow": 1
       },
       "decode_work": {
         "speculative": {
@@ -8119,6 +8760,12 @@
         "decode_ratio": 0.8661611318700354,
         "prefill_ratio": 0.9999363924332438
       },
+      "fixed_half_cache": {
+        "mask": 4,
+        "matrices": 84,
+        "extra_bytes": 704471040,
+        "borrow": 1
+      },
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -8270,6 +8917,12 @@
         "same_tokens": false,
         "decode_ratio": 0.7664847760720117,
         "prefill_ratio": 0.9758586654913621
+      },
+      "fixed_half_cache": {
+        "mask": 7,
+        "matrices": 224,
+        "extra_bytes": 5718958080,
+        "borrow": 0
       },
       "decode_work": {
         "speculative": {
@@ -13119,6 +13772,16 @@
       "raw_report_sha256": "3bdb58d47f588f56ed378ebeb2958fbd781f884b1d14a68b3d401abafe227a31",
       "timing_qualified": false,
       "benchmark_residency_rejected": true
+    },
+    {
+      "name": "default-v23-parity128",
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "4c64e98129af35a99bb8eeefe384fe6e23bfc32287feb3ce11de5fcbca711dbd",
+      "raw_report_sha256": "61477cdb78f6e5825182aa22b22e7387fe9062fe6f149375a9faad97f204e340",
+      "timing_qualified": false,
+      "benchmark_residency_rejected": false
     }
   ],
   "budget_quality": {
@@ -17217,5 +17880,24 @@
     "kernel_filters": [],
     "scope": "Full synthetic native-format test suite, including exact cached operands, packed/native MXFP8 and block FP8, independent scalar reconstruction checks, bitwise skinny widths1\u20138 with and without supported K splitting. Model screens remain separate.",
     "performance_anchor": false
+  },
+  "fixed_half_model_decision": {
+    "status": "Rejected all tested variants; no fixed-half preset selected.",
+    "completed_candidate_screens": 7,
+    "startup_rejections": 1,
+    "controls": 2,
+    "protocol": "One full warmup, discarded one-decode-advance request, one timed8192-input/128-output request. Every reported completed screen had zero timed major faults, swap and EOS IDs. Short screens do not establish512-output throughput.",
+    "bounded_caps_MiB": [
+      512,
+      1024,
+      1280
+    ],
+    "extra_byte_bounds_verified": true,
+    "long_training_skipped": true,
+    "full_throughput_qualification_skipped": true,
+    "model_memcheck_skipped": true,
+    "kernel_memory_and_race_checks_complete": true,
+    "fresh_holdout_scored": false,
+    "finding": "Neither uncapped fixed FP16 storage nor bounded subsets improved model decode3% while retaining98% prefill. Synthetic kernel gains did not yield a faster selected model configuration."
   }
 }

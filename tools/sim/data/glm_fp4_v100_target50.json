@@ -29,7 +29,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_target50_screens.json",
-      "sha256": "659ce302116ca3ad2a71fae4e20f5531e069ff5b3bc720d9579ac5beda4c98a3"
+      "sha256": "5f9fe5aeef47cfb4f58b43c56cd26d5bdf6632e999fa9a64caaee357ee11e318"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -279,6 +279,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -370,6 +371,7 @@
           "bytes_after": 188277492
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -461,6 +463,7 @@
           "bytes_after": 214856082
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -552,6 +555,7 @@
           "bytes_after": 192573438
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -643,6 +647,7 @@
           "bytes_after": 187505508
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -734,6 +739,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -825,6 +831,7 @@
           "bytes_after": 187541962
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -916,6 +923,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1007,6 +1015,7 @@
           "bytes_after": 198559192
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1098,6 +1107,7 @@
           "bytes_after": 186124508
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1189,6 +1199,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1280,6 +1291,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1371,6 +1383,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1462,6 +1475,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1553,6 +1567,7 @@
           "bytes_after": 187428738
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1644,6 +1659,7 @@
           "bytes_after": 185088540
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1735,6 +1751,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1826,6 +1843,7 @@
           "bytes_after": 184649818
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -1917,6 +1935,7 @@
           "bytes_after": 191030216
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2008,6 +2027,7 @@
           "bytes_after": 191714826
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2099,6 +2119,7 @@
           "bytes_after": 186881816
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2190,6 +2211,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2281,6 +2303,7 @@
           "bytes_after": 189993164
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2372,6 +2395,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2463,6 +2487,7 @@
           "bytes_after": 196194780
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2554,6 +2579,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2645,6 +2671,7 @@
           "bytes_after": 194722094
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2736,6 +2763,7 @@
           "bytes_after": 187083004
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2827,6 +2855,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -2918,6 +2947,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3009,6 +3039,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3100,6 +3131,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3191,6 +3223,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3282,6 +3315,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3373,6 +3407,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3464,6 +3499,7 @@
           "bytes_after": 167595468
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3555,6 +3591,7 @@
           "bytes_after": 167595468
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3646,6 +3683,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3737,6 +3775,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3828,6 +3867,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -3919,6 +3959,7 @@
           "bytes_after": 167595468
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4010,6 +4051,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4101,6 +4143,7 @@
           "bytes_after": 189619636
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4192,6 +4235,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4283,6 +4327,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4374,6 +4419,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4465,6 +4511,7 @@
           "bytes_after": 189619636
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4556,6 +4603,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4647,6 +4695,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4738,6 +4787,7 @@
           "bytes_after": 156177812
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4829,6 +4879,7 @@
           "bytes_after": 167595468
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -4860,6 +4911,395 @@
         "mean_share": 0.382738,
         "max_share": 0.499997,
         "max_multiplier": 1.99999
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "control-v23",
+      "decode_tok_s": 22.199769961438825,
+      "prefill_tok_s": 521.2721279763799,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 515608282
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4887,
+            "misses": 5251,
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      },
+      "fixed_half_cache": null,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5720.09,
+          "tok_s": 22.2024
+        },
+        "timing_ms": {
+          "prepare_ms": 0.587509,
+          "draft_ms": 259.522,
+          "verify_ms": 5257.22,
+          "resync_ms": 147.288
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "attention-half-cap512-v23",
+      "decode_tok_s": 19.202274033082343,
+      "prefill_tok_s": 520.0675478358029,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7071,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 1029058640
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 99090432
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5442,
+            "misses": 5289,
+            "uploaded_bytes": 74869899264,
+            "mma": 38206,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10815,
+            "misses": 3972,
+            "uploaded_bytes": 56226742272,
+            "mma": 26625,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14084997120
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6484,
+          "misses": 587,
+          "bytes_after": 190241678
+        }
+      },
+      "fixed_half_cache": {
+        "mask": 2,
+        "matrices": 16,
+        "extra_bytes": 534773760,
+        "borrow": 1,
+        "max_MiB": 512,
+        "skipped": 123
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 121.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 6613.09,
+          "tok_s": 19.2043
+        },
+        "timing_ms": {
+          "prepare_ms": 0.666646,
+          "draft_ms": 279.421,
+          "verify_ms": 6072.1,
+          "resync_ms": 154.666
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12600.0,
+        "cpu_candidates": 68994.0,
+        "dropped": 51260.0,
+        "mean_share": 0.393275,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "attention-half-cap1024-v23",
+      "decode_tok_s": 18.540957998160504,
+      "prefill_tok_s": 520.8710856779526,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7185,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69989025918,
+            "decode_bytes": 1307620728
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5715,
+            "misses": 5306,
+            "uploaded_bytes": 75110547456,
+            "mma": 39753,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10898,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 26871,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14467203072
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31015305216
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6593,
+          "misses": 592,
+          "bytes_after": 185562944
+        }
+      },
+      "fixed_half_cache": {
+        "mask": 2,
+        "matrices": 33,
+        "extra_bytes": 1069547520,
+        "borrow": 1,
+        "max_MiB": 1024,
+        "skipped": 106
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 123.0,
+          "accepted": 94.0,
+          "replayed": 0.0,
+          "ms": 6848.99,
+          "tok_s": 18.5429
+        },
+        "timing_ms": {
+          "prepare_ms": 0.63189,
+          "draft_ms": 287.299,
+          "verify_ms": 6274.41,
+          "resync_ms": 141.35
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12264.0,
+        "cpu_candidates": 65990.0,
+        "dropped": 49459.0,
+        "mean_share": 0.391958,
+        "max_share": 0.499926,
+        "max_multiplier": 1.99971
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "attention-half-cap1280-v23",
+      "decode_tok_s": 18.559518329351075,
+      "prefill_tok_s": 521.5940709423967,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7185,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69989025918,
+            "decode_bytes": 1307620728
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5715,
+            "misses": 5306,
+            "uploaded_bytes": 75110547456,
+            "mma": 39753,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10898,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 26871,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14467203072
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31015305216
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6593,
+          "misses": 592,
+          "bytes_after": 185562944
+        }
+      },
+      "fixed_half_cache": {
+        "mask": 2,
+        "matrices": 41,
+        "extra_bytes": 1321205760,
+        "borrow": 1,
+        "max_MiB": 1280,
+        "skipped": 98
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 123.0,
+          "accepted": 94.0,
+          "replayed": 0.0,
+          "ms": 6842.14,
+          "tok_s": 18.5614
+        },
+        "timing_ms": {
+          "prepare_ms": 0.585154,
+          "draft_ms": 283.653,
+          "verify_ms": 6276.69,
+          "resync_ms": 136.697
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12264.0,
+        "cpu_candidates": 65990.0,
+        "dropped": 49459.0,
+        "mean_share": 0.391958,
+        "max_share": 0.499926,
+        "max_multiplier": 1.99971
       },
       "fit": false,
       "performance_anchor": false,
@@ -4920,6 +5360,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5010,6 +5451,12 @@
           "misses": 523,
           "bytes_after": 191699706
         }
+      },
+      "fixed_half_cache": {
+        "mask": 1,
+        "matrices": 1,
+        "extra_bytes": 594739200,
+        "borrow": 0
       },
       "decode_work": {
         "speculative": {
@@ -5102,6 +5549,12 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": {
+        "mask": 1,
+        "matrices": 1,
+        "extra_bytes": 594739200,
+        "borrow": 1
+      },
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5192,6 +5645,12 @@
           "misses": 587,
           "bytes_after": 190241678
         }
+      },
+      "fixed_half_cache": {
+        "mask": 4,
+        "matrices": 84,
+        "extra_bytes": 704471040,
+        "borrow": 1
       },
       "decode_work": {
         "speculative": {
@@ -5284,6 +5743,12 @@
           "bytes_after": 199444364
         }
       },
+      "fixed_half_cache": {
+        "mask": 7,
+        "matrices": 224,
+        "extra_bytes": 5718958080,
+        "borrow": 0
+      },
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5375,6 +5840,7 @@
           "bytes_after": 181361586
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5466,6 +5932,7 @@
           "bytes_after": 155362050
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5557,6 +6024,7 @@
           "bytes_after": 200389976
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5648,6 +6116,7 @@
           "bytes_after": 205503308
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5739,6 +6208,7 @@
           "bytes_after": 175428724
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
@@ -5830,6 +6300,7 @@
           "bytes_after": 146358686
         }
       },
+      "fixed_half_cache": null,
       "decode_work": {
         "speculative": {
           "generated": 128.0,
