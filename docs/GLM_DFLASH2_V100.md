@@ -225,6 +225,8 @@ and retained weights renormalized; prefill uses all routes.
 | DFlash2 depth 7, native graphs up to eight rows | 24.94 | 514.53 | Unscored | Full trial, median of three |
 | MTP depth 3, affinity comparison control | 32.05 | 520.11 | 8/8 long and 8/8 short | Full trial, median of three |
 | MTP depth 3, routing affinity 0.025 on both GPUs | 36.33 | 519.76 | 8/8 long and 8/8 short | Full trial, median of three; fresh holdout unscored |
+| MTP depth 3, affinity 0.025 plus native verification graphs | 35.55 | 519.73 | Graph combination unscored | Full trial, median of three; timing IDs unchanged |
+| MTP depth 7, soft-accept cap 3, affinity 0.025 and exact CPU dispatch | 23.14 | 522.33 | Unscored | One 512-output screen after two full warmups |
 
 The repeated trials exited successfully, had no timed major faults or observed
 swap, and emitted no real EOS IDs in the fixed-length timings. Neural bounded
@@ -277,6 +279,39 @@ trial. Eight-token products improved from 999.41 to 544.90 and from 1,000.69 to
 594.10 microseconds. Activation quantization and model execution are excluded;
 these component results supply no model throughput claim. The option remains
 off and no selected profile uses it.
+
+The later `CPU_SCALE_LOCAL` experiment decodes at most 256 temporary bytes per
+output row instead of retaining expanded tables. Its VNNI and forced
+AVX2/scalar checks passed for owned, borrowed and cached scales, including
+protected pages at the code-span end and four tensor-base alignments. Default
+128-token output parity passed. The subsequent `CPU_Q8_POLICY` experiment
+combines the exact kernels by projection shape and token width; both actual
+expert dimensions passed bitwise checks at widths 1–8. Both options remain
+off in the selected profiles. Neither uniform CPU variant passed its complete
+microbenchmark gate for a model comparison.
+
+CPU benchmark grouping and storage require care. The first driver woke its
+32-worker pool for every matrix product; the amortized driver runs 16 products
+per wake, retaining 16 discarded and 64 timed products per sample. The pool-only
+wake cost was about 10 microseconds, which does not explain all the grouping
+difference. Later, every variant was given identical activation and scale
+storage. With that control, the apparent eight-token gain did not persist:
+the per-width policy measured 448.17 versus 462.20 microseconds for gate/up and
+569.92 versus 508.46 for down. One-token products measured 32.96 versus 38.42
+and 36.10 versus 41.50. These are component medians, not model predictions.
+The original measurements are retained with their driver hashes. One copied
+metadata sentence incorrectly named kernel version 89; a separate hash-audited
+correction identifies version 91 without changing the raw record.
+
+The depth-seven MTP screen explains why the wide-product result was a poor
+guide to model throughput. Only **5 of 31,014 CPU expert groups** used eight
+routed tokens; 25,446 used one and 4,088 used two. These counters include
+request preparation and decode. Verification took 18.96 seconds of the
+22.09-second decode interval, with 393 of 821 proposals accepted over 118
+rounds. For that same proposal stream, deleting all other work would give
+26.95 tok/s; reaching 50 with the other work fixed requires about 2.67 times
+faster verification. This single screen supplies no quality or repeated-speed
+qualification. Narrow expert work and admission remain the useful targets.
 
 The paired 128-output screens below use two complete warmups and one timed
 request. All four emitted identical 128 IDs. They measure the same bounded

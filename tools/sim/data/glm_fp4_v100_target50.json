@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "346c9daf6e8b37b8560169dd8405a98f5a1a3460ec1532d20de7df539c4e2f6e"
+      "sha256": "99d035f9d2dba4aed3c61cba330b8abaef1735c7db859f8a4ac6050383eb9766"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6438,6 +6438,16 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-affinity-graphs-candidate-full-v87",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 35.549309884238646,
+      "prefill_tok_s": 519.730998604238,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded three-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-affinity-mtp-0025-v52",
       "experiment_family": "dflash2",
       "decode_tok_s": 31.949081542058995,
@@ -6928,6 +6938,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-verify-graphs-dflash2-v51",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 29.21068276398226,
+      "prefill_tok_s": 503.4260255031495,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded three-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-verify-graphs-mtp-v51",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 28.84626240502185,
+      "prefill_tok_s": 521.9463399404909,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded three-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-wide-graphs-candidate-full-v72",
       "experiment_family": "dflash2",
       "decode_tok_s": 24.935343775923485,
@@ -6956,6 +6986,16 @@
       "performance_anchor": false,
       "worker_residency_checked": true,
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded three-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-wide-policy-depth7-soft3-v96",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 23.136933518670283,
+      "prefill_tok_s": 522.3323875410463,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     }
   ],
   "selected": {
@@ -7489,7 +7529,8 @@
     "DFlash2: native verification graph widths4/8 measured 24.87 / 24.94 tok/s with identical three512-ID outputs in each mode. These observations do not replace the qualified MTP anchor.",
     "DFlash2: MLA graphs off/on measured 24.94 / 24.92 tok/s with identical three512-ID outputs in each mode. These observations do not replace the qualified MTP anchor.",
     "DFlash2: MTP3 routing affinity 0.025 measured 32.05 / 36.33 tok/s in a repeated same-build pair; both passed eight reused long and eight reused natural-length coding checks. Fresh20 remain unscored and the qualified MTP anchor is unchanged.",
-    "DFlash2: exact activation-bias VNNI operands passed CPU bitwise checks but failed the predeclared one-token CPU product speed gate. Eight-token component improvements do not establish model throughput; no full-model candidate timing was run and the option remains off."
+    "DFlash2: the later CPU microbenchmark gives variants identical activation/scales storage. Earlier copies changed storage as well as kernels; the apparent eight-token gain did not persist in the controlled comparison. CPU component rows remain diagnostic, not model forecasts or fitted resource capacities.",
+    "DFlash2: the uniform activation-bias VNNI option passed CPU bitwise checks but failed its original one-token CPU product gate. No full-model timing was run for that uniform configuration. Later mixed dispatch policies use separately recorded experiments; component timings alone do not establish model throughput."
   ],
   "limitations": [
     "Conditional resource roofs are optimistic workload bounds, not forecasts or fitted timing predictions.",
@@ -7620,6 +7661,24 @@
       "advances": 511,
       "decode_ms": 15253.4,
       "verify_ms": 13359.5
+    },
+    {
+      "name": "dflash2-affinity-graphs-candidate-full-v87-trial0",
+      "advances": 511,
+      "decode_ms": 15894.8,
+      "verify_ms": 14000.6
+    },
+    {
+      "name": "dflash2-affinity-graphs-candidate-full-v87-trial1",
+      "advances": 511,
+      "decode_ms": 14323.0,
+      "verify_ms": 12350.8
+    },
+    {
+      "name": "dflash2-affinity-graphs-candidate-full-v87-trial2",
+      "advances": 511,
+      "decode_ms": 14374.4,
+      "verify_ms": 12389.8
     },
     {
       "name": "dflash2-affinity-mtp-0025-v52",
@@ -8270,6 +8329,24 @@
       "verify_ms": 13731.8
     },
     {
+      "name": "dflash2-verify-graphs-dflash2-v51",
+      "advances": 511,
+      "decode_ms": 17493.6,
+      "verify_ms": 14749.5,
+      "draft_ms": 2402.91,
+      "restore_ms": 65.3343,
+      "rounds": 173,
+      "verification_rows": 691,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-verify-graphs-mtp-v51",
+      "advances": 511,
+      "decode_ms": 17714.6,
+      "verify_ms": 15642.6
+    },
+    {
       "name": "dflash2-wide-graphs-candidate-full-v72-trial0",
       "advances": 511,
       "decode_ms": 20337.7,
@@ -8376,6 +8453,12 @@
       "verification_rows": 1120,
       "single_tail_steps": 1,
       "block_size": 8
+    },
+    {
+      "name": "dflash2-wide-policy-depth7-soft3-v96",
+      "advances": 511,
+      "decode_ms": 22085.9,
+      "verify_ms": 18957.5
     }
   ]
 }
