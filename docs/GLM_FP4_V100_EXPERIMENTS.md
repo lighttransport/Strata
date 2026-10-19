@@ -279,6 +279,7 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_CPU_ROW_TILE` | `1` (default), `2`, `4` | Reuse activation loads across CPU output rows. |
 | `STRATA_GLM_FP4_CPU_SCALE_QUARTETS` | `1` | Cache four decoded scale indices per Q8 block; charge the existing CPU scale-cache limit. |
 | `STRATA_GLM_FP4_CPU_SCALE_LOCAL` | `1` | Requires CPU Q8. Decode scale quartets into at most 256 temporary bytes per output row, using vector gathers for borrowed CSF32 codes. Adds no persistent scale cache. Default off. |
+| `STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1` | `1` | Use the same bounded scale decoder only for one-token CPU expert groups. Requires CPU Q8; default off. |
 | `STRATA_GLM_FP4_CPU_TEAM_SIZE` | `0` (default), `2`, `4`, `8` | Divide CPU workers into independent expert teams. |
 | `STRATA_GLM_FP4_PREFILL_QUEUE` | `1` (default), `2`, `4` | Retain prefetched experts until their GPU consumption event completes. |
 | `STRATA_GLM_FP4_DENSE_SPLIT` | `1` | Increase independent K partitions for dense matrices with 513–8192 rows and at least 4096 columns. |
