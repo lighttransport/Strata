@@ -441,6 +441,24 @@ the next two created none. The individual candidate timings were 32.30, 36.83
 and 36.33 tok/s. These reused panels do not establish general quality, and the
 fresh twenty-case holdout remains unscored. The selected preset stays unchanged.
 
+A later calibration pair on the same two V100s used three full warmups and
+three timed 512-output requests per side. The depth-three, margin-three control
+measured 36.17 decode / 520.34 prefill tok/s. Depth four, margin four and a
+0.60 CPU route-drop cap measured 41.29 / 521.29, a 14.15% decode gain. All timed
+requests completed without major faults, swap or EOS IDs. This faster policy
+passed only seven of eight reused long coding checks: one answer repeated a
+paragraph until the fixed output limit. Its natural-length panel was skipped.
+The control passed all eight long and eight natural-length checks. The faster
+policy is rejected as a usable preset; the fresh twenty remain unscored.
+
+The named fixed-projection profile separates target prefill from cached MTP
+preparation and decode. KDA query, key, value and output projections were the
+largest fixed narrow GPU groups. Their timing intervals include input conversion
+and host enqueue gaps and overlap broader GPU product timers. These instrumented
+intervals do not replace model throughput or fit resource capacities. The
+separate CPU route-drop screens at caps 0.55 and 0.60 measured 36.12 and 36.24
+decode tok/s; reducing CPU groups also reduced proposal acceptance.
+
 The candidate used 20,455 CPU expert groups and 134 verification rounds per
 timed request, versus 27,590 groups and 146 rounds for its control. In its
 median request, verification took 12,093.4 ms of 14,067.0 ms. Removing all
