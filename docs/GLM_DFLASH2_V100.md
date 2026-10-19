@@ -303,6 +303,71 @@ The original measurements are retained with their driver hashes. One copied
 metadata sentence incorrectly named kernel version 89; a separate hash-audited
 correction identifies version 91 without changing the raw record.
 
+The later depth-seven screen with a soft-accept cap of five measured 24.17
+decode / 522.34 prefill tok/s. Fixed global admission modes two and three,
+combined with affinity 0.025 and the CPU policy, did not supply a faster
+candidate: mode three measured 28.59 / 521.61 in one timed request; mode two
+failed residency qualification. These screens used two full warmups and do
+not establish repeated gains. No selected setting changed.
+
+The subsequent same-build CPU-policy pair used three full warmups and three
+timed 512-output requests per variant. Control measured 36.43 decode / 519.74
+prefill tok/s; the exact per-width CPU policy measured 35.45 / 520.94, a 2.69%
+decode regression. All six output streams matched the mild-affinity stream.
+The policy stays off.
+
+The instrumented 128-output run recorded 2,105 ms of target CPU setup and
+1,073 ms of fused CPU products. Its timed request also created 359 CPU scale
+metadata entries. This is not a steady-state setup measurement. Profiling
+synchronizes GPU streams, and CPU/GPU phase times overlap; these totals must
+not be added or used to fit a throughput estimate.
+
+A separate instrumented 512-output request with the CPU policy enabled,
+after three full warmups, created
+no new CPU metadata entries. It recorded 271 ms of CPU setup, 4,147 ms of
+fused CPU products and 4,857 ms of routing/input preparation and coordinator
+waiting. The latter includes host routing work and stream synchronization;
+it is not an isolated copy or dense-matrix timer. CPU products and the work
+before routed products remain optimization targets. These instrumented sums
+do not replace the uninstrumented throughput measurements.
+Of its 20,455 CPU expert groups, 17,841 used one routed token and only one
+used eight; these counters include request preparation and decode.
+
+`STRATA_GLM_FP4_EXPERT_FUSION=1` adds an experimental narrow GPU kernel. It
+shares activation loads between gate and up, keeps each projection's two MMA
+accumulator chains and K reduction, then applies the existing SwiGLU expression
+and FP16 rounding. It replaces four launches with one for those two products
+and their pointwise operations. Prefill and other matrix formats keep their
+existing path. CUDA and HIP decoder builds passed locally; the native FP4
+path is excluded from HIP. On both a GeForce RTX 5060 Ti and a Tesla V100,
+128 bitwise output cases across widths 1–8 and 16 graph replays with changed
+inputs passed. V100 memory checking reported zero errors and race checking
+reported zero hazards.
+
+The corrected V100 component benchmark used a 2048-by-4096 gate/up pair,
+16 warm calls and three samples of 128 timed calls, with ordinary launches.
+The paired weight and scale working set was 9 MiB.
+
+| Routed width | Separate products and pointwise operations, µs | Fused, µs |
+| --- | ---: | ---: |
+| 1 | 26.09 | 20.78 |
+| 4 | 33.87 | 22.76 |
+| 8 | 48.43 | 29.86 |
+
+These component gains did not improve the model run. On two V100 32GB GPUs,
+the same-build pair with affinity 0.025 measured **36.88 decode / 520.21
+prefill tok/s** with fusion off and **36.31 / 520.33** with it on. Each used
+three full warmups and three timed 512-output requests. Both passed residency
+checks and all six token streams were identical. The 1.54% decode regression
+keeps fusion off; the kernel remains an opt-in experiment. No extra coding
+panel was run for this slower combination. The default 128-token parity run
+matched the original IDs and exited cleanly, but its 65 cold major faults
+exclude its timing. The corrected test harness reused that parity and full
+pair only after checking that its decoder binary was byte-identical.
+The latest control still needs 1.36 times its decode rate to reach 50 tok/s,
+1.54 times its prefill rate to reach 800, and 1.92 times to reach 1,000.
+These are gaps from measured rates, not forecasts or revised hardware roofs.
+
 The depth-seven MTP screen explains why the wide-product result was a poor
 guide to model throughput. Only **5 of 31,014 CPU expert groups** used eight
 routed tokens; 25,446 used one and 4,088 used two. These counters include
