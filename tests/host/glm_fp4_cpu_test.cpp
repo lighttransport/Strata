@@ -124,14 +124,18 @@ int main(int argc,char** argv){try {
             if(std::abs(qinput[i]-float(q8.values[i])*scale)>scale*.5001f+1.e-6f)
                 throw std::runtime_error("Q8 activation exceeds half-scale error bound");
         }
-        for(bool prepared:{false,true}) {
-            auto source=q8;if(prepared)strata::kernels::cpu::glm_fp4_prepare_q8(source);
+        for(int mode:{0,1,2,3}) {
+            auto source=q8;
+            if(mode&1)strata::kernels::cpu::glm_fp4_prepare_q8(source);
+            if(mode&2)strata::kernels::cpu::glm_fp4_prepare_q8_bias(source);
             const int order[]={7,1,7,0};std::vector<float> picked(size_t(columns)*4);
             for(int t=0;t<4;++t)std::copy_n(qinput.data()+size_t(order[t])*columns,columns,picked.data()+size_t(t)*columns);
             auto expected=strata::kernels::cpu::glm_fp4_quantize_q8(picked.data(),columns,4);
-            if(prepared)strata::kernels::cpu::glm_fp4_prepare_q8(expected);
+            if(mode&1)strata::kernels::cpu::glm_fp4_prepare_q8(expected);
+            if(mode&2)strata::kernels::cpu::glm_fp4_prepare_q8_bias(expected);
             const auto actual=strata::kernels::cpu::glm_fp4_gather_q8(source,order,4);
-            if(actual.values!=expected.values||actual.scales!=expected.scales||actual.magnitudes!=expected.magnitudes||actual.negative!=expected.negative)
+            if(actual.values!=expected.values||actual.scales!=expected.scales||actual.magnitudes!=expected.magnitudes||
+               actual.negative!=expected.negative||actual.dot_bias!=expected.dot_bias)
                 throw std::runtime_error("Q8 input reuse changes duplicate/reordered rows");
             for(int bad:{-1,8}) {
                 bool rejected=false;try{strata::kernels::cpu::glm_fp4_gather_q8(source,&bad,1);}catch(const std::invalid_argument&){rejected=true;}
@@ -146,15 +150,16 @@ int main(int argc,char** argv){try {
             auto borrowed_output=got;
             strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),borrowed,table,q8,borrowed_output.data(),columns,rows,tokens,13,rows-1);
             if(std::memcmp(got.data(),borrowed_output.data(),got.size()*4))throw std::runtime_error("borrowed Q8 rows differ from owning scales");
-            for(bool cached:{false,true})for(bool prepared:{false,true})for(int tile:{1,2,4}) {
-                auto layout=borrowed;
+            for(bool owned:{false,true})for(bool cached:{false,true})for(int mode:{0,1,2,3})for(int tile:{1,2,4}) {
+                auto layout=owned?sparse:borrowed;
                 if(cached)strata::kernels::cpu::glm_fp4_cache_scale_quartets(layout);
                 auto operands=q8;
-                if(prepared)strata::kernels::cpu::glm_fp4_prepare_q8(operands);
+                if(mode&1)strata::kernels::cpu::glm_fp4_prepare_q8(operands);
+                if(mode&2)strata::kernels::cpu::glm_fp4_prepare_q8_bias(operands);
                 std::vector<float> tiled(got.size(),-777.f);
                 strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,operands,tiled.data(),columns,rows,tokens,13,rows-1,tile);
                 if(std::memcmp(got.data(),tiled.data(),got.size()*4))
-                    throw std::runtime_error("tiled/prepared Q8 differs from original row kernel");
+                    throw std::runtime_error("tiled/prepared/biased Q8 differs from original row kernel");
             }
             double error=0,norm=0;
             for(int t=0;t<tokens;++t)for(int row=13;row<rows-1;++row) {
@@ -176,6 +181,35 @@ int main(int argc,char** argv){try {
             if(tokens==1)qfirst.assign(got.begin(),got.begin()+rows);
             else if(std::memcmp(qfirst.data(),got.data(),rows*4))throw std::runtime_error("Q8 first row changes with verification width");
         }
+        // Exercise the full signed-byte range, including -128, and the extrema
+        // of the int16 correction. Both VNNI and scalar preparation must agree.
+        auto extreme=q8;
+        for(size_t i=0;i<extreme.values.size();++i)extreme.values[i]=int8_t(int(i%256)-128);
+        std::fill_n(extreme.values.data(),64,int8_t(-128));
+        std::fill_n(extreme.values.data()+64,64,int8_t(127));
+        auto biased=extreme;strata::kernels::cpu::glm_fp4_prepare_q8_bias(biased);
+        for(size_t i=0;i<extreme.values.size();i+=4) {
+            int sum=0;for(int j=0;j<4;++j)sum+=int(extreme.values[i+j]);
+            if(biased.dot_bias[i/4]!=-12*sum)throw std::runtime_error("Q8 dot bias differs from independent signed sum");
+        }
+        if(biased.values!=extreme.values||biased.scales!=extreme.scales)
+            throw std::runtime_error("Q8 bias preparation changes quantization");
+        for(int tokens=1;tokens<=8;++tokens)for(int tile:{1,2,4}) {
+            std::fill(expected.begin(),expected.end(),-777.f);std::fill(got.begin(),got.end(),-777.f);
+            strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),empty_sparse,table,extreme,expected.data(),columns,rows,tokens,1,rows-1);
+            strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),empty_sparse,table,biased,got.data(),columns,rows,tokens,1,rows-1,tile);
+            if(std::memcmp(expected.data(),got.data(),got.size()*4))throw std::runtime_error("biased Q8 extreme operands change outputs or guards");
+        }
+        biased.dot_bias.pop_back();
+        bool bad_gather=false,bad_product=false;
+        const int pick=0;
+        try{strata::kernels::cpu::glm_fp4_gather_q8(biased,&pick,1);}catch(const std::invalid_argument&){bad_gather=true;}
+        try{strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),sparse,table,biased,got.data(),columns,rows,1,0,rows);}catch(const std::invalid_argument&){bad_product=true;}
+        if(!bad_gather||!bad_product)throw std::runtime_error("Q8 accepts a truncated bias buffer");
+        auto invalid=extreme;invalid.columns-=1;
+        bool bad_prepare=false;
+        try{strata::kernels::cpu::glm_fp4_prepare_q8_bias(invalid);}catch(const std::invalid_argument&){bad_prepare=true;}
+        if(!bad_prepare)throw std::runtime_error("Q8 bias preparation accepts an invalid extent");
         qinput[0]=std::numeric_limits<float>::infinity();
         bool rejected=false;try{strata::kernels::cpu::glm_fp4_quantize_q8(qinput.data(),columns,1);}catch(const std::invalid_argument&){rejected=true;}
         if(!rejected)throw std::runtime_error("Q8 accepted nonfinite activation");

@@ -59,9 +59,13 @@ struct GlmFp4Q8 {
     // Optional reusable VNNI operands; preparation does not change quantization.
     std::vector<uint8_t> magnitudes;
     std::vector<uint64_t> negative;
+    // -12 times each four-value signed sum cancels the unsigned weight offset.
+    // This changes the VNNI operands, not the quantization or floating-point math.
+    std::vector<int16_t> dot_bias;
 };
 GlmFp4Q8 glm_fp4_quantize_q8(const float* x,int columns,int tokens);
 void glm_fp4_prepare_q8(GlmFp4Q8& x);
+void glm_fp4_prepare_q8_bias(GlmFp4Q8& x);
 GlmFp4Q8 glm_fp4_gather_q8(const GlmFp4Q8& x,const int* rows,int tokens);
 // In-place FP16 rounding, with the scalar codec's values on every ISA.
 void glm_fp4_round_f16(float* x,size_t count);

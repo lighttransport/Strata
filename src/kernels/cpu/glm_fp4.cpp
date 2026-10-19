@@ -240,11 +240,13 @@ void rows_q8_vnni(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* t
 }
 // Reuse activation operands across output rows without changing any row's
 // sequence of dot products, scale multiplication, FMA or horizontal reduction.
-template<int M,int TILE>
+template<int M,int TILE,bool BIASED=false>
 __attribute__((target("avx512f,avx512bw,avx512vnni,fma")))
 void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
                    const GlmFp4Q8& x,float* y,int K,int N,int first,int last) {
-    const __m512i lut=_mm512_broadcast_i32x4(_mm_setr_epi8(0,1,2,3,4,6,8,12,0,-1,-2,-3,-4,-6,-8,-12));
+    const __m512i lut=_mm512_broadcast_i32x4(BIASED?
+        _mm_setr_epi8(12,13,14,15,16,18,20,24,12,11,10,9,8,6,4,0):
+        _mm_setr_epi8(0,1,2,3,4,6,8,12,0,-1,-2,-3,-4,-6,-8,-12));
     const __m512i zero=_mm512_setzero_si512();
     const SparseScales source{s};
     const bool prepared=!x.magnitudes.empty();
@@ -269,8 +271,11 @@ void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* 
             }
             for(int t=0;t<M;++t) {
                 const size_t at=size_t(t)*K+j;
-                __m512i magnitude;__mmask64 negative;
-                if(prepared) {
+                __m512i magnitude,bias;__mmask64 negative=0;
+                if constexpr(BIASED) {
+                    magnitude=_mm512_loadu_si512(x.values.data()+at);
+                    bias=_mm512_cvtepi16_epi32(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(x.dot_bias.data()+at/4)));
+                }else if(prepared) {
                     magnitude=_mm512_loadu_si512(x.magnitudes.data()+at);negative=x.negative[at/64];
                 }else {
                     const auto act=_mm512_loadu_si512(x.values.data()+at);
@@ -278,8 +283,12 @@ void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* 
                 }
                 const auto activation_scale=_mm512_set1_ps(x.scales[at/64]);
                 for(int r=0;r<TILE;++r)if(row+r<last) {
-                    const auto signed_weights=_mm512_mask_sub_epi8(values[r],negative,zero,values[r]);
-                    const auto dots=_mm512_dpbusd_epi32(zero,magnitude,signed_weights);
+                    __m512i dots;
+                    if constexpr(BIASED)dots=_mm512_dpbusd_epi32(bias,values[r],magnitude);
+                    else {
+                        const auto signed_weights=_mm512_mask_sub_epi8(values[r],negative,zero,values[r]);
+                        dots=_mm512_dpbusd_epi32(zero,magnitude,signed_weights);
+                    }
                     acc[r][t]=_mm512_fmadd_ps(_mm512_cvtepi32_ps(dots),_mm512_mul_ps(scales[r],activation_scale),acc[r][t]);
                 }
             }
@@ -291,7 +300,11 @@ void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* 
 template<int M>
 void dispatch_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
                  const GlmFp4Q8& x,float* y,int K,int N,int first,int last,int tile) {
-    if(tile==4)rows_q8_tiled<M,4>(w,s,table,x,y,K,N,first,last);
+    if(!x.dot_bias.empty()) {
+        if(tile==4)rows_q8_tiled<M,4,true>(w,s,table,x,y,K,N,first,last);
+        else if(tile==2)rows_q8_tiled<M,2,true>(w,s,table,x,y,K,N,first,last);
+        else rows_q8_tiled<M,1,true>(w,s,table,x,y,K,N,first,last);
+    }else if(tile==4)rows_q8_tiled<M,4>(w,s,table,x,y,K,N,first,last);
     else if(tile==2)rows_q8_tiled<M,2>(w,s,table,x,y,K,N,first,last);
     else if(!x.magnitudes.empty())rows_q8_tiled<M,1>(w,s,table,x,y,K,N,first,last);
     else rows_q8_vnni<M>(w,s,table,x,y,K,N,first,last);
@@ -303,6 +316,15 @@ void prepare_q8_avx512(GlmFp4Q8& x) {
         const auto v=_mm512_loadu_si512(x.values.data()+i);
         _mm512_storeu_si512(x.magnitudes.data()+i,_mm512_abs_epi8(v));
         x.negative[i/64]=_mm512_cmpgt_epi8_mask(zero,v);
+    }
+}
+__attribute__((target("avx512f,avx512bw,avx512vnni")))
+void prepare_q8_bias_vnni(GlmFp4Q8& x) {
+    for(size_t i=0;i<x.values.size();i+=64) {
+        const auto sum=_mm512_dpbusd_epi32(_mm512_setzero_si512(),_mm512_set1_epi8(1),
+            _mm512_loadu_si512(x.values.data()+i));
+        const auto bias=_mm512_mullo_epi32(sum,_mm512_set1_epi32(-12));
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(x.dot_bias.data()+i/4),_mm512_cvtepi32_epi16(bias));
     }
 }
 
@@ -487,19 +509,34 @@ void glm_fp4_prepare_q8(GlmFp4Q8& x) {
     }
 }
 
+void glm_fp4_prepare_q8_bias(GlmFp4Q8& x) {
+    if(x.columns<64||x.columns%64||x.tokens<1||x.tokens>8||
+       x.values.size()!=size_t(x.columns)*x.tokens||x.scales.size()!=x.values.size()/64)
+        throw std::invalid_argument("GLM FP4 CPU: invalid biased Q8 extent");
+    x.dot_bias.resize(x.values.size()/4);
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+    if(glm_fp4_q8_vnni_available()){prepare_q8_bias_vnni(x);return;}
+#endif
+    for(size_t i=0;i<x.values.size();i+=4)
+        x.dot_bias[i/4]=int16_t(-12*(int(x.values[i])+int(x.values[i+1])+int(x.values[i+2])+int(x.values[i+3])));
+}
+
 GlmFp4Q8 glm_fp4_gather_q8(const GlmFp4Q8& x,const int* rows,int tokens) {
     if(!rows||tokens<1||tokens>8||x.columns<64||x.columns%64||x.tokens<1||x.tokens>8||
        x.values.size()!=size_t(x.columns)*x.tokens||x.scales.size()!=x.values.size()/64||
-       (!x.magnitudes.empty()&&(x.magnitudes.size()!=x.values.size()||x.negative.size()!=x.scales.size())))
+       (!x.magnitudes.empty()&&(x.magnitudes.size()!=x.values.size()||x.negative.size()!=x.scales.size()))||
+       (!x.dot_bias.empty()&&x.dot_bias.size()!=x.values.size()/4))
         throw std::invalid_argument("GLM FP4 CPU: invalid Q8 gather extent");
     GlmFp4Q8 out;out.columns=x.columns;out.tokens=tokens;
     out.values.resize(size_t(tokens)*x.columns);out.scales.resize(out.values.size()/64);
     if(!x.magnitudes.empty()){out.magnitudes.resize(out.values.size());out.negative.resize(out.scales.size());}
+    if(!x.dot_bias.empty())out.dot_bias.resize(out.values.size()/4);
     for(int t=0;t<tokens;++t) {
         if(rows[t]<0||rows[t]>=x.tokens)throw std::invalid_argument("GLM FP4 CPU: invalid Q8 gather row");
         const size_t source=size_t(rows[t])*x.columns,target=size_t(t)*x.columns;
         std::copy_n(x.values.data()+source,x.columns,out.values.data()+target);
         std::copy_n(x.scales.data()+source/64,x.columns/64,out.scales.data()+target/64);
+        if(!x.dot_bias.empty())std::copy_n(x.dot_bias.data()+source/4,x.columns/4,out.dot_bias.data()+target/4);
         if(!x.magnitudes.empty()) {
             std::copy_n(x.magnitudes.data()+source,x.columns,out.magnitudes.data()+target);
             std::copy_n(x.negative.data()+source/64,x.columns/64,out.negative.data()+target/64);
@@ -526,7 +563,8 @@ void glm_fp4_rows_csf32_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const
     if(K<64||K%64||N<1||M<1||M>8||first<0||last<first||last>N||s.rows!=N||s.groups!=K/16||
        x.columns!=K||x.tokens<M||x.values.size()<size_t(K)*M||x.scales.size()<size_t(K/64)*M||
        (row_tile!=1&&row_tile!=2&&row_tile!=4)||
-       (!x.magnitudes.empty()&&(x.magnitudes.size()!=x.values.size()||x.negative.size()!=x.values.size()/64)))
+       (!x.magnitudes.empty()&&(x.magnitudes.size()!=x.values.size()||x.negative.size()!=x.values.size()/64))||
+       (!x.dot_bias.empty()&&x.dot_bias.size()!=x.values.size()/4))
         throw std::invalid_argument("GLM FP4 CPU: invalid Q8 product extent");
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
     if(glm_fp4_q8_vnni_available()) {

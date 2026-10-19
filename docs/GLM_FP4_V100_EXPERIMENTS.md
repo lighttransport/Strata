@@ -274,6 +274,7 @@ must be checked on the complete model before selecting a combination.
 | --- | --- | --- |
 | `STRATA_GLM_FP4_CPU_INPUT_REUSE` | `1` | Quantize each input token once and gather its Q8 row for routed experts. |
 | `STRATA_GLM_FP4_CPU_Q8_PREPARE` | `1` | Prepare Q8 magnitudes and sign masks once per activation block. |
+| `STRATA_GLM_FP4_CPU_Q8_BIAS` | `1` | Requires CPU Q8. Offset integer FP4 weights by 12 and cancel that offset with a signed activation-sum correction. Keeps the existing Q8 arithmetic; adds two bytes per four activation values. Default off. |
 | `STRATA_GLM_FP4_CPU_ROW_TILE` | `1` (default), `2`, `4` | Reuse activation loads across CPU output rows. |
 | `STRATA_GLM_FP4_CPU_SCALE_QUARTETS` | `1` | Cache four decoded scale indices per Q8 block; charge the existing CPU scale-cache limit. |
 | `STRATA_GLM_FP4_CPU_TEAM_SIZE` | `0` (default), `2`, `4`, `8` | Divide CPU workers into independent expert teams. |

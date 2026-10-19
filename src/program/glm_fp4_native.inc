@@ -285,6 +285,7 @@ class Fp4NativeExecutor {
     const bool cpu_scale_quartets=strata_env_is_one("STRATA_GLM_FP4_CPU_SCALE_QUARTETS");
     const bool cpu_input_reuse=strata_env_is_one("STRATA_GLM_FP4_CPU_INPUT_REUSE");
     const bool cpu_q8_prepare=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_PREPARE");
+    const bool cpu_q8_bias=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_BIAS");
     const long long cpu_team_size=strata_env_value_ll("STRATA_GLM_FP4_CPU_TEAM_SIZE",0);
     const long long cpu_row_tile=strata_env_value_ll("STRATA_GLM_FP4_CPU_ROW_TILE",1);
     const bool cpu_borrow_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_BORROW");
@@ -1003,6 +1004,8 @@ public:
             throw std::invalid_argument("GLM FP4: CPU_TEAM_SIZE must be 0, 2, 4 or 8");
         if(cpu_row_tile!=1&&cpu_row_tile!=2&&cpu_row_tile!=4)
             throw std::invalid_argument("GLM FP4: CPU_ROW_TILE must be 1, 2 or 4");
+        if(cpu_q8_bias&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_Q8_BIAS requires CPU_Q8=1");
+        if(cpu_q8_bias)std::cerr<<"FP4_CPU_Q8_BIAS enabled=1\n";
         if(cpu_row_tile!=1||cpu_q8_prepare)std::cerr<<"FP4_CPU_REUSE row_tile="<<cpu_row_tile<<" prepared="<<cpu_q8_prepare<<'\n';
         if(decode_device_routing_enabled)std::cerr<<"FP4_DECODE_ROUTING enabled=1 deferred_expert_sync=1\n";
         if(!std::isfinite(route_drop_cap)||route_drop_cap<0.5||route_drop_cap>0.75||
@@ -1390,7 +1393,8 @@ public:
                 std::vector<float> rounded(activation,activation+size_t(nt)*4096);
                 cpu::glm_fp4_round_f16(rounded.data(),rounded.size());
                 shared_input=cpu::glm_fp4_quantize_q8(rounded.data(),4096,nt);
-                if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(shared_input);
+                if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(shared_input);
+                else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(shared_input);
             }
             // Packed codes stay mapped. A bounded LRU retains logical
             // scale planes so repeat CPU misses do not re-expand CSF32.
@@ -1416,7 +1420,11 @@ public:
                         }else for(int h=0;h<4096;++h)
                             dest[h]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(source[h]));
                     }
-                    if(cpu_q8_enabled){job.qinput=cpu::glm_fp4_quantize_q8(job.input.data(),4096,count);if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qinput);}
+                    if(cpu_q8_enabled) {
+                        job.qinput=cpu::glm_fp4_quantize_q8(job.input.data(),4096,count);
+                        if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(job.qinput);
+                        else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qinput);
+                    }
                     }
                 }
             });
@@ -1444,7 +1452,8 @@ public:
             auto quant_hidden=[&](size_t rank) {
                 for(size_t i=rank;i<cpu_jobs.size();i+=cpu_pool.size()) {
                     auto& job=cpu_jobs[i];job.qhidden=cpu::glm_fp4_quantize_q8(job.hidden.data(),2048,job.routes->size());
-                    if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
+                    if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(job.qhidden);
+                    else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
                 }
             };
             auto down_range=[&](size_t rank,size_t workers,size_t begin_job,size_t end_job) {
@@ -1488,7 +1497,8 @@ public:
                                 if(member==0) {
                                     auto& job=cpu_jobs[j];
                                     job.qhidden=cpu::glm_fp4_quantize_q8(job.hidden.data(),2048,job.routes->size());
-                                    if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
+                                    if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(job.qhidden);
+                                    else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
                                 }
                                 if(!barrier())return;
                             }

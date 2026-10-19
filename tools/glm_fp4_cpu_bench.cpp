@@ -28,13 +28,17 @@ int main(int argc,char** argv) {try {
         std::vector<float>x(K*8),reference(N*8),out(N*8);
         for(size_t i=0;i<x.size();++i)x[i]=strata::cpu::exl3::half_value(strata::cpu::exl3::half_round(std::sin(float(i)*.37f)));
         const auto q=c::glm_fp4_quantize_q8(x.data(),K,8);auto prepared=q;c::glm_fp4_prepare_q8(prepared);
+        auto biased=q;c::glm_fp4_prepare_q8_bias(biased);
         alignas(64)float table[c::glm_fp4_weight_table_floats];c::glm_fp4_weight_table(.00061f,true,table);
-        struct Variant {const char* name;int tile;bool prepare,cache;};
+        struct Variant {const char* name;int tile;bool prepare,cache,bias=false;};
         const Variant variants[]={{"baseline",1,false,false},{"prepared",1,true,false},{"tile2",2,false,false},
-            {"tile4",4,false,false},{"tile2_prepared",2,true,false},{"quartets",1,false,true}};
+            {"tile4",4,false,false},{"tile2_prepared",2,true,false},{"quartets",1,false,true},
+            {"biased",1,false,false,true},{"biased_tile2",2,false,false,true},
+            {"biased_quartets",1,false,true,true},{"biased_quartets_tile2",2,false,true,true}};
+        constexpr int count=sizeof(variants)/sizeof(variants[0]);
         auto run=[&](const Variant& v,int width,int copy) {
             pool.run([&](size_t rank) {
-                c::glm_fp4_rows_csf32_q8(w.data()+wb*copy,v.cache?cached:sparse,table,v.prepare?prepared:q,
+                c::glm_fp4_rows_csf32_q8(w.data()+wb*copy,v.cache?cached:sparse,table,v.bias?biased:(v.prepare?prepared:q),
                     out.data(),K,N,width,N*rank/pool.size(),N*(rank+1)/pool.size(),v.tile);
             });
         };
@@ -46,8 +50,8 @@ int main(int argc,char** argv) {try {
                 run(v,width,0);
                 if(std::memcmp(reference.data(),out.data(),size_t(width)*N*4))throw std::runtime_error("variant changes Q8 outputs");
             }
-            for(int sample=0;sample<3;++sample)for(int order=0;order<6;++order) {
-                const auto& v=variants[(order+sample)%6];
+            for(int sample=0;sample<3;++sample)for(int order=0;order<count;++order) {
+                const auto& v=variants[(order+sample)%count];
                 for(int i=0;i<copies;++i)run(v,width,i);
                 const auto start=std::chrono::steady_clock::now();
                 for(int i=0;i<repeats;++i)run(v,width,i%copies);
