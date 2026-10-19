@@ -475,8 +475,12 @@ Combining this CPU option with batched KDA projections produced raw medians of
 36.74 / 38.43 decode and 520.09 / 520.03 prefill tok/s. The candidate's third
 timed request had 42 target-process major faults, so the pair failed residency
 qualification. Its raw median does not establish a repeated gain. The fault
-counter does not identify which backing file faulted. A controlled repeat is
-separate from this frozen failed result.
+counter does not identify which backing file faulted. A controlled repeat
+measured 36.40 / 37.96 decode and 519.97 / 519.54 prefill tok/s, but the
+candidate's third timed request again had major faults, this time seven.
+Both modes completed their discarded library-page preparation. The repeated
+pair also fails residency qualification; neither raw candidate median is a
+qualified gain.
 
 The named fixed-projection profile separates target prefill from cached MTP
 preparation and decode. KDA query, key, value and output projections were the

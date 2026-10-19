@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "6c842420200ae36cc8baf8c0694d31773eb0094d9fb6a3ec9f1023b9363cdd21"
+      "sha256": "5e1ffa4112887c79ad9c3812ddf5c8bf04af2d9f0f43851af8f33e1d15596d13"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6848,6 +6848,16 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-local-m1-qkv-0-full-v155",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 36.399122432116705,
+      "prefill_tok_s": 519.9685175311652,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-lookup24-drop05-v39",
       "experiment_family": "dflash2",
       "decode_tok_s": 31.544252612336038,
@@ -7757,6 +7767,7 @@
     "DFlash2: MTP calibration measured 36.17 / 41.29 decode tok/s with three full warmups and three timed512 requests per side. Candidate passed only7/8 reused long coding checks and is rejected as a usable preset; short quality was skipped. No fitted capacity or selected anchor changed.",
     "DFlash2: MTP calibration measured 36.39 / 39.41 decode tok/s with three full warmups and three timed512 requests per side. Candidate passed only2/8 reused long coding checks and is rejected as a usable preset; short quality was skipped. No fitted capacity or selected anchor changed.",
     "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment143, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 42]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
+    "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment155, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 7]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
     "DFlash2: native head operand export passed valid output bit checks at widths1/8. FC-adapter calibration passed20CPU tests and a real-weight V100 synthetic gradient/serving-forward probe; skinny relativeL2 differed by0.00254. These are validation results, not a trained speed or coding result, and fit no capacity.",
     "DFlash2: named fixed-projection profiling separates target prefill from decode/preparation. Attention projections are the largest fixed narrow GPU groups; timing endpoints include input conversion and host enqueue gaps and overlap broader product timers. These diagnostics do not change a throughput anchor or hardware capacity.",
     "DFlash2: the separately instrumented hot512-output request had zero new CPU metadata entries; target CPU setup totaled271ms, fused CPU products4147ms, and routing/input preparation plus coordinator waiting4857ms. Profiling synchronizes streams, phase sums overlap and must not be added, used as model timing, or fitted to capacities.",
@@ -8474,6 +8485,24 @@
       "advances": 511,
       "decode_ms": 13975.8,
       "verify_ms": 12009.9
+    },
+    {
+      "name": "dflash2-local-m1-qkv-0-full-v155-trial0",
+      "advances": 511,
+      "decode_ms": 13981.4,
+      "verify_ms": 12020.3
+    },
+    {
+      "name": "dflash2-local-m1-qkv-0-full-v155-trial1",
+      "advances": 511,
+      "decode_ms": 14038.8,
+      "verify_ms": 12079.3
+    },
+    {
+      "name": "dflash2-local-m1-qkv-0-full-v155-trial2",
+      "advances": 511,
+      "decode_ms": 14052.4,
+      "verify_ms": 12086.3
     },
     {
       "name": "dflash2-lookup24-drop05-v39",
