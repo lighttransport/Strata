@@ -25,6 +25,12 @@ void glm_fp4_csf32_scales(const uint8_t* bases,const uint8_t* codes,
 void glm_fp4_gemm(GlmPackedFormat format,const void* weights,const void* scales,float global,
                   const uint16_t* x,float* y,int rows,int columns,int tokens,
                   bool sm70,void* stream,float* partials=nullptr,int fp8_accumulators=1);
+// Opt-in SM70 NVFP4 gate/up + SwiGLU + FP16 output. Same two accumulator
+// chains and K reduction as gemm; requires rows%32=0, columns%64=0, tokens1..8.
+void glm_fp4_gate_up_f16(const uint8_t* gate,const uint8_t* gate_scales,float gate_global,
+                         const uint8_t* up,const uint8_t* up_scales,float up_global,
+                         const uint16_t* x,uint16_t* hidden,int rows,int columns,int tokens,
+                         float limit,void* stream);
 // Optional scratch for small fixed projections: 64 K partitions, eight rows.
 // Passing it keeps K splitting fixed across all verification widths.
 constexpr size_t glm_fp4_partial_bytes(int rows) {return size_t(64)*8*rows*sizeof(float);}

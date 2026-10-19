@@ -253,6 +253,7 @@ class Fp4NativeExecutor {
     const bool profile=strata_env_is_one("STRATA_GLM_FP4_PROFILE");
     const bool dense_split_enabled=strata_env_is_one("STRATA_GLM_FP4_DENSE_SPLIT");
     const bool gpu_reduce_enabled=strata_env_is_one("STRATA_GLM_FP4_GPU_REDUCE");
+    const bool expert_fusion=strata_env_is_one("STRATA_GLM_FP4_EXPERT_FUSION");
     const bool head_tp_enabled=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP");
     const bool head_tp_borrow=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP_BORROW");
     const long long fixed_half_mask=strata_env_value_ll("STRATA_GLM_FP4_FIXED_HALF",0);
@@ -1005,6 +1006,7 @@ public:
         }
         if(cpu_team_size!=0&&cpu_team_size!=2&&cpu_team_size!=4&&cpu_team_size!=8)
             throw std::invalid_argument("GLM FP4: CPU_TEAM_SIZE must be 0, 2, 4 or 8");
+        if(expert_fusion)std::cerr<<"FP4_EXPERT_FUSION enabled=1 sm70="<<sm70<<" narrow_only=1\n";
         if(cpu_row_tile!=1&&cpu_row_tile!=2&&cpu_row_tile!=4)
             throw std::invalid_argument("GLM FP4: CPU_ROW_TILE must be 1, 2 or 4");
         if(cpu_q8_bias&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_Q8_BIAS requires CPU_Q8=1");
@@ -1614,10 +1616,20 @@ public:
                     k::glm_f16(dx.f(),static_cast<uint16_t*>(hx.p),input.size(),c.stream);
                 }
                 constexpr size_t elements=size_t(2048)*4096;
+                if(expert_fusion&&sm70&&decode&&e.projection[0].format==k::GlmPackedFormat::Nvfp4&&
+                   e.projection[1].format==k::GlmPackedFormat::Nvfp4) {
+                    const auto& g=e.projection[0];const auto& u=e.projection[1];
+                    const auto trace=c.trace_start("fused_gate_up",c.stream);
+                    k::glm_fp4_gate_up_f16(static_cast<const uint8_t*>(g.data->p),static_cast<const uint8_t*>(g.scales()),g.global,
+                        static_cast<const uint8_t*>(u.data->p),static_cast<const uint8_t*>(u.scales()),u.global,
+                        static_cast<uint16_t*>(hx.p),static_cast<uint16_t*>(hidden.p),2048,4096,count,limit,c.stream);
+                    c.trace_end(trace,c.stream);c.mma_calls+=2;
+                }else {
                 product(c,e.projection[0],static_cast<uint16_t*>(hx.p),gate.f(),count,0,operands);
                 product(c,e.projection[1],static_cast<uint16_t*>(hx.p),up.f(),count,0,operands?operands+elements:nullptr);
                 k::glm_swiglu(gate.f(),up.f(),gate.f(),count*2048,limit,c.stream);
                 k::glm_f16(gate.f(),static_cast<uint16_t*>(hidden.p),size_t(count)*2048,c.stream);
+                }
                 product(c,e.projection[2],static_cast<uint16_t*>(hidden.p),dy.f(),count,0,operands?operands+2*elements:nullptr);
                 if(device_routing)k::glm_fp4_route_scatter(dy.f(),device_routes,device_weights,device_sum,count,4096,8,c.stream);
                 else check(cudaMemcpyAsync(result.data(),dy.p,result.size()*4,cudaMemcpyDeviceToHost,c.stream));

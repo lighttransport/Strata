@@ -1,5 +1,6 @@
 #include "strata/kernels/glm_fp4.hpp"
 #include "strata/kernels/glm.hpp"
+#include "strata/kernels/glm_prefill.hpp"
 #include "strata/host/glm_env.h"
 #include "strata/artifact/glm_modelopt.hpp"
 #include "strata/kernels/cpu/exl3/math.hpp"
@@ -11,10 +12,100 @@
 #include <cmath>
 #include <algorithm>
 #include <cstring>
+#include <tuple>
 namespace k=strata::kernels;
 namespace a=strata::artifact;
 static void check(cudaError_t e){if(e!=cudaSuccess)throw std::runtime_error(cudaGetErrorString(e));}
 struct Buffer {void* p=nullptr;explicit Buffer(size_t bytes){check(cudaMalloc(&p,std::max<size_t>(bytes,1)));}~Buffer(){cudaFree(p);}};
+static void expert_fusion(bool bench) {
+    int cases=0;
+    for(const auto [N,K,M]:{std::tuple{40,64,1},std::tuple{32,48,1},std::tuple{32,64,9}}) {
+        bool rejected=false;
+        try {k::glm_fp4_gate_up_f16(nullptr,nullptr,1,nullptr,nullptr,1,nullptr,nullptr,N,K,M,1,nullptr);}
+        catch(const std::invalid_argument&){rejected=true;}
+        if(!rejected)throw std::runtime_error("fused gate/up accepts invalid extent");
+    }
+    for(const auto [N,K]:{std::pair{128,64},std::pair{128,512},std::pair{2048,4096},std::pair{4096,2048}}) {
+        const size_t bytes=size_t(N)*K/2,groups=size_t(N)*K/16;
+        std::vector<uint8_t> codes(bytes),scales(groups);
+        Buffer raw(bytes),rs(groups),g(bytes),gs(groups),u(bytes),us(groups);
+        for(int p=0;p<2;++p) {
+            for(size_t i=0;i<bytes;++i)codes[i]=uint8_t(i*53+17+p*89);
+            for(size_t i=0;i<groups;++i)scales[i]=uint8_t(24+(i*7+p*19)%80);
+            check(cudaMemcpy(raw.p,codes.data(),bytes,cudaMemcpyHostToDevice));
+            check(cudaMemcpy(rs.p,scales.data(),groups,cudaMemcpyHostToDevice));
+            k::glm_fp4_prepack(static_cast<uint8_t*>(raw.p),static_cast<uint8_t*>(rs.p),
+                static_cast<uint8_t*>(p?u.p:g.p),static_cast<uint8_t*>(p?us.p:gs.p),N,K,nullptr);
+        }
+        Buffer x(size_t(8)*K*2),gate(size_t(8)*N*4),up(size_t(8)*N*4);
+        Buffer ref(size_t(8)*N*2),out((size_t(8)*N+2)*2);
+        std::vector<uint16_t> input(size_t(8)*K),want(size_t(8)*N),got(want.size()+2);
+        constexpr float gg=.00061f,ug=.00047f;
+        cudaStream_t stream=nullptr;
+        auto run=[&](bool fused,int M,float limit) {
+            if(fused)k::glm_fp4_gate_up_f16(static_cast<uint8_t*>(g.p),static_cast<uint8_t*>(gs.p),gg,
+                static_cast<uint8_t*>(u.p),static_cast<uint8_t*>(us.p),ug,
+                static_cast<uint16_t*>(x.p),static_cast<uint16_t*>(out.p)+1,N,K,M,limit,stream);
+            else {
+                k::glm_fp4_gemm(k::GlmPackedFormat::Nvfp4,g.p,gs.p,gg,static_cast<uint16_t*>(x.p),static_cast<float*>(gate.p),N,K,M,true,stream);
+                k::glm_fp4_gemm(k::GlmPackedFormat::Nvfp4,u.p,us.p,ug,static_cast<uint16_t*>(x.p),static_cast<float*>(up.p),N,K,M,true,stream);
+                k::glm_swiglu(static_cast<float*>(gate.p),static_cast<float*>(up.p),static_cast<float*>(gate.p),M*N,limit,stream);
+                k::glm_f16(static_cast<float*>(gate.p),static_cast<uint16_t*>(ref.p),size_t(M)*N,stream);
+            }
+        };
+        for(int pass=0;pass<2;++pass) {
+            for(size_t i=0;i<input.size();++i)input[i]=strata::cpu::exl3::half_round(
+                std::sin(float(i)*.13f+pass*.31f)*float(int(i%7)-3));
+            check(cudaMemcpyAsync(x.p,input.data(),input.size()*2,cudaMemcpyHostToDevice,stream));
+            for(int M=1;M<=8;++M)for(float limit:{0.f,7.25f}) {
+                check(cudaMemsetAsync(out.p,0x5a,got.size()*2,stream));run(false,M,limit);run(true,M,limit);
+                check(cudaMemcpy(want.data(),ref.p,size_t(M)*N*2,cudaMemcpyDeviceToHost));
+                check(cudaMemcpy(got.data(),out.p,got.size()*2,cudaMemcpyDeviceToHost));
+                if(std::memcmp(want.data(),got.data()+1,size_t(M)*N*2)||got.front()!=0x5a5a||
+                   !std::all_of(got.begin()+size_t(M)*N+1,got.end(),[](uint16_t v){return v==0x5a5a;}))
+                    throw std::runtime_error("fused gate/up changes FP16 output bits or row guards");
+                ++cases;
+            }
+        }
+        // Replay graphs with changed input pages. Capture must not bake in any values.
+        for(bool fused:{false,true}) {
+            cudaGraph_t graph;cudaGraphExec_t exec;
+            check(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking));
+            check(cudaStreamBeginCapture(stream,cudaStreamCaptureModeGlobal));
+            run(fused,8,7.25f);check(cudaStreamEndCapture(stream,&graph));
+            check(cudaGraphInstantiate(&exec,graph,nullptr,nullptr,0));
+            for(int pass=0;pass<2;++pass) {
+                std::rotate(input.begin(),input.begin()+1,input.end());
+                check(cudaMemcpyAsync(x.p,input.data(),input.size()*2,cudaMemcpyHostToDevice,stream));
+                run(false,8,7.25f);check(cudaStreamSynchronize(stream));check(cudaMemcpy(want.data(),ref.p,want.size()*2,cudaMemcpyDeviceToHost));
+                check(cudaMemsetAsync(out.p,0x5a,got.size()*2,stream));check(cudaGraphLaunch(exec,stream));check(cudaStreamSynchronize(stream));
+                check(cudaMemcpy(got.data(),fused?static_cast<uint16_t*>(out.p)+1:ref.p,want.size()*2,cudaMemcpyDeviceToHost));
+                if(std::memcmp(want.data(),got.data(),want.size()*2)) {
+                    const size_t at=std::mismatch(want.begin(),want.end(),got.begin()).first-want.begin();
+                    throw std::runtime_error("fused gate/up graph replay differs N="+std::to_string(N)+" K="+std::to_string(K)+
+                        " fused="+std::to_string(fused)+" pass="+std::to_string(pass)+" at="+std::to_string(at)+
+                        " expected_bits="+std::to_string(want[at])+" actual_bits="+std::to_string(got[at]));
+                }
+            }
+            check(cudaGraphExecDestroy(exec));check(cudaGraphDestroy(graph));check(cudaStreamDestroy(stream));stream=nullptr;
+        }
+        if(bench&&N==2048&&K==4096)for(int M:{1,4,8})for(bool fused:{false,true}) {
+            for(int i=0;i<16;++i)run(fused,M,7.25f);
+            check(cudaDeviceSynchronize());
+            for(int sample=0;sample<3;++sample) {
+                cudaEvent_t begin,end;check(cudaEventCreate(&begin));check(cudaEventCreate(&end));
+                check(cudaEventRecord(begin));for(int i=0;i<128;++i)run(fused,M,7.25f);
+                check(cudaEventRecord(end));check(cudaEventSynchronize(end));float ms;
+                check(cudaEventElapsedTime(&ms,begin,end));
+                std::cout<<"EXPERT_FUSION_BENCH N="<<N<<" K="<<K<<" M="<<M<<" fused="<<fused
+                    <<" sample="<<sample<<" us="<<ms*1000/128<<" launches_per_product="<<(fused?1:4)
+                    <<" working_set_bytes="<<2*(bytes+groups)<<" model_throughput=0\n";
+                check(cudaEventDestroy(begin));check(cudaEventDestroy(end));
+            }
+        }
+    }
+    std::cout<<"fused gate/up FP16 bitwise PASS cases="<<cases<<" graph_replays=16\n";
+}
 static void hyper_head_rows() {
     for(int width:{37,128,4096})for(int rows:{1,3,8,2048}) {
         std::vector<float> input(size_t(rows)*4*width),expected(size_t(rows)*width),actual(expected.size()+2);
@@ -333,6 +424,10 @@ int main(int argc,char** argv) {
     cudaDeviceProp properties{};
     if(cudaGetDeviceProperties(&properties,0)!=cudaSuccess||properties.major<7)return 77;
     try {
+        if(argc==2&&(std::string(argv[1])=="--expert-fusion-only"||std::string(argv[1])=="--expert-fusion-bench")) {
+            expert_fusion(std::string(argv[1])=="--expert-fusion-bench");return 0;
+        }
+        if(argc==1)expert_fusion(false);
         if(argc==2 && std::string(argv[1])=="--hyper-head-only"){hyper_head_rows();return 0;}
         routing();
         if(argc==2 && std::string(argv[1])=="--routing-only")return 0;

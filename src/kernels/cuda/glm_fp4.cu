@@ -127,6 +127,76 @@ __global__ void fp4_qpn(const uint8_t *__restrict__ bcodes,
   }
 }
 
+// Keep each projection's MMA chains and shared-memory reduction identical to
+// fp4_qpn<8,2>. Only activation loads and the final pointwise epilogue are shared.
+template<bool NARROW>
+__global__ void fp4_gate_up(const uint8_t* gate,const uint8_t* gate_scales,float gate_global,
+                            const uint8_t* up,const uint8_t* up_scales,float up_global,
+                            const half* x,half* hidden,int N,int K,int M,float limit) {
+    __shared__ float sums[2][8][256];
+    const int lane=threadIdx.x&31,warp=threadIdx.x>>5;
+    const int tile=NARROW?blockIdx.x/4:blockIdx.x,qp=(lane>>2)&3;
+    const int r=(lane&3)+((lane&16)?4:0),G=K/16;
+    const int part=NARROW?warp*4+qp:warp,parts=NARROW?32:8;
+    const int weight_lane=NARROW?(lane&19)+(blockIdx.x%4)*4:lane;
+    const size_t offset=size_t(tile)*G*32+weight_lane;
+    const uint2* codes[2]={reinterpret_cast<const uint2*>(gate)+offset,reinterpret_cast<const uint2*>(up)+offset};
+    const uint8_t* scales[2]={gate_scales+offset,up_scales+offset};
+    const half2 globals[2]={__float2half2_rn(gate_global*16384.f),__float2half2_rn(up_global*16384.f)};
+    float c[2][2][8]={};
+    #pragma unroll 4
+    for(int g=part*G/parts;g<(part+1)*G/parts;++g) {
+        uint4 a01=make_uint4(0,0,0,0),a23=a01;
+        if(r<M) {
+            a01=*reinterpret_cast<const uint4*>(x+size_t(r)*K+g*16);
+            a23=*reinterpret_cast<const uint4*>(x+size_t(r)*K+g*16+8);
+        }
+        const unsigned* A0=reinterpret_cast<const unsigned*>(&a01);
+        const unsigned* A1=reinterpret_cast<const unsigned*>(&a23);
+        #pragma unroll
+        for(int p=0;p<2;++p) {
+            const uint2 q=__ldcs(codes[p]+size_t(g)*32);
+            const half2 scale=__hmul2(fp8e4m3_to_half2(__ldg(scales[p]+size_t(g)*32)),globals[p]);
+            half2 b[8];dequant8_tm(q.x,scale,b);dequant8_tm(q.y,scale,b+4);
+            const unsigned* B=reinterpret_cast<const unsigned*>(b);
+            MMA_8N8K4(c[p][0],A0[0],A0[1],B[0],B[1]);
+            MMA_8N8K4(c[p][1],A0[2],A0[3],B[2],B[3]);
+            MMA_8N8K4(c[p][0],A1[0],A1[1],B[4],B[5]);
+            MMA_8N8K4(c[p][1],A1[2],A1[3],B[6],B[7]);
+        }
+    }
+    #pragma unroll
+    for(int p=0;p<2;++p) {
+        #pragma unroll
+        for(int i=0;i<8;++i) {
+            c[p][0][i]+=c[p][1][i];
+            const int row=(i&2)|((lane&16)?4:0)|(lane&1);
+            const int col=(i&1)|(((lane>>1)&1)<<1)|((i>>2)<<2);
+            sums[p][warp][row*32+qp*8+col]=c[p][0][i];
+        }
+    }
+    __syncthreads();
+    for(int e=threadIdx.x;e<(NARROW?64:256);e+=blockDim.x) {
+        const int row=NARROW?e/8:e/32,col=NARROW?e%8:e%32;
+        float result[2]={};
+        #pragma unroll
+        for(int p=0;p<2;++p) {
+            #pragma unroll
+            for(int w=0;w<8;++w) {
+                if constexpr(NARROW) {
+                    #pragma unroll
+                    for(int q=0;q<4;++q)result[p]+=sums[p][w][row*32+q*8+col];
+                }else result[p]+=sums[p][w][e];
+            }
+        }
+        if(row<M) {
+            const float a=limit>0?fminf(result[0],limit):result[0];
+            const float b=limit>0?fminf(limit,fmaxf(-limit,result[1])):result[1];
+            hidden[size_t(row)*N+size_t(blockIdx.x)*(NARROW?8:32)+col]=
+                __float2half_rn(a*(1.f/(1.f+expf(-a)))*b);
+        }
+    }
+}
 __device__ __forceinline__ float e4m3(unsigned b) {
     if((b&127)==127)return __int_as_float(0x7fffffff);
     return __half2float(__ushort_as_half(((b&128)<<8)|((b&127)<<7)))*256.f;
@@ -616,6 +686,16 @@ void glm_fp4_gemm(GlmPackedFormat format,const void* w,const void* scales,float 
         default:throw std::invalid_argument("GLM FP4: unknown packed format");
         }
     }
+}
+void glm_fp4_gate_up_f16(const uint8_t* gate,const uint8_t* gate_scales,float gate_global,
+                         const uint8_t* up,const uint8_t* up_scales,float up_global,
+                         const uint16_t* x,uint16_t* hidden,int N,int K,int M,float limit,void* stream) {
+    valid(N,K,M);
+    if(N%32||M>8||!gate||!gate_scales||!up||!up_scales||!x||!hidden)
+        throw std::invalid_argument("GLM FP4: fused gate/up requires aligned NVFP4 matrices and tokens1..8");
+    auto s=static_cast<cudaStream_t>(stream);
+    if(N<=2048&&K%512==0)fp4_gate_up<true><<<N/8,256,0,s>>>(gate,gate_scales,gate_global,up,up_scales,up_global,reinterpret_cast<const half*>(x),reinterpret_cast<half*>(hidden),N,K,M,limit);
+    else fp4_gate_up<false><<<N/32,256,0,s>>>(gate,gate_scales,gate_global,up,up_scales,up_global,reinterpret_cast<const half*>(x),reinterpret_cast<half*>(hidden),N,K,M,limit);
 }
 void glm_fp4_dequant_f16(GlmPackedFormat format,const void* w,const void* s,float global,
                          uint16_t* out,int N,int K,void* stream,bool sm70) {
