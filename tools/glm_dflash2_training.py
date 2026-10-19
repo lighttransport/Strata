@@ -113,3 +113,10 @@ class TrainingDraft(Draft):
         if not torch.isfinite(self.last_hidden).all():
             raise ValueError('nonfinite calibration activation')
         return self.last_hidden
+
+
+class LinearTrainingDraft(TrainingDraft):
+    """Opt-in residual updates to FC and each MLP output projection."""
+    def linear(self, x, name):
+        output = Draft.linear(self, x, name)
+        return output + self.adapter(x, name) if name in self.adapter.by_name else output

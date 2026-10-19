@@ -148,6 +148,7 @@ def main():
     p.add_argument('--learning-rate', type=float, default=.0003)
     p.add_argument('--seed', type=int, default=140)
     p.add_argument('--device', default='cuda:1')
+    p.add_argument('--adapter-targets', choices=('fc', 'fc-mlp-down'), default='fc')
     a = p.parse_args()
     if not 1 <= a.steps <= 4096 or not 0 < a.learning_rate <= .01 or not a.device.startswith('cuda:'):
         p.error('invalid calibration limits or device')
@@ -199,8 +200,20 @@ def main():
             weights[name] = source.get_tensor(name).to(device=a.device, dtype=torch.float16)
             if not torch.isfinite(weights[name]).all():
                 raise ValueError('nonfinite frozen draft weight')
-    adapter = FcAdapter(4096, 20480, a.rank, a.alpha, device=a.device)
-    model = TrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
+    adapter_file, adapter_schema = 'fc.safetensors', SCHEMA
+    geometry = dict(hidden=4096, features=20480)
+    if a.adapter_targets == 'fc':
+        adapter = FcAdapter(4096, 20480, a.rank, a.alpha, device=a.device)
+        model = TrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
+    else:
+        from glm_dflash2_linear_adapter import LinearAdapters, SCHEMA as LINEAR_SCHEMA, target_shapes
+        from glm_dflash2_training import LinearTrainingDraft
+        shapes = target_shapes(config, weights)
+        adapter = LinearAdapters(shapes, a.rank, a.alpha, device=a.device)
+        model = LinearTrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
+        adapter_file, adapter_schema = 'linear.safetensors', LINEAR_SCHEMA
+        geometry = dict(targets=shapes)
+        summary['adapter_targets'] = a.adapter_targets
     head_array = np.memmap(a.head/'weights.f16', mode='c', dtype='<f2', shape=(154880, 4096))
     head = torch.from_numpy(head_array).to(device=a.device, dtype=torch.float32)
     mask = torch.from_numpy(np.fromfile(a.head/'allowed.u8', dtype=np.uint8)).to(device=a.device, dtype=torch.bool)
@@ -249,9 +262,9 @@ def main():
         dest = a.output/('step-%06d' % step)
         dest.mkdir(exist_ok=False)
         state = {n: w.detach().cpu().contiguous() for n, w in adapter.state_dict().items()}
-        save_file(state, str(dest/'fc.safetensors'))
-        metadata = dict(schema=SCHEMA, complete=True, hidden=4096, features=20480, rank=a.rank, alpha=a.alpha,
-                        base_checkpoint_sha256=BASE_SHA, weights_sha256=file_sha(dest/'fc.safetensors'),
+        save_file(state, str(dest/adapter_file))
+        metadata = dict(schema=adapter_schema, complete=True, **geometry, rank=a.rank, alpha=a.alpha,
+                        base_checkpoint_sha256=BASE_SHA, weights_sha256=file_sha(dest/adapter_file),
                         dataset_result_sha256=data.result_sha256, head_proof_sha256=file_sha(a.head_proof),
                         calibration=record, performance_anchor=False, fresh_holdout_scored=False)
         (dest/'adapter.json').write_text(json.dumps(metadata, indent=2)+'\n')

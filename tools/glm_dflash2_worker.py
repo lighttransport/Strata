@@ -341,7 +341,10 @@ def main():
     p.add_argument('--round-bf16', action='store_true', help='software BF16 activation rounding with FP16 tensor operands')
     p.add_argument('--selector-scale', type=float, default=1.0, help='candidate transition scale; zero tests unary proposals')
     p.add_argument('--fc-adapter', type=Path, help='optional checksummed target-feature bridge calibration')
+    p.add_argument('--linear-adapters', type=Path, help='optional checksummed FC and MLP output calibration')
     a = p.parse_args()
+    if a.fc_adapter and a.linear_adapters:
+        p.error('choose FC-only or FC/MLP adapters')
     if not 0 <= a.selector_scale <= 2:
         p.error('selector scale must be finite and in 0..2')
     config = validate_config(json.loads((a.model / 'config.json').read_text()))
@@ -366,6 +369,10 @@ def main():
         from glm_dflash2_adapter import load_fc_adapter
         adapter = load_fc_adapter(a.fc_adapter, model, a.model / 'model.safetensors')
         print(f'DFLASH_FC_ADAPTER rank={adapter["rank"]} weights_sha256={adapter["weights_sha256"]}', file=sys.stderr, flush=True)
+    if a.linear_adapters:
+        from glm_dflash2_linear_adapter import load_linear_adapters
+        adapter = load_linear_adapters(a.linear_adapters, model, a.model / 'model.safetensors')
+        print(f'DFLASH_LINEAR_ADAPTERS rank={adapter["rank"]} weights_sha256={adapter["weights_sha256"]}', file=sys.stderr, flush=True)
     if a.skinny_library:
         model.enable_skinny(a.skinny_library.resolve())
         torch.cuda.synchronize()

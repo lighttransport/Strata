@@ -39,7 +39,8 @@ class FcAdapter(nn.Module):
 def apply_fc_adapter(draft, adapter):
     if adapter.hidden != draft.h or adapter.features != draft.w['fc.weight'].shape[1]:
         raise ValueError('FC adapter does not match the draft feature bridge')
-    if getattr(draft, 'fc_adapter', None) is not None:
+    if (getattr(draft, 'fc_adapter', None) is not None or
+            getattr(draft, 'linear_adapters', None) is not None):
         raise ValueError('an FC adapter is already attached')
     original = draft.linear
     def linear(x, name):

@@ -20,6 +20,7 @@ def main():
     p.add_argument('--gemm-f32', type=Path, required=True)
     p.add_argument('--skinny-library', type=Path)
     p.add_argument('--device', default='cuda:1')
+    p.add_argument('--adapter-targets', choices=('fc', 'fc-mlp-down'), default='fc')
     a = p.parse_args()
     if not torch.cuda.is_available():
         return 77
@@ -35,10 +36,21 @@ def main():
     with safe_open(checkpoint, framework='pt', device='cpu') as source:
         for name in source.keys():
             weights[name] = source.get_tensor(name).to(device=a.device, dtype=torch.float16)
-    adapter = FcAdapter(4096, 20480, 8, 8, device=a.device)
-    model = TrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
+    apply_adapter = apply_fc_adapter
+    if a.adapter_targets == 'fc':
+        adapter = FcAdapter(4096, 20480, 8, 8, device=a.device)
+        model = TrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
+    else:
+        from glm_dflash2_linear_adapter import LinearAdapters, apply_linear_adapters, target_shapes
+        from glm_dflash2_training import LinearTrainingDraft
+        adapter = LinearAdapters(target_shapes(config, weights), 8, 8, device=a.device)
+        model = LinearTrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
+        apply_adapter = apply_linear_adapters
     reference = Draft(config, restore_weights(model), a.device, torch.float32, gemm_f32=True)
-    frozen_fc = model.w['fc.weight'].clone()
+    frozen_names = ['fc.weight']
+    if a.adapter_targets != 'fc':
+        frozen_names += [f'layers.{i}.mlp.down_proj.weight' for i in range(config['num_hidden_layers'])]
+    frozen = {name: model.w[name].clone() for name in frozen_names}
     embedding = torch.randn((8, 4096), device=a.device)
     head = torch.randn((64, 4096), device=a.device)*.01
     errors, gradient_norms = [], []
@@ -62,9 +74,13 @@ def main():
         if float(gradient) <= 0:
             raise ValueError('feature bridge has no real-weight calibration gradient')
         gradient_norms.append(float(gradient))
+        if a.adapter_targets != 'fc':
+            for module in adapter.up:
+                if module.weight.grad is None or not torch.isfinite(module.weight.grad).all() or module.weight.grad.abs().sum() <= 0:
+                    raise ValueError('a linear adapter has no finite output gradient')
     optimizer.step()
     # A nonzero adapter must produce the same forward in training and serving.
-    apply_fc_adapter(reference, adapter)
+    apply_adapter(reference, adapter)
     reference.cache = []
     reference.append(features, 0, 2048)
     expected = reference.forward(embedding)
@@ -75,9 +91,11 @@ def main():
         raise ValueError('trained adapter forward differs between training and serving')
     optimizer.zero_grad(set_to_none=True)
     F.cross_entropy(F.linear(actual, head), torch.arange(7, device=a.device)).backward()
-    if not torch.isfinite(adapter.down.weight.grad).all() or adapter.down.weight.grad.abs().sum() <= 0:
-        raise ValueError('nonzero adapter did not retain the complete feature gradient')
-    if not torch.equal(frozen_fc, model.w['fc.weight']) or any(w.grad is not None for w in model.w.values()):
+    down = [adapter.down] if a.adapter_targets == 'fc' else adapter.down
+    if any(module.weight.grad is None or not torch.isfinite(module.weight.grad).all() or
+           module.weight.grad.abs().sum() <= 0 for module in down):
+        raise ValueError('nonzero adapters did not retain complete gradients')
+    if any(not torch.equal(weight, model.w[name]) for name, weight in frozen.items()) or any(w.grad is not None for w in model.w.values()):
         raise ValueError('calibration changed frozen base weights')
     skinny_relative_error = None
     if a.skinny_library:
@@ -88,7 +106,7 @@ def main():
         skinny_relative_error = ((actual.detach()-narrow).float().norm()/actual.detach().float().norm()).item()
         if not torch.isfinite(narrow).all() or skinny_relative_error > .005:
             raise ValueError('skinny serving core diverges from calibrated reference')
-    print(json.dumps(dict(passed=True, gpu=torch.cuda.get_device_name(a.device),
+    print(json.dumps(dict(passed=True, gpu=torch.cuda.get_device_name(a.device), adapter_targets=a.adapter_targets,
                           zero_adapter_context_rows=[8, 2048], zero_adapter_max_abs_errors=errors,
                           nonzero_adapter_serving_equal=True, gradient_norms=gradient_norms,
                           base_weights_unchanged=True, skinny_relative_l2_error=skinny_relative_error,
