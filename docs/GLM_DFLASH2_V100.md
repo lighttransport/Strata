@@ -24,6 +24,11 @@ is included separately.
 The optional [bridge-calibration tools](GLM_DFLASH2_CALIBRATION.md) export checked
 head operands and train a small, separate FC adapter. Calibration loss alone
 does not establish a speed or quality gain; no calibrated preset is selected.
+The first rank 8 adapter raised agreement from 28/56 to 31/56 labels on
+synthetic evaluation windows. Its depth-three screen measured 30.35 / 32.02 decode tok/s for
+base / calibrated workers after three warmups and one timed 512-output request
+per side. Both passed residency checks; repeated gain and coding quality
+remain unqualified. The selected preset stays unchanged.
 
 ## Execution
 

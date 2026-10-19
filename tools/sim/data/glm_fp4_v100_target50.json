@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "5e1ffa4112887c79ad9c3812ddf5c8bf04af2d9f0f43851af8f33e1d15596d13"
+      "sha256": "519edd87cc4a8d888fda6e4883766532f4c5693b62f1bc26e0c3e428f43f6312"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6678,6 +6678,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-fc-adapter-depth3-v168",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 32.015136706513296,
+      "prefill_tok_s": 504.5391276498774,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-fc-control-depth3-v168",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 30.353790956827524,
+      "prefill_tok_s": 503.65506513947037,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-fusion-full-0-v109",
       "experiment_family": "dflash2",
       "decode_tok_s": 36.882258262419796,
@@ -7769,6 +7789,7 @@
     "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment143, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 42]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
     "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment155, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 7]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
     "DFlash2: native head operand export passed valid output bit checks at widths1/8. FC-adapter calibration passed20CPU tests and a real-weight V100 synthetic gradient/serving-forward probe; skinny relativeL2 differed by0.00254. These are validation results, not a trained speed or coding result, and fit no capacity.",
+    "DFlash2: rank 8 FC calibration has a depth 3 single-request native pair of 30.35 / 32.02 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
     "DFlash2: named fixed-projection profiling separates target prefill from decode/preparation. Attention projections are the largest fixed narrow GPU groups; timing endpoints include input conversion and host enqueue gaps and overlap broader product timers. These diagnostics do not change a throughput anchor or hardware capacity.",
     "DFlash2: the separately instrumented hot512-output request had zero new CPU metadata entries; target CPU setup totaled271ms, fused CPU products4147ms, and routing/input preparation plus coordinator waiting4857ms. Profiling synchronizes streams, phase sums overlap and must not be added, used as model timing, or fitted to capacities.",
     "DFlash2: the later CPU microbenchmark gives variants identical activation/scales storage. Earlier copies changed storage as well as kernels; the apparent eight-token gain did not persist in the controlled comparison. CPU component rows remain diagnostic, not model forecasts or fitted resource capacities.",
@@ -8154,6 +8175,30 @@
       "rounds": 173,
       "verification_rows": 691,
       "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-fc-adapter-depth3-v168",
+      "advances": 511,
+      "decode_ms": 15961.2,
+      "verify_ms": 13386.8,
+      "draft_ms": 2289.26,
+      "restore_ms": 55.5144,
+      "rounds": 164,
+      "verification_rows": 656,
+      "single_tail_steps": 0,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-fc-control-depth3-v168",
+      "advances": 511,
+      "decode_ms": 16834.8,
+      "verify_ms": 14191.4,
+      "draft_ms": 2351.21,
+      "restore_ms": 58.8298,
+      "rounds": 168,
+      "verification_rows": 671,
+      "single_tail_steps": 0,
       "block_size": 4
     },
     {

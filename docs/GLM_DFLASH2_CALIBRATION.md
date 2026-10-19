@@ -2,7 +2,7 @@
 
 These tools calibrate the drafter's target-feature bridge. They do not change
 the target checkpoint or the selected inference preset. No calibrated adapter
-has a qualified throughput or coding-quality result yet.
+has a qualified repeated throughput gain or coding-quality result yet.
 
 The optional worker argument `--fc-adapter ADAPTER_DIR` loads two FP32 low-rank
 matrices. Their correction is added only to the `fc` feature projection.
@@ -80,6 +80,19 @@ unchanged and bridge gradients were finite. The packed skinny forward had
 relative L2 error 0.00254 against that differentiated reference on this probe;
 it was not bit-identical. The probe's peak reserved memory was 10,085,203,968
 bytes. None of these checks measures model tok/s.
+
+The first calibration used rank 8, 256 optimizer steps, 1,064 training windows
+and eight held-out synthetic windows. On one V100 it took 102.49 seconds.
+Agreement rose from 28/56 to 31/56 labels, and cross entropy fell from 2.944
+to 2.432. This small evaluation group does not establish general accuracy.
+
+A direct-worker depth-three screen on two V100 PCIe 32 GB cards with 181 GiB
+RAM measured 30.35 / 32.02 decode and 503.66 / 504.54 prefill tok/s for the
+base / calibrated drafter. Each used three full warmups and one timed
+512-output request. Target and actual GPU-worker residency checks passed.
+The 5.47% decode increase is a single-request screen; separate repeated timing
+and coding checks remain required. It is below the earlier 36.33 tok/s
+candidate that passed both reused coding panels, and below the 50 tok/s goal.
 
 Each adapter still needs repeated native inference timing, target and worker
 residency checks, and separate coding checks. Freeze a final policy before
