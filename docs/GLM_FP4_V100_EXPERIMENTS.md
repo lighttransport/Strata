@@ -301,6 +301,7 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_PREFILL_BANK_SLAB` | `1` | Allocate each enabled prefill bank in one 1960 MiB block, with non-owning projection views, to test later arena coalescing. |
 | `STRATA_GLM_FP4_ROUTE_DROP_CAP` | `0.5` (default) through `0.75` | Explicitly extend the permitted original routing-mass budget for a separate lossy experiment. Does not change `ROUTE_DROP` by itself. |
 | `STRATA_GLM_FP4_ROUTE_AFFINITY` | `0` (off, default) through `0.5` | Add a selection-score bonus to experts admitted to GPU decode memory. Original sigmoid scores still determine retained routing weights. Prefill and the MTP draft layer receive no bonus. Requires fixed decode admission. |
+| `STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY` | `1` | With positive native affinity, prefer admissions on the second configured GPU only. Requires two GPUs. The default bonus covers both GPUs. |
 
 CPU tiling preserves each row's dot-product and reduction order. Prepared Q8
 operands and quartet caches preserve the existing W4A8 representation; they do

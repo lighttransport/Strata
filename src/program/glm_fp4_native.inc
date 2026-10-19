@@ -293,6 +293,7 @@ class Fp4NativeExecutor {
     const long long route_drop_max=strata_env_value_ll("STRATA_GLM_FP4_ROUTE_DROP_MAX",2);
     const bool route_renorm_enabled=strata_env_is_one("STRATA_GLM_FP4_ROUTE_RENORM");
     const double route_affinity=strata_env_value_double("STRATA_GLM_FP4_ROUTE_AFFINITY",0);
+    const bool route_affinity_secondary=strata_env_is_one("STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY");
     std::map<int,std::unique_ptr<Device>> route_affinity_bonuses;
     const long long decode_reserve_mib=strata_env_value_ll("STRATA_GLM_FP4_DECODE_RESERVE_MIB",-1);
     uint64_t route_drop_tokens=0,route_drop_candidates=0,route_drop_count=0;
@@ -965,8 +966,10 @@ public:
         if(!std::isfinite(route_affinity)||route_affinity<0||route_affinity>0.5||
            (route_affinity>0&&cache_adapt_rows))
             throw std::invalid_argument("GLM FP4: ROUTE_AFFINITY must be0..0.5 and requires fixed decode admission");
+        if(route_affinity>0&&route_affinity_secondary&&devices.size()!=2)
+            throw std::invalid_argument("GLM FP4: secondary route affinity requires two configured GPUs");
         if(route_affinity>0)std::cerr<<"FP4_ROUTE_AFFINITY lossy=1 bonus="<<route_affinity
-            <<" selection_only=1 prefill=0 draft=0\n";
+            <<" secondary_only="<<route_affinity_secondary<<" selection_only=1 prefill=0 draft=0\n";
         if((global_cache_mode||cache_adapt_rows)&&(devices.empty()||devices.size()>2))
             throw std::invalid_argument("GLM FP4: native expert execution requires one or two devices");
         for(long long cpu:worker_cpus) {
@@ -1206,8 +1209,11 @@ public:
             // ownership. The router uses the bonus only to select IDs; retained
             // weights still come from their original unbiased sigmoid scores.
             std::array<float,288> bonus{};
-            for(int id=0;id<288;++id)
-                if(contexts[owner(layer,id,true)]->keep.at(layer).count(id))bonus[id]=float(route_affinity);
+            for(int id=0;id<288;++id) {
+                const size_t rank=owner(layer,id,true);
+                if((!route_affinity_secondary||rank==1)&&contexts[rank]->keep.at(layer).count(id))
+                    bonus[id]=float(route_affinity);
+            }
             DeviceScope scope(contexts.front()->device);
             saved=std::make_unique<Device>(sizeof(bonus));saved->put(bonus.data(),sizeof(bonus));
         }
