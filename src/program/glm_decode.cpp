@@ -10640,7 +10640,7 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
 }
 static LookupStats generate_dflash2(Decoder& decoder,std::vector<float>& logits,int max_new,
     const std::vector<int>& stops,int depth,const std::function<void(int)>& emit,
-    strata::spec::ExternalWorker& worker) {
+    strata::spec::ExternalWorker& worker,const std::vector<int>& prompt) {
     const auto start=std::chrono::steady_clock::now();
     auto ms=[](auto at){return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-at).count();};
     LookupStats stats;
@@ -10651,6 +10651,16 @@ static LookupStats generate_dflash2(Decoder& decoder,std::vector<float>& logits,
     const long long max_soft=strata_env_value_ll("STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT",3);
     if(max_soft<1 || max_soft>7)throw std::invalid_argument("DFlash2 max soft accepts must be 1..7");
     const strata::spec::BoundedAcceptPolicy acceptance{float(margin),8,int(max_soft)};
+    const long long lookup_depth=strata_env_value_ll("STRATA_GLM_DFLASH_LOOKUP_DEPTH",0);
+    const long long minimum_match=strata_env_value_ll("STRATA_GLM_DFLASH_LOOKUP_MIN_MATCH",24);
+    if(lookup_depth<0||lookup_depth>7||minimum_match<3||minimum_match>32)
+        throw std::invalid_argument("DFlash2 lookup depth must be0..7 and minimum match3..32");
+    std::unique_ptr<strata::spec::SuffixDrafter> lookup;
+    if(lookup_depth) {
+        lookup=std::make_unique<strata::spec::SuffixDrafter>(int(minimum_match),32,prompt.size()+max_new);
+        lookup->append(prompt.data(),prompt.size());
+    }
+    int lookup_rounds=0,lookup_proposed=0,lookup_accepted=0;
     std::array<int,7> proposed_at{},opportunities{},accepted_at{};
     std::vector<int> protected_stops=stops;
     protected_stops.insert(protected_stops.end(),{154820,154827,154829});
@@ -10658,21 +10668,37 @@ static LookupStats generate_dflash2(Decoder& decoder,std::vector<float>& logits,
     int soft_accepted=0,repeat_blocked=0;
     double regret=0;
     double draft_ms=0,verify_ms=0,restore_ms=0;
-    decoder.compact_decode();decoder.enable_verify_history(depth);
+    const int retained_depth=std::max(depth,int(lookup_depth));
+    decoder.compact_decode();decoder.enable_verify_history(retained_depth);
     auto checkpoint=decoder.checkpoint();
     int sent=decoder.dflash_position();
     auto output=[&](int token){
         emit(token);++stats.generated;
+        if(lookup)lookup->append(token);
         if(margin>0){history.push_back(token);if(history.size()>128)history.erase(history.begin());}
         stats.stopped=std::find(stops.begin(),stops.end(),token)!=stops.end();
     };
     while(stats.generated<max_new && !stats.stopped) {
         const int anchor=greedy(logits);output(anchor);
         if(stats.stopped || stats.generated==max_new)break;
-        const int limit=std::min(depth,max_new-stats.generated-1);
-        if(limit<1){logits=decoder.step(anchor);continue;}
+        const int remaining=max_new-stats.generated-1;
+        if(remaining<1){logits=decoder.step(anchor);continue;}
         auto begin=std::chrono::steady_clock::now();
-        auto proposals=decoder.dflash_propose(worker,sent,anchor,limit);draft_ms+=ms(begin);
+        int32_t lookup_tokens[7];
+        const int copied=lookup?lookup->propose(std::min(int(lookup_depth),remaining),lookup_tokens):0;
+        const bool use_lookup=copied>=2;
+        std::vector<int> proposals;
+        if(use_lookup) {
+            proposals.assign(lookup_tokens,lookup_tokens+copied);++lookup_rounds;lookup_proposed+=copied;
+        } else {
+            // A long series of exact lookup rounds may outlive the worker's
+            // window. Re-prime it from committed rows before a neural draft.
+            if(decoder.dflash_position()-sent>2048) {
+                decoder.prepare_dflash(worker);sent=decoder.dflash_position();
+            }
+            proposals=decoder.dflash_propose(worker,sent,anchor,std::min(depth,remaining));
+        }
+        draft_ms+=ms(begin);
         std::vector<int> window{anchor};window.insert(window.end(),proposals.begin(),proposals.end());
         decoder.save(checkpoint);begin=std::chrono::steady_clock::now();
         auto all=decoder.verify(window);verify_ms+=ms(begin);++stats.rounds;stats.proposed+=proposals.size();
@@ -10683,6 +10709,7 @@ static LookupStats generate_dflash2(Decoder& decoder,std::vector<float>& logits,
             const size_t offset=size_t(accepted)*decoder.vocabulary();
             const int target=greedy(all,offset,decoder.vocabulary());
             if(proposals[accepted]!=target) {
+                if(use_lookup)break; // Copied tokens always require exact target acceptance.
                 const auto decision=strata::spec::bounded_accept(
                     std::span<const float>(all.data()+offset,decoder.vocabulary()),
                     proposals[accepted],target,acceptance,soft_in_window,protected_stops);
@@ -10693,6 +10720,7 @@ static LookupStats generate_dflash2(Decoder& decoder,std::vector<float>& logits,
             ++accepted_at[accepted];output(proposals[accepted++]);if(stats.stopped)break;
         }
         stats.accepted+=accepted;begin=std::chrono::steady_clock::now();
+        if(use_lookup)lookup_accepted+=accepted;
         const int keep=1+accepted-int(stats.stopped);
         if(keep!=int(window.size())) {
             if(!decoder.restore_verified(keep)) {
@@ -10715,7 +10743,10 @@ static LookupStats generate_dflash2(Decoder& decoder,std::vector<float>& logits,
         <<" repeat_blocked="<<repeat_blocked<<'\n';
     std::cerr<<"DRAFT_TIMING prepare_ms=0 draft_ms="<<draft_ms<<" verify_ms="<<verify_ms
         <<" restore_ms="<<restore_ms<<" proposal_calls="<<stats.rounds<<'\n';
-    for(int i=0;i<depth;++i)std::cerr<<"DFLASH_POSITION index="<<i<<" proposed="<<proposed_at[i]
+    if(lookup_depth)std::cerr<<"DFLASH_LOOKUP depth="<<lookup_depth<<" minimum_match="<<minimum_match
+        <<" rounds="<<lookup_rounds<<" proposed="<<lookup_proposed<<" accepted="<<lookup_accepted
+        <<" acceptance=greedy\n";
+    for(int i=0;i<retained_depth;++i)std::cerr<<"DFLASH_POSITION index="<<i<<" proposed="<<proposed_at[i]
         <<" opportunities="<<opportunities[i]<<" accepted="<<accepted_at[i]<<'\n';
     return stats;
 }
@@ -11340,7 +11371,7 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
                 auto result=generate_dflash2(decoder,logits,count,stops,draft_depth,[&](int token){
                     if(*request.cancel)throw std::runtime_error("cancelled");
                     ++sent;std::cout<<"T "<<token<<'\n'<<std::flush;
-                },*dflash_worker);
+                },*dflash_worker,tokens);
                 generated=result.generated;if(result.stopped)finish="stop";
             } else if (use_mtp && !*request.cancel) {
                 auto result = generate_mtp(decoder, logits, count, stops, draft_depth, [&](int token) {
@@ -12294,7 +12325,7 @@ int main(int argc, char **argv) {
         decoder.reset_decode_stats();
         if(use_dflash) {
             if(trial)decoder.prepare_dflash(*dflash_worker);
-            generate_dflash2(decoder,logits,steps,stops,draft_depth,[](int token){std::cout<<token<<'\n'<<std::flush;},*dflash_worker);
+            generate_dflash2(decoder,logits,steps,stops,draft_depth,[](int token){std::cout<<token<<'\n'<<std::flush;},*dflash_worker,tokens);
         } else if (trial_mtp) {
             generate_mtp(decoder, logits, steps, stops, trial_depth, [](int token) {
                 std::cout << token << '\n' << std::flush;
