@@ -71,6 +71,7 @@
     "dflash2-evidence-30.tar.gz": "e8d62a85fc744945cc30f22fabdecc6d425667d10a69f62c17d10d2301782ab1",
     "dflash2-evidence-31.tar.gz": "e478c07080a12b8c2564476d2f0f864d6dfbebe987932b7f008b9da5bc02425a",
     "dflash2-evidence-32.tar.gz": "7e3c0dae3081f4d761209fd4ad8d370dc523f0549dcaa770e6cf474652a3f774",
+    "dflash2-evidence-33.tar.gz": "8c607d843a7af6c671ce572360865c8f51a88cb90b80d1b768baafc85d3b41e0",
     "dflash2-evidence-4.tar.gz": "076d5b152bea3dafc7c0883715385b6ba9de928e82cc68c64303cecc657f0c60",
     "dflash2-evidence-5.tar.gz": "092c96309fc1fa062780ab20b5125111a2f1629241117893491e3779ee2b3d3e",
     "dflash2-evidence-6.tar.gz": "3608bfa261ed6fe7174dc007307021ebbab7b7757e0509d13c16132e2e250b8e",
@@ -17825,6 +17826,20 @@
       "raw_sha256": "0dd0be37441f33d874abe22ec620a9adced26a20d142d29e0676711bdea2bcf4"
     },
     {
+      "name": "default-v132-parity128",
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "c4135a5df851de9564e97164116cae38af38060946b04a96bbe20d2719a6dea0",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "7f9d4a394bc93aa949537093b1d52a55850df73b437b18e76fdcc4b2d3cd1223",
+      "scope": "Output parity only, all new options off. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "e5e557cf8168c567bab98868bce927d8ff89097647e53e354c16f37bdc0935b2"
+    },
+    {
       "name": "default-v24-parity128",
       "passed": true,
       "tokens": 128,
@@ -20778,6 +20793,171 @@
         }
       ],
       "raw_sha256": "d1c5a3458150f2e157e627faf1911e397adf5079efee7ac98f9434b0073eff51"
+    },
+    "kda_qkv_batch": {
+      "bitwise_passed": true,
+      "bitwise_cases": 48,
+      "graph_replays": 12,
+      "memcheck_errors": 0,
+      "racecheck_clean": true,
+      "component_benchmarks": [
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 1,
+          "batched": false,
+          "sample": 0,
+          "microseconds": 209.024
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 1,
+          "batched": false,
+          "sample": 1,
+          "microseconds": 208.736
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 1,
+          "batched": false,
+          "sample": 2,
+          "microseconds": 208.896
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 1,
+          "batched": true,
+          "sample": 0,
+          "microseconds": 162.944
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 1,
+          "batched": true,
+          "sample": 1,
+          "microseconds": 162.976
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 1,
+          "batched": true,
+          "sample": 2,
+          "microseconds": 163.024
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 4,
+          "batched": false,
+          "sample": 0,
+          "microseconds": 221.952
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 4,
+          "batched": false,
+          "sample": 1,
+          "microseconds": 221.872
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 4,
+          "batched": false,
+          "sample": 2,
+          "microseconds": 221.744
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 4,
+          "batched": true,
+          "sample": 0,
+          "microseconds": 173.152
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 4,
+          "batched": true,
+          "sample": 1,
+          "microseconds": 172.928
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 4,
+          "batched": true,
+          "sample": 2,
+          "microseconds": 173.024
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 8,
+          "batched": false,
+          "sample": 0,
+          "microseconds": 219.28
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 8,
+          "batched": false,
+          "sample": 1,
+          "microseconds": 219.312
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 8,
+          "batched": false,
+          "sample": 2,
+          "microseconds": 219.312
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 8,
+          "batched": true,
+          "sample": 0,
+          "microseconds": 173.168
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 8,
+          "batched": true,
+          "sample": 1,
+          "microseconds": 173.104
+        },
+        {
+          "rows": 8192,
+          "columns": 4096,
+          "tokens": 8,
+          "batched": true,
+          "sample": 2,
+          "microseconds": 173.184
+        }
+      ],
+      "scope": "Resident packed MXFP8 products on a V100, ordinary launches with16warmups and3samples of64calls. Component measurements exclude model overhead and are not throughput forecasts.",
+      "raw_sha256": {
+        "config.log": "b7c9928ad66aef647a6c04454996aaa7d823403728beb80781c5dfea6c40d428",
+        "qkv-memcheck.log": "832355d29370c7afe102147861d44cea38a15a35586a64f3a478401c2d4e03ce",
+        "ready": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "identity.sha256": "aa17e29650b2c4a3215c40fdcbc5c46cc54f5a423926ec87ab50fcd2ab270a92",
+        "qkv-racecheck.log": "ec186500b0a025663e60d2a02df9f1e1cdeb01e20bb54da4b392c7d05b2caf23",
+        "qkv-numeric-bench.log": "5ec0c21d6f308ec7e7b7ee25b503ee49af55278adab692d35448e724d42a4fb5",
+        "build.log": "f96659448da2b13b069360a2192a513948dcd129815fc51c63ce1f5fab282148",
+        "source-audit.json": "da81f152e8cb54ba1ad0cda6edb9d16efd8cd381b45cce30941c00f1841deed6",
+        "default-parity-ready": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
     },
     "skinny": {
       "numerical": {

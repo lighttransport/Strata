@@ -466,6 +466,16 @@ intervals do not replace model throughput or fit resource capacities. The
 separate CPU route-drop screens at caps 0.55 and 0.60 measured 36.12 and 36.24
 decode tok/s; reducing CPU groups also reduced proposal acceptance.
 
+The opt-in KDA projection batch uses one launch for query, key and value,
+retaining their existing K reduction and resident compressed weights. On V100,
+the four-row component measured 221.87 / 173.02 microseconds for separate /
+batched products at N=8,192 and K=4,096: sixteen warmups, three samples of
+64 calls. Forty-eight bitwise cases and twelve changed-input CUDA graph replays
+passed, with zero Compute Sanitizer memory errors or race hazards. CUDA and HIP
+decoder builds passed; the native FP4 implementation is excluded from HIP.
+The original default 128-token output remained identical. The full-model timing
+pair is still running; the component result alone establishes no model gain.
+
 The candidate used 20,455 CPU expert groups and 134 verification rounds per
 timed request, versus 27,590 groups and 146 rounds for its control. In its
 median request, verification took 12,093.4 ms of 14,067.0 ms. Removing all
