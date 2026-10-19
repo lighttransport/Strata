@@ -7746,6 +7746,616 @@
       }
     },
     {
+      "name": "head-half-v22",
+      "source_archive_sha256": "0642bb53ca9c7440ee2f15e76103103de9e8c9d7d9075dc294723330172bb606",
+      "binary_sha256": "4d5dfdd4530e3e08f654788305035272bacc70f931c146a9963802f9523d2dc7",
+      "raw_report_sha256": "8cb2e154b597010f695dda60b9bcba043fa4a86765c9bf9cc6bb83cffbd94dc8",
+      "raw_log_sha256": "6ac1188f395b620ef44b3ba329ee1ce3f6de7d4bcb319379c2e6da325f4f8f5e",
+      "decode_tok_s": 22.07022153636547,
+      "prefill_tok_s": 517.4722692472901,
+      "tokens_sha256": "aa9001914c089da40937588c628fb143772fea15514e4c72a910e762fcbcd75c",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_FIXED_HALF": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v22",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.9732428975594158,
+        "prefill_ratio": 0.9930262526214721
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 28.0,
+          "proposed": 107.0,
+          "accepted": 99.0,
+          "replayed": 0.0,
+          "ms": 5753.68,
+          "tok_s": 22.0728
+        },
+        "timing_ms": {
+          "prepare_ms": 0.60281,
+          "draft_ms": 288.312,
+          "verify_ms": 5271.57,
+          "resync_ms": 140.809
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 27.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11886.0,
+        "cpu_candidates": 65822.0,
+        "dropped": 48733.0,
+        "mean_share": 0.395097,
+        "max_share": 0.499997,
+        "max_multiplier": 1.99999
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6391,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 71184832570,
+            "decode_bytes": 932130406
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 14155776
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4604,
+            "misses": 5367,
+            "uploaded_bytes": 75974049792,
+            "mma": 33177,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9563,
+            "misses": 3966,
+            "uploaded_bytes": 56141807616,
+            "mma": 22851,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 12825133056
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31043616768
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5868,
+          "misses": 523,
+          "bytes_after": 191699706
+        }
+      }
+    },
+    {
+      "name": "head-half-borrow-v22",
+      "source_archive_sha256": "0642bb53ca9c7440ee2f15e76103103de9e8c9d7d9075dc294723330172bb606",
+      "binary_sha256": "4d5dfdd4530e3e08f654788305035272bacc70f931c146a9963802f9523d2dc7",
+      "raw_report_sha256": "032cff1f32da669d3d5467f2b21547835f152058548fa0bf1e4f97f263feee64",
+      "raw_log_sha256": "cd90a7a8d3e329bc15f10059f3eeeb3eb90934739015b13ca379e3db0e322630",
+      "decode_tok_s": 22.386270694080153,
+      "prefill_tok_s": 521.2422771262957,
+      "tokens_sha256": "0efc7e1882f86c5194bc65716dc82201ca2469c100a7bb3d4a2a413e3381bb83",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_FIXED_HALF": "1",
+        "STRATA_GLM_FP4_FIXED_HALF_BORROW": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v22",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": true,
+        "decode_ratio": 0.9871798939560595,
+        "prefill_ratio": 1.000260875651394
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5672.42,
+          "tok_s": 22.389
+        },
+        "timing_ms": {
+          "prepare_ms": 0.609658,
+          "draft_ms": 305.673,
+          "verify_ms": 5162.62,
+          "resync_ms": 147.658
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70593643834,
+            "decode_bytes": 891817588
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4818,
+            "misses": 5320,
+            "uploaded_bytes": 75308728320,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13405519872
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      }
+    },
+    {
+      "name": "shared-half-borrow-v22",
+      "source_archive_sha256": "0642bb53ca9c7440ee2f15e76103103de9e8c9d7d9075dc294723330172bb606",
+      "binary_sha256": "4d5dfdd4530e3e08f654788305035272bacc70f931c146a9963802f9523d2dc7",
+      "raw_report_sha256": "5466a708c8928a4cd5f813e63734bc3a3490db117662bbed6556a4ceab9c41be",
+      "raw_log_sha256": "a821a5c9ed9d74b10bb374131642a8a6a8eb8657484be5c6ed84cea1d56e0db3",
+      "decode_tok_s": 19.64192917769914,
+      "prefill_tok_s": 521.0731868663096,
+      "tokens_sha256": "f28521580d47bede34ffee91bf25ae69e9b6e2435d0427e5bf4e0d9738fea55e",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_FIXED_HALF": "4",
+        "STRATA_GLM_FP4_FIXED_HALF_BORROW": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v22",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.8661611318700354,
+        "prefill_ratio": 0.9999363924332438
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 121.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 6465.08,
+          "tok_s": 19.644
+        },
+        "timing_ms": {
+          "prepare_ms": 0.596219,
+          "draft_ms": 275.49,
+          "verify_ms": 5932.45,
+          "resync_ms": 151.314
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12600.0,
+        "cpu_candidates": 68994.0,
+        "dropped": 51260.0,
+        "mean_share": 0.393275,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7071,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 1029058640
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 99090432
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5442,
+            "misses": 5289,
+            "uploaded_bytes": 74869899264,
+            "mma": 38206,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10815,
+            "misses": 3972,
+            "uploaded_bytes": 56226742272,
+            "mma": 26625,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14084997120
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6484,
+          "misses": 587,
+          "bytes_after": 190241678
+        }
+      }
+    },
+    {
+      "name": "fixed-half-v22",
+      "source_archive_sha256": "0642bb53ca9c7440ee2f15e76103103de9e8c9d7d9075dc294723330172bb606",
+      "binary_sha256": "4d5dfdd4530e3e08f654788305035272bacc70f931c146a9963802f9523d2dc7",
+      "raw_report_sha256": "0a14740da508f85fcb878ee640fa5aab055038ea8637b39e336a54eb045748eb",
+      "raw_log_sha256": "a6d1e6a391ada5f49b2fef2b3f4c60386f5b95961bcd6288c4f0bf705636e8e1",
+      "decode_tok_s": 17.38156924091813,
+      "prefill_tok_s": 508.52613086850454,
+      "tokens_sha256": "5addfe3e1e1aaa35ec93f9b1e71229d4e53377a2aa9a08de2efa9094b6651dec",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_FIXED_HALF": "7",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v22",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.7664847760720117,
+        "prefill_ratio": 0.9758586654913621
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 35.0,
+          "proposed": 117.0,
+          "accepted": 91.0,
+          "replayed": 0.0,
+          "ms": 7305.99,
+          "tok_s": 17.383
+        },
+        "timing_ms": {
+          "prepare_ms": 0.559033,
+          "draft_ms": 398.252,
+          "verify_ms": 6647.83,
+          "resync_ms": 124.462
+        },
+        "lookup": {
+          "rounds": 3.0,
+          "proposed": 12.0,
+          "accepted": 6.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12390.0,
+        "cpu_candidates": 70903.0,
+        "dropped": 52092.0,
+        "mean_share": 0.400808,
+        "max_share": 0.499989,
+        "max_multiplier": 1.99996
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 8156,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 75726234806,
+            "decode_bytes": 543920772
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 99090432
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 3282,
+            "misses": 5676,
+            "uploaded_bytes": 80348184576,
+            "mma": 35709,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 11165,
+            "misses": 3972,
+            "uploaded_bytes": 56226742272,
+            "mma": 27675,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 7615807488
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 7499,
+          "misses": 657,
+          "bytes_after": 199444364
+        }
+      }
+    },
+    {
       "name": "control-v14",
       "source_archive_sha256": "7ec05a97d61fb05761098d29c5a5156a091a8d6c1ab8c5227e59f8701313b219",
       "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
@@ -12007,6 +12617,17 @@
       "raw_log_sha256": "618f96c4c22682ec4f1c83274b860b0b2f9cecf160745b2c97b4256fc782098b",
       "timing_qualified": false,
       "scope": "Rejected timing; separate matched two-warmup library-prefault retries required."
+    },
+    {
+      "name": "attention-half-borrow-v22",
+      "type": "scratch_reserve_validation",
+      "stage": "startup",
+      "extra_resident_bytes": 4419747840,
+      "matrices": 139,
+      "minimum_retained_scratch_MiB": 256,
+      "raw_report_sha256": "6fed306a50cf12ae444e174a5c7df7b4cc4ccfdf2d4c2922c407f5725a1275af",
+      "raw_log_sha256": "0714f53b1c9d63a56e163a7895ac7bbd46b872011cad8ce9e8ba9a33dbfe20ca",
+      "timing_qualified": false
     }
   ],
   "model_memory_checks": [

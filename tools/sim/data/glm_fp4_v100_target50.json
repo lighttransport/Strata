@@ -29,7 +29,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_target50_screens.json",
-      "sha256": "bc7ac5500eebb347b51d15d4cbbc29eb32c8f912104a2c8d6043c9802f54d9bd"
+      "sha256": "659ce302116ca3ad2a71fae4e20f5531e069ff5b3bc720d9579ac5beda4c98a3"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -4951,6 +4951,370 @@
         "mean_share": 0.393812,
         "max_share": 0.499999,
         "max_multiplier": 2.0
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "head-half-v22",
+      "decode_tok_s": 22.07022153636547,
+      "prefill_tok_s": 517.4722692472901,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6391,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 71184832570,
+            "decode_bytes": 932130406
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 14155776
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4604,
+            "misses": 5367,
+            "uploaded_bytes": 75974049792,
+            "mma": 33177,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9563,
+            "misses": 3966,
+            "uploaded_bytes": 56141807616,
+            "mma": 22851,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 12825133056
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31043616768
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5868,
+          "misses": 523,
+          "bytes_after": 191699706
+        }
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 28.0,
+          "proposed": 107.0,
+          "accepted": 99.0,
+          "replayed": 0.0,
+          "ms": 5753.68,
+          "tok_s": 22.0728
+        },
+        "timing_ms": {
+          "prepare_ms": 0.60281,
+          "draft_ms": 288.312,
+          "verify_ms": 5271.57,
+          "resync_ms": 140.809
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 27.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11886.0,
+        "cpu_candidates": 65822.0,
+        "dropped": 48733.0,
+        "mean_share": 0.395097,
+        "max_share": 0.499997,
+        "max_multiplier": 1.99999
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "head-half-borrow-v22",
+      "decode_tok_s": 22.386270694080153,
+      "prefill_tok_s": 521.2422771262957,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70593643834,
+            "decode_bytes": 891817588
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4818,
+            "misses": 5320,
+            "uploaded_bytes": 75308728320,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13405519872
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5672.42,
+          "tok_s": 22.389
+        },
+        "timing_ms": {
+          "prepare_ms": 0.609658,
+          "draft_ms": 305.673,
+          "verify_ms": 5162.62,
+          "resync_ms": 147.658
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "shared-half-borrow-v22",
+      "decode_tok_s": 19.64192917769914,
+      "prefill_tok_s": 521.0731868663096,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7071,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 1029058640
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 99090432
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5442,
+            "misses": 5289,
+            "uploaded_bytes": 74869899264,
+            "mma": 38206,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10815,
+            "misses": 3972,
+            "uploaded_bytes": 56226742272,
+            "mma": 26625,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14084997120
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6484,
+          "misses": 587,
+          "bytes_after": 190241678
+        }
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 121.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 6465.08,
+          "tok_s": 19.644
+        },
+        "timing_ms": {
+          "prepare_ms": 0.596219,
+          "draft_ms": 275.49,
+          "verify_ms": 5932.45,
+          "resync_ms": 151.314
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12600.0,
+        "cpu_candidates": 68994.0,
+        "dropped": 51260.0,
+        "mean_share": 0.393275,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match."
+    },
+    {
+      "name": "fixed-half-v22",
+      "decode_tok_s": 17.38156924091813,
+      "prefill_tok_s": 508.52613086850454,
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 8156,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 75726234806,
+            "decode_bytes": 543920772
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 99090432
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 3282,
+            "misses": 5676,
+            "uploaded_bytes": 80348184576,
+            "mma": 35709,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 11165,
+            "misses": 3972,
+            "uploaded_bytes": 56226742272,
+            "mma": 27675,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 7615807488
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 7499,
+          "misses": 657,
+          "bytes_after": 199444364
+        }
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 35.0,
+          "proposed": 117.0,
+          "accepted": 91.0,
+          "replayed": 0.0,
+          "ms": 7305.99,
+          "tok_s": 17.383
+        },
+        "timing_ms": {
+          "prepare_ms": 0.559033,
+          "draft_ms": 398.252,
+          "verify_ms": 6647.83,
+          "resync_ms": 124.462
+        },
+        "lookup": {
+          "rounds": 3.0,
+          "proposed": 12.0,
+          "accepted": 6.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12390.0,
+        "cpu_candidates": 70903.0,
+        "dropped": 52092.0,
+        "mean_share": 0.400808,
+        "max_share": 0.499989,
+        "max_multiplier": 1.99996
       },
       "fit": false,
       "performance_anchor": false,

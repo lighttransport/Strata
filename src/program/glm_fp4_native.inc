@@ -112,7 +112,7 @@ class Fp4NativeExecutor {
         std::map<int,std::set<int>> keep;
         std::map<int,std::vector<uint64_t>> frequency;
         std::map<std::string,Matrix> dense;
-        size_t half_cache_extra=0,half_cache_matrices=0;
+        size_t half_cache_extra=0,half_cache_matrices=0,half_cache_skipped=0;
         std::map<std::string,std::unique_ptr<Device>> scratch;
         std::unique_ptr<PrefillBank> bank;
         uint64_t bank_layers=0,bank_unused_experts=0;
@@ -256,6 +256,7 @@ class Fp4NativeExecutor {
     const bool head_tp_enabled=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP");
     const bool head_tp_borrow=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP_BORROW");
     const long long fixed_half_mask=strata_env_value_ll("STRATA_GLM_FP4_FIXED_HALF",0);
+    const long long fixed_half_max_mib=strata_env_value_ll("STRATA_GLM_FP4_FIXED_HALF_MAX_MIB",0);
     const bool fixed_half_borrow=strata_env_is_one("STRATA_GLM_FP4_FIXED_HALF_BORROW");
     const long long head_fp8_accumulators=strata_env_value_ll("STRATA_GLM_FP4_HEAD_ACCUMULATORS",0);
     const bool block_gate_pack=strata_env_is_one("STRATA_GLM_FP4_BLOCK_GATE_PACK");
@@ -919,6 +920,8 @@ public:
         if(devices.empty()||devices.size()>2)throw std::invalid_argument("GLM FP4: expected one or two GPUs");
         if(fixed_half_mask<0||fixed_half_mask>7)
             throw std::invalid_argument("GLM FP4: FIXED_HALF must be a mask from 0 through 7");
+        if(fixed_half_max_mib<0||fixed_half_max_mib>8192)
+            throw std::invalid_argument("GLM FP4: FIXED_HALF_MAX_MIB must be from 0 through 8192");
         if(fixed_half_mask&&(!sm70||head_tp_enabled||fp8_accumulators!=1||
            (head_fp8_accumulators!=0&&head_fp8_accumulators!=1)))
             throw std::invalid_argument("GLM FP4: FIXED_HALF requires SM70, no head split and single FP8 accumulators");
@@ -1049,6 +1052,12 @@ public:
                     const size_t bytes=size_t(matrix.rows)*matrix.columns*2;
                     const size_t original=matrix.data->bytes;
                     if(bytes<original)throw std::logic_error("GLM FP4: fixed FP16 cache byte accounting");
+                    // Selection follows the existing fixed-matrix traversal.
+                    // Bound extra resident bytes before allocating the cache;
+                    // skipped matrices retain their original format and data.
+                    if(fixed_half_max_mib&&c.half_cache_extra+bytes-original>size_t(fixed_half_max_mib)*MiB) {
+                        ++c.half_cache_skipped;c.dense.emplace(name,std::move(matrix));continue;
+                    }
                     c.room(bytes);auto cached=std::make_unique<Device>(bytes);
                     k::glm_fp8_cache_f16_qpn(matrix.format,matrix.data->p,matrix.scales(),
                         static_cast<uint16_t*>(cached->p),matrix.rows,matrix.columns,c.stream);
@@ -1061,7 +1070,8 @@ public:
         }
         if(fixed_half_mask)std::cerr<<"FP4_FIXED_HALF mask="<<fixed_half_mask
             <<" matrices="<<c.half_cache_matrices<<" extra_bytes="<<c.half_cache_extra
-            <<" borrow="<<fixed_half_borrow<<'\n';
+            <<" borrow="<<fixed_half_borrow<<" max_MiB="<<fixed_half_max_mib
+            <<" skipped="<<c.half_cache_skipped<<'\n';
         if(head_tp_enabled) {
             const auto& full=c.dense.at("output.weight");
             if(full.format!=k::GlmPackedFormat::Mxfp8Qpn||full.rows%64)

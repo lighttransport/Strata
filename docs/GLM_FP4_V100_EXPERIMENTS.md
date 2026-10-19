@@ -173,6 +173,22 @@ checks also passed independent operand comparisons, memcheck and racecheck.
 The opt-in engine trial below tests the extra resident-memory cost; these
 synthetic timings supply no model throughput claim or simulator speedup.
 
+The first engine screens used the same 8192-input / 128-output protocol:
+
+| Fixed FP16 cache | Decode tok/s | Prefill tok/s |
+| --- | ---: | ---: |
+| Matched control | 22.68 | 521.11 |
+| Vocabulary projection | 22.07 | 517.47 |
+| Vocabulary, extra bytes charged to scratch | 22.39 | 521.24 |
+| Shared projections, extra bytes charged to scratch | 19.64 | 521.07 |
+| All selected fixed projections | 17.38 | 508.53 |
+
+None qualified for further model validation. Caching all matching MXFP8
+projections with scratch borrowing failed at startup: 139 matrices needed
+4,419,747,840 extra bytes and could not retain the required 256 MiB scratch
+minimum. That run supplies no throughput result. Bounded subsets at 512, 1024
+and 1280 MiB of extra resident bytes are queued; the selected preset is unchanged.
+
 [Screen evidence](glm_fp4_v100_target50_screens.json) records binary and raw-log
 hashes, output hashes, settings and matching controls. The separate
 [simulator profile](../tools/sim/data/glm_fp4_v100_target50.json) imports screens
@@ -262,6 +278,7 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_HEAD_TP` | `1` | Split narrow MXFP8 vocabulary products across two peer-accessible GPUs. |
 | `STRATA_GLM_FP4_HEAD_TP_BORROW` | `1` | Charge the secondary head copy to that GPU's original scratch reserve. Requires head partitioning and the original decode reserves. |
 | `STRATA_GLM_FP4_FIXED_HALF` | Mask `0`–`7`, default `0` | Cache exact FP16 operands in lane order: bit 1 selects the vocabulary projection, bit 2 selects packed MXFP8 matrices with at most 8192 rows and at least 4096 columns, bit 4 selects 2048-by-4096 block-FP8 shared projections. |
+| `STRATA_GLM_FP4_FIXED_HALF_MAX_MIB` | `0` (unlimited, default) through `8192` | Cap extra fixed FP16 resident bytes, following the existing fixed-matrix traversal; skipped matrices retain their original format. |
 | `STRATA_GLM_FP4_FIXED_HALF_BORROW` | `1` | Charge the extra fixed FP16 bytes against the original scratch reserves, retaining at least 256 MiB. Requires the arena and original decode reserves. |
 | `STRATA_GLM_FP4_HEAD_ACCUMULATORS` | `0` (inherit default), `1`, `2`, `4` | Override FP8 accumulation chains for vocabulary products only. |
 | `STRATA_GLM_FP4_BLOCK_GATE_PACK` | `1` | Pack and split K for the 2048-by-4096 block-FP8 shared gate/up projections. |
@@ -311,6 +328,9 @@ temporary storage, so neither option is selected without model measurements.
 Head partitioning and multiple FP8 accumulator chains are unsupported with this
 cache. Bit 2 selects by format and dimensions, including any fixed matrix that
 matches those bounds.
+The optional extra-byte cap applies before allocation; it permits smaller
+subsets when converting every matching matrix would exhaust the scratch
+reserve. It supplies no automatic ranking or predicted speedup.
 
 Dense splitting keeps the same partitioning across verification widths 1–8,
 but changes the reduction tree relative to the original kernel. It therefore
