@@ -351,8 +351,8 @@ void rows_q8_tiled(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* 
 }
 template<int M,bool LOCAL>
 void dispatch_q8_mode(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
-                 const GlmFp4Q8& x,float* y,int K,int N,int first,int last,int tile) {
-    if(!x.dot_bias.empty()) {
+                 const GlmFp4Q8& x,float* y,int K,int N,int first,int last,int tile,bool bias) {
+    if(bias) {
         if(tile==4)rows_q8_tiled<M,4,true,LOCAL>(w,s,table,x,y,K,N,first,last);
         else if(tile==2)rows_q8_tiled<M,2,true,LOCAL>(w,s,table,x,y,K,N,first,last);
         else rows_q8_tiled<M,1,true,LOCAL>(w,s,table,x,y,K,N,first,last);
@@ -363,9 +363,19 @@ void dispatch_q8_mode(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const floa
 }
 template<int M>
 void dispatch_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
-                 const GlmFp4Q8& x,float* y,int K,int N,int first,int last,int tile,bool local_scales) {
-    if(local_scales)dispatch_q8_mode<M,true>(w,s,table,x,y,K,N,first,last,tile);
-    else dispatch_q8_mode<M,false>(w,s,table,x,y,K,N,first,last,tile);
+                 const GlmFp4Q8& x,float* y,int K,int N,int first,int last,int tile,bool local_scales,bool exact_policy) {
+    bool bias=!x.dot_bias.empty();
+    if(exact_policy) {
+        // Opt-in dispatch measured with 32 workers on two Xeon Gold 6240 CPUs,
+        // amortizing each wake over 16 products. Bit 1: local scale quartets;
+        // bit 0: activation-bias VNNI. Unmeasured widths retain the original.
+        static constexpr uint8_t gate_up[]={3,3,0,2,0,0,0,3};
+        static constexpr uint8_t down[]={3,0,0,3,0,0,0,3};
+        const unsigned mode=(K==4096&&N==2048)?gate_up[M-1]:(K==2048&&N==4096)?down[M-1]:0;
+        bias=mode&1;local_scales=mode&2;
+    }
+    if(local_scales)dispatch_q8_mode<M,true>(w,s,table,x,y,K,N,first,last,tile,bias);
+    else dispatch_q8_mode<M,false>(w,s,table,x,y,K,N,first,last,tile,bias);
 }
 __attribute__((target("avx512f,avx512bw")))
 void prepare_q8_avx512(GlmFp4Q8& x) {
@@ -617,24 +627,25 @@ bool glm_fp4_q8_vnni_available() {
 #endif
 }
 void glm_fp4_rows_csf32_q8(const uint8_t* w,const GlmFp4Csf32SparseRows& s,const float* table,
-                          const GlmFp4Q8& x,float* y,int K,int N,int M,int first,int last,int row_tile,bool local_scales) {
+                          const GlmFp4Q8& x,float* y,int K,int N,int M,int first,int last,int row_tile,bool local_scales,bool exact_policy) {
     if(K<64||K%64||N<1||M<1||M>8||first<0||last<first||last>N||s.rows!=N||s.groups!=K/16||
        x.columns!=K||x.tokens<M||x.values.size()<size_t(K)*M||x.scales.size()<size_t(K/64)*M||
        (row_tile!=1&&row_tile!=2&&row_tile!=4)||
+       (exact_policy&&(row_tile!=1||local_scales||x.dot_bias.size()!=x.values.size()/4))||
        (!x.magnitudes.empty()&&(x.magnitudes.size()!=x.values.size()||x.negative.size()!=x.values.size()/64))||
        (!x.dot_bias.empty()&&x.dot_bias.size()!=x.values.size()/4))
         throw std::invalid_argument("GLM FP4 CPU: invalid Q8 product extent");
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
     if(glm_fp4_q8_vnni_available()) {
         switch(M) {
-            case 1:dispatch_q8<1>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
-            case 2:dispatch_q8<2>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
-            case 3:dispatch_q8<3>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
-            case 4:dispatch_q8<4>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
-            case 5:dispatch_q8<5>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
-            case 6:dispatch_q8<6>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
-            case 7:dispatch_q8<7>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
-            case 8:dispatch_q8<8>(w,s,table,x,y,K,N,first,last,row_tile,local_scales);return;
+            case 1:dispatch_q8<1>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
+            case 2:dispatch_q8<2>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
+            case 3:dispatch_q8<3>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
+            case 4:dispatch_q8<4>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
+            case 5:dispatch_q8<5>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
+            case 6:dispatch_q8<6>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
+            case 7:dispatch_q8<7>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
+            case 8:dispatch_q8<8>(w,s,table,x,y,K,N,first,last,row_tile,local_scales,exact_policy);return;
         }
     }
 #endif

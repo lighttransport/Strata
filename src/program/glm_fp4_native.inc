@@ -287,6 +287,7 @@ class Fp4NativeExecutor {
     const bool cpu_input_reuse=strata_env_is_one("STRATA_GLM_FP4_CPU_INPUT_REUSE");
     const bool cpu_q8_prepare=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_PREPARE");
     const bool cpu_q8_bias=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_BIAS");
+    const bool cpu_q8_policy=strata_env_is_one("STRATA_GLM_FP4_CPU_Q8_POLICY");
     const long long cpu_team_size=strata_env_value_ll("STRATA_GLM_FP4_CPU_TEAM_SIZE",0);
     const long long cpu_row_tile=strata_env_value_ll("STRATA_GLM_FP4_CPU_ROW_TILE",1);
     const bool cpu_borrow_enabled=strata_env_is_one("STRATA_GLM_FP4_CPU_BORROW");
@@ -321,6 +322,7 @@ class Fp4NativeExecutor {
         return profile?std::chrono::duration<double,std::milli>(Clock::now()-start).count():0;
     }
     uint64_t cpu_experts=0;
+    std::array<uint64_t,9> cpu_width_groups{};
     std::mutex cpu_cache_mutex;
     std::map<std::pair<int,int>,std::shared_ptr<CpuExpert>> cpu_cache;
     std::list<std::pair<int,int>> cpu_lru;
@@ -403,7 +405,7 @@ class Fp4NativeExecutor {
     void cpu_product(const CpuExpert& e,int projection,const float* x,float* y,
                             int columns,int rows,int tokens,int first,int last,const cpu::GlmFp4Q8* q8=nullptr) {
         const auto& packed=e.projection[projection];
-        if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last,int(cpu_row_tile),cpu_scale_local);
+        if(e.sparse[projection]&&q8)cpu::glm_fp4_rows_csf32_q8(packed.data(),*e.sparse[projection],e.scales[projection].data(),*q8,y,columns,rows,tokens,first,last,int(cpu_row_tile),cpu_scale_local,cpu_q8_policy);
         else if(e.sparse[projection])cpu::glm_fp4_rows_csf32_sparse_table(packed.data(),*e.sparse[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else if(e.csf32[projection])cpu::glm_fp4_rows_csf32_table(packed.data(),*e.csf32[projection],e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
         else cpu::glm_fp4_rows_table(packed.data(),packed.scales.data(),e.scales[projection].data(),x,y,columns,rows,tokens,first,last);
@@ -1007,8 +1009,11 @@ public:
             throw std::invalid_argument("GLM FP4: CPU_ROW_TILE must be 1, 2 or 4");
         if(cpu_q8_bias&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_Q8_BIAS requires CPU_Q8=1");
         if(cpu_scale_local&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_SCALE_LOCAL requires CPU_Q8=1");
+        if(cpu_q8_policy&&(!cpu_q8_enabled||cpu_q8_bias||cpu_q8_prepare||cpu_scale_local||cpu_row_tile!=1))
+            throw std::invalid_argument("GLM FP4: CPU_Q8_POLICY requires CPU_Q8=1, ROW_TILE=1 and global Q8_BIAS/Q8_PREPARE/SCALE_LOCAL off");
         if(cpu_q8_bias)std::cerr<<"FP4_CPU_Q8_BIAS enabled=1\n";
         if(cpu_scale_local)std::cerr<<"FP4_CPU_SCALE_LOCAL enabled=1 max_row_bytes=256\n";
+        if(cpu_q8_policy)std::cerr<<"FP4_CPU_Q8_POLICY enabled=1 unchanged_q8_arithmetic=1\n";
         if(cpu_row_tile!=1||cpu_q8_prepare)std::cerr<<"FP4_CPU_REUSE row_tile="<<cpu_row_tile<<" prepared="<<cpu_q8_prepare<<'\n';
         if(decode_device_routing_enabled)std::cerr<<"FP4_DECODE_ROUTING enabled=1 deferred_expert_sync=1\n";
         if(!std::isfinite(route_drop_cap)||route_drop_cap<0.5||route_drop_cap>0.75||
@@ -1390,13 +1395,14 @@ public:
         auto run_cpu=[&] {
             if(cpu_jobs.empty())return;
             cpu_experts+=cpu_jobs.size();
+            if(cpu_q8_policy)for(const auto& job:cpu_jobs)++cpu_width_groups.at(job.routes->size());
             auto begin=tick();
             cpu::GlmFp4Q8 shared_input;
             if(cpu_input_reuse&&cpu_q8_enabled) {
                 std::vector<float> rounded(activation,activation+size_t(nt)*4096);
                 cpu::glm_fp4_round_f16(rounded.data(),rounded.size());
                 shared_input=cpu::glm_fp4_quantize_q8(rounded.data(),4096,nt);
-                if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(shared_input);
+                if(cpu_q8_bias||cpu_q8_policy)cpu::glm_fp4_prepare_q8_bias(shared_input);
                 else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(shared_input);
             }
             // Packed codes stay mapped. A bounded LRU retains logical
@@ -1425,7 +1431,7 @@ public:
                     }
                     if(cpu_q8_enabled) {
                         job.qinput=cpu::glm_fp4_quantize_q8(job.input.data(),4096,count);
-                        if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(job.qinput);
+                        if(cpu_q8_bias||cpu_q8_policy)cpu::glm_fp4_prepare_q8_bias(job.qinput);
                         else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qinput);
                     }
                     }
@@ -1455,7 +1461,7 @@ public:
             auto quant_hidden=[&](size_t rank) {
                 for(size_t i=rank;i<cpu_jobs.size();i+=cpu_pool.size()) {
                     auto& job=cpu_jobs[i];job.qhidden=cpu::glm_fp4_quantize_q8(job.hidden.data(),2048,job.routes->size());
-                    if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(job.qhidden);
+                    if(cpu_q8_bias||cpu_q8_policy)cpu::glm_fp4_prepare_q8_bias(job.qhidden);
                     else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
                 }
             };
@@ -1500,7 +1506,7 @@ public:
                                 if(member==0) {
                                     auto& job=cpu_jobs[j];
                                     job.qhidden=cpu::glm_fp4_quantize_q8(job.hidden.data(),2048,job.routes->size());
-                                    if(cpu_q8_bias)cpu::glm_fp4_prepare_q8_bias(job.qhidden);
+                                    if(cpu_q8_bias||cpu_q8_policy)cpu::glm_fp4_prepare_q8_bias(job.qhidden);
                                     else if(cpu_q8_prepare)cpu::glm_fp4_prepare_q8(job.qhidden);
                                 }
                                 if(!barrier())return;
@@ -1993,6 +1999,11 @@ public:
         std::cerr<<"FP4_CPU expert_groups="<<cpu_experts<<" activation_format="
             <<(cpu_q8_enabled?"q8_block64_from_f16":"f16")<<" weight_format=native_nvfp4\n";
         std::cerr<<"FP4_CPU_SCALES hits="<<cpu_cache_hits<<" misses="<<cpu_cache_misses<<" bytes="<<cpu_cache_bytes<<'\n';
+        if(cpu_q8_policy) {
+            std::cerr<<"FP4_CPU_WIDTHS";
+            for(int width=1;width<=8;++width)std::cerr<<" w"<<width<<'='<<cpu_width_groups[width];
+            std::cerr<<'\n';
+        }
         for(const auto& c:contexts)if(prefill_batch_experts>1)std::cerr<<"FP4_BATCH device="<<c->device
             <<" groups="<<c->batch_groups<<" experts="<<c->batch_experts<<" actual_rows="<<c->batch_actual_rows
             <<" padded_rows="<<c->batch_padded_rows<<'\n';

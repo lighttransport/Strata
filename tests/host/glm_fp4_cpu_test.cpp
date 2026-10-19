@@ -262,6 +262,38 @@ int main(int argc,char** argv){try {
     std::cout<<"FP4 CPU CSF32 rows PASS (host codec, sparse/dense exceptions, mask boundaries, widths 1..8)\n";
     std::cout<<"FP4 CPU W4A8 PASS (FP64 dots, quantization error bounds, partial rows, fixed first row) mode="
              <<(strata::kernels::cpu::glm_fp4_q8_vnni_available()?"vnni":"scalar")<<'\n';
+    // The dispatch policy is specific to the two native expert shapes. Check
+    // their actual dimensions, every width, scale layout and boundary rows.
+    for(int rows:{2048,4096}) {
+        const int columns=rows==2048?4096:2048,groups=columns/16;
+        std::vector<uint8_t> bases(rows,40),codes(size_t(rows)*groups/2),logical(size_t(rows)*groups),w(size_t(rows)*columns/2);
+        for(size_t i=0;i<codes.size();++i)codes[i]=uint8_t(i*59+19);
+        for(size_t i=0;i<w.size();++i)w[i]=uint8_t(i*53+7);
+        const size_t tiles=size_t(rows/128)*(groups/4),pages=(tiles+31)/32;
+        std::vector<uint16_t> offsets(size_t(rows/32)*(groups/2)+pages);std::vector<uint32_t> page_bases(pages);
+        if(strata_fp4_csf32_decode(rows,groups,bases.data(),bases.size(),codes.data(),codes.size(),offsets.data(),offsets.size(),page_bases.data(),pages,nullptr,0,logical.data(),logical.size()))throw std::runtime_error("policy CSF32 fixture");
+        for(size_t i=0;i<logical.size();i+=1021)logical[i]=uint8_t(8+i%110);
+        std::vector<float> input(size_t(columns)*8),reference(size_t(rows)*8),out(reference.size());
+        for(size_t i=0;i<input.size();++i)input[i]=std::sin(float(i)*.37f);
+        const auto q8=strata::kernels::cpu::glm_fp4_quantize_q8(input.data(),columns,8);
+        auto biased=q8;strata::kernels::cpu::glm_fp4_prepare_q8_bias(biased);
+        alignas(64)float table[strata::kernels::cpu::glm_fp4_weight_table_floats];
+        strata::kernels::cpu::glm_fp4_weight_table(global,true,table);
+        for(bool borrow:{false,true})for(bool cached:{false,true}) {
+            auto layout=strata::kernels::cpu::glm_fp4_csf32_sparse_rows(logical.data(),bases.data(),codes.data(),rows,groups,borrow);
+            if(cached)strata::kernels::cpu::glm_fp4_cache_scale_quartets(layout);
+            for(int tokens=1;tokens<=8;++tokens)for(int first:{0,1,2,3,rows-5}) {
+                std::fill(reference.begin(),reference.end(),-777.f);std::fill(out.begin(),out.end(),-777.f);
+                strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,q8,reference.data(),columns,rows,tokens,first,first+5);
+                strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,biased,out.data(),columns,rows,tokens,first,first+5,1,false,true);
+                if(std::memcmp(reference.data(),out.data(),out.size()*4))throw std::runtime_error("exact CPU dispatch changes product bits or output guards");
+            }
+            bool rejected=false;
+            try{strata::kernels::cpu::glm_fp4_rows_csf32_q8(w.data(),layout,table,q8,out.data(),columns,rows,1,0,1,1,false,true);}catch(const std::invalid_argument&){rejected=true;}
+            if(!rejected)throw std::runtime_error("CPU policy accepts missing bias operands");
+        }
+    }
+    std::cout<<"FP4 CPU exact dispatch PASS (both native expert shapes, widths1..8, owned/borrowed/cached and output guards)\n";
     if(argc==2 && std::string(argv[1])=="--bench") {
         constexpr int rows=2048,columns=4096,copies=16,repeats=64;
         const size_t wb=size_t(rows)*columns/2,sb=size_t(rows)*columns/16;
