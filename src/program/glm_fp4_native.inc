@@ -65,6 +65,8 @@ class Fp4NativeExecutor {
         static constexpr size_t count=144,frame_bytes=16*MiB,flag_offset=frame_bytes-4096;
         int device,layer=-1;
         cudaStream_t stream=nullptr;
+        // Declared before the views so that they are destroyed first.
+        std::unique_ptr<Device> slab;
         std::array<Expert,count> experts;
         std::array<Expert*,count> cached{};
         std::array<std::array<const ExpertSource*,3>,count> sources{};
@@ -255,7 +257,9 @@ class Fp4NativeExecutor {
     const long long head_fp8_accumulators=strata_env_value_ll("STRATA_GLM_FP4_HEAD_ACCUMULATORS",0);
     const bool block_gate_pack=strata_env_is_one("STRATA_GLM_FP4_BLOCK_GATE_PACK");
     const bool prefill_bank_enabled=strata_env_is_one("STRATA_GLM_FP4_PREFILL_BANK");
+    const bool prefill_bank_slab=strata_env_is_one("STRATA_GLM_FP4_PREFILL_BANK_SLAB");
     const bool prefill_operand_pipeline=strata_env_is_one("STRATA_GLM_FP4_PREFILL_OPERAND_PIPELINE");
+    const bool prefill_operand_overlap=strata_env_is_one("STRATA_GLM_FP4_PREFILL_OPERAND_OVERLAP");
     bool peer_enabled=false;
     const bool device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DEVICE_ROUTING");
     bool decode_device_routing_enabled=strata_env_is_one("STRATA_GLM_FP4_DECODE_ROUTING");
@@ -515,6 +519,7 @@ class Fp4NativeExecutor {
         Expert* value=nullptr;
         std::unique_ptr<Expert> owned;
         std::pair<int,int> key;
+        cudaStream_t reader_stream=nullptr;
         int slot=-1,done_slot=-1;bool completed=false;
         PendingExpert()=default;
         PendingExpert(PendingExpert&&)=default;
@@ -523,6 +528,7 @@ class Fp4NativeExecutor {
             // An exception may leave either DMA or a matrix reader queued.
             if(owned&&context&&!completed) {
                 cudaStreamSynchronize(context->copy_stream);
+                if(reader_stream)cudaStreamSynchronize(reader_stream);
                 cudaStreamSynchronize(context->stream);
             }
         }
@@ -725,16 +731,26 @@ class Fp4NativeExecutor {
             }
             while(c.cache_bytes>c.cache_limit-reserved)c.evict();
             auto b=std::make_unique<PrefillBank>(c.device);
+            if(prefill_bank_slab) {
+                c.room(reserved);b->slab=std::make_unique<Device>(reserved);
+            }
             for(auto& expert:b->experts)for(int p=0;p<3;++p) {
                 auto& m=expert.projection[p];m.format=k::GlmPackedFormat::Nvfp4;
                 m.rows=p==2?4096:2048;m.columns=p==2?2048:4096;
                 m.scale_offset=size_t(m.rows)*m.columns/2;
                 const size_t bytes=m.scale_offset+size_t(m.rows)*m.columns/16;
-                c.room(bytes);m.data=std::make_unique<Device>(bytes);
+                if(b->slab)m.data=std::make_unique<Device>(
+                    static_cast<uint8_t*>(b->slab->p)+b->allocated_bytes,bytes);
+                else {c.room(bytes);m.data=std::make_unique<Device>(bytes);}
                 b->allocated_bytes+=bytes;expert.bytes+=bytes;
             }
-            c.room(PrefillBank::frame_bytes);b->frame=std::make_unique<Device>(PrefillBank::frame_bytes);
+            if(b->slab)b->frame=std::make_unique<Device>(
+                static_cast<uint8_t*>(b->slab->p)+b->allocated_bytes,PrefillBank::frame_bytes);
+            else {c.room(PrefillBank::frame_bytes);b->frame=std::make_unique<Device>(PrefillBank::frame_bytes);}
             b->allocated_bytes+=PrefillBank::frame_bytes;
+            if(b->allocated_bytes!=reserved)throw std::logic_error("GLM FP4: prefill bank size mismatch");
+            if(prefill_bank_slab)std::cerr<<"FP4_PREFILL_BANK_SLAB device="<<c.device
+                <<" bytes="<<b->allocated_bytes<<'\n';
             b->flags=std::make_unique<Pinned>(PrefillBank::count*3*4,true);c.bank=std::move(b);
         }
         start_bank_layer(3);
@@ -897,6 +913,10 @@ public:
             throw std::invalid_argument("GLM FP4: PREFILL_BATCH_EXPERTS must be 1, 2 or 4");
         if(prefill_queue_depth!=1&&prefill_queue_depth!=2&&prefill_queue_depth!=4)
             throw std::invalid_argument("GLM FP4: PREFILL_QUEUE must be 1, 2 or 4");
+        if(prefill_bank_slab&&!prefill_bank_enabled)
+            throw std::invalid_argument("GLM FP4: PREFILL_BANK_SLAB requires PREFILL_BANK");
+        if(prefill_operand_overlap&&!prefill_operand_pipeline)
+            throw std::invalid_argument("GLM FP4: PREFILL_OPERAND_OVERLAP requires PREFILL_OPERAND_PIPELINE");
         if(prefill_operand_pipeline&&(!sm70||!Device::prealloc()||!device_routing_enabled||
            !async_upload_enabled||prefill_bank_enabled||prefill_mma_tile||
            prefill_queue_depth!=1||prefill_batch_experts!=1))
@@ -1637,15 +1657,24 @@ public:
                 c.buffer("expert_hidden_half",max_rows*2048*2);
                 c.buffer("expert_result",max_rows*4096*4);c.buffer("expert_route_ids",max_rows*4);
                 constexpr size_t elements=size_t(2048)*4096;
-                auto* operands=static_cast<uint16_t*>(c.buffer("prefill_operands",6*elements*2).p);
+                // Dense prefixes have retired at routed()'s input fence. This
+                // optional workspace can serve both phases without retaining
+                // a second reconstructed-weight allocation between layers.
+                auto* operands=static_cast<uint16_t*>(c.buffer(
+                    prefill_operand_overlap?"dequant_half":"prefill_operands",6*elements*2).p);
                 // A tiny group keeps the original skinny product and its scratch.
                 c.buffer("matrix_partial",k::glm_fp4_partial_bytes(512));
                 c.init_upload();
                 struct OperandEvents {
-                    Context& c;cudaEvent_t ready[2]{};
-                    ~OperandEvents(){cudaStreamSynchronize(c.copy_stream);cudaStreamSynchronize(c.stream);
-                        c.async_eviction=false;for(auto e:ready)if(e)cudaEventDestroy(e);}
+                    Context& c;cudaEvent_t ready[2]{};cudaStream_t reconstruct=nullptr;
+                    ~OperandEvents(){cudaStreamSynchronize(c.copy_stream);
+                        if(reconstruct)cudaStreamSynchronize(reconstruct);
+                        cudaStreamSynchronize(c.stream);c.async_eviction=false;
+                        for(auto e:ready)if(e)cudaEventDestroy(e);
+                        if(reconstruct)cudaStreamDestroy(reconstruct);}
                 } events{c};
+                if(prefill_operand_overlap)check(cudaStreamCreateWithFlags(&events.reconstruct,cudaStreamNonBlocking));
+                const auto reader=events.reconstruct?events.reconstruct:c.copy_stream;
                 for(auto& event:events.ready)check(cudaEventCreateWithFlags(&event,cudaEventDisableTiming));
                 c.async_eviction=true;
                 std::deque<PendingExpert> retired;
@@ -1657,16 +1686,21 @@ public:
                 auto stage=[&](size_t j) {
                     const int slot=int(j%2);auto p=prepare_expert(c,layer,jobs[j]);
                     c.protected_experts.insert(p.key);p.done_slot=slot;
+                    // An owned source must survive an exception after a
+                    // reconstruction enqueue, before its compute consumer.
+                    p.reader_stream=events.reconstruct;
+                    if(events.reconstruct&&p.slot>=0)
+                        check(cudaStreamWaitEvent(reader,c.upload_ready[p.slot],0));
                     if(grouped.at(jobs[j]).size()>8)for(int projection=0;projection<3;++projection) {
                         const auto& w=p.value->projection[projection];
                         if(w.rows*w.columns!=int(elements)||w.format!=k::GlmPackedFormat::Nvfp4)
                             throw std::logic_error("GLM FP4: unexpected expert operand shape/format");
-                        const auto trace=c.trace_start("reconstruct",c.copy_stream);
+                        const auto trace=c.trace_start("reconstruct",reader);
                         k::glm_fp4_dequant_f16(w.format,w.data->p,w.scales(),w.global,
-                            operands+(slot*3+projection)*elements,w.rows,w.columns,c.copy_stream,sm70);
-                        c.trace_end(trace,c.copy_stream);
+                            operands+(slot*3+projection)*elements,w.rows,w.columns,reader,sm70);
+                        c.trace_end(trace,reader);
                     }
-                    check(cudaGetLastError());check(cudaEventRecord(events.ready[slot],c.copy_stream));
+                    check(cudaGetLastError());check(cudaEventRecord(events.ready[slot],reader));
                     return p;
                 };
                 for(size_t j=0;j<jobs.size();++j) {
@@ -1871,7 +1905,8 @@ public:
             <<" groups="<<c->batch_groups<<" experts="<<c->batch_experts<<" actual_rows="<<c->batch_actual_rows
             <<" padded_rows="<<c->batch_padded_rows<<'\n';
         for(const auto& c:contexts)if(prefill_operand_pipeline)std::cerr<<"FP4_PREFILL_OPERANDS device="<<c->device
-            <<" groups="<<c->operand_groups<<" rows="<<c->operand_rows<<'\n';
+            <<" groups="<<c->operand_groups<<" rows="<<c->operand_rows
+            <<" overlap="<<prefill_operand_overlap<<'\n';
         for(const auto& c:contexts)if(prefill_mma_tile)std::cerr<<"FP4_FUSED_PREFILL device="<<c->device
             <<" calls="<<c->fused_prefill_calls<<'\n';
         for(const auto& c:contexts)std::cerr<<"FP4_TRANSFER device="<<c->device

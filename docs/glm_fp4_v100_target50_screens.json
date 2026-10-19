@@ -9,7 +9,7 @@
     "clocks": "unlocked",
     "ram_speed": "not measured"
   },
-  "protocol": "8,192 input IDs, 128 output IDs, one complete warmup, a discarded one-token request, and one timed request. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match.",
+  "protocol": "8,192 input IDs, 128 output IDs, one or two complete warmups as recorded per row, a discarded one-step decode request, and one timed request. Two-warmup retries read executable/library pages during the second warmup; preparation must finish before timing. These screens do not qualify 512-output throughput. Comparisons list whether the binary and output IDs match.",
   "screens": [
     {
       "name": "control-v2",
@@ -68,6 +68,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5865.4,
+          "tok_s": 21.6524
+        },
+        "timing_ms": {
+          "prepare_ms": 0.613917,
+          "draft_ms": 262.851,
+          "verify_ms": 5396.04,
+          "resync_ms": 149.209
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -86,15 +118,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -162,6 +217,38 @@
         "decode_ratio": 0.8458258715506377,
         "prefill_ratio": 1.0017386763839975
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 26.0,
+          "proposed": 131.0,
+          "accepted": 101.0,
+          "replayed": 0.0,
+          "ms": 6934.69,
+          "tok_s": 18.3137
+        },
+        "timing_ms": {
+          "prepare_ms": 0.645264,
+          "draft_ms": 400.321,
+          "verify_ms": 6330.14,
+          "resync_ms": 141.306
+        },
+        "lookup": {
+          "rounds": 1.0,
+          "proposed": 2.0,
+          "accepted": 2.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 13524.0,
+        "cpu_candidates": 74570.0,
+        "dropped": 55188.0,
+        "mean_share": 0.394409,
+        "max_share": 0.5,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 7799,
@@ -180,15 +267,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5254,
             "misses": 5252,
-            "uploaded_bytes": 74346135552
+            "uploaded_bytes": 74346135552,
+            "mma": 34186,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10395,
             "misses": 3969,
-            "uploaded_bytes": 56184274944
+            "uploaded_bytes": 56184274944,
+            "mma": 25356,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13674479616
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31057772544
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 7180,
+          "misses": 619,
+          "bytes_after": 188277492
+        }
       }
     },
     {
@@ -256,6 +366,38 @@
         "decode_ratio": 0.8206272820111075,
         "prefill_ratio": 1.0024848794805659
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 22.0,
+          "proposed": 151.0,
+          "accepted": 105.0,
+          "replayed": 0.0,
+          "ms": 7147.61,
+          "tok_s": 17.7682
+        },
+        "timing_ms": {
+          "prepare_ms": 0.580368,
+          "draft_ms": 458.546,
+          "verify_ms": 6477.59,
+          "resync_ms": 149.526
+        },
+        "lookup": {
+          "rounds": 0.0,
+          "proposed": 0.0,
+          "accepted": 0.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 17724.0,
+        "cpu_candidates": 95171.0,
+        "dropped": 71917.0,
+        "mean_share": 0.389721,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 7574,
@@ -274,15 +416,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5523,
             "misses": 5249,
-            "uploaded_bytes": 74303668224
+            "uploaded_bytes": 74303668224,
+            "mma": 32696,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 11044,
             "misses": 3970,
-            "uploaded_bytes": 56198430720
+            "uploaded_bytes": 56198430720,
+            "mma": 27306,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13745258496
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31114395648
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6803,
+          "misses": 771,
+          "bytes_after": 214856082
+        }
       }
     },
     {
@@ -350,6 +515,38 @@
         "decode_ratio": 0.7863096291292015,
         "prefill_ratio": 1.003812969663234
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 117.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 7459.59,
+          "tok_s": 17.0251
+        },
+        "timing_ms": {
+          "prepare_ms": 0.298418,
+          "draft_ms": 394.634,
+          "verify_ms": 6684.46,
+          "resync_ms": 194.318
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 25.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12684.0,
+        "cpu_candidates": 68120.0,
+        "dropped": 51574.0,
+        "mean_share": 0.391533,
+        "max_share": 0.499994,
+        "max_multiplier": 1.99997
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6454,
@@ -368,15 +565,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5570,
             "misses": 5256,
-            "uploaded_bytes": 74402758656
+            "uploaded_bytes": 74402758656,
+            "mma": 38491,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10551,
             "misses": 4016,
-            "uploaded_bytes": 56849596416
+            "uploaded_bytes": 56849596416,
+            "mma": 25965,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14877720576
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31539068928
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5733,
+          "misses": 721,
+          "bytes_after": 192573438
+        }
       }
     },
     {
@@ -444,6 +664,38 @@
         "decode_ratio": 0.7093422300042564,
         "prefill_ratio": 1.0036286126122116
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 35.0,
+          "proposed": 113.0,
+          "accepted": 91.0,
+          "replayed": 0.0,
+          "ms": 8269.21,
+          "tok_s": 15.3582
+        },
+        "timing_ms": {
+          "prepare_ms": 0.326853,
+          "draft_ms": 570.86,
+          "verify_ms": 7375.54,
+          "resync_ms": 203.574
+        },
+        "lookup": {
+          "rounds": 2.0,
+          "proposed": 8.0,
+          "accepted": 1.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12348.0,
+        "cpu_candidates": 64771.0,
+        "dropped": 49613.0,
+        "mean_share": 0.386331,
+        "max_share": 0.499995,
+        "max_multiplier": 1.99998
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6310,
@@ -462,15 +714,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5624,
             "misses": 5254,
-            "uploaded_bytes": 74374447104
+            "uploaded_bytes": 74374447104,
+            "mma": 41469,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10545,
             "misses": 4568,
-            "uploaded_bytes": 64663584768
+            "uploaded_bytes": 64663584768,
+            "mma": 27603,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14934343680
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31539068928
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5552,
+          "misses": 758,
+          "bytes_after": 187505508
+        }
       }
     },
     {
@@ -530,6 +805,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5861.02,
+          "tok_s": 21.6686
+        },
+        "timing_ms": {
+          "prepare_ms": 0.581036,
+          "draft_ms": 263.13,
+          "verify_ms": 5393.03,
+          "resync_ms": 148.427
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -548,15 +855,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -624,6 +954,38 @@
         "decode_ratio": 0.73315272519421,
         "prefill_ratio": 1.0062359161999956
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 35.0,
+          "proposed": 115.0,
+          "accepted": 92.0,
+          "replayed": 0.0,
+          "ms": 7994.61,
+          "tok_s": 15.8857
+        },
+        "timing_ms": {
+          "prepare_ms": 0.314301,
+          "draft_ms": 597.307,
+          "verify_ms": 7052.82,
+          "resync_ms": 280.39
+        },
+        "lookup": {
+          "rounds": 3.0,
+          "proposed": 12.0,
+          "accepted": 6.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12180.0,
+        "cpu_candidates": 64295.0,
+        "dropped": 50918.0,
+        "mean_share": 0.382773,
+        "max_share": 0.499966,
+        "max_multiplier": 1.99986
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 5255,
@@ -642,15 +1004,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5766,
             "misses": 5299,
-            "uploaded_bytes": 75011457024
+            "uploaded_bytes": 75011457024,
+            "mma": 41340,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10414,
             "misses": 4654,
-            "uploaded_bytes": 65880981504
+            "uploaded_bytes": 65880981504,
+            "mma": 27468,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 15174991872
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31539068928
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 4616,
+          "misses": 639,
+          "bytes_after": 187541962
+        }
       }
     },
     {
@@ -711,6 +1096,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5842.77,
+          "tok_s": 21.7363
+        },
+        "timing_ms": {
+          "prepare_ms": 0.576622,
+          "draft_ms": 260.138,
+          "verify_ms": 5378.52,
+          "resync_ms": 147.804
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -729,15 +1146,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -806,6 +1246,38 @@
         "decode_ratio": 0.807499215780026,
         "prefill_ratio": 0.9975980606975055
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 122.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 7235.8,
+          "tok_s": 17.5516
+        },
+        "timing_ms": {
+          "prepare_ms": 0.58384,
+          "draft_ms": 289.938,
+          "verify_ms": 6745.97,
+          "resync_ms": 137.625
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12852.0,
+        "cpu_candidates": 70468.0,
+        "dropped": 52620.0,
+        "mean_share": 0.393742,
+        "max_share": 0.49999,
+        "max_multiplier": 1.99996
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 7204,
@@ -824,15 +1296,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5183,
             "misses": 5253,
-            "uploaded_bytes": 74360291328
+            "uploaded_bytes": 74360291328,
+            "mma": 37322,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10604,
             "misses": 3969,
-            "uploaded_bytes": 56184274944
+            "uploaded_bytes": 56184274944,
+            "mma": 25983,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13603700736
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31015305216
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6537,
+          "misses": 667,
+          "bytes_after": 198559192
+        }
       }
     },
     {
@@ -901,6 +1396,38 @@
         "decode_ratio": 0.8479732524172519,
         "prefill_ratio": 0.9986395162230749
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 120.0,
+          "accepted": 96.0,
+          "replayed": 0.0,
+          "ms": 6890.4,
+          "tok_s": 18.4314
+        },
+        "timing_ms": {
+          "prepare_ms": 0.596601,
+          "draft_ms": 286.806,
+          "verify_ms": 6400.53,
+          "resync_ms": 145.091
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12222.0,
+        "cpu_candidates": 66457.0,
+        "dropped": 49625.0,
+        "mean_share": 0.393061,
+        "max_share": 0.499987,
+        "max_multiplier": 1.99995
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6882,
@@ -919,15 +1446,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5287,
             "misses": 5253,
-            "uploaded_bytes": 74360291328
+            "uploaded_bytes": 74360291328,
+            "mma": 36957,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10698,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 26271,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31029460992
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6257,
+          "misses": 625,
+          "bytes_after": 186124508
+        }
       }
     },
     {
@@ -988,6 +1538,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5719.52,
+          "tok_s": 22.2047
+        },
+        "timing_ms": {
+          "prepare_ms": 0.614386,
+          "draft_ms": 262.471,
+          "verify_ms": 5252.3,
+          "resync_ms": 147.854
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -1006,15 +1588,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -1084,6 +1689,38 @@
         "decode_ratio": 0.9928851751628563,
         "prefill_ratio": 1.0009709145175694
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5760.52,
+          "tok_s": 22.0466
+        },
+        "timing_ms": {
+          "prepare_ms": 0.611754,
+          "draft_ms": 262.786,
+          "verify_ms": 5289.63,
+          "resync_ms": 150.481
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -1102,15 +1739,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -1181,6 +1841,38 @@
         "decode_ratio": 1.0007732950768047,
         "prefill_ratio": 1.0018355337744211
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5715.1,
+          "tok_s": 22.2218
+        },
+        "timing_ms": {
+          "prepare_ms": 0.595411,
+          "draft_ms": 261.736,
+          "verify_ms": 5248.77,
+          "resync_ms": 147.578
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -1199,15 +1891,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -1269,6 +1984,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5609.75,
+          "tok_s": 22.6391
+        },
+        "timing_ms": {
+          "prepare_ms": 0.478255,
+          "draft_ms": 258.968,
+          "verify_ms": 5145.61,
+          "resync_ms": 147.259
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -1287,15 +2034,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -1365,6 +2135,38 @@
         "decode_ratio": 0.8549515489257561,
         "prefill_ratio": 1.006497267166178
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 116.0,
+          "accepted": 96.0,
+          "replayed": 0.0,
+          "ms": 6561.6,
+          "tok_s": 19.355
+        },
+        "timing_ms": {
+          "prepare_ms": 0.579139,
+          "draft_ms": 395.171,
+          "verify_ms": 5816.13,
+          "resync_ms": 293.332
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12222.0,
+        "cpu_candidates": 62540.0,
+        "dropped": 48402.0,
+        "mean_share": 0.385082,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 5660,
@@ -1383,15 +2185,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 6032,
             "misses": 5300,
-            "uploaded_bytes": 75025612800
+            "uploaded_bytes": 75025612800,
+            "mma": 39333,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10975,
             "misses": 4085,
-            "uploaded_bytes": 57826344960
+            "uploaded_bytes": 57826344960,
+            "mma": 27444,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14481358848
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30944526336
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5098,
+          "misses": 562,
+          "bytes_after": 187428738
+        }
       }
     },
     {
@@ -1461,6 +2286,38 @@
         "decode_ratio": 0.8249021516348248,
         "prefill_ratio": 0.9993231587522163
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 115.0,
+          "accepted": 96.0,
+          "replayed": 0.0,
+          "ms": 6800.64,
+          "tok_s": 18.6747
+        },
+        "timing_ms": {
+          "prepare_ms": 0.640885,
+          "draft_ms": 502.93,
+          "verify_ms": 5905.91,
+          "resync_ms": 333.545
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 21.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12054.0,
+        "cpu_candidates": 58129.0,
+        "dropped": 46673.0,
+        "mean_share": 0.376345,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 4839,
@@ -1479,15 +2336,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 6041,
             "misses": 5509,
-            "uploaded_bytes": 77984169984
+            "uploaded_bytes": 77984169984,
+            "mma": 39973,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10706,
             "misses": 4662,
-            "uploaded_bytes": 65994227712
+            "uploaded_bytes": 65994227712,
+            "mma": 28368,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14368112640
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30944526336
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 4277,
+          "misses": 562,
+          "bytes_after": 185088540
+        }
       }
     },
     {
@@ -1549,6 +2429,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5866.53,
+          "tok_s": 21.6482
+        },
+        "timing_ms": {
+          "prepare_ms": 0.59704,
+          "draft_ms": 262.577,
+          "verify_ms": 5397.46,
+          "resync_ms": 148.867
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -1567,15 +2479,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -1645,6 +2580,38 @@
         "decode_ratio": 0.9349344755494365,
         "prefill_ratio": 0.9997903550622899
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 27.0,
+          "proposed": 109.0,
+          "accepted": 99.0,
+          "replayed": 0.0,
+          "ms": 6274.82,
+          "tok_s": 20.2396
+        },
+        "timing_ms": {
+          "prepare_ms": 0.630817,
+          "draft_ms": 245.608,
+          "verify_ms": 5767.53,
+          "resync_ms": 141.378
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 30.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11424.0,
+        "cpu_candidates": 62642.0,
+        "dropped": 46676.0,
+        "mean_share": 0.394972,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6605,
@@ -1663,15 +2630,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4792,
             "misses": 5250,
-            "uploaded_bytes": 74317824000
+            "uploaded_bytes": 74317824000,
+            "mma": 33375,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9498,
             "misses": 3969,
-            "uploaded_bytes": 56184274944
+            "uploaded_bytes": 56184274944,
+            "mma": 22665,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13603700736
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6038,
+          "misses": 567,
+          "bytes_after": 184649818
+        }
       }
     },
     {
@@ -1741,6 +2731,38 @@
         "decode_ratio": 0.7580439616986991,
         "prefill_ratio": 1.0018584876238728
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 30.0,
+          "proposed": 147.0,
+          "accepted": 97.0,
+          "replayed": 0.0,
+          "ms": 8277.91,
+          "tok_s": 15.342
+        },
+        "timing_ms": {
+          "prepare_ms": 0.628865,
+          "draft_ms": 468.076,
+          "verify_ms": 7589.27,
+          "resync_ms": 147.014
+        },
+        "lookup": {
+          "rounds": 1.0,
+          "proposed": 2.0,
+          "accepted": 0.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 13608.0,
+        "cpu_candidates": 71533.0,
+        "dropped": 54084.0,
+        "mean_share": 0.385479,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6976,
@@ -1759,15 +2781,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 6266,
             "misses": 5255,
-            "uploaded_bytes": 74388602880
+            "uploaded_bytes": 74388602880,
+            "mma": 40051,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 12180,
             "misses": 3972,
-            "uploaded_bytes": 56226742272
+            "uploaded_bytes": 56226742272,
+            "mma": 30720,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13632012288
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31043616768
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6099,
+          "misses": 877,
+          "bytes_after": 191030216
+        }
       }
     },
     {
@@ -1837,6 +2882,38 @@
         "decode_ratio": 0.764878239036638,
         "prefill_ratio": 1.0013358863606003
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 30.0,
+          "proposed": 147.0,
+          "accepted": 97.0,
+          "replayed": 0.0,
+          "ms": 8203.96,
+          "tok_s": 15.4803
+        },
+        "timing_ms": {
+          "prepare_ms": 0.524716,
+          "draft_ms": 482.71,
+          "verify_ms": 7503.27,
+          "resync_ms": 144.751
+        },
+        "lookup": {
+          "rounds": 1.0,
+          "proposed": 2.0,
+          "accepted": 0.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 13566.0,
+        "cpu_candidates": 71514.0,
+        "dropped": 54016.0,
+        "mean_share": 0.384854,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6976,
@@ -1855,15 +2932,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 6263,
             "misses": 5258,
-            "uploaded_bytes": 74431070208
+            "uploaded_bytes": 74431070208,
+            "mma": 40051,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 12177,
             "misses": 3975,
-            "uploaded_bytes": 56269209600
+            "uploaded_bytes": 56269209600,
+            "mma": 30720,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13646168064
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31029460992
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6089,
+          "misses": 887,
+          "bytes_after": 191714826
+        }
       }
     },
     {
@@ -1933,6 +3033,38 @@
         "decode_ratio": 0.9979851117730223,
         "prefill_ratio": 0.9996634108546824
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 19.0,
+          "proposed": 132.0,
+          "accepted": 108.0,
+          "replayed": 0.0,
+          "ms": 6287.52,
+          "tok_s": 20.1987
+        },
+        "timing_ms": {
+          "prepare_ms": 0.647346,
+          "draft_ms": 415.989,
+          "verify_ms": 5653.72,
+          "resync_ms": 160.388
+        },
+        "lookup": {
+          "rounds": 0.0,
+          "proposed": 0.0,
+          "accepted": 0.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 13272.0,
+        "cpu_candidates": 75718.0,
+        "dropped": 54967.0,
+        "mean_share": 0.400307,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 7134,
@@ -1951,15 +3083,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4814,
             "misses": 5255,
-            "uploaded_bytes": 74388602880
+            "uploaded_bytes": 74388602880,
+            "mma": 28374,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9830,
             "misses": 3975,
-            "uploaded_bytes": 56269209600
+            "uploaded_bytes": 56269209600,
+            "mma": 23679,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13674479616
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31086084096
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6482,
+          "misses": 652,
+          "bytes_after": 186881816
+        }
       }
     },
     {
@@ -2021,6 +3176,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5769.85,
+          "tok_s": 22.011
+        },
+        "timing_ms": {
+          "prepare_ms": 0.579209,
+          "draft_ms": 262.063,
+          "verify_ms": 5301.28,
+          "resync_ms": 149.431
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -2039,15 +3226,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -2118,6 +3328,38 @@
         "decode_ratio": 0.8656779559310642,
         "prefill_ratio": 0.997833806592597
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 114.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 6665.21,
+          "tok_s": 19.0542
+        },
+        "timing_ms": {
+          "prepare_ms": 0.603843,
+          "draft_ms": 252.349,
+          "verify_ms": 6215.82,
+          "resync_ms": 137.522
+        },
+        "lookup": {
+          "rounds": 5.0,
+          "proposed": 26.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65393.0,
+        "dropped": 48976.0,
+        "mean_share": 0.393989,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6778,
@@ -2136,15 +3378,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5146,
             "misses": 5252,
-            "uploaded_bytes": 74346135552
+            "uploaded_bytes": 74346135552,
+            "mma": 37208,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10304,
             "misses": 4010,
-            "uploaded_bytes": 56764661760
+            "uploaded_bytes": 56764661760,
+            "mma": 25327,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13603700736
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30392451072
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6161,
+          "misses": 617,
+          "bytes_after": 189993164
+        }
       }
     },
     {
@@ -2206,6 +3471,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5587.25,
+          "tok_s": 22.7303
+        },
+        "timing_ms": {
+          "prepare_ms": 0.500503,
+          "draft_ms": 259.371,
+          "verify_ms": 5122.49,
+          "resync_ms": 147.385
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -2224,15 +3521,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -2303,6 +3623,38 @@
         "decode_ratio": 0.781538814420301,
         "prefill_ratio": 1.033058122655947
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 109.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 7149.22,
+          "tok_s": 17.7642
+        },
+        "timing_ms": {
+          "prepare_ms": 0.673803,
+          "draft_ms": 436.388,
+          "verify_ms": 6294.26,
+          "resync_ms": 361.241
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 28.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11592.0,
+        "cpu_candidates": 65068.0,
+        "dropped": 48244.0,
+        "mean_share": 0.397811,
+        "max_share": 0.5,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 7051,
@@ -2321,15 +3673,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4227,
             "misses": 5396,
-            "uploaded_bytes": 76384567296
+            "uploaded_bytes": 76384567296,
+            "mma": 32711,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 8963,
             "misses": 4302,
-            "uploaded_bytes": 60898148352
+            "uploaded_bytes": 60898148352,
+            "mma": 21984,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 12527861760
+          },
+          {
+            "device": 1,
+            "cache_bytes": 29132587008
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6321,
+          "misses": 730,
+          "bytes_after": 196194780
+        }
       }
     },
     {
@@ -2391,6 +3766,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5860.31,
+          "tok_s": 21.6712
+        },
+        "timing_ms": {
+          "prepare_ms": 0.611604,
+          "draft_ms": 262.706,
+          "verify_ms": 5392.68,
+          "resync_ms": 148.918
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -2409,15 +3816,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -2488,6 +3918,38 @@
         "decode_ratio": 0.8016053963638552,
         "prefill_ratio": 0.9997776295307984
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 33.0,
+          "proposed": 109.0,
+          "accepted": 94.0,
+          "replayed": 0.0,
+          "ms": 7310.96,
+          "tok_s": 17.3712
+        },
+        "timing_ms": {
+          "prepare_ms": 0.601015,
+          "draft_ms": 307.069,
+          "verify_ms": 6792.86,
+          "resync_ms": 152.274
+        },
+        "lookup": {
+          "rounds": 3.0,
+          "proposed": 12.0,
+          "accepted": 6.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11886.0,
+        "cpu_candidates": 65311.0,
+        "dropped": 48579.0,
+        "mean_share": 0.395068,
+        "max_share": 0.499997,
+        "max_multiplier": 1.99999
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6814,
@@ -2506,15 +3968,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5111,
             "misses": 5252,
-            "uploaded_bytes": 74346135552
+            "uploaded_bytes": 74346135552,
+            "mma": 37852,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10693,
             "misses": 3975,
-            "uploaded_bytes": 56269209600
+            "uploaded_bytes": 56269209600,
+            "mma": 26268,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13632012288
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31029460992
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6118,
+          "misses": 696,
+          "bytes_after": 194722094
+        }
       }
     },
     {
@@ -2586,6 +4071,38 @@
         "decode_ratio": 0.9033782992287157,
         "prefill_ratio": 0.9998729190494344
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 116.0,
+          "accepted": 96.0,
+          "replayed": 0.0,
+          "ms": 6487.18,
+          "tok_s": 19.5771
+        },
+        "timing_ms": {
+          "prepare_ms": 0.582431,
+          "draft_ms": 268.91,
+          "verify_ms": 6005.14,
+          "resync_ms": 150.862
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 25.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12180.0,
+        "cpu_candidates": 66791.0,
+        "dropped": 49759.0,
+        "mean_share": 0.393588,
+        "max_share": 0.499996,
+        "max_multiplier": 1.99998
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6790,
@@ -2604,15 +4121,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 5149,
             "misses": 5253,
-            "uploaded_bytes": 74360291328
+            "uploaded_bytes": 74360291328,
+            "mma": 36543,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10164,
             "misses": 4018,
-            "uploaded_bytes": 56877907968
+            "uploaded_bytes": 56877907968,
+            "mma": 24928,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13646168064
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30463229952
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6239,
+          "misses": 551,
+          "bytes_after": 187083004
+        }
       }
     },
     {
@@ -2674,6 +4214,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5586.91,
+          "tok_s": 22.7317
+        },
+        "timing_ms": {
+          "prepare_ms": 0.581782,
+          "draft_ms": 259.177,
+          "verify_ms": 5121.81,
+          "resync_ms": 147.685
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -2692,15 +4264,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -2772,6 +4367,38 @@
         "decode_ratio": 1.0074264119918794,
         "prefill_ratio": 1.000260754534585
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5545.72,
+          "tok_s": 22.9006
+        },
+        "timing_ms": {
+          "prepare_ms": 0.612576,
+          "draft_ms": 229.625,
+          "verify_ms": 5110.09,
+          "resync_ms": 147.938
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -2790,15 +4417,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24218,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -2869,6 +4519,38 @@
         "decode_ratio": 0.9906688367870871,
         "prefill_ratio": 0.998393956706659
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5639.54,
+          "tok_s": 22.5196
+        },
+        "timing_ms": {
+          "prepare_ms": 0.582326,
+          "draft_ms": 263.964,
+          "verify_ms": 5168.46,
+          "resync_ms": 150.003
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -2887,15 +4569,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -2966,6 +4671,38 @@
         "decode_ratio": 0.99603199361126,
         "prefill_ratio": 0.9990091022847815
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5609.18,
+          "tok_s": 22.6414
+        },
+        "timing_ms": {
+          "prepare_ms": 0.571218,
+          "draft_ms": 265.506,
+          "verify_ms": 5139.25,
+          "resync_ms": 147.187
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -2984,15 +4721,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -3065,6 +4825,38 @@
         "decode_ratio": 0.9979175856852767,
         "prefill_ratio": 1.000375275095727
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5598.59,
+          "tok_s": 22.6843
+        },
+        "timing_ms": {
+          "prepare_ms": 0.61408,
+          "draft_ms": 235.775,
+          "verify_ms": 5156.07,
+          "resync_ms": 149.729
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -3083,15 +4875,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24218,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -3162,6 +4977,38 @@
         "decode_ratio": 0.9921869589691047,
         "prefill_ratio": 0.9996631284561114
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5630.92,
+          "tok_s": 22.5541
+        },
+        "timing_ms": {
+          "prepare_ms": 0.588325,
+          "draft_ms": 263.108,
+          "verify_ms": 5146.94,
+          "resync_ms": 163.104
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -3180,15 +5027,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -3250,6 +5120,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5716.97,
+          "tok_s": 22.2145
+        },
+        "timing_ms": {
+          "prepare_ms": 0.630858,
+          "draft_ms": 258.32,
+          "verify_ms": 5253.68,
+          "resync_ms": 147.082
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -3268,15 +5170,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
       }
     },
     {
@@ -3347,6 +5272,38 @@
         "decode_ratio": 0.796941947174019,
         "prefill_ratio": 1.0005407915916449
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 117.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 7173.76,
+          "tok_s": 17.7034
+        },
+        "timing_ms": {
+          "prepare_ms": 0.609764,
+          "draft_ms": 426.175,
+          "verify_ms": 6342.04,
+          "resync_ms": 256.044
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 60899.0,
+        "dropped": 46495.0,
+        "mean_share": 0.382738,
+        "max_share": 0.499997,
+        "max_multiplier": 1.99999
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6332,
@@ -3365,15 +5322,38 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 6050,
             "misses": 5534,
-            "uploaded_bytes": 78338064384
+            "uploaded_bytes": 78338064384,
+            "mma": 40765,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10632,
             "misses": 3970,
-            "uploaded_bytes": 56198430720
+            "uploaded_bytes": 56198430720,
+            "mma": 26070,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 16307453952
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5716,
+          "misses": 616,
+          "bytes_after": 167595468
+        }
       }
     },
     {
@@ -3445,6 +5425,38 @@
         "decode_ratio": 0.7837285106079671,
         "prefill_ratio": 1.0346388415560832
       },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 117.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 7294.75,
+          "tok_s": 17.4098
+        },
+        "timing_ms": {
+          "prepare_ms": 0.675511,
+          "draft_ms": 480.075,
+          "verify_ms": 6320.48,
+          "resync_ms": 346.886
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 60899.0,
+        "dropped": 46495.0,
+        "mean_share": 0.382738,
+        "max_share": 0.499997,
+        "max_multiplier": 1.99999
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6332,
@@ -3463,15 +5475,938 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 6041,
             "misses": 5576,
-            "uploaded_bytes": 78932606976
+            "uploaded_bytes": 78932606976,
+            "mma": 40765,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 10511,
             "misses": 4116,
-            "uploaded_bytes": 58265174016
+            "uploaded_bytes": 58265174016,
+            "mma": 26070,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 16307453952
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30916214784
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5716,
+          "misses": 616,
+          "bytes_after": 167595468
+        }
+      }
+    },
+    {
+      "name": "control-v17",
+      "source_archive_sha256": "14ab1ae0401ea9c8269fcd5d84dbebdbd381332cfce884f03bf3c035840640d4",
+      "binary_sha256": "1f6b7109e415daaf075895d3f8bca376411fe01854599b8a05055dfff9000a02",
+      "raw_report_sha256": "900ba7adee030abbb4c4f48fe99d0b30899ed4714b9fb962eda3406b6b9fa8f8",
+      "raw_log_sha256": "88f03c77ee01a88bda78e319176d299b78337a6a16b586841a5ef62c7d23b2bc",
+      "decode_tok_s": 22.15755241046255,
+      "prefill_tok_s": 521.0069069030872,
+      "tokens_sha256": "0efc7e1882f86c5194bc65716dc82201ca2469c100a7bb3d4a2a413e3381bb83",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_LOGICAL": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5730.98,
+          "tok_s": 22.1603
+        },
+        "timing_ms": {
+          "prepare_ms": 0.596558,
+          "draft_ms": 258.703,
+          "verify_ms": 5267.66,
+          "resync_ms": 147.231
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 515608282
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4887,
+            "misses": 5251,
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      }
+    },
+    {
+      "name": "logical64-v17",
+      "source_archive_sha256": "14ab1ae0401ea9c8269fcd5d84dbebdbd381332cfce884f03bf3c035840640d4",
+      "binary_sha256": "1f6b7109e415daaf075895d3f8bca376411fe01854599b8a05055dfff9000a02",
+      "raw_report_sha256": "16d6b27e0f60479982dff69e6bfefd0fc4744a4430bd9d8d2714045cc74ce630",
+      "raw_log_sha256": "fe5ac57d9f54323b0251db8dddfb30c8f5342bb2d13e7f573aa17f144d176e96",
+      "decode_tok_s": 18.225575217809975,
+      "prefill_tok_s": 517.8713666190434,
+      "tokens_sha256": "0efc7e1882f86c5194bc65716dc82201ca2469c100a7bb3d4a2a413e3381bb83",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 64,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_LOGICAL": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v17",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": true,
+        "decode_ratio": 0.8225446060190322,
+        "prefill_ratio": 0.9939817682980795
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 6967.37,
+          "tok_s": 18.2278
+        },
+        "timing_ms": {
+          "prepare_ms": 0.670754,
+          "draft_ms": 259.56,
+          "verify_ms": 6469.11,
+          "resync_ms": 173.105
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 515608282
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4887,
+            "misses": 5251,
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      }
+    },
+    {
+      "name": "logical64-pin-v17",
+      "source_archive_sha256": "14ab1ae0401ea9c8269fcd5d84dbebdbd381332cfce884f03bf3c035840640d4",
+      "binary_sha256": "1f6b7109e415daaf075895d3f8bca376411fe01854599b8a05055dfff9000a02",
+      "raw_report_sha256": "662b135fa1cbad1e193e7d4f43981bb3ec8e3a8a3cdfe9be7d8919dda9803a5e",
+      "raw_log_sha256": "17e714482a054a303095b76dee3a3b00a7e2eb8332625748070ed773e19a8b85",
+      "decode_tok_s": 19.844370136566766,
+      "prefill_tok_s": 518.087528459398,
+      "tokens_sha256": "0efc7e1882f86c5194bc65716dc82201ca2469c100a7bb3d4a2a413e3381bb83",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 64,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_LOGICAL": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_FP4_WORKER_CPU0": "65",
+        "STRATA_GLM_FP4_WORKER_CPU1": "66",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v17",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": true,
+        "decode_ratio": 0.8956029875933623,
+        "prefill_ratio": 0.9943966607639767
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 6398.95,
+          "tok_s": 19.847
+        },
+        "timing_ms": {
+          "prepare_ms": 0.691531,
+          "draft_ms": 261.488,
+          "verify_ms": 5920.15,
+          "resync_ms": 150.393
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 515608282
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4887,
+            "misses": 5251,
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      }
+    },
+    {
+      "name": "total-free-logical64-v17",
+      "source_archive_sha256": "14ab1ae0401ea9c8269fcd5d84dbebdbd381332cfce884f03bf3c035840640d4",
+      "binary_sha256": "1f6b7109e415daaf075895d3f8bca376411fe01854599b8a05055dfff9000a02",
+      "raw_report_sha256": "47fd81daf95bada4a63ac9b673327373989564c789227296a234e42d468fec3f",
+      "raw_log_sha256": "f3a4e0676cfaae8e9f9e2b5144b50366dad591a68e816790136b7e3c49f3f4ff",
+      "decode_tok_s": 15.66721357989662,
+      "prefill_tok_s": 518.7929451252335,
+      "tokens_sha256": "5e6ef10f005c0d1e8c18a2cf2d1c2df596903f161200499704824979a991fd96",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 64,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CACHE_TOTAL_FREE": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_LOGICAL": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_FP4_WORKER_CPU0": "65",
+        "STRATA_GLM_FP4_WORKER_CPU1": "66",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v17",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.7070823207214321,
+        "prefill_ratio": 0.9957506095437129
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 116.0,
+          "accepted": 94.0,
+          "replayed": 0.0,
+          "ms": 8105.22,
+          "tok_s": 15.6689
+        },
+        "timing_ms": {
+          "prepare_ms": 0.686086,
+          "draft_ms": 388.254,
+          "verify_ms": 7258.49,
+          "resync_ms": 289.199
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 32.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 60899.0,
+        "dropped": 46495.0,
+        "mean_share": 0.382738,
+        "max_share": 0.499997,
+        "max_multiplier": 1.99999
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6360,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69908410436,
+            "decode_bytes": 4527228754
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 70778880
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 6096,
+            "misses": 5534,
+            "uploaded_bytes": 78338064384,
+            "mma": 41536,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10689,
+            "misses": 3970,
+            "uploaded_bytes": 56198430720,
+            "mma": 26241,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 16307453952
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31001149440
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5744,
+          "misses": 616,
+          "bytes_after": 167595468
+        }
+      }
+    },
+    {
+      "name": "control-v18",
+      "source_archive_sha256": "2183c79b631737aa6139f9f107e7c0171114363bc3ee1052f2fea72f93bad0b0",
+      "binary_sha256": "c467cb16415ea06123f0a8723322f2c3c6db564907934ef0abbcc509eb86f68a",
+      "raw_report_sha256": "4d86d686cd9e4a05e3d374166cc960c939b7d8f9e25f837e82a2c6cdd2c3a3a7",
+      "raw_log_sha256": "e6976ace8285027990ef1b80516354101b4f036750be055d8e9080056d1567ab",
+      "decode_tok_s": 22.772589691727273,
+      "prefill_tok_s": 520.8247239158492,
+      "tokens_sha256": "0efc7e1882f86c5194bc65716dc82201ca2469c100a7bb3d4a2a413e3381bb83",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5576.17,
+          "tok_s": 22.7755
+        },
+        "timing_ms": {
+          "prepare_ms": 0.622754,
+          "draft_ms": 258.622,
+          "verify_ms": 5113.09,
+          "resync_ms": 147.258
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6444,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 515608282
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4887,
+            "misses": 5251,
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9977,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      }
+    },
+    {
+      "name": "operands-v18",
+      "source_archive_sha256": "2183c79b631737aa6139f9f107e7c0171114363bc3ee1052f2fea72f93bad0b0",
+      "binary_sha256": "c467cb16415ea06123f0a8723322f2c3c6db564907934ef0abbcc509eb86f68a",
+      "raw_report_sha256": "edd64778e548c9e438f6464d87cdbd354584c23194f769d42b98b68c54ecba81",
+      "raw_log_sha256": "e20525a0fb112bdbbc5e04ff0b322cbe1bb148d3e05561ab96b9d9488d8299f7",
+      "decode_tok_s": 19.814338091894843,
+      "prefill_tok_s": 494.611320754717,
+      "tokens_sha256": "0e88ae3d1f24d385ff5ef845288fcda43040b633bd113e772c052ec3814a05ff",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_PREFILL_OPERAND_PIPELINE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v18",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.870095951322256,
+        "prefill_ratio": 0.9496694339622641
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 32.0,
+          "proposed": 114.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 6408.79,
+          "tok_s": 19.8165
+        },
+        "timing_ms": {
+          "prepare_ms": 0.645599,
+          "draft_ms": 285.54,
+          "verify_ms": 5927.99,
+          "resync_ms": 136.037
+        },
+        "lookup": {
+          "rounds": 5.0,
+          "proposed": 26.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 12222.0,
+        "cpu_candidates": 67236.0,
+        "dropped": 50202.0,
+        "mean_share": 0.394058,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 6778,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70042769008,
+            "decode_bytes": 570791900
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 84934656
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5143,
+            "misses": 5255,
+            "uploaded_bytes": 74388602880,
+            "mma": 37208,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10343,
+            "misses": 3971,
+            "uploaded_bytes": 56212586496,
+            "mma": 25206,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13646168064
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6184,
+          "misses": 594,
+          "bytes_after": 189619636
+        }
       }
     },
     {
@@ -3533,6 +6468,38 @@
       "major_faults": 0,
       "performance_anchor": false,
       "fit": false,
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 110.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5640.18,
+          "tok_s": 22.517
+        },
+        "timing_ms": {
+          "prepare_ms": 0.576241,
+          "draft_ms": 261.762,
+          "verify_ms": 5172.67,
+          "resync_ms": 149.871
+        },
+        "lookup": {
+          "rounds": 6.0,
+          "proposed": 30.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11928.0,
+        "cpu_candidates": 65690.0,
+        "dropped": 48947.0,
+        "mean_share": 0.393812,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
       "work": {
         "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
         "cpu_expert_groups": 6444,
@@ -3551,15 +6518,825 @@
         "native_devices": [
           {
             "device": 0,
+            "hits": 4887,
             "misses": 5251,
-            "uploaded_bytes": 74331979776
+            "uploaded_bytes": 74331979776,
+            "mma": 34369,
+            "reference": 0,
+            "prefill": 18329
           },
           {
             "device": 1,
+            "hits": 9977,
             "misses": 3971,
-            "uploaded_bytes": 56212586496
+            "uploaded_bytes": 56212586496,
+            "mma": 24108,
+            "reference": 0,
+            "prefill": 17736
           }
-        ]
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 30986993664
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6001,
+          "misses": 443,
+          "bytes_after": 181361586
+        }
+      }
+    },
+    {
+      "name": "drop60-v14",
+      "source_archive_sha256": "7ec05a97d61fb05761098d29c5a5156a091a8d6c1ab8c5227e59f8701313b219",
+      "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
+      "raw_report_sha256": "b70874e8b73c6fea8ea8444f5eb8dde96bfcb0ea9331adb809687280ede9426b",
+      "raw_log_sha256": "01c32f2aaac2193ad73f8a25ed83cb089964ecc69d99cceaf616b9be38e2a28a",
+      "decode_tok_s": 22.14503428121055,
+      "prefill_tok_s": 520.6889976482553,
+      "tokens_sha256": "971415cabc537eca4a57656e9f97c293186a0f9f232aaa16b5f5c97603fe95fc",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 1,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.60",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.60",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v14",
+        "same_allocation": false,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.9836022124109839,
+        "prefill_ratio": 0.9993453251128204
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 27.0,
+          "proposed": 111.0,
+          "accepted": 100.0,
+          "replayed": 0.0,
+          "ms": 5734.22,
+          "tok_s": 22.1477
+        },
+        "timing_ms": {
+          "prepare_ms": 0.63875,
+          "draft_ms": 233.244,
+          "verify_ms": 5300.23,
+          "resync_ms": 149.547
+        },
+        "lookup": {
+          "rounds": 8.0,
+          "proposed": 36.0,
+          "accepted": 31.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 11844.0,
+        "cpu_candidates": 65842.0,
+        "dropped": 54352.0,
+        "mean_share": 0.46979,
+        "max_share": 0.599998,
+        "max_multiplier": 2.49999
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 4647,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 70029332724,
+            "decode_bytes": 458987576
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 70778880
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 4662,
+            "misses": 5246,
+            "uploaded_bytes": 74261200896,
+            "mma": 32311,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 9543,
+            "misses": 3970,
+            "uploaded_bytes": 56198430720,
+            "mma": 22803,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 13589544960
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31086084096
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 4098,
+          "misses": 549,
+          "bytes_after": 155362050
+        }
+      }
+    },
+    {
+      "name": "control-v14-r2",
+      "source_archive_sha256": "7ec05a97d61fb05761098d29c5a5156a091a8d6c1ab8c5227e59f8701313b219",
+      "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
+      "raw_report_sha256": "b41c5c13d881ced467273f181d42c30f4fc8561a154b46de059271602a90f8b7",
+      "raw_log_sha256": "09675c57b9598eae941b3e5375e2a50cd7473754d7a5a505be32b4138aa100b5",
+      "decode_tok_s": 23.282929762550783,
+      "prefill_tok_s": 522.4856335584767,
+      "tokens_sha256": "f28521580d47bede34ffee91bf25ae69e9b6e2435d0427e5bf4e0d9738fea55e",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 2,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "library_preparation": {
+        "passed": true,
+        "scope": "Read executable and shared-library file pages during the second discarded full warmup; no timed request is modified.",
+        "total_bytes": 1040041168,
+        "seconds": 3.0225683600874618,
+        "warmups_completed_before": 1,
+        "warmups_completed_after": 1,
+        "raw_sha256": "61980428bb35d6dc2bd3894093c10576598d00210cf25c14e2b328eed47b6455"
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 31.0,
+          "proposed": 121.0,
+          "accepted": 95.0,
+          "replayed": 0.0,
+          "ms": 5453.96,
+          "tok_s": 23.2859
+        },
+        "timing_ms": {
+          "prepare_ms": 0.60635,
+          "draft_ms": 268.347,
+          "verify_ms": 4940.02,
+          "resync_ms": 139.333
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 18354.0,
+        "cpu_candidates": 100135.0,
+        "dropped": 74772.0,
+        "mean_share": 0.392589,
+        "max_share": 0.499999,
+        "max_multiplier": 2.0
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 7071,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69626251158,
+            "decode_bytes": 554478346
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 28311552
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5508,
+            "misses": 5223,
+            "uploaded_bytes": 73935618048,
+            "mma": 38206,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10820,
+            "misses": 3967,
+            "uploaded_bytes": 56155963392,
+            "mma": 26625,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14169931776
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31015305216
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 6724,
+          "misses": 347,
+          "bytes_after": 200389976
+        }
+      }
+    },
+    {
+      "name": "drop55-v14-r2",
+      "source_archive_sha256": "7ec05a97d61fb05761098d29c5a5156a091a8d6c1ab8c5227e59f8701313b219",
+      "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
+      "raw_report_sha256": "d1f28d5cb8356156bb510b903536c03332054a8253b89fa9684413880dac5a44",
+      "raw_log_sha256": "56b7c15a788e14bfb161d4cdafe44a4c4e2a3eafc21d101972bb6a03a60de023",
+      "decode_tok_s": 22.007538014989386,
+      "prefill_tok_s": 521.9762714888302,
+      "tokens_sha256": "5f1ec4f8489801b65e9f2cb085bd3aa5f11a4245fd46464ddfa57dd72bc1895c",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 2,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.55",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.6",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v14-r2",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 0.9452220248667851,
+        "prefill_ratio": 0.999025117559353
+      },
+      "library_preparation": {
+        "passed": true,
+        "scope": "Read executable and shared-library file pages during the second discarded full warmup; no timed request is modified.",
+        "total_bytes": 1040041168,
+        "seconds": 3.0797123400261626,
+        "warmups_completed_before": 1,
+        "warmups_completed_after": 1,
+        "raw_sha256": "dfb8d3dfd834caea08c4bc7847844c21b4439cdf603008b6c299b57b4180eb95"
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 30.0,
+          "proposed": 110.0,
+          "accepted": 96.0,
+          "replayed": 0.0,
+          "ms": 5770.04,
+          "tok_s": 22.0102
+        },
+        "timing_ms": {
+          "prepare_ms": 0.638904,
+          "draft_ms": 260.287,
+          "verify_ms": 5260.89,
+          "resync_ms": 138.172
+        },
+        "lookup": {
+          "rounds": 5.0,
+          "proposed": 26.0,
+          "accepted": 24.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 18438.0,
+        "cpu_candidates": 99718.0,
+        "dropped": 79194.0,
+        "mean_share": 0.428823,
+        "max_share": 0.54998,
+        "max_multiplier": 2.22212
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 5671,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69653123630,
+            "decode_bytes": 498576934
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 42467328
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5200,
+            "misses": 5221,
+            "uploaded_bytes": 73907306496,
+            "mma": 36585,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10282,
+            "misses": 3968,
+            "uploaded_bytes": 56170119168,
+            "mma": 25014,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14169931776
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31100239872
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 5184,
+          "misses": 487,
+          "bytes_after": 205503308
+        }
+      }
+    },
+    {
+      "name": "drop60-v14-r2",
+      "source_archive_sha256": "7ec05a97d61fb05761098d29c5a5156a091a8d6c1ab8c5227e59f8701313b219",
+      "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
+      "raw_report_sha256": "4b59b903693441050fa53c70de2374b3dc6245ccfb6b59fb5d62768f2fba26b1",
+      "raw_log_sha256": "6650aac5c775cc2fecf4e4c22ebe3016ad5ceb44058a1dfc5749bcf60aae96ca",
+      "decode_tok_s": 25.19321409867805,
+      "prefill_tok_s": 522.575624194639,
+      "tokens_sha256": "ef2a86e8ca8718b34943327f7b8100aa88fc7de1df22e5e1ca973d66108c9201",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 2,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.6",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.6",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v14-r2",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 1.0820465618205768,
+        "prefill_ratio": 1.0001722356183258
+      },
+      "library_preparation": {
+        "passed": true,
+        "scope": "Read executable and shared-library file pages during the second discarded full warmup; no timed request is modified.",
+        "total_bytes": 1040041168,
+        "seconds": 3.0568673909874633,
+        "warmups_completed_before": 1,
+        "warmups_completed_after": 1,
+        "raw_sha256": "41fd2b7bf3137be0c862b3dc658e2c73a1b35dbee3e782cb979752a3fe448eb9"
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 29.0,
+          "proposed": 114.0,
+          "accepted": 98.0,
+          "replayed": 0.0,
+          "ms": 5040.37,
+          "tok_s": 25.1966
+        },
+        "timing_ms": {
+          "prepare_ms": 0.562026,
+          "draft_ms": 246.176,
+          "verify_ms": 4598.83,
+          "resync_ms": 139.76
+        },
+        "lookup": {
+          "rounds": 7.0,
+          "proposed": 34.0,
+          "accepted": 28.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 17850.0,
+        "cpu_candidates": 98646.0,
+        "dropped": 81508.0,
+        "mean_share": 0.468103,
+        "max_share": 0.599998,
+        "max_multiplier": 2.49999
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 4760,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69599375648,
+            "decode_bytes": 526164328
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 28311552
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5098,
+            "misses": 5219,
+            "uploaded_bytes": 73878994944,
+            "mma": 34906,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10023,
+            "misses": 3967,
+            "uploaded_bytes": 56155963392,
+            "mma": 24234,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14155776000
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31114395648
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 4394,
+          "misses": 366,
+          "bytes_after": 175428724
+        }
+      }
+    },
+    {
+      "name": "drop70-v14-r2",
+      "source_archive_sha256": "7ec05a97d61fb05761098d29c5a5156a091a8d6c1ab8c5227e59f8701313b219",
+      "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
+      "raw_report_sha256": "e520253f1a302208cd8fe048e7794532acbe4c7052f4c3321e6b7045eb15cb2d",
+      "raw_log_sha256": "e182af64cb719cd49ef9b2087d661d20cf96fa01687293d80138261cdc86e79a",
+      "decode_tok_s": 23.427109408290246,
+      "prefill_tok_s": 521.9496654985664,
+      "tokens_sha256": "692e41205a599b75f78f8b16c50515692037f2f760e509202b8fe2ce59a8d772",
+      "first_eos_index": null,
+      "configuration": {
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "threads": 32,
+        "full_warmups": 2,
+        "repetitions": 1
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.7",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.7",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "major_faults": 0,
+      "performance_anchor": false,
+      "fit": false,
+      "comparison": {
+        "control": "control-v14-r2",
+        "same_allocation": true,
+        "same_binary": true,
+        "same_tokens": false,
+        "decode_ratio": 1.0061925044317819,
+        "prefill_ratio": 0.9989741956036955
+      },
+      "library_preparation": {
+        "passed": true,
+        "scope": "Read executable and shared-library file pages during the second discarded full warmup; no timed request is modified.",
+        "total_bytes": 1040041168,
+        "seconds": 3.0583503199741244,
+        "warmups_completed_before": 1,
+        "warmups_completed_after": 1,
+        "raw_sha256": "6eed8be00376216d026ed63bcb2c6de08d9043b49a820036370bc24b1b9b0f7e"
+      },
+      "decode_work": {
+        "speculative": {
+          "generated": 128.0,
+          "rounds": 33.0,
+          "proposed": 105.0,
+          "accepted": 94.0,
+          "replayed": 0.0,
+          "ms": 5420.47,
+          "tok_s": 23.4297
+        },
+        "timing_ms": {
+          "prepare_ms": 0.600523,
+          "draft_ms": 294.958,
+          "verify_ms": 4935.02,
+          "resync_ms": 134.942
+        },
+        "lookup": {
+          "rounds": 2.0,
+          "proposed": 8.0,
+          "accepted": 5.0,
+          "max_depth": 7.0
+        }
+      },
+      "route_drop_cumulative": {
+        "scope": "Cumulative statistics across warmups, discarded request and timed request; not phase-differenced.",
+        "token_layers": 18018.0,
+        "cpu_candidates": 99565.0,
+        "dropped": 88513.0,
+        "mean_share": 0.533642,
+        "max_share": 0.699999,
+        "max_multiplier": 3.33332
+      },
+      "work": {
+        "scope": "Cumulative counters differenced over the final timed request. Matrix wire counts exclude activation transfers.",
+        "cpu_expert_groups": 3033,
+        "native_transfer_bytes": [
+          {
+            "device": 0,
+            "prefill_bytes": 69585940036,
+            "decode_bytes": 541041894
+          },
+          {
+            "device": 1,
+            "prefill_bytes": 53274591616,
+            "decode_bytes": 0
+          }
+        ],
+        "native_devices": [
+          {
+            "device": 0,
+            "hits": 5238,
+            "misses": 5219,
+            "uploaded_bytes": 73878994944,
+            "mma": 38134,
+            "reference": 0,
+            "prefill": 18329
+          },
+          {
+            "device": 1,
+            "hits": 10281,
+            "misses": 3965,
+            "uploaded_bytes": 56127651840,
+            "mma": 25002,
+            "reference": 0,
+            "prefill": 17736
+          }
+        ],
+        "native_cache_bytes_after": [
+          {
+            "device": 0,
+            "cache_bytes": 14269022208
+          },
+          {
+            "device": 1,
+            "cache_bytes": 31114395648
+          }
+        ],
+        "cpu_scale_cache": {
+          "hits": 2605,
+          "misses": 428,
+          "bytes_after": 146358686
+        }
       }
     }
   ],
@@ -6882,6 +10659,18 @@
       "raw_report_sha256": "9a71d7794d9da6fbc863e2ef25a6a7118b9eb161f0dc024db281a4eab8c33e83",
       "raw_log_sha256": "bf542ba6800a53c9794bc9b41188045265937a02a6c5631357b40065068c402f",
       "timing_qualified": false
+    },
+    {
+      "name": "drop55-v14",
+      "type": "timed_page_faults",
+      "major_faults": [
+        10
+      ],
+      "peak_swap_bytes": 0,
+      "raw_report_sha256": "7815437894af5c8d8d5c65e7aa1cc65600d845dcdd78f4cdf51682f916998e23",
+      "raw_log_sha256": "618f96c4c22682ec4f1c83274b860b0b2f9cecf160745b2c97b4256fc782098b",
+      "timing_qualified": false,
+      "scope": "Rejected timing; separate matched two-warmup library-prefault retries required."
     }
   ],
   "model_memory_checks": [
@@ -6890,6 +10679,13 @@
       "complete": true,
       "sanitizer_clean": true,
       "instrumented": true,
+      "configuration": {
+        "prompt_tokens": 128,
+        "generated_tokens": 40,
+        "full_warmups": 0,
+        "repetitions": 1,
+        "threads": 32
+      },
       "raw_report_sha256": "acd04f8fb9d87c91a622b3bcb7702ef473cd691a0d666edb38934f9badd8d367",
       "raw_log_sha256": "72a004bb87a0c25832f55ccd2b3a95bc3980f681fbc1cd790a8e95be1f0d85d7",
       "timing_qualified": false,
@@ -6905,6 +10701,13 @@
       "complete": true,
       "sanitizer_clean": true,
       "instrumented": true,
+      "configuration": {
+        "prompt_tokens": 128,
+        "generated_tokens": 8,
+        "full_warmups": 0,
+        "repetitions": 1,
+        "threads": 32
+      },
       "raw_report_sha256": "dcf683344f8b112340203e0574d7be0055b996c0a8e0c52782577b7b711c6cf7",
       "raw_log_sha256": "14ae139f210b8893546f9a142636198e498597ffe4e509b08363095ee8917ac7",
       "timing_qualified": false
@@ -6914,6 +10717,13 @@
       "complete": true,
       "sanitizer_clean": true,
       "instrumented": true,
+      "configuration": {
+        "prompt_tokens": 128,
+        "generated_tokens": 8,
+        "full_warmups": 0,
+        "repetitions": 1,
+        "threads": 32
+      },
       "raw_report_sha256": "88fb4a251aabc5c51a80d6455e1351bef79cb4bc4ebedcd56a7b093861dd147a",
       "raw_log_sha256": "cc04a142753d66b4ef214b0d277174d6f30501ba23b579bee02b92652132905e",
       "timing_qualified": false
@@ -6973,6 +10783,176 @@
       "raw_report_sha256": "856c8f766a58c30fa4f826b22dd8cb7acf861c0ad3be1e244b6eab60d7703f2c",
       "timing_qualified": false,
       "benchmark_residency_rejected": true
+    },
+    {
+      "name": "default-v17-parity128",
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "1f6b7109e415daaf075895d3f8bca376411fe01854599b8a05055dfff9000a02",
+      "raw_report_sha256": "9d7910f83a9102d24c8ee35a159fbd8060b681bb12eb768930a46ad1f0af0e59",
+      "timing_qualified": false,
+      "benchmark_residency_rejected": false
     }
-  ]
+  ],
+  "budget_quality": {
+    "results": [
+      {
+        "label": "control-v14",
+        "scope": "Eight reused public training contracts; no held-out scoring.",
+        "complete": true,
+        "passed": 8,
+        "decoder_returncode": 0,
+        "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
+        "oracle_sha256": "e484c433f065ef2592c2d885c500aaa94e523c3e2d64cd6d2537860bb543a05f",
+        "raw_report_sha256": "e3d9b5a3d66eba029a7f7b5c429c19945c59a8be1eac04964ff252ce1db1c21f",
+        "tasks": [
+          {
+            "name": "sum_small",
+            "prompt_tokens": 63,
+            "prompt_sha256": "11bc686981d516bd310035b018d7642680fc667ce4aae622722e7b25a8faf5da",
+            "output_tokens": 58,
+            "tokens_sha256": "d2a38328bded8e2742767d9c85d04d471e036d52b52993950f282ff0d71c6559",
+            "passed": true
+          },
+          {
+            "name": "count_byte",
+            "prompt_tokens": 68,
+            "prompt_sha256": "09d781d5fe434c6283d4bc609636f9e6163f47fff6413e9f238cba40608b3294",
+            "output_tokens": 85,
+            "tokens_sha256": "1bc2b381a50d6c9d78769381072222ce2434a5e2c0143f8491f3ee9dae9643de",
+            "passed": true
+          },
+          {
+            "name": "ascii_upper",
+            "prompt_tokens": 63,
+            "prompt_sha256": "88a8c6206a59d98a61b10f12c7dd899bc917e454697f0503e0621030cf1d8573",
+            "output_tokens": 113,
+            "tokens_sha256": "02c36ad2fb3c40a4d0cde6ce8622f3e36636a103547dbd820a997c485cdd505b",
+            "passed": true
+          },
+          {
+            "name": "suffix_match",
+            "prompt_tokens": 68,
+            "prompt_sha256": "33cb4eddd23811c7a3011054485402af6a0371beff5484f547aaf4cd8d7cc93a",
+            "output_tokens": 112,
+            "tokens_sha256": "331d23bc14483bad4d08ed5777b2742b85915b03ac00cb7e46408f4e2e761200",
+            "passed": true
+          },
+          {
+            "name": "argmin_first",
+            "prompt_tokens": 66,
+            "prompt_sha256": "8d0a2d102db2ca544a671f34638c95d0c70ff2409c33ae8487978c524e8ed1ba",
+            "output_tokens": 89,
+            "tokens_sha256": "21a8429698cf3d63f1a8bcc7ceddaf2ab9a162c76d66641762f50d4a8f0b33f9",
+            "passed": true
+          },
+          {
+            "name": "clamp_int",
+            "prompt_tokens": 66,
+            "prompt_sha256": "de3dc6cfce96ed3472a4121e9b7d6e50d38e8c6b7c79a76ea3ba0e196e9eeaa6",
+            "output_tokens": 185,
+            "tokens_sha256": "680bf90e4cb44670284ea7735e75c34b8adc0860fc3280cbece29dd044db9386",
+            "passed": true
+          },
+          {
+            "name": "adjacent_changes",
+            "prompt_tokens": 62,
+            "prompt_sha256": "506345250778cac52ecf79c2f310d25ba1d0b1d983f10ecf1ddf58e055ac1292",
+            "output_tokens": 85,
+            "tokens_sha256": "d572334e4b773b90271c4495794ff5db740d8063a554e6944a35affb65cec508",
+            "passed": true
+          },
+          {
+            "name": "zip_sum",
+            "prompt_tokens": 76,
+            "prompt_sha256": "6b81a8c2f9d83c10fc8a25867a21509ac0e94dc7d0857bc1c133a8eb4fa48c0e",
+            "output_tokens": 121,
+            "tokens_sha256": "79a2232e372c98fcecfbb0904b89bab09a4f91a7780e4171a88fe44f4c0356d3",
+            "passed": true
+          }
+        ]
+      },
+      {
+        "label": "drop60-v14-r2",
+        "scope": "Eight reused public training contracts; no held-out scoring.",
+        "complete": true,
+        "passed": 5,
+        "decoder_returncode": 0,
+        "binary_sha256": "aece7ca9bb663cfdc49f15d04f982d34a145290e2af12b0458f5c81c3be2fa5c",
+        "oracle_sha256": "e484c433f065ef2592c2d885c500aaa94e523c3e2d64cd6d2537860bb543a05f",
+        "raw_report_sha256": "5200758d9f226ab5c6ac2e08e0f6f8238f9e5ae5b581186fe57a113675a3398e",
+        "tasks": [
+          {
+            "name": "sum_small",
+            "prompt_tokens": 63,
+            "prompt_sha256": "11bc686981d516bd310035b018d7642680fc667ce4aae622722e7b25a8faf5da",
+            "output_tokens": 109,
+            "tokens_sha256": "54338e9ed261633ef00a33bc5d45fb9268342304291347d61a067bbff5eb7575",
+            "passed": false,
+            "failure_type": "evaluation_failure"
+          },
+          {
+            "name": "count_byte",
+            "prompt_tokens": 68,
+            "prompt_sha256": "09d781d5fe434c6283d4bc609636f9e6163f47fff6413e9f238cba40608b3294",
+            "output_tokens": 104,
+            "tokens_sha256": "d4c237f391065e5cfcb65766a44b87dbb993e47599a05397622c2c23ba81f0bb",
+            "passed": true
+          },
+          {
+            "name": "ascii_upper",
+            "prompt_tokens": 63,
+            "prompt_sha256": "88a8c6206a59d98a61b10f12c7dd899bc917e454697f0503e0621030cf1d8573",
+            "output_tokens": 102,
+            "tokens_sha256": "3888616bcf53b89c50327b6e294bd90afb1733ccf7dbd8a52f4be0c1dbadf160",
+            "passed": true
+          },
+          {
+            "name": "suffix_match",
+            "prompt_tokens": 68,
+            "prompt_sha256": "33cb4eddd23811c7a3011054485402af6a0371beff5484f547aaf4cd8d7cc93a",
+            "output_tokens": 320,
+            "tokens_sha256": "47c17ccf4b4c1dda847d5a65a6295665f7e6754a03b2de638395e7a482a648c0",
+            "passed": false,
+            "failure_type": "evaluation_failure"
+          },
+          {
+            "name": "argmin_first",
+            "prompt_tokens": 66,
+            "prompt_sha256": "8d0a2d102db2ca544a671f34638c95d0c70ff2409c33ae8487978c524e8ed1ba",
+            "output_tokens": 242,
+            "tokens_sha256": "236f57330fb4fa710f53fa1f9549f3db499ee19f3bed6aef24cf75787a6dfe40",
+            "passed": true
+          },
+          {
+            "name": "clamp_int",
+            "prompt_tokens": 66,
+            "prompt_sha256": "de3dc6cfce96ed3472a4121e9b7d6e50d38e8c6b7c79a76ea3ba0e196e9eeaa6",
+            "output_tokens": 162,
+            "tokens_sha256": "052be23ac9cd484cdfbe32d44b088c76c172476a55533b6a72b880c6919f7703",
+            "passed": true
+          },
+          {
+            "name": "adjacent_changes",
+            "prompt_tokens": 62,
+            "prompt_sha256": "506345250778cac52ecf79c2f310d25ba1d0b1d983f10ecf1ddf58e055ac1292",
+            "output_tokens": 258,
+            "tokens_sha256": "f661ef31277db2b060cd1542ce9e4a2b68beac40c7a3e60e0fcf5393f91e3e18",
+            "passed": false,
+            "failure_type": "evaluation_failure"
+          },
+          {
+            "name": "zip_sum",
+            "prompt_tokens": 76,
+            "prompt_sha256": "6b81a8c2f9d83c10fc8a25867a21509ac0e94dc7d0857bc1c133a8eb4fa48c0e",
+            "output_tokens": 121,
+            "tokens_sha256": "79a2232e372c98fcecfbb0904b89bab09a4f91a7780e4171a88fe44f4c0356d3",
+            "passed": true
+          }
+        ]
+      }
+    ],
+    "decision": "Route budget0.60 rejected:5/8 training contracts versus8/8 for the matched0.50 control. Full512 throughput qualification skipped; no selected loss bounds changed."
+  }
 }

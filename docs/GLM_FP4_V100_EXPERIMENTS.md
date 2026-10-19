@@ -50,7 +50,7 @@ kernel-duration bound.
 
 The following same-binary comparisons used the same two V100 PCIe 32 GB cards,
 dual Xeon Gold 6240 host and 181 GiB allocation. Each used one full warmup, a
-discarded one-token request and one timed 8,192-input / 128-output request, with
+discarded one-step decode request and one timed 8,192-input / 128-output request, with
 zero timed major faults. They are short screens, not the 512-output qualification
 above. Clocks were unlocked; RAM speed was not measured.
 
@@ -70,6 +70,9 @@ above. Clocks were unlocked; RAM speed was not measured.
 | Prefill expert bank | 22.73 | 17.76 |
 | Aggregate arena capacity accounting | 22.21 | 17.70 |
 | Expert bank with aggregate accounting | 22.21 | 17.41 |
+| 64 distinct logical CPU workers | 22.16 | 18.23 |
+| 64 workers with pinned GPU submission workers | 22.16 | 19.84 |
+| First FP16 operand pipeline | 22.77 | 19.81 |
 
 None of these variants is selected. Real-matrix FP8 microbenchmarks found faster
 individual products, but the global accumulator change lost throughput on the
@@ -91,9 +94,39 @@ won only the down projection with 16, 32 or 64 token rows: medians were
 63.50 / 64.50 / 80.26 microseconds, versus 79.58 / 83.66 / 102.09 for cuBLAS and
 reconstruction. These kernel results require a selective model trial.
 
-Distinct logical-CPU placement, reconstruction/GEMM overlap, selective fused
-prefill and larger bounded route-drop budgets are still being measured. The
+The 64-worker runs retained identical output IDs and CPU expert-group counts
+but lost decode throughput. Pinning the GPU submission workers recovered part
+of that loss. The selected preset retains 32 workers. Reconstruction/GEMM
+overlap, selective fused prefill, a contiguous bank and larger bounded
+route-drop budgets are still being measured. The
 selected preset's loss bounds stay unchanged during these experiments.
+
+A 0.55 route-budget screen incurred ten timed major faults and was rejected.
+The retries used a fresh matched control, two full warmups and executable/library
+preparation during the second warmup, completed before timing. Each then used
+one discarded decode step and one timed 8,192-input / 128-output request, with
+zero timed major faults and zero swap:
+
+| Route mass budget | Decode tok/s | Prefill tok/s |
+| --- | ---: | ---: |
+| 0.50 control | 23.28 | 522.49 |
+| 0.55 | 22.01 | 521.98 |
+| 0.60 | 25.19 | 522.58 |
+| 0.70 | 23.43 | 521.95 |
+
+The 0.60 screen had 8.2% higher short decode throughput, but passed only **5/8**
+reused training contracts versus the control's **8/8**. It failed `sum_small`,
+`suffix_match` and `adjacent_changes`, so full 512-output qualification was
+skipped and the policy was rejected. It reduced CPU expert groups from 7,071
+to 4,760 in the timed request. Dropping more was not uniformly
+faster: 0.70 used 3,033 groups but 33 speculative rounds, versus the control's
+31 rounds. None changes the selected 0.50 budget. The checkpoint and all prefill
+routes remain intact.
+
+The first operand pipeline also lost prefill throughput, 494.61 versus 520.82
+tok/s, and changed subsequent decode work. A separate opt-in revision places
+reconstruction on a third stream and reuses the dense weight workspace. Its
+model timing and memory checks are pending; no speedup is assigned to it.
 
 [Screen evidence](glm_fp4_v100_target50_screens.json) records binary and raw-log
 hashes, output hashes, settings and matching controls. The separate
@@ -108,10 +141,11 @@ Eight relevant C11 tests, 26 benchmark tests and 134 simulator tests pass, with
 one existing simulator fixture skip. Adaptive-cache memcheck completed with
 155 actual promotions, and the reserve-adjusted head and packed shared-gate
 checks also completed without reported memory errors. Their instrumented
-timings are excluded. The latest completed default-output check, before the
-logical-CPU and two new prefill trials, preserved all 128 original token IDs;
-its cold-runtime residency rejection remains in the raw record and supplies
-no throughput claim. GPU validation of those remaining trials is pending.
+timings are excluded. The latest completed default-output check, including the
+logical-CPU implementation, preserved all 128 original token IDs and exited
+cleanly. Older output checks with residency rejections remain in the raw record
+and supply no throughput claim. GPU validation of the remaining prefill trials
+is pending.
 
 ## Earlier GPU reduction qualification
 
@@ -174,6 +208,7 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_PREFILL_BATCH_EXPERTS` | `1` (default), `2`, `4` | Group compatible prefill expert projections into batched cuBLAS calls. |
 | `STRATA_GLM_FP4_PREFILL_MMA` | `0` (default), `1`, `32`, `64` | Reconstruct FP4 tiles in shared memory and use FP16 WMMA with FP32 accumulation. Mode 1 uses tile 32 only for 4096-by-2048 matrices with 16–64 token rows. |
 | `STRATA_GLM_FP4_PREFILL_OPERAND_PIPELINE` | `1` | Reconstruct the next expert on the upload stream while cuBLAS processes the current expert. |
+| `STRATA_GLM_FP4_PREFILL_OPERAND_OVERLAP` | `1` | With the operand pipeline enabled, separate reconstruction from uploads and reuse the dense weight workspace. |
 | `STRATA_GLM_FP4_GLOBAL_CACHE` | `0` (default), `1`, `2`, `3` | Rank decode admissions across layers; modes 2 and 3 can move selected experts between GPUs. |
 | `STRATA_GLM_FP4_FP8_ACCUMULATORS` | `1` (default), `2`, `4` | Give narrow FP8 tensor-core products independent accumulation chains. |
 | `STRATA_GLM_FP4_WORKER_CPU0`, `STRATA_GLM_FP4_WORKER_CPU1` | `-1` (default), allocated CPU ID | Pin a GPU submission worker on Linux while retaining its GPU memory locality policy. |
@@ -185,6 +220,7 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_HEAD_ACCUMULATORS` | `0` (inherit default), `1`, `2`, `4` | Override FP8 accumulation chains for vocabulary products only. |
 | `STRATA_GLM_FP4_BLOCK_GATE_PACK` | `1` | Pack and split K for the 2048-by-4096 block-FP8 shared gate/up projections. |
 | `STRATA_GLM_FP4_PREFILL_BANK` | `1` | Prefetch the next main layer's experts during fixed projections for passes with at least 4096 rows. |
+| `STRATA_GLM_FP4_PREFILL_BANK_SLAB` | `1` | Allocate each enabled prefill bank in one 1960 MiB block, with non-owning projection views, to test later arena coalescing. |
 | `STRATA_GLM_FP4_ROUTE_DROP_CAP` | `0.5` (default) through `0.75` | Explicitly extend the permitted original routing-mass budget for a separate lossy experiment. Does not change `ROUTE_DROP` by itself. |
 
 CPU tiling preserves each row's dot-product and reduction order. Prepared Q8
@@ -211,6 +247,13 @@ device routing, asynchronous uploads and the arena, with queue/batch one and
 the bank and fused prefill disabled. Its admitted working set remains bounded
 by 256 MiB per GPU; unsupported groups retain the existing path. The operand
 buffers are released during the existing prefill-to-decode compaction.
+
+The overlap revision adds a reconstruction stream between upload and GEMM.
+Upload-ready and operand-ready events order the readers, and completion events
+protect reuse of each operand slot. Pending owned sources also fence that
+stream on exception. Dense prefixes finish before the routed input fence, so
+their dequantization buffer can serve the two operand slots during the routed
+phase. The routed streams finish before the next dense prefix reuses it.
 
 Dense splitting keeps the same partitioning across verification widths 1–8,
 but changes the reduction tree relative to the original kernel. It therefore
@@ -301,6 +344,14 @@ The allocation layout can affect later cache admission, so model output and
 quality still require checking. Memory checks and quality checks must use at
 least 4096 input tokens to exercise this path. It is not selected in a preset.
 
+The slab experiment requires the bank and keeps its allocation size and expert
+order. Its projection and frame views expire before their owning block. It
+tests whether releasing one contiguous block improves decode admission; no
+cache-capacity or throughput gain is assumed. A promising screen must pass an
+instrumented 4096-input request and long-context training checks before full
+timing qualification. The one-request memory diagnostic instruments all model
+kernels, ends with a clean shutdown and supplies no throughput measurement.
+
 The original route-drop entry point and selected presets retain their 0.5 cap.
 An explicit higher cap permits a separate native-FP4 experiment using a larger
 `STRATA_GLM_FP4_ROUTE_DROP` value. Selection still applies only to CPU routes,
@@ -347,7 +398,9 @@ with two complete warmup requests, one discarded one-token request, then three
 timed requests in one process. The discarded request is printed as `TRIAL 0`;
 it is not a decode measurement. Short screens use one complete warmup and one
 128-output timed request. Their decode rates cannot be compared directly with
-the 512-output qualification.
+the 512-output qualification. The discarded request emits the prefill token
+and one decode token; it is one decode advance, with two output IDs. The
+two-warmup retry protocol above is recorded separately in each JSON row.
 
 All qualified timed requests must have zero major page faults and zero observed
 swap, return the requested number of IDs without an EOS token, and exit cleanly.
