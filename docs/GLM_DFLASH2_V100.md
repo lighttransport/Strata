@@ -185,6 +185,7 @@ the next logits after retained-prefix rollback matched direct launches bit for
 bit. The default path also preserved all 128 frozen reference IDs with zero
 major faults. These checks establish output behavior for this workload; they
 do not measure decode throughput.
+The same 64 checks also passed with MLA graphs enabled.
 
 Three instrumented 128-input / 24-output MTP depth-seven requests exercised
 eight-row target graphs with zero reported memory errors. Their cold outputs
@@ -220,6 +221,8 @@ and retained weights renormalized; prefill uses all routes.
 | DFlash2 packed/graph depth 5, cap 0.75, exact suffix lookup | 34.47 | 514.65 | 0/8 | Rejected; full trial, median of three |
 | DFlash2 depth 7, greedy acceptance | 12.81 | 503.10 | Unscored | One 128-output screen; worker residency not separately sampled |
 | DFlash2 depth 7, margin 3, at most seven soft accepts | 21.61 | 503.26 | Unscored | One 128-output screen; target and worker residency checked |
+| DFlash2 depth 7, native graphs up to four rows | 24.87 | 514.23 | Unscored | Full trial, median of three |
+| DFlash2 depth 7, native graphs up to eight rows | 24.94 | 514.53 | Unscored | Full trial, median of three |
 
 The repeated trials exited successfully, had no timed major faults or observed
 swap, and emitted no real EOS IDs in the fixed-length timings. Neural bounded
@@ -232,6 +235,27 @@ That performance prompt supplies no evidence of useful answer throughput.
 The small coding checks do not establish general quality equivalence.
 These higher-cap policies failed selection before fresh testing, so the fresh twenty
 holdouts remain unscored.
+
+The four-row and eight-row native graph trials used the same binary, draft
+worker and 0.5 route-drop policy. All six 512-ID outputs matched, with zero
+timed major faults or swap. The 0.25% decode difference supplies no meaningful
+gain with unlocked clocks. The four-row control used 38,392 CPU expert groups
+and 140 verification rounds per timed request, with no CPU scale-cache misses;
+verification took 18.23 seconds of its 20.55-second median decode request.
+Adding MLA graphs also preserved the outputs and measured 24.92 tok/s, supplying
+no gain. The selected MTP preset remains unchanged.
+
+The separate MTP graph comparison measured 32.13 / 520.11 tok/s with direct
+launches and 32.87 / 519.97 with four-row verification graphs. Both used three
+timed requests after two warmups and preserved the frozen 512 IDs. The 2.28%
+decode difference falls below the campaign's 3% selection threshold.
+
+A 10 GiB CPU scale-cache control measured 32.13 / 520.37 tok/s. Enabling expanded
+quartet scales at that limit exited during the second warmup, before any timed
+request. Its first warmup retained 7.69 GB of scale metadata; peak process RSS
+was 174.4 GiB. The exit cause was not captured, and the later allocation-level
+memory snapshot reported zero OOM kills. This experiment supplies no throughput
+result and does not change the 181 GiB allocation or the selected preset.
 
 The paired 128-output screens below use two complete warmups and one timed
 request. All four emitted identical 128 IDs. They measure the same bounded

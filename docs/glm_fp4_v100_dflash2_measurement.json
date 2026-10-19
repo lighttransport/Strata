@@ -42,7 +42,12 @@
     "dflash2-evidence-14.tar.gz": "c0b26c867bd74397d8fffb8dcf29e57fc6e63d65b46ff075bce01572bb0a9f0a",
     "dflash2-evidence-15.tar.gz": "d5232949b24d7f57ac573f3830656bad937735859109ebc3080bb676b55b4e03",
     "dflash2-evidence-16.tar.gz": "d397f87623bbfe964840e0dd68a907b7c90a1844af462e0d9223ac52a96ad72b",
+    "dflash2-evidence-17.tar.gz": "95366b8d60439d056bff6ee4c03ab358590f68a8510fa301c5bfe81372617c66",
+    "dflash2-evidence-18.tar.gz": "480f70d29dd6115cd7b8063af867ea602826c038c7b6fd613a7b361d1507e147",
+    "dflash2-evidence-19.tar.gz": "ea1d003a3a8686f46c532ae553833e7f19c565068f3965b2dfd141f657001c1c",
     "dflash2-evidence-2.tar.gz": "2da3c34b0794b5203f3388884468cea4492fbc6950a429fb39aa586449f4986b",
+    "dflash2-evidence-20.tar.gz": "949b93542290f99598f5ca3e3ab13d7bef45c9c962a206832fc8eaddbeb32828",
+    "dflash2-evidence-21.tar.gz": "c222976a6d4d45135cf1e60390c5e1185ddb2bc14ed5be6303c2bc849077ccda",
     "dflash2-evidence-3.tar.gz": "011ed6e21fe0b2dac433bbbfd5d6819eb01e44b6237d41a457f7d034274afbf8",
     "dflash2-evidence-4.tar.gz": "076d5b152bea3dafc7c0883715385b6ba9de928e82cc68c64303cecc657f0c60",
     "dflash2-evidence-5.tar.gz": "092c96309fc1fa062780ab20b5125111a2f1629241117893491e3779ee2b3d3e",
@@ -164,7 +169,7 @@
             "resync_ms": 516.948
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27257,
             "misses": 333
@@ -294,7 +299,7 @@
             "resync_ms": 518.963
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27257,
             "misses": 333
@@ -304,7 +309,16 @@
         }
       ],
       "qualified_timing": true,
-      "full512_protocol": false
+      "full512_protocol": false,
+      "quality_evidence": {
+        "name": "quality-long4096-dflash2-affinity-control-quality-v65-training",
+        "complete": true,
+        "passed": 8,
+        "total": 8,
+        "reused_training": true,
+        "raw_sha256": "aebb1974e92a0f1a9aa8f129a2ea43cf3ca10067b5d1bcb4164b6911a1bfec0f",
+        "scope": "Separate roughly4096-input coding panel; not a general accuracy claim."
+      }
     },
     {
       "name": "dflash2-affinity-dflash2-005-v52",
@@ -425,7 +439,7 @@
             "proposal_calls": 127
           },
           "native_cpu_expert_groups_delta": 25840,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 25840,
             "misses": 0
@@ -610,7 +624,7 @@
             "proposal_calls": 132
           },
           "native_cpu_expert_groups_delta": 19539,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 19539,
             "misses": 0
@@ -785,12 +799,133 @@
             "resync_ms": 523.23
           },
           "native_cpu_expert_groups_delta": 20455,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 20150,
             "misses": 305
           },
           "native_cpu_scale_cache_bytes_after": 307361782,
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": false
+    },
+    {
+      "name": "dflash2-affinity-dual-mtp-015-v65",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "68bc350c3efa9827369ee796869d7ab4ee8d1179bb2c8473baf0ddfae5998c85",
+      "source_log_sha256": "df007b364dcc47ced78db8260eb1c7814db452be67cc8a251be94648e9215707",
+      "engine_version": 65,
+      "binary_sha256": "c2db25ce224100d8c9194dc1537b4623b6c606a020a479b331dca8c4f57ac1d6",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.15",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 33.50072770660967,
+      "prefill_tok_s": 520.8876454504991,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15727.0,
+          "decode_ms": 15253.4,
+          "decode_tok_s": 33.50072770660967,
+          "prefill_tok_s": 520.8876454504991,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 216471,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "c2e7c297ed9955addf03eda54f9e0a93cf1df325d7e3743381acbff1fc3f14ba",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 227,
+          "repeated_4gram_fraction": 0.056974459724950854,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 133,
+            "proposed": 435,
+            "accepted": 378,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.620266,
+            "draft_ms": 1131.04,
+            "verify_ms": 13359.5,
+            "resync_ms": 532.045
+          },
+          "native_cpu_expert_groups_delta": 9700,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 9443,
+            "misses": 257
+          },
+          "native_cpu_scale_cache_bytes_after": 211503630,
           "timing_source": "MTP_TIMING in the same request log section"
         }
       ],
@@ -905,7 +1040,7 @@
             "resync_ms": 527.533
           },
           "native_cpu_expert_groups_delta": 20455,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 20150,
             "misses": 305
@@ -1025,7 +1160,7 @@
             "resync_ms": 526.094
           },
           "native_cpu_expert_groups_delta": 20193,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 19756,
             "misses": 437
@@ -1145,7 +1280,7 @@
             "resync_ms": 503.429
           },
           "native_cpu_expert_groups_delta": 14229,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 13659,
             "misses": 570
@@ -1265,7 +1400,7 @@
             "resync_ms": 526.421
           },
           "native_cpu_expert_groups_delta": 9700,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 9443,
             "misses": 257
@@ -1386,7 +1521,7 @@
             "resync_ms": 526.836
           },
           "native_cpu_expert_groups_delta": 24006,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 23587,
             "misses": 419
@@ -1507,7 +1642,7 @@
             "resync_ms": 535.646
           },
           "native_cpu_expert_groups_delta": 18848,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 18331,
             "misses": 517
@@ -1628,7 +1763,7 @@
             "resync_ms": 531.545
           },
           "native_cpu_expert_groups_delta": 14543,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 14176,
             "misses": 367
@@ -1748,7 +1883,7 @@
             "resync_ms": 560.821
           },
           "native_cpu_expert_groups_delta": 11449,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 11082,
             "misses": 367
@@ -1868,7 +2003,7 @@
             "proposal_calls": 64
           },
           "native_cpu_expert_groups_delta": 18332,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 18332,
             "misses": 0
@@ -1988,7 +2123,7 @@
             "proposal_calls": 62
           },
           "native_cpu_expert_groups_delta": 19240,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 19240,
             "misses": 0
@@ -2103,7 +2238,7 @@
             "resync_ms": 151.573
           },
           "native_cpu_expert_groups_delta": 6444,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6001,
             "misses": 443
@@ -2219,7 +2354,7 @@
             "resync_ms": 147.978
           },
           "native_cpu_expert_groups_delta": 6444,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6001,
             "misses": 443
@@ -2336,7 +2471,7 @@
             "resync_ms": 146.747
           },
           "native_cpu_expert_groups_delta": 6444,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6001,
             "misses": 443
@@ -2464,7 +2599,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 6157,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6157,
             "misses": 0
@@ -2622,7 +2757,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 11055,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 11055,
             "misses": 0
@@ -2797,7 +2932,7 @@
             "proposal_calls": 65
           },
           "native_cpu_expert_groups_delta": 10113,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 10113,
             "misses": 0
@@ -2918,7 +3053,7 @@
             "proposal_calls": 64
           },
           "native_cpu_expert_groups_delta": 14231,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 14231,
             "misses": 0
@@ -3039,7 +3174,7 @@
             "proposal_calls": 64
           },
           "native_cpu_expert_groups_delta": 18272,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 18272,
             "misses": 0
@@ -3156,7 +3291,7 @@
             "resync_ms": 518.9
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27257,
             "misses": 333
@@ -3195,7 +3330,7 @@
             "resync_ms": 537.157
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27590,
             "misses": 0
@@ -3234,7 +3369,7 @@
             "resync_ms": 536.899
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27590,
             "misses": 0
@@ -3371,7 +3506,7 @@
             "proposal_calls": 173
           },
           "native_cpu_expert_groups_delta": 25286,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 25286,
             "misses": 0
@@ -3415,7 +3550,7 @@
             "proposal_calls": 173
           },
           "native_cpu_expert_groups_delta": 25286,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 25286,
             "misses": 0
@@ -3459,7 +3594,7 @@
             "proposal_calls": 173
           },
           "native_cpu_expert_groups_delta": 25286,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 25286,
             "misses": 0
@@ -3625,7 +3760,7 @@
             "proposal_calls": 12
           },
           "native_cpu_expert_groups_delta": 12667,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 8950,
             "misses": 3717
@@ -3800,7 +3935,7 @@
             "proposal_calls": 137
           },
           "native_cpu_expert_groups_delta": 9132,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 9132,
             "misses": 0
@@ -3844,7 +3979,7 @@
             "proposal_calls": 137
           },
           "native_cpu_expert_groups_delta": 9132,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 9132,
             "misses": 0
@@ -3888,7 +4023,7 @@
             "proposal_calls": 137
           },
           "native_cpu_expert_groups_delta": 9132,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 9132,
             "misses": 0
@@ -4090,7 +4225,7 @@
             "proposal_calls": 115
           },
           "native_cpu_expert_groups_delta": 13139,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 13139,
             "misses": 0
@@ -4134,7 +4269,7 @@
             "proposal_calls": 115
           },
           "native_cpu_expert_groups_delta": 13139,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 13139,
             "misses": 0
@@ -4178,7 +4313,7 @@
             "proposal_calls": 115
           },
           "native_cpu_expert_groups_delta": 13139,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 13139,
             "misses": 0
@@ -4380,7 +4515,7 @@
             "proposal_calls": 132
           },
           "native_cpu_expert_groups_delta": 10010,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 10010,
             "misses": 0
@@ -4424,7 +4559,7 @@
             "proposal_calls": 132
           },
           "native_cpu_expert_groups_delta": 10010,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 10010,
             "misses": 0
@@ -4468,7 +4603,7 @@
             "proposal_calls": 132
           },
           "native_cpu_expert_groups_delta": 10010,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 10010,
             "misses": 0
@@ -4656,7 +4791,7 @@
             "resync_ms": 520.274
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27257,
             "misses": 333
@@ -4695,7 +4830,7 @@
             "resync_ms": 536.966
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27590,
             "misses": 0
@@ -4734,7 +4869,7 @@
             "resync_ms": 540.716
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27590,
             "misses": 0
@@ -4860,7 +4995,7 @@
             "resync_ms": 518.752
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27257,
             "misses": 333
@@ -4899,7 +5034,7 @@
             "resync_ms": 534.723
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27590,
             "misses": 0
@@ -4938,7 +5073,7 @@
             "resync_ms": 534.97
           },
           "native_cpu_expert_groups_delta": 27590,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 27590,
             "misses": 0
@@ -5075,7 +5210,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 6157,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6157,
             "misses": 0
@@ -5233,7 +5368,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 11055,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 11055,
             "misses": 0
@@ -5416,7 +5551,7 @@
             "proposal_calls": 43
           },
           "native_cpu_expert_groups_delta": 3377,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 3377,
             "misses": 0
@@ -5575,7 +5710,7 @@
             "proposal_calls": 38
           },
           "native_cpu_expert_groups_delta": 2278,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 2278,
             "misses": 0
@@ -5734,7 +5869,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 6157,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6157,
             "misses": 0
@@ -5893,7 +6028,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 11055,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 11055,
             "misses": 0
@@ -6079,7 +6214,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 6157,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6157,
             "misses": 0
@@ -6273,7 +6408,7 @@
             "proposal_calls": 173
           },
           "native_cpu_expert_groups_delta": 25286,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 25286,
             "misses": 0
@@ -6465,7 +6600,7 @@
             "proposal_calls": 150
           },
           "native_cpu_expert_groups_delta": 9258,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 9258,
             "misses": 0
@@ -6658,7 +6793,7 @@
             "proposal_calls": 132
           },
           "native_cpu_expert_groups_delta": 10010,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 10010,
             "misses": 0
@@ -6851,7 +6986,7 @@
             "proposal_calls": 115
           },
           "native_cpu_expert_groups_delta": 13139,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 13139,
             "misses": 0
@@ -7044,7 +7179,7 @@
             "proposal_calls": 40
           },
           "native_cpu_expert_groups_delta": 6281,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6281,
             "misses": 0
@@ -7238,7 +7373,7 @@
             "proposal_calls": 171
           },
           "native_cpu_expert_groups_delta": 23680,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 23680,
             "misses": 0
@@ -7431,7 +7566,7 @@
             "proposal_calls": 137
           },
           "native_cpu_expert_groups_delta": 9132,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 9132,
             "misses": 0
@@ -7615,7 +7750,7 @@
             "proposal_calls": 46
           },
           "native_cpu_expert_groups_delta": 12934,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 12934,
             "misses": 0
@@ -7747,7 +7882,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 6157,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6157,
             "misses": 0
@@ -7879,7 +8014,7 @@
             "proposal_calls": 38
           },
           "native_cpu_expert_groups_delta": 11171,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 11171,
             "misses": 0
@@ -8016,7 +8151,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 9025,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 9025,
             "misses": 0
@@ -8186,7 +8321,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 11055,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 11055,
             "misses": 0
@@ -8358,7 +8493,7 @@
             "resync_ms": 134.166
           },
           "native_cpu_expert_groups_delta": 3612,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 3307,
             "misses": 305
@@ -8476,7 +8611,7 @@
             "resync_ms": 150.405
           },
           "native_cpu_expert_groups_delta": 2367,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 2076,
             "misses": 291
@@ -8487,6 +8622,203 @@
       ],
       "qualified_timing": true,
       "full512_protocol": false
+    },
+    {
+      "name": "dflash2-quartet-cache-control-full-v81",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "2a598e3205a1243e851aa456f27c06bc4d88eb28f078ed864b7fe6f87e261d1c",
+      "source_log_sha256": "2906c5b3d4d02b7031e4349eda6cac23a7ffa9e530254d112e52be41e5b46981",
+      "engine_version": 69,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "10240",
+        "STRATA_GLM_FP4_CPU_SCALE_QUARTETS": "0",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 32.13391857730377,
+      "prefill_tok_s": 520.3747816420517,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15696.3,
+          "decode_ms": 17731.1,
+          "decode_tok_s": 28.819418986977684,
+          "prefill_tok_s": 521.9064365487408,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 218407,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.633427,
+            "draft_ms": 1237.3,
+            "verify_ms": 15660.0,
+            "resync_ms": 519.429
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27257,
+            "misses": 333
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15753.1,
+          "decode_ms": 15902.2,
+          "decode_tok_s": 32.13391857730377,
+          "prefill_tok_s": 520.0246300728111,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.714184,
+            "draft_ms": 1281.13,
+            "verify_ms": 13765.6,
+            "resync_ms": 541.559
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27590,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15742.5,
+          "decode_ms": 15862.7,
+          "decode_tok_s": 32.2139358369004,
+          "prefill_tok_s": 520.3747816420517,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.644994,
+            "draft_ms": 1280.84,
+            "verify_ms": 13727.6,
+            "resync_ms": 539.97
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27590,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true
     },
     {
       "name": "dflash2-selector05-margin3-soft7-depth7-v27",
@@ -8603,7 +8935,7 @@
             "proposal_calls": 29
           },
           "native_cpu_expert_groups_delta": 8747,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 8747,
             "misses": 0
@@ -8785,7 +9117,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 6157,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 6157,
             "misses": 0
@@ -8944,7 +9276,7 @@
             "proposal_calls": 37
           },
           "native_cpu_expert_groups_delta": 11055,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 11055,
             "misses": 0
@@ -9121,7 +9453,7 @@
             "proposal_calls": 64
           },
           "native_cpu_expert_groups_delta": 18272,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 18272,
             "misses": 0
@@ -9251,7 +9583,7 @@
             "proposal_calls": 173
           },
           "native_cpu_expert_groups_delta": 25286,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 25286,
             "misses": 0
@@ -9410,7 +9742,7 @@
             "proposal_calls": 173
           },
           "native_cpu_expert_groups_delta": 25286,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 25286,
             "misses": 0
@@ -9570,7 +9902,7 @@
             "proposal_calls": 139
           },
           "native_cpu_expert_groups_delta": 77019,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 77019,
             "misses": 0
@@ -9753,7 +10085,7 @@
             "proposal_calls": 119
           },
           "native_cpu_expert_groups_delta": 129709,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 129709,
             "misses": 0
@@ -9928,7 +10260,7 @@
             "proposal_calls": 62
           },
           "native_cpu_expert_groups_delta": 19253,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 19253,
             "misses": 0
@@ -10055,7 +10387,7 @@
             "proposal_calls": 29
           },
           "native_cpu_expert_groups_delta": 8912,
-          "native_cpu_expert_groups_scope": "Request counter difference;8192-row prefill uses GPU experts, so this counts decode CPU groups.",
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
           "native_cpu_scale_cache_delta": {
             "hits": 8912,
             "misses": 0
@@ -10120,9 +10452,1588 @@
         }
       ],
       "worker_sha256": "0bab34af13a964b8c26a5183ac3932ba24029edc21ddce7509aed86d986ae7b6"
+    },
+    {
+      "name": "dflash2-verify-graphs-candidate-full-v67",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "52648677f1c1a87e811cc5cfd4ccc038e86ce5be7b03606999873cb7c4dd7880",
+      "source_log_sha256": "950cdee577c171e51e06ee31a406778ecc2de6100262885c8aa49e8a1f9678de",
+      "engine_version": 65,
+      "binary_sha256": "c2db25ce224100d8c9194dc1537b4623b6c606a020a479b331dca8c4f57ac1d6",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": true
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VERIFY_GRAPHS": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 32.8682888550129,
+      "prefill_tok_s": 519.971817933696,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15692.0,
+          "decode_ms": 17795.8,
+          "decode_tok_s": 28.71464053315951,
+          "prefill_tok_s": 522.0494519500382,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 218683,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.577264,
+            "draft_ms": 1227.15,
+            "verify_ms": 15731.7,
+            "resync_ms": 515.763
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27257,
+            "misses": 333
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15754.7,
+          "decode_ms": 15546.9,
+          "decode_tok_s": 32.8682888550129,
+          "prefill_tok_s": 519.971817933696,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212992,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.507784,
+            "draft_ms": 1274.47,
+            "verify_ms": 13417.6,
+            "resync_ms": 534.239
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27590,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15758.2,
+          "decode_ms": 15537.8,
+          "decode_tok_s": 32.88753877640335,
+          "prefill_tok_s": 519.8563287685141,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.695359,
+            "draft_ms": 1274.99,
+            "verify_ms": 13408.1,
+            "resync_ms": 533.985
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27590,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true
+    },
+    {
+      "name": "dflash2-verify-graphs-control-full-v67",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "f6e1ddb32d8d46e98c12e31cfcabaa7f01d1f8eb5fc1a21464e3962d6b3299ea",
+      "source_log_sha256": "a4b4264cd983b8e4bdd120fd58294472308c51b01af38fc1bd4869066c32e4dc",
+      "engine_version": 65,
+      "binary_sha256": "c2db25ce224100d8c9194dc1537b4623b6c606a020a479b331dca8c4f57ac1d6",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 32.13472688626445,
+      "prefill_tok_s": 520.1137748882568,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15727.5,
+          "decode_ms": 18017.5,
+          "decode_tok_s": 28.3613153878174,
+          "prefill_tok_s": 520.8710856779526,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 218407,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.485252,
+            "draft_ms": 1237.04,
+            "verify_ms": 15937.9,
+            "resync_ms": 522.346
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27257,
+            "misses": 333
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15769.3,
+          "decode_ms": 15901.8,
+          "decode_tok_s": 32.13472688626445,
+          "prefill_tok_s": 519.4904022372585,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.626116,
+            "draft_ms": 1280.17,
+            "verify_ms": 13761.3,
+            "resync_ms": 539.984
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27590,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15750.4,
+          "decode_ms": 15871.1,
+          "decode_tok_s": 32.19688616416001,
+          "prefill_tok_s": 520.1137748882568,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 219,
+          "repeated_4gram_fraction": 0.08251473477406679,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 146,
+            "proposed": 478,
+            "accepted": 364,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.665387,
+            "draft_ms": 1277.76,
+            "verify_ms": 13731.8,
+            "resync_ms": 541.121
+          },
+          "native_cpu_expert_groups_delta": 27590,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 27590,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 334157452,
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true,
+      "quality_evidence": {
+        "name": "quality-long4096-dflash2-affinity-control-quality-v65-training",
+        "complete": true,
+        "passed": 8,
+        "total": 8,
+        "reused_training": true,
+        "raw_sha256": "aebb1974e92a0f1a9aa8f129a2ea43cf3ca10067b5d1bcb4164b6911a1bfec0f",
+        "scope": "Separate roughly4096-input coding panel; not a general accuracy claim."
+      }
+    },
+    {
+      "name": "dflash2-wide-graphs-candidate-full-v72",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "24c33340c184d30f448a0c86ba9236e04ab7fe63fa366e4357376912b1a12e3b",
+      "source_log_sha256": "fcf53162bff8869e32ef7f355c5ebf9e85cf3c891c6666871779f70e13cc6450",
+      "engine_version": 69,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": true
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "7",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VERIFY_GRAPHS": "1",
+        "STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS": "8",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "0836c7a3dec4ebdef50d0e1b929b28dc20ec14ce322add9f379390cb882e1df3",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 24.935343775923485,
+      "prefill_tok_s": 514.5276169181102,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16239.8,
+          "decode_ms": 20337.7,
+          "decode_tok_s": 25.125751682835325,
+          "prefill_tok_s": 504.4397098486435,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262148,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 998637568,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1984.12,
+            "verify_ms": 17998.4,
+            "restore_ms": 80.3193,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        },
+        {
+          "prefill_ms": 15911.0,
+          "decode_ms": 20563.6,
+          "decode_tok_s": 24.849734482289094,
+          "prefill_tok_s": 514.8639306140406,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 998637568,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1956.35,
+            "verify_ms": 18252.7,
+            "restore_ms": 80.0195,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        },
+        {
+          "prefill_ms": 15921.4,
+          "decode_ms": 20493.0,
+          "decode_tok_s": 24.935343775923485,
+          "prefill_tok_s": 514.5276169181102,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 998637568,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1936.01,
+            "verify_ms": 18202.5,
+            "restore_ms": 80.0466,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 7.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 111.0,
+        "sum_logit_regret": 144.11,
+        "repeat_blocked": 1.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 120
+        },
+        {
+          "index": 1,
+          "proposed": 140,
+          "opportunities": 120,
+          "accepted": 92
+        },
+        {
+          "index": 2,
+          "proposed": 140,
+          "opportunities": 92,
+          "accepted": 68
+        },
+        {
+          "index": 3,
+          "proposed": 140,
+          "opportunities": 68,
+          "accepted": 40
+        },
+        {
+          "index": 4,
+          "proposed": 140,
+          "opportunities": 40,
+          "accepted": 26
+        },
+        {
+          "index": 5,
+          "proposed": 140,
+          "opportunities": 26,
+          "accepted": 14
+        },
+        {
+          "index": 6,
+          "proposed": 140,
+          "opportunities": 14,
+          "accepted": 10
+        }
+      ],
+      "worker_sha256": "50809a7f4f89fe2459bafdd3d50f5c8adeddda45e588b25a19c49820896a9b58"
+    },
+    {
+      "name": "dflash2-wide-graphs-control-full-v72",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "605056104812f24165eafd959d6014aa7b565f821467ace791c3f16cb2cd2d91",
+      "source_log_sha256": "9328500fcf1e97e055a320e17e38493b0bf1730a92bd9b2980aa84a419382cea",
+      "engine_version": 69,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": true
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "7",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VERIFY_GRAPHS": "1",
+        "STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "0836c7a3dec4ebdef50d0e1b929b28dc20ec14ce322add9f379390cb882e1df3",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 24.87198956447248,
+      "prefill_tok_s": 514.2304746839416,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16218.8,
+          "decode_ms": 20640.0,
+          "decode_tok_s": 24.757751937984494,
+          "prefill_tok_s": 505.0928552050707,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 959668224,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1992.61,
+            "verify_ms": 18294.5,
+            "restore_ms": 78.9219,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        },
+        {
+          "prefill_ms": 15930.6,
+          "decode_ms": 20545.2,
+          "decode_tok_s": 24.87198956447248,
+          "prefill_tok_s": 514.2304746839416,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 959668224,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1963.29,
+            "verify_ms": 18229.8,
+            "restore_ms": 78.7686,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        },
+        {
+          "prefill_ms": 15920.6,
+          "decode_ms": 20325.4,
+          "decode_tok_s": 25.140956635539766,
+          "prefill_tok_s": 514.5534716028291,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 959668224,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1941.85,
+            "verify_ms": 18031.8,
+            "restore_ms": 78.9137,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 7.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 111.0,
+        "sum_logit_regret": 144.11,
+        "repeat_blocked": 1.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 120
+        },
+        {
+          "index": 1,
+          "proposed": 140,
+          "opportunities": 120,
+          "accepted": 92
+        },
+        {
+          "index": 2,
+          "proposed": 140,
+          "opportunities": 92,
+          "accepted": 68
+        },
+        {
+          "index": 3,
+          "proposed": 140,
+          "opportunities": 68,
+          "accepted": 40
+        },
+        {
+          "index": 4,
+          "proposed": 140,
+          "opportunities": 40,
+          "accepted": 26
+        },
+        {
+          "index": 5,
+          "proposed": 140,
+          "opportunities": 26,
+          "accepted": 14
+        },
+        {
+          "index": 6,
+          "proposed": 140,
+          "opportunities": 14,
+          "accepted": 10
+        }
+      ],
+      "worker_sha256": "50809a7f4f89fe2459bafdd3d50f5c8adeddda45e588b25a19c49820896a9b58"
+    },
+    {
+      "name": "dflash2-wide-graphs-memory-v71",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "f9fcfa5714d8ee218883f59b80737805ddbb908e39d21471d369b2e233fd6d20",
+      "source_log_sha256": "984be22724e64712bb51bf0205f97cb2dcb1ff80e1a1072e3576bb2dcac2fbf9",
+      "engine_version": 69,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 7,
+        "prompt_tokens": 128,
+        "generated_tokens": 24,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 128,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 0,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": true
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VERIFY_GRAPHS": "1",
+        "STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS": "8",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": false,
+      "instrumented": true,
+      "error": "repeated requests produced different token IDs",
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "decode_tok_s": 0.4567842389577375,
+      "prefill_tok_s": 1.6794153535300524,
+      "repetitions_identical": false,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 76217.0,
+          "decode_ms": 33567.9,
+          "decode_tok_s": 0.6851783996020007,
+          "prefill_tok_s": 1.6794153535300524,
+          "generated_tokens": 24,
+          "requested_tokens": 24,
+          "major_faults": 0,
+          "minor_faults": 0,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "0f0a8947faa8e1f1c9c75ca835a3b0fe05fca143e7abe16ef9f0ad5003f8ec9e",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 18,
+          "repeated_4gram_fraction": 0.1428571428571429,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 24,
+            "rounds": 6,
+            "proposed": 38,
+            "accepted": 17,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.415719,
+            "draft_ms": 5638.9,
+            "verify_ms": 26893.4,
+            "resync_ms": 1019.53
+          },
+          "native_cpu_expert_groups_delta": 974,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 318,
+            "misses": 656
+          },
+          "native_cpu_scale_cache_bytes_after": 39359194,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 76335.8,
+          "decode_ms": 50832.3,
+          "decode_tok_s": 0.4524682141079589,
+          "prefill_tok_s": 1.6768017103377444,
+          "generated_tokens": 24,
+          "requested_tokens": 24,
+          "major_faults": 0,
+          "minor_faults": 0,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "19b3f58dfcb0eb84697ae4be2080d9a7d8bdca1c0ac5aba0cb60fa0f1373938e",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 19,
+          "repeated_4gram_fraction": 0.0,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 24,
+            "rounds": 10,
+            "proposed": 58,
+            "accepted": 13,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.420365,
+            "draft_ms": 7538.85,
+            "verify_ms": 42562.7,
+            "resync_ms": 708.402
+          },
+          "native_cpu_expert_groups_delta": 1338,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 769,
+            "misses": 569
+          },
+          "native_cpu_scale_cache_bytes_after": 70577506,
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 76126.8,
+          "decode_ms": 50352.0,
+          "decode_tok_s": 0.4567842389577375,
+          "prefill_tok_s": 1.6814052344246704,
+          "generated_tokens": 24,
+          "requested_tokens": 24,
+          "major_faults": 0,
+          "minor_faults": 0,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "19b3f58dfcb0eb84697ae4be2080d9a7d8bdca1c0ac5aba0cb60fa0f1373938e",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 19,
+          "repeated_4gram_fraction": 0.0,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 24,
+            "rounds": 10,
+            "proposed": 58,
+            "accepted": 13,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.451191,
+            "draft_ms": 7143.09,
+            "verify_ms": 42554.5,
+            "resync_ms": 632.178
+          },
+          "native_cpu_expert_groups_delta": 1338,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 1338,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 70577506,
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": false,
+      "full512_protocol": false
+    },
+    {
+      "name": "dflash2-wide-graphs-mla-full-v79",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "1d6696bac4ae70238e374d9571e76d11ed932fd78f7a6b24a06e85f2784c1f23",
+      "source_log_sha256": "072499c561da22fe36675a2e7d7e6ab004f80c81faa075035421b00d1a1e1708",
+      "engine_version": 69,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": true
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "7",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MLA_GRAPHS": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VERIFY_GRAPHS": "1",
+        "STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS": "8",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "0836c7a3dec4ebdef50d0e1b929b28dc20ec14ce322add9f379390cb882e1df3",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 24.91977879429235,
+      "prefill_tok_s": 513.9240029861795,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16228.9,
+          "decode_ms": 20471.4,
+          "decode_tok_s": 24.96165381947497,
+          "prefill_tok_s": 504.7785124068791,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262148,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40969,
+            "rss_bytes": 982290432,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1981.0,
+            "verify_ms": 18135.7,
+            "restore_ms": 80.4894,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        },
+        {
+          "prefill_ms": 15909.2,
+          "decode_ms": 20507.9,
+          "decode_tok_s": 24.91722701983138,
+          "prefill_tok_s": 514.9221833907425,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 982323200,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1900.3,
+            "verify_ms": 18252.5,
+            "restore_ms": 80.011,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        },
+        {
+          "prefill_ms": 15940.1,
+          "decode_ms": 20505.8,
+          "decode_tok_s": 24.91977879429235,
+          "prefill_tok_s": 513.9240029861795,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 982323200,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 234,
+          "repeated_4gram_fraction": 0.03929273084479368,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 140,
+            "proposed": 980,
+            "accepted": 370,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 1930.49,
+            "verify_ms": 18220.1,
+            "restore_ms": 80.3421,
+            "proposal_calls": 140
+          },
+          "native_cpu_expert_groups_delta": 38392,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 38392,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 290616442
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 7.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 111.0,
+        "sum_logit_regret": 144.11,
+        "repeat_blocked": 1.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 140,
+          "opportunities": 140,
+          "accepted": 120
+        },
+        {
+          "index": 1,
+          "proposed": 140,
+          "opportunities": 120,
+          "accepted": 92
+        },
+        {
+          "index": 2,
+          "proposed": 140,
+          "opportunities": 92,
+          "accepted": 68
+        },
+        {
+          "index": 3,
+          "proposed": 140,
+          "opportunities": 68,
+          "accepted": 40
+        },
+        {
+          "index": 4,
+          "proposed": 140,
+          "opportunities": 40,
+          "accepted": 26
+        },
+        {
+          "index": 5,
+          "proposed": 140,
+          "opportunities": 26,
+          "accepted": 14
+        },
+        {
+          "index": 6,
+          "proposed": 140,
+          "opportunities": 14,
+          "accepted": 10
+        }
+      ],
+      "worker_sha256": "50809a7f4f89fe2459bafdd3d50f5c8adeddda45e588b25a19c49820896a9b58"
     }
   ],
   "failed_before_timing": [
+    {
+      "name": "dflash2-affinity-secondary-dflash2-005-v65",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "404dc57fcbac7fb5e489b7423ea75e686d2a3f3d75e7259b950c0c7103332868",
+      "source_log_sha256": "a2e53e2817df46a70c4249eba4a7f871665e870703c82f2b23ca097f98d9af44",
+      "engine_version": 65,
+      "binary_sha256": "c2db25ce224100d8c9194dc1537b4623b6c606a020a479b331dca8c4f57ac1d6",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "7",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.05",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": false,
+      "instrumented": false,
+      "error": "decoder exited (code None); see <local-artifact>",
+      "decoder_returncode": null,
+      "worker_residency_checked": true,
+      "config_sha256": "0836c7a3dec4ebdef50d0e1b929b28dc20ec14ce322add9f379390cb882e1df3",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "failure_category": "draft_startup_gpu_out_of_memory"
+    },
+    {
+      "name": "dflash2-affinity-secondary-dflash2-01-v65",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "2fe1698779ae51e48b794b50c8d17993d606e78373f0cdbbef2adc7a744d1cf7",
+      "source_log_sha256": "a2e53e2817df46a70c4249eba4a7f871665e870703c82f2b23ca097f98d9af44",
+      "engine_version": 65,
+      "binary_sha256": "c2db25ce224100d8c9194dc1537b4623b6c606a020a479b331dca8c4f57ac1d6",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "7",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": false,
+      "instrumented": false,
+      "error": "decoder exited (code None); see <local-artifact>",
+      "decoder_returncode": null,
+      "worker_residency_checked": true,
+      "config_sha256": "0836c7a3dec4ebdef50d0e1b929b28dc20ec14ce322add9f379390cb882e1df3",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "failure_category": "draft_startup_gpu_out_of_memory"
+    },
     {
       "name": "dflash2-depth7-v24",
       "fit": false,
@@ -10479,6 +12390,150 @@
       "decoder_returncode": null,
       "worker_residency_checked": false,
       "failure_category": "explicit_route_drop_cap_missing"
+    },
+    {
+      "name": "dflash2-quartet-cache-candidate-full-v81",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "c892a39fd5f7147aad440d3eb7cbda27ad4c54b19a92bde2adb3b7fd2b8010e8",
+      "source_log_sha256": "067023bda4ee0ee5379ab25248cf9906620473141c3fa3712f3a8e79d52fc4e9",
+      "engine_version": 69,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 2,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "10240",
+        "STRATA_GLM_FP4_CPU_SCALE_QUARTETS": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": false,
+      "instrumented": false,
+      "error": "decoder exited (code None); see <local-artifact>",
+      "decoder_returncode": null,
+      "worker_residency_checked": false
+    },
+    {
+      "name": "dflash2-wide-graphs-memory-v69",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "37c7840caa80e7aa2e887dafbc59960d3d6ee887b6e87f1bff7b39856ab8c6bf",
+      "source_log_sha256": "b5da81ebfa025c4dca9b3649212a051c159411cd2d9985fc8592197e07a4fc21",
+      "engine_version": 69,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 128,
+        "generated_tokens": 24,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 128,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 0,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": true
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VERIFY_GRAPHS": "1",
+        "STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS": "8",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": false,
+      "instrumented": true,
+      "error": "ERR external draft unavailable",
+      "decoder_returncode": null,
+      "worker_residency_checked": true,
+      "config_sha256": "0836c7a3dec4ebdef50d0e1b929b28dc20ec14ce322add9f379390cb882e1df3",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0
     }
   ],
   "draft_microbenchmarks": [
@@ -10797,6 +12852,20 @@
       "result_sha256": "e6e76b2a1966a034636c0f25ff0e03d1858eb7bc3d25a11ccb077cc0eb5a12df",
       "scope": "Output parity only, all new options off. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
       "raw_sha256": "8949be38f13574f42f31359373017469cb8932aac91e469da7a328b2bc22703d"
+    },
+    {
+      "name": "default-v69-parity128",
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "12c91f4c6fcf0ba117650bc352b444a6950c8527f9cccdff94a749046af2530b",
+      "scope": "Output parity only, all new options off. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "2d2e8b50e7e0e3e25dc39fd14a740259b7d2d837aee971f34a9a44ffb256225a"
     }
   ],
   "validation": {
@@ -10887,6 +12956,744 @@
       "cases": 32,
       "graph_replays": 0,
       "race_hazards": 0
+    },
+    "dflash2-wide-graphs-memory-v71": {
+      "passed": true,
+      "kernel_filters": [],
+      "target_memory_errors": 0,
+      "requests": 3,
+      "scope": "Whole-target128-input/24-output MTP depth7 memory check, three requests with native eight-row verification graphs. This covers target kernels/history; it does not instrument the separate DFlash2 worker. Timings excluded.",
+      "benchmark_error": "repeated requests produced different token IDs",
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "raw_sha256": "fdb9e89085423f31af5f7cfd7801166bb94cd6d2b3f327363ad041de457c020c",
+      "validation_sha256": "e2889cb037dafab2ef61122441ed3361dc326f5b61ce7d65e07089bdd8f566b4"
+    },
+    "dflash2-wide-graphs-mla-numeric-v78": {
+      "passed": true,
+      "captures": [
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 45
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 45
+        }
+      ],
+      "allocations": 2,
+      "repetitions_per_width": 3,
+      "all_logits_bitwise_equal": true,
+      "rollback_next_logits_bitwise_equal": true,
+      "scope": "Real128-input target, every width1..8, direct versus warmed/captured/replayed graphs, both history modes, retained prefixes and history reallocation; no throughput measurement.",
+      "mla_graphs": true,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "raw_sha256": "6fbcbae7d656da3634885baf1ce99f9f500f621cd4703ace3e505fc7486f1cfa",
+      "validation_sha256": "61c92796177940d1f9493aec115db9b7c411cec26bd792a10a9a4fcf411c27eb"
+    },
+    "dflash2-wide-graphs-numeric-v69": {
+      "passed": true,
+      "captures": [
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 8,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 7,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 6,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 5,
+          "history": true,
+          "graphs": 34
+        }
+      ],
+      "allocations": 2,
+      "repetitions_per_width": 3,
+      "all_logits_bitwise_equal": true,
+      "rollback_next_logits_bitwise_equal": true,
+      "scope": "Real128-input target, every width1..8, direct versus warmed/captured/replayed graphs, both history modes, retained prefixes and history reallocation; no throughput measurement.",
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "raw_sha256": "8f3bcaf8c0c6fb5b84dd43e1d904dc02348d5e2057fa2ce4eb454936e7676da4",
+      "validation_sha256": "d21cc703a9f8b2f21a56b79423ca66b6df9b5687373bc19b3dafe37d73f6454d"
+    },
+    "runtime_python_tool_audit": {
+      "scope": "Runtime Python scripts audited during source69 target graph validation. Engine compiled closure recorded separately. This does not attribute these tool versions to earlier rows.",
+      "files": {
+        "source/tools/glm_v100_bench.py": {
+          "bytes": 35492,
+          "sha256": "221402ade090b9d69bbde1130c46bc3c91063a597a7e600e311211059727996e"
+        },
+        "source/serve/server.py": {
+          "bytes": 435267,
+          "sha256": "7460680ba953ea9b722cea754fa3470ed262b5bf41a793fc4fc7a82aae2145bb"
+        },
+        "source/tools/glm_fp4_target_quality.py": {
+          "bytes": 15328,
+          "sha256": "e484c433f065ef2592c2d885c500aaa94e523c3e2d64cd6d2537860bb543a05f"
+        },
+        "run-full-v55.py": {
+          "bytes": 2632,
+          "sha256": "ddc2d34a4849f0ad66d82739e2db82f128fefcc29af29eca0b82b27634438eba"
+        },
+        "prefault-libs-v55.py": {
+          "bytes": 2924,
+          "sha256": "2c92b75873e1892d37399bb46a3633cb98a17f847ef2c1d0dd40112b7801e89e"
+        },
+        "quality-long-dflash2.py": {
+          "bytes": 4525,
+          "sha256": "18541cdd0389bf1a84bb89e7c96a220b86a5eb09cd33b919e7388775c8f27bd0"
+        },
+        "quality-short-training-v62.py": {
+          "bytes": 4900,
+          "sha256": "9c1dd7110677253b26301572c1cb0397a3b2179031763eb9922c4d1a08bfdacb"
+        },
+        "dflash-source-v32/tools/glm_dflash2_worker.py": {
+          "bytes": 23014,
+          "sha256": "50809a7f4f89fe2459bafdd3d50f5c8adeddda45e588b25a19c49820896a9b58"
+        },
+        "wait-gpu-idle-v74.py": {
+          "bytes": 1432,
+          "sha256": "cd0a2a68a35488a021987d4a447a9fdaf93f04bc74da5bb9c100eac60e759566"
+        }
+      },
+      "benchmark_snapshot_match": "source-v30.tar.gz",
+      "benchmark_cli_difference": "The later local script restricts layer-pipeline choices and rejects DFlash2 layer layout. All current trials use legacy layout, so these CLI differences are inactive.",
+      "raw_sha256": "5bcf80697981941fa8188e74349329b9218be5b3ebc0239b7c2da965eb2a2326"
+    },
+    "runtime_host_memory_audit": {
+      "scope": "Read-only job memory-controller snapshot after the failed10240MiBquartet-cache experiment; counters are cumulative for the allocation.",
+      "records": [
+        {
+          "level": "job",
+          "values": {
+            "memory.usage_in_bytes": "181366554624",
+            "memory.limit_in_bytes": "194347270144",
+            "memory.max_usage_in_bytes": "188290002944",
+            "memory.failcnt": "0",
+            "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+          }
+        }
+      ],
+      "raw_sha256": "d1c5a3458150f2e157e627faf1911e397adf5079efee7ac98f9434b0073eff51"
     },
     "skinny": {
       "numerical": {
@@ -11100,11 +13907,174 @@
       "raw_sha256": "a0b06391a499939c9ad5df4a46e18a2202b6f6950da8229ee8b42065794d6bf7"
     }
   ],
+  "native_wide_graph_comparisons": [
+    {
+      "same_binary": true,
+      "all512_outputs_identical": true,
+      "clean_repeated_timing": true,
+      "fresh_holdout_scored": false,
+      "quality_scored": false,
+      "selected": false,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "speculative": "dflash2",
+        "depth": 7,
+        "route_drop": 0.5,
+        "accept_margin": 3,
+        "max_soft": 7,
+        "graph_max_tokens": [
+          4,
+          8
+        ]
+      },
+      "results": {
+        "control": {
+          "raw_sha256": "605056104812f24165eafd959d6014aa7b565f821467ace791c3f16cb2cd2d91",
+          "decode": 24.87198956447248,
+          "prefill": 514.2304746839416,
+          "output_hashes": [
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6"
+          ]
+        },
+        "candidate": {
+          "raw_sha256": "24c33340c184d30f448a0c86ba9236e04ab7fe63fa366e4357376912b1a12e3b",
+          "decode": 24.935343775923485,
+          "prefill": 514.5276169181102,
+          "output_hashes": [
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6"
+          ]
+        }
+      },
+      "scope": "Same frozen8192 IDs,2 full warmups,discarded3-output request,3 timed512-output requests. Exact output and residency gates; no quality or50tok/s claim.",
+      "decode_ratio": 1.0025472112428635,
+      "prefill_ratio": 1.000577838632281,
+      "status": "Exact repeated comparison passed; coding quality remains unscored",
+      "raw_sha256": "e0945e1ac7a2aaf7abe739ab9f3dd2b749fdbb901a3eada46b37510759dc486a"
+    },
+    {
+      "same_binary": true,
+      "all512_outputs_identical": true,
+      "clean_repeated_timing": true,
+      "fresh_holdout_scored": false,
+      "quality_scored": false,
+      "selected": false,
+      "binary_sha256": "b2a3e8e3ab18527a78f65aeadf070720028adea763604bad54575c47ae1e9f01",
+      "configuration": {
+        "speculative": "dflash2",
+        "depth": 7,
+        "route_drop": 0.5,
+        "accept_margin": 3,
+        "max_soft": 7,
+        "graph_max_tokens": [
+          8,
+          8
+        ],
+        "mla_graphs": [
+          0,
+          1
+        ]
+      },
+      "results": {
+        "control": {
+          "raw_sha256": "24c33340c184d30f448a0c86ba9236e04ab7fe63fa366e4357376912b1a12e3b",
+          "decode": 24.935343775923485,
+          "prefill": 514.5276169181102,
+          "output_hashes": [
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6"
+          ]
+        },
+        "candidate": {
+          "raw_sha256": "1d6696bac4ae70238e374d9571e76d11ed932fd78f7a6b24a06e85f2784c1f23",
+          "decode": 24.91977879429235,
+          "prefill": 513.9240029861795,
+          "output_hashes": [
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6",
+            "adea63491376792bebb78843cdd1afe5066b0f7b874d0242c012cd133edebfe6"
+          ]
+        }
+      },
+      "scope": "Same frozen8192 IDs,2 full warmups,discarded3-output request,3 timed512-output requests. Exact output and residency gates; no quality or50tok/s claim.",
+      "decode_ratio": 0.9993757863628828,
+      "prefill_ratio": 0.9988268580498241,
+      "status": "Exact repeated comparison passed; coding quality remains unscored",
+      "raw_sha256": "bd205a435488cfaa3884cd64dbb90274d0d0095b69f87e6a7feaa6159b4dc048"
+    }
+  ],
+  "native_quartet_cache_comparisons": [
+    {
+      "same_binary": true,
+      "clean_repeated_timing": false,
+      "all512_outputs_match_reference": false,
+      "selected": false,
+      "fresh_holdout_scored": false,
+      "quality_scored": false,
+      "configuration": {
+        "speculative": "mtp",
+        "depth": 3,
+        "cpu_scale_cache_mib": 10240,
+        "quartets": [
+          0,
+          1
+        ],
+        "ram_GiB": 181
+      },
+      "results": {
+        "control": {
+          "complete": true,
+          "decode": 32.13391857730377,
+          "prefill": 520.3747816420517,
+          "hashes": [
+            "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+            "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+            "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8"
+          ],
+          "scale_cache": [
+            {
+              "misses": 333,
+              "hits": 27257,
+              "bytes_after": 334157452
+            },
+            {
+              "misses": 0,
+              "hits": 27590,
+              "bytes_after": 334157452
+            },
+            {
+              "misses": 0,
+              "hits": 27590,
+              "bytes_after": 334157452
+            }
+          ],
+          "peak_rss_bytes": 179673051136,
+          "raw_sha256": "2a598e3205a1243e851aa456f27c06bc4d88eb28f078ed864b7fe6f87e261d1c"
+        },
+        "candidate": {
+          "complete": false,
+          "decode": null,
+          "prefill": null,
+          "hashes": [],
+          "scale_cache": [],
+          "peak_rss_bytes": 187216670720,
+          "raw_sha256": "c892a39fd5f7147aad440d3eb7cbda27ad4c54b19a92bde2adb3b7fd2b8010e8"
+        }
+      },
+      "scope": "Same frozen8192 input IDs,2completewarmups,discarded2-output request,3timed512outputs. Tests whether the larger metadata cache avoids the earlier capacity/build confound. Does not select a preset or establish coding quality.",
+      "status": "Gate failed; reference retained",
+      "raw_sha256": "849372e25180f65c4013588ec7e4e69e0e0dbe034fb977208f87e6aee6d2198f"
+    }
+  ],
   "target_weight_identity": {
     "files": 42,
     "bytes": 177463841024,
     "manifest_sha256": "b1389a9ecaee05ba182687bce9bb217e1f99d21ffe84bb1a5c7fbacc5257039f",
-    "copies_checked": 2,
+    "copies_checked": 3,
     "copies_identical": true,
     "manifest_encoding": "UTF8 JSON of per-file name/bytes/sha256 records sorted by name; sort_keys=True, separators=(comma,colon), no trailing newline.",
     "checks": [
@@ -11123,6 +14093,15 @@
         "bytes": 177463841024,
         "raw_sha256": "5a2d516d69df4dce80e10a1ff46928b81caa56437b8abd5100e72fdad5e4a831",
         "startup_seconds": 318.574160954915,
+        "direct_read": true,
+        "backing": "sealed memfd; one shared physical copy"
+      },
+      {
+        "manifest_sha256": "b1389a9ecaee05ba182687bce9bb217e1f99d21ffe84bb1a5c7fbacc5257039f",
+        "files": 42,
+        "bytes": 177463841024,
+        "raw_sha256": "96281b432a662b75c78797f1d0f14bf900f882bbc9d8ed5a5cb65e0ab9a03f0f",
+        "startup_seconds": 314.41575836599804,
         "direct_read": true,
         "backing": "sealed memfd; one shared physical copy"
       }
@@ -11334,6 +14313,221 @@
             "prompt_tokens": 4098,
             "prompt_ms": 10728.7,
             "decode_ms": 5567.63,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        }
+      ]
+    },
+    {
+      "name": "quality-long4096-dflash2-affinity-control-quality-v65-training",
+      "complete": true,
+      "reused_training": true,
+      "fresh_holdout": false,
+      "decoder_sha256": "c2db25ce224100d8c9194dc1537b4623b6c606a020a479b331dca8c4f57ac1d6",
+      "oracle_sha256": "e484c433f065ef2592c2d885c500aaa94e523c3e2d64cd6d2537860bb543a05f",
+      "raw_sha256": "aebb1974e92a0f1a9aa8f129a2ea43cf3ca10067b5d1bcb4164b6911a1bfec0f",
+      "configuration": {
+        "speculative": "mtp",
+        "depth": 3,
+        "margin": 3.0,
+        "threads": 32,
+        "graphs": false,
+        "cases": "training"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_KDA_PREPARE": "1"
+      },
+      "passed": 8,
+      "total": 8,
+      "tasks": [
+        {
+          "name": "sum_small",
+          "prompt_tokens": 4097,
+          "prompt_sha256": "202b21782b6ba64424832cc3b2cc91f6dcbf55e063aa2b9e31478aba32915bc9",
+          "output_tokens": 48,
+          "tokens_sha256": "6cec7056eee6d5007063491333e34cc586840560deafcbed12b8a03a437fbb42",
+          "engine": {
+            "generated": 48,
+            "prompt_tokens": 4097,
+            "prompt_ms": 14768.9,
+            "decode_ms": 5402.8,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        },
+        {
+          "name": "count_byte",
+          "prompt_tokens": 4102,
+          "prompt_sha256": "f0cf1d8297fa29529138323cf6fbe4e98b8fc2f29d86607464d967cd05642897",
+          "output_tokens": 105,
+          "tokens_sha256": "abaccc764a686ffa99bb9cd5280c38dd452cc63f5c5db13b4f0cf049196b6478",
+          "engine": {
+            "generated": 105,
+            "prompt_tokens": 4102,
+            "prompt_ms": 10507.7,
+            "decode_ms": 7985.72,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        },
+        {
+          "name": "ascii_upper",
+          "prompt_tokens": 4097,
+          "prompt_sha256": "6ea67ee1bce5a908bdcead705a2f1769f2a871c077e71afa37669f6458f8a9d8",
+          "output_tokens": 98,
+          "tokens_sha256": "d6d5536d723f09ffcfe10062bce2ee0df6a74a0f38eee01c800fea1d79d08633",
+          "engine": {
+            "generated": 98,
+            "prompt_tokens": 4097,
+            "prompt_ms": 10643.3,
+            "decode_ms": 6217.18,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        },
+        {
+          "name": "suffix_match",
+          "prompt_tokens": 4102,
+          "prompt_sha256": "78587c583ed8a5488dba6ba567ffa4f154ae2f34ba1596e19b15812ee982d4ee",
+          "output_tokens": 170,
+          "tokens_sha256": "94a1447cda257cba75e2edc49e554a735bd52630a56de898bba63dbc26bf2caf",
+          "engine": {
+            "generated": 170,
+            "prompt_tokens": 4102,
+            "prompt_ms": 10839.1,
+            "decode_ms": 12000.0,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        },
+        {
+          "name": "argmin_first",
+          "prompt_tokens": 4100,
+          "prompt_sha256": "4e30239d8ac558d84da398273362fc7c95966e4db12031b054de7727c30a1e55",
+          "output_tokens": 102,
+          "tokens_sha256": "2a4ace57b0de489713c4556d34424ca664626341f21c315a34428a07a2a4a74b",
+          "engine": {
+            "generated": 102,
+            "prompt_tokens": 4100,
+            "prompt_ms": 10653.4,
+            "decode_ms": 5416.72,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        },
+        {
+          "name": "clamp_int",
+          "prompt_tokens": 4100,
+          "prompt_sha256": "288a55edecd0cd7f9034d893848b49d98507667c4a5873924b44b6fa1d35d003",
+          "output_tokens": 75,
+          "tokens_sha256": "87a5d6fdb4e8f9aa789c0af09ebbf0536c2bf030c3c4a125fb51883e1f492b54",
+          "engine": {
+            "generated": 75,
+            "prompt_tokens": 4100,
+            "prompt_ms": 10760.1,
+            "decode_ms": 4269.96,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        },
+        {
+          "name": "adjacent_changes",
+          "prompt_tokens": 4096,
+          "prompt_sha256": "599838fddfb003fb2ada89b1a193ee98b8133b9a268c4bb406b90ab05ee283a4",
+          "output_tokens": 134,
+          "tokens_sha256": "80e4ae17534fc97e2d57619fb90a27061519d77be244f4164b449a33e19dc229",
+          "engine": {
+            "generated": 134,
+            "prompt_tokens": 4096,
+            "prompt_ms": 10660.4,
+            "decode_ms": 6641.38,
+            "finish": "stop",
+            "drafts_accepted": 0,
+            "drafts_offered": 0,
+            "reused": 0
+          },
+          "passed": true,
+          "oracle_cases": 1
+        },
+        {
+          "name": "zip_sum",
+          "prompt_tokens": 4098,
+          "prompt_sha256": "00381b1881c59c0cd687b4c72169a8821ad7c9572b652105e55385223cb6b23c",
+          "output_tokens": 121,
+          "tokens_sha256": "79a2232e372c98fcecfbb0904b89bab09a4f91a7780e4171a88fe44f4c0356d3",
+          "engine": {
+            "generated": 121,
+            "prompt_tokens": 4098,
+            "prompt_ms": 10726.7,
+            "decode_ms": 5611.49,
             "finish": "stop",
             "drafts_accepted": 0,
             "drafts_offered": 0,
@@ -12666,6 +15860,17 @@
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {
+      "name": "dflash2-affinity-dual-mtp-015-v65",
+      "advances": 511,
+      "observed_decode_ms": 15253.4,
+      "verification_ms": 13359.5,
+      "other_ms": 1893.8999999999996,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 38.24993450353681,
+      "verification_speedup_needed_if_other_work_unchanged": 1.6045327344134708,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
       "name": "dflash2-affinity-mtp-0025-v52",
       "advances": 511,
       "observed_decode_ms": 15994.2,
@@ -13260,6 +16465,39 @@
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {
+      "name": "dflash2-quartet-cache-control-full-v81",
+      "advances": 511,
+      "observed_decode_ms": 17731.1,
+      "verification_ms": 15660.0,
+      "other_ms": 2071.0999999999985,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 32.630906768837804,
+      "verification_speedup_needed_if_other_work_unchanged": 1.9217317674778187,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-quartet-cache-control-full-v81",
+      "advances": 511,
+      "observed_decode_ms": 15902.2,
+      "verification_ms": 13765.6,
+      "other_ms": 2136.6000000000004,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 37.12152031150113,
+      "verification_speedup_needed_if_other_work_unchanged": 1.7029467798203728,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-quartet-cache-control-full-v81",
+      "advances": 511,
+      "observed_decode_ms": 15862.7,
+      "verification_ms": 13727.6,
+      "other_ms": 2135.1000000000004,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 37.22427809668114,
+      "verification_speedup_needed_if_other_work_unchanged": 1.6979307103365535,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
       "name": "dflash2-skinny-depth3-v30",
       "advances": 127,
       "observed_decode_ms": 4206.78,
@@ -13323,6 +16561,171 @@
       "goal50_decode_budget_ms": 2540.0,
       "zero_nonverification_tok_s": 15.377164305606005,
       "verification_speedup_needed_if_other_work_unchanged": 7.604482215695123,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-verify-graphs-candidate-full-v67",
+      "advances": 511,
+      "observed_decode_ms": 17795.8,
+      "verification_ms": 15731.7,
+      "other_ms": 2064.0999999999985,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 32.482185650628985,
+      "verification_speedup_needed_if_other_work_unchanged": 1.9288735761841118,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-verify-graphs-candidate-full-v67",
+      "advances": 511,
+      "observed_decode_ms": 15546.9,
+      "verification_ms": 13417.6,
+      "other_ms": 2129.2999999999993,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 38.08430717863105,
+      "verification_speedup_needed_if_other_work_unchanged": 1.6583979136539482,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-verify-graphs-candidate-full-v67",
+      "advances": 511,
+      "observed_decode_ms": 15537.8,
+      "verification_ms": 13408.1,
+      "other_ms": 2129.699999999999,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 38.11129093607595,
+      "verification_speedup_needed_if_other_work_unchanged": 1.657305662336378,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-verify-graphs-control-full-v67",
+      "advances": 511,
+      "observed_decode_ms": 18017.5,
+      "verification_ms": 15937.9,
+      "other_ms": 2079.6000000000004,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 32.06194040620157,
+      "verification_speedup_needed_if_other_work_unchanged": 1.9578767628126383,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-verify-graphs-control-full-v67",
+      "advances": 511,
+      "observed_decode_ms": 15901.8,
+      "verification_ms": 13761.3,
+      "other_ms": 2140.5,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 37.13311969072689,
+      "verification_speedup_needed_if_other_work_unchanged": 1.703236586422427,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-verify-graphs-control-full-v67",
+      "advances": 511,
+      "observed_decode_ms": 15871.1,
+      "verification_ms": 13731.8,
+      "other_ms": 2139.300000000001,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 37.21289270161232,
+      "verification_speedup_needed_if_other_work_unchanged": 1.6993329785785887,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-candidate-full-v72",
+      "advances": 511,
+      "observed_decode_ms": 20337.7,
+      "verification_ms": 17998.4,
+      "other_ms": 2339.2999999999993,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 28.39141257000622,
+      "verification_speedup_needed_if_other_work_unchanged": 2.2838580329158575,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-candidate-full-v72",
+      "advances": 511,
+      "observed_decode_ms": 20563.6,
+      "verification_ms": 18252.7,
+      "other_ms": 2310.899999999998,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 27.995858147013866,
+      "verification_speedup_needed_if_other_work_unchanged": 2.307809991022998,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-candidate-full-v72",
+      "advances": 511,
+      "observed_decode_ms": 20493.0,
+      "verification_ms": 18202.5,
+      "other_ms": 2290.5,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 28.0730668864167,
+      "verification_speedup_needed_if_other_work_unchanged": 2.295541963553818,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-control-full-v72",
+      "advances": 511,
+      "observed_decode_ms": 20640.0,
+      "verification_ms": 18294.5,
+      "other_ms": 2345.5,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 27.931892098718194,
+      "verification_speedup_needed_if_other_work_unchanged": 2.323258619594895,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-control-full-v72",
+      "advances": 511,
+      "observed_decode_ms": 20545.2,
+      "verification_ms": 18229.8,
+      "other_ms": 2315.4000000000015,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 28.031026122063874,
+      "verification_speedup_needed_if_other_work_unchanged": 2.3062267540419508,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-control-full-v72",
+      "advances": 511,
+      "observed_decode_ms": 20325.4,
+      "verification_ms": 18031.8,
+      "other_ms": 2293.600000000002,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 28.338823633802505,
+      "verification_speedup_needed_if_other_work_unchanged": 2.2749041178845384,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-mla-full-v79",
+      "advances": 511,
+      "observed_decode_ms": 20471.4,
+      "verification_ms": 18135.7,
+      "other_ms": 2335.7000000000007,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 28.1764696151789,
+      "verification_speedup_needed_if_other_work_unchanged": 2.3002295701584163,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-mla-full-v79",
+      "advances": 511,
+      "observed_decode_ms": 20507.9,
+      "verification_ms": 18252.5,
+      "other_ms": 2255.4000000000015,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 27.996164908916587,
+      "verification_speedup_needed_if_other_work_unchanged": 2.2917032870451752,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-wide-graphs-mla-full-v79",
+      "advances": 511,
+      "observed_decode_ms": 20505.8,
+      "verification_ms": 18220.1,
+      "other_ms": 2285.7000000000007,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 28.04594925384603,
+      "verification_speedup_needed_if_other_work_unchanged": 2.2963714505375394,
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     }
   ]
