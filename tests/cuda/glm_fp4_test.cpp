@@ -213,6 +213,36 @@ static void run(a::ModelOptPacked h,bool outliers,bool benchmark=false,const a::
     }
     Buffer partials(k::glm_fp4_partial_bytes(N));
     const bool small=fmt!=k::GlmPackedFormat::Nvfp4 && N<=8192 && K>=4096;
+    if(packed_fp8) {
+        Buffer half_cache(size_t(N)*K*2);
+        std::vector<float> cache_reference(ref.size());
+        for(bool cached:{false,true}) {
+            const auto active=cached?cached_format:fmt;
+            const void* operand=cached?packed.p:w;
+            const void* active_scales=cached?ps.p:s;
+            k::glm_fp8_cache_f16_qpn(active,operand,active_scales,
+                static_cast<uint16_t*>(half_cache.p),N,K,nullptr);
+            k::glm_fp4_dequant_f16(k::GlmPackedFormat::F16Qpn,half_cache.p,nullptr,1,
+                static_cast<uint16_t*>(dh.p),N,K,nullptr);
+            check(cudaMemcpy(actual_half.data(),dh.p,actual_half.size()*2,cudaMemcpyDeviceToHost));
+            if(actual_half!=expected_half)throw std::runtime_error("fixed FP16 lane cache changes reconstructed operands");
+            for(bool split:{false,true}) {
+                if(split&&!small)continue;
+                float* scratch=split?static_cast<float*>(partials.p):nullptr;
+                for(int M=1;M<=8;++M) {
+                    k::glm_fp4_gemm(active,operand,active_scales,h.global,static_cast<uint16_t*>(x.p),
+                        static_cast<float*>(y.p),N,K,M,true,nullptr,scratch);
+                    check(cudaMemcpy(cache_reference.data(),y.p,size_t(M)*N*4,cudaMemcpyDeviceToHost));
+                    k::glm_fp4_gemm(k::GlmPackedFormat::F16Qpn,half_cache.p,nullptr,1,static_cast<uint16_t*>(x.p),
+                        static_cast<float*>(y.p),N,K,M,true,nullptr,scratch);
+                    check(cudaMemcpy(got.data(),y.p,size_t(M)*N*4,cudaMemcpyDeviceToHost));
+                    if(std::memcmp(cache_reference.data(),got.data(),size_t(M)*N*4))
+                        throw std::runtime_error("fixed FP16 lane cache changes skinny output bits");
+                }
+            }
+        }
+        std::cout<<"fixed FP16 lane cache operands and widths1..8 bitwise PASS\n";
+    }
     for(bool cached:{false,true})for(bool split:{false,true}) {
     if((cached && fmt!=k::GlmPackedFormat::Bf16 && !packed_fp8) || (split && !small))continue;
     const auto active=cached?cached_format:fmt;

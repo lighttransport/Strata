@@ -3,7 +3,7 @@
 #include <cstdint>
 namespace strata::kernels {
 // Native formats and cached FP16 operands, independent of GGML's type IDs.
-enum class GlmPackedFormat : int { Nvfp4=0, Mxfp8=1, BlockFp8=2, Bf16=3, F32=4, F16=5, Mxfp8Qpn=6, BlockFp8Qpn=7 };
+enum class GlmPackedFormat : int { Nvfp4=0, Mxfp8=1, BlockFp8=2, Bf16=3, F32=4, F16=5, Mxfp8Qpn=6, BlockFp8Qpn=7, F16Qpn=8 };
 // FP4 codes/scales become [N/32][K/16][lane]. Eight bytes per code
 // fragment, one E4M3 scale per lane.
 void glm_fp4_prepack(const uint8_t* codes,const uint8_t* scales,uint8_t* packed_codes,
@@ -44,6 +44,11 @@ void glm_fp4_prefill_mma(const uint8_t* weights,const uint8_t* scales,float glob
 void glm_fp4_prefill_split_mma(const uint8_t* weights,const uint8_t* scales,float global,
                               const uint16_t* x,float* y,int rows,int columns,int tokens,
                               int k_parts,float* scratch,void* stream);
+// Cache the exact FP16 operands used by the FP8 skinny kernel, in its lane
+// layout. Supports native and packed MXFP8/block FP8; requires rows%32=0.
+// Output holds rows*columns half values and needs no scale plane.
+void glm_fp8_cache_f16_qpn(GlmPackedFormat format,const void* weights,const void* scales,
+                            uint16_t* output,int rows,int columns,void* stream);
 // Route indices address [token][route_stride]. Rows within one expert must
 // refer to distinct tokens. Scatter calls on one stream preserve expert order
 // and round multiply and add separately, matching the host accumulation.

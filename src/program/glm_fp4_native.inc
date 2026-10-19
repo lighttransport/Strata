@@ -112,6 +112,7 @@ class Fp4NativeExecutor {
         std::map<int,std::set<int>> keep;
         std::map<int,std::vector<uint64_t>> frequency;
         std::map<std::string,Matrix> dense;
+        size_t half_cache_extra=0,half_cache_matrices=0;
         std::map<std::string,std::unique_ptr<Device>> scratch;
         std::unique_ptr<PrefillBank> bank;
         uint64_t bank_layers=0,bank_unused_experts=0;
@@ -254,6 +255,8 @@ class Fp4NativeExecutor {
     const bool gpu_reduce_enabled=strata_env_is_one("STRATA_GLM_FP4_GPU_REDUCE");
     const bool head_tp_enabled=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP");
     const bool head_tp_borrow=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP_BORROW");
+    const long long fixed_half_mask=strata_env_value_ll("STRATA_GLM_FP4_FIXED_HALF",0);
+    const bool fixed_half_borrow=strata_env_is_one("STRATA_GLM_FP4_FIXED_HALF_BORROW");
     const long long head_fp8_accumulators=strata_env_value_ll("STRATA_GLM_FP4_HEAD_ACCUMULATORS",0);
     const bool block_gate_pack=strata_env_is_one("STRATA_GLM_FP4_BLOCK_GATE_PACK");
     const bool prefill_bank_enabled=strata_env_is_one("STRATA_GLM_FP4_PREFILL_BANK");
@@ -857,6 +860,11 @@ class Fp4NativeExecutor {
         for(auto& value:heat)value/=2;
     }
     size_t cache_reserve(const Context& c,size_t reserve)const {
+        if(fixed_half_borrow&&c.half_cache_extra) {
+            if(reserve<c.half_cache_extra+256*MiB)
+                throw std::runtime_error("GLM FP4: fixed FP16 cache must retain at least 256 MiB scratch");
+            reserve-=c.half_cache_extra;
+        }
         if(!head_tp_borrow||&c!=contexts[1].get())return reserve;
         const size_t extra=c.dense.at("output.weight").data->bytes;
         if(reserve<extra+256*MiB)
@@ -909,6 +917,13 @@ public:
                               const std::vector<int>& devices,size_t gpu_budget,int width,bool draft)
         :artifact(a),model(*a.exl3().modelopt),cpu_pool(pool),sm70(fp4_sm70_kernel),reserve_draft(draft) {
         if(devices.empty()||devices.size()>2)throw std::invalid_argument("GLM FP4: expected one or two GPUs");
+        if(fixed_half_mask<0||fixed_half_mask>7)
+            throw std::invalid_argument("GLM FP4: FIXED_HALF must be a mask from 0 through 7");
+        if(fixed_half_mask&&(!sm70||head_tp_enabled||fp8_accumulators!=1||
+           (head_fp8_accumulators!=0&&head_fp8_accumulators!=1)))
+            throw std::invalid_argument("GLM FP4: FIXED_HALF requires SM70, no head split and single FP8 accumulators");
+        if(fixed_half_borrow&&(!fixed_half_mask||!Device::prealloc()||decode_reserve_mib>=0))
+            throw std::invalid_argument("GLM FP4: FIXED_HALF_BORROW requires FIXED_HALF, arena and the original decode reserves");
         if(prefill_batch_experts!=1&&prefill_batch_experts!=2&&prefill_batch_experts!=4)
             throw std::invalid_argument("GLM FP4: PREFILL_BATCH_EXPERTS must be 1, 2 or 4");
         if(prefill_queue_depth!=1&&prefill_queue_depth!=2&&prefill_queue_depth!=4)
@@ -1020,9 +1035,33 @@ public:
         {DeviceScope scope(c.device);
             for(const auto& [name,t]:artifact.tensors()) {
                 if(name=="token_embd.weight" || name.starts_with("blk.45.") || !t.native || t.tensor->shape.size()!=2)continue;
-                c.dense.emplace(name,upload(c,model.matrix(t.native->source)));
+                auto matrix=upload(c,model.matrix(t.native->source));
+                const bool head=(fixed_half_mask&1)&&name=="output.weight";
+                const bool attention=(fixed_half_mask&2)&&name!="output.weight"&&
+                    matrix.format==k::GlmPackedFormat::Mxfp8Qpn&&matrix.rows<=8192&&matrix.columns>=4096;
+                const bool shared=(fixed_half_mask&4)&&
+                    (matrix.format==k::GlmPackedFormat::BlockFp8||matrix.format==k::GlmPackedFormat::BlockFp8Qpn)&&
+                    matrix.rows==2048&&matrix.columns==4096;
+                if(head||attention||shared) {
+                    if(matrix.format!=k::GlmPackedFormat::Mxfp8Qpn&&
+                       matrix.format!=k::GlmPackedFormat::BlockFp8&&matrix.format!=k::GlmPackedFormat::BlockFp8Qpn)
+                        throw std::invalid_argument("GLM FP4: selected fixed FP16 cache requires an FP8 source");
+                    const size_t bytes=size_t(matrix.rows)*matrix.columns*2;
+                    const size_t original=matrix.data->bytes;
+                    if(bytes<original)throw std::logic_error("GLM FP4: fixed FP16 cache byte accounting");
+                    c.room(bytes);auto cached=std::make_unique<Device>(bytes);
+                    k::glm_fp8_cache_f16_qpn(matrix.format,matrix.data->p,matrix.scales(),
+                        static_cast<uint16_t*>(cached->p),matrix.rows,matrix.columns,c.stream);
+                    check(cudaGetLastError());check(cudaStreamSynchronize(c.stream));
+                    matrix.data=std::move(cached);matrix.scale_offset=0;matrix.format=k::GlmPackedFormat::F16Qpn;
+                    c.half_cache_extra+=bytes-original;++c.half_cache_matrices;
+                }
+                c.dense.emplace(name,std::move(matrix));
             }
         }
+        if(fixed_half_mask)std::cerr<<"FP4_FIXED_HALF mask="<<fixed_half_mask
+            <<" matrices="<<c.half_cache_matrices<<" extra_bytes="<<c.half_cache_extra
+            <<" borrow="<<fixed_half_borrow<<'\n';
         if(head_tp_enabled) {
             const auto& full=c.dense.at("output.weight");
             if(full.format!=k::GlmPackedFormat::Mxfp8Qpn||full.rows%64)

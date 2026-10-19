@@ -73,6 +73,8 @@ above. Clocks were unlocked; RAM speed was not measured.
 | 64 distinct logical CPU workers | 22.16 | 18.23 |
 | 64 workers with pinned GPU submission workers | 22.16 | 19.84 |
 | First FP16 operand pipeline | 22.77 | 19.81 |
+| Revised operand pipeline | 21.68 | 21.70 |
+| Selective fused down projection | 22.24 | 22.03 |
 
 None of these variants is selected. Real-matrix FP8 microbenchmarks found faster
 individual products, but the global accumulator change lost throughput on the
@@ -80,7 +82,7 @@ model. The head copy also reduced secondary expert capacity. A separate reserve
 experiment recovered capacity and identical output IDs, but its 0.74% decode
 difference does not establish an improvement. The bank increased prefill from
 520.85 to 538.07 tok/s, while reducing cached experts and decode throughput.
-Its combined throughput tradeoff was rejected. All four bank memory diagnostics
+Its combined throughput tradeoff was rejected. All four original bank memory diagnostics
 were interrupted because of instrumentation cost and the rejected tradeoff;
 none establishes a clean bank memory check. Aggregate accounting also lost
 decode throughput, and its compact-history combination exhausted a 512 MiB
@@ -92,14 +94,26 @@ kernel passed numerical, complete synthetic memcheck and racecheck runs, but
 lost every shape and remains unused by the executor. The existing 32-row kernel
 won only the down projection with 16, 32 or 64 token rows: medians were
 63.50 / 64.50 / 80.26 microseconds, versus 79.58 / 83.66 / 102.09 for cuBLAS and
-reconstruction. These kernel results require a selective model trial.
+reconstruction. The selective model trial measured 520.11 prefill tok/s versus
+520.81 for its control and supplied no model-level improvement.
+
+A separate synthetic probe wrote complete WMMA fragments directly to global
+memory and used a bounded shared tail for partial rows. It tested 32-, 64- and
+256-row tiles, with one, two or four K partitions for the widest tile, at sixteen
+expert shapes. Eight rotated samples per variant were repeated with default and
+100% shared-memory carveout. Numerical boundary and large-shape checks,
+memcheck and racecheck completed without errors or hazards. Every 256-row
+variant was slower than reconstruction plus cuBLAS at every shape and carveout;
+the fastest wide variant at each shape still took 1.45–2.43 times the baseline
+time. Smaller tiles reproduced the earlier small down-projection wins. The new
+probe stays outside the engine and adds no predicted speedup to the simulator.
 
 The 64-worker runs retained identical output IDs and CPU expert-group counts
 but lost decode throughput. Pinning the GPU submission workers recovered part
 of that loss. The selected preset retains 32 workers. Reconstruction/GEMM
-overlap, selective fused prefill, a contiguous bank and larger bounded
-route-drop budgets are still being measured. The
-selected preset's loss bounds stay unchanged during these experiments.
+overlap and selective fused prefill have not improved model throughput. The
+contiguous bank failed the quality check below. The selected preset's loss bounds
+stay unchanged during these experiments.
 
 A 0.55 route-budget screen incurred ten timed major faults and was rejected.
 The retries used a fresh matched control, two full warmups and executable/library
@@ -126,7 +140,38 @@ routes remain intact.
 The first operand pipeline also lost prefill throughput, 494.61 versus 520.82
 tok/s, and changed subsequent decode work. A separate opt-in revision places
 reconstruction on a third stream and reuses the dense weight workspace. Its
-model timing and memory checks are pending; no speedup is assigned to it.
+prefill measured 513.95 versus 520.50 tok/s, with identical 128 output IDs and
+CPU expert-group counts. It recovered the first pipeline's decode regression
+but supplied no speedup. Both pipeline implementations and selective fused
+prefill completed full-model 512-input / 8-output memory checks without reported
+errors; instrumented timings are excluded.
+
+A slab-backed bank measured 32.91 decode / 537.43 prefill tok/s in one short
+screen, versus 22.08 / 520.65 for its control. These are not qualified throughput
+numbers: the control created 443 CPU scale-cache entries during timing and the
+slab created none, and output IDs differed. The subsequent matched three-repeat
+8192-input / 512-output comparison measured **32.10 / 519.72** for the control
+and **32.58 / 535.98** for the slab. Both had identical repeats, no EOS IDs,
+zero timed major faults and swap, and clean shutdown. Prefill improved 3.13%;
+the 1.51% decode difference is not claimed with unlocked clocks. The slab passed
+only **7/8** long-context reused training contracts versus the control's **8/8**:
+`argmin_first` did not produce exactly one complete C++ code block. It is
+rejected and the KDA preset stays selected. The slab completed one whole
+4096-input prefill and clean shutdown under memcheck, with all model kernels
+instrumented and zero reported errors. Both GPUs used all 42 bank layers and
+one 1960 MiB slab each. This establishes memory-check coverage for that request,
+without a memory-check claim for long decode. The initial training harness stopped before
+scoring because its frozen long input files were absent; its failed evidence is
+retained. The retry used frozen neutral prefixes of 4096–4102 tokens for the
+eight public training contracts and left the twenty fresh holdouts unscored.
+
+An FP16 lane-cache probe used synthetic FP8 data at query, shared projection and
+vocabulary shapes. Six rotated samples measured 37–48% less query-projection
+kernel time and about 25% less vocabulary time. It preserved exact output bits
+at widths 1–8, including ordinary and outlier activations. Production-kernel
+checks also passed independent operand comparisons, memcheck and racecheck.
+The opt-in engine trial below tests the extra resident-memory cost; these
+synthetic timings supply no model throughput claim or simulator speedup.
 
 [Screen evidence](glm_fp4_v100_target50_screens.json) records binary and raw-log
 hashes, output hashes, settings and matching controls. The separate
@@ -141,11 +186,10 @@ Eight relevant C11 tests, 26 benchmark tests and 134 simulator tests pass, with
 one existing simulator fixture skip. Adaptive-cache memcheck completed with
 155 actual promotions, and the reserve-adjusted head and packed shared-gate
 checks also completed without reported memory errors. Their instrumented
-timings are excluded. The latest completed default-output check, including the
-logical-CPU implementation, preserved all 128 original token IDs and exited
+timings are excluded. Completed default-output checks through the fixed FP16
+cache implementation preserved all 128 original token IDs and exited
 cleanly. Older output checks with residency rejections remain in the raw record
-and supply no throughput claim. GPU validation of the remaining prefill trials
-is pending.
+and supply no throughput claim. The selected KDA preset remains unchanged.
 
 ## Earlier GPU reduction qualification
 
@@ -217,6 +261,8 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_CPU_LOGICAL` | `1` | Repin native FP4 CPU workers to distinct allocated logical CPUs on Linux, reserving the first allocated CPU for the coordinator. |
 | `STRATA_GLM_FP4_HEAD_TP` | `1` | Split narrow MXFP8 vocabulary products across two peer-accessible GPUs. |
 | `STRATA_GLM_FP4_HEAD_TP_BORROW` | `1` | Charge the secondary head copy to that GPU's original scratch reserve. Requires head partitioning and the original decode reserves. |
+| `STRATA_GLM_FP4_FIXED_HALF` | Mask `0`–`7`, default `0` | Cache exact FP16 operands in lane order: bit 1 selects the vocabulary projection, bit 2 selects packed MXFP8 matrices with at most 8192 rows and at least 4096 columns, bit 4 selects 2048-by-4096 block-FP8 shared projections. |
+| `STRATA_GLM_FP4_FIXED_HALF_BORROW` | `1` | Charge the extra fixed FP16 bytes against the original scratch reserves, retaining at least 256 MiB. Requires the arena and original decode reserves. |
 | `STRATA_GLM_FP4_HEAD_ACCUMULATORS` | `0` (inherit default), `1`, `2`, `4` | Override FP8 accumulation chains for vocabulary products only. |
 | `STRATA_GLM_FP4_BLOCK_GATE_PACK` | `1` | Pack and split K for the 2048-by-4096 block-FP8 shared gate/up projections. |
 | `STRATA_GLM_FP4_PREFILL_BANK` | `1` | Prefetch the next main layer's experts during fixed projections for passes with at least 4096 rows. |
@@ -254,6 +300,17 @@ protect reuse of each operand slot. Pending owned sources also fence that
 stream on exception. Dense prefixes finish before the routed input fence, so
 their dequantization buffer can serve the two operand slots during the routed
 phase. The routed streams finish before the next dense prefix reuses it.
+
+The fixed FP16 cache is a separate decode experiment. It stores the exact half
+operands formed by the original FP8 kernel, including its extreme-scale fallback,
+in the same lane order. It preserves K partitioning and accumulation order at
+verification widths 1–8. The original FP8 codes and scales on the GPU are replaced
+by that cache; checkpoint files remain intact. Extra resident bytes can reduce
+expert capacity. Borrowing charges them to scratch and can instead exhaust
+temporary storage, so neither option is selected without model measurements.
+Head partitioning and multiple FP8 accumulator chains are unsupported with this
+cache. Bit 2 selects by format and dimensions, including any fixed matrix that
+matches those bounds.
 
 Dense splitting keeps the same partitioning across verification widths 1–8,
 but changes the reduction tree relative to the original kernel. It therefore
