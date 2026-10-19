@@ -459,8 +459,10 @@ A lower-depth fallback kept depth three and used margin four with the 0.60
 route-drop cap. Its matched pair measured 36.39 / 39.41 decode and
 520.02 / 519.50 prefill tok/s, with three full warmups and three timed
 512-output requests per side. This 8.29% decode gain passed the timing gate.
-Separate reused coding checks are queued; the changed output stream remains
-experimental until those checks finish. The selected preset is unchanged.
+The candidate then passed only two of eight reused long coding checks; its
+natural-length panel was skipped. The control passed all eight long and eight
+natural-length checks. This policy is rejected as a usable preset. The selected
+preset and unscored fresh holdout stay unchanged.
 
 An exact one-token CPU scale-decoding option was also tested with three full
 warmups and three timed 512-output requests per side. Control and candidate
@@ -468,6 +470,13 @@ measured 36.41 / 36.84 decode and 520.38 / 521.00 prefill tok/s. All six output
 streams were identical. The 1.18% decode difference missed the 3% gate, so the
 option stays off and no additional coding-quality panel was queued. The CPU
 component result did not translate into the same gain for the whole model.
+
+Combining this CPU option with batched KDA projections produced raw medians of
+36.74 / 38.43 decode and 520.09 / 520.03 prefill tok/s. The candidate's third
+timed request had 42 target-process major faults, so the pair failed residency
+qualification. Its raw median does not establish a repeated gain. The fault
+counter does not identify which backing file faulted. A controlled repeat is
+separate from this frozen failed result.
 
 The named fixed-projection profile separates target prefill from cached MTP
 preparation and decode. KDA query, key, value and output projections were the

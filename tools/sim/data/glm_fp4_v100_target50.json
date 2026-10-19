@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "b67e76f7ee20adf36e398ff4bbb78551e08f3e3b2118fe02365e526c43ea489e"
+      "sha256": "6c842420200ae36cc8baf8c0694d31773eb0094d9fb6a3ec9f1023b9363cdd21"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6838,6 +6838,16 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-local-m1-qkv-0-full-v143",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 36.741972130746774,
+      "prefill_tok_s": 520.0906603348337,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-lookup24-drop05-v39",
       "experiment_family": "dflash2",
       "decode_tok_s": 31.544252612336038,
@@ -7745,7 +7755,9 @@
     "DFlash2: bounded CPU scale decoding only for one-token groups measured 36.41 / 36.84 decode tok/s in a same-build pair, three warmups and three timed512-output requests per side, with all six output streams identical. Timing alone does not establish coding quality or change a selected anchor or resource capacity.",
     "DFlash2: batching KDA query/key/value projections measured 36.44 / 37.41 decode tok/s in a same-build pair, three warmups and three timed512-output requests per side, with all six output streams identical. Timing alone does not establish coding quality or change a selected anchor or resource capacity.",
     "DFlash2: MTP calibration measured 36.17 / 41.29 decode tok/s with three full warmups and three timed512 requests per side. Candidate passed only7/8 reused long coding checks and is rejected as a usable preset; short quality was skipped. No fitted capacity or selected anchor changed.",
-    "DFlash2: MTP calibration measured 36.39 / 39.41 decode tok/s with three full warmups and three timed512 requests per side. Reused coding quality is pending. No fitted capacity or selected anchor changed.",
+    "DFlash2: MTP calibration measured 36.39 / 39.41 decode tok/s with three full warmups and three timed512 requests per side. Candidate passed only2/8 reused long coding checks and is rejected as a usable preset; short quality was skipped. No fitted capacity or selected anchor changed.",
+    "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment143, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 42]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
+    "DFlash2: native head operand export passed valid output bit checks at widths1/8. FC-adapter calibration passed20CPU tests and a real-weight V100 synthetic gradient/serving-forward probe; skinny relativeL2 differed by0.00254. These are validation results, not a trained speed or coding result, and fit no capacity.",
     "DFlash2: named fixed-projection profiling separates target prefill from decode/preparation. Attention projections are the largest fixed narrow GPU groups; timing endpoints include input conversion and host enqueue gaps and overlap broader product timers. These diagnostics do not change a throughput anchor or hardware capacity.",
     "DFlash2: the separately instrumented hot512-output request had zero new CPU metadata entries; target CPU setup totaled271ms, fused CPU products4147ms, and routing/input preparation plus coordinator waiting4857ms. Profiling synchronizes streams, phase sums overlap and must not be added, used as model timing, or fitted to capacities.",
     "DFlash2: the later CPU microbenchmark gives variants identical activation/scales storage. Earlier copies changed storage as well as kernels; the apparent eight-token gain did not persist in the controlled comparison. CPU component rows remain diagnostic, not model forecasts or fitted resource capacities.",
@@ -8444,6 +8456,24 @@
       "advances": 511,
       "decode_ms": 13660.3,
       "verify_ms": 11689.9
+    },
+    {
+      "name": "dflash2-local-m1-qkv-0-full-v143-trial0",
+      "advances": 511,
+      "decode_ms": 13907.8,
+      "verify_ms": 11944.9
+    },
+    {
+      "name": "dflash2-local-m1-qkv-0-full-v143-trial1",
+      "advances": 511,
+      "decode_ms": 13898.1,
+      "verify_ms": 11940.3
+    },
+    {
+      "name": "dflash2-local-m1-qkv-0-full-v143-trial2",
+      "advances": 511,
+      "decode_ms": 13975.8,
+      "verify_ms": 12009.9
     },
     {
       "name": "dflash2-lookup24-drop05-v39",
