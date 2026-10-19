@@ -21,6 +21,10 @@ modified on disk or included in this repository. The checkpoint's separate
 applies. The reference implementation's [MIT notice](../third_party/licenses/dflash.txt)
 is included separately.
 
+The optional [bridge-calibration tools](GLM_DFLASH2_CALIBRATION.md) export checked
+head operands and train a small, separate FC adapter. Calibration loss alone
+does not establish a speed or quality gain; no calibrated preset is selected.
+
 ## Execution
 
 Install a CUDA PyTorch build supporting SM70, NumPy, safetensors and Ninja in a separate

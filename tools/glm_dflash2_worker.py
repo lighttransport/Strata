@@ -340,6 +340,7 @@ def main():
     p.add_argument('--cuda-graph', action='store_true', help='replay fixed-window draft forward on CUDA; shorter windows use eager mode')
     p.add_argument('--round-bf16', action='store_true', help='software BF16 activation rounding with FP16 tensor operands')
     p.add_argument('--selector-scale', type=float, default=1.0, help='candidate transition scale; zero tests unary proposals')
+    p.add_argument('--fc-adapter', type=Path, help='optional checksummed target-feature bridge calibration')
     a = p.parse_args()
     if not 0 <= a.selector_scale <= 2:
         p.error('selector scale must be finite and in 0..2')
@@ -361,6 +362,10 @@ def main():
         torch.ops.load_library(str(a.gemm_f32.resolve()))
     activation_dtype = torch.float32 if a.gemm_f32 else torch.float16
     model = Draft(config, weights, a.device, activation_dtype, gemm_f32=bool(a.gemm_f32), round_bf16=a.round_bf16, selector_scale=a.selector_scale)
+    if a.fc_adapter:
+        from glm_dflash2_adapter import load_fc_adapter
+        adapter = load_fc_adapter(a.fc_adapter, model, a.model / 'model.safetensors')
+        print(f'DFLASH_FC_ADAPTER rank={adapter["rank"]} weights_sha256={adapter["weights_sha256"]}', file=sys.stderr, flush=True)
     if a.skinny_library:
         model.enable_skinny(a.skinny_library.resolve())
         torch.cuda.synchronize()

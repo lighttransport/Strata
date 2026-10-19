@@ -1,0 +1,101 @@
+"""Real-weight CUDA checks for the optional DFlash2 FC calibration core."""
+import argparse
+import json
+from pathlib import Path
+import sys
+
+import torch
+from torch.nn import functional as F
+from safetensors import safe_open
+
+from glm_dflash2_adapter import FcAdapter, apply_fc_adapter, file_sha
+from glm_dflash2_calibrate import BASE_SHA, restore_weights
+from glm_dflash2_training import TrainingDraft
+from glm_dflash2_worker import Draft, validate_config
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--model', type=Path, required=True)
+    p.add_argument('--gemm-f32', type=Path, required=True)
+    p.add_argument('--skinny-library', type=Path)
+    p.add_argument('--device', default='cuda:1')
+    a = p.parse_args()
+    if not torch.cuda.is_available():
+        return 77
+    torch.set_num_threads(1)
+    torch.manual_seed(150)
+    torch.cuda.set_device(a.device)
+    torch.ops.load_library(str(a.gemm_f32.resolve()))
+    checkpoint = a.model/'model.safetensors'
+    if file_sha(checkpoint) != BASE_SHA:
+        raise ValueError('wrong base checkpoint for real-weight calibration check')
+    config = validate_config(json.loads((a.model/'config.json').read_text()))
+    weights = {}
+    with safe_open(checkpoint, framework='pt', device='cpu') as source:
+        for name in source.keys():
+            weights[name] = source.get_tensor(name).to(device=a.device, dtype=torch.float16)
+    adapter = FcAdapter(4096, 20480, 8, 8, device=a.device)
+    model = TrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
+    reference = Draft(config, restore_weights(model), a.device, torch.float32, gemm_f32=True)
+    frozen_fc = model.w['fc.weight'].clone()
+    embedding = torch.randn((8, 4096), device=a.device)
+    head = torch.randn((64, 4096), device=a.device)*.01
+    errors, gradient_norms = [], []
+    optimizer = torch.optim.AdamW(adapter.parameters(), lr=.0003, weight_decay=0)
+    for rows in (8, 2048):
+        features = torch.randn((rows, 20480), device=a.device)*.1
+        features[0] *= 1000000
+        reference.cache = []
+        reference.append(features, 0, rows)
+        expected = reference.forward(embedding)
+        model.cache = []
+        model.append(features, 0, rows)
+        actual = model.forward(embedding)
+        errors.append((actual.detach()-expected).abs().max().item())
+        if not torch.equal(actual.detach(), expected):
+            raise ValueError('calibration forward differs from serving core at context '+str(rows))
+        optimizer.zero_grad(set_to_none=True)
+        loss = F.cross_entropy(F.linear(actual, head), torch.arange(7, device=a.device))
+        loss.backward()
+        gradient = torch.nn.utils.clip_grad_norm_(adapter.parameters(), 1, error_if_nonfinite=True)
+        if float(gradient) <= 0:
+            raise ValueError('feature bridge has no real-weight calibration gradient')
+        gradient_norms.append(float(gradient))
+    optimizer.step()
+    # A nonzero adapter must produce the same forward in training and serving.
+    apply_fc_adapter(reference, adapter)
+    reference.cache = []
+    reference.append(features, 0, 2048)
+    expected = reference.forward(embedding)
+    model.cache = []
+    model.append(features, 0, 2048)
+    actual = model.forward(embedding)
+    if not torch.equal(actual.detach(), expected):
+        raise ValueError('trained adapter forward differs between training and serving')
+    optimizer.zero_grad(set_to_none=True)
+    F.cross_entropy(F.linear(actual, head), torch.arange(7, device=a.device)).backward()
+    if not torch.isfinite(adapter.down.weight.grad).all() or adapter.down.weight.grad.abs().sum() <= 0:
+        raise ValueError('nonzero adapter did not retain the complete feature gradient')
+    if not torch.equal(frozen_fc, model.w['fc.weight']) or any(w.grad is not None for w in model.w.values()):
+        raise ValueError('calibration changed frozen base weights')
+    skinny_relative_error = None
+    if a.skinny_library:
+        reference.enable_skinny(a.skinny_library.resolve())
+        reference.cache = []
+        reference.append(features, 0, 2048)
+        narrow = reference.forward(embedding)
+        skinny_relative_error = ((actual.detach()-narrow).float().norm()/actual.detach().float().norm()).item()
+        if not torch.isfinite(narrow).all() or skinny_relative_error > .005:
+            raise ValueError('skinny serving core diverges from calibrated reference')
+    print(json.dumps(dict(passed=True, gpu=torch.cuda.get_device_name(a.device),
+                          zero_adapter_context_rows=[8, 2048], zero_adapter_max_abs_errors=errors,
+                          nonzero_adapter_serving_equal=True, gradient_norms=gradient_norms,
+                          base_weights_unchanged=True, skinny_relative_l2_error=skinny_relative_error,
+                          peak_reserved_bytes=torch.cuda.max_memory_reserved(), fit=False,
+                          performance_anchor=False, checkpoint_sha256=BASE_SHA)))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
