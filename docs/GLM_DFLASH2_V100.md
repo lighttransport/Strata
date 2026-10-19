@@ -40,6 +40,12 @@ complete 2,048-row windows; shorter windows use eager execution. Graph inputs
 receive the current committed K/V, embeddings and absolute position on every
 replay. Neither option changes the checkpoint on disk.
 
+The target's KDA mixers can also use verification graphs. Add `--decode-graphs`
+and set `STRATA_GLM_VERIFY_GRAPHS=1` with
+`STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS=8` to cover complete DFlash2 windows. The
+maximum defaults to four rows. This is separate from the draft worker's
+`--cuda-graph` option.
+
 `STRATA_GLM_DFLASH_GPU_TOP16=1` optionally selects the sixteen finite, allowed
 head candidates per slot on the GPU. This reduces the head readback from
 4,336,640 bytes to 896 bytes per neural draft. Ties retain the lowest token ID,
@@ -172,6 +178,21 @@ preparation during a discarded warmup; residency gates remain enabled.
 
 Numerical tests, compute-sanitizer memcheck and racecheck passed on V100.
 
+The wider target-graph checker passed 64 capture checks on a real 128-input
+request: every width from one through eight, with and without retained history,
+three warm/capture/replay passes and two history allocations. Every logit and
+the next logits after retained-prefix rollback matched direct launches bit for
+bit. The default path also preserved all 128 frozen reference IDs with zero
+major faults. These checks establish output behavior for this workload; they
+do not measure decode throughput.
+
+Three instrumented 128-input / 24-output MTP depth-seven requests exercised
+eight-row target graphs with zero reported memory errors. Their cold outputs
+differed, so the benchmark rejected repeat qualification and their timings are
+excluded. An instrumented DFlash2 attempt lost the worker connection before
+timed requests and supplied no complete memory result. Subsequent stages wait
+for earlier GPU compute contexts to retire before starting.
+
 ## Measurements and remaining gap
 
 [The measurement record](glm_fp4_v100_dflash2_measurement.json) preserves source,
@@ -180,7 +201,7 @@ timings. The host RAM clock was not measured and GPU clocks were unlocked.
 All model timings below use the same frozen 8,192 input IDs. Full trials use two
 complete warmups, a discarded two-output request and three 512-output requests;
 decode throughput counts 511 advances. Initialization and shutdown are excluded.
-Both RAM owners loaded identical payloads: 42 indexed files totaling
+The RAM loads used identical payloads: 42 indexed files totaling
 177,463,841,024 bytes, verified by their per-file SHA-256 manifests.
 The trials use the environment from the
 [KDA/MTP preset](../configs/experimental/glm53f-fp4-dual-v100-kda.json), with

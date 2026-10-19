@@ -302,6 +302,7 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_ROUTE_DROP_CAP` | `0.5` (default) through `0.75` | Explicitly extend the permitted original routing-mass budget for a separate lossy experiment. Does not change `ROUTE_DROP` by itself. |
 | `STRATA_GLM_FP4_ROUTE_AFFINITY` | `0` (off, default) through `0.5` | Add a selection-score bonus to experts admitted to GPU decode memory. Original sigmoid scores still determine retained routing weights. Prefill and the MTP draft layer receive no bonus. Requires fixed decode admission. |
 | `STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY` | `1` | With positive native affinity, prefer admissions on the second configured GPU only. Requires two GPUs. The default bonus covers both GPUs. |
+| `STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS` | `4` (default) through `8` | Set the maximum window captured by the opt-in verification graphs. Eight permits full DFlash2 windows; `--check-verify-graphs` exercises every enabled width, rollback and history reallocation. Requires decode graphs and `STRATA_GLM_VERIFY_GRAPHS`. |
 
 CPU tiling preserves each row's dot-product and reduction order. Prepared Q8
 operands and quartet caches preserve the existing W4A8 representation; they do

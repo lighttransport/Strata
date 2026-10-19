@@ -2036,11 +2036,17 @@ class Decoder {
                !std::getenv("STRATA_GLM_CHECK_MLA");
     }
     bool verify_graphs=std::getenv("STRATA_GLM_VERIFY_GRAPHS")!=nullptr;
+    const int verify_graph_max_tokens=[] {
+        const auto value=strata_env_value_ll("STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS",4);
+        if(value<4||value>8)
+            throw std::invalid_argument("GLM: VERIFY_GRAPH_MAX_TOKENS must be4..8");
+        return int(value);
+    }();
     int graph_key(int layer)const {return layer+10000*(batch_tokens-1)+(capturing_history?100000:0)+(pipelining?200000:0)+(pipeline_residents?400000:0)+(defer_active?(defer_routes?1600000:800000):0);}
     std::map<int, std::unique_ptr<DecodeGraph>> mixer_graphs;
     template<class F> void decode_graph(int layer, F &&enqueue, int key = -1) {
         if (!decode_graphs || !gpu || fast || !row_sequences.empty() || ((batch_tokens!=1 || capturing_history) &&
-            !(verify_graphs && (!artifact.is_exl3() || artifact.is_modelopt()) && batch_tokens<=4))) {
+            !(verify_graphs && (!artifact.is_exl3() || artifact.is_modelopt()) && batch_tokens<=verify_graph_max_tokens))) {
             enqueue(); return;
         }
         auto &entry = mixer_graphs[key >= 0 ? key : graph_key(layer)];
@@ -7523,7 +7529,7 @@ private:
                     k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             };
             const bool combined = !artifact.is_modelopt() && row_sequences.empty() && layer_graphs && decode_graphs && !fast &&
-                ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=4)) &&
+                ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=verify_graph_max_tokens)) &&
                 (layer.mixer == strata::core::MixerKind::Kda || graph_mla()) && layer.ffn == strata::core::FfnKind::Moe && !tp_active();
             if (combined && pipelining) {
                 // Graph replays skip this lambda: the deferred slot is fixed per layer and tracked outside it.
@@ -8693,6 +8699,7 @@ private:
         }
     }
     void set_verify_graphs(bool enabled) {verify_graphs=enabled;}
+    int verification_graph_width() const {return verify_graph_max_tokens;}
     bool set_fp4_decode_routing(bool enabled) {
 #ifndef STRATA_USE_HIP
         if(modelopt_gpu)return modelopt_gpu->set_decode_device_routing(enabled);
@@ -12139,10 +12146,14 @@ int main(int argc, char **argv) {
         }
         if(check_verify_graphs) {
             auto cp=decoder.checkpoint();decoder.save(cp);
+            const int max_width=decoder.verification_graph_width();
+            std::vector<int> widths{1,2,3,4,1,2,4,3};
+            for(int width=5;width<=max_width;++width)widths.push_back(width);
+            for(int width=max_width;width>=5;--width)widths.push_back(width);
             for(int allocation=0;allocation<2;++allocation) {
-                decoder.enable_verify_history(3);
-                for(int width:{1,2,3,4,1,2,4,3})for(bool history:{false,true}) {
-                    std::vector<int> window{greedy(logits),11,9647,0};window.resize(width);
+                decoder.enable_verify_history(max_width-1);
+                for(int width:widths)for(bool history:{false,true}) {
+                    std::vector<int> window{greedy(logits),11,9647,0,1,2,3,4};window.resize(width);
                     decoder.restore(cp);decoder.set_decode_graphs(false);
                     auto expected=history?decoder.verify(window):decoder.batch(window,false,true);
                     decoder.set_decode_graphs(true);
@@ -12166,7 +12177,8 @@ int main(int argc, char **argv) {
                 decoder.clear_verify_history();
             }
             decoder.restore(cp);decoder.set_decode_graphs(decode_graphs);
-            std::cerr<<"VERIFY_GRAPHS widths=1,2,3,4 mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal\n";
+            std::cerr<<"VERIFY_GRAPHS widths=1.."<<max_width
+                <<" mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal\n";
         }
         if (check_verify) {
             auto cp = decoder.checkpoint();
