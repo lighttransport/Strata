@@ -4352,7 +4352,8 @@ private:
             auto& routing=buf("fp4_routing",m.top_k*nt);
             mat(p+"ffn_gate_inp.weight",x,logits.f());
             auto& bias=weight(p+"exp_probs_b.bias");
-            k::glm_router_tokens(logits.f(),bias.f(),static_cast<int*>(ids.p),routing.f(),m.experts,m.top_k,m.expert_scale,nt,stream);
+            k::glm_router_tokens(logits.f(),bias.f(),static_cast<int*>(ids.p),routing.f(),m.experts,m.top_k,m.expert_scale,nt,stream,
+                modelopt_gpu->routing_bonus(l,nt));
             if(routing_trace.is_open()) {
                 std::vector<int> selected(size_t(nt)*m.top_k);
                 check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*sizeof(int),cudaMemcpyDeviceToHost,stream));

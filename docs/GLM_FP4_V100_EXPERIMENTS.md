@@ -300,12 +300,20 @@ must be checked on the complete model before selecting a combination.
 | `STRATA_GLM_FP4_PREFILL_BANK` | `1` | Prefetch the next main layer's experts during fixed projections for passes with at least 4096 rows. |
 | `STRATA_GLM_FP4_PREFILL_BANK_SLAB` | `1` | Allocate each enabled prefill bank in one 1960 MiB block, with non-owning projection views, to test later arena coalescing. |
 | `STRATA_GLM_FP4_ROUTE_DROP_CAP` | `0.5` (default) through `0.75` | Explicitly extend the permitted original routing-mass budget for a separate lossy experiment. Does not change `ROUTE_DROP` by itself. |
+| `STRATA_GLM_FP4_ROUTE_AFFINITY` | `0` (off, default) through `0.5` | Add a selection-score bonus to experts admitted to GPU decode memory. Original sigmoid scores still determine retained routing weights. Prefill and the MTP draft layer receive no bonus. Requires fixed decode admission. |
 
 CPU tiling preserves each row's dot-product and reduction order. Prepared Q8
 operands and quartet caches preserve the existing W4A8 representation; they do
 not introduce another quantization step. Small teams retain expert reduction
 order. The original Q8 kernel remains the default. Scalar and AVX2 fallbacks
 remain available.
+
+Native route affinity is a separate lossy experiment; its bonus is not an
+output-error bound. It can combine with the original 0.5 route-drop cap without
+extending that cap. The bonus table follows the request's final per-device
+admission, resets between requests, and is not compatible with adaptive cache
+admission. Its throughput and coding checks are recorded with the
+[DFlash2 experiments](GLM_DFLASH2_V100.md); no existing preset enables it.
 
 Prefill queues require device routing, asynchronous uploads and the GPU arena.
 Admission bounds the extra working set to 256 MiB per GPU. Grouped prefill also

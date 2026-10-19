@@ -292,6 +292,8 @@ class Fp4NativeExecutor {
     const double route_drop_cap=strata_env_value_double("STRATA_GLM_FP4_ROUTE_DROP_CAP",0.5);
     const long long route_drop_max=strata_env_value_ll("STRATA_GLM_FP4_ROUTE_DROP_MAX",2);
     const bool route_renorm_enabled=strata_env_is_one("STRATA_GLM_FP4_ROUTE_RENORM");
+    const double route_affinity=strata_env_value_double("STRATA_GLM_FP4_ROUTE_AFFINITY",0);
+    std::map<int,std::unique_ptr<Device>> route_affinity_bonuses;
     const long long decode_reserve_mib=strata_env_value_ll("STRATA_GLM_FP4_DECODE_RESERVE_MIB",-1);
     uint64_t route_drop_tokens=0,route_drop_candidates=0,route_drop_count=0;
     double route_drop_share_sum=0,route_drop_share_max=0;
@@ -960,6 +962,11 @@ public:
             throw std::invalid_argument("GLM FP4: CACHE_ADAPT_ROWS must be 0, 32, 64 or 128");
         if(cache_adapt_rows&&global_cache_mode)
             throw std::invalid_argument("GLM FP4: adaptive cache and global cache admission are separate experiments");
+        if(!std::isfinite(route_affinity)||route_affinity<0||route_affinity>0.5||
+           (route_affinity>0&&cache_adapt_rows))
+            throw std::invalid_argument("GLM FP4: ROUTE_AFFINITY must be0..0.5 and requires fixed decode admission");
+        if(route_affinity>0)std::cerr<<"FP4_ROUTE_AFFINITY lossy=1 bonus="<<route_affinity
+            <<" selection_only=1 prefill=0 draft=0\n";
         if((global_cache_mode||cache_adapt_rows)&&(devices.empty()||devices.size()>2))
             throw std::invalid_argument("GLM FP4: native expert execution requires one or two devices");
         for(long long cpu:worker_cpus) {
@@ -1118,6 +1125,7 @@ public:
     void begin_request() {
         if(prefill_bank_enabled)release_banks();
         decode_phase=false;
+        route_affinity_bonuses.clear();
         decode_owners.clear();
         priority_frequency.clear();
         decode_heat.clear();decode_heat_rows.clear();
@@ -1150,6 +1158,7 @@ public:
         }
     }
     void compact() {
+        route_affinity_bonuses.clear();
         if(prefill_bank_enabled)release_banks();
         decode_phase=true;
         for(auto& c:contexts) {
@@ -1188,6 +1197,21 @@ public:
         }
         select_global();
         host_x.reset();host_routes.reset();host_weights.reset();host_rows=0;
+    }
+    const float* routing_bonus(int layer,int tokens) {
+        if(route_affinity==0||!decode_phase||tokens>8||layer>=45)return nullptr;
+        auto& saved=route_affinity_bonuses[layer];
+        if(!saved) {
+            // Fixed admission for this request, including optional cross-device
+            // ownership. The router uses the bonus only to select IDs; retained
+            // weights still come from their original unbiased sigmoid scores.
+            std::array<float,288> bonus{};
+            for(int id=0;id<288;++id)
+                if(contexts[owner(layer,id,true)]->keep.at(layer).count(id))bonus[id]=float(route_affinity);
+            DeviceScope scope(contexts.front()->device);
+            saved=std::make_unique<Device>(sizeof(bonus));saved->put(bonus.data(),sizeof(bonus));
+        }
+        return saved->f();
     }
     void dense(const std::string& name,const float* x,float* y,int nt,cudaStream_t caller) {
         if(prefill_bank_enabled&&!decode_phase&&nt>=4096&&name.starts_with("blk.0.")&&!contexts.front()->bank)

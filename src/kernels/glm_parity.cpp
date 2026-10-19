@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cuda_runtime.h>
 #include <iostream>
+#include <numeric>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -97,6 +98,42 @@ int main() {
         if (did.get() != ids)
             throw std::runtime_error("routing IDs differ");
         near("unbiased route weights", drw.get(), weights);
+        // Native FP4 affinity changes selection only. Exercise the batched
+        // router with a fixed admitted-expert mask and independently normalize
+        // the selected experts' ORIGINAL sigmoid weights.
+        for(int rows:{1,3,4,8})for(float strength:{0.f,.025f,.05f,.5f}) {
+            auto values=random(288*rows),correction=random(288);
+            std::vector<float> bonus(288);
+            for(int id=0;id<288;++id){correction[id]*=.01f;bonus[id]=id%5==0?strength:0;}
+            Buffer<float> input(values),corr(correction),dbonus(bonus),result_weights(8*rows);
+            Buffer<int> result_ids(8*rows);
+            k::glm_router_tokens(input.p,corr.p,result_ids.p,result_weights.p,288,8,2.5,rows,nullptr,dbonus.p);
+            std::vector<int> expected_ids;std::vector<float> expected_weights;
+            for(int row=0;row<rows;++row) {
+                std::vector<int> order(288);std::iota(order.begin(),order.end(),0);
+                std::vector<float> sigmoid(288),scores(288);
+                for(int id=0;id<288;++id) {
+                    sigmoid[id]=1.f/(1.f+std::exp(-values[row*288+id]));
+                    scores[id]=(sigmoid[id]+correction[id])+bonus[id];
+                }
+                std::stable_sort(order.begin(),order.end(),[&](int a,int b){return scores[a]>scores[b];});
+                float total=0;for(int i=0;i<8;++i)total+=sigmoid[order[i]];
+                for(int i=0;i<8;++i){expected_ids.push_back(order[i]);expected_weights.push_back(2.5f*sigmoid[order[i]]/total);}
+            }
+            if(result_ids.get()!=expected_ids)throw std::runtime_error("affinity routing IDs differ");
+            near("affinity original route weights",result_weights.get(),expected_weights);
+        }
+        {
+            std::vector<float> bonus(288),zero(288*8);
+            for(int id=0;id<288;++id)bonus[id]=id%5==0?.05f:0;
+            Buffer<float> input(zero),correction(std::vector<float>(288)),dbonus(bonus),result_weights(8*8);
+            Buffer<int> result_ids(8*8);
+            k::glm_router_tokens(input.p,correction.p,result_ids.p,result_weights.p,288,8,2.5,8,nullptr,dbonus.p);
+            const auto got=result_ids.get();
+            for(int row=0;row<8;++row)for(int i=0;i<8;++i)
+                if(got[row*8+i]!=5*i)throw std::runtime_error("affinity tie ordering differs");
+            near("affinity equal original weights",result_weights.get(),std::vector<float>(64,2.5f/8));
+        }
         // Equal scores must have deterministic ascending expert IDs.
         dl.put(std::vector<float>(288));
         dcorr.put(std::vector<float>(288));
