@@ -451,6 +451,13 @@ paragraph until the fixed output limit. Its natural-length panel was skipped.
 The control passed all eight long and eight natural-length checks. The faster
 policy is rejected as a usable preset; the fresh twenty remain unscored.
 
+An exact one-token CPU scale-decoding option was also tested with three full
+warmups and three timed 512-output requests per side. Control and candidate
+measured 36.41 / 36.84 decode and 520.38 / 521.00 prefill tok/s. All six output
+streams were identical. The 1.18% decode difference missed the 3% gate, so the
+option stays off and no additional coding-quality panel was queued. The CPU
+component result did not translate into the same gain for the whole model.
+
 The named fixed-projection profile separates target prefill from cached MTP
 preparation and decode. KDA query, key, value and output projections were the
 largest fixed narrow GPU groups. Their timing intervals include input conversion
