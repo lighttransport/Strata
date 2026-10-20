@@ -140,6 +140,15 @@ def cmd_roofline(args):
     for name, rp in rows:
         r = ds41f.runner_decode(rp)
         print(f"{name:<44}{r['trunk_ms']:>7.1f}{r['experts_ms']:>9.1f}{r['other_ms']:>7.1f}{r['hit']:>6.2f}{r['tok_s']:>8.1f}")
+    print("\ntwo nodes: a B550 worker holds share s of every expert's FFN rows over IB (decode, ms per token)")
+    print(f"{'config':<44}{'experts':>9}{'remote':>8}{'hit':>6}{'tok/s':>8}")
+    for name, rp in [("now, alone", ds41f.RunnerPlan()),
+                     ("now, s = 2/9 (fits the B550's 32 GB /dev/shm)", ds41f.RunnerPlan(remote_share=2 / 9)),
+                     ("now, s = 3/9", ds41f.RunnerPlan(remote_share=3 / 9)),
+                     ("now, s = 4/9", ds41f.RunnerPlan(remote_share=4 / 9)),
+                     ("target, s = 3/9", ds41f.RunnerPlan(profile="target", remote_share=3 / 9))]:
+        r = ds41f.runner_decode(rp)
+        print(f"{name:<44}{r['experts_ms']:>9.1f}{r['remote_ms']:>8.1f}{r['hit']:>6.2f}{r['tok_s']:>8.1f}")
     print("\nprefill (tok/s; stream = every touched expert over PCIe once per pass)")
     prompts = (1024, 2048, 4096, 8192)
     print(f"{'config':<52}" + "".join(f"{p:>8}" for p in prompts))

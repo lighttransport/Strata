@@ -697,6 +697,9 @@ class RunnerHw:
     stream_min: int = 512             # passes shorter than this keep the CPU lane (STRATA_DS41_STREAM_MIN)
     engram_prefill_ms_token: float = 0.25
     ssd_gbps: float = 1.7             # Gen3 x2 NVMe: experts not in the page cache
+    # two nodes (STRATA_DS41_REMOTE_TP): a B550 worker (Ryzen 3950X, DDR4-2133) holds FFN rows of every expert
+    remote_lane_gbps: float = 17.0    # its IQ1_S lane (decode requests: ~10 MB in ~0.6 ms, 2026-10-21)
+    remote_layer_ms: float = 0.02     # per layer: the request/reply round trip not hidden (measured wait 0.02-0.07 ms)
 
 
 RUNNER_PROFILES = {
@@ -713,6 +716,7 @@ class RunnerPlan:
     chunk: int = 256                  # prefill tokens per pass (stream: the layer-major sweep is chunk = prompt)
     enc_skip: int = 0                 # prefill: layers past the last KV source run only the last `enc_skip` tokens (0 off)
     uncached_gb: float = 0.0          # experts read from the SSD per pass (not page-cached)
+    remote_share: float = 0.0         # two nodes: the worker's share of every expert's FFN rows (k/9)
     set: dict = dataclasses.field(default_factory=dict)   # RunnerHw overrides
 
     def hw(self):
@@ -726,12 +730,21 @@ def runner_decode(rp, layers=40, top_k=6):
     """ms per token = trunk (GEMV + small kernels + attention) + experts not on the GPU + other. Misses go to the CPU
     lane, or split with PCIe uploads computed on the GPU (both streams in parallel)."""
     h = rp.hw()
+    s = rp.remote_share
+    # the tier holds this node's slices: 1 / (1 - s) as many experts; the hit rate takes the same share of the misses
     hit = min(0.98, h.hit_adaptive + h.prefetch_gain)
+    if s:
+        hit = min(0.98, hit + (1 - hit) * s * 0.5)
     trunk = h.trunk_gb / h.gemv_gbps * 1e3 + h.small_ms + h.attn_ms_layer * layers
-    miss_gb = layers * top_k * (1 - hit) * h.expert_mb / 1e3
+    miss_gb = layers * top_k * (1 - hit) * h.expert_mb / 1e3 * (1 - s)
     experts = miss_gb / ((h.cpu_lane_gbps + h.h2d_gbps) if h.split_misses else h.cpu_lane_gbps) * 1e3
+    remote = 0.0
+    if s:   # the worker computes its rows of every route, in parallel with this node's experts, layer by layer
+        remote = layers * top_k * h.expert_mb / 1e3 * s / h.remote_lane_gbps * 1e3 + layers * h.remote_layer_ms
+        experts = max(experts, remote)
     step = trunk + experts + h.other_ms
-    return dict(tok_s=1e3 / step, step_ms=step, trunk_ms=trunk, experts_ms=experts, other_ms=h.other_ms, hit=hit, miss_gb=miss_gb)
+    return dict(tok_s=1e3 / step, step_ms=step, trunk_ms=trunk, experts_ms=experts, other_ms=h.other_ms, hit=hit, miss_gb=miss_gb,
+                remote_ms=remote)
 
 
 def runner_prefill(rp, prompt, layers=40, top_k=6, experts=384, last_source=20):

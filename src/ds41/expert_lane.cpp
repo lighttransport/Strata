@@ -83,7 +83,8 @@ void ExpertLane::phase_work(int t) {
     const int T = threads_;
     const cpu::NativeFmt& f = layer_->f;
     const size_t act_bytes = f.act_bytes, h_bytes = f.h_bytes;
-    const size_t gate_bytes = f.gu_row * size_t(ff_), down_bytes = f.d_row * size_t(hidden_);
+    const size_t gate_bytes = layer_->gate_stride ? layer_->gate_stride : f.gu_row * size_t(ff_);
+    const size_t down_bytes = layer_->down_stride ? layer_->down_stride : f.d_row * size_t(hidden_);
     // 1. gate/up: this thread's rows of every selected expert (all of its tokens at once)
     {
         const int r0 = int(int64_t(ff_) * t / T), r1 = int(int64_t(ff_) * (t + 1) / T);

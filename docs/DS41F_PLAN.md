@@ -384,6 +384,98 @@ Comparison with Xolotl (a Strata fork; RTX 4090, 90 GB RAM, about 152 GiB of exp
 - **Here,** every expert is in RAM, so exact routing already gives 12.5 tok/s, and the decode target above is about
   20-27 tok/s without changing the routing.
 
+## 8c. Two nodes: TR16 + B550 over InfiniBand (measured 2026-10-21)
+
+**Split.** Every routed expert is split by FFN rows, the GLM remote tensor-parallel scheme
+(`include/strata/net/expert_tp.hpp`):
+- TR16 keeps rows [0, fl) of gate/up and the first fl down columns.
+- A `strata-glm-tp-worker` on the B550 holds rows [fl, 2304) in its RAM.
+- The experts are linear after the per-row clamped SwiGLU, so the two router-weighted partial sums add.
+- Cuts step by 1/9 (2304 = 9 IQ1_S blocks). The default share is 2/9 (fl = 1792): 23.85 GiB on the B550, which fits
+  its 32 GB `/dev/shm`.
+
+**Running it.**
+- `strata-glm-decode MODEL PROMPT N --remote-tp=ADDR:PORT [--remote-tp-share=2/9]`, or
+  `tools/ds41_remote_tp.sh WORKER_HOST WORKER_BIN ADDR:PORT -- strata-glm-decode ...`. The wrapper checks locked
+  memory on both nodes, a leftover worker, and the worker host's free RAM.
+- The worker (setup magic `STD1`) computes with the DS4.1 expert lane: Strata's IQ1_S rows, not ggml's pdep path.
+
+**Weights.**
+- At load, TR16 reads the worker's rows with `pread` (never through its mapping) and sends them over IB: 23.85 GiB in
+  34 s.
+- It then drops those gate/up rows from its own page cache, about 17 GB.
+- The worker keeps them in `/dev/shm/strata-tp-<fingerprint>.weights`. A later run with the same model and share maps
+  that file and nothing is sent (0.02 s).
+
+**Decode.**
+- After the router, TR16 sends each layer's routes and z (f32, 20 KiB per token). It then runs its GPU tier slices and
+  CPU lane on its own rows, and adds the reply.
+- The reply wait left over is 0.02-0.14 ms per layer.
+- The tier slots hold TR16's slices, so 9/7 as many experts fit in the same VRAM.
+
+**Streamed prompt.**
+- The VRAM slots still hold whole experts, so MMQ is unchanged.
+- TR16's rows come from the mapping. Down tensors are pinned (`STRATA_DS41_PIN_GB`) and DMAed; gate/up rows go
+  through the stager.
+- A fetcher thread pulls the worker's rows of each item over IB (16 buffers ahead), then they are uploaded to VRAM
+  scratch and placed by `ds41_copy_rows`. The 100-byte down-column pieces are too narrow for the copy engine.
+- Prompt logits are bit-identical to a single-node run.
+
+| measured (TR16 load average 2-8) | TR16 alone | TR16 + B550 (2/9) |
+|---|---|---|
+| decode after a 1063-token prompt, 128 tokens | 8.3 tok/s (tier hit 0.61) | 9.3 tok/s (0.645) |
+| decode after a 600-token prompt, tier from empty | 9.1 tok/s | 10.3 tok/s |
+| 600-token prompt (CPU lane, chunks of 256) | 18.9 tok/s | 25.3 tok/s |
+| 2048-token prompt (streamed) | 117-132 tok/s | 118-124 tok/s |
+| 4096-token prompt (streamed) | 224 tok/s | 186 tok/s |
+| wiki2 1063 tokens, all logits, KL vs llama.cpp | 0.0508 | 0.0508 |
+| generated tokens vs single node (600-token prompt, tier off, 32 tokens) | - | 32 of 32 equal; last-token KL 7e-5 |
+
+**Prompt and decode trade-offs.**
+- The streamed prompt is no faster: TR16 still uploads all 107 GB to its GPU. At 4K it is 17 % slower, since the
+  worker's 24 GB arrive over IB (8.2 s) and every gate/up row goes through the stager.
+- Pinning the gate/up rows per expert (`STRATA_DS41_PIN_GATE_UP=1`, about 12k registrations) makes every later HIP
+  host copy slow: decode fell to 3 tok/s. Down tensors are pinned whole instead.
+
+**GPU worker (phase 2).** `strata-ds41-worker` speaks the same protocol and stores the same rows, and uses the B550's
+RTX 5060 Ti (CUDA build, sm_120). It reports `TpReady.ok = 2`.
+- **Decode.** A VRAM tier of its slices: about 4,100 slices at 3/9, 11.7 GiB. It is refilled from the routing scores
+  after each prompt and adapts by up to 4 promotions per request. Misses go to the CPU lane.
+  - Hit rate 0.90-0.96; 0.4 ms per request.
+- **Prompt passes** (64 tokens or more). TR16 sends each layer's routes and z (f32); the worker answers with its
+  partial sums.
+  - The worker uploads the layer's blobs from its registered RAM, double-buffered with the next layer, and runs MMQ.
+    That is about 115 ms per layer at 4K.
+  - TR16 computes only its gate/up rows, as two MMQ products, with h zero-padded to the full down rows, so its down
+    tensors stay whole and pinned. It no longer fetches rows.
+  - The producer uploads only the staged parts: uploading whole slots had pushed 121 GB per 4K pass over PCIe.
+- **Share 3/9.** 35.8 GB, held in the worker's anonymous memory, because `/dev/shm` is capped at 32 GB.
+  - The rows are sent again on every run, in 67 s.
+  - 4/9 (47 GB) was OOM-killed at 42 GB of rows on the 62 GB B550, so the worker now keeps a 16 GiB reserve.
+
+| measured, GPU worker at 3/9 (TR16 load average 2-5) | TR16 + B550 |
+|---|---|
+| 4096-token prompt | 214 tok/s (single node 224 idle; 5.5 when the experts no longer fit TR16's page cache) |
+| 2048-token prompt | 138 tok/s |
+| decode after a 1063-token prompt, 128 tokens | 9.4 tok/s (TR16 tier hit 0.68; worker 0.90) |
+| decode after the 4096-token prompt | 7.8 tok/s |
+| wiki2 1063 tokens, all logits, vs llama.cpp | mean KL 0.044, top-1 92.9 %, PPL 5.534 vs 5.556 |
+| 2048-token prompt logits vs single node | same argmax, KL 0.013 (split summation order) |
+
+**Gains and limits.** The gains are prompt speed with TR16 holding about 30 GB less of the experts, which also keeps
+it fast when a browser takes its RAM. Decode is bound by TR16's own CPU lane and trunk, since the B550 cannot hold a
+share above 3/9.
+
+**Share.** The simulator (`glm_ds41f_sim.py roofline`) gives the idle decode as:
+- 12.8 tok/s alone
+- 15.2 at 2/9
+- 13.5 at 3/9
+- 11.6 at 4/9
+
+Above 2/9 the B550's CPU lane is the bound. Larger shares pay only with the B550's GPU (RTX 5060 Ti) holding a tier
+of its slices, which is the next step. That GPU would also take its share of the streamed prompt, instead of
+fetching the rows back.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;

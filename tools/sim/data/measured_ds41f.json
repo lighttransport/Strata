@@ -147,6 +147,39 @@
    "measured": {
     "tok_s": 42.1
    }
+  },
+  {
+   "name": "DS4.1F runner, TR16 alone, decode under load (tier hit 0.16)",
+   "kind": "runner_decode",
+   "tolerance": 0.15,
+   "fit": false,
+   "source": "Strata src/program/ds41_decode.cpp, UD-IQ1_S, 600-token wikitext prompt + 128 tokens, GPU tier from empty (hit 0.16-0.17), TR16 load average 5-7, 2026-10-21 (9.13 tok/s)",
+   "plan": {
+    "profile": "now",
+    "set": {
+     "hit_adaptive": 0.16
+    }
+   },
+   "measured": {
+    "tok_s": 9.13
+   }
+  },
+  {
+   "name": "DS4.1F runner, TR16 + B550 worker (2/9 of the rows over IB), decode under load (tier hit 0.17)",
+   "kind": "runner_decode",
+   "tolerance": 0.15,
+   "fit": false,
+   "source": "Strata src/program/ds41_decode.cpp, UD-IQ1_S, 600-token wikitext prompt + 128 tokens, GPU tier from empty (hit 0.16-0.17), TR16 load average 5-7, 2026-10-21; B550 strata-glm-tp-worker DS4.1 mode, 15 threads, rows in /dev/shm (10.34 tok/s; reply wait 0.07 ms per layer)",
+   "plan": {
+    "profile": "now",
+    "remote_share": 0.2222,
+    "set": {
+     "hit_adaptive": 0.16
+    }
+   },
+   "measured": {
+    "tok_s": 10.34
+   }
   }
  ],
  "engram": {

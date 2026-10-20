@@ -63,6 +63,10 @@ void ds41_index_topk(const float* score, int score_stride, int tokens, int pos0,
 void ds41_patch_info(int* info, const int* count, int tokens, int pos0, int ratio, void* stream);
 /// ds41_compress2 of consecutive pairs: out[r] from rows 2r and 2r + 1 of v and s ([2 rows][n]).
 void ds41_compress2_rows(const float* v, const float* s, float* out, int rows, int n, void* stream);
+/// Device bytes: count blocks of `rows` rows of `width` bytes, block c row r from src + c sstep + r spitch to
+/// dst + c dstep + r dpitch (narrow strided rows the copy engine moves slowly).
+void ds41_copy_rows(uint8_t* dst, size_t dpitch, size_t dstep, const uint8_t* src, size_t spitch, size_t sstep, int width, int rows,
+                    int count, void* stream);
 void ds41_compress2(const float* v0, const float* s0, const float* v1, const float* s1, float* out, int n, void* stream);
 /// Engram: kv = [key_0..key_3 (n each), value (n)]; per stream s: d = sum_j rms(h_s)_j rms(key_s)_j g[s n + j] / sqrt(n),
 /// gate = sigmoid(sign(d) sqrt(max(|d|, 1e-6))), h_s += value * gate.

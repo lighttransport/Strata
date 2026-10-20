@@ -3,6 +3,7 @@
 // deepseek41.cpp build_attention41 / build_engram).
 #include "strata/kernels/ds41.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -574,6 +575,17 @@ __global__ void compress2_rows_kernel(const float* v, const float* s, float* out
     out[size_t(r) * n + c] = __fadd_rn(__fmul_rn(v[a], e0 * inv), __fmul_rn(v[b], e1 * inv));
 }
 
+// count blocks of rows x width bytes: block c's row r from src + c sstep + r spitch to dst + c dstep + r dpitch
+__global__ void copy_rows_kernel(uint8_t* dst, size_t dpitch, size_t dstep, const uint8_t* src, size_t spitch, size_t sstep,
+                                 int width, int rows) {
+    const int c = blockIdx.y;
+    for (int r = blockIdx.x; r < rows; r += gridDim.x) {
+        uint8_t* d = dst + size_t(c) * dstep + size_t(r) * dpitch;
+        const uint8_t* s = src + size_t(c) * sstep + size_t(r) * spitch;
+        for (int i = threadIdx.x; i < width; i += blockDim.x) d[i] = s[i];
+    }
+}
+
 __global__ void compress2_kernel(const float* v0, const float* s0, const float* v1, const float* s1, float* out, int n) {
     const int c = blockIdx.x * blockDim.x + threadIdx.x;
     if (c >= n) return;
@@ -803,6 +815,14 @@ void ds41_compress2_rows(const float* v, const float* s, float* out, int rows, i
     if (rows < 1) return;
     compress2_rows_kernel<<<dim3(blocks(n, 256), unsigned(rows)), 256, 0, (cudaStream_t)stream>>>(v, s, out, n);
     check("compress2_rows");
+}
+
+void ds41_copy_rows(uint8_t* dst, size_t dpitch, size_t dstep, const uint8_t* src, size_t spitch, size_t sstep, int width, int rows,
+                    int count, void* stream) {
+    if (count < 1 || rows < 1 || width < 1) return;
+    copy_rows_kernel<<<dim3(unsigned(std::min(rows, 256)), unsigned(count)), 128, 0, (cudaStream_t)stream>>>(dst, dpitch, dstep, src, spitch,
+                                                                                                         sstep, width, rows);
+    check("copy_rows");
 }
 
 void ds41_compress2(const float* v0, const float* s0, const float* v1, const float* s1, float* out, int n, void* stream) {

@@ -13,10 +13,13 @@
 //   strata-glm-tp-worker --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm] [--reserve-gib=2]
 //                        [--pool-gib=G] [--backend=auto|ib|udp] [--null-compute]
 //   offline: --save-setup=FILE while serving, then --setup-file=FILE --selftest=N to time the expert math alone
+// DeepSeek-V4.1 setups (kTpMagicDs41, expert_tp.hpp) run on the DS4.1 expert lane and also answer fetches.
 #include "ggml.h"
+#include "strata/ds41/expert_lane.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
 #include "strata/kernels/cpu/pool.hpp"
 #include "strata/net/expert_tp.hpp"
+#include "strata/net/tp_storage.hpp"
 #include "ucomm.h"
 
 #include <chrono>
@@ -27,6 +30,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -42,6 +46,10 @@
 namespace {
 namespace cpu = strata::kernels::cpu;
 namespace net = strata::net;
+using net::kGiB;
+using net::mem_available;
+using net::Storage;
+using net::fnv;
 
 void ok(ucomm_status s, const char *what) {
     if (s != UCOMM_OK) throw std::runtime_error(std::string(what) + ": " + ucomm_strerror(s));
@@ -53,58 +61,6 @@ struct Layer {
     uint8_t *base = nullptr;   // slots * slot_bytes: [gate rows | up rows | down rows] per slot
     int experts = 0;
 };
-
-constexpr double kGiB = double(1ull << 30);
-
-size_t mem_available() {
-    std::ifstream info("/proc/meminfo");
-    std::string key;
-    size_t kib = 0;
-    while (info >> key >> kib) {
-        if (key == "MemAvailable:") return kib * 1024;
-        info.ignore(256, '\n');
-    }
-    return (size_t)sysconf(_SC_AVPHYS_PAGES) * (size_t)sysconf(_SC_PAGESIZE);
-}
-
-// The expert rows: anonymous memory, or a shared mapping of a --weights-dir file (kept for the next worker).
-struct Storage {
-    uint8_t *data = nullptr;
-    size_t bytes = 0;
-    std::string path; // the complete file; rows are received into path + ".partial" and renamed when complete
-    ~Storage() {
-        if (data) munmap(data, bytes);
-    }
-    void map_anonymous() {
-        void *p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (p == MAP_FAILED) throw std::runtime_error("cannot allocate the expert rows");
-        data = (uint8_t *)p;
-    }
-    void map_file(const std::string &file, bool create) {
-        const int fd = open(file.c_str(), create ? O_RDWR | O_CREAT | O_TRUNC : O_RDWR, 0600);
-        if (fd < 0) throw std::runtime_error("cannot open " + file);
-        if (create && ftruncate(fd, (off_t)bytes) != 0) {
-            close(fd);
-            throw std::runtime_error("cannot size " + file);
-        }
-        // Kept rows are mapped populated: faulting 4 KiB pages in on first use from every pool thread at once
-        // stalled the first decode for tens of seconds.
-        void *p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | (create ? 0 : MAP_POPULATE), fd, 0);
-        close(fd);
-        if (p == MAP_FAILED) throw std::runtime_error("cannot map " + file);
-        data = (uint8_t *)p;
-    }
-    void complete() { // the received rows become reusable
-        if (path.empty()) return;
-        if (msync(data, bytes, MS_SYNC) != 0 || std::rename((path + ".partial").c_str(), path.c_str()) != 0)
-            throw std::runtime_error("cannot finish " + path);
-    }
-};
-
-uint64_t fnv(const void *p, size_t n, uint64_t h = 14695981039346656037ull) {
-    for (size_t i = 0; i < n; ++i) h = (h ^ ((const uint8_t *)p)[i]) * 1099511628211ull;
-    return h;
-}
 
 } // namespace
 
@@ -164,7 +120,8 @@ int main(int argc, char **argv) {
         }
         net::TpSetup setup;
         std::memcpy(&setup, msg.data(), sizeof setup);
-        if (setup.magic != net::kTpMagic || n != sizeof setup + setup.layers * sizeof(net::TpLayer))
+        const bool ds41 = setup.magic == net::kTpMagicDs41;
+        if ((setup.magic != net::kTpMagic && !ds41) || n != sizeof setup + setup.layers * sizeof(net::TpLayer))
             throw std::runtime_error("bad setup message");
         const int H = (int)setup.hidden;
         std::map<int, Layer> layers;
@@ -183,7 +140,8 @@ int main(int argc, char **argv) {
             L.f.down_off = 2 * L.f.up_off;
             L.f.bytes = L.f.down_off + L.f.d_row * (size_t)H;
             L.f.swiglu_limit = s.swiglu_limit;
-            L.slot_bytes = (L.f.bytes + 4095) & ~(size_t)4095;
+            L.f.iq1s_rows = ds41;   // Strata's IQ1_S rows (ggml's pdep decode is microcoded on Zen 1/2)
+            L.slot_bytes = net::tp_blob_stride(L.f.bytes);
             L.experts = s.experts;
             per_set += L.slot_bytes;
             max_experts = std::max(max_experts, (size_t)s.experts);
@@ -386,6 +344,24 @@ int main(int argc, char **argv) {
             if (ucomm_mr_reg(c, p, bytes, &region) == UCOMM_OK) regions.push_back(region);
         }
         std::vector<cpu::ExpertJobMulti> jobs;
+        // DS4.1: the expert lane over this worker's rows (every layer has the same width), and request buffers for
+        // prompt chunks (f32 activations: STRATA_DS41_PREFILL_CHUNK tokens of 20 KiB)
+        std::unique_ptr<strata::ds41::ExpertLane> lane;
+        std::vector<int32_t> lane_ids;
+        std::vector<float> lane_w;
+        if (ds41) {
+            lane = std::make_unique<strata::ds41::ExpertLane>(H, (int)layers.begin()->second.f.n_ff,
+                                                              threads > 0 ? threads : (int)std::max(1u, std::thread::hardware_concurrency() / 2), true);
+            for (auto *region : regions) ucomm_mr_dereg(region);
+            regions.clear();
+            msg.resize(size_t(64) << 20);
+            reply.reserve(size_t(1024) * H);
+            for (const auto &[p, bytes] : {std::pair<void *, size_t>{msg.data(), msg.size()}, {reply.data(), reply.capacity() * sizeof(float)}}) {
+                ucomm_mr_t *region = nullptr;
+                if (ucomm_mr_reg(c, p, bytes, &region) == UCOMM_OK) regions.push_back(region);
+            }
+        }
+        double fetch_ms = 0, fetched_gib = 0;
         int64_t requests = 0;
         double busy_ms = 0, idle_ms = 0, reply_ms = 0;
         auto since = [](std::chrono::steady_clock::time_point t) {
@@ -398,6 +374,46 @@ int main(int argc, char **argv) {
             net::TpRequest rq;
             std::memcpy(&rq, msg.data(), sizeof rq);
             if (rq.layer < 0) break;
+            if (ds41 && rq.njobs < 0) {   // fetch: this worker's blobs of experts [nt, nt - njobs) of the layer
+                const auto f0 = std::chrono::steady_clock::now();
+                auto &L = layers.at(rq.layer);
+                const int first = rq.nt, count = -rq.njobs;
+                if (first < 0 || first + count > L.experts) throw std::runtime_error("fetch names invalid experts");
+                ok(ucomm_send(c, 0, net::kTagFetch, L.base + (size_t)first * L.slot_bytes, (size_t)count * L.slot_bytes), "fetch");
+                fetch_ms += since(f0);
+                fetched_gib += (double)count * L.slot_bytes / kGiB;
+                continue;
+            }
+            if (ds41) {
+                const auto t0 = std::chrono::steady_clock::now();
+                auto &L = layers.at(rq.layer);
+                if (rq.nt < 1 || rq.njobs % rq.nt || rq.act_bytes != 4 * H) throw std::runtime_error("bad DS4.1 request");
+                const int K = rq.njobs / rq.nt;
+                const auto *list = (const net::TpJob *)(msg.data() + sizeof rq);
+                const float *z = (const float *)(msg.data() + sizeof rq + rq.njobs * sizeof(net::TpJob));
+                lane_ids.resize((size_t)rq.njobs);
+                lane_w.resize((size_t)rq.njobs);
+                for (int j = 0; j < rq.njobs; ++j) {
+                    if (list[j].expert < -1 || list[j].expert >= L.experts || list[j].token != j / K)
+                        throw std::runtime_error("request names an invalid expert or token");
+                    lane_ids[(size_t)j] = list[j].expert;
+                    lane_w[(size_t)j] = list[j].weight;
+                }
+                strata::ds41::LaneLayer view;
+                view.f = L.f;
+                view.gate = L.base;
+                view.up = L.base + L.f.up_off;
+                view.down = L.base + L.f.down_off;
+                view.gate_stride = view.down_stride = L.slot_bytes;
+                reply.resize((size_t)rq.nt * H);
+                lane->run(view, z, rq.nt, lane_ids.data(), lane_w.data(), K, reply.data());
+                busy_ms += since(t0);
+                ++requests;
+                const auto replying = std::chrono::steady_clock::now();
+                send_reply(rq.nt);
+                reply_ms += since(replying);
+                continue;
+            }
             if (rq.nt < 1 || rq.nt > cpu::MAXT) throw std::runtime_error("request token count out of range");
             if (null_compute) {
                 reply.assign((size_t)rq.nt * H, 0.f);
@@ -446,7 +462,8 @@ int main(int argc, char **argv) {
         }
         const double per = requests ? 1.0 / requests : 0.0;
         std::fprintf(stderr, "TP_WORKER done requests=%lld compute_ms=%.1f (%.3f ms/request) idle_ms_per_request=%.3f "
-                             "reply_ms_per_request=%.3f\n", (long long)requests, busy_ms, busy_ms * per, idle_ms * per, reply_ms * per);
+                             "reply_ms_per_request=%.3f fetch_GiB=%.2f fetch_s=%.2f\n", (long long)requests, busy_ms, busy_ms * per,
+                     idle_ms * per, reply_ms * per, fetched_gib, fetch_ms / 1000);
         for (auto *region : regions) ucomm_mr_dereg(region);
         ucomm_finalize(c);
     } catch (const std::exception &e) {

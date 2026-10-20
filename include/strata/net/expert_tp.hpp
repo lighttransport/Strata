@@ -23,7 +23,15 @@
 namespace strata::net {
 
 inline constexpr uint32_t kTpMagic = 0x34505453; // "STP4"
-inline constexpr uint32_t kTagSetup = 1, kTagReady = 2, kTagWeights = 3, kTagAccept = 4, kTagRequest = 10, kTagReply = 11;
+// DeepSeek-V4.1 (src/program/ds41_decode.cpp): the same setup, accept, weights and ready messages; the worker computes
+// its rows with the DS4.1 expert lane (IQ1_S on Strata's AVX-2 rows). A request's activations are f32 z[nt][hidden]
+// (act_bytes = 4 hidden) and its jobs are every token's top_k routes in order (njobs = nt top_k); the reply is f32.
+// A request with njobs < 0 is a fetch: the worker sends back its stored blobs of experts [nt, nt - njobs) of `layer`
+// (kTagFetch, one message, each blob tp_blob_stride bytes), which the decoder's streamed prompt puts beside its own rows.
+inline constexpr uint32_t kTpMagicDs41 = 0x31445354; // "STD1"
+inline constexpr uint32_t kTagSetup = 1, kTagReady = 2, kTagWeights = 3, kTagAccept = 4, kTagRequest = 10, kTagReply = 11,
+                          kTagFetch = 12;
+inline size_t tp_blob_stride(size_t bytes) { return (bytes + 4095) & ~(size_t)4095; } // a worker blob's slot
 
 enum : uint32_t { kReplyF32 = 0, kReplyF16 = 1 };
 enum : uint32_t { kWeightsDummy = 0, kWeightsStreamed = 1 };

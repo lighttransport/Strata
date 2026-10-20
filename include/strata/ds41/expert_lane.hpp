@@ -20,10 +20,14 @@
 
 namespace strata::ds41 {
 
-/// One layer's experts as GGUF stores them: [experts][rows] of NativeFmt rows per projection.
+/// One layer's experts as GGUF stores them: [experts][rows] of NativeFmt rows per projection. The strides are the
+/// bytes from one expert to the next (0: f.gu_row * f.n_ff and f.d_row * hidden, the GGUF tensors). A row slice of
+/// wider experts sets f.n_ff to its rows and keeps the full strides and f.d_row, so the down rows read their first
+/// f.n_ff columns; experts packed one blob each (gate | up | down) set every stride to the blob's size.
 struct LaneLayer {
     strata::kernels::cpu::NativeFmt f;
     const uint8_t *gate = nullptr, *up = nullptr, *down = nullptr;
+    size_t gate_stride = 0, down_stride = 0;
 };
 
 class ExpertLane {

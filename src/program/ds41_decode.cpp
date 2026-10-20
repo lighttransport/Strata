@@ -22,12 +22,15 @@
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
 #include "strata/kernels/native_mmvq.hpp"
+#include "strata/net/expert_tp.hpp"
 #include "strata/prefill/gemm.hpp"
 #include "strata/prefill/moe_mmq.hpp"
 
 #include "ggml.h"
+#include "ucomm.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -191,6 +194,66 @@ __attribute__((target("avx2"))) inline void copy_nt_avx2(uint8_t* dst, const uin
     if (i < n) std::memcpy(dst + i, src + i, n - i);
 }
 
+// The other node's rows of every routed expert (STRATA_DS41_REMOTE_TP, include/strata/net/expert_tp.hpp): a
+// strata-glm-tp-worker in DS4.1 mode holds FFN rows [fl, ff) of each expert (and the matching down columns) in its RAM.
+// A decode pass sends each layer's routes and z there before its own work and adds the reply after it; a streamed
+// prompt fetches the rows back into the VRAM slots beside the local ones.
+struct Remote {
+    ucomm_t* comm = nullptr;
+    int hidden = 0;
+    std::vector<uint8_t> request;   // registered once (IB)
+    std::vector<float> reply;
+    std::vector<ucomm_mr_t*> regions;
+    ucomm_req_t *sending = nullptr, *receiving = nullptr;
+    bool reply_pinned = false;   // registered with the GPU runtime too (the streamed pass uploads it asynchronously)
+    double wait_ms = 0;
+    int64_t calls = 0;
+    struct Geo { size_t rows, gu_row, d_keep, d_rest, bytes, stride; };   // a layer's worker blob: [gate | up | down]
+    std::vector<Geo> geo;
+    static void ok(ucomm_status s, const char* what) {
+        if (s != UCOMM_OK) throw std::runtime_error(std::string("ds41 remote ") + what + ": " + ucomm_strerror(s));
+    }
+    void start(int layer, int nt, int K, const int* ids, const float* w, const float* z) {
+        const strata::net::TpRequest head{layer, nt, nt * K, 4 * hidden};
+        const size_t jobs = size_t(nt) * K * sizeof(strata::net::TpJob), bytes = sizeof head + jobs + size_t(nt) * hidden * 4;
+        if (bytes > request.size() || size_t(nt) * hidden > reply.size())
+            throw std::runtime_error("ds41 remote: a pass larger than the request buffers");
+        std::memcpy(request.data(), &head, sizeof head);
+        auto* list = reinterpret_cast<strata::net::TpJob*>(request.data() + sizeof head);
+        for (int j = 0; j < nt * K; ++j) list[j] = {ids[j], j / K, w[j]};
+        std::memcpy(request.data() + sizeof head + jobs, z, size_t(nt) * hidden * 4);
+        ok(ucomm_irecv(comm, 1, strata::net::kTagReply, reply.data(), size_t(nt) * hidden * 4, &receiving), "receive");
+        ok(ucomm_isend(comm, 1, strata::net::kTagRequest, request.data(), bytes, &sending), "send");
+    }
+    void finish_raw(int) {   // the reply in `reply`
+        const auto t0 = std::chrono::steady_clock::now();
+        ok(ucomm_wait(sending, nullptr), "send");
+        ok(ucomm_wait(receiving, nullptr), "reply");
+        sending = receiving = nullptr;
+        wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        ++calls;
+    }
+    void finish(float* sum, int nt) {   // sum[nt][hidden] += the worker's partial
+        const auto t0 = std::chrono::steady_clock::now();
+        ok(ucomm_wait(sending, nullptr), "send");
+        ok(ucomm_wait(receiving, nullptr), "reply");
+        sending = receiving = nullptr;
+        wait_ms += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        ++calls;
+        for (size_t i = 0; i < size_t(nt) * hidden; ++i) sum[i] += reply[i];
+    }
+    ~Remote() {
+        if (!comm) return;
+        const strata::net::TpRequest quit{-1, 0, 0, 0};
+        ucomm_send(comm, 1, strata::net::kTagRequest, &quit, sizeof quit);
+        std::cerr << "DS41 remote backend=" << ucomm_backend_name(comm) << " calls=" << calls
+                  << " wait_ms_per_call=" << (calls ? wait_ms / calls : 0.0) << "\n";
+        for (auto* r : regions) ucomm_mr_dereg(r);
+        if (reply_pinned) cudaHostUnregister(reply.data());
+        ucomm_finalize(comm);
+    }
+};
+
 class Decoder {
 public:
     Decoder(const std::string& path, int context, int threads, int chunk = 0)
@@ -202,6 +265,19 @@ public:
         if (const char* v = std::getenv("STRATA_DS41_PREFILL_CHUNK"); v && chunk <= 0) chunk_ = std::max(1, std::atoi(v));
         ring_ = c.window + chunk_;
         stream_ = make_stream(0);   // the default (blocking) flags
+        // STRATA_DS41_REMOTE_TP=HOST:PORT (this node's address the worker connects to): the worker takes FFN rows
+        // [fl_, ff) of every routed expert, STRATA_DS41_REMOTE_SHARE of them (default 2/9, whole 256-row blocks)
+        fl_ = c.ff;
+        if (const char* addr = std::getenv("STRATA_DS41_REMOTE_TP")) {
+            remote_addr_ = addr;
+            const char* v = std::getenv("STRATA_DS41_REMOTE_SHARE");
+            const std::string text = v ? v : "2/9";
+            const auto slash = text.find('/');
+            const double share = slash == std::string::npos ? std::stod(text) : std::stod(text.substr(0, slash)) / std::stod(text.substr(slash + 1));
+            const int block = 256, rows = std::clamp(int(std::lround(share * c.ff / block)) * block, block, c.ff - block);
+            if (c.ff % block) throw std::runtime_error("ds41 remote: the expert width is not whole 256-row blocks");
+            fl_ = c.ff - rows;
+        }
         // every non-expert tensor except the two host tables goes to the GPU as stored
         size_t bytes = 0;
         for (int l = 0; l < c.layers; ++l) {
@@ -236,13 +312,31 @@ public:
                 throw std::runtime_error("ds41: " + p + " experts: " + err);
             lane.f.swiglu_limit = c.clamp[size_t(l)];
             lane.f.iq1s_rows = true;
+            full_.push_back(lane.f);
+            lane.gate_stride = lane.f.gu_row * size_t(c.ff);
+            lane.down_stride = lane.f.d_row * size_t(c.hidden);
+            if (fl_ != c.ff) {   // this node's rows [0, fl_): the full row strides, the first fl_ down columns
+                lane.f.n_ff = fl_;
+                lane.f.h_bytes = ggml_row_size(ggml_type(lane.f.d_act), fl_);
+            }
             // a read-only shared mapping of the shard: first touches are about twice as fast to copy as the
             // loader's private mapping (11.8 vs 20.4 GB/s on TR16), for the streamed prompt experts and the lane
             static const bool lane_shared = !(std::getenv("STRATA_DS41_LANE_SHARED") && std::string(std::getenv("STRATA_DS41_LANE_SHARED")) == "0");
-            lane.gate = lane_shared ? shared(g) : g.data();
-            lane.up = lane_shared ? shared(u) : u.data();
-            lane.down = lane_shared ? shared(d) : d.data();
-            stream_src_.push_back({shared(g), shared(u), shared(d)});
+            const bool split = fl_ != c.ff;
+            const uint8_t *G = shared(g, !split), *U = shared(u, !split), *D = shared(d);
+            if (split) {   // populate only this node's gate/up rows of each expert
+                const uintptr_t pg = uintptr_t(sysconf(_SC_PAGESIZE));
+                for (const uint8_t* base : {G, U})
+                    for (int e = 0; e < c.experts; ++e) {
+                        const uintptr_t a = reinterpret_cast<uintptr_t>(base + size_t(e) * lane.gate_stride);
+                        const uintptr_t a0 = a / pg * pg, a1 = (a + lane.f.gu_row * size_t(fl_) + pg - 1) / pg * pg;
+                        populate_.push_back({reinterpret_cast<void*>(a0), size_t(a1 - a0)});
+                    }
+            }
+            lane.gate = lane_shared ? G : g.data();
+            lane.up = lane_shared ? U : u.data();
+            lane.down = lane_shared ? D : d.data();
+            stream_src_.push_back({G, U, D});
             experts_.push_back(lane);
         }
         for (const char* n : {"output_norm.weight", "output.weight"}) bytes += upload(n);
@@ -290,7 +384,7 @@ public:
             posix_fadvise(engram_fd_, off_t(t.file->data_start() + t.tensor->offset), off_t(t.bytes), POSIX_FADV_DONTNEED);
         }
         (void)process_cpus();   // before the lane pins this thread
-        lane_ = std::make_unique<ExpertLane>(c.hidden, c.ff, threads, true);
+        lane_ = std::make_unique<ExpertLane>(c.hidden, fl_, threads, true);
         // STRATA_DS41_GEMM_MIN (32): passes of at least this many tokens take GEMMs for the trunk
         if (const char* v = std::getenv("STRATA_DS41_GEMM_MIN")) gemm_min_ = std::max(2, std::atoi(v));
         if (cublasCreate(&blas_) != CUBLAS_STATUS_SUCCESS || cublasSetStream(blas_, stream_) != CUBLAS_STATUS_SUCCESS)
@@ -317,11 +411,137 @@ public:
         }
         (void)H;
         score_.assign(size_t(c.layers) * c.experts, 0.0f);
+        if (!remote_addr_.empty()) connect_remote();
         resize(chunk_);
         // a long first prompt borrows the tier's VRAM; prefill_done() shrinks the buffers and loads the tier
         tier_lent_ = chunk_ >= stream_min_;
         if (!tier_lent_) load_tier();
         else pin_experts();   // at load, not in the first prompt's time
+    }
+
+    // Connects to the worker (it dials STRATA_DS41_REMOTE_TP) and makes it hold rows [fl_, ff) of every expert: kept
+    // ones (same fingerprint in its --weights-dir) or streamed now, read with pread so they never enter this node's
+    // mapping, then dropped from its page cache.
+    void connect_remote() {
+        const auto& c = cfg_;
+        namespace net = strata::net;
+        auto r = std::make_unique<Remote>();
+        r->hidden = c.hidden;
+        ucomm_config cfg;
+        ucomm_config_default(&cfg);
+        cfg.rank = 0;
+        cfg.world = 2;
+        cfg.root_addr = remote_addr_.c_str();
+        if (!std::getenv("UCOMM_TIMEOUT_MS")) cfg.timeout_ms = 0;   // wait for the worker (it may load for minutes)
+        std::cerr << "DS41 remote waiting for the worker at " << remote_addr_ << "\n";
+        Remote::ok(ucomm_init(&cfg, &r->comm), "connect");
+        const int most = std::max(chunk_, 1024);   // the largest CPU-lane pass (prompt chunks, decode)
+        r->request.resize(sizeof(net::TpRequest) + size_t(most) * c.top_k * sizeof(net::TpJob) + size_t(most) * c.hidden * 4);
+        r->reply.resize(size_t(most) * c.hidden);
+        for (const auto& [ptr, bytes] : {std::pair<void*, size_t>{r->request.data(), r->request.size()}, {r->reply.data(), r->reply.size() * 4}}) {
+            ucomm_mr_t* region = nullptr;
+            if (ucomm_mr_reg(r->comm, ptr, bytes, &region) == UCOMM_OK) r->regions.push_back(region);
+        }
+        std::vector<uint8_t> setup(sizeof(net::TpSetup));
+        uint64_t h = 14695981039346656037ull;
+        auto mix = [&](const void* p, size_t n) { for (size_t i = 0; i < n; ++i) h = (h ^ static_cast<const uint8_t*>(p)[i]) * 1099511628211ull; };
+        for (int l = 0; l < c.layers; ++l) {
+            const auto& F = full_[size_t(l)];
+            const net::TpLayer spec{l, int32_t(F.gu_type), int32_t(F.d_type), c.ff, fl_, c.experts, c.clamp[size_t(l)], 0};
+            const auto* b = reinterpret_cast<const uint8_t*>(&spec);
+            setup.insert(setup.end(), b, b + sizeof spec);
+            const size_t rows = size_t(c.ff - fl_), d_keep = ggml_row_size(ggml_type(F.d_type), fl_);
+            const size_t d_rest = F.d_row - d_keep, bytes = 2 * rows * F.gu_row + d_rest * size_t(c.hidden);
+            r->geo.push_back({rows, F.gu_row, d_keep, d_rest, bytes, net::tp_blob_stride(bytes)});
+            for (const char* part : {"gate", "up", "down"}) {
+                const auto& t = art_.at("blk." + std::to_string(l) + ".ffn_" + part + "_exps.weight");
+                const int64_t geometry[4] = {l, fl_, int64_t(t.tensor->type), int64_t(t.bytes)};
+                mix(geometry, sizeof geometry);
+                mix(t.file->path().c_str(), t.file->path().size());
+                const int64_t where[2] = {int64_t(t.file->file_size()), int64_t(t.tensor->offset)};
+                mix(where, sizeof where);
+            }
+        }
+        const net::TpSetup head{net::kTpMagicDs41, uint32_t(c.layers), uint32_t(c.hidden), net::kReplyF32, net::kWeightsStreamed, 0, h ? h : 1};
+        std::memcpy(setup.data(), &head, sizeof head);
+        Remote::ok(ucomm_send(r->comm, 1, net::kTagSetup, setup.data(), setup.size()), "setup");
+        net::TpAccept accept{};
+        Remote::ok(ucomm_recv(r->comm, 1, net::kTagAccept, &accept, sizeof accept, nullptr), "accept");
+        if (!accept.ok)
+            throw std::runtime_error("ds41 remote: the worker refused: " + std::string(accept.reason, strnlen(accept.reason, sizeof accept.reason)));
+        double sent = 0;
+        const auto t0 = std::chrono::steady_clock::now();
+        if (!accept.have) {
+            size_t largest = 0;
+            for (const auto& g : r->geo) largest = std::max(largest, g.bytes);
+            std::array<std::vector<uint8_t>, 2> staging;
+            std::array<ucomm_req_t*, 2> inflight{};
+            std::array<ucomm_mr_t*, 2> registered{};
+            for (int k = 0; k < 2; ++k) {
+                staging[size_t(k)].resize(largest);
+                if (ucomm_mr_reg(r->comm, staging[size_t(k)].data(), largest, &registered[size_t(k)]) != UCOMM_OK) registered[size_t(k)] = nullptr;
+            }
+            std::map<std::string, int> fds;
+            auto fd_of = [&](const core::ArtifactTensor& t) {
+                auto it = fds.find(t.file->path());
+                if (it == fds.end()) {
+                    const int fd = ::open(t.file->path().c_str(), O_RDONLY);
+                    if (fd < 0) throw std::runtime_error("ds41 remote: cannot open " + t.file->path());
+                    it = fds.emplace(t.file->path(), fd).first;
+                }
+                return it->second;
+            };
+            auto read_at = [](int fd, uint8_t* dst, size_t n, uint64_t off) {
+                for (size_t got = 0; got < n;) {
+                    const ssize_t k = pread(fd, dst + got, n - got, off_t(off + got));
+                    if (k <= 0) throw std::runtime_error("ds41 remote: read failed");
+                    got += size_t(k);
+                }
+            };
+            std::vector<uint8_t> down;
+            int which = 0;
+            for (int l = 0; l < c.layers; ++l) {
+                const std::string p = "blk." + std::to_string(l) + ".";
+                const auto &G = art_.at(p + "ffn_gate_exps.weight"), &U = art_.at(p + "ffn_up_exps.weight"), &D = art_.at(p + "ffn_down_exps.weight");
+                const auto& g = r->geo[size_t(l)];
+                const auto& F = full_[size_t(l)];
+                const uint64_t go = G.file->data_start() + G.tensor->offset, uo = U.file->data_start() + U.tensor->offset;
+                const uint64_t dof = D.file->data_start() + D.tensor->offset;
+                const size_t gstride = F.gu_row * size_t(c.ff), dstride = F.d_row * size_t(c.hidden);
+                down.resize(dstride);
+                for (int e = 0; e < c.experts; ++e) {
+                    if (inflight[size_t(which)]) Remote::ok(ucomm_wait(inflight[size_t(which)], nullptr), "weights");
+                    inflight[size_t(which)] = nullptr;
+                    uint8_t* blob = staging[size_t(which)].data();
+                    read_at(fd_of(G), blob, g.rows * g.gu_row, go + size_t(e) * gstride + size_t(fl_) * g.gu_row);
+                    read_at(fd_of(U), blob + g.rows * g.gu_row, g.rows * g.gu_row, uo + size_t(e) * gstride + size_t(fl_) * g.gu_row);
+                    read_at(fd_of(D), down.data(), dstride, dof + size_t(e) * dstride);
+                    for (int row = 0; row < c.hidden; ++row)
+                        std::memcpy(blob + 2 * g.rows * g.gu_row + size_t(row) * g.d_rest, down.data() + size_t(row) * F.d_row + g.d_keep, g.d_rest);
+                    Remote::ok(ucomm_isend(r->comm, 1, net::kTagWeights, blob, g.bytes, &inflight[size_t(which)]), "weights");
+                    which ^= 1;
+                    sent += double(g.bytes);
+                }
+                // the worker's gate/up rows leave this node's page cache (the mapped local rows stay)
+                posix_fadvise(fd_of(G), off_t(go), off_t(G.bytes), POSIX_FADV_DONTNEED);
+                posix_fadvise(fd_of(U), off_t(uo), off_t(U.bytes), POSIX_FADV_DONTNEED);
+            }
+            for (auto* q : inflight) if (q) Remote::ok(ucomm_wait(q, nullptr), "weights");
+            for (auto* m : registered) if (m) ucomm_mr_dereg(m);
+            for (const auto& [path, fd] : fds) ::close(fd);
+        }
+        net::TpReady ready{};
+        Remote::ok(ucomm_recv(r->comm, 1, net::kTagReady, &ready, sizeof ready, nullptr), "ready");
+        // a GPU worker (strata-ds41-worker) computes its rows of streamed passes too: no rows are fetched back;
+        // STRATA_DS41_REMOTE_PREFILL=fetch fetches them anyway
+        remote_gpu_ = ready.ok == 2 && !(std::getenv("STRATA_DS41_REMOTE_PREFILL") && std::string(std::getenv("STRATA_DS41_REMOTE_PREFILL")) == "fetch");
+        if (remote_gpu_ && cudaHostRegister(r->reply.data(), r->reply.size() * 4, 0) == cudaSuccess) r->reply_pinned = true;
+        else (void)cudaGetLastError();
+        std::cerr << "DS41 remote backend=" << ucomm_backend_name(r->comm) << " rows=" << c.ff - fl_ << "/" << c.ff
+                  << " weights=" << (accept.have ? "kept" : "sent") << " prompt=" << (remote_gpu_ ? "worker_gpu" : "fetch")
+                  << " GiB=" << sent / double(1ull << 30) << " s="
+                  << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
+        remote_ = std::move(r);
     }
 
     /// After a long prompt: the chunk buffers shrink to STRATA_DS41_DECODE_CHUNK (64) and the GPU expert tier takes
@@ -439,6 +659,29 @@ public:
                     ev_dma_.push_back(e);
                 }
             }
+            if (remote_ && remote_gpu_) {   // the worker's partial sums; h's columns [fl_, ff) stay zero (local rows only)
+                remote_sum_ = Dev(T * H * 4);
+            }
+            if (remote_ && !remote_gpu_ && rbuf_.empty()) {   // the worker's part of an item: at most slot_bytes_ worth of experts
+                size_t most = 0;
+                for (int l = 0; l < c.layers; ++l)
+                    most = std::max(most, slot_bytes_ / std::max<size_t>(1, stream_stride(l)) * remote_->geo[size_t(l)].stride);
+                // STRATA_DS41_FETCH_BUFS (16): the fetches run this many items ahead of the uploads (the link stays
+                // busy while the VRAM slots wait for the compute)
+                const char* fb = std::getenv("STRATA_DS41_FETCH_BUFS");
+                const int bufs = fb ? std::max(2, std::atoi(fb)) : 16;
+                for (int i = 0; i < bufs; ++i) {
+                    void* hb = nullptr;
+                    ck(cudaHostAlloc(&hb, most, cudaHostAllocDefault), "fetch buffer");
+                    rbuf_.push_back(static_cast<uint8_t*>(hb));
+                    ucomm_mr_t* region = nullptr;
+                    if (ucomm_mr_reg(remote_->comm, hb, most, &region) == UCOMM_OK) rbuf_regions_.push_back(region);
+                    cudaEvent_t e;
+                    ck(cudaEventCreateWithFlags(&e, cudaEventDisableTiming), "event");
+                    ev_rdma_.push_back(e);
+                }
+                rscratch_ = Dev(most);
+            }
             s_x_ = Dev(size_t(8) * H * 4);
             s_xq_ = Dev(k::native_q8_1_bytes(c.hidden, 8));
             s_gate_ = Dev(size_t(8) * c.ff * 4);
@@ -458,6 +701,7 @@ public:
                 m_xq_ = Dev(mq::q8_bytes(rcap_, c.hidden));
                 s_gu_ = Dev(size_t(rcap_) * 2 * c.ff * 4);
                 s_hf_ = Dev(size_t(rcap_) * c.ff * 4);
+                if (remote_ && remote_gpu_) ck(cudaMemsetAsync(s_hf_.p, 0, s_hf_.bytes, stream_), "padded h");
                 m_hq_ = Dev(mq::q8_bytes(rcap_, c.ff));
                 s_dout_ = Dev(size_t(rcap_) * H * 4);
                 s_iota_ = Dev((size_t(rcap_) + 128) * 4);
@@ -494,6 +738,7 @@ public:
     }
     ~Decoder() {
         stream_end();
+        for (auto* r : rbuf_regions_) ucomm_mr_dereg(r);
         for (void* r : registered_) cudaHostUnregister(r);
         for (const auto& [file, m] : shared_maps_) munmap(m.first, m.second);
         if (engram_fd_ >= 0) ::close(engram_fd_);
@@ -653,7 +898,7 @@ private:
     int row_width() const { return cfg_.head_dim + cfg_.index_dim; }
 
     // a tensor's bytes in a read-only MAP_SHARED mapping of its shard (one per shard)
-    const uint8_t* shared(const core::ArtifactTensor& t) {
+    const uint8_t* shared(const core::ArtifactTensor& t, bool whole = true) {
         auto it = shared_maps_.find(t.file);
         if (it == shared_maps_.end()) {
             const int fd = ::open(t.file->path().c_str(), O_RDONLY);
@@ -663,11 +908,12 @@ private:
             if (p == MAP_FAILED) throw std::runtime_error("ds41: cannot map " + t.file->path());
             it = shared_maps_.emplace(t.file, std::make_pair(p, size_t(t.file->file_size()))).first;
         }
-        // experts should stay page-cached: ask for the uncached ones now (readahead in the background)
+        // experts should stay page-cached: ask for the uncached ones now (readahead in the background); a tensor
+        // shared with the remote node is read only where the caller populates it (no readahead into its rows)
         const uintptr_t a = reinterpret_cast<uintptr_t>(static_cast<const uint8_t*>(it->second.first) + t.file->data_start() + t.tensor->offset);
         const uintptr_t pg = uintptr_t(sysconf(_SC_PAGESIZE)), a0 = a / pg * pg;
-        madvise(reinterpret_cast<void*>(a0), size_t(a + t.bytes - a0), MADV_WILLNEED);
-        populate_.push_back({reinterpret_cast<void*>(a0), size_t(a + t.bytes - a0)});
+        madvise(reinterpret_cast<void*>(a0), size_t(a + t.bytes - a0), whole ? MADV_WILLNEED : MADV_RANDOM);
+        if (whole) populate_.push_back({reinterpret_cast<void*>(a0), size_t(a + t.bytes - a0)});
         return static_cast<const uint8_t*>(it->second.first) + t.file->data_start() + t.tensor->offset;
     }
 
@@ -1115,9 +1361,19 @@ private:
     // STRATA_DS41_TIER_PROMOTE (2) missed experts replace lower-scored residents of the same size (0: static tier).
     // Size: STRATA_DS41_GPU_EXPERT_MIB, default free VRAM less STRATA_DS41_GPU_RESERVE_MIB (1536).
     struct Slot { uint8_t* p; size_t bytes; int owner; bool pending; cudaEvent_t done; };
-    size_t expert_bytes(int l) const {
+    // a tier slot: this node's rows of one expert, packed [gate fl_ rows | up fl_ rows | down hidden rows of fl_ columns]
+    size_t slice_gate(int l) const { return experts_[size_t(l)].f.gu_row * size_t(fl_); }
+    size_t slice_down_row(int l) const { return ggml_row_size(ggml_type(experts_[size_t(l)].f.d_type), fl_); }
+    size_t expert_bytes(int l) const { return 2 * slice_gate(l) + slice_down_row(l) * size_t(cfg_.hidden); }
+    // copies expert e's slice of layer l to dst (host)
+    void slice_to_host(int l, int e, uint8_t* dst) const {
         const auto& L = experts_[size_t(l)];
-        return 2 * L.f.gu_row * size_t(cfg_.ff) + L.f.d_row * size_t(cfg_.hidden);
+        const size_t g = slice_gate(l), dr = slice_down_row(l);
+        std::memcpy(dst, L.gate + size_t(e) * L.gate_stride, g);
+        std::memcpy(dst + g, L.up + size_t(e) * L.gate_stride, g);
+        const uint8_t* down = L.down + size_t(e) * L.down_stride;
+        if (dr == L.f.d_row) std::memcpy(dst + 2 * g, down, dr * size_t(cfg_.hidden));
+        else for (int r = 0; r < cfg_.hidden; ++r) std::memcpy(dst + 2 * g + size_t(r) * dr, down + size_t(r) * L.f.d_row, dr);
     }
     void load_tier() {
         const auto& c = cfg_;
@@ -1174,10 +1430,11 @@ private:
             if (used + b > budget) continue;
             uint8_t* r = static_cast<uint8_t*>(arena_.p) + used;
             const auto& L = experts_[size_t(l)];
-            const size_t g = L.f.gu_row * size_t(c.ff), d = L.f.d_row * size_t(c.hidden);
-            ck(cudaMemcpy(r, L.gate + size_t(e) * g, g, cudaMemcpyHostToDevice), "tier gate");
-            ck(cudaMemcpy(r + g, L.up + size_t(e) * g, g, cudaMemcpyHostToDevice), "tier up");
-            ck(cudaMemcpy(r + 2 * g, L.down + size_t(e) * d, d, cudaMemcpyHostToDevice), "tier down");
+            const size_t g = slice_gate(l), dr = slice_down_row(l);
+            ck(cudaMemcpy(r, L.gate + size_t(e) * L.gate_stride, g, cudaMemcpyHostToDevice), "tier gate");
+            ck(cudaMemcpy(r + g, L.up + size_t(e) * L.gate_stride, g, cudaMemcpyHostToDevice), "tier up");
+            ck(cudaMemcpy2DAsync(r + 2 * g, dr, L.down + size_t(e) * L.down_stride, L.f.d_row, dr, size_t(c.hidden), cudaMemcpyHostToDevice, stream_), "tier down");
+            ck(cudaStreamSynchronize(stream_), "tier down");
             slot_[size_t(l)][size_t(e)] = int(slots_.size());
             slots_.push_back({r, b, i, false, nullptr});
             score_[size_t(i)] = float(count[size_t(i)] / std::max(1.0, all / double(c.layers * c.top_k)));
@@ -1225,12 +1482,8 @@ private:
             const size_t k = next++ % staging_.size();
             if (staged[k]) cudaEventSynchronize(staged[k]);   // the staging buffer's previous upload
             Slot& sl = slots_[size_t(j.slot)];
-            const auto& L = experts_[size_t(j.layer)];
-            const size_t g = L.f.gu_row * size_t(c.ff), d = L.f.d_row * size_t(c.hidden);
             uint8_t* st = staging_[k];
-            std::memcpy(st, L.gate + size_t(j.expert) * g, g);
-            std::memcpy(st + g, L.up + size_t(j.expert) * g, g);
-            std::memcpy(st + 2 * g, L.down + size_t(j.expert) * d, d);
+            slice_to_host(j.layer, j.expert, st);
             cudaMemcpyAsync(sl.p, st, sl.bytes, cudaMemcpyHostToDevice, copy_);
             cudaEventRecord(sl.done, copy_);
             staged[k] = sl.done;
@@ -1295,16 +1548,17 @@ private:
     void gpu_experts(int l, int i, const int* ids, const float* wts, int n) {
         const auto& c = cfg_;
         const auto& L = experts_[size_t(l)];
-        const size_t g = L.f.gu_row * size_t(c.ff);
+        const size_t g = slice_gate(l);
+        const int F = fl_;
         float* sum = g_sum_.f(size_t(i) * c.hidden);
         k::native_quantize_q8_1(xn_.f(size_t(i) * c.hidden), gx_q8_.p, c.hidden, 1, stream_);
         for (int j = 0; j < n; ++j) {
             const uint8_t* base = slots_[size_t(slot_[size_t(l)][size_t(ids[j])])].p;
-            k::native_mmvq(L.f.gu_type, base, gx_q8_.p, g_gate_.f(), c.hidden, c.ff, 1, stream_);
-            k::native_mmvq(L.f.gu_type, base + g, gx_q8_.p, g_up_.f(), c.hidden, c.ff, 1, stream_);
-            k::glm_swiglu(g_gate_.f(), g_up_.f(), g_h_.f(), c.ff, c.clamp[size_t(l)], stream_);
-            k::native_quantize_q8_1(g_h_.f(), g_h_q8_.p, c.ff, 1, stream_);
-            k::native_mmvq(L.f.d_type, base + 2 * g, g_h_q8_.p, g_out_.f(), c.ff, c.hidden, 1, stream_);
+            k::native_mmvq(L.f.gu_type, base, gx_q8_.p, g_gate_.f(), c.hidden, F, 1, stream_);
+            k::native_mmvq(L.f.gu_type, base + g, gx_q8_.p, g_up_.f(), c.hidden, F, 1, stream_);
+            k::glm_swiglu(g_gate_.f(), g_up_.f(), g_h_.f(), F, c.clamp[size_t(l)], stream_);
+            k::native_quantize_q8_1(g_h_.f(), g_h_q8_.p, F, 1, stream_);
+            k::native_mmvq(L.f.d_type, base + 2 * g, g_h_q8_.p, g_out_.f(), F, c.hidden, 1, stream_);
             k::ds41_axpy(g_out_.f(), wts[j], sum, c.hidden, stream_);
         }
     }
@@ -1318,16 +1572,17 @@ private:
     void expert_columns(int l, const uint8_t* base, const int* idx, const float* w, int n) {
         const auto& c = cfg_;
         const auto& L = experts_[size_t(l)];
-        const size_t g = L.f.gu_row * size_t(c.ff);
+        const size_t g = slice_gate(l);
+        const int F = fl_;
         for (int j = 0; j < n; j += 8) {
             const int m = std::min(8, n - j);
             k::ds41_gather(xn_.f(), idx + j, m, c.hidden, s_x_.f(), stream_);
             k::native_quantize_q8_1(s_x_.f(), s_xq_.p, c.hidden, m, stream_);
-            k::native_mmvq(L.f.gu_type, base, s_xq_.p, s_gate_.f(), c.hidden, c.ff, m, stream_);
-            k::native_mmvq(L.f.gu_type, base + g, s_xq_.p, s_up_.f(), c.hidden, c.ff, m, stream_);
-            k::glm_swiglu(s_gate_.f(), s_up_.f(), s_h_.f(), m * c.ff, c.clamp[size_t(l)], stream_);
-            k::native_quantize_q8_1(s_h_.f(), s_hq_.p, c.ff, m, stream_);
-            k::native_mmvq(L.f.d_type, base + 2 * g, s_hq_.p, s_out_.f(), c.ff, c.hidden, m, stream_);
+            k::native_mmvq(L.f.gu_type, base, s_xq_.p, s_gate_.f(), c.hidden, F, m, stream_);
+            k::native_mmvq(L.f.gu_type, base + g, s_xq_.p, s_up_.f(), c.hidden, F, m, stream_);
+            k::glm_swiglu(s_gate_.f(), s_up_.f(), s_h_.f(), m * F, c.clamp[size_t(l)], stream_);
+            k::native_quantize_q8_1(s_h_.f(), s_hq_.p, F, m, stream_);
+            k::native_mmvq(L.f.d_type, base + 2 * g, s_hq_.p, s_out_.f(), F, c.hidden, m, stream_);
             k::ds41_scatter_axpy(s_out_.f(), idx + j, w + j, m, c.hidden, g_sum_.f(), stream_);
         }
     }
@@ -1366,6 +1621,8 @@ private:
         consumed_ = 0;
         staged_ = 0;
         dma_issued_ = 0;
+        fetched_ = 0;
+        rdma_issued_ = 0;
         stop_stream_ = false;
         pin_experts();
         unpinned_.clear();
@@ -1393,6 +1650,7 @@ private:
         }
         producer_ = std::thread([this] { unpin_helper(); produce(); });
         stager_ = std::thread([this] { unpin_helper(); stage(); });
+        if (remote_ && !remote_gpu_) fetcher_ = std::thread([this] { unpin_helper(); fetch(); });
     }
     void stream_end() {
         if (!producer_.joinable()) return;
@@ -1400,6 +1658,7 @@ private:
         scv_.notify_all();
         producer_.join();
         if (stager_.joinable()) stager_.join();
+        if (fetcher_.joinable()) fetcher_.join();
     }
     // STRATA_DS41_PIN_GB (60): register this many GiB of the shared mapping's experts for DMA, whole layers spread
     // evenly over the depth (0: none; STRATA_DS41_PIN_EXPERTS=1: all). Read-only, ~0.06 s per GiB, once, at the first
@@ -1410,6 +1669,9 @@ private:
         pinned_tried_ = true;
         const auto& c = cfg_;
         pinned_layer_.assign(size_t(c.layers), 0);
+        gu_pin_.assign(size_t(c.layers), 0);
+        down_pin_.assign(size_t(c.layers), 0);
+        if (fl_ != c.ff) { pin_split(); return; }
         double total = 0;
         for (int l = 0; l < c.layers; ++l) total += double(expert_bytes(l)) * c.experts;
         const char* all = std::getenv("STRATA_DS41_PIN_EXPERTS");
@@ -1447,8 +1709,62 @@ private:
             registered_.push_back(reinterpret_cast<void*>(a));
             bytes += b - a;
         }
+        gu_pin_ = down_pin_ = pinned_layer_;
         std::cerr << "DS41 experts pinned GiB=" << bytes / double(1ull << 30) << " layers="
                   << std::count(pinned_layer_.begin(), pinned_layer_.end(), 1) << "/" << c.layers << " s="
+                  << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
+    }
+
+    // Two nodes: the same budget on whole down tensors (all of their columns are read here); the gate/up tensors
+    // are only partly here, so registering them whole would read the worker's rows into this node's page cache.
+    void pin_split() {
+        const auto& c = cfg_;
+        const char* gb = std::getenv("STRATA_DS41_PIN_GB");
+        double budget = (gb ? std::atof(gb) : 60.0) * double(1ull << 30);
+        if (budget <= 0) return;
+        const auto t0 = std::chrono::steady_clock::now();
+        const uintptr_t page = uintptr_t(sysconf(_SC_PAGESIZE));
+        bool failed = false;
+        auto reg = [&](const uint8_t* p, size_t n) {
+            if (failed) return false;
+            const uintptr_t a = reinterpret_cast<uintptr_t>(p) / page * page, b = (reinterpret_cast<uintptr_t>(p) + n + page - 1) / page * page;
+            if (cudaHostRegister(reinterpret_cast<void*>(a), b - a, 0x08 /* read-only */) != cudaSuccess) {
+                (void)cudaGetLastError();
+                failed = true;
+                return false;
+            }
+            registered_.push_back(reinterpret_cast<void*>(a));
+            return true;
+        };
+        auto spread = [](int l, double f) { return std::floor((l + 1) * f + 1e-9) != std::floor(l * f + 1e-9); };
+        double down_total = 0, gu_total = 0, bytes = 0;
+        for (int l = 0; l < c.layers; ++l) {
+            down_total += double(experts_[size_t(l)].down_stride) * c.experts;
+            gu_total += 2.0 * double(experts_[size_t(l)].f.gu_row) * fl_ * c.experts;
+        }
+        const double fd = std::min(1.0, budget / down_total);
+        for (int l = 0; l < c.layers && !failed; ++l)
+            if (spread(l, fd)) {
+                const auto& L = experts_[size_t(l)];
+                if (reg(stream_src_[size_t(l)].down, L.down_stride * size_t(c.experts))) { down_pin_[size_t(l)] = 1; bytes += double(L.down_stride) * c.experts; }
+            }
+        // STRATA_DS41_PIN_GATE_UP=1: also this node's gate/up rows per expert. Off by default: ~12k registrations
+        // slow every later host copy in HIP (decode after a 4K prompt fell from 6 to 3 tok/s)
+        const bool gate_up = std::getenv("STRATA_DS41_PIN_GATE_UP") && std::string(std::getenv("STRATA_DS41_PIN_GATE_UP")) == "1";
+        const double fg = gate_up ? std::min(1.0, std::max(0.0, budget - bytes) / gu_total) : 0.0;
+        for (int l = 0; l < c.layers && !failed && fg > 0; ++l)
+            if (spread(l, fg)) {
+                const auto& L = experts_[size_t(l)];
+                const size_t gl = L.f.gu_row * size_t(fl_);
+                bool all = true;
+                for (int e = 0; e < c.experts && all; ++e)
+                    all = reg(stream_src_[size_t(l)].gate + size_t(e) * L.gate_stride, gl) && reg(stream_src_[size_t(l)].up + size_t(e) * L.gate_stride, gl);
+                if (all) { gu_pin_[size_t(l)] = 1; bytes += 2.0 * double(gl) * c.experts; }
+            }
+        for (int l = 0; l < c.layers; ++l) pinned_layer_[size_t(l)] = gu_pin_[size_t(l)] && down_pin_[size_t(l)];
+        std::cerr << "DS41 experts pinned GiB=" << bytes / double(1ull << 30) << " down_layers="
+                  << std::count(down_pin_.begin(), down_pin_.end(), 1) << " gate_up_layers=" << std::count(gu_pin_.begin(), gu_pin_.end(), 1)
+                  << "/" << c.layers << (failed ? " (registration failed; the rest is copied)" : "") << " s="
                   << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
     }
 
@@ -1477,11 +1793,15 @@ private:
             for (int t = 0; t < nt; ++t)
                 workers.emplace_back([&, t] {
                     unpin_helper();
+                    const size_t gl = L.f.gu_row * size_t(fl_);   // this node's gate/up rows (all of them alone)
+                    const bool gu = !gu_pin_[size_t(it.layer)], dn = !down_pin_[size_t(it.layer)];   // the parts not DMAed from the mapping
                     for (int j = t; j < it.n; j += nt) {
                         const int e = it.first + j;
-                        copy_nt(host + size_t(j) * it.stride, src.gate + size_t(e) * g, g);
-                        copy_nt(host + size_t(j) * it.stride + g, src.up + size_t(e) * g, g);
-                        copy_nt(host + size_t(j) * it.stride + 2 * g, src.down + size_t(e) * d, d);
+                        if (gu) {
+                            copy_nt(host + size_t(j) * it.stride, src.gate + size_t(e) * g, gl);
+                            copy_nt(host + size_t(j) * it.stride + g, src.up + size_t(e) * g, gl);
+                        }
+                        if (dn) copy_nt(host + size_t(j) * it.stride + 2 * g, src.down + size_t(e) * d, d);
                     }
                 });
             for (auto& w : workers) w.join();
@@ -1511,24 +1831,98 @@ private:
             }
             if (idx >= dslots_) cudaStreamWaitEvent(copy_s_, ev_free_[size_t(ds)], 0);
             uint8_t* dst = static_cast<uint8_t*>(dring_[size_t(ds)].p);
-            if (pinned) {   // zero copy: three strided DMAs from the pinned mapping into the slot
-                const auto& L = experts_[size_t(it.layer)];
-                const Src& src = stream_src_[size_t(it.layer)];
-                const size_t g = L.f.gu_row * size_t(c.ff), d = L.f.d_row * size_t(c.hidden);
-                cudaMemcpy2DAsync(dst, it.stride, src.gate + size_t(it.first) * g, g, g, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
-                cudaMemcpy2DAsync(dst + g, it.stride, src.up + size_t(it.first) * g, g, g, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
-                cudaMemcpy2DAsync(dst + 2 * g, it.stride, src.down + size_t(it.first) * d, d, d, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
-            } else {
+            if (!pinned) {   // the staged parts: the whole slot alone; on two nodes this node's gate/up rows and an unpinned down
                 const int hs = u % hslots_;
-                cudaMemcpyAsync(dst, hring_[size_t(hs)], size_t(it.n) * it.stride, cudaMemcpyHostToDevice, copy_s_);
+                const auto& L = experts_[size_t(it.layer)];
+                const size_t g = L.f.gu_row * size_t(c.ff), gl = L.f.gu_row * size_t(fl_), d = L.f.d_row * size_t(c.hidden);
+                const uint8_t* h = hring_[size_t(hs)];
+                if (gl == g && !gu_pin_[size_t(it.layer)] && !down_pin_[size_t(it.layer)]) {
+                    cudaMemcpyAsync(dst, h, size_t(it.n) * it.stride, cudaMemcpyHostToDevice, copy_s_);
+                } else {
+                    if (!gu_pin_[size_t(it.layer)]) {
+                        cudaMemcpy2DAsync(dst, it.stride, h, it.stride, gl, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
+                        cudaMemcpy2DAsync(dst + g, it.stride, h + g, it.stride, gl, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
+                    }
+                    if (!down_pin_[size_t(it.layer)])
+                        cudaMemcpy2DAsync(dst + 2 * g, it.stride, h + 2 * g, it.stride, d, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
+                }
                 cudaEventRecord(ev_dma_[size_t(hs)], copy_s_);
                 ++u;
+            }
+            {   // zero copy: strided DMAs from the pinned mapping into the slot
+                const auto& L = experts_[size_t(it.layer)];
+                const Src& src = stream_src_[size_t(it.layer)];
+                const size_t g = L.f.gu_row * size_t(c.ff), gl = L.f.gu_row * size_t(fl_), d = L.f.d_row * size_t(c.hidden);
+                if (gu_pin_[size_t(it.layer)] && gl == g) {
+                    cudaMemcpy2DAsync(dst, it.stride, src.gate + size_t(it.first) * g, g, gl, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
+                    cudaMemcpy2DAsync(dst + g, it.stride, src.up + size_t(it.first) * g, g, gl, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
+                } else if (gu_pin_[size_t(it.layer)]) {   // two nodes: each expert's rows are their own registration
+                    for (int j = 0; j < it.n; ++j) {
+                        const size_t e = size_t(it.first + j);
+                        ck(cudaMemcpyAsync(dst + size_t(j) * it.stride, src.gate + e * g, gl, cudaMemcpyHostToDevice, copy_s_), "pinned gate");
+                        ck(cudaMemcpyAsync(dst + size_t(j) * it.stride + g, src.up + e * g, gl, cudaMemcpyHostToDevice, copy_s_), "pinned up");
+                    }
+                }
+                if (down_pin_[size_t(it.layer)])
+                    cudaMemcpy2DAsync(dst + 2 * g, it.stride, src.down + size_t(it.first) * d, d, d, size_t(it.n), cudaMemcpyHostToDevice, copy_s_);
+            }
+            if (remote_ && !remote_gpu_) {   // the worker's rows: gate/up rows [fl_, ff) and each down row's columns from fl_ on
+                {
+                    std::unique_lock<std::mutex> lock(sm_);
+                    scv_.wait(lock, [&] { return stop_stream_ || fetched_ >= idx + 1; });
+                    if (stop_stream_) return;
+                }
+                const auto& rg = remote_->geo[size_t(it.layer)];
+                const auto& L = experts_[size_t(it.layer)];
+                const size_t g = L.f.gu_row * size_t(c.ff), gl = L.f.gu_row * size_t(fl_), rows = rg.rows * rg.gu_row;
+                const uint8_t* rb = rbuf_[size_t(idx % int(rbuf_.size()))];
+                // one upload of the item's blobs to VRAM scratch, then device copies into the slot's layout (the down
+                // columns are ~100-byte pieces of every row: too narrow for the copy engine)
+                uint8_t* sc = static_cast<uint8_t*>(rscratch_.p);
+                ck(cudaMemcpyAsync(sc, rb, size_t(it.n) * rg.stride, cudaMemcpyHostToDevice, copy_s_), "fetched upload");
+                ck(cudaEventRecord(ev_rdma_[size_t(idx % int(rbuf_.size()))], copy_s_), "fetched event");
+                ck(cudaMemcpy2DAsync(dst + gl, it.stride, sc, rg.stride, rows, size_t(it.n), cudaMemcpyDeviceToDevice, copy_s_), "fetched gate");
+                ck(cudaMemcpy2DAsync(dst + g + gl, it.stride, sc + rows, rg.stride, rows, size_t(it.n), cudaMemcpyDeviceToDevice, copy_s_), "fetched up");
+                k::ds41_copy_rows(dst + 2 * g + rg.d_keep, L.f.d_row, it.stride, sc + 2 * rows, rg.d_rest, rg.stride, int(rg.d_rest), c.hidden,
+                                  it.n, copy_s_);
             }
             cudaEventRecord(ev_ready_[size_t(ds)], copy_s_);
             {
                 std::lock_guard<std::mutex> lock(sm_);
                 produced_ = idx + 1;
                 dma_issued_ = u;
+                rdma_issued_ = idx + 1;
+            }
+            scv_.notify_all();
+        }
+    }
+
+    // The worker's rows of each item, in order, into registered pinned buffers (rbuf_), one fetch ahead per buffer.
+    void fetch() {
+        namespace net = strata::net;
+        const int R = int(rbuf_.size());
+        for (int idx = 0; idx < int(items_.size()); ++idx) {
+            const StreamItem& it = items_[size_t(idx)];
+            const int k = idx % R;
+            if (idx >= R) {   // the buffer's previous item uploaded
+                std::unique_lock<std::mutex> lock(sm_);
+                scv_.wait(lock, [&] { return stop_stream_ || rdma_issued_ >= idx - R + 1; });
+                if (stop_stream_) return;
+                lock.unlock();
+                cudaEventSynchronize(ev_rdma_[size_t(k)]);
+            }
+            const auto f0 = std::chrono::steady_clock::now();
+            const auto& rg = remote_->geo[size_t(it.layer)];
+            const net::TpRequest ask{it.layer, it.first, -it.n, 0};
+            ucomm_req_t* got = nullptr;
+            Remote::ok(ucomm_irecv(remote_->comm, 1, net::kTagFetch, rbuf_[size_t(k)], size_t(it.n) * rg.stride, &got), "fetch");
+            Remote::ok(ucomm_send(remote_->comm, 1, net::kTagRequest, &ask, sizeof ask), "fetch request");
+            Remote::ok(ucomm_wait(got, nullptr), "fetch");
+            fetch_s_ += std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count();
+            {
+                std::lock_guard<std::mutex> lock(sm_);
+                fetched_ = idx + 1;
+                if (stop_stream_) return;
             }
             scv_.notify_all();
         }
@@ -1610,6 +2004,26 @@ private:
             const int32_t* rtok = s_idx_.i() + pr.row_first;
             const float* rw = s_w_.f(pr.row_first);
             mq::quantize(xn_.f(), rtok, m_xq_.p, L.f.gu_type, c.hidden, c.hidden, pr.rows, stream_);
+            if (remote_ && remote_gpu_) {   // this node's rows: gate and up rows [0, fl_), h zero-padded to the full down rows
+                const int F = fl_;
+                mq::Product ga;
+                ga.w = stage; ga.type = L.f.gu_type; ga.w_rows = F; ga.w_cols = c.hidden; ga.expert_bytes = it.stride;
+                ga.n = pr.j1 - pr.j0; ga.xq = m_xq_.p; ga.bounds = s_bound_.i() + pr.bound0; ga.ids = s_iota_.i(); ga.total_rows = pr.rows;
+                ga.max_rows = pr.max_rows; ga.dst = s_gu_.f(); ga.ld_dst = 2 * F;
+                mmq_->run(ga, stream_);
+                mq::Product ua = ga;
+                ua.w = stage + g; ua.dst = s_gu_.f() + F;
+                mmq_->run(ua, stream_);
+                mq::swiglu(s_gu_.f(), s_dout_.f(), pr.rows, F, false, stream_, c.clamp[size_t(l)]);
+                ck(cudaMemcpy2DAsync(s_hf_.p, size_t(c.ff) * 4, s_dout_.p, size_t(F) * 4, size_t(F) * 4, size_t(pr.rows), cudaMemcpyDeviceToDevice, stream_), "padded h");
+                mq::quantize(s_hf_.f(), nullptr, m_hq_.p, L.f.d_type, c.ff, c.ff, pr.rows, stream_);
+                mq::Product dn = ga;
+                dn.w = stage + 2 * g; dn.type = L.f.d_type; dn.w_rows = c.hidden; dn.w_cols = c.ff; dn.xq = m_hq_.p;
+                dn.dst = s_dout_.f(); dn.ld_dst = c.hidden;
+                mmq_->run(dn, stream_);
+                k::ds41_scatter_axpy(s_dout_.f(), rtok, rw, pr.rows, c.hidden, g_sum_.f(), stream_);
+                continue;
+            }
             mq::Product gu;
             gu.w = stage; gu.type = L.f.gu_type; gu.w_rows = 2 * c.ff; gu.w_cols = c.hidden; gu.expert_bytes = it.stride;
             gu.n = pr.j1 - pr.j0; gu.xq = m_xq_.p; gu.bounds = s_bound_.i() + pr.bound0; gu.ids = s_iota_.i(); gu.total_rows = pr.rows;
@@ -1639,7 +2053,7 @@ private:
         std::vector<float> logits(size_t(T) * c.experts);
         ck(cudaMemcpyAsync(logits.data(), logits_.p, logits.size() * 4, cudaMemcpyDeviceToHost, stream_), "router");
         float* host_y = pinned_[1 + (l & 1)];
-        if (!producer_.joinable())   // the CPU lane's input (a streamed pass computes every expert on the GPU)
+        if (!producer_.joinable() || (remote_ && remote_gpu_))   // the CPU lane's or the worker's input
             ck(cudaMemcpyAsync(pinned_[0], xn_.p, size_t(T) * H * 4, cudaMemcpyDeviceToHost, stream_), "expert input");
         ck(cudaStreamSynchronize(stream_), "router sync");
         std::vector<int> ids(size_t(T) * K);
@@ -1687,6 +2101,9 @@ private:
                       route_log_.begin() + (size_t(i + skip_) * c.layers + size_t(l)) * K);
         const auto e0 = std::chrono::steady_clock::now();
         prof_[1] += std::chrono::duration<double>(e0 - f0).count();
+        // the worker's rows: every pass with a GPU worker, decode passes alone with fetched rows
+        const bool remote = remote_ && (!producer_.joinable() || remote_gpu_);
+        if (remote) remote_->start(l, T, K, ids.data(), wts.data(), pinned_[0]);
         // the GPU: the shared expert, then the resident routed experts; the CPU lane takes the others meanwhile
         mat(p + "ffn_gate_shexp.weight", xn_.f(), sh_gate_.f(), T);
         mat(p + "ffn_up_shexp.weight", xn_.f(), sh_up_.f(), T);
@@ -1695,6 +2112,13 @@ private:
         if (producer_.joinable()) {   // a streamed pass: every routed expert on the GPU, the others streamed in
             if (gpu_timing_) mark(1);
             stream_experts(l, ids, wts);
+            if (remote) {   // the worker's partial sums join the routed sum
+                remote_->finish_raw(T);
+                ck(cudaMemcpyAsync(remote_sum_.p, remote_->reply.data(), size_t(T) * H * 4, cudaMemcpyHostToDevice, stream_), "worker sums");
+                k::ds41_add(g_sum_.f(), remote_sum_.f(), g_sum_.f(), int(size_t(T) * H), stream_);
+                // a pinned reply buffer is received into again only after the next layer's router sync
+                if (!remote_->reply_pinned) ck(cudaStreamSynchronize(stream_), "worker sums");
+            }
             if (gpu_timing_) mark(2);
             prof_[2] += std::chrono::duration<double>(std::chrono::steady_clock::now() - e0).count();
             if (hook) observe("ffn_moe_out", l, g_sum_.f(), H);
@@ -1722,6 +2146,7 @@ private:
             tier_all_ += K;
         }
         lane_->run(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
+        if (remote) remote_->finish(host_y, T);
         prof_[2] += std::chrono::duration<double>(std::chrono::steady_clock::now() - e0).count();
         ck(cudaMemcpyAsync(moe_.p, host_y, size_t(T) * H * 4, cudaMemcpyHostToDevice, stream_), "experts");
         if (any_gpu) k::ds41_add(moe_.f(), g_sum_.f(), moe_.f(), int(size_t(T) * H), stream_);
@@ -1810,7 +2235,16 @@ private:
     std::mutex sm_;
     std::condition_variable scv_;
     int produced_ = 0, consumed_ = 0, staged_ = 0, dma_issued_ = 0;
-    std::thread stager_;
+    std::thread stager_, fetcher_;
+    // the worker's rows of streamed items: registered pinned buffers, their uploads' events
+    std::vector<uint8_t*> rbuf_;
+    std::vector<ucomm_mr_t*> rbuf_regions_;
+    std::vector<cudaEvent_t> ev_rdma_;
+    Dev rscratch_;   // VRAM: one item's worker blobs, before they are placed (copy_s_ orders its reuse)
+    int fetched_ = 0, rdma_issued_ = 0;
+public:
+    double fetch_s_ = 0;
+private:
     std::vector<int> unpinned_;   // the pass's items of unpinned layers, in order
     bool stop_stream_ = false;
     bool pinned_tried_ = false;
@@ -1821,8 +2255,16 @@ private:
     int cand_stride_ = 1;
     bool gpu_sel_ = false;
     int skip_ = 0;   // tokens dropped by enc-skip in this pass
+    // two nodes: this node's FFN rows [0, fl_) of each routed expert (fl_ = ff alone), the full formats for the
+    // streamed prompt, the worker
+    int fl_ = 0;
+    std::vector<cpu::NativeFmt> full_;
+    std::string remote_addr_;
+    std::unique_ptr<Remote> remote_;
+    bool remote_gpu_ = false;   // the worker runs its rows of streamed passes (else they are fetched back)
+    Dev remote_sum_;            // its partial sums of a streamed pass, uploaded
     std::vector<void*> registered_;
-    std::vector<char> pinned_layer_;
+    std::vector<char> pinned_layer_, gu_pin_, down_pin_;   // pinned_layer_: both parts (no host copy)
 public:
     double stream_wait_s_ = 0;
     long skipped_ = 0;
@@ -1917,6 +2359,8 @@ int run(int argc, char** argv) {
         else if (a == "--check-force") force = true;   // each layer from the reference's input and expert picks
         else if (a.starts_with("--dump-logits=")) dump_logits = a.substr(14);
         else if (a.starts_with("--save-all-logits=")) save_all = a.substr(18);   // every prompt position's logits, f32
+        else if (a.starts_with("--remote-tp=")) setenv("STRATA_DS41_REMOTE_TP", a.substr(12).c_str(), 1);   // HOST:PORT here
+        else if (a.starts_with("--remote-tp-share=")) setenv("STRATA_DS41_REMOTE_SHARE", a.substr(18).c_str(), 1);   // k/9
         else if (!a.starts_with("--")) steps = std::stoi(a);
         else throw std::invalid_argument("ds41: unknown option " + a);
     }
@@ -2026,7 +2470,7 @@ int run(int argc, char** argv) {
             std::cerr << "DS41 chunk pos=" << i << " tokens=" << n << " s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - c0).count()
                       << " stage_copy_s=" << d.prof_[7] - copy0 << " gpu_to_router_s=" << d.prof_[1] << " experts_s=" << d.prof_[2]
                       << " engram_s=" << d.prof_[4] << " index_s=" << d.prof_[5] << " stream_wait_s=" << d.stream_wait_s_
-                      << " enc_skip_token_layers=" << d.skipped_ << "\n";
+                      << " enc_skip_token_layers=" << d.skipped_ << " fetch_s=" << d.fetch_s_ << "\n";
         if (all_logits) all_logits.write(reinterpret_cast<const char*>(out.data()), std::streamsize(out.size() * 4));
         last.assign(out.end() - std::ptrdiff_t(V), out.end());
     }
