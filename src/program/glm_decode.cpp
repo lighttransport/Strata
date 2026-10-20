@@ -4399,8 +4399,16 @@ private:
                 check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*sizeof(int),cudaMemcpyDeviceToHost,stream));
                 check(cudaStreamSynchronize(stream));trace_routes(l,position,nt,m.top_k,selected.data());
             }
+            const bool early_inputs=modelopt_gpu->prepare_routed_inputs(x,static_cast<const int*>(ids.p),routing.f(),nt,stream,moe_ready);
+            struct DrainEarlyFailure {
+                cudaStream_t stream;bool active;int exceptions;
+                ~DrainEarlyFailure(){if(active&&std::uncaught_exceptions()>exceptions)cudaStreamSynchronize(stream);}
+            } drain{stream,early_inputs,early_inputs?std::uncaught_exceptions():0};
             ffn(p,x,out,"_shexp",m.shared_intermediate,layer.shared_swiglu_limit);
-            modelopt_gpu->routed(l,x,static_cast<const int*>(ids.p),routing.f(),out,nt,layer.swiglu_limit,stream);
+            // The final routed sum remains on this stream, after the shared
+            // FFN. Only the independent expert inputs cross the earlier fence.
+            modelopt_gpu->routed(l,x,static_cast<const int*>(ids.p),routing.f(),out,nt,layer.swiglu_limit,stream,
+                                 early_inputs?moe_ready:nullptr);
             return;
         }
 #endif

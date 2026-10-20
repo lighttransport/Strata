@@ -268,6 +268,7 @@ class Fp4NativeExecutor {
     const bool kda_qkv_batch=strata_env_is_one("STRATA_GLM_FP4_KDA_QKV_BATCH");
     const bool gpu_reduce_enabled=strata_env_is_one("STRATA_GLM_FP4_GPU_REDUCE");
     const bool expert_fusion=strata_env_is_one("STRATA_GLM_FP4_EXPERT_FUSION");
+    const bool early_readback=strata_env_is_one("STRATA_GLM_FP4_EARLY_READBACK");
     const bool head_tp_enabled=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP");
     const bool head_tp_borrow=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP_BORROW");
     const long long fixed_half_mask=strata_env_value_ll("STRATA_GLM_FP4_FIXED_HALF",0);
@@ -319,6 +320,7 @@ class Fp4NativeExecutor {
     double route_drop_share_sum=0,route_drop_share_max=0;
     double route_drop_multiplier_max=1;
     uint64_t decode_device_calls=0,decode_host_calls=0;
+    uint64_t early_readback_calls=0;
     bool decode_phase=false;
     std::map<int,std::array<uint8_t,288>> decode_owners;
     std::map<int,std::vector<uint64_t>> priority_frequency;
@@ -1022,6 +1024,7 @@ public:
         if(cpu_team_size!=0&&cpu_team_size!=2&&cpu_team_size!=4&&cpu_team_size!=8)
             throw std::invalid_argument("GLM FP4: CPU_TEAM_SIZE must be 0, 2, 4 or 8");
         if(expert_fusion)std::cerr<<"FP4_EXPERT_FUSION enabled=1 sm70="<<sm70<<" narrow_only=1\n";
+        if(early_readback)std::cerr<<"FP4_EARLY_READBACK enabled=1 narrow_only=1\n";
         if(cpu_row_tile!=1&&cpu_row_tile!=2&&cpu_row_tile!=4)
             throw std::invalid_argument("GLM FP4: CPU_ROW_TILE must be 1, 2 or 4");
         if(cpu_q8_bias&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_Q8_BIAS requires CPU_Q8=1");
@@ -1344,23 +1347,49 @@ public:
         c.trace_end(dense_trace,caller);
         if(nt>8)check(cublasSetStream(c.blas,restore.previous));
     }
-    void routed(int layer,const float* x,const int* ids,const float* weights,float* out,int nt,
-                float limit,cudaStream_t caller) {
-        const auto started=tick();
-        struct alignas(64) Times {double upload=0,gather=0,product=0,reduce=0,fused=0;};
-        std::array<Times,2> times{};Times cpu_times;
+    bool prepare_routed_inputs(const float* x,const int* ids,const float* weights,int nt,
+                               cudaStream_t caller,cudaEvent_t ready) {
+        if(!early_readback||nt<1||nt>8)return false;
         if(size_t(nt)>host_rows) {
             check(cudaStreamSynchronize(caller));host_rows=nt;
             host_x=std::make_unique<Pinned>(size_t(nt)*4096*4,true);
             host_routes=std::make_unique<Pinned>(size_t(nt)*8*4,true);
             host_weights=std::make_unique<Pinned>(size_t(nt)*8*4,true);
         }
+        // The router and normalized input precede the independent shared FFN.
+        // This event fences only its readback, so CPU expert work can start
+        // while the shared FFN remains queued on the coordinator stream.
+        try {
+            check(cudaMemcpyAsync(host_x->p,x,size_t(nt)*4096*4,cudaMemcpyDeviceToHost,caller));
+            check(cudaMemcpyAsync(host_routes->p,ids,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
+            check(cudaMemcpyAsync(host_weights->p,weights,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
+            check(cudaEventRecord(ready,caller));
+        }catch(...){cudaStreamSynchronize(caller);throw;}
+        ++early_readback_calls;return true;
+    }
+    void routed(int layer,const float* x,const int* ids,const float* weights,float* out,int nt,
+                float limit,cudaStream_t caller,cudaEvent_t inputs_ready=nullptr) {
+        const auto started=tick();
+        struct alignas(64) Times {double upload=0,gather=0,product=0,reduce=0,fused=0;};
+        std::array<Times,2> times{};Times cpu_times;
         const bool skip_activation=gpu_reduce_enabled&&nt>8&&device_routing_enabled&&
             (contexts.size()==1||peer_enabled);
-        if(!skip_activation)check(cudaMemcpyAsync(host_x->p,x,size_t(nt)*4096*4,cudaMemcpyDeviceToHost,caller));
-        check(cudaMemcpyAsync(host_routes->p,ids,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
-        check(cudaMemcpyAsync(host_weights->p,weights,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
-        check(cudaStreamSynchronize(caller));
+        if(inputs_ready) {
+            if(!early_readback||nt<1||nt>8||size_t(nt)>host_rows)
+                throw std::logic_error("GLM FP4: invalid early route readback");
+            check(cudaEventSynchronize(inputs_ready));
+        }else {
+            if(size_t(nt)>host_rows) {
+                check(cudaStreamSynchronize(caller));host_rows=nt;
+                host_x=std::make_unique<Pinned>(size_t(nt)*4096*4,true);
+                host_routes=std::make_unique<Pinned>(size_t(nt)*8*4,true);
+                host_weights=std::make_unique<Pinned>(size_t(nt)*8*4,true);
+            }
+            if(!skip_activation)check(cudaMemcpyAsync(host_x->p,x,size_t(nt)*4096*4,cudaMemcpyDeviceToHost,caller));
+            check(cudaMemcpyAsync(host_routes->p,ids,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
+            check(cudaMemcpyAsync(host_weights->p,weights,size_t(nt)*8*4,cudaMemcpyDeviceToHost,caller));
+            check(cudaStreamSynchronize(caller));
+        }
         const auto* selected=static_cast<const int*>(host_routes->p);
         auto* routing=static_cast<float*>(host_weights->p);
         const auto* activation=static_cast<const float*>(host_x->p);
@@ -2044,6 +2073,7 @@ public:
         }
     }
     void report(bool flush_profile=true)const {
+        if(early_readback)std::cerr<<"FP4_EARLY_READBACK_STATS calls="<<early_readback_calls<<'\n';
         if(profile&&flush_profile)for(const auto& c:contexts) {
             DeviceScope scope(c->device);c->trace_report(-1,0);
         }

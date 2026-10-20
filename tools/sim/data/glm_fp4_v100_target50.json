@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "d1ab46c0d3c01f82982ac732f914a83a4b159e12eeb29b36db67b2269b511b8b"
+      "sha256": "b52d6fb414d3303fe4faee1d6a0c061f3cdfd1320e62c6cef0ab331b68ea4e88"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6718,6 +6718,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-early-readback-mtp-candidate-full-v274",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 40.2574586592927,
+      "prefill_tok_s": 519.3356155699252,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-early-readback-mtp-control-full-v274",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 37.784679089026916,
+      "prefill_tok_s": 519.1776307450504,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-fc-adapter-depth3-v168",
       "experiment_family": "dflash2",
       "decode_tok_s": 32.015136706513296,
@@ -8046,6 +8066,7 @@
     "DFlash2: selector-aware training213 selected step320 with mean correct prefix3.875 versus3.375 on8calibration windows. This proxy does not establish native speed or coding quality and changes no selected preset or capacity.",
     "DFlash2: selector-aware training214 selected step896 with mean correct prefix2.375 versus2.21875 on32calibration windows. This proxy does not establish native speed or coding quality and changes no selected preset or capacity.",
     "DFlash2: offline discounted selector lookahead0.25 onfc32 raised mean correct teacher-prefix length2.15625to2.6875 across32independent windows. Zero-discount paths matched existing serving selection on every base/FC32window. This calibration proxy is separate from native TPS and coding quality; no selected preset or resource capacity changed.",
+    "DFlash2: earlier narrow router/input readback control/candidate measured 37.78/40.26 decode and 519.18/519.34 prefill tok/s, three full warmups and three timed512 requests per side. All six streams match the mild reference with zero timed target faults/swap. Same native build, CPU_M1/QKV1 and lossy policy; only scheduling differs. Both sides passed eight reused long and eight reused natural-length coding checks; fresh20remain unscored. No selected preset/capacity changed.",
     "DFlash2: optional first-real-prepare warmup depth7control/candidate measured 24.08/24.17 decode tok/s, three full warmups and one timed512 request per side. Both passed unchanged deadlines/residency and matched all512reference IDs. The 0.36percent difference is below the speed gate; no throughput gain or causal elimination of intermittent paging is established. No selected preset/capacity changed.",
     "DFlash2: native discounted-selector depth3 control/lookahead measured 34.79/31.50 decode tok/s after three full warmups and one timed512 request per side. The proxy improvement did not translate to native speed; no lookahead preset is selected and coding quality remains unscored.",
     "DFlash2: discounted-selector depth7 control and candidate failed before timing with an unavailable external draft. Pre-readiness append-width warmup did not ensure the later target-loaded protocol met its one-second deadline; these failures provide no throughput measurement. Fault counters do not identify their backing file.",
@@ -8486,6 +8507,42 @@
       "verification_rows": 691,
       "single_tail_steps": 1,
       "block_size": 4
+    },
+    {
+      "name": "dflash2-early-readback-mtp-candidate-full-v274-trial0",
+      "advances": 511,
+      "decode_ms": 12848.0,
+      "verify_ms": 10967.9
+    },
+    {
+      "name": "dflash2-early-readback-mtp-candidate-full-v274-trial1",
+      "advances": 511,
+      "decode_ms": 12624.9,
+      "verify_ms": 10754.0
+    },
+    {
+      "name": "dflash2-early-readback-mtp-candidate-full-v274-trial2",
+      "advances": 511,
+      "decode_ms": 12693.3,
+      "verify_ms": 10818.4
+    },
+    {
+      "name": "dflash2-early-readback-mtp-control-full-v274-trial0",
+      "advances": 511,
+      "decode_ms": 13480.6,
+      "verify_ms": 11519.0
+    },
+    {
+      "name": "dflash2-early-readback-mtp-control-full-v274-trial1",
+      "advances": 511,
+      "decode_ms": 13524.0,
+      "verify_ms": 11564.6
+    },
+    {
+      "name": "dflash2-early-readback-mtp-control-full-v274-trial2",
+      "advances": 511,
+      "decode_ms": 13579.9,
+      "verify_ms": 11614.4
     },
     {
       "name": "dflash2-fc-adapter-depth3-v168",

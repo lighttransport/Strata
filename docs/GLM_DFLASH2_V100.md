@@ -5,7 +5,7 @@ The opt-in `dflash2` decoder mode uses the published
 drafter. It is separate from the qualified MTP preset, which measured 32.10
 decode / 520.89 prefill tok/s on two V100 PCIe 32 GB GPUs and a dual Xeon Gold
 6240 host with 181 GiB RAM. A later experimental MTP configuration measured
-37.46 decode / 520.39 prefill tok/s and passed eight reused long and eight
+40.26 decode / 519.34 prefill tok/s and passed eight reused long and eight
 reused natural-length coding checks; Fresh20 remain unscored.
 The fastest repeated DFlash2 trial measured
 38.56 decode / 515.68 prefill tok/s, but failed all eight reused coding checks.
@@ -73,6 +73,31 @@ from RAM execution itself.
 For the candidate's median request, removing every other phase would reach
 43.85 tok/s. With those phases held fixed, 50 tok/s still requires a 1.42×
 verification speedup. This calculation keeps the measured proposal stream.
+
+Earlier route readback measured **37.78 / 40.26 decode tok/s** for control /
+candidate on the same hardware, a 6.54% gain. Both used one-token CPU scale
+decoding, batched KDA projections, RAM execution and the same mild MTP policy,
+with three full warmups and three timed 512-output requests per side. Prefill
+measured 519.18 / 519.34 tok/s. All six streams matched the mild reference,
+with zero timed major faults and swap; both sides passed eight reused long and
+eight reused natural-length coding checks. Fresh20 remain unscored.
+
+`STRATA_GLM_FP4_EARLY_READBACK=1` copies narrow routed inputs and coefficients
+before the shared expert FFN. CPU experts wait for that copy's event while the
+shared FFN runs; the final sum remains after the shared FFN on its original
+stream. The option is off by default and changes no arithmetic or route policy.
+CUDA and HIP builds and six host checks per backend passed; native FP4 GPU
+execution was tested on CUDA only. With the option off and on, both original
+128-token output checks were identical. The opt-in
+[`early-readback profile`](../configs/experimental/glm53f-fp4-dual-v100-early-readback.json)
+records the measured Linux settings. Selected presets remain unchanged.
+
+Both modes used 134 verification rounds and 20,455 CPU expert groups per timed
+request. For the candidate's median request, removing all nonverification work
+would reach only 47.23 tok/s; reaching 50 with the other phases fixed requires
+1.30 times faster verification. Its measured gaps are 1.24 times for 50 decode,
+1.54 times for 800 prefill and 1.93 times for 1,000 prefill. These are conditional
+phase calculations and measured gaps, with no fitted hardware capacity.
 
 ## Execution
 
