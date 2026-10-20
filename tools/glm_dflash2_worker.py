@@ -331,6 +331,18 @@ def tensor_frame(stream, rows, columns, device, dtype=torch.float16):
     return torch.frombuffer(raw, dtype=torch.float32).reshape(rows, columns).to(device=device, dtype=dtype)
 
 
+def warm_protocol(model):
+    """Materialize binary export and selector work before protocol deadlines."""
+    if model.graph is not None:
+        model.replay(model.graph_embedding)
+    if not torch.isfinite(model.last_hidden).all():
+        raise ValueError('protocol warmup has nonfinite hidden values')
+    model.last_hidden.float().cpu().contiguous().numpy().tobytes()
+    ids = torch.zeros((7, 16), device=model.device, dtype=torch.long)
+    unary = torch.zeros((7, 16), device=model.device, dtype=torch.float32)
+    model.select(ids, unary, 0).tolist()
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--model', type=Path, required=True)
@@ -342,9 +354,15 @@ def main():
     p.add_argument('--selector-scale', type=float, default=1.0, help='candidate transition scale; zero tests unary proposals')
     p.add_argument('--fc-adapter', type=Path, help='optional checksummed target-feature bridge calibration')
     p.add_argument('--linear-adapters', type=Path, help='optional checksummed FC and MLP output calibration')
+    p.add_argument('--warm-protocol', action='store_true', help='materialize binary export and selector work before readiness; requires --gemm-f32')
+    p.add_argument('--trace-protocol', type=int, default=0, help='log timings for the first N protocol requests (0..64)')
     a = p.parse_args()
     if a.fc_adapter and a.linear_adapters:
         p.error('choose FC-only or FC/MLP adapters')
+    if a.warm_protocol and not a.gemm_f32:
+        p.error('--warm-protocol requires --gemm-f32')
+    if not 0 <= a.trace_protocol <= 64:
+        p.error('--trace-protocol must be 0..64')
     if not 0 <= a.selector_scale <= 2:
         p.error('selector scale must be finite and in 0..2')
     config = validate_config(json.loads((a.model / 'config.json').read_text()))
@@ -387,6 +405,8 @@ def main():
         model.forward(torch.zeros((8,4096),device=a.device,dtype=activation_dtype))
         if a.cuda_graph:
             model.enable_cuda_graph(torch.zeros((8,4096),device=a.device,dtype=activation_dtype))
+        if a.warm_protocol:
+            warm_protocol(model)
         model.cache=[];model.end=model.start=0;model.last_hidden=None
     torch.cuda.synchronize()
     reserved = torch.cuda.max_memory_reserved() / 2**20
@@ -395,6 +415,17 @@ def main():
     last_id = 0
     waiting_select = False
     source, destination = sys.stdin.buffer, sys.stdout.buffer
+    if a.trace_protocol:
+        import resource
+        import time
+        print(f'DFLASH_PROTOCOL_TRACE limit={a.trace_protocol}', file=sys.stderr, flush=True)
+    trace_start, trace_usage = None, None
+    def trace(phase, identity, op):
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        print('DFLASH_PROTOCOL '+json.dumps(dict(request_id=identity, op=op, phase=phase,
+              elapsed_ms=(time.perf_counter()-trace_start)*1000,
+              major_faults=usage.ru_majflt-trace_usage.ru_majflt,
+              minor_faults=usage.ru_minflt-trace_usage.ru_minflt)), file=sys.stderr, flush=True)
     while True:
         line = source.readline(8193)
         if not line:
@@ -407,6 +438,10 @@ def main():
             raise ValueError('invalid DFlash2 request identity')
         last_id = identity
         op = r.get('op')
+        traced = bool(a.trace_protocol and identity <= a.trace_protocol)
+        if traced:
+            trace_start, trace_usage = time.perf_counter(), resource.getrusage(resource.RUSAGE_SELF)
+            trace('header', identity, op)
         if op in ('prepare', 'draft'):
             if waiting_select:
                 raise ValueError('DFlash2 selector reply missing')
@@ -416,14 +451,26 @@ def main():
             features = tensor_frame(source, end - start, 20480, a.device, activation_dtype)
             if not torch.isfinite(features).all():
                 raise ValueError('nonfinite DFlash2 target features')
+            if traced: trace('features_received', identity, op)
             model.append(features, start, end)
+            if traced: trace('context_appended', identity, op)
             if op == 'prepare':
                 print(json.dumps(dict(protocol=2, request_id=identity, prepared=True)), flush=True)
+                if traced: trace('reply_sent', identity, op)
                 continue
             embedding = tensor_frame(source, 8, 4096, a.device, activation_dtype)
+            if traced: trace('embedding_received', identity, op)
             hidden = model.forward(embedding).float().cpu().contiguous()
+            if traced: trace('forward_copied', identity, op)
             print(json.dumps(dict(protocol=2, request_id=identity, rows=7, columns=4096)), flush=True)
-            destination.write(hidden.numpy().tobytes());destination.flush()
+            if traced:
+                payload = hidden.numpy().tobytes()
+                trace('hidden_serialized', identity, op)
+                destination.write(payload)
+            else:
+                destination.write(hidden.numpy().tobytes())
+            destination.flush()
+            if traced: trace('reply_sent', identity, op)
             waiting_select = True
         elif op == 'select':
             ids, logits, anchor = r['ids'], r['logits'], r['anchor']
@@ -437,8 +484,10 @@ def main():
             if not torch.isfinite(values).all():
                 raise ValueError('nonfinite DFlash2 candidate logits')
             tokens = model.select(torch.tensor(ids, device=a.device), values, anchor).tolist()
+            if traced: trace('selected', identity, op)
             waiting_select = False
             print(json.dumps(dict(protocol=2, request_id=identity, tokens=tokens)), flush=True)
+            if traced: trace('reply_sent', identity, op)
         else:
             raise ValueError('unknown DFlash2 operation')
 

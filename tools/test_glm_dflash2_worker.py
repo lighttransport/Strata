@@ -12,6 +12,22 @@ except ImportError:
 
 @unittest.skipIf(torch is None, 'PyTorch not installed')
 class DFlash2Test(unittest.TestCase):
+    def test_protocol_warmup_preserves_hidden_and_parameters(self):
+        from glm_dflash2_worker import warm_protocol
+        model = self.tiny()
+        model.w['candidate_selector.hidden_projection.weight'] = torch.randn(8, 16)*.1
+        model.w['candidate_selector.predecessor_codebook'] = torch.randn(64, 8)*.1
+        model.w['candidate_selector.successor_codebook'] = torch.randn(64, 8)*.1
+        features, embedding = torch.randn(8, 80), torch.randn(8, 16)
+        model.append(features, 0, 8)
+        expected = model.forward(embedding).clone()
+        weights = {name: weight.clone() for name, weight in model.w.items()}
+        warm_protocol(model)
+        torch.testing.assert_close(model.last_hidden, expected, rtol=0, atol=0)
+        torch.testing.assert_close(model.forward(embedding), expected, rtol=0, atol=0)
+        for name, weight in model.w.items():
+            torch.testing.assert_close(weight, weights[name], rtol=0, atol=0)
+
     def tiny(self):
         torch.manual_seed(4)
         c = dict(hidden_size=16, head_dim=4, num_attention_heads=4, num_key_value_heads=2,
