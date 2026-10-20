@@ -33,7 +33,11 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "00ab4a1fac71929d71b93a94f08567980f0f10ad466639b45bca2630b8d70fb3"
+      "sha256": "7d99d883096cc57a5eb40ea3711f81ade723749602368bd676503d3013fba878"
+    },
+    {
+      "path": "configs/experimental/glm53f-fp4-dual-v100-grouped.json",
+      "sha256": "caa41e4b7d38c06d81911c6e3c47d7a5dabc2dcade3447c45d3be2d50be8d743"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6998,6 +7002,26 @@
       "protocol": "8192 frozen input IDs / 128 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-grouped-external-candidate-full-v379",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 37.88665144280672,
+      "prefill_tok_s": 513.4665889446733,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-grouped-external-control-full-v379",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 35.29712442409046,
+      "prefill_tok_s": 513.1513834165409,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-hot-policy-0-v106",
       "experiment_family": "dflash2",
       "decode_tok_s": 36.43285944473756,
@@ -8244,6 +8268,7 @@
     "DFlash2: MTP depth3/softcap3 versus depth4/softcap4 on the same private grouped core measured 41.79/40.47 decode and 519.59/520.57 prefill tok/s. Three full warmups and three timed512 requests per side, zero timed target faults/swap, clean uninstrumented exits. Candidate outputs changed but were repeatable and passed length/EOS/repetition gates. Decode regressed 3.14 percent; coding skipped. This is MTP timing, not external DFlash2 throughput or a quality result. Fresh20 unscored; selected reference and capacities unchanged.",
     "DFlash2: separate source352functional coding checks passed all eight reused long and eight natural-length cases on both sides of the41.24MTP pair. Original366absolute speed-selection gate remains failed and original367conditional panels remain skipped. These checks establish reused functional coverage, not a new selected preset or fresh holdout quality.",
     "DFlash2: private nativeVNNI compact scalar scale lookup component ratio1.052376 with32workers, two expert shapes, five cyclic samples,16rotating4MiB weights and shared activation storage. Four-lane gather ratio0.531222 regressed. Scalar passed proxy gate only; no model tok/s inference, capacity fit or selected preset change. Native1920bitwise cases and forcedAVX2/scalar1920each passed.",
+    "DFlash2: external frozen rank32FC drafter, same377targetbinary and acceptance/routing policy, combined early readback/route upload/resident products/ordered scatter OFFversusON measured 35.30/37.89 decode and 513.15/513.47 prefill tok/s. Three fullwarmups and three timed512requests each, zero timed targetANDworker majorfaults/swap, clean uninstrumented exits. Allsixstreamsequal=True. This measures combined target changes, not any individual option or MTP throughput. Both sides passed eight reused long and eight natural-length coding cases. Fresh20unscored, reference/capacities unchanged.",
     "DFlash2: counting all usable GPU arena holes for decode admission measured 39.68/37.59 MTPdecode and 519.55/495.80prefill tok/s. Three full warmups and three timed512requests each, zero timed target faults/swap. Candidate outputs changed under existing affinity/drop policy but were repeatable and passed length/EOS/repetition gates; this is not a quality result. Decode regressed5.28percent, coding skipped. Original scratch reserves retained; no selected preset/capacity changed.",
     "DFlash2: coalesced NVFP4 operand reconstruction control/candidate measured 39.53/39.82decode and 519.19/520.63prefill tok/s, three full warmups and three timed512requests each. All six match the mild reference, zero timed target faults/swap. Prefill improved only0.28percent, below gate; coding skipped. Component speedup did not translate to material model speed. No selected preset/capacity changed.",
     "DFlash2: shared-tile transpose before NVFP4 operand stores passed35bitwise14graphcases and clean CUDA memcheck/racecheck. Same-allocation component geomean ratio1.665286 on the two expert matrix shapes; five alternating32call event samples, not model timing or a capacity fit. Both original128-output model checks matched; cold defaultOFF timing was unqualified due30majorfaults, whose backing file is unproven. Matched full-model results are separate.",
@@ -8260,7 +8285,8 @@
     "DFlash2: named fixed-projection profiling separates target prefill from decode/preparation. Attention projections are the largest fixed narrow GPU groups; timing endpoints include input conversion and host enqueue gaps and overlap broader product timers. These diagnostics do not change a throughput anchor or hardware capacity.",
     "DFlash2: the separately instrumented hot512-output request had zero new CPU metadata entries; target CPU setup totaled271ms, fused CPU products4147ms, and routing/input preparation plus coordinator waiting4857ms. Profiling synchronizes streams, phase sums overlap and must not be added, used as model timing, or fitted to capacities.",
     "DFlash2: the later CPU microbenchmark gives variants identical activation/scales storage. Earlier copies changed storage as well as kernels; the apparent eight-token gain did not persist in the controlled comparison. CPU component rows remain diagnostic, not model forecasts or fitted resource capacities.",
-    "DFlash2: the uniform activation-bias VNNI option passed CPU bitwise checks but failed its original one-token CPU product gate. No full-model timing was run for that uniform configuration. Later mixed dispatch policies use separately recorded experiments; component timings alone do not establish model throughput."
+    "DFlash2: the uniform activation-bias VNNI option passed CPU bitwise checks but failed its original one-token CPU product gate. No full-model timing was run for that uniform configuration. Later mixed dispatch policies use separately recorded experiments; component timings alone do not establish model throughput.",
+    "Working decode: tuning paused at41.24tok/s; opt-in grouped MTP3 profile freezes the repeated366configuration with separate376both8long+8natural functional coverage. The original absolute speed-selection gate remains failed, original5.26andqualified32.10references preserved, and fresh20unscored. Active prefill800target needs1.5405times the519.34working rate; no hardware capacity or performance anchor fitted."
   ],
   "limitations": [
     "Conditional resource roofs are optimistic workload bounds, not forecasts or fitted timing predictions.",
@@ -9159,6 +9185,78 @@
       "verification_rows": 294,
       "single_tail_steps": 0,
       "block_size": 8
+    },
+    {
+      "name": "dflash2-grouped-external-candidate-full-v379-trial0",
+      "advances": 511,
+      "decode_ms": 13484.7,
+      "verify_ms": 11070.9,
+      "draft_ms": 2108.62,
+      "restore_ms": 39.5584,
+      "rounds": 147,
+      "verification_rows": 588,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-grouped-external-candidate-full-v379-trial1",
+      "advances": 511,
+      "decode_ms": 13487.6,
+      "verify_ms": 11121.2,
+      "draft_ms": 2060.95,
+      "restore_ms": 39.1871,
+      "rounds": 147,
+      "verification_rows": 588,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-grouped-external-candidate-full-v379-trial2",
+      "advances": 511,
+      "decode_ms": 13560.3,
+      "verify_ms": 11146.0,
+      "draft_ms": 2109.51,
+      "restore_ms": 38.7507,
+      "rounds": 147,
+      "verification_rows": 588,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-grouped-external-control-full-v379-trial0",
+      "advances": 511,
+      "decode_ms": 14477.1,
+      "verify_ms": 12056.7,
+      "draft_ms": 2107.76,
+      "restore_ms": 39.9739,
+      "rounds": 147,
+      "verification_rows": 588,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-grouped-external-control-full-v379-trial1",
+      "advances": 511,
+      "decode_ms": 14465.1,
+      "verify_ms": 12095.5,
+      "draft_ms": 2056.9,
+      "restore_ms": 39.7509,
+      "rounds": 147,
+      "verification_rows": 588,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-grouped-external-control-full-v379-trial2",
+      "advances": 511,
+      "decode_ms": 14655.1,
+      "verify_ms": 12234.9,
+      "draft_ms": 2107.38,
+      "restore_ms": 39.811,
+      "rounds": 147,
+      "verification_rows": 588,
+      "single_tail_steps": 1,
+      "block_size": 4
     },
     {
       "name": "dflash2-hot-policy-0-v106-trial0",
@@ -10150,5 +10248,18 @@
       "decode_ms": 21138.3,
       "verify_ms": 18078.7
     }
-  ]
+  ],
+  "working_decode_profile": {
+    "path": "configs/experimental/glm53f-fp4-dual-v100-grouped.json",
+    "sha256": "caa41e4b7d38c06d81911c6e3c47d7a5dabc2dcade3447c45d3be2d50be8d743",
+    "decode_tok_s": 41.24360360942065,
+    "prefill_tok_s": 519.3389079428676,
+    "timing_source": "dflash2-resident-grouped-mtp-candidate-full-v366",
+    "functional_validation": "grouped_functional_coding",
+    "original_speed_selection_gate_passed": false,
+    "decode_optimization_status": "paused",
+    "active_target_prefill_tok_s": 800,
+    "fresh_holdout_scored": false,
+    "scope": "Settled opt-in working configuration after decode optimization stopped. Original qualification gate and selected performance anchor are unchanged. Prefill measurements must retain this decode policy."
+  }
 }

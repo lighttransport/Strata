@@ -1,5 +1,19 @@
 # GLM DFlash2 on V100 (experimental)
 
+Decode tuning is paused at **41.24 tok/s**. The opt-in
+[`grouped` working profile](../configs/experimental/glm53f-fp4-dual-v100-grouped.json)
+freezes the MTP depth-three configuration with grouped resident FP4 products
+and ordered scatter. Its repeated 8,192-input / 512-output measurements and
+separate reused coding checks are recorded below. The original **5.26 tok/s**
+reference and qualified KDA preset remain available. Fresh20 remain unscored.
+
+The active optimization target is **800+ prefill tok/s**, starting from
+**519.34 tok/s** on this configuration: **1.54×** more throughput, or reducing
+an 8,192-token prefill from **15.77 seconds to 10.24 seconds**. Decode settings
+are fixed during prefill experiments. The earlier 1.67× operand-reconstruction
+component gain produced only 0.28% model prefill improvement, so it is not
+counted toward this target.
+
 The opt-in `dflash2` decoder mode uses the published
 [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2)
 drafter. It is separate from the qualified MTP preset, which measured 32.10
@@ -12,8 +26,10 @@ passed the same reused panels in separate functional validation. It missed
 the predeclared speed-selection threshold, so the reference remains unchanged.
 The fastest repeated DFlash2 trial measured
 38.56 decode / 515.68 prefill tok/s, but failed all eight reused coding checks.
-Its route-drop cap of 0.75 is rejected. A less aggressive DFlash2 trial passed
-eight checks at 26.84 decode tok/s. The MTP preset remains selected, and the
+Its route-drop cap of 0.75 is rejected. The latest paired external DFlash2
+experiment measured **35.30 / 37.89 decode tok/s** and passed eight reused long
+and eight natural-length coding checks on both sides. It used the rank 32 FC
+adapter and a route-drop cap of 0.5. The MTP preset remains selected, and the
 50 tok/s target remains unmet.
 
 The pinned checkpoint revision is
@@ -256,6 +272,21 @@ variant regressed to a 0.531222× geometric mean ratio at 32 workers and was
 rejected. These are CPU product timings, not model throughput. The full-model
 scalar experiment includes the original zero-scale sentinel and charges its
 padded tables against the existing CPU cache budget.
+
+The external DFlash2 pair kept the rank 32 drafter, depth three, margin three,
+soft acceptance cap three and routing policy fixed. Enabling early input
+readback, route upload batching, resident expert grouping and ordered scatter
+together measured **35.30 / 37.89 decode** and **513.15 / 513.47 prefill tok/s**,
+a 7.34% decode gain. Each side used three full warmups and three timed
+512-output requests. All six output streams matched, with zero timed major
+faults or swap in both the target and draft worker. Both sides passed the two
+reused coding panels; Fresh20 remain unscored. This measures the combined
+target-engine changes, not a speedup from the adapter or an individual switch.
+The median requests used 147 verification rounds. Verification measured
+12.06 / 11.12 seconds and drafting 2.11 / 2.06 seconds. For the candidate's
+measured proposal stream, eliminating all nonverification work would reach
+45.95 tok/s; reaching 50 with other phases fixed requires 1.42 times faster
+verification. These are conditional phase calculations, not hardware rooflines.
 
 ## Execution
 
