@@ -48,6 +48,7 @@
     "source-v29.tar.gz": "c5a71ac2e8ea89733dc4504c363cbed037502958ac23c04dea01509455ad01e2",
     "source-v290.tar.gz": "74348d73bc2865d41bd4f0972530c4424dfa7a4b8c9d5ce57c6d5252a15e3980",
     "source-v30.tar.gz": "46c27e01c510d579987a75ea0c1e75c3fde5abc8bcd02447baa0aefcd642c6c8",
+    "source-v302.tar.gz": "f9d7ae08597e371bf27daeb4496d05e12e55ab0344c07a57f6824e7c1612f6cc",
     "source-v31.tar.gz": "9261f550de94ebc499d06c07d63efe2f1df544a5a9efd3ff3fe921c4823b5574",
     "source-v32.tar.gz": "39d054576faecb4786e00d9a4e51a41986292304768a9e7049a9772bb66eacb2",
     "source-v33.tar.gz": "b6a2df068c39d81835cca4b4452125b1197b297a05d66f778e0f1f43c214852b",
@@ -120,6 +121,8 @@
     "dflash2-evidence-62.tar.gz": "97b7af049406939d6154d871fadbfd95873371ddf73b22ee6392606f68fd57a3",
     "dflash2-evidence-64.tar.gz": "8ca06b80e08f4875596d93d4d8bb091d24304a5eb02e8a35450a6e747b14ca92",
     "dflash2-evidence-65.tar.gz": "42f4ae6984ac84ba1d0b15903ca6d83f7a0020f6ffaf4b68c6e7edc17e8ad0fd",
+    "dflash2-evidence-66.tar.gz": "c2d902d9bd390bf2793a2f4f4f3d6325a6d80fcc7339d5fb19350e60414b10c9",
+    "dflash2-evidence-67.tar.gz": "2842f4eaf65f6be8211ca7bcfa302545ac21b8ee689651c3565a73940200ec07",
     "dflash2-evidence-7.tar.gz": "d7d5cfb82abc77abe409c40c05a793a7e91abaebdb8e1802bd103f99efd77eb1",
     "dflash2-evidence-8.tar.gz": "65c90734e6036b89c898a51a2dab3b0081cc69a54964e658fb1fbe4f3a2673d8",
     "dflash2-evidence-9.tar.gz": "1175490aaa41fb992333b0b9e8b7dd1aa055390d224411fb2c16d303712c4f14"
@@ -27389,6 +27392,38 @@
       "raw_sha256": "9fcb3f177bd96582e370b88af6e041d3a0a721a93f88e8a5cf8cd94ffe92fc32"
     },
     {
+      "name": "default-v281-early0-parity128",
+      "ram_executable": true,
+      "early_readback": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "83c7fd3a28b876ad29114d87ed457b134299b1d08fe82a8ee4853a450c8d77dc",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 49,
+      "benchmark_error": "native FP4 timed requests swapped or faulted weight pages; residency qualification failed",
+      "result_sha256": "c9d78d9f7c4c70909122b3254a20fdfff535efc46d6ee1294774576179b48ccc",
+      "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "2e64b3e72d50d5c83ab3bfb3b8ff155c7810ee21bdcfb63ace61b8e1741ccb60"
+    },
+    {
+      "name": "default-v290-early0-parity128",
+      "ram_executable": true,
+      "early_readback": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "a6cef15228bda5015883315ff9f797bc0a5845a2fddcfdb0ccb33e208afb1db6",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "606036c9aab25400133d816fc2f2adcc4de459cad037ec256b754a9d1c42f607",
+      "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "952bfa70e963357195f0fd80da92ee0ef38e604e5a3645b9fa9ace2bcf2a674a"
+    },
+    {
       "name": "default-v39-parity128",
       "passed": true,
       "tokens": 128,
@@ -30861,8 +30896,518 @@
           "source-audit.json": "dd25c2d6868a5c106ba7b8d43200707a510a232d50f4db849f453cb3a3d8da17",
           "ctest.log": "699d632ba0b4a0301704abe157af0b7f12a03cf07000e941348b0f9cd6f49ece"
         }
+      },
+      {
+        "passed": true,
+        "captures": [
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          }
+        ],
+        "allocations": 2,
+        "repetitions_per_width": 3,
+        "all_logits_bitwise_equal": true,
+        "rollback_next_logits_bitwise_equal": true,
+        "prefix_graph_calls": 9672,
+        "prefix_graph_launched_calls": 9300,
+        "binary_sha256": "83c7fd3a28b876ad29114d87ed457b134299b1d08fe82a8ee4853a450c8d77dc",
+        "source_manifest_sha256": "5737454d52b4fe318c04b5d17f1f64f7ebc28226a9b0b2095574c55d89f76762",
+        "raw_sha256": "91df5318ffc5381e5621f366dda05d8c63780f866703653cd878d8a794ca4d2a",
+        "fit": false,
+        "performance_anchor": false,
+        "fresh_holdout_scored": false,
+        "scope": "Real128input target,widths1..4,bothhistorymodes,directvswarm/capture/replay,retainedprefixrollbackandhistoryreallocation. NativeprefixandsharedFFNgraphs with ordinary readbackready event outsidecapture. Ordered4 KDA retained prefixes, independently checked againstserialstate/output/everyprefix incomponent284. No throughput measurement; selectedpolicy/weightsunchanged.",
+        "numeric_version": 285,
+        "source_version": 281,
+        "validation_sha256": "c68dc4439efd3acc25b6b3de3baec823b56b0989f9741486b032658554470da6",
+        "cuda_build_raw_sha256": {
+          "config.log": "5c6322b6558f8ae1deb0d0b0bfe442841bc7e05db68bcc96c8421f060c334673",
+          "host.log": "0ca3269075c67c0bb02d6ef3a045870270fd02cb0b4216e4c1656e3142b886f2",
+          "ready": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "identity.sha256": "71c6d6b3f84e29e4b6451f943d16ee2a3fe707b610031747b1257c493054c91c",
+          "ram-image.log": "6536b7ba5ce1fd9086f273040e44855867f1e77e7352a78f32cefc6627e3c7ad",
+          "build.log": "2e21208906f41442abd9f2f187a5e0bc2e9876a1720fce736080f888590e88b3",
+          "source-audit.json": "3dbcdacdcbfca2b18d033aba619d96429a85283aece9582d4a462afc531ecc3b",
+          "ctest.log": "699d632ba0b4a0301704abe157af0b7f12a03cf07000e941348b0f9cd6f49ece"
+        }
       }
     ],
+    "ordered_kda_history": {
+      "passed": true,
+      "checks": [
+        {
+          "name": "direct",
+          "returncode": 0,
+          "bitwise_checks": 564,
+          "graph_checks": 24,
+          "log_sha256": "89d7e7350b2fe954cc638499e947c5026a580a378981212e9a9a70fbbd46a5c4"
+        },
+        {
+          "name": "memcheck",
+          "returncode": 0,
+          "bitwise_checks": 564,
+          "graph_checks": 24,
+          "log_sha256": "2763b84ba7d833723709c8db8e2f4fa5f9cfc15a53bf77deca41ea47d38b0639"
+        },
+        {
+          "name": "racecheck",
+          "returncode": 0,
+          "bitwise_checks": 564,
+          "graph_checks": 24,
+          "log_sha256": "f78e9e2c670a0424bfdfbdb5b4c5fccbc04e16583cd26114cf4fbef6cdaae8ff"
+        }
+      ],
+      "binary_sha256": "642093f794f39156d09598eb45ba60bc77a77cc5fa6e4c3999d6df415bfe4287",
+      "source_manifest_sha256": "5737454d52b4fe318c04b5d17f1f64f7ebc28226a9b0b2095574c55d89f76762",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "Serial128 oracle vsordered2/4 state,output,EVERYsnapshotbyte/padding,retained0/1/nt-1/nt+1,heads1/3/64,widths1/2/3/4/7/8/16,smallandextremeinputs,graphreplayandrollbacknextstep,unsupported-pathrejection. Componentsanitizers only,no modelTPS claim.",
+      "validation_sha256": "79d445de59a7c3bae2ca89ca2be0b10306a06ab39efe2a9fe62ec34b03255acd",
+      "standalone_hip_validation": {
+        "passed": true,
+        "compile_only": true,
+        "gpu_execution": false,
+        "backend_query": true,
+        "source_manifest_sha256": "befbb89ecbc76993888da0c96e299a7472e423ad09a6b751cf6a482d923757dd",
+        "source_sha256": {
+          "src/kernels/cuda/glm_prefill.cu": "66d600381ab260ff28dc452927087b4bfd824442268761934bedd5603337d02b",
+          "src/program/glm_decode.cpp": "c5b631e1a916bcd728c5040dc2870e8c9176834895680f832900c83ac5d8de21",
+          "tests/cuda/glm_kda_ordered_history_test.cpp": "3b048e294134247db5b04f5cbf2a68dd2fd23d528e4a501f9a46651174f5bcc4"
+        },
+        "binary_sha256": {
+          "decoder": "466947ee6fd06fd086e06b6f5a49dc3ff75ed9f42560c68eb3771b0f0abca18a",
+          "test": "4174f99e25fa7e42327c61aa03f9faeba077d37ff84067cc8aa1d471688dd249"
+        },
+        "proof_sha256": "3bfb4def735f50474a600580c55e49074e0974185dca81ff96996abc2c93959c",
+        "scope": "Configured HIP kernel,decoder and regression-test compile/link with isolated objects and replaced kernel archive member. Unchanged link dependencies reused from the current HIP build. Backend query only; no HIP GPU/model execution."
+      },
+      "standalone_hip_public_build": {
+        "passed": true,
+        "source_manifest_sha256": "befbb89ecbc76993888da0c96e299a7472e423ad09a6b751cf6a482d923757dd",
+        "compiled_source_entries": 561,
+        "hip_compile_only": true,
+        "hip_gpu_execution": false,
+        "hip_backend_query": true,
+        "host_tests": 6,
+        "binary_sha256": {
+          "strata-glm-decode": "72d641f59f84293f5fdebf4b8fc354158d7a602220b7a7346ea33a31d1ed7313",
+          "glm_kda_ordered_history_test": "6124bde8d695df85c2ca0e5ed4aa3f3144ed86f5f9a4efc724e8241ea1a7132a"
+        },
+        "logs_sha256": {
+          "ordered290-hip-configure-public.log": "fbe472f52a4fdf92242d50a91848cb69b45986ca20893d2a1eccc0cdb1f2493f",
+          "ordered290-hip-public-build.log": "fc0ede04472cde3dc58c77e68f9b1ca95916dc850f40062b49f4571ba6ecca1f",
+          "ordered290-hip-public-host.log": "54e748745af7f00a4bba9a4c443fc729b94a4d2338c9a3024d6ebd5ccf39e848",
+          "ordered290-hip-public-backend.log": "f0b2516365f89fc441621bdd875d951e5d5ad9b4d8a3770e8e649b5db5e4454b"
+        },
+        "scope": "Public source matches standalone290 compiled closure. Full configured HIP CMake generation/build of decoder,new CUDA/HIP regression target and six host tests; backend query. No HIP GPU model or kernel-test execution.",
+        "fit": false,
+        "performance_anchor": false,
+        "proof_sha256": "52baf38c4d17e88ca93db3d5343e7d459c1b1e4c1ad3c0972b0344848780f665"
+      }
+    },
+    "ordered_kda_history_cleaned": {
+      "passed": true,
+      "checks": [
+        {
+          "name": "direct",
+          "returncode": 0,
+          "bitwise_checks": 564,
+          "graph_checks": 24,
+          "log_sha256": "89d7e7350b2fe954cc638499e947c5026a580a378981212e9a9a70fbbd46a5c4"
+        },
+        {
+          "name": "memcheck",
+          "returncode": 0,
+          "bitwise_checks": 564,
+          "graph_checks": 24,
+          "log_sha256": "2763b84ba7d833723709c8db8e2f4fa5f9cfc15a53bf77deca41ea47d38b0639"
+        },
+        {
+          "name": "racecheck",
+          "returncode": 0,
+          "bitwise_checks": 564,
+          "graph_checks": 24,
+          "log_sha256": "f78e9e2c670a0424bfdfbdb5b4c5fccbc04e16583cd26114cf4fbef6cdaae8ff"
+        }
+      ],
+      "binary_sha256": "d26610f17097451f7af9b752bc5238e7319d42db133d68f37485a198a3ed3698",
+      "source_manifest_sha256": "24aa7f1187c12f447d5e835f79e1df7f2797eaca38818311036e868128771c97",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "Serial128 oracle vsordered2/4 state,output,EVERYsnapshotbyte/padding,retained0/1/nt-1/nt+1,heads1/3/64,widths1/2/3/4/7/8/16,smallandextremeinputs,graphreplayandrollbacknextstep,unsupported-pathrejection. Componentsanitizers only,no modelTPS claim.",
+      "source_version": 302,
+      "validation_sha256": "9f461b2fefcc660b6085885dbff561ddcaeacb0cf1f010566eb1c1f4042ef351",
+      "hip_public_build": {
+        "passed": true,
+        "source_manifest_sha256": "24aa7f1187c12f447d5e835f79e1df7f2797eaca38818311036e868128771c97",
+        "compiled_source_entries": 561,
+        "hip_compile_only": true,
+        "hip_gpu_execution": false,
+        "hip_backend_query": true,
+        "host_tests": 6,
+        "binary_sha256": {
+          "strata-glm-decode": "376f4ecbe72c79862a41eef20bb351617c88217f6c9dd7f4eec0c5c1f47771bf",
+          "glm_kda_ordered_history_test": "250d5db7e05645c1106c023f7cd3e68bc7a2577be0a14c740e326cebbb32387b"
+        },
+        "logs_sha256": {
+          "ordered302-hip-public-build.log": "683bb5bcc8b00a6bfdead5f7e88b03efb370987b0898697fd240bc74a4f8132e",
+          "ordered302-hip-public-host.log": "54e748745af7f00a4bba9a4c443fc729b94a4d2338c9a3024d6ebd5ccf39e848",
+          "ordered302-hip-public-backend.log": "f0b2516365f89fc441621bdd875d951e5d5ad9b4d8a3770e8e649b5db5e4454b"
+        },
+        "scope": "Cleaned public source302 matches compiled closure. HIP decoder,kernel,new regression target rebuilt and six host tests passed; backend query. Only unused parameters on unrelated legacy kernel removed versus290; ordered snapshot implementation unchanged. No HIP GPU/model execution.",
+        "fit": false,
+        "performance_anchor": false,
+        "proof_sha256": "3c4e558b258b9e50eca1c0223336b422c30cff9101eb4b9232aa7f05f130e92d"
+      },
+      "cuda_binary_sha256": "2d603a413b09e4673f0571ffae340e7979027006c1f695e279371e3c49e1d323",
+      "cuda_build_raw_sha256": {
+        "config.log": "963a4709a20a77139e7659c8c4d2e5a82956ed20b49faec5e9de1dc9907ae2f2",
+        "host.log": "0ca3269075c67c0bb02d6ef3a045870270fd02cb0b4216e4c1656e3142b886f2",
+        "ready": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "identity.sha256": "e6d1adbbcb3d8fbfe3f2da931f5f5b3dad5933f8ee2c83af34a32011191facd8",
+        "ram-image.log": "253636aa6bd67c25bf9b5a795e3bbedef4b26aed487db9203228d4c18408b813",
+        "build.log": "18c514853919c42990ede98376d6ccb88a3a05b4f32f0dc0349a2a517d71ef46",
+        "source-audit.json": "3dbcdacdcbfca2b18d033aba619d96429a85283aece9582d4a462afc531ecc3b",
+        "ctest.log": "a2569220d795a848006d73917677554181b209b68faebefaa36982f3f6df504b"
+      }
+    },
+    "ordered_kda_history_model": {
+      "passed": true,
+      "captures": [
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        }
+      ],
+      "allocations": 2,
+      "repetitions_per_width": 3,
+      "all_logits_bitwise_equal": true,
+      "rollback_next_logits_bitwise_equal": true,
+      "binary_sha256": "a6cef15228bda5015883315ff9f797bc0a5845a2fddcfdb0ccb33e208afb1db6",
+      "source_manifest_sha256": "befbb89ecbc76993888da0c96e299a7472e423ad09a6b751cf6a482d923757dd",
+      "raw_sha256": "3cc6e79aa8e3006247b893d2b167164a6cdbdb1b0ee8d087e600d6c80d4db994",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "Real128input target,widths1..4,bothhistorymodes,directvswarm/capture/replay,retainedprefixrollbackandhistoryreallocation. Standalone ordered4 recurrence with retained-prefix snapshots and existing KDA verification graphs; larger prefix-graph prototype excluded. No throughput measurement; selectedpolicy/weightsunchanged.",
+      "validation_sha256": "0bdea7d64485a0d4166b6ee4946960184f059cdb7dc60e6d526954161f511808",
+      "source_version": 290
+    },
     "linear_adapter_gradients": {
       "passed": true,
       "gpu": "Tesla V100-PCIE-32GB",
@@ -49712,6 +50257,538 @@
         "scope": "Existing serial column widths32/64/128 with prefix snapshots; existing ordered2/4 without snapshots. No engine or kernel source changed."
       },
       "identity_sha256": "c3c0226ef02d53a095c9c28aa2e7f26d7e5cde6461aef7a28556f22c46389e03"
+    },
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "numeric_records": 180,
+      "all_numeric_equal": true,
+      "numeric_mismatches": [],
+      "medians": [
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 14.256,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 13.232,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 38.288,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 38.4165,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 45.808,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 14.064,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 13.232,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 38.16,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 38.624,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 45.632,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 32.336,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 31.792,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 76.912,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 68.64,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 77.968,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 48.4485,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 48.64,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 122.447,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 113.039,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 118.592,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 52.816,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 50.416,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 118.096,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 105.168,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 114.144,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 87.2,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 87.696,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 210.832,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 203.376,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 206.016,
+          "numeric_equal": true
+        }
+      ],
+      "source_sha256": "b577f579c2f54b84d64baa7e08f9fdeabe2c6e558d6c35ba45ba2a7fac657944",
+      "raw_sha256": "45a616d6ce829d3a098e530b5f56b9f25a76cd5f6193d3f23dd26491a69a2528",
+      "scope": "V100componentonly,heads1/3/64,tokens1/2/3/4/7/8,guardedstate/output/historystrides. Histories include ordered2/4 snapshot support, independently validated against the serial kernel.16warm+3samplesof64calls,eventsincludehostenqueuegaps;groupedvariants,notarandomizedmatchedmodelrun. Numeric mismatches retained and never eligible for an exact-path speedclaim. No modelTPSforecast/capacityfit.",
+      "summary_sha256": "97d538a840c593990c42cbb6b90883e69bf35629639a972f6dde8125f3456e9c",
+      "identity": {
+        "source_sha256": "b577f579c2f54b84d64baa7e08f9fdeabe2c6e558d6c35ba45ba2a7fac657944",
+        "binary_sha256": "f17e5b8922f49c6f3f68a809b91026f9357cf57f840619ba862d925a28be2d3e",
+        "configured_flags_sha256": "6bb23c835de38cb45ce77430f9346b86575106d13a3799cd5638f3184844bb7e",
+        "configured_link_sha256": "9e0d7cfc8e768880d90e1262c8cc729267e5d93196a6eb8158dc854390213a23",
+        "kernel_source_sha256": "66d600381ab260ff28dc452927087b4bfd824442268761934bedd5603337d02b",
+        "fit": false,
+        "performance_anchor": false,
+        "scope": "Serial32/64/128 and ordered2/4 with retained-prefix snapshots, source290 kernel. Component results require full-model followup."
+      },
+      "identity_sha256": "e8c56c14046f8c2b4bbbdfdb256b3e3810c85008584dd481504843cc7c5f16aa"
+    },
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "numeric_records": 180,
+      "all_numeric_equal": true,
+      "numeric_mismatches": [],
+      "medians": [
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 13.9995,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 13.136,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 38.704,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 37.952,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 45.504,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 14.08,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 13.136,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 39.072,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 38.112,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 46.176,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 33.008,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 31.6795,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 75.728,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 68.352,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 75.872,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 46.72,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 46.336,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 116.928,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 109.536,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 114.224,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 52.6705,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 50.352,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 118.592,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 105.504,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 115.28,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 86.8155,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 87.648,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 210.864,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 203.2,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 207.856,
+          "numeric_equal": true
+        }
+      ],
+      "source_sha256": "b577f579c2f54b84d64baa7e08f9fdeabe2c6e558d6c35ba45ba2a7fac657944",
+      "raw_sha256": "a98b2128d52a985e28d2a994d03e45e64767901d3be04434ea4427f5d9c9c35b",
+      "scope": "V100componentonly,heads1/3/64,tokens1/2/3/4/7/8,guardedstate/output/historystrides. Histories include ordered2/4 snapshot support, independently validated against the serial kernel.16warm+3samplesof64calls,eventsincludehostenqueuegaps;groupedvariants,notarandomizedmatchedmodelrun. Numeric mismatches retained and never eligible for an exact-path speedclaim. No modelTPSforecast/capacityfit.",
+      "summary_sha256": "edf7a9d38b82ccf4cec75f188d145cb91b25591c5dce1241dfb89fc95ee7b859",
+      "identity": {
+        "source_sha256": "b577f579c2f54b84d64baa7e08f9fdeabe2c6e558d6c35ba45ba2a7fac657944",
+        "binary_sha256": "2946f56ab5d978a1b0bf48aeb6ea00e606837bcf4a7fa8d993c82a17813f2bc0",
+        "configured_flags_sha256": "6bb23c835de38cb45ce77430f9346b86575106d13a3799cd5638f3184844bb7e",
+        "configured_link_sha256": "9e0d7cfc8e768880d90e1262c8cc729267e5d93196a6eb8158dc854390213a23",
+        "kernel_source_sha256": "baa614331f3a4bed8865ca07ad79db5fdb20e9893529cbfde8c9ccbb316c7f3a",
+        "fit": false,
+        "performance_anchor": false,
+        "scope": "Serial32/64/128 and ordered2/4 with retained-prefix snapshots, source302 kernel. Component results require full-model followup."
+      },
+      "identity_sha256": "591ef851f411ca7cd2020bace7ac5cc830f4481ed816d7c7504b6869da76ad47"
     }
   ],
   "native_ram_executable_comparisons": [

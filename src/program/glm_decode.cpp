@@ -6304,7 +6304,9 @@ private:
             } else {
             // A verify window's rollback history comes straight from the recurrence kernel.
             float *snapshots = nullptr;
-            if (capturing_history && !prepared && row_parts == 1 && batch_tokens <= 64)
+            const bool snapshot_rows = row_parts == 1 || ((row_parts == 2 || row_parts == 4) &&
+                columns == 128 && strata_env_is_one("STRATA_GLM_KDA_ORDERED_ROWS"));
+            if (capturing_history && !prepared && snapshot_rows && batch_tokens <= 64)
                 if (auto it = history_offsets.find(state.recurrent.get()); it != history_offsets.end())
                     snapshots = (float *)((char *)verify_history->p + it->second);
             if (snapshots && history_token_offset >= history_slots) {

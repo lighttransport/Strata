@@ -115,6 +115,25 @@ ordered-four medians were 75.62 and 31.52 microseconds. The ordered kernel in
 that build did not support rollback snapshots. These grouped CUDA-event
 samples include host enqueue gaps and supply no full-model speed claim.
 
+Ordered KDA row partitions now save speculative rollback snapshots directly
+from the recurrence. The opt-in combination is `STRATA_GLM_KDA_ROW_PARTS=4`
+and `STRATA_GLM_KDA_ORDERED_ROWS=1`; the default remains one row partition.
+This supports full rollback history. Compact replay history still requires
+the serial kernel.
+
+On the same V100, 564 bitwise checks covered complete state, outputs, every
+retained snapshot, padding, extreme inputs and rollback, including 24 graph
+replays. CUDA memcheck and racecheck were clean. The initial snapshot build passed
+mixed widths 1–4 with and without history, history reallocation and rollback
+logit checks; its original 128-token default output also matched. CUDA and HIP
+builds and six host checks per backend passed; HIP GPU execution was not tested.
+With four tokens, 64 heads and rollback snapshots, the separate component
+medians in the cleaned build were 116.93 microseconds for serial-128 and
+46.34 for ordered-four. All 180 component comparisons matched bitwise. These grouped event samples
+include host enqueue gaps. The cleaned build repeats all bitwise and sanitizer
+checks. Its model parity and matched throughput checks are queued; selected
+profiles remain unchanged.
+
 ## Execution
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a
