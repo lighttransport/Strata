@@ -99,6 +99,22 @@ would reach only 47.23 tok/s; reaching 50 with the other phases fixed requires
 1.54 times for 800 prefill and 1.93 times for 1,000 prefill. These are conditional
 phase calculations and measured gaps, with no fitted hardware capacity.
 
+A larger graph prototype captured the native KDA/router prefix and shared FFN,
+keeping the readback event outside capture. Mixed widths 1–4, history
+reallocation and retained-prefix rollback passed bitwise logit checks. The
+matched model pair measured 39.85 / 39.38 decode and 519.62 / 518.81 prefill
+tok/s, with three full warmups and three timed 512-output requests per side.
+All six output streams matched the mild reference, with zero timed faults or
+swap. The 1.19% regression failed the speed gate; the prototype remains private
+and its coding panels were skipped.
+
+A separate KDA component probe compared the existing serial column layouts
+with ordered row partitions. All 144 state/output/history checks matched
+bitwise. For 64 heads and four tokens without snapshots, serial-128 and
+ordered-four medians were 75.62 and 31.52 microseconds. The ordered kernel in
+that build did not support rollback snapshots. These grouped CUDA-event
+samples include host enqueue gaps and supply no full-model speed claim.
+
 ## Execution
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a

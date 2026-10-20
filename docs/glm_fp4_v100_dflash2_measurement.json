@@ -44,7 +44,9 @@
     "source-v273.tar.gz": "46fe6b528f6e4dee946037de9270c38a8c5607f7d47e848c0b5717e807ec0958",
     "source-v276.tar.gz": "98c7bd4e21cd41c5e5bb165e3dad4283e0e83653879df35c37114d6b74055203",
     "source-v28.tar.gz": "6c8d67aa2957be892b1cdae5e40f9cd07e8a4f6376fa21294e8394fb14603ad0",
+    "source-v281.tar.gz": "4d5cb6ffaef2f3314a300d50547a4e3b7a62d23081cad19a4f9b527263d39968",
     "source-v29.tar.gz": "c5a71ac2e8ea89733dc4504c363cbed037502958ac23c04dea01509455ad01e2",
+    "source-v290.tar.gz": "74348d73bc2865d41bd4f0972530c4424dfa7a4b8c9d5ce57c6d5252a15e3980",
     "source-v30.tar.gz": "46c27e01c510d579987a75ea0c1e75c3fde5abc8bcd02447baa0aefcd642c6c8",
     "source-v31.tar.gz": "9261f550de94ebc499d06c07d63efe2f1df544a5a9efd3ff3fe921c4823b5574",
     "source-v32.tar.gz": "39d054576faecb4786e00d9a4e51a41986292304768a9e7049a9772bb66eacb2",
@@ -117,6 +119,7 @@
     "dflash2-evidence-61.tar.gz": "50f82b349ffab844f1095f881b1a6ec29a58f847888f5aace20deed262b1c694",
     "dflash2-evidence-62.tar.gz": "97b7af049406939d6154d871fadbfd95873371ddf73b22ee6392606f68fd57a3",
     "dflash2-evidence-64.tar.gz": "8ca06b80e08f4875596d93d4d8bb091d24304a5eb02e8a35450a6e747b14ca92",
+    "dflash2-evidence-65.tar.gz": "42f4ae6984ac84ba1d0b15903ca6d83f7a0020f6ffaf4b68c6e7edc17e8ad0fd",
     "dflash2-evidence-7.tar.gz": "d7d5cfb82abc77abe409c40c05a793a7e91abaebdb8e1802bd103f99efd77eb1",
     "dflash2-evidence-8.tar.gz": "65c90734e6036b89c898a51a2dab3b0081cc69a54964e658fb1fbe4f3a2673d8",
     "dflash2-evidence-9.tar.gz": "1175490aaa41fb992333b0b9e8b7dd1aa055390d224411fb2c16d303712c4f14"
@@ -19023,6 +19026,494 @@
       "full512_protocol": true
     },
     {
+      "name": "dflash2-prefix-graphs-mtp-candidate-full-v278",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "72e532c028b1f590802cb620a2e38dd6a9f8de625a62b6fb1ec51bc8eca2fab9",
+      "source_log_sha256": "3f5e9c42a4e11b3c65867fdb4d816c18256d4985daa9f0acab0aa504a219dcf0",
+      "engine_version": 276,
+      "binary_sha256": "dc0acae2dc5578eaf088ff6294747c62ea34c192bb11e261c497e076b7f64378",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": true
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EARLY_READBACK": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+        "STRATA_GLM_FP4_PREFIX_GRAPHS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VERIFY_GRAPHS": "1",
+        "STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 39.37796683311757,
+      "prefill_tok_s": 518.8093730208993,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15688.7,
+          "decode_ms": 12841.0,
+          "decode_tok_s": 39.79440853516081,
+          "prefill_tok_s": 522.1592611242486,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.646498,
+            "draft_ms": 1128.15,
+            "verify_ms": 10962.1,
+            "resync_ms": 514.526
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15790.0,
+          "decode_ms": 12976.8,
+          "decode_tok_s": 39.37796683311757,
+          "prefill_tok_s": 518.8093730208993,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.651678,
+            "draft_ms": 1125.79,
+            "verify_ms": 11103.2,
+            "resync_ms": 511.852
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15795.7,
+          "decode_ms": 13047.4,
+          "decode_tok_s": 39.16489108941245,
+          "prefill_tok_s": 518.6221566628892,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212998,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.676212,
+            "draft_ms": 1132.03,
+            "verify_ms": 11164.8,
+            "resync_ms": 514.358
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true
+    },
+    {
+      "name": "dflash2-prefix-graphs-mtp-control-full-v278",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "7bfdbc0e69e3e86aab8eb1d62ef13bc4829dd107f214d699c48c39349b5c7818",
+      "source_log_sha256": "54f0fe048899d0be63e6feaf726e6ce06a94f165af775a2547ea85c8e9407e50",
+      "engine_version": 276,
+      "binary_sha256": "dc0acae2dc5578eaf088ff6294747c62ea34c192bb11e261c497e076b7f64378",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EARLY_READBACK": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+        "STRATA_GLM_FP4_PREFIX_GRAPHS": "0",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VERIFY_GRAPHS": "0",
+        "STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 39.852133765909656,
+      "prefill_tok_s": 519.6156163775332,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15689.7,
+          "decode_ms": 12813.0,
+          "decode_tok_s": 39.8813704831031,
+          "prefill_tok_s": 522.1259807389561,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.631924,
+            "draft_ms": 1131.83,
+            "verify_ms": 10931.3,
+            "resync_ms": 513.644
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15765.5,
+          "decode_ms": 12822.4,
+          "decode_tok_s": 39.852133765909656,
+          "prefill_tok_s": 519.6156163775332,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.635781,
+            "draft_ms": 1130.18,
+            "verify_ms": 10941.2,
+            "resync_ms": 513.192
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15780.0,
+          "decode_ms": 12874.3,
+          "decode_tok_s": 39.691478371639626,
+          "prefill_tok_s": 519.1381495564005,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.686123,
+            "draft_ms": 1129.6,
+            "verify_ms": 10993.9,
+            "resync_ms": 514.163
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true
+    },
+    {
       "name": "dflash2-quartet-cache-control-full-v81",
       "fit": false,
       "performance_anchor": false,
@@ -26882,6 +27373,22 @@
       "raw_sha256": "60281746d4756286765bdc18240e2026b373b1c2d42ce0e8c0c95e0100361919"
     },
     {
+      "name": "default-v276-early0-parity128",
+      "ram_executable": true,
+      "early_readback": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "dc0acae2dc5578eaf088ff6294747c62ea34c192bb11e261c497e076b7f64378",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "93b77c17323b00dad7416f62684b30938bb415f133bd30e138d5d937f3d0e6a4",
+      "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "9fcb3f177bd96582e370b88af6e041d3a0a721a93f88e8a5cf8cd94ffe92fc32"
+    },
+    {
       "name": "default-v39-parity128",
       "passed": true,
       "tokens": 128,
@@ -30151,6 +30658,208 @@
           "build.log": "cdc56015db3d0f37330c82acbd18a2987031bf0fce769a0bd850d45ab5f13f53",
           "source-audit.json": "dd25c2d6868a5c106ba7b8d43200707a510a232d50f4db849f453cb3a3d8da17",
           "ctest.log": "c533418ef974769db6c4faccb388bda36a7236ca75886e12cb6fd742150eaffd"
+        }
+      }
+    ],
+    "native_prefix_graphs": [
+      {
+        "passed": true,
+        "captures": [
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 1,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 2,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 4,
+            "history": true,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": false,
+            "graphs": 65
+          },
+          {
+            "width": 3,
+            "history": true,
+            "graphs": 65
+          }
+        ],
+        "allocations": 2,
+        "repetitions_per_width": 3,
+        "all_logits_bitwise_equal": true,
+        "rollback_next_logits_bitwise_equal": true,
+        "prefix_graph_calls": 9672,
+        "prefix_graph_launched_calls": 9300,
+        "binary_sha256": "dc0acae2dc5578eaf088ff6294747c62ea34c192bb11e261c497e076b7f64378",
+        "source_manifest_sha256": "fb335fb3d14119e49854b75cc1ed01ee2235d827882f10211e33d06f6ba20672",
+        "raw_sha256": "f6c3a58713f27989d2d7731b9ed46541f0403a23f4d2e7ebc5c7d69d1f763624",
+        "fit": false,
+        "performance_anchor": false,
+        "fresh_holdout_scored": false,
+        "scope": "Real128input target,widths1..4,bothhistorymodes,directvswarm/capture/replay,retainedprefixrollbackandhistoryreallocation. NativeprefixandsharedFFNgraphs with ordinary readbackready event outsidecapture. No throughput measurement; selectedpolicy/weightsunchanged.",
+        "numeric_version": 277,
+        "source_version": 276,
+        "validation_sha256": "be8e2d1da2c777c49be848928fe3ef2be51a2e451cfd00d3ff7fd0a4baed8539",
+        "hip_validation": {
+          "passed": true,
+          "compile_only": true,
+          "gpu_execution": false,
+          "backend_query": true,
+          "binary_sha256": "391ba452a396edd7f271ee736b624ab37407111c4fc2ed96f051bd0edc963a61",
+          "host_proof_sha256": "bf6ee1ae93762ac52ee2c5b31b67341a163989293612e62701579c4796f37979",
+          "scope": "Configured HIP target compile/link commands with isolated decoder object and source276privateheaders; other unchanged target objects/libraries reused. No GPU/model work."
+        },
+        "cuda_build_raw_sha256": {
+          "config.log": "2b36cee1ae7ee260d39e6d1f9fb1c3d64448018dc7c2533ae3b9788a759975aa",
+          "host.log": "0ca3269075c67c0bb02d6ef3a045870270fd02cb0b4216e4c1656e3142b886f2",
+          "ready": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "identity.sha256": "808712cce785665fab4ed589e445c8a711d877821cf4dd95a362d5254699ce16",
+          "ram-image.log": "df6fa690b5f264c054d6d68133fcfeaa5244d6cdb39e8368599465c8bf60efee",
+          "build.log": "18e0a06a35a69186e1c46bc849b60606d1c5e1c5d4de744a3cdf59f91d5bdf40",
+          "source-audit.json": "dd25c2d6868a5c106ba7b8d43200707a510a232d50f4db849f453cb3a3d8da17",
+          "ctest.log": "699d632ba0b4a0301704abe157af0b7f12a03cf07000e941348b0f9cd6f49ece"
         }
       }
     ],
@@ -48785,6 +49494,226 @@
       "raw_sha256": "325c80b739792e911ab6b360469a01d644b9472bb239df2b35de48648f876322"
     }
   ],
+  "native_kda_recurrence_components": [
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "numeric_records": 144,
+      "all_numeric_equal": true,
+      "numeric_mismatches": [],
+      "medians": [
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 14.1275,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 13.1195,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 38.72,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 38.032,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 45.952,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 38.992,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 38.432,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 1,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 44.608,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 32.88,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 31.52,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 75.616,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 68.432,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 77.2965,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 122.769,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 111.632,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 4,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 116.112,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "ordered2",
+          "samples": 3,
+          "event_us_per_call": 53.472,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "ordered4",
+          "samples": 3,
+          "event_us_per_call": 50.464,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 123.312,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 109.904,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": false,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 117.312,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial128",
+          "samples": 3,
+          "event_us_per_call": 211.104,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial32",
+          "samples": 3,
+          "event_us_per_call": 203.488,
+          "numeric_equal": true
+        },
+        {
+          "tokens": 8,
+          "history": true,
+          "variant": "serial64",
+          "samples": 3,
+          "event_us_per_call": 207.664,
+          "numeric_equal": true
+        }
+      ],
+      "source_sha256": "68b407c319957ffd357e5a3246f864425fd37333db162e21b987561cf06b93c8",
+      "raw_sha256": "66e8e400d66e3d997e87429dcc22acef4364749336da0ebb4eb85c85985e5c75",
+      "scope": "V100componentonly,heads1/3/64,tokens1/2/3/4/7/8,guardedstate/output/historystrides. Histories onlyexistingserialkernels;orderedrowscurrentlyunsupportedwithsnapshots.16warm+3samplesof64calls,eventsincludehostenqueuegaps;groupedvariants,notarandomizedmatchedmodelrun. Numeric mismatches retained and never eligible for an exact-path speedclaim. No modelTPSforecast/capacityfit.",
+      "summary_sha256": "ed408548f3fee0b701bccf8eebddbd4e038f8df138c739144e78e6ba89b9e825",
+      "identity": {
+        "source_sha256": "68b407c319957ffd357e5a3246f864425fd37333db162e21b987561cf06b93c8",
+        "binary_sha256": "810e10ebd33cc75666cff735ea0c90de3140846b1f11ee389cce04c8be0d76d5",
+        "configured_flags_sha256": "6bb23c835de38cb45ce77430f9346b86575106d13a3799cd5638f3184844bb7e",
+        "configured_link_sha256": "9e0d7cfc8e768880d90e1262c8cc729267e5d93196a6eb8158dc854390213a23",
+        "kernel_source_sha256": "30e8f95bf0102b8d3f67c463375883dc8259834bdd4acc3e5a61ab7f40c504c7",
+        "fit": false,
+        "performance_anchor": false,
+        "scope": "Existing serial column widths32/64/128 with prefix snapshots; existing ordered2/4 without snapshots. No engine or kernel source changed."
+      },
+      "identity_sha256": "c3c0226ef02d53a095c9c28aa2e7f26d7e5cde6461aef7a28556f22c46389e03"
+    }
+  ],
   "native_ram_executable_comparisons": [
     {
       "complete": true,
@@ -48982,6 +49911,58 @@
       "repeated_timing_qualified": true,
       "reused_quality_passed": true,
       "repeated_gain_and_quality_qualified": true
+    }
+  ],
+  "native_prefix_graph_comparisons": [
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "eligible_for_quality": false,
+      "results": [
+        {
+          "name": "control",
+          "label": "dflash2-prefix-graphs-mtp-control-full-v278",
+          "returncode": 0,
+          "complete": true,
+          "qualified": true,
+          "raw_sha256": "7bfdbc0e69e3e86aab8eb1d62ef13bc4829dd107f214d699c48c39349b5c7818",
+          "decode": 39.852133765909656,
+          "prefill": 519.6156163775332,
+          "timed_major_faults": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "candidate",
+          "label": "dflash2-prefix-graphs-mtp-candidate-full-v278",
+          "returncode": 0,
+          "complete": true,
+          "qualified": true,
+          "raw_sha256": "72e532c028b1f590802cb620a2e38dd6a9f8de625a62b6fb1ec51bc8eca2fab9",
+          "decode": 39.37796683311757,
+          "prefill": 518.8093730208993,
+          "timed_major_faults": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "scope": "Same frozen source276 sealed-RAM binary, EARLY_READBACK1 and mild MTP3 policy on both sides. Control uses direct launches; candidate fixed native prefix/shared FFN and verification graphs. Three full warmups and three timed512 requests each. Actual mixed-width/rollback bitwise proof277 required; all six IDs must match mild reference. Strict zero-fault/swap/clean-exit qualification unchanged.",
+      "all_six_match_mild_reference": true,
+      "paired_ratio": 0.9881018432895631,
+      "goal50_timing_met": false,
+      "same_build": true,
+      "decoder_sha256": "dc0acae2dc5578eaf088ff6294747c62ea34c192bb11e261c497e076b7f64378",
+      "summary_sha256": "0a90530e61e608e7ce2653ae8741ef5d91d3d2f82608b13542ba1d282f04942a",
+      "prefix_graph_calls": 23498,
+      "prefix_graph_launched_calls": 23033,
+      "quality_scored": false,
+      "repeated_gain_and_quality_qualified": false
     }
   ],
   "offline_selector_experiments": [
@@ -51446,6 +52427,72 @@
       "goal50_decode_budget_ms": 10220.0,
       "zero_nonverification_tok_s": 41.69012245963564,
       "verification_speedup_needed_if_other_work_unchanged": 1.487764911514092,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-prefix-graphs-mtp-candidate-full-v278",
+      "advances": 511,
+      "observed_decode_ms": 12841.0,
+      "verification_ms": 10962.1,
+      "other_ms": 1878.8999999999996,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 46.61515585517373,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3142271403052355,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-prefix-graphs-mtp-candidate-full-v278",
+      "advances": 511,
+      "observed_decode_ms": 12976.8,
+      "verification_ms": 11103.2,
+      "other_ms": 1873.5999999999985,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 46.022768210966206,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3302980925908174,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-prefix-graphs-mtp-candidate-full-v278",
+      "advances": 511,
+      "observed_decode_ms": 13047.4,
+      "verification_ms": 11164.8,
+      "other_ms": 1882.6000000000004,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 45.76884494124391,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3391225082159905,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-prefix-graphs-mtp-control-full-v278",
+      "advances": 511,
+      "observed_decode_ms": 12813.0,
+      "verification_ms": 10931.3,
+      "other_ms": 1881.7000000000007,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 46.746498586627396,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3109746591031746,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-prefix-graphs-mtp-control-full-v278",
+      "advances": 511,
+      "observed_decode_ms": 12822.4,
+      "verification_ms": 10941.2,
+      "other_ms": 1881.199999999999,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 46.70420063612766,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3120832733726675,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-prefix-graphs-mtp-control-full-v278",
+      "advances": 511,
+      "observed_decode_ms": 12874.3,
+      "verification_ms": 10993.9,
+      "other_ms": 1880.3999999999996,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 46.48032090522926,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3182766559547219,
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {
