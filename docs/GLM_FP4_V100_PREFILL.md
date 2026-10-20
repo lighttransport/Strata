@@ -86,6 +86,35 @@ the identical binary on disk with RAM executable relaunch disabled and explicit
 process attachment. Instrumented timings are excluded. The 800 tok/s target
 still needs **1.49×** the rejected candidate rate.
 
+Two existing MLA options were screened on the public build, keeping the settled
+decode settings and four ordered KDA partitions:
+
+| MLA prefill option | Prefill tok/s | Gain over control |
+| --- | ---: | ---: |
+| Original 64-query tiles | 519.57 | — |
+| 256-query tiles and compact FP16 scratch | 526.61 | 1.35% |
+| FP16 score/value, index and softmax chain on 64-query tiles | 530.43 | 2.09% |
+
+Each option used three full warmups and three timed 8,192-input / eight-output
+requests. All nine timed prefixes matched, with zero timed major faults or swap.
+These are prefill-only screens; eight outputs do not qualify decode throughput
+or coding quality. Both options missed the 3% gate, so their full-length timing
+and coding stages were skipped. Neither is selected. The FP16 chain changes
+prefill precision. A separate combination measured **535.85 / 519.53 prefill
+tok/s**, candidate / fresh control, in the same eight-output protocol. Its
+3.14% gain qualified it for a fresh full-length comparison; the individual
+failed gates remain failed.
+
+The full comparison measured **518.70 / 524.91 prefill tok/s** and **41.76 /
+39.57 decode tok/s**, control / candidate. Each side used three full warmups
+and three timed 8,192-input / 512-output requests, with identical repetitions
+within each side, zero timed major faults or swap, and clean uninstrumented
+exits. Candidate outputs changed but passed length, EOS and repetition checks.
+The **1.20% prefill gain** missed the 3% gate, and **5.25% slower decode** also
+failed the decode guard. Coding and whole-model memory checks were skipped.
+This combination is rejected; the eight-output screen did not predict its
+full-length result. No new prefill preset is selected, and 800 tok/s remains
+unmet.
 
 A separate Nsight Systems 2025.1.3 capture of the settled baseline measured
 these overlap-corrected GPU activity unions during one diagnostic 8,192-token

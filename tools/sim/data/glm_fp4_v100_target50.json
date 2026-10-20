@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "c7c8367a86abff3691c8409ef453d8ffce17ea73002ce9fe90385466d777722f"
+      "sha256": "a96a92369bcf422a74439f043955e5d2baaf629ec25b7c601ed0ca4ac69ec394"
     },
     {
       "path": "configs/experimental/glm53f-fp4-dual-v100-grouped.json",
@@ -7392,6 +7392,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-prefill-mla-candidate-full-v459",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 39.565170261857936,
+      "prefill_tok_s": 524.9061294580498,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-prefill-mla-control-full-v459",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 41.75757724334616,
+      "prefill_tok_s": 518.6976838426178,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-prefill-workspace-candidate-full-v423",
       "experiment_family": "dflash2",
       "decode_tok_s": 41.42414760291185,
@@ -8342,6 +8362,9 @@
     "Prefill experiment: ordered4versusunordered8/column-tiles measured 520.19/531.70prefill tok/s,3warm3timed8192input/8output each, all6prefixes equal/0faultswap. 2.21percent gain below3percent gate. Prefill-only screen, not decode qualification or coding quality; no selection/capacity fit.",
     "Prefill activity: separate warmed Nsight377baseline capture,16.283s diagnostic8192-token prefill. GPU0kernel/copy/all unions9.6728/6.7831/14.5526s,idle1.7304s;GPU1unions3.4046/5.2130/7.1993s,idle9.0837s. Unions account foroverlap, not additivetimers. Retained-allactivity+noidle scenario562.9tok/s; kernel-only846.9tok/s;800budgetleaves.567s afterretainedprimarykernels. Conditional trace-duration scenarios, not hardware roofs or predictions; launcher residency is not native qualification. Focus on copy/compute overlap and secondary work distribution.",
     "Prefill experiment: combined fused-CSF/workspace and unordered8prefill measured 536.54prefill/42.01decode tok/s,3warm3timed512,0faultswap/repeatable. Earlier same-day identical-binary control=518.80prefill; two screens and Nsight trace intervened, clocks unlocked, not adjacent. Quality_failed=True, reused_quality_passed=False. Unselected; no new reference/default/capacity or fresh20 claim.",
+    "Prefill MLA: control/tile256/halfchain measured 519.57/526.61/530.43prefill tok/s on public451binary,3warm3timed8192-input/8-output each. Prefill-only, no decode or coding qualification; selected=False. Best for separate full guard=None. Existing prefill flags only, ordered4KDA and settled decode policy fixed. FP16 chain changes prefill precision; no fresh20 or capacity fit.",
+    "Prefill MLA: control/combined measured 519.53/535.85prefill tok/s on public451binary,3warm3timed8192-input/8-output each. Prefill-only, no decode or coding qualification; selected=False. Best for separate full guard=combined. Existing prefill flags only, ordered4KDA and settled decode policy fixed. FP16 chain changes prefill precision; no fresh20 or capacity fit.",
+    "Prefill MLA: fresh adjacent identical451binary control/candidate measured 518.70/524.91prefill and 41.76/39.57decode tok/s,3warm3timed512outputs each. Gain gate=False, reused quality passed=False, quality failed=False. Historical reference/default/capacity unchanged; fresh20unscored.",
     "Working decode: tuning paused at41.24tok/s; opt-in grouped MTP3 profile freezes the repeated366configuration with separate376both8long+8natural functional coverage. The original absolute speed-selection gate remains failed, original5.26andqualified32.10references preserved, and fresh20unscored. Active prefill800target needs1.5404times the519.34working rate; no hardware capacity or performance anchor fitted."
   ],
   "limitations": [
@@ -9829,6 +9852,42 @@
       "advances": 511,
       "decode_ms": 12180.0,
       "verify_ms": 10351.0
+    },
+    {
+      "name": "dflash2-prefill-mla-candidate-full-v459-trial0",
+      "advances": 511,
+      "decode_ms": 12927.4,
+      "verify_ms": 10958.5
+    },
+    {
+      "name": "dflash2-prefill-mla-candidate-full-v459-trial1",
+      "advances": 511,
+      "decode_ms": 12907.8,
+      "verify_ms": 10947.3
+    },
+    {
+      "name": "dflash2-prefill-mla-candidate-full-v459-trial2",
+      "advances": 511,
+      "decode_ms": 12915.4,
+      "verify_ms": 10953.1
+    },
+    {
+      "name": "dflash2-prefill-mla-control-full-v459-trial0",
+      "advances": 511,
+      "decode_ms": 12282.0,
+      "verify_ms": 10472.3
+    },
+    {
+      "name": "dflash2-prefill-mla-control-full-v459-trial1",
+      "advances": 511,
+      "decode_ms": 12226.0,
+      "verify_ms": 10423.2
+    },
+    {
+      "name": "dflash2-prefill-mla-control-full-v459-trial2",
+      "advances": 511,
+      "decode_ms": 12237.3,
+      "verify_ms": 10429.9
     },
     {
       "name": "dflash2-prefill-workspace-candidate-full-v423-trial0",
@@ -12491,5 +12550,213 @@
     },
     "original_speed_gate_passed": false,
     "scope": "Separate functional448control/candidate coding after423missed its3percent speed gate. Both use ordered4prefill rows; isolates fused operands from combined444unordered8regression. Original gate remains failed; no selected profile or fresh holdout claim."
+  },
+  "prefill_mla_screen": {
+    "complete": true,
+    "results": [
+      {
+        "name": "control",
+        "label": "dflash2-prefill-mla-control-v454",
+        "environment_delta": {},
+        "qualified_prefill": true,
+        "returncode": 0,
+        "prefill_tok_s": 519.5694778301379,
+        "raw_sha256": "d566983635619967430e69eab3f84b6481bc2ffb56e202fed69d26877f8fab0f",
+        "output_sha256": [
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e"
+        ]
+      },
+      {
+        "name": "tile256",
+        "label": "dflash2-prefill-mla-tile256-v454",
+        "environment_delta": {
+          "STRATA_GLM_MLA_TILE": "256",
+          "STRATA_GLM_MLA_COMPACT_F16": "1"
+        },
+        "qualified_prefill": true,
+        "returncode": 0,
+        "prefill_tok_s": 526.6067548630128,
+        "raw_sha256": "968bb1dc0c4915150f08ccaf3963f176d68dc2227e965cff4dc2a756d1bd9e70",
+        "output_sha256": [
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e"
+        ],
+        "paired_prefill_ratio": 1.0135444388732466,
+        "eligible_for_full_guard": false,
+        "goal800_prefill_timing_met": false
+      },
+      {
+        "name": "halfchain",
+        "label": "dflash2-prefill-mla-halfchain-v454",
+        "environment_delta": {
+          "STRATA_GLM_MLA_F16_OUT": "1",
+          "STRATA_GLM_MLA_INDEX_F16": "1",
+          "STRATA_GLM_MLA_SOFTMAX_F16": "1"
+        },
+        "qualified_prefill": true,
+        "returncode": 0,
+        "prefill_tok_s": 530.4325304325305,
+        "raw_sha256": "3ec7cc5ccb901408f0dfdc0bf710368cd4ff6f5aaf8818927db6e26b8bc2df92",
+        "output_sha256": [
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e"
+        ],
+        "paired_prefill_ratio": 1.020907795907796,
+        "eligible_for_full_guard": false,
+        "goal800_prefill_timing_met": false
+      }
+    ],
+    "fit": false,
+    "performance_anchor": false,
+    "selected": false,
+    "fresh_holdout_scored": false,
+    "scope": "Same frozen public451binary; settled MTP3/grouped/ordered4/decode policy fixed. Existing opt-in MLA prefill tile256+compact scratch versus tile64, and separately FP16 score/value/index/softmax chain on tile64. FP16 chain changes prefill precision; all eight routed contributions retained. Three full warmups and three timed8192-input/8-output requests per option, clean uninstrumented zero-fault/swap identical length/EOS required. Prefill-only screen, not qualified decode throughput or512-output/coding coverage. Best option requires at least3percent gain then a fresh paired512-output timing and reused coding checks. Fresh20 unscored.",
+    "best_for_full_guard": null,
+    "summary_sha256": "494f2eba0cd322d5a626238aab22fbd3f72268e52d5da9b5ef24cdb2f37a8b6d",
+    "qualified_decode_timing": false,
+    "source_version": 451,
+    "source_public": true
+  },
+  "prefill_mla_combined_screen": {
+    "complete": true,
+    "results": [
+      {
+        "name": "control",
+        "label": "dflash2-prefill-mla-control-v458",
+        "environment_delta": {},
+        "qualified_prefill": true,
+        "returncode": 0,
+        "prefill_tok_s": 519.526642229297,
+        "raw_sha256": "8ef0e761fa1fa427625f949c15c71599210a8ac245597c333ecee3c6eb3ce971",
+        "output_sha256": [
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e"
+        ]
+      },
+      {
+        "name": "combined",
+        "label": "dflash2-prefill-mla-combined-v458",
+        "environment_delta": {
+          "STRATA_GLM_MLA_TILE": "256",
+          "STRATA_GLM_MLA_COMPACT_F16": "1",
+          "STRATA_GLM_MLA_F16_OUT": "1",
+          "STRATA_GLM_MLA_INDEX_F16": "1",
+          "STRATA_GLM_MLA_SOFTMAX_F16": "1"
+        },
+        "qualified_prefill": true,
+        "returncode": 0,
+        "prefill_tok_s": 535.8521173746386,
+        "raw_sha256": "a27b68cc68a40cd78f2ec44252bc69ee2a36baacefd92f396e1195637999a4ef",
+        "output_sha256": [
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e"
+        ],
+        "paired_prefill_ratio": 1.031423749656589,
+        "eligible_for_full_guard": true,
+        "goal800_prefill_timing_met": false
+      }
+    ],
+    "fit": false,
+    "performance_anchor": false,
+    "selected": false,
+    "fresh_holdout_scored": false,
+    "scope": "Same frozen public451binary; settled MTP3/grouped/ordered4/decode policy fixed. New combination of existing tile256+compact scratch and FP16 score/value/index/softmax chain versus a fresh tile64 control. Both earlier454individual options must have missed the3percent gate while each gaining at least1percent; their failed gates stay failed. FP16 chain changes prefill precision; all eight routed contributions retained. Three full warmups and three timed8192-input/8-output requests per option, clean uninstrumented zero-fault/swap identical length/EOS required. Prefill-only screen, not qualified decode throughput or512-output/coding coverage. Best option requires at least3percent gain then a fresh paired512-output timing and reused coding checks. Fresh20 unscored.",
+    "best_for_full_guard": "combined",
+    "summary_sha256": "6fda9c031f6dc98dc733b93f58cdebb69ecfce1bee591d196ffbdb938d8a6fea",
+    "qualified_decode_timing": false,
+    "source_version": 451,
+    "source_public": true
+  },
+  "prefill_mla_combined_full_comparison": {
+    "complete": true,
+    "results": [
+      {
+        "name": "control",
+        "label": "dflash2-prefill-mla-control-full-v459",
+        "qualified": true,
+        "returncode": 0,
+        "decode": 41.75757724334616,
+        "prefill": 518.6976838426178,
+        "raw_sha256": "9ace286a96141847c8e3be5eb37ae6925aa46ec49f325256e0e3f2ed533c32ec",
+        "shape": [
+          {
+            "distinct": 188,
+            "repeated_4gram_fraction": 0.11591355599214148,
+            "longest_identical_run": 1,
+            "passed": true
+          },
+          {
+            "distinct": 188,
+            "repeated_4gram_fraction": 0.11591355599214148,
+            "longest_identical_run": 1,
+            "passed": true
+          },
+          {
+            "distinct": 188,
+            "repeated_4gram_fraction": 0.11591355599214148,
+            "longest_identical_run": 1,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "name": "candidate",
+        "label": "dflash2-prefill-mla-candidate-full-v459",
+        "qualified": true,
+        "returncode": 0,
+        "decode": 39.565170261857936,
+        "prefill": 524.9061294580498,
+        "raw_sha256": "c8626499d93b9171bea9627824ba3746dee721f488bd5586bb7b12c5d2172754",
+        "shape": [
+          {
+            "distinct": 220,
+            "repeated_4gram_fraction": 0.07269155206286837,
+            "longest_identical_run": 1,
+            "passed": true
+          },
+          {
+            "distinct": 220,
+            "repeated_4gram_fraction": 0.07269155206286837,
+            "longest_identical_run": 1,
+            "passed": true
+          },
+          {
+            "distinct": 220,
+            "repeated_4gram_fraction": 0.07269155206286837,
+            "longest_identical_run": 1,
+            "passed": true
+          }
+        ]
+      }
+    ],
+    "eligible_for_quality": false,
+    "fit": false,
+    "performance_anchor": false,
+    "selected": false,
+    "fresh_holdout_scored": false,
+    "candidate": "combined",
+    "screen_sha256": "6fda9c031f6dc98dc733b93f58cdebb69ecfce1bee591d196ffbdb938d8a6fea",
+    "scope": "Fresh adjacent same451binary control/best MLA candidate pair after458screen. Settled MTP3/grouped/ordered4/decode policy fixed; three fullwarmups and three timed8192-input/512-output requests per side, uninstrumented identical repetitions, shape/length/EOS and zero majorfaults/swap, decode>=40 andwithin3percent, prefill>=3percent required before reusedcoding. Clocks unlocked; noFresh20 orselectedprofile.",
+    "paired_prefill_ratio": 1.0119692950418413,
+    "decode_ratio": 0.9474967867816715,
+    "goal800_timing_met": false,
+    "summary_sha256": "7a619ea63cc6f54f3ee77ca8fbfd6c57409630711a7626a47e6c4cc6728b3b33",
+    "same_build": true,
+    "source_version": 451,
+    "source_public": true,
+    "quality_panels": {
+      "control": {},
+      "candidate": {}
+    },
+    "reused_quality_scored": false,
+    "reused_quality_passed": false,
+    "coding_and_memcheck_skipped_by_speed_gate": true,
+    "quality_failed": false
   }
 }
