@@ -99,12 +99,13 @@ receive the current committed K/V, embeddings and absolute position on every
 replay. Neither option changes the checkpoint on disk.
 
 The optional worker flags `--warm-protocol --warm-incremental` materialize
-binary export, selector work and accepted-prefix append widths one through
-seven before readiness. They require `--gemm-f32` and restore the committed
+binary export, selector work and committed-prefix append widths one through
+eight before readiness, including the anchor when all proposals are accepted.
+They require `--gemm-f32` and restore the committed
 cache, positions and hidden state afterward. Both are off by default.
 On V100, 32 CPU tests and real-weight graph-output equality checks passed.
-One 17-operation socket smoke with the rank 32 FC adapter used 3,046 MiB;
-incremental append-and-draft calls took 9.66–9.96 ms and every operation met its
+One 19-operation socket smoke with the rank 32 FC adapter used 3,046 MiB;
+incremental append-and-draft calls took 9.75–10.12 ms and every operation met its
 deadline. This is worker validation, not full-model throughput or evidence
 that later paging cannot recur.
 
@@ -146,6 +147,13 @@ timing. Minimum three failed before timing: its first incremental worker call
 took 1.80 seconds and recorded 206 major faults, exceeding its one-second
 deadline. No adaptive preset is selected, and repeated timing and coding
 qualification remain unestablished.
+
+The retry with RAM execution and append warmup completed cleanly. Fixed three
+measured 34.31 decode / 504.80 prefill tok/s; adaptive minimum three measured
+31.27 / 501.61 tok/s. Each used three full warmups and one timed 512-output
+request. The fixed-three output matched the earlier 512-token reference, and
+the adaptive case was 8.87% slower than its matched control. It remains
+unselected.
 
 Download the checkpoint revision above to a local directory.
 Create the worker configuration inside the ignored build directory, with paths

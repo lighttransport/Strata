@@ -34,6 +34,7 @@
     "source-v234.tar.gz": "b343a5e8963c956cecf072a595aa636de8ab28daf29149db1f26f7dbc8f93e88",
     "source-v238.tar.gz": "d6eeebf365588f2b47f142cc01fef5de1c08be4297c53c2c172f38f574c27a9f",
     "source-v24.tar.gz": "17e593e564b180aca4714e448233ba93c80432e6b7d599a45df3f79cca5f3ec2",
+    "source-v248.tar.gz": "5dd3556e951a00a357d22a5b04c3503da165fdbdf299344e81e58fd53ac17794",
     "source-v25.tar.gz": "60a8a21f8eda549dd420a4cb0b37dc3c6e8b78b353dd08990174b42c64470c79",
     "source-v26.tar.gz": "d0634b6fe937b76e6a67cce9297d8467ce8a8df5664411f87964dfb09275c0d4",
     "source-v27.tar.gz": "8352a166d208c7df215b405f915e41cbe7e47c66bb2768a0616872bcc4873e34",
@@ -101,6 +102,7 @@
     "dflash2-evidence-50.tar.gz": "14aa0ac227c6e2a685d4d2eea47fa8a7dc5a316af39a41743cf4303358975320",
     "dflash2-evidence-51.tar.gz": "87770399ec27b54c520b5db4f8a174f0f104564764b977f07319e776bc1bb036",
     "dflash2-evidence-52.tar.gz": "b137fb309d7be83a4a64fb8f3448f8ccc2a86511a8c2332c86c384e0b746fa98",
+    "dflash2-evidence-53.tar.gz": "405dd6155e26b345406b92c161fe00e0dc8ffd72f7fd9cf1c8c259b31eee074f",
     "dflash2-evidence-6.tar.gz": "3608bfa261ed6fe7174dc007307021ebbab7b7757e0509d13c16132e2e250b8e",
     "dflash2-evidence-7.tar.gz": "d7d5cfb82abc77abe409c40c05a793a7e91abaebdb8e1802bd103f99efd77eb1",
     "dflash2-evidence-8.tar.gz": "65c90734e6036b89c898a51a2dab3b0081cc69a54964e658fb1fbe4f3a2673d8",
@@ -285,6 +287,188 @@
       "worker_sha256": "0a682e3a3e16b885cadbe2b63a82a65accaa4615d884485d9d56de03bb480154",
       "fc_adapter": true,
       "warm_protocol": true,
+      "trace_protocol_requests": 6,
+      "last_request_proposal_depth_histogram": {
+        "3": 147
+      }
+    },
+    {
+      "name": "dflash2-adaptive-fixed3-v243",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "b16fae0809b6a0274fe7d9054d70fffff53589d3c5801ce00d2e61a9cecafde2",
+      "source_log_sha256": "1f6702da94a7f0a1a38c2fcaf8d46ccfeeab68c3eeb7feb98dc7cf0760ad46c0",
+      "engine_version": 234,
+      "binary_sha256": "29ae5fe8d9f73c9e4717ea386bbf0adab2777c9ad598366b29854cb47e7150b2",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_DFLASH_ADAPTIVE_DEPTH": "0",
+        "STRATA_GLM_DFLASH_DEPTH_GAP": "1",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_DFLASH_MIN_DEPTH": "1",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "0",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "0",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "5182a5be698922aae7eb95962d4c77b21c19ee1bfb7fc1e36166115ac9e524a7",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 34.314416755642405,
+      "prefill_tok_s": 504.80028592203695,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16228.2,
+          "decode_ms": 14891.7,
+          "decode_tok_s": 34.314416755642405,
+          "prefill_tok_s": 504.80028592203695,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 1016541184,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "c9acc42986799fe9c1484e9eded4539635715c42f439d752a70a978fa80d293e",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 183,
+          "repeated_4gram_fraction": 0.10609037328094306,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 147,
+            "proposed": 441,
+            "accepted": 363,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 2052.83,
+            "verify_ms": 12529.3,
+            "restore_ms": 38.367,
+            "proposal_calls": 147
+          },
+          "native_cpu_expert_groups_delta": 21995,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 21995,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 195700158
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": false,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 3.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 102.0,
+        "sum_logit_regret": 126.375,
+        "repeat_blocked": 2.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 147,
+          "opportunities": 147,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 147,
+          "opportunities": 138,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 147,
+          "opportunities": 121,
+          "accepted": 104
+        }
+      ],
+      "worker_sha256": "1925696bacdec2cab127e80cd00763a4df01c915cc9fb7f83b60fe7e2387a976",
+      "fc_adapter": true,
+      "warm_protocol": true,
+      "warm_incremental": true,
       "trace_protocol_requests": 6,
       "last_request_proposal_depth_histogram": {
         "3": 147
@@ -915,6 +1099,217 @@
         "5": 4,
         "6": 2,
         "7": 4
+      }
+    },
+    {
+      "name": "dflash2-adaptive-minimum3-v243",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "00d6aeb34d1c7df0172ae16b0b128040c51bb3aff2e1f266abcfd54a06396f5a",
+      "source_log_sha256": "223c7f626f5c4990861b9aa8a859fe833ad5abb186ed2933624b46f3831d6396",
+      "engine_version": 234,
+      "binary_sha256": "29ae5fe8d9f73c9e4717ea386bbf0adab2777c9ad598366b29854cb47e7150b2",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_DFLASH_ADAPTIVE_DEPTH": "1",
+        "STRATA_GLM_DFLASH_DEPTH_GAP": "1",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_DFLASH_MIN_DEPTH": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "0",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "0",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "5182a5be698922aae7eb95962d4c77b21c19ee1bfb7fc1e36166115ac9e524a7",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 31.271418779986295,
+      "prefill_tok_s": 501.6103946997808,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16331.4,
+          "decode_ms": 16340.8,
+          "decode_tok_s": 31.271418779986295,
+          "prefill_tok_s": 501.6103946997808,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 996265984,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "21420b3dd470e972e249d39d1795b5a45947d064f6ee789aaf8bb241ce8a0b26",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 211,
+          "repeated_4gram_fraction": 0.07072691552062871,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 153,
+            "proposed": 509,
+            "accepted": 358,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 2179.33,
+            "verify_ms": 13882.0,
+            "restore_ms": 53.5326,
+            "proposal_calls": 153
+          },
+          "native_cpu_expert_groups_delta": 22345,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 22345,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 203856988
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": false,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 3.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 103.0,
+        "sum_logit_regret": 133.385,
+        "repeat_blocked": 3.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 153,
+          "opportunities": 153,
+          "accepted": 137
+        },
+        {
+          "index": 1,
+          "proposed": 152,
+          "opportunities": 136,
+          "accepted": 112
+        },
+        {
+          "index": 2,
+          "proposed": 152,
+          "opportunities": 112,
+          "accepted": 82
+        },
+        {
+          "index": 3,
+          "proposed": 40,
+          "opportunities": 23,
+          "accepted": 20
+        },
+        {
+          "index": 4,
+          "proposed": 7,
+          "opportunities": 5,
+          "accepted": 5
+        },
+        {
+          "index": 5,
+          "proposed": 3,
+          "opportunities": 2,
+          "accepted": 1
+        },
+        {
+          "index": 6,
+          "proposed": 2,
+          "opportunities": 1,
+          "accepted": 1
+        }
+      ],
+      "worker_sha256": "1925696bacdec2cab127e80cd00763a4df01c915cc9fb7f83b60fe7e2387a976",
+      "fc_adapter": true,
+      "warm_protocol": true,
+      "warm_incremental": true,
+      "trace_protocol_requests": 6,
+      "last_request_proposal_depth_histogram": {
+        "1": 1,
+        "3": 112,
+        "4": 33,
+        "5": 4,
+        "6": 1,
+        "7": 2
       }
     },
     {
@@ -27234,7 +27629,8 @@
       "185": "FC/MLP adapters passed24CPU and real-weight V100 checks; native sources unchanged",
       "205": "CPU30 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged",
       "212": "CPU31 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged",
-      "238": "CPU32 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged"
+      "238": "CPU32 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged",
+      "248": "CPU32 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged"
     },
     "adaptive_depth": {
       "passed": true,
@@ -27432,7 +27828,40 @@
         "raw_sha256": "1f9bf2c4e2d2fd782c3c52e24b4246c1321203dd4260c50e52b34575236c2aba",
         "evaluate_before_training_checked": true,
         "scope": "Seven residual adapters; real-weight V100 synthetic forward/gradient/selector/graph check. No trained TPS or coding result. Source205 missed evaluate-before-training, which failed the real208training run; source212 adds that regression check.",
-        "incremental_warmup_checked": true
+        "incremental_warmup_checked": true,
+        "incremental_warmup_max_append_rows": 7
+      },
+      {
+        "passed": true,
+        "gpu": "Tesla V100-PCIE-32GB",
+        "adapter_targets": "fc-mlp-down-selector",
+        "zero_adapter_context_rows": [
+          8,
+          2048
+        ],
+        "zero_adapter_max_abs_errors": [
+          0.0,
+          0.0
+        ],
+        "nonzero_adapter_serving_equal": true,
+        "gradient_norms": [
+          0.9136819839477539,
+          0.8480291366577148
+        ],
+        "base_weights_unchanged": true,
+        "skinny_relative_l2_error": 0.002759495284408331,
+        "peak_reserved_bytes": 10661920768,
+        "fit": false,
+        "performance_anchor": false,
+        "checkpoint_sha256": "b038e1d9d1e7833fa3880c2c0135ba9b673013f03da1b29fb831931584759dac",
+        "source_manifest_sha256": "de677c336bed89f429d024b7ddbbd5efb9e6e99992b1d05fd642f9fd00b2f51d",
+        "source_version": 248,
+        "cpu_tests": 32,
+        "raw_sha256": "532bebd44872f8add6297e38a0c6e51cdc81deaa9e02acb5c68172c03a052ba5",
+        "evaluate_before_training_checked": true,
+        "scope": "Seven residual adapters; real-weight V100 synthetic forward/gradient/selector/graph check. No trained TPS or coding result. Source205 missed evaluate-before-training, which failed the real208training run; source212 adds that regression check.",
+        "incremental_warmup_checked": true,
+        "incremental_warmup_max_append_rows": 8
       }
     ],
     "protocol_smokes": [
@@ -27674,6 +28103,143 @@
         "all_requests_returned": true,
         "worker_returncode": 0,
         "raw_sha256": "29535913594ced6fed96106ad57e878e1b8f572540b3e1746c23cf72dec9bec2"
+      },
+      {
+        "complete": true,
+        "fit": false,
+        "performance_anchor": false,
+        "fresh_holdout_scored": false,
+        "worker_config_sha256": "fa6f2f14e68cb31e146ff2f3bce09920956f507b4e3cd1b5eb36457e6fc8a7f6",
+        "source_manifest_sha256": "de677c336bed89f429d024b7ddbbd5efb9e6e99992b1d05fd642f9fd00b2f51d",
+        "requests": [
+          {
+            "op": "prepare",
+            "roundtrip_ms": 171.56942305155098,
+            "deadline_seconds": 30,
+            "append_rows": 2048
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 16.261577024124563,
+            "deadline_seconds": 1,
+            "append_rows": 0
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.9012880511581898,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 10.115577024407685,
+            "deadline_seconds": 1,
+            "append_rows": 1
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.827914034947753,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 10.029202909208834,
+            "deadline_seconds": 1,
+            "append_rows": 2
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.6291309148073196,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.75104107055813,
+            "deadline_seconds": 1,
+            "append_rows": 3
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.5916939591988921,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.812935022637248,
+            "deadline_seconds": 1,
+            "append_rows": 4
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.5954719856381416,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.765425929799676,
+            "deadline_seconds": 1,
+            "append_rows": 5
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.5820770058780909,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.848890011198819,
+            "deadline_seconds": 1,
+            "append_rows": 6
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.5851760981604457,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.75729594938457,
+            "deadline_seconds": 1,
+            "append_rows": 7
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.586433034390211,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.901575976982713,
+            "deadline_seconds": 1,
+            "append_rows": 8
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.5912200324237347,
+            "deadline_seconds": 1,
+            "append_rows": null
+          }
+        ],
+        "scope": "Real V100 worker/socket smoke with synthetic committed features and candidate IDs. Frozenrank32FCadapter,incrementalwidths1through8afteroptionalpre-readywarmup;1s draft/selectorand30spreparedeadlines. No target-model TPS or coding result.",
+        "readiness": {
+          "protocol": 2,
+          "ready": true,
+          "vram_mib": 3046.0,
+          "hidden_size": 4096,
+          "vocab_size": 154880,
+          "block_size": 8,
+          "mask_token_id": 154856
+        },
+        "all_requests_returned": true,
+        "worker_returncode": 0,
+        "raw_sha256": "3cb8daa358e319dbcf8123be5e483fa237d7a955350aed8d1d22532c61daadb2"
       }
     ],
     "combined_pair_library_pin_checks": [
@@ -42044,6 +42610,56 @@
       ],
       "default_stream_field_scope": "Original default_dflash_stream_equal also requires residency qualification; raw512IDequalityisrecordedindependently. A failed timing control still blocks promotion.",
       "raw_sha256": "689ffc0d9dc1551b8ca4ff93503b8f12b69ac68044298fb9eaccee072adacc55"
+    },
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "training_version": 178,
+      "selected_step": 128,
+      "worker_sha256": "1925696bacdec2cab127e80cd00763a4df01c915cc9fb7f83b60fe7e2387a976",
+      "config_sha256": "5182a5be698922aae7eb95962d4c77b21c19ee1bfb7fc1e36166115ac9e524a7",
+      "prior_screen_sha256": "fe6c107dd749b97a0274eb98dab2a9bee50db18fdaea7d5b4a7521cd2b0b4ca1",
+      "reference_result_sha256": "e616331c2edc5113490e69076a4e0143254b9404b0c8905daeadfdd741c74f93",
+      "default_dflash_stream_equal": true,
+      "results": [
+        {
+          "name": "fixed3",
+          "label": "dflash2-adaptive-fixed3-v243",
+          "depth": 3,
+          "adaptive": false,
+          "minimum": 1,
+          "gap": 1,
+          "returncode": 0,
+          "complete": true,
+          "qualified_screen": true,
+          "raw_sha256": "b16fae0809b6a0274fe7d9054d70fffff53589d3c5801ce00d2e61a9cecafde2",
+          "decode": 34.314416755642405,
+          "prefill": 504.80028592203695
+        },
+        {
+          "name": "minimum3",
+          "label": "dflash2-adaptive-minimum3-v243",
+          "depth": 7,
+          "adaptive": true,
+          "minimum": 3,
+          "gap": 1,
+          "returncode": 0,
+          "complete": true,
+          "qualified_screen": true,
+          "raw_sha256": "00d6aeb34d1c7df0172ae16b0b128040c51bb3aff2e1f266abcfd54a06396f5a",
+          "decode": 31.271418779986295,
+          "prefill": 501.6103946997808,
+          "paired_ratio": 0.9113201312053266,
+          "eligible": false
+        }
+      ],
+      "eligible_for_full_pair": false,
+      "scope": "Same source234 sealed RAM executable and source238 rank32 FC worker, optional protocol and append-width warmup. Fixed3 versus adaptive max7 minimum3 gap1;3fullwarmups+1timed512 per case. This completes the previously unavailable minimum3 screen; unchanged strict residency and separate repeated timing/coding requirements.",
+      "raw_default_dflash_ids_equal": true,
+      "reference_control": "fixed3",
+      "raw_sha256": "b12fe57ea35babe00f551748d64e5c2a22eeea429fcf2802d5fc16af7ab16e37"
     }
   ],
   "adaptive_depth_full_pairs": [
@@ -42497,6 +43113,17 @@
   ],
   "phase_bounds": [
     {
+      "name": "dflash2-adaptive-fixed3-v243",
+      "advances": 511,
+      "observed_decode_ms": 14891.7,
+      "verification_ms": 12529.3,
+      "other_ms": 2362.4000000000015,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 40.78440136320465,
+      "verification_speedup_needed_if_other_work_unchanged": 1.5945454082671555,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
       "name": "dflash2-adaptive-fixed7-v229",
       "advances": 511,
       "observed_decode_ms": 22512.0,
@@ -42516,6 +43143,17 @@
       "goal50_decode_budget_ms": 10220.0,
       "zero_nonverification_tok_s": 34.419350275826304,
       "verification_speedup_needed_if_other_work_unchanged": 2.0060127822291887,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-adaptive-minimum3-v243",
+      "advances": 511,
+      "observed_decode_ms": 16340.8,
+      "verification_ms": 13882.0,
+      "other_ms": 2458.7999999999993,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 36.81025788791241,
+      "verification_speedup_needed_if_other_work_unchanged": 1.7886409318146677,
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {

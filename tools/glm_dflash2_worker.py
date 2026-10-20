@@ -353,7 +353,8 @@ def warm_incremental(model):
                  torch.zeros((8, model.h), device=model.device, dtype=model.dtype))
     succeeded = False
     try:
-        for rows in range(1, 8):
+        # Complete acceptance commits the anchor plus seven proposals.
+        for rows in range(1, len(embedding)+1):
             features = torch.zeros((rows, model.h*5), device=model.device, dtype=model.dtype)
             model.append(features, model.end, model.end+rows)
             model.forward(embedding)
@@ -377,7 +378,7 @@ def main():
     p.add_argument('--fc-adapter', type=Path, help='optional checksummed target-feature bridge calibration')
     p.add_argument('--linear-adapters', type=Path, help='optional checksummed FC and MLP output calibration')
     p.add_argument('--warm-protocol', action='store_true', help='materialize binary export and selector work before readiness; requires --gemm-f32')
-    p.add_argument('--warm-incremental', action='store_true', help='warm accepted-prefix append widths one through seven before readiness; requires --warm-protocol')
+    p.add_argument('--warm-incremental', action='store_true', help='warm committed-prefix append widths one through eight before readiness; requires --warm-protocol')
     p.add_argument('--trace-protocol', type=int, default=0, help='log timings for the first N protocol requests (0..64)')
     a = p.parse_args()
     if a.fc_adapter and a.linear_adapters:

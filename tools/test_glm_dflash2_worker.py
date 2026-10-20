@@ -27,7 +27,7 @@ class DFlash2Test(unittest.TestCase):
             return original_append(features, start, end)
         model.append = append
         warm_incremental(model)
-        self.assertEqual(widths, list(range(1, 8)))
+        self.assertEqual(widths, list(range(1, 9)))
         self.assertIs(model.cache, cache)
         self.assertIs(model.last_hidden, hidden)
         self.assertEqual((model.start, model.end), (0, 8))
