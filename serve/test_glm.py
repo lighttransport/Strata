@@ -94,8 +94,9 @@ class GlmBoundary(unittest.TestCase):
         ids, _, _ = svc.prepare([{"role": "user", "content": "ordinary text"}], None, {}, 2)
         self.assertEqual(tok.decode(ids), "ordinary text")
         self.assertEqual(svc.stop_ids, {154820, 154827, 154829})
-        with self.assertRaisesRegex(ValueError, "tool-call"):
-            svc.prepare([{"role": "user", "content": "hello"}], [{"name": "test"}], {}, 2)
+        # tool requests are served (GLM's call syntax: serve.frontend.GlmOutputParser, serve/test_glm_tools.py)
+        ids, _, _ = svc.prepare([{"role": "user", "content": "hello"}], [{"name": "test"}], {}, 2)
+        self.assertEqual(tok.decode(ids), "hello")
 
 
 class GlmConfigChecks(unittest.TestCase):
@@ -140,6 +141,7 @@ class GlmConfigChecks(unittest.TestCase):
         self.assertIn("--fp4-kernel=sm70", self.launch_args[1])
         self.assertIsInstance(self.start({**cfg, "fp4_kernel": "unknown"}, native=True), SystemExit)
         self.assertIsInstance(self.start({**cfg, "decode_cache_mib": 1024}, native=True), SystemExit)
+        self.assertIsInstance(self.start({**cfg, "gpu_devices": [0], "prefix_cache": True}, native=True), SystemExit)
         self.assertRefused({"fp4_kernel": "sm70"})
 
     def assertRefused(self, cfg, extra_files=()):

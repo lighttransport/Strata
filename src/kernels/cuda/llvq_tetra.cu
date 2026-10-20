@@ -831,16 +831,20 @@ __global__ void __launch_bounds__(LANES* GEMV_WARPS) gemv_kernel(const DecodeTab
     }
 }
 
-__global__ void dequant_kernel(const DecodeTablesDev* __restrict__ tg, LlvqTetraMatrixDev m, __half* __restrict__ out) {
+template <class Out> __device__ inline Out to_out(float v);
+template <> __device__ inline __half to_out<__half>(float v) { return __float2half(v); }
+template <> __device__ inline float to_out<float>(float v) { return v; }
+template <class Out>
+__global__ void dequant_kernel(const DecodeTablesDev* __restrict__ tg, LlvqTetraMatrixDev m, Out* __restrict__ out) {
     __shared__ DecodeTablesDev T;
     stage_tables(tg, T);
     const uint32_t nb = m.cols / 24, tail = m.cols - 24 * nb;
     const size_t total = size_t(m.rows) * (nb + (tail ? 1 : 0));
     for (size_t i = size_t(blockIdx.x) * blockDim.x + threadIdx.x; i < total; i += size_t(gridDim.x) * blockDim.x) {
         const uint32_t r = uint32_t(i / (nb + (tail ? 1 : 0))), b = uint32_t(i % (nb + (tail ? 1 : 0)));
-        __half* orow = out + size_t(r) * m.cols;
+        Out* orow = out + size_t(r) * m.cols;
         if (b == nb) {
-            for (uint32_t c = 0; c < tail; ++c) orow[24 * nb + c] = __float2half(bf16f(m.tail_bf16[size_t(r) * tail + c]));
+            for (uint32_t c = 0; c < tail; ++c) orow[24 * nb + c] = to_out<Out>(bf16f(m.tail_bf16[size_t(r) * tail + c]));
             continue;
         }
         const uint64_t w = load_word(m.words + size_t(r) * m.stride, b);
@@ -848,7 +852,7 @@ __global__ void dequant_kernel(const DecodeTablesDev* __restrict__ tg, LlvqTetra
         const int ss = decode_word(T, T.rows, w, v);
         const float s = ss ? ((w >> 47) & 1 ? m.c1 : m.c0) * m.scales[r] * rsqrtf(float(ss)) : 0.f;
 #pragma unroll
-        for (int t = 0; t < DIM; ++t) orow[24 * b + T.order[t]] = __float2half(float(v[t]) * s);
+        for (int t = 0; t < DIM; ++t) orow[24 * b + T.order[t]] = to_out<Out>(float(v[t]) * s);
     }
 }
 
@@ -923,7 +927,11 @@ void llvq_tetra_gemv(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDev& m, c
     check(cudaGetLastError(), "gemv launch");
 }
 void llvq_tetra_dequant_f16(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDev& m, void* out_f16, void* stream) {
-    dequant_kernel<<<1024, 256, 0, (cudaStream_t)stream>>>(d->tables, m, static_cast<__half*>(out_f16));
+    dequant_kernel<__half><<<1024, 256, 0, (cudaStream_t)stream>>>(d->tables, m, static_cast<__half*>(out_f16));
+    check(cudaGetLastError(), "dequant launch");
+}
+void llvq_tetra_dequant_f32(const LlvqTetraDecodeGpu* d, const LlvqTetraMatrixDev& m, float* out, void* stream) {
+    dequant_kernel<float><<<1024, 256, 0, (cudaStream_t)stream>>>(d->tables, m, out);
     check(cudaGetLastError(), "dequant launch");
 }
 void llvq_tetra_prepare(const LlvqTetraDecodeGpu* d, const float* signs, const float* x, int ntok, int cols, float* xp, void* stream) {

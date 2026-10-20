@@ -36,6 +36,21 @@ python3 tools/sim/glm_sim.py hw --hw tr16 > my-pc.json     # edit, then --hw my-
 python3 -m unittest tools.test_sim
 ```
 
+## A64FX nodes
+
+`tools/sim/a64fx.py` with the CLI `tools/glm_a64fx_sim.py` is a separate analytic model for GPU-less A64FX nodes
+(48 SVE cores, 32 GiB HBM2, Tofu-D), calibrated on the native 12-node runner of the gemm repository (35.46 decode /
+412.27 prefill tok/s, 13 rows within 5 %) and the uTofu micro-benchmarks. It scores 6 and 12 nodes, expert slicing
+layouts, 4 ranks per node, MTP, and two efficiency profiles (the runner as it is, and the proposed redesign). Report:
+[GLM_A64FX_PLAN.md](GLM_A64FX_PLAN.md); tests `python3 -m unittest tools.test_sim_a64fx`.
+
+## DeepSeek V4.1 Flash
+
+`tools/sim/ds41f.py` with the CLI `tools/glm_ds41f_sim.py` models DeepSeek V4.1 Flash (552B backbone, 384 experts
+top-6, two 98 GB FP8 Engram tables read 48 rows per token from SSD) on TR16, TR16 + B550, the Xeon + 2x V100 box and
+A64FX nodes, and ranks expert packs from IQ1_S to native MXFP4 by memory fit and speed; the pack tool is
+`strata-ds41f-pack` (`tools/ds41f_pack.cpp`; the resumable xeon+tesla GPU-node job is in [DS41F_QUANT_JOB.md](DS41F_QUANT_JOB.md)). Report: [DS41F_PLAN.md](DS41F_PLAN.md).
+
 ## Hardware input
 
 A hardware config (`tools/sim/hw.py`) has: CPU cores, clock, NUMA nodes, SIMD width (FP32 FMA peak is derived

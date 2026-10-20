@@ -96,3 +96,6 @@ build-vision-cuda12.bat
 /.rocprofv3/
 /build-*.out
 /build-*.ctest.summary
+
+# private operating notes (site names, login hosts, local paths); never tracked
+priv/

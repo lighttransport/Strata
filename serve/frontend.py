@@ -52,6 +52,11 @@ class ChatTemplate:
         env.globals["raise_exception"] = raise_exception
         self.source = source if source is not None else Path(path).read_text(encoding="utf-8")
         self.template = env.from_string(self.source)
+        # GLM-5.x writes calls as <tool_call>NAME<arg_key>K</arg_key><arg_value>V</arg_value></tool_call>; the Qwen
+        # family as <tool_call><function=NAME><parameter=K>V</parameter></function></tool_call>.
+        self.dialect = "glm" if "<arg_key>" in self.source else "qwen"
+        # The template matches tool results to calls by id (GLM sorts a block of results into the calls' order).
+        self.uses_tool_ids = "tool_call_id" in self.source
         self.caps = self._detect_caps()
 
     def render(self, messages: list[dict], tools: list[dict] | None = None, add_generation_prompt: bool = True,
@@ -93,10 +98,15 @@ class ChatTemplate:
             prompt = render(messages, tools)
             # Instructions include example XML and literal tag names, which are not model output. Parse only
             # complete calls to our probe functions, using the same body parser as OutputParser.
-            bodies = re.findall(r"<tool_call>\s*(<function=strata_caps_call_\d+>.*?</function>)\s*</tool_call>",
-                                prompt, re.S)
+            if self.dialect == "glm":
+                bodies = re.findall(r"<tool_call>(strata_caps_call_\d+.*?)</tool_call>", prompt, re.S)
+                parse = parse_glm_tool_call
+            else:
+                bodies = re.findall(r"<tool_call>\s*(<function=strata_caps_call_\d+>.*?</function>)\s*</tool_call>",
+                                    prompt, re.S)
+                parse = parse_tool_call
             try:
-                parsed = [parse_tool_call(body) for body in bodies]
+                parsed = [parse(body) for body in bodies]
             except ValueError:
                 return False
             return [{"name": call.name, "arguments": call.arguments} for call in parsed] == calls \
@@ -104,8 +114,9 @@ class ChatTemplate:
 
         history = [user, {"role": "assistant", "content": "strata_caps_answer",
                           "reasoning_content": "strata_caps_reasoning"}, user]
+        call_tag = "<arg_key>" if self.dialect == "glm" else "<function="
         return {"supports_tools": all(s in tool_prompt for s in
-                                      ("strata_caps_call_0", "strata_caps_description", "<tool_call>", "<function=")),
+                                      ("strata_caps_call_0", "strata_caps_description", "<tool_call>", call_tag)),
                 "supports_tool_calls": calls_supported(1),
                 "supports_system_role": "strata_caps_system" in render(
                     [{"role": "system", "content": "strata_caps_system"}, user]),
@@ -251,7 +262,11 @@ VISION_TAGS = {"<|vision_start|>": "\U000F0E03", "<|image_pad|>": "\U000F0E04", 
 TOOL_LITERAL_TAGS = {"</tool_call>": "\U000F0E07", "<tool_call>": "\U000F0E08", "<tool_response>": "\U000F0E09",
                      "</tool_response>": "\U000F0E0A"}
 LITERAL_TAGS = {**THINK_TAGS, **VISION_TAGS, **TOOL_LITERAL_TAGS}
-THINK_MARKS = {v: k for k, v in LITERAL_TAGS.items()}
+# GLM-5.x's argument tags are special tokens too (ids 154845-154848): a message quoting them is text.  Used only with a
+# GLM template (Service.literals), so other models' tokenization of the same strings is unchanged.
+GLM_TOOL_TAGS = {"<arg_key>": "\U000F0E0B", "</arg_key>": "\U000F0E0C", "<arg_value>": "\U000F0E0D",
+                 "</arg_value>": "\U000F0E0E"}
+THINK_MARKS = {v: k for k, v in {**LITERAL_TAGS, **GLM_TOOL_TAGS}.items()}
 CONTROL_MARK0 = 0xF0E10      # the control tokens' marks start here, clear of the two sets above
 
 
@@ -444,6 +459,37 @@ def _object_list(value, name: str) -> list[dict]:
 _TOOL_ORDERS: "OrderedDict[frozenset, tuple]" = OrderedDict()   # a set of tool names -> the order it first came in
 _TOOL_ORDERS_LOCK = threading.Lock()
 _TOOL_ORDERS_MAX = 64
+_TOOL_ORDERS_FILE: str | None = None   # opt-in (GLM "state_cache"): the orders are kept here across restarts
+
+
+def keep_tool_orders(path: str | None):
+    """Keep the first-seen tool orders in `path` (JSON) and load the ones already there: after a restart the same tool
+    set renders in the same order, so a conversation state stored on disk (GLM "state_cache") still matches its
+    prompt.  None: in memory only, as before.  A file that cannot be read starts empty."""
+    global _TOOL_ORDERS_FILE
+    _TOOL_ORDERS_FILE = path
+    if not path:
+        return
+    try:
+        saved = json.loads(Path(path).read_text(encoding="utf-8"))
+        with _TOOL_ORDERS_LOCK:
+            for names in saved[-_TOOL_ORDERS_MAX:]:
+                if isinstance(names, list) and all(isinstance(n, str) for n in names) and len(set(names)) == len(names):
+                    _TOOL_ORDERS[frozenset(names)] = tuple(names)
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def _save_tool_orders():
+    """With the lock held: write the orders (temp file + rename, so a crash never leaves half a file)."""
+    if not _TOOL_ORDERS_FILE:
+        return
+    try:
+        tmp = _TOOL_ORDERS_FILE + ".tmp"
+        Path(tmp).write_text(json.dumps([list(v) for v in _TOOL_ORDERS.values()]), encoding="utf-8")
+        os.replace(tmp, _TOOL_ORDERS_FILE)
+    except OSError:
+        pass
 
 
 def _stable_tool_order(tools: list[dict], name_of) -> list[dict]:
@@ -465,6 +511,7 @@ def _stable_tool_order(tools: list[dict], name_of) -> list[dict]:
             _TOOL_ORDERS[key] = tuple(names)
             while len(_TOOL_ORDERS) > _TOOL_ORDERS_MAX:
                 _TOOL_ORDERS.popitem(last=False)
+            _save_tool_orders()
             return tools
         _TOOL_ORDERS.move_to_end(key)
     pos = {n: k for k, n in enumerate(order)}
@@ -518,8 +565,9 @@ def tool_arguments(raw) -> dict:
     return {"arguments": json.dumps(raw, ensure_ascii=False)}
 
 
-def openai_to_messages(req: dict) -> tuple[list[dict], list[dict] | None, dict]:
-    """OpenAI Chat Completions -> (template messages, template tools, template kwargs)."""
+def openai_to_messages(req: dict, keep_ids: bool = False) -> tuple[list[dict], list[dict] | None, dict]:
+    """OpenAI Chat Completions -> (template messages, template tools, template kwargs).  `keep_ids`: pass the calls'
+    ids and the tool messages' tool_call_id to a template that uses them (ChatTemplate.uses_tool_ids)."""
     messages = []
     for i, m in enumerate(_object_list(req.get("messages"), "messages")):
         role = m.get("role")
@@ -538,8 +586,13 @@ def openai_to_messages(req: dict) -> tuple[list[dict], list[dict] | None, dict]:
                 fn = c.get("function", c)
                 if not isinstance(fn, dict):
                     raise ValueError("tool_calls must be a list of objects (each with a \"function\" object)")
-                calls.append({"function": {"name": fn.get("name"), "arguments": tool_arguments(fn.get("arguments"))}})
+                call = {"function": {"name": fn.get("name"), "arguments": tool_arguments(fn.get("arguments"))}}
+                if keep_ids and isinstance(c.get("id"), str):
+                    call["id"] = c["id"]
+                calls.append(call)
             out["tool_calls"] = calls
+        if keep_ids and role == "tool" and isinstance(m.get("tool_call_id"), str):
+            out["tool_call_id"] = m["tool_call_id"]
         messages.append(out)
     tools = [t.get("function", t) if t.get("type") == "function" else t
              for t in _tool_list(req.get("tools"), "function")] or None
@@ -587,7 +640,8 @@ def pin_billing_stamp(system: str) -> str:
     return "".join(s)
 
 
-def anthropic_to_messages(req: dict, think_unasked: bool = True) -> tuple[list[dict], list[dict] | None, dict]:
+def anthropic_to_messages(req: dict, think_unasked: bool = True,
+                          keep_ids: bool = False) -> tuple[list[dict], list[dict] | None, dict]:
     """Anthropic Messages -> (template messages, template tools, template kwargs).  `think_unasked`: a request
     without "thinking", an effort or a budget gets the template's default (it thinks), as through 0.1.31; False
     renders it without thinking (#278, the config's "anthropic_thinking": "on_request")."""
@@ -616,12 +670,18 @@ def anthropic_to_messages(req: dict, think_unasked: bool = True) -> tuple[list[d
             elif kind == "thinking":
                 reasoning.append(block.get("thinking", ""))
             elif kind == "tool_use":
-                calls.append({"function": {"name": block.get("name"), "arguments": tool_arguments(block.get("input"))}})
+                call = {"function": {"name": block.get("name"), "arguments": tool_arguments(block.get("input"))}}
+                if keep_ids and isinstance(block.get("id"), str):     # tool_use.id -> the call's id (keep_ids)
+                    call["id"] = block["id"]
+                calls.append(call)
             elif kind == "tool_result":
                 # A tool's image (Claude Code's Read of a picture) reaches the encoder like a user's, as the OpenAI
                 # path's tool messages already do; a text-only result is one string, as before.
-                messages.append({"role": "tool", "content": _parts_of(_check_parts(
-                    block.get("content"), f"messages[{i}].content[{j}].content", TEXT_PARTS + IMAGE_PARTS))})
+                result = {"role": "tool", "content": _parts_of(_check_parts(
+                    block.get("content"), f"messages[{i}].content[{j}].content", TEXT_PARTS + IMAGE_PARTS))}
+                if keep_ids and isinstance(block.get("tool_use_id"), str):
+                    result["tool_call_id"] = block["tool_use_id"]
+                messages.append(result)
         if text or calls or reasoning or parts:
             # an image sent beside tool results stays in this turn instead of being dropped
             out = {"role": m["role"], "content": _parts_of(parts) if _has_image(parts) else "".join(text)}
@@ -753,7 +813,7 @@ def tool_choice_of(tool_choice) -> tuple[str, str | None]:
     return "unknown", None
 
 
-def forced_call(tool_choice, tools: list[dict] | None) -> str | None:
+def forced_call(tool_choice, tools: list[dict] | None, dialect: str = "qwen") -> str | None:
     """`tool_choice` -> the text that opens the call the reply must make, or None (the model decides).
     There is no grammar here: the server writes this opening itself, so the model can only go on with a call.
     "required" / Anthropic "any": any of the tools; a named function: that one.  A value it cannot honour (an
@@ -766,9 +826,9 @@ def forced_call(tool_choice, tools: list[dict] | None) -> str | None:
     if kind == "required" and len(names) == 1:     # one tool to call: name it, the model cannot invent another
         kind, name = "named", next(iter(names))
     if kind == "required" and names:
-        return CALL_START + "\n<function="
+        return CALL_START if dialect == "glm" else CALL_START + "\n<function="
     if kind == "named" and name in names:
-        return CALL_START + f"\n<function={name}>\n"
+        return CALL_START + name if dialect == "glm" else CALL_START + f"\n<function={name}>\n"
     print(f"[strata] tool_choice {json.dumps(tool_choice)[:200]} is not supported here (or names no tool of the "
           "request): the model decides, as with \"auto\"", flush=True)
     return None
@@ -865,6 +925,153 @@ def parse_tool_call(body: str, schema: dict | None = None) -> ToolCall:
             except ValueError:
                 args[pname] = value
     return ToolCall(name=name, arguments=args)
+
+
+def _typed(value: str, declared):
+    """A raw argument value -> its JSON value unless the schema declares a string (parse_tool_call's rule)."""
+    if declared == "string":
+        return value
+    try:
+        return json.loads(value)
+    except ValueError:
+        return value
+
+
+def parse_glm_tool_call(body: str, schema: dict | None = None) -> ToolCall:
+    """GLM-5.x: the inside of `<tool_call>NAME<arg_key>K</arg_key><arg_value>V</arg_value>...</tool_call>` ->
+    ToolCall.  The template writes a string value raw and anything else as JSON; values are typed by the tool's schema
+    as in parse_tool_call.  Whitespace around the tags is tolerated (earlier GLM releases put newlines there)."""
+    k = body.find("<arg_key>")
+    name = (body if k < 0 else body[:k]).strip()
+    if not name or "<" in name:
+        raise ValueError("malformed tool call: " + body[:80])
+    props = ((schema or {}).get("parameters") or {}).get("properties") or {}
+    args, rest = {}, body[k:] if k >= 0 else ""
+    while rest.strip():
+        rest = rest.lstrip()
+        if not rest.startswith("<arg_key>") or "</arg_key>" not in rest:
+            raise ValueError("malformed tool call arguments: " + rest[:80])
+        key = rest[len("<arg_key>"):rest.index("</arg_key>")].strip()
+        rest = rest[rest.index("</arg_key>") + len("</arg_key>"):].lstrip()
+        if not rest.startswith("<arg_value>"):
+            raise ValueError("tool call argument without a value: " + key)
+        rest = rest[len("<arg_value>"):]
+        end = rest.find("</arg_value>")
+        value, rest = (rest, "") if end < 0 else (rest[:end], rest[end + len("</arg_value>"):])
+        args[key] = _typed(value, (props.get(key) or {}).get("type"))
+    return ToolCall(name=name, arguments=args)
+
+
+class GlmCallRewriter:
+    """Streams GLM-5.x call syntax into the Qwen form OutputParser reads, so GLM gets the same parser (calls inside the
+    reasoning, quoted tags in code, streamed arguments) without a second state machine:
+        <tool_call>NAME                     -> <tool_call>\\n<function=NAME>\\n
+        <arg_key>K</arg_key><arg_value>     -> <parameter=K>\\n
+        </arg_value>                        -> \\n</parameter>\\n
+        </tool_call> (closing a call)       -> </function>\\n</tool_call>
+    Values are padded with the newlines the Qwen parser strips, so a value comes out exactly as written.  Text outside
+    a call passes through unchanged (a `<tool_call>` not followed by a name and an argument or the end is text)."""
+    NAME_MAX = 256
+
+    def __init__(self):
+        self.state, self.held, self.name = "text", "", ""
+
+    def _partial(self, text: str, tags) -> int:
+        best = 0
+        for tag in tags:
+            for n in range(1, len(tag)):
+                if text.endswith(tag[:n]):
+                    best = max(best, n)
+        return best
+
+    def feed(self, delta: str) -> str:
+        buf, out = self.held + delta, []
+        self.held = ""
+        while buf:
+            if self.state == "text":
+                i = buf.find(CALL_START)
+                if i < 0:
+                    keep = self._partial(buf, (CALL_START,))
+                    out.append(buf[:len(buf) - keep])
+                    self.held = buf[len(buf) - keep:]
+                    break
+                out.append(buf[:i])
+                buf, self.state, self.name = buf[i + len(CALL_START):], "name", ""
+            elif self.state == "name":
+                a, e = buf.find("<arg_key>"), buf.find(CALL_END)
+                stop = min(x for x in (a, e) if x >= 0) if (a >= 0 or e >= 0) else -1
+                if stop < 0:
+                    # the name is still arriving; a "<" in it must be the start of one of the two tags that end it
+                    lt = buf.find("<")
+                    pending_tag = buf[lt:] if lt >= 0 else ""
+                    if (lt >= 0 and not ("<arg_key>".startswith(pending_tag) or CALL_END.startswith(pending_tag))) \
+                            or len(buf) > self.NAME_MAX or "\n" in buf.strip():
+                        out.append(CALL_START + buf)          # prose that mentions the tag, not a call
+                        buf, self.state = "", "text"
+                        continue
+                    self.held, self.state, buf = CALL_START + buf, "text", ""   # re-read once more has arrived
+                    break
+                name = buf[:stop].strip()
+                if not name or "<" in name or "\n" in name or len(name) > self.NAME_MAX:
+                    out.append(CALL_START + buf[:stop])
+                    buf, self.state = buf[stop:], "text"
+                    continue
+                out.append(CALL_START + "\n" + FUNC_START + name + ">\n")
+                if stop == e:
+                    out.append(FUNC_END + "\n" + CALL_END)
+                    buf, self.state = buf[e + len(CALL_END):], "text"
+                else:
+                    buf, self.state = buf[a + len("<arg_key>"):], "key"
+            elif self.state == "key":
+                k = buf.find("</arg_key>")
+                if k < 0:
+                    self.held = buf
+                    break
+                out.append(PARAM_START + buf[:k].strip() + ">\n")
+                buf, self.state = buf[k + len("</arg_key>"):], "open"
+            elif self.state == "open":
+                stripped = buf.lstrip()
+                if not stripped:
+                    break
+                if stripped.startswith("<arg_value>"):
+                    buf, self.state = stripped[len("<arg_value>"):], "value"
+                elif "<arg_value>".startswith(stripped):
+                    self.held = stripped
+                    break
+                else:                                         # a key with no value: an empty one
+                    out.append("\n" + PARAM_END + "\n")
+                    buf, self.state = stripped, "between"
+            elif self.state == "value":
+                v = buf.find("</arg_value>")
+                if v < 0:
+                    keep = self._partial(buf, ("</arg_value>",))
+                    out.append(buf[:len(buf) - keep])
+                    self.held = buf[len(buf) - keep:]
+                    break
+                out.append(buf[:v] + "\n" + PARAM_END + "\n")
+                buf, self.state = buf[v + len("</arg_value>"):], "between"
+            else:                                             # between arguments
+                stripped = buf.lstrip()
+                if not stripped:
+                    break
+                if stripped.startswith("<arg_key>"):
+                    buf, self.state = stripped[len("<arg_key>"):], "key"
+                elif stripped.startswith(CALL_END):
+                    out.append(FUNC_END + "\n" + CALL_END)
+                    buf, self.state = stripped[len(CALL_END):], "text"
+                elif "<arg_key>".startswith(stripped) or CALL_END.startswith(stripped):
+                    self.held = stripped
+                    break
+                else:                                         # text inside the call: the call ends unclosed
+                    out.append(FUNC_END + "\n")
+                    buf, self.state = stripped, "text"
+        return "".join(out)
+
+    def finish(self) -> str:
+        """The rest held back at the end of the output, as written.  A call cut off is not closed here: OutputParser
+        never completes an unfinished call (an announced one stays unfinished, #211)."""
+        held, self.held = self.held, ""
+        return held
 
 
 RCALL_MAX = 32768        # the most of a `<tool_call>` inside the reasoning that is held while waiting for its end (#804)
@@ -1431,3 +1638,25 @@ class OutputParser:
         self._reset_scan()
         self.state, self.lead = "content", True
         return [Event("tool_call", call=call)]
+
+
+class GlmOutputParser(OutputParser):
+    """OutputParser for GLM-5.x output: its call syntax is rewritten into the Qwen form first (GlmCallRewriter), so
+    every rule of OutputParser applies unchanged.  A `<tool_call>` written as text outside a call is unchanged."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rewriter = GlmCallRewriter()
+
+    def feed(self, delta: str) -> list[Event]:
+        return super().feed(self.rewriter.feed(delta))
+
+    def finish(self, reason: str | None = None) -> list[Event]:
+        rest = self.rewriter.finish()
+        out = super().feed(rest) if rest else []
+        return out + super().finish(reason)
+
+
+def make_parser(dialect: str, **kwargs) -> OutputParser:
+    """The output parser for a template's dialect (ChatTemplate.dialect)."""
+    return GlmOutputParser(**kwargs) if dialect == "glm" else OutputParser(**kwargs)

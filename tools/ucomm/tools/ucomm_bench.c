@@ -4,6 +4,7 @@
 #define _GNU_SOURCE
 #include "ucomm.h"
 
+#include <errno.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,19 +43,32 @@ int main(int argc, char **argv) {
         break;
       case 'n': iters = atoi(optarg); break;
       case 'v': cfg.verbose = 1; break;
-      case 'p': rt_req = strtoul(optarg, &optarg, 10); rt_rep = strtoul(optarg + 1, NULL, 10); break;
+      case 'p': {
+        char *end;
+        errno = 0;
+        unsigned long long req = strtoull(optarg, &end, 10);
+        if (errno || end == optarg || *optarg == '-' || *end != ':' || !req || req > SIZE_MAX) return 2;
+        const char *reply = end + 1;
+        unsigned long long rep = strtoull(reply, &end, 10);
+        if (errno || end == reply || *reply == '-' || *end || !rep || rep > SIZE_MAX) return 2;
+        rt_req = (size_t)req; rt_rep = (size_t)rep;
+        break;
+      }
       default:
         fprintf(stderr, "usage: %s -r RANK -w WORLD -a HOST:PORT [-b auto|ib|udp] [-n ITERS] [-v]\n", argv[0]);
         return 2;
     }
   }
+  if (iters < 1 || iters > 10000000 || (rt_req && cfg.world != 2)) return 2;
   ucomm_t *c;
   OK(ucomm_init(&cfg, &c));
   int me = ucomm_rank(c), W = ucomm_world(c);
   if (me == 0) printf("ucomm_bench: world %d, backend %s\n", W, ucomm_backend_name(c));
 
   size_t maxsz = 64u << 20;
+  if (rt_req) maxsz = rt_req > rt_rep ? rt_req : rt_rep;
   char *buf = malloc(maxsz);
+  if (!buf) { fprintf(stderr, "buffer allocation failed\n"); return 1; }
   memset(buf, me, maxsz);
   ucomm_mr_t *mr;
   OK(ucomm_mr_reg(c, buf, maxsz, &mr));
@@ -62,6 +76,7 @@ int main(int argc, char **argv) {
   if (rt_req && W >= 2 && me < 2) {
     int peer = 1 - me;
     double *lat = malloc(sizeof(double) * (size_t)iters);
+    if (!lat) { fprintf(stderr, "latency allocation failed\n"); return 1; }
     for (int i = -iters / 10; i < iters; i++) {
       double t0 = now_s();
       if (me == 0) {

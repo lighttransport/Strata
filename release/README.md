@@ -1,6 +1,7 @@
 ---
 license: mit
 base_model:
+  - zai-org/GLM-5.3-Flash
   - unsloth/GLM-5.3-Flash-GGUF
   - patrickbdevaney/GLM-5.3-Flash-REAP50-GGUF
 tags:
@@ -27,6 +28,28 @@ Current measurements, setup for one and two GPUs, and context-length limits are 
 on the fork's `glm53f` branch; bringing it up on other hardware is described in
 [`docs/GLM53F_NEW_HARDWARE.md`](https://github.com/lighttransport/Strata/blob/glm53f/docs/GLM53F_NEW_HARDWARE.md).
 The conversion recipe is `docs/GLM_RELEASE_Q2Q3.md`.
+
+## Default since 2026-10-17: experts quantized from the FP8 release
+
+**On a 128 GB machine use `GLM-5.3-Flash-Q23-FP8-assembled.gguf`** (or `experts-q23-fp8.gguf` with the Unsloth
+shards); **on a 64 GB machine use `reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf`.** Their routed experts have
+the same types as Q23 (Q2_K gate/up, Q3_K down) but are quantized once, directly from the official FP8 weights,
+instead of from Unsloth's 2-bit experts (REAP-50: from its Q4_K_M experts). Measured against exact logits of the FP8
+release on 16 held-out sequences (8,192 tokens):
+
+| Weights | Size | Perplexity (FP8: 4.449) | KL vs FP8 | Top-1 agreement | Decode | HumanEval |
+|---|---:|---:|---:|---:|---:|---:|
+| **Q23 from FP8** (default, 128 GB) | 119.9 GB | **4.606 (+3.5%)** | **0.117** | **88.3%** | 19.6 tok/s | **155/164** (unchanged routing), 151 (affinity 0.08) |
+| Q23 (first release) | 120.9 GB | 4.850 (+9.0%) | 0.212 | 84.7% | 19.6 tok/s | 154/164, 156 (affinity 0.08) |
+| Unsloth UD-Q2_K_XL as shipped | 108.7 GB | 4.688 (+5.4%) | 0.144 | 87.5% | | |
+| **REAP-50 Q23 from FP8** (default, 64 GB) | 63.2 GB | **5.184 (+16.5%)** | **0.393** | **80.4%** | 16.1 tok/s | **154/164** |
+| REAP-50 Q23 (first release) | 63.2 GB | 5.632 (+26.6%) | 0.479 | 77.6% | 15.9 tok/s | 149/164 |
+
+Threadripper 1950X with an RX 9070 XT, the same decoder for every row: speed is 512 generated tokens after a 2K
+prompt; the full models use MTP depth 1 and affinity 0.08, the REAP-50 rows the B550 profile with unchanged routing
+inside a 60 GiB / no-swap cgroup; HumanEval as noted, REAP-50 with unchanged routing and MTP depth 1. The method, the
+determinism checks and the per-projection errors are in the fork's `docs/GLM_FP8_REFERENCE.md`. The first-release
+files below stay published for the earlier measurements.
 
 ## Choosing for output quality
 
@@ -66,6 +89,11 @@ are specific to the TR16 machine. See `docs/GLM_Q2_DECODE_REDESIGN.md`,
 
 | Path | Size | Use with | Notes |
 |---|---:|---|---|
+| `GLM-5.3-Flash-Q23-FP8-assembled.gguf` | 119.9 GB | nothing else | **default single-file full model**: the four Unsloth UD-Q2_K_XL shards with `experts-q23-fp8.gguf` assembled in (126 expert checksums verified); token-identical to the sidecar setup in a 128-token check in canonical mode (three trials). SHA-256 `ec0895e8330e771fb5c44610a2876ecc763c6e884a7ecd3e61e8ef2a8f3821a9` |
+| `experts-q23-fp8.gguf` | 110.2 GB | the four Unsloth UD-Q2_K_XL shards | **default sidecar**: every routed projection of layers 3-44 quantized from the FP8 release, Q2_K gate/up, Q3_K down. SHA-256 `c2f06cd16ac5ded094e0c22040fdf170e132e7dcb3b59ae0e588cc83dc8f198e` |
+| `experts-q23-fp8.gguf.quality.json` | small | — | per-projection reconstruction error against the FP8 weights |
+| `reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf` | 63.2 GB | nothing else | **default for 64 GB**: REAP-50 (the same 144 experts per layer as the first REAP-50 file) with its routed experts quantized from the FP8 release. SHA-256 `03d09db917f1498ae6cc2a18a117a92043955268bd5930ade8fae1bbea491401` |
+| `reap50/reap50-expert-map.txt` | 23 KB | — | the original expert index behind each REAP-50 expert, per layer (recovered from the routers) |
 | `GLM-5.3-Flash-Q23-assembled.gguf` | 120.9 GB | nothing else | **single-file full model**: the four Unsloth UD-Q2_K_XL shards with `experts-q23.gguf` assembled in (byte copy, checksums verified, layers 11/12/44 kept in their original formats). No fingerprint check, no shards needed; token-identical to the sidecar setup in a 256-token check. Needs a Strata build with the assembled-file loader change. SHA-256 `8e280fd86714b606211c285552e77cde7b8c31ac0e9483df85c72ab1174a50e7` |
 | `reap224/GLM-5.3-Flash-Q23-REAP224-assembled.gguf` | 95.5 GB | nothing else | **single-file pruned model**, 224 of 288 routed experts per layer, sliced from full Q23 without further requantization. Experimental; see the quality results above. SHA-256 `3ef5726ae4a9768fa8311453927674401f3958a8c3884effddac92fc41262003` |
 | `reap224/plan-keep224.txt`, `reap224/plan-keep224.report.json` | 35 KB / 32 KB | — | kept expert IDs and per-layer saliency report |
@@ -83,7 +111,7 @@ shards from [Unsloth](https://huggingface.co/unsloth/GLM-5.3-Flash-GGUF); dense,
 attention, router, MTP and unconverted expert weights load from them. They need
 Strata's `--expert-pack` loader; other engines have not been tested.
 
-**Simplest option on a 128 GB machine:** download `GLM-5.3-Flash-Q23-assembled.gguf` alone and pass it as the model (no `--expert-pack`).
+**Simplest option on a 128 GB machine:** download `GLM-5.3-Flash-Q23-FP8-assembled.gguf` alone and pass it as the model (no `--expert-pack`).
 
 **Portability limitation of the sidecars.** The loader fingerprints the original
 shards by size, header and file modification time, and there is no override, so
@@ -103,8 +131,10 @@ Single-stream decode and prompt (prefill) rates, tokens per second. Full trials 
 | Threadripper 1950X, 128 GB, RTX 5060 Ti 16 GB | `reap224/…assembled.gguf`, tuned profile, MTP depth 3 | 29.0 (2K), 31.6 (8K) | 168 (2K), 496 (8K) | HumanEval 152/164 (150 on rerun); perplexity +4.9%, KL 0.064 vs unpruned Q23 |
 | same, RX 9070 XT 16 GB alone (ROCm) | `reap224/…`, affinity 0.14 | 34.1 (8K) | 561 (8K) | not separately gated |
 | same, RTX 5060 Ti + RX 9070 XT (expert worker on the second card) | `reap224/…`, affinity 0.14 | 40-44 (1K-8K) | 465 (8K); 870 with the HIP card as primary | corpus gate passed; HumanEval 146/164, below the floor |
+| same, RX 9070 XT 16 GB alone | `GLM-5.3-Flash-Q23-FP8-assembled.gguf` / `experts-q23-fp8.gguf` (full), affinity 0.08, MTP depth 1 | 19.6 (2K), 19.6 (8K) | 178 (2K), 497 (8K) | vs FP8: perplexity +3.5%, KL 0.117; HumanEval 151/164, 155/164 with unchanged routing |
 | same, RTX 5060 Ti | `GLM-5.3-Flash-Q23-assembled.gguf` (full), affinity 0.08, MTP depth 1 | 23.1 (2K), 23.0 (8K) | 131 (2K), 428 (8K) | HumanEval 153/164; perplexity +2.07%, KL +0.018 vs unchanged routing |
-| Ryzen 9 3950X, 64 GB, RX 9070 XT 16 GB (ROCm) | `reap50/…assembled.gguf`, default service config | 10.2 | 230 | vs original UD-Q2_K_XL: perplexity 11.12 vs 8.57 (+29.8%), KL 0.587, top-1 69.8% |
+| Threadripper 1950X in a 60 GiB / no-swap cgroup, RX 9070 XT | `reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf`, the B550 profile, unchanged routing | 16.1 (2K), 16.0 (8K) | 219 (2K), 217 (8K) | vs FP8: perplexity +16.5%, KL 0.393, top-1 80.4%; HumanEval 154/164 (first REAP-50 file under the same settings: +26.6%, 0.479, 77.6%, 149/164, 15.9 / 16.2 tok/s) |
+| Ryzen 9 3950X, 64 GB, RX 9070 XT 16 GB (ROCm) | `reap50/…assembled.gguf` (first release), default service config | 10.2 | 230 | vs original UD-Q2_K_XL: perplexity 11.12 vs 8.57 (+29.8%), KL 0.587, top-1 69.8% |
 | same | `reap50/…`, affinity 0.06 | 16.5 | 229-250 | passes the fork's C++ review task |
 | Ryzen 9 3950X, 64 GB DDR4-2666, RTX 3070 8 GB | `reap50/…`, presets per context | 19.5 (2K), 16.9 (4K), 17.6 (8K) | 464-506 | matched perplexity +5.7 to +8.9%; 30-task HumanEval subset passed |
 
@@ -137,7 +167,14 @@ build-glm/strata-glm-q2-pack "$MODEL" experts-q22.gguf --calibration="$WORK/cali
 build-glm/strata-glm-q2-pack --verify "$MODEL" experts-q23.gguf
 ```
 
-REAP-50 assembled model: the same calibration and `strata-glm-q2-pack` run on
+FP8-derived files (the defaults): download [zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash)
+and add `--fp8=<its directory> --gate-type=q2_k --down-type=q3_k` to the `strata-glm-q2-pack` command above, then
+`strata-glm-assemble "$MODEL" experts-q23-fp8.gguf GLM-5.3-Flash-Q23-FP8-assembled.gguf`. For REAP-50, recover the
+kept experts with `tools/glm_reap_expert_map.py` (every REAP-50 router row equals exactly one original row), pack
+against the published REAP-50 file with `--expert-map=`, and assemble with `strata-glm-assemble --reassemble`. Full
+commands: `docs/GLM_RELEASE_Q2Q3.md`, "Reproducing the FP8-derived weights".
+
+REAP-50 assembled model (first release): the same calibration and `strata-glm-q2-pack` run on
 `GLM-5.3-Flash-REAP50-Q4_K_M.gguf` from
 [patrickbdevaney/GLM-5.3-Flash-REAP50-GGUF](https://huggingface.co/patrickbdevaney/GLM-5.3-Flash-REAP50-GGUF),
 followed by `strata-glm-assemble REAP50-Q4_K_M.gguf reap50-q23.gguf GLM-5.3-Flash-REAP50-Q23-assembled.gguf`,
@@ -148,13 +185,14 @@ needs the same revision, corpus, settings and toolchain.
 
 ## Run
 
-128 GB machine: use an assembled file as the model. Profiles in the fork:
+128 GB machine: use an assembled file as the model. The default weights were measured with
+`configs/experimental/glm53f-q23fp8-tr16-9070xt-aff08.json` (and `-aff0.json` for unchanged routing). Other profiles in the fork:
 `configs/experimental/glm53f-q23-reap224-tr16-tuned.json` (REAP-224, one GPU),
 `configs/experimental/glm53f-reap224-tr16-two-gpu-decode.json` and `…-prefill.json` (two GPUs, run through
 `tools/glm_mixed_run.py`), and `configs/experimental/glm53f-q23-tr16-aff08.json` (full model; with the
 sidecars instead, pass the first Unsloth shard and `--expert-pack=/path/to/experts-q23.gguf`). Profiles work with
-`python3 -m serve.server --engine glm --config …`. 64 GB machine: use the
-assembled file as the model with
+`python3 -m serve.server --engine glm --config …`. 64 GB machine: use
+`reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf` (the default; or the first REAP-50 file) as the model with
 `configs/glm53f-reap50-q23-b550-60g-9070xt-experimental.json` via
 `tools/glm_b550_60g.sh start`, inside the 60 GiB memory cgroup it sets up; with an 8 GB card, the
 `configs/glm53f-reap50-q23-64g-rtx3070-*.json` presets. Full command lines are in `docs/GLM53F_RELEASE.md`

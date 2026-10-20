@@ -8,8 +8,15 @@ The weights are experimental conversions: the expert sidecars change weight
 values (they are not lossless repacks), and the REAP-50 model removes half the
 experts. See the quality tables before relying on either.
 
-**For output quality, prefer the full, unpruned `GLM-5.3-Flash-Q23-assembled.gguf`
-(288 experts, 120.9 GB) when RAM permits.** Full Q23 is still quantized. REAP-224
+**Since 2026-10-17 the default weights are quantized from the official FP8 release:
+`GLM-5.3-Flash-Q23-FP8-assembled.gguf` (or `experts-q23-fp8.gguf` with the Unsloth shards) for 128 GB and
+`reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf` for 64 GB.** They have the same types and speed as the files
+below but come from one quantization step instead of two. Against exact FP8 logits the full model halves the first
+release's KL (0.117 against 0.212, perplexity +3.5% against +9.0%) and scored 155/164 HumanEval with unchanged
+routing; REAP-50 improves from KL 0.479 to 0.393 and from 149 to 154/164 ([GLM_FP8_REFERENCE.md](GLM_FP8_REFERENCE.md)).
+The rest of this document describes the first release; its files stay published.
+
+**For output quality, prefer the full, unpruned model (288 experts) when RAM permits.** Full Q23 is still quantized. REAP-224
 (224 experts, 95.5 GB) is an experimental alternative for lower memory use.
 Its latest tuned release candidate scored 150/164 HumanEval, below its 152-pass
 floor; see the [2026-10-13 validation report](GLM_RELEASE_20261013.md).
@@ -28,12 +35,18 @@ protocol, low reasoning and a 2,048-token cap. See the
 | Configuration | Host RAM | GPU | Weights | Measured decode / prefill |
 |---|---:|---|---|---|
 | A: full model, 288 experts | 128 GB | 16 GB NVIDIA (RTX 5060 Ti, PCIe 3.0 x8) | Unsloth UD-Q2_K_XL shards + `experts-q23.gguf` | 23.1 tok/s decode, 131 tok/s prefill at 2K (qualified); research candidates up to 36–38 |
+| A, default since 2026-10-17 | 128 GB | 16 GB (measured on the RX 9070 XT, ROCm) | `GLM-5.3-Flash-Q23-FP8-assembled.gguf`, or the Unsloth shards + `experts-q23-fp8.gguf` | 19.6 tok/s decode, 178 / 497 tok/s prefill at 2K / 8K (affinity 0.08, MTP depth 1); the release Q23 measured the same on that card |
+| B, default since 2026-10-18 | 64 GB | 16 GB (measured on TR16's RX 9070 XT in a 60 GiB cgroup) | `reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf` | 16.1 / 16.0 tok/s decode, 219 / 217 prefill at 2K / 8K, B550 profile (the first REAP-50 file: 15.9 / 16.2, 215 / 192) |
 | B: REAP-50 pruned model, 144 experts | 64 GB | 16 GB AMD (RX 9070 XT, ROCm) | `reap50/GLM-5.3-Flash-REAP50-Q23-assembled.gguf` (standalone) | 10.2 tok/s decode, 230 tok/s prefill (default service); 16.5 decode with affinity 0.06 |
 
 ## Files in the repository
 
 | Path | Size | What it is | Needs |
 |---|---:|---|---|
+| `GLM-5.3-Flash-Q23-FP8-assembled.gguf` | 119.9 GB | **Default** single-file full model: the Unsloth shards + `experts-q23-fp8.gguf`, assembled (126 expert checksums verified); token-identical to the sidecar setup in canonical mode (128 tokens, three trials). SHA-256 `ec0895e8…21a9`. | nothing else |
+| `experts-q23-fp8.gguf` | 110.2 GB | **Default** expert sidecar: every routed projection of layers 3-44 quantized from the FP8 release (Q2_K gate/up, Q3_K down), importance-weighted with the same calibration as `experts-q23.gguf`. SHA-256 `c2f06cd1…198e`. | the four Unsloth UD-Q2_K_XL shards (same fingerprint caveat) |
+| `reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf` | 63.2 GB | **Default** REAP-50 file: the same 144 experts per layer as the REAP-50 file below, routed experts quantized from the FP8 release. SHA-256 `03d09db9…1401`. | nothing else |
+| `reap50/reap50-expert-map.txt` | 23 KB | Original expert index behind each REAP-50 expert. | — |
 | `GLM-5.3-Flash-Q23-assembled.gguf` | 120.9 GB | Single-file full model: Unsloth UD-Q2_K_XL shards + `experts-q23.gguf`, assembled with `strata-glm-assemble <shard 1> experts-q23.gguf <out>` (split base and retained original projections supported since this release). Token-identical to the sidecar setup (256 tokens, qualified profile). SHA-256 `8e280fd8…a50e7`. | a Strata build with the assembled-file loader change |
 | `reap224/GLM-5.3-Flash-Q23-REAP224-assembled.gguf` | 95.5 GB | Single-file REAP-224 model, sliced from full Q23 without further requantization. SHA-256 `3ef5726ae4a9768fa8311453927674401f3958a8c3884effddac92fc41262003`. See [quality and pruning details](GLM_PRUNE_224.md). | a Strata build with the pruned-model loader |
 | `reap224/plan-keep224.txt`, `reap224/plan-keep224.report.json` | 35 KB / 32 KB | Kept expert IDs and per-layer saliency report. | — |
@@ -201,6 +214,44 @@ build-glm/strata-glm-q2-pack --verify "$MODEL" experts-q23.gguf
 The calibration writes `coverage.json`, which is the expert prior shipped as
 `calibration/coverage-q23-tr16.json`. Allow 110 GiB of free disk per sidecar.
 
+### Reproducing the FP8-derived weights
+
+The FP8 release ([zai-org/GLM-5.3-Flash](https://huggingface.co/zai-org/GLM-5.3-Flash), 304 GB of routed experts in
+E4M3 with 128x128 block scales) is read directly; each expert is dequantized exactly to f32 and quantized once.
+The GGUF passed as the model supplies the layout and the fingerprint the sidecar binds to; its own expert weights
+are not read.
+
+```sh
+hf download zai-org/GLM-5.3-Flash --local-dir models/glm53f-fp8      # about 307 GB
+build-glm/strata-glm-q2-pack "$MODEL" experts-q23-fp8.gguf --calibration="$WORK/calibration" \
+  --fp8=models/glm53f-fp8 --gate-type=q2_k --down-type=q3_k --threads=14     # 1.9 h on TR16
+build-glm/strata-glm-q2-pack --verify "$MODEL" experts-q23-fp8.gguf
+build-glm/strata-glm-assemble "$MODEL" experts-q23-fp8.gguf GLM-5.3-Flash-Q23-FP8-assembled.gguf
+```
+
+`--gate-type` and `--down-type` take any of `q2_k q3_k q4_k iq2_xxs iq2_xs iq2_s iq3_xxs iq3_s iq4_xs`; the IQ2_S
+packs measured in [GLM_FP8_REFERENCE.md](GLM_FP8_REFERENCE.md) came from the same command.
+
+**A pruned model (REAP-50).** A REAP model renumbers the experts it keeps, so the pack needs the original index
+behind each one. `tools/glm_reap_expert_map.py` recovers it: the pruned model keeps the router rows and expert biases
+of its experts unchanged, and each row equals exactly one row of the original router (all 43 layers of REAP-50 match
+exactly). The original REAP-50 Q4_K_M base is not needed: the published REAP-50 assembly serves as the model, and
+`strata-glm-assemble --reassemble` replaces all of its routed projections with the new ones (it refuses a pack that is
+not from FP8 or that leaves any old projection in place).
+
+```sh
+R=models/glm53f-strata/reap50; UD=models/glm53f/UD-Q2_K_XL/GLM-5.3-Flash-UD-Q2_K_XL-0000
+python3 tools/glm_reap_expert_map.py $R/GLM-5.3-Flash-REAP50-Q23-assembled.gguf ${UD}{1,2,3,4}-of-00004.gguf > reap50-expert-map.txt
+build-glm/strata-glm-q2-pack $R/GLM-5.3-Flash-REAP50-Q23-assembled.gguf reap50-q23-fp8.gguf --calibration=<REAP-50 calibration> \
+  --fp8=models/glm53f-fp8 --expert-map=reap50-expert-map.txt --gate-type=q2_k --down-type=q3_k --threads=12
+build-glm/strata-glm-assemble --reassemble $R/GLM-5.3-Flash-REAP50-Q23-assembled.gguf reap50-q23-fp8.gguf \
+  GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf
+```
+
+The calibration is the REAP-50 one described under configuration B (importance per kept expert, in the pruned
+model's order). On TR16 the REAP-50 pack took 73 minutes with 12 threads while other jobs ran (55.1 GB, 126
+projections verified); the reassembly 3 minutes.
+
 ## Configuration B: 64 GB RAM, 16 GB AMD GPU (B550)
 
 Measured on a Ryzen 9 3950X (16 cores), 62 GB DDR4-2133 (expert reads about
@@ -263,6 +314,12 @@ passed the C++ review coding task; stay at 0.06 or below. For 8K documents
 scratch cap) measured 294 prefill / 15.5 decode tok/s.
 
 ### Quality of the REAP-50 model
+
+Against the exact FP8 reference (16 sequences, 8,192 tokens; FP8 perplexity 4.449), with HumanEval at unchanged
+routing and MTP depth 1 in a 60 GiB cgroup: the REAP-50 file quantized from FP8 has perplexity 5.184 (+16.5%), KL
+0.393, top-1 80.4% and 154/164; the first REAP-50 file 5.632 (+26.6%), 0.479, 77.6% and 149/164.
+
+Earlier measurements:
 
 Against the original UD-Q2_K_XL on 32,768 targets: perplexity 11.12 versus 8.57
 (+29.8%), KL 0.587, top-1 agreement 69.8%. Against canonical Q23 on a 512-target

@@ -155,7 +155,10 @@ maximum relative error of 4.6e-4, from FP16 itself. The CPU kernel takes the act
 rank nibble, one `pshufb` per section into the parity's 16-value table, and a 1/sqrt(16m) table by shell; it avoids
 `pdep`, which is microcoded on Zen1/Zen2. The GPU GEMV keeps the 16 KB row table in global memory for one token and in
 shared memory for more. A byte-permute decode with no table loads was tried and was not faster. The GEMV is not wired
-into the engine.
+into the engine's decode path. Model-level quality is measured through the FP8 reference evaluator instead
+(`STRATA_GLM_EXPERT_LLVQ=DIR`, f32 dequant on the GPU): with every routed expert from the full 756-unit encode and
+exact FP8 elsewhere, 16 held-out sequences give perplexity 4.732 (+6.4% against FP8), KL 0.172, top-1 85.9%, against
+4.583 (+3.0%), 0.108 and 88.7% for the Q23 experts on the same path ([GLM_FP8_REFERENCE.md](GLM_FP8_REFERENCE.md)).
 
 ## Reproduce
 

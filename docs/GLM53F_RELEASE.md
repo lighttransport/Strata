@@ -133,6 +133,8 @@ published for reproducing the earlier measurements.
 | `GLM-5.3-Flash-Q23-assembled.gguf` | 120.9 GB | the full model, single file: Unsloth UD-Q2_K_XL dense/attention/router weights with the routed experts requantized to Q2_K (gate/up) and Q3_K (down). Needs about 128 GB of RAM. |
 | `reap224/GLM-5.3-Flash-Q23-REAP224-assembled.gguf` | 95.5 GB | 224 of 288 experts per layer, sliced from the file above (REAP-style saliency ranking with the fork's own calibration, no further requantization). The TR16 release rows use it. |
 | `reap224/coverage-keep224.json`, `plan-keep224.txt`, `plan-keep224.report.json` | small | expert prior for the GPU-resident tier (`STRATA_GLM_EXPERT_PRIOR`), the kept experts, the per-layer saliency report |
+| `GLM-5.3-Flash-Q23-FP8-assembled.gguf` | 119.9 GB | **default** single file: the shards + `experts-q23-fp8.gguf`, token-identical to that sidecar setup in canonical mode |
+| `reap50/GLM-5.3-Flash-REAP50-Q23-FP8-assembled.gguf` | 63.2 GB | **default for 64 GB**: the REAP-50 experts below quantized from the FP8 release; perplexity +16.5%, KL 0.393, top-1 80.4% vs FP8 and HumanEval 154/164, against +26.6%, 0.479, 77.6% and 149/164 for the first REAP-50 file, at the same speed |
 | `reap50/GLM-5.3-Flash-REAP50-Q23-assembled.gguf` | 63.2 GB | REAP-50 (144 experts) with Q23 routed experts in the Q4_K_M base; the B550 rows use it. Fits 64 GB of RAM. |
 | `reap50/reap50-coverage.json`, `reap50-q23-assembled.provenance.json` | small | expert prior and provenance |
 | `experts-q23.gguf`, `experts-q22.gguf` | 105.5 / 95.9 GB | expert sidecars for the four original Unsloth shards (`--expert-pack`); the loader fingerprints the shards by size, header and modification time, so a fresh shard download needs the sidecar regenerated or the timestamps restored ([GLM_RELEASE_Q2Q3.md](GLM_RELEASE_Q2Q3.md)) |
@@ -171,15 +173,16 @@ Tests: `ctest --test-dir build-glm -L glm` (and the same for `build-hip`); the l
 
 ```sh
 pip install -U huggingface_hub
-# 128 GB machine, default: Unsloth's shards + the FP8-derived experts (restore the shard timestamps,
-# GLM_RELEASE_Q2Q3.md "Portability warning", then check with strata-glm-q2-pack --verify)
+# 128 GB machine, default: the single file
+hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'GLM-5.3-Flash-Q23-FP8-assembled.gguf' --local-dir models
+# or Unsloth's shards + the sidecar (restore the shard timestamps, GLM_RELEASE_Q2Q3.md "Portability warning")
 hf download unsloth/GLM-5.3-Flash-GGUF --include 'UD-Q2_K_XL/*' --local-dir models/glm53f
 hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'experts-q23-fp8.gguf' --local-dir models
 # 128 GB machine, earlier single file (release Q23, no timestamp step)
 hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'GLM-5.3-Flash-Q23-assembled.gguf' --local-dir models
 # TR16 release rows: REAP-224
 hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'reap224/*' --local-dir models
-# 64 GB machine: REAP-50
+# 64 GB machine: REAP-50 (the FP8-derived file is the default)
 hf download lte-ai/GLM-5.3-Flash-Strata-Q2Q3-Experts --include 'reap50/*' --local-dir models
 build-glm/strata-model-inspect models/reap224/GLM-5.3-Flash-Q23-REAP224-assembled.gguf
 ```
@@ -202,6 +205,11 @@ For a timed run from the shell, the one-shot decoder with the same settings (the
 B550-class machines (64 GB, one RX 9070 XT): [GLM_B550_REAP50.md](GLM_B550_REAP50.md) has the profile,
 the 60 GiB cgroup and the `tools/glm_b550_60g.sh start` launcher. The V100 server: the `build-glm-v100`
 recipe and profile in [GLM53_V100.md](GLM53_V100.md).
+
+### Coding agents (Claude Code, OpenAI-compatible, Codex)
+
+Tool calls, prefix reuse between turns, sampling and several conversations at once are opt-in settings of the same
+server: [GLM_AGENT_SERVE.md](GLM_AGENT_SERVE.md), profile `configs/experimental/glm53f-q23fp8-tr16-9070xt-agent.json`.
 
 ### Run on two GPUs (TR16)
 

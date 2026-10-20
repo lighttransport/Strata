@@ -46,6 +46,12 @@ ACCEPTANCE = {
     "dflash_chat": [0.86] * 15,
     "dflash_code": [0.885] * 15,
     "dflash_math": [0.935] * 15,
+    # GLM-5.3-Flash on 12 A64FX nodes (gemm a64fx/glm5, handoff-decode100-resume-20261004.md): the BEST option set at
+    # 512 tokens accepted 42/43 draft positions at depth 2 (47/51 at depth 3); flat per position.
+    "a64fx_best512": [42 / 43] * 7,
+    # the earlier depth 1-4 sweep of the legacy binary (GLM53F_STRATA.md:1025): 96/128, 147/256, 163/384, 163/512
+    # accepted of proposed, turned into marginal per-position acceptance.
+    "a64fx_sweep768": [0.75, 0.531, 0.314, 0.0],
 }
 
 

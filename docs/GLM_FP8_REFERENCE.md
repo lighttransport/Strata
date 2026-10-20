@@ -59,16 +59,17 @@ against the quiet run, top-1 unchanged. The saved reference was made while anoth
 ## Every 128 GB pack against FP8
 
 Corpus gate (`tools/glm_tr16_quality.py --eval-prefill`), RX 9070 XT, the same non-canonical settings for every model,
-16 held-out sequences against `eval16-fp8.logits`:
+16 held-out sequences against `eval16-fp8.logits`. A sidecar replaces routed expert projections of the four
+UD-Q2_K_XL shards (108.7 GB); the release Q23 leaves layer 11 in its original format, which is why it is smaller.
 
-| Pack (routed experts) | Size | Perplexity | vs FP8 | KL | Top-1 |
+| Pack (routed experts) | Sidecar size | Perplexity | vs FP8 | KL | Top-1 |
 |---|---:|---:|---:|---:|---:|
-| FP8 (the reference) | 304 GB | 4.449 | | | |
+| FP8 (the reference) | 304 GB of experts | 4.449 | | | |
 | **Q23 from FP8** (Q2_K gate/up, Q3_K down) | 110.2 GB | **4.606** | **+3.5%** | 0.117 | **88.3%** |
 | IQ2_S gate/up + Q3_K down, from FP8 | 108.6 GB | 4.644 | +4.4% | **0.116** | 88.2% |
 | IQ2_S, from FP8 | 97.5 GB | 4.673 | +5.0% | 0.132 | 87.8% |
-| UD-Q2_K_XL as shipped | 99 GB | 4.688 | +5.4% | 0.144 | 87.5% |
-| Q23 release (requantized from UD-Q2_K_XL's experts) | 111.2 GB | 4.850 | +9.0% | 0.212 | 84.7% |
+| UD-Q2_K_XL as shipped | none (108.7 GB whole model) | 4.688 | +5.4% | 0.144 | 87.5% |
+| Q23 release (requantized from UD-Q2_K_XL's experts) | 105.5 GB | 4.850 | +9.0% | 0.212 | 84.7% |
 
 The release Q23 carries two rounds of quantization (FP8 to UD-Q2_K_XL's 2-bit experts, then to Q2_K/Q3_K); the same
 types quantized once from FP8 halve its KL. Against the old UD-Q2_K_XL reference the ranking was different: IQ2_S
@@ -85,6 +86,55 @@ Weight-space error of the FP8 packs (importance-weighted normalized MSE, mean ov
 ```sh
 build-glm-release/strata-glm-q2-pack GLM-5.3-Flash-UD-Q2_K_XL-00001-of-00004.gguf experts-q23-fp8.gguf \
   --calibration=prune/calibration --fp8=fp8 --gate-type=q2_k --down-type=q3_k --threads=14     # 1.9 h on TR16
+```
+
+## REAP-50 (64 GB) from FP8
+
+REAP-50 keeps 144 of 288 experts per layer. Its router rows equal the original rows exactly, which gives the original
+index of every kept expert (`tools/glm_reap_expert_map.py`); the same 144 experts were then quantized from FP8
+(`strata-glm-q2-pack --expert-map`) and assembled into the published REAP-50 file (`strata-glm-assemble --reassemble`).
+Same gate, HumanEval with unchanged routing and MTP depth 1, speed in a 60 GiB / no-swap cgroup with the B550 profile:
+
+| REAP-50 file | Perplexity | vs FP8 | KL | Top-1 | HumanEval | Decode 2K / 8K | Prefill 2K / 8K |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **experts from FP8** | **5.184** | **+16.5%** | **0.393** | **80.4%** | **154/164** | 16.1 / 16.0 | 219 / 217 |
+| first release (requantized from the REAP-50 Q4_K_M experts) | 5.632 | +26.6% | 0.479 | 77.6% | 149/164 | 15.9 / 16.2 | 215 / 192 |
+
+Where REAP-50's error comes from: the same file's experts on the exact-FP8 path (`STRATA_GLM_EXPERT_GGUF` with
+`STRATA_GLM_EXPERT_MAP=reap50-expert-map.txt`, which restricts the FP8 router to the 144 kept experts; REAP-50's router
+rows and biases are the original ones) give perplexity 5.212 (+17.1%), KL 0.385, top-1 80.7%. So its Q4_K_M dense
+weights add almost nothing (0.393 against 0.385). The same Q2_K/Q3_K experts unpruned give KL 0.108 on that path, so
+pruning to 144 experts accounts for most of REAP-50's KL. A better 64 GB model has to change which experts are kept
+(or keep more of them at fewer bits), not the expert quantizer.
+
+## Expert quantizers alone: llvq Tetra against Q23 (2026-10-18)
+
+The tables above use each pack's own dense weights (UD-Q2_K_XL's). To compare expert quantizers alone, two opt-in
+switches run the FP8 reference path with only the routed experts replaced; everything else stays exact FP8:
+- `STRATA_GLM_EXPERT_LLVQ=DIR` reads llvq Tetra units (`strata-glm-llvq-encode`, [GLM_LLVQ.md](GLM_LLVQ.md)). Each
+  matrix is decoded to f32 on the GPU (`llvq_tetra_dequant_f32`, within 1.8e-7 of the CPU reference) and multiplied
+  against the rotated input (`y = W' (Q x)`, rotation in double on the host).
+- `STRATA_GLM_EXPERT_GGUF=PACK` reads a GGUF expert pack and dequantizes it on the GPU (`iq_dequant_f32`).
+
+Same 16 sequences and reference as above:
+
+| Routed experts (dense: exact FP8) | Bits per weight | Size | Perplexity | vs FP8 | KL | Top-1 |
+|---|---:|---:|---:|---:|---:|---:|
+| Q23 from FP8 (Q2_K gate/up, Q3_K down) | 2.90 | 110.2 GB | **4.583** | **+3.0%** | **0.108** | **88.7%** |
+| llvq Tetra, identity Hessian, rotation, 2 gain centroids | 2.07 | 74 GB | 4.732 | +6.4% | 0.172 | 85.9% |
+
+At 29% fewer bits llvq's KL is 1.6 times Q23's. The llvq encode used the cheap setting (identity Hessian; weight
+error 0.085 against FP8). The Hessian-weighted variant of the llvq study would cost about 1.5 PFLOP for the full model
+and was not run. Q23's dense-weight share is small: with UD-Q2_K_XL's dense weights instead of FP8's its KL is 0.117
+(table above), against 0.108 here.
+
+Run times on TR16: 29 minutes (llvq, 74 GB of units read per pass) and 33 minutes (Q23, 110 GB).
+
+```sh
+STRATA_GLM_EVAL_WIDTH=512 STRATA_GLM_EXPERT_LLVQ=llvq-tetra \
+  build-hip-rocm101-tr16/strata-glm-decode fp8 0 1 4096 15 --context=4096 --prefill-batch=512 --gpu-budget-mib=12288 \
+  --cpu-affinity=numa --eval-corpus=build-q2-v2/quality/evaluation16.ids --eval-reference=eval16-fp8.logits
+# Q23: STRATA_GLM_EXPERT_GGUF=experts-q23-fp8.gguf instead of STRATA_GLM_EXPERT_LLVQ
 ```
 
 ## Speed and HumanEval

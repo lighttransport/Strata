@@ -3,11 +3,11 @@
 
     from ucfile import UcFile
     uc = UcFile()                                   # finds ../build/ucfile, or $UCFILE_BIN
-    uc.discover()                                   # [{'name': 'b550', 'reply_from': ..., 'ib': True, ...}]
-    uc.df('b550'); uc.ls('b550', '/data'); uc.rm('b550', '/data/old.bin')
-    job = uc.job(self_name='tr16', nodes={'tr16': {}, 'b550': {}}, verify='crc32c',
-                 transfers=[uc.copy('tr16:/models/a.gguf', 'b550:/data/a.gguf'),
-                            uc.shard('tr16:/models/b.gguf', to=['b550', 'zen5'], weights=[1, 1],
+    uc.discover()                                   # [{'name': 'node-b', 'reply_from': ..., 'ib': True, ...}]
+    uc.df('node-b'); uc.ls('node-b', '/data'); uc.rm('node-b', '/data/old.bin')
+    job = uc.job(self_name='node-a', nodes={'node-a': {}, 'node-b': {}}, verify='crc32c',
+                 transfers=[uc.copy('node-a:/models/a.gguf', 'node-b:/data/a.gguf'),
+                            uc.shard('node-a:/models/b.gguf', to=['node-b', 'node-c'], weights=[1, 1],
                                      dst='{node}:/data/b.{index}', manifest='/models/b.manifest.json')])
     result = uc.run(job, progress=print)            # dict: per node and item: bytes, seconds, GBps, status
 

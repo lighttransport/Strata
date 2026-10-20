@@ -1,0 +1,395 @@
+{
+ "what": "In-model mHC site timers (GLM53F_TARGET_GAP, rank 0 report: min/mean/max over the 12 ranks, ms per decode step) from gemm's decode100 campaigns on the 12-node 2x3x2 runner, allocation 52167472 (2026-10-04/05). j2t used the uninstrumented build with the mHC mode-switch fix (sha c1eecb9d...): an 8K-context pair that differs only in --mhc-kernel legacy | local-gram. j2u/j2v used the fapp-instrumented build (sha c9d1ac5d...), whose mHC timers read ~60 % high (legacy 10.7 vs 6.7 ms): recorded, not used. mhc_ffn includes the fused MoE router and the FFN prefetch plan; mhc_end includes the next layer's attention prefetch plan. Extracted 2026-10-18 from the campaign's rank-0 profile files.",
+ "layers": 45,
+ "runs": {
+  "j2t/plain-legacy": {
+   "decode_tok_s": 35.54,
+   "trials": 3,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     5.814,
+     6.706,
+     7.108
+    ],
+    "mhc_ffn": [
+     3.214,
+     3.675,
+     3.943
+    ],
+    "mhc_end": [
+     2.558,
+     2.982,
+     3.113
+    ],
+    "mhc_attn": [
+     0.04,
+     0.048,
+     0.051
+    ],
+    "moe": [
+     7.685,
+     7.942,
+     8.418
+    ],
+    "kda": [
+     7.092,
+     7.21,
+     7.557
+    ],
+    "sparse": [
+     4.528,
+     4.565,
+     4.672
+    ]
+   }
+  },
+  "j2t/state8k-legacy": {
+   "decode_tok_s": 32.203,
+   "trials": 2,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     6.042,
+     6.777,
+     7.074
+    ],
+    "mhc_ffn": [
+     3.29,
+     3.716,
+     3.875
+    ],
+    "mhc_end": [
+     2.708,
+     3.011,
+     3.147
+    ],
+    "mhc_attn": [
+     0.043,
+     0.051,
+     0.053
+    ],
+    "moe": [
+     7.783,
+     7.941,
+     8.339
+    ],
+    "kda": [
+     7.084,
+     7.189,
+     7.42
+    ],
+    "sparse": [
+     7.345,
+     7.379,
+     7.453
+    ]
+   }
+  },
+  "j2t/state8k-lgram": {
+   "decode_tok_s": 34.653,
+   "trials": 2,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     4.133,
+     4.475,
+     4.761
+    ],
+    "mhc_ffn": [
+     2.38,
+     2.545,
+     2.696
+    ],
+    "mhc_end": [
+     1.727,
+     1.901,
+     2.035
+    ],
+    "mhc_attn": [
+     0.026,
+     0.029,
+     0.032
+    ],
+    "moe": [
+     7.835,
+     7.996,
+     8.198
+    ],
+    "kda": [
+     7.162,
+     7.259,
+     7.411
+    ],
+    "sparse": [
+     7.349,
+     7.38,
+     7.433
+    ]
+   }
+  },
+  "j2u/plain-legacy": {
+   "decode_tok_s": 26.773,
+   "trials": 3,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     9.919,
+     10.717,
+     11.091
+    ],
+    "mhc_ffn": [
+     5.235,
+     5.667,
+     5.895
+    ],
+    "mhc_end": [
+     4.632,
+     5.0,
+     5.143
+    ],
+    "mhc_attn": [
+     0.047,
+     0.05,
+     0.054
+    ],
+    "moe": [
+     9.933,
+     10.165,
+     10.613
+    ],
+    "kda": [
+     8.875,
+     9.004,
+     9.341
+    ],
+    "sparse": [
+     5.419,
+     5.458,
+     5.54
+    ]
+   }
+  },
+  "j2u/pair0-legacy": {
+   "decode_tok_s": 26.734,
+   "trials": 3,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     9.841,
+     10.715,
+     11.092
+    ],
+    "mhc_ffn": [
+     5.176,
+     5.668,
+     5.923
+    ],
+    "mhc_end": [
+     4.617,
+     4.996,
+     5.122
+    ],
+    "mhc_attn": [
+     0.046,
+     0.05,
+     0.052
+    ],
+    "moe": [
+     9.874,
+     10.165,
+     10.685
+    ],
+    "kda": [
+     8.899,
+     9.014,
+     9.367
+    ],
+    "sparse": [
+     5.471,
+     5.505,
+     5.584
+    ]
+   }
+  },
+  "j2u/pair0-best": {
+   "decode_tok_s": 28.818,
+   "trials": 3,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     7.72,
+     8.317,
+     8.525
+    ],
+    "mhc_ffn": [
+     4.096,
+     4.464,
+     4.602
+    ],
+    "mhc_end": [
+     3.539,
+     3.824,
+     3.895
+    ],
+    "mhc_attn": [
+     0.026,
+     0.029,
+     0.033
+    ],
+    "moe": [
+     9.968,
+     10.117,
+     10.511
+    ],
+    "kda": [
+     8.702,
+     8.783,
+     9.041
+    ],
+    "sparse": [
+     5.391,
+     5.423,
+     5.497
+    ]
+   }
+  },
+  "j2v/plain-legacy": {
+   "decode_tok_s": 26.833,
+   "trials": 3,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     9.968,
+     10.704,
+     10.961
+    ],
+    "mhc_ffn": [
+     5.271,
+     5.651,
+     5.8
+    ],
+    "mhc_end": [
+     4.649,
+     5.003,
+     5.114
+    ],
+    "mhc_attn": [
+     0.046,
+     0.05,
+     0.052
+    ],
+    "moe": [
+     9.915,
+     10.08,
+     10.476
+    ],
+    "kda": [
+     8.922,
+     9.023,
+     9.344
+    ],
+    "sparse": [
+     5.397,
+     5.447,
+     5.533
+    ]
+   }
+  },
+  "j2v/pair0-legacy": {
+   "decode_tok_s": 26.884,
+   "trials": 3,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     9.861,
+     10.713,
+     10.995
+    ],
+    "mhc_ffn": [
+     5.214,
+     5.66,
+     5.878
+    ],
+    "mhc_end": [
+     4.6,
+     5.002,
+     5.138
+    ],
+    "mhc_attn": [
+     0.047,
+     0.05,
+     0.052
+    ],
+    "moe": [
+     9.849,
+     10.041,
+     10.478
+    ],
+    "kda": [
+     8.882,
+     9.016,
+     9.371
+    ],
+    "sparse": [
+     5.376,
+     5.422,
+     5.533
+    ]
+   }
+  },
+  "j2v/pair0-best": {
+   "decode_tok_s": 29.043,
+   "trials": 3,
+   "ms_per_step_min_mean_max_over_ranks": {
+    "mhc": [
+     7.685,
+     8.269,
+     8.459
+    ],
+    "mhc_ffn": [
+     4.116,
+     4.425,
+     4.57
+    ],
+    "mhc_end": [
+     3.534,
+     3.816,
+     3.897
+    ],
+    "mhc_attn": [
+     0.027,
+     0.029,
+     0.033
+    ],
+    "moe": [
+     9.823,
+     10.03,
+     10.348
+    ],
+    "kda": [
+     8.632,
+     8.73,
+     9.004
+    ],
+    "sparse": [
+     5.362,
+     5.387,
+     5.454
+    ]
+   }
+  }
+ },
+ "per_site_us_mean_over_ranks": {
+  "legacy": {
+   "ffn_site_incl_router": 82.6,
+   "end_site": 66.9
+  },
+  "local_gram": {
+   "ffn_site_incl_router": 56.6,
+   "end_site": 42.2
+  }
+ },
+ "standalone_local_gram_us": {
+  "warm_8_sites": [
+   23.3,
+   25.5
+  ],
+  "cold_90_sites": 31.2,
+  "source": "test_glm53f_mhc_local best/mean (j2w native log) and the decode100 handoff"
+ },
+ "simulator": "redesign mhc_site_us = the in-model local-gram end site (42.2 us) for both sites; the FFN site's extra ~14 us is the fused router and plan setup, which the model charges separately (router_us)",
+ "pending": "the phase split inside the kernel in-model (GLM53F_MHC_INMODEL, phase-timing build) was not measured: the 12-node job for it is queued"
+}
