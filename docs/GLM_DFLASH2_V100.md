@@ -4,7 +4,10 @@ The opt-in `dflash2` decoder mode uses the published
 [incoai/GLM-5.3-Flash-DFlash2](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2)
 drafter. It is separate from the qualified MTP preset, which measured 32.10
 decode / 520.89 prefill tok/s on two V100 PCIe 32 GB GPUs and a dual Xeon Gold
-6240 host with 181 GiB RAM. The fastest repeated DFlash2 trial measured
+6240 host with 181 GiB RAM. A later experimental MTP configuration measured
+37.46 decode / 520.39 prefill tok/s and passed eight reused long and eight
+reused natural-length coding checks; Fresh20 remain unscored.
+The fastest repeated DFlash2 trial measured
 38.56 decode / 515.68 prefill tok/s, but failed all eight reused coding checks.
 Its route-drop cap of 0.75 is rejected. A less aggressive DFlash2 trial passed
 eight checks at 26.84 decode tok/s. The MTP preset remains selected, and the
@@ -62,8 +65,9 @@ full warmups and three timed 512-output requests per side. Enabling one-token
 CPU scale decoding and batched KDA Q/K/V projections measured 36.11 / 37.46
 decode tok/s for control / candidate, a 3.74% gain. Prefill measured 520.63 /
 520.39 tok/s. All six requests had zero timed target major faults and matched
-the earlier mild-policy 512-token reference. Reused coding checks remain
-pending, so the selected preset stays unchanged. This comparison measures the
+the earlier mild-policy 512-token reference. Both sides also passed eight
+reused long and eight reused natural-length coding checks. Fresh20 remain
+unscored and the selected preset stays unchanged. This comparison measures the
 two kernel options with RAM execution enabled; it does not isolate a speedup
 from RAM execution itself.
 For the candidate's median request, removing every other phase would reach
