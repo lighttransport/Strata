@@ -208,6 +208,17 @@ request, while speculative rounds rose from 134 to 137. These counters do not
 establish the cause of the slowdown. Coding was skipped after the 5.28% decode
 regression; the option stays disabled in the experimental profile.
 
+A follow-up private kernel folds the grouped experts' scatter calls into one
+launch, preserving each token's expert order and separate FP32 multiply/add
+rounding. It passed 88 bitwise cases and 88 graph checks, including nonzero
+initial sums, with clean CUDA memcheck/racecheck. With grouped products active
+in both variants, its component geometric mean speed ratio was **1.053437×**
+across twelve group/width cases. The original 128-output and real-model
+width/history/rollback checks passed on both GPUs. CUDA and HIP builds and six
+host checks per backend passed; HIP GPU execution was not tested. Full-model
+timing was deferred before startup to the next allocation, so this supplies no
+additional model throughput result yet.
+
 ## Execution
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a

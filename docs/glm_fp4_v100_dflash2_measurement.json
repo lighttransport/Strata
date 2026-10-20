@@ -142,6 +142,7 @@
     "dflash2-evidence-78.tar.gz": "b694b39dc5763c3a81eabd0ed56fcf4206a0b17122d352fa5e82169db04ec696",
     "dflash2-evidence-79.tar.gz": "aed2d6e571b0f7df22dba8db70d1ff3e2c93c0b4f053c1445d3ece080a140071",
     "dflash2-evidence-8.tar.gz": "65c90734e6036b89c898a51a2dab3b0081cc69a54964e658fb1fbe4f3a2673d8",
+    "dflash2-evidence-82.tar.gz": "689ca0555c2b35ac77ab70ecc9f8c48137e942457a438d9241ab92f2a5d4665a",
     "dflash2-evidence-9.tar.gz": "1175490aaa41fb992333b0b9e8b7dd1aa055390d224411fb2c16d303712c4f14"
   },
   "qualified_anchor": "docs/glm_fp4_v100_kda_measurement.json",
@@ -30006,6 +30007,22 @@
       "raw_sha256": "010fd3e4c76e62dff8f5c716bea3751cfa765d4e9707b1521cc2fafd6a4af5c8"
     },
     {
+      "name": "default-v352-early0-parity128",
+      "ram_executable": true,
+      "early_readback": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "5db1bb6db47ee565ab3f7b6517b443f79a4627555791863fa56c2a6f6ee90b1b",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "d3eaeb4de570ba240755befa3afdd242eb0fbb4b7a6f656dddd892e728ff6377",
+      "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "49df7c95c15952fd08e9abf5f5e22389ed6355a60a8de90cd670bede0f466cca"
+    },
+    {
       "name": "default-v39-parity128",
       "passed": true,
       "tokens": 128,
@@ -34888,6 +34905,218 @@
       "hip_gpu_execution": false,
       "source_public": false
     },
+    "grouped_model_v352": {
+      "passed": true,
+      "grouped_stats": {
+        "0": {
+          "calls": 18036,
+          "experts": 67364,
+          "rows": 76588
+        },
+        "1": {
+          "calls": 21056,
+          "experts": 105972,
+          "rows": 118192
+        }
+      },
+      "grouped_scatter_stats": {
+        "0": 18036,
+        "1": 21056
+      },
+      "captures": [
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        }
+      ],
+      "allocations": 2,
+      "repetitions_per_width": 3,
+      "all_logits_bitwise_equal": true,
+      "rollback_next_logits_bitwise_equal": true,
+      "binary_sha256": "5db1bb6db47ee565ab3f7b6517b443f79a4627555791863fa56c2a6f6ee90b1b",
+      "source_manifest_sha256": "40ca86688de2ec9cc3800a3f2c3c3deca261d6acc18d049690cd54795377b689",
+      "raw_sha256": "298d82d1118dc97a8c3215f9791ab05aecdce9bfb020893eeb30f8582322c3a6",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "Real target widths1..4,bothhistorymodes,warm/capture/replay,retained-prefixrollbackandhistoryreallocation,ROUTE_ID_BATCH1 and RESIDENT_GROUPED1. Per-device counters require actual multi-expert dispatches. Weights/policy/FP32MMAandadditionorder unchanged. Functionalvalidationonly,no modelTPSclaim.",
+      "source_version": 352,
+      "validation_sha256": "8e386b7ec43725e03032c5596c847732df4be28fbdfdcc2476db0095b90061ec",
+      "default_output": {
+        "ram_executable": true,
+        "early_readback": false,
+        "passed": true,
+        "tokens": 128,
+        "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+        "candidate_sha256": "5db1bb6db47ee565ab3f7b6517b443f79a4627555791863fa56c2a6f6ee90b1b",
+        "decoder_returncode": 0,
+        "timing_qualified": false,
+        "timed_major_faults": 0,
+        "benchmark_error": null,
+        "result_sha256": "d3eaeb4de570ba240755befa3afdd242eb0fbb4b7a6f656dddd892e728ff6377",
+        "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+        "proof_sha256": "49df7c95c15952fd08e9abf5f5e22389ed6355a60a8de90cd670bede0f466cca"
+      },
+      "cuda_host_tests": 6,
+      "hip_gpu_execution": false,
+      "source_public": false
+    },
     "swizzle_component": {
       "passed": true,
       "checks": [
@@ -35034,6 +35263,44 @@
       "fresh_holdout_scored": false,
       "scope": "SM70NVFP4operandreconstruction only;7shapes/5global scales,35bitwise14changed-inputgraphcases,guardsandinvalidextents. OriginalFP16decoder/scale roundings preserved;sharedtransposebefore row-major vectorstores. Componentfunctional/sanitizerproofonly,no modelTPSclaim.",
       "validation_sha256": "db06932a7494365b4fa65c4c1cfc9c99030f6ed944392ab790385e907044cb19",
+      "devices_exercised": [
+        0
+      ],
+      "cuda_only": true,
+      "source_public": false
+    },
+    "grouped_component_v352": {
+      "passed": true,
+      "checks": [
+        {
+          "name": "direct",
+          "returncode": 0,
+          "bitwise_checks": 88,
+          "graph_checks": 88,
+          "log_sha256": "57d958fa5bada41446929c8555b039e45381a943c7b67e1a8f5737f35175da15"
+        },
+        {
+          "name": "memcheck",
+          "returncode": 0,
+          "bitwise_checks": 88,
+          "graph_checks": 88,
+          "log_sha256": "1d1c254f9658718020fdfb49533c8389179aa3bb0f88332265184457b5def942"
+        },
+        {
+          "name": "racecheck",
+          "returncode": 0,
+          "bitwise_checks": 88,
+          "graph_checks": 88,
+          "log_sha256": "ff5ebd682ff20fbb004a57b93e71a2fd4c6d42e081c7d8d3cea52f2869e75199"
+        }
+      ],
+      "binary_sha256": "1ceac3df58c35229b76c50ba65515521f35f159927413f1d89d6df9dba61b756",
+      "source_manifest_sha256": "40ca86688de2ec9cc3800a3f2c3c3deca261d6acc18d049690cd54795377b689",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "SM70 resident expert batching;22group/widthlayouts,twochangedinputs,88bitwiseand88graph cases,allintermediates/sums/guards,1..64groups,mixedcountsandfull64rowextent. OriginalMMA/Kpartition/FP32scatterorder. Componentfunctional/sanitizerproofonly,no modelTPSclaim.",
+      "validation_sha256": "c5d4236c8e6456bbb5362590cf2bce47c0fd61f06b431e66081367a896829704",
       "devices_exercised": [
         0
       ],
@@ -55614,6 +55881,117 @@
       "scope": "V100componentonly;allintermediatesandscatterssamebuffers;16pairedwarm+five16call samplesalternatingvariants. Eventsincludehostenqueuegaps. Twelve2/4/8group,width1..4shapes;>=3%geomean/no>3%one-rowregressiongate;no modelTPSforecast orcapacityfit.",
       "source_version": 333,
       "summary_sha256": "3dc537f1ab5c3cae87581e58c1b0e43f2667494de3966e2f58f10fc223da6119"
+    },
+    {
+      "complete": true,
+      "medians": [
+        {
+          "groups": 2,
+          "width": 1,
+          "control_us": 66.432,
+          "candidate_us": 64.64,
+          "ratio": 1.0277227722772277,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 2,
+          "control_us": 67.072,
+          "candidate_us": 65.536,
+          "ratio": 1.0234375,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 3,
+          "control_us": 69.568,
+          "candidate_us": 68.16,
+          "ratio": 1.0206572769953053,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 4,
+          "control_us": 72.832,
+          "candidate_us": 71.104,
+          "ratio": 1.0243024302430241,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 1,
+          "control_us": 122.368,
+          "candidate_us": 114.688,
+          "ratio": 1.0669642857142856,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 2,
+          "control_us": 124.224,
+          "candidate_us": 117.12,
+          "ratio": 1.060655737704918,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 3,
+          "control_us": 129.536,
+          "candidate_us": 122.368,
+          "ratio": 1.0585774058577406,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 4,
+          "control_us": 128.832,
+          "candidate_us": 122.752,
+          "ratio": 1.0495307612095932,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 1,
+          "control_us": 208.832,
+          "candidate_us": 192.128,
+          "ratio": 1.086942038640906,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 2,
+          "control_us": 212.928,
+          "candidate_us": 197.312,
+          "ratio": 1.0791436912098604,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 3,
+          "control_us": 223.808,
+          "candidate_us": 208.064,
+          "ratio": 1.0756690249154106,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 4,
+          "control_us": 234.688,
+          "candidate_us": 219.2,
+          "ratio": 1.0706569343065693,
+          "samples_per_variant": 5
+        }
+      ],
+      "selection_geometric_mean_ratio": 1.0534368803077268,
+      "selected_for_model": true,
+      "source_manifest_sha256": "40ca86688de2ec9cc3800a3f2c3c3deca261d6acc18d049690cd54795377b689",
+      "raw_sha256": "5bbef1456531ecb4f72b71c558ddfa83ce0dabdb535ab4876e7a6dc1e5322685",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "V100componentonly;groupedproductsONboth,oldperexpertscatterversusoneorderedscatter;allintermediates/sumseeds/guards samebuffers;16pairedwarm+five16call samplesalternatingvariants. Eventsincludehostenqueuegaps. Twelve2/4/8group,width1..4shapes;>=3%geomean/no>3%one-rowregressiongate;no modelTPSforecast orcapacityfit.",
+      "source_version": 352,
+      "summary_sha256": "41dfa974da383dfaee907ab9551db31f62e32627195d3ad23d8fa1c16aed1a3b"
     }
   ],
   "native_coalesced_components": [
