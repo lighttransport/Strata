@@ -40,6 +40,7 @@
     "source-v26.tar.gz": "d0634b6fe937b76e6a67cce9297d8467ce8a8df5664411f87964dfb09275c0d4",
     "source-v264.tar.gz": "01415891e9ff5f62d70e303e2078fddb3cc44f41559eb1cb54dc4e2b06e340c7",
     "source-v27.tar.gz": "8352a166d208c7df215b405f915e41cbe7e47c66bb2768a0616872bcc4873e34",
+    "source-v270.tar.gz": "f5ae21d0f7b5f86bfb17044902ba44740615df29cc01343fae857d3d392687de",
     "source-v28.tar.gz": "6c8d67aa2957be892b1cdae5e40f9cd07e8a4f6376fa21294e8394fb14603ad0",
     "source-v29.tar.gz": "c5a71ac2e8ea89733dc4504c363cbed037502958ac23c04dea01509455ad01e2",
     "source-v30.tar.gz": "46c27e01c510d579987a75ea0c1e75c3fde5abc8bcd02447baa0aefcd642c6c8",
@@ -108,6 +109,8 @@
     "dflash2-evidence-54.tar.gz": "2669a8230ab73cbeb50bbeb14d3171f59fab68e0831602a75300a3ebb99b8d0a",
     "dflash2-evidence-55.tar.gz": "87301ac591ca9aff8fa3788156e08b585e9c5803f41767ebe05a2c03acf944d5",
     "dflash2-evidence-56.tar.gz": "014ce6c93f112929c3bd385b339c22176c212e8cee80eec56d83bafa7394e4e1",
+    "dflash2-evidence-57.tar.gz": "2f2315fe2daca5a7a6eec295d8943e7485b3ddfe8c81f3cd1c59cc5a34fb5350",
+    "dflash2-evidence-58.tar.gz": "8a29fa09a572abafefb8cd6037976b919f47810fbd3ce97b51d87a4eb38e5382",
     "dflash2-evidence-6.tar.gz": "3608bfa261ed6fe7174dc007307021ebbab7b7757e0509d13c16132e2e250b8e",
     "dflash2-evidence-7.tar.gz": "d7d5cfb82abc77abe409c40c05a793a7e91abaebdb8e1802bd103f99efd77eb1",
     "dflash2-evidence-8.tar.gz": "65c90734e6036b89c898a51a2dab3b0081cc69a54964e658fb1fbe4f3a2673d8",
@@ -8227,6 +8230,436 @@
       ],
       "worker_sha256": "33804556ee53be209c2a8cd9b14db35c81ed7a907de99ca940c33d1df279e05e",
       "fc_adapter": false
+    },
+    {
+      "name": "dflash2-first-prepare-control-depth7-v266",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "4ac15366ec4daed679bc95d8a173d1397417d5a69a4963f1bbe4317fe47effec",
+      "source_log_sha256": "ecd09e0668ceb92a7f63ea55f33535d7ff4d4d0e6b0a6fbac0981ca60c8e8642",
+      "engine_version": 234,
+      "binary_sha256": "29ae5fe8d9f73c9e4717ea386bbf0adab2777c9ad598366b29854cb47e7150b2",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_DFLASH_ADAPTIVE_DEPTH": "0",
+        "STRATA_GLM_DFLASH_DEPTH_GAP": "1",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_DFLASH_MIN_DEPTH": "1",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "bd3005da621b80d771efee8887b0fd956f2505e659216aeef7b51eece31ae8e3",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 24.084006522948144,
+      "prefill_tok_s": 503.16628687603264,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16280.9,
+          "decode_ms": 21217.4,
+          "decode_tok_s": 24.084006522948144,
+          "prefill_tok_s": 503.16628687603264,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 980668416,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "6826f719f864cb817224a778d862c74ba8bdd7577f96575e426ee45b4165bce8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 224,
+          "repeated_4gram_fraction": 0.13163064833005889,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 157,
+            "proposed": 1097,
+            "accepted": 353,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 2261.68,
+            "verify_ms": 18574.5,
+            "restore_ms": 91.85,
+            "proposal_calls": 157
+          },
+          "native_cpu_expert_groups_delta": 35502,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 35502,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 236904748,
+          "native_cpu_width_groups_delta": {
+            "1": 29538,
+            "2": 4638,
+            "3": 945,
+            "4": 252,
+            "5": 82,
+            "6": 36,
+            "7": 10,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement."
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": false,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 3.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 111.0,
+        "sum_logit_regret": 148.023,
+        "repeat_blocked": 0.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 128
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 128,
+          "accepted": 88
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 88,
+          "accepted": 63
+        },
+        {
+          "index": 3,
+          "proposed": 157,
+          "opportunities": 63,
+          "accepted": 36
+        },
+        {
+          "index": 4,
+          "proposed": 157,
+          "opportunities": 36,
+          "accepted": 21
+        },
+        {
+          "index": 5,
+          "proposed": 156,
+          "opportunities": 21,
+          "accepted": 11
+        },
+        {
+          "index": 6,
+          "proposed": 156,
+          "opportunities": 11,
+          "accepted": 6
+        }
+      ],
+      "worker_sha256": "45daddf1394ecbf46442df6500eacdf3d6dcdc3f48c97cfe29db41e2b25eb1f1",
+      "fc_adapter": true,
+      "warm_protocol": true,
+      "warm_incremental": true,
+      "warm_first_prepare": false,
+      "trace_protocol_requests": 6
+    },
+    {
+      "name": "dflash2-first-prepare-first-prepare-depth7-v266",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "41077cc5041eb21981f65068d2eddb058a6d4a7f777b80acc1ae2cf3356b483a",
+      "source_log_sha256": "92f95206da4d1556f8540763ecc668b1d36ba53810818ab3c69fef43859452f9",
+      "engine_version": 234,
+      "binary_sha256": "29ae5fe8d9f73c9e4717ea386bbf0adab2777c9ad598366b29854cb47e7150b2",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 7,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_DFLASH_ADAPTIVE_DEPTH": "0",
+        "STRATA_GLM_DFLASH_DEPTH_GAP": "1",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_DFLASH_MIN_DEPTH": "1",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "c13c38aa860b6142e73a93ddb7637c8034c8304330b0ede320289311b57d0c86",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 24.170013101944477,
+      "prefill_tok_s": 502.90372880523535,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16289.4,
+          "decode_ms": 21141.9,
+          "decode_tok_s": 24.170013101944477,
+          "prefill_tok_s": 502.90372880523535,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 1035108352,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "6826f719f864cb817224a778d862c74ba8bdd7577f96575e426ee45b4165bce8",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 224,
+          "repeated_4gram_fraction": 0.13163064833005889,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 157,
+            "proposed": 1097,
+            "accepted": 353,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 2251.13,
+            "verify_ms": 18509.4,
+            "restore_ms": 91.3942,
+            "proposal_calls": 157
+          },
+          "native_cpu_expert_groups_delta": 35502,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 35502,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 236904748,
+          "native_cpu_width_groups_delta": {
+            "1": 29538,
+            "2": 4638,
+            "3": 945,
+            "4": 252,
+            "5": 82,
+            "6": 36,
+            "7": 10,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement."
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": false,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 3.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 111.0,
+        "sum_logit_regret": 148.023,
+        "repeat_blocked": 0.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 157,
+          "opportunities": 157,
+          "accepted": 128
+        },
+        {
+          "index": 1,
+          "proposed": 157,
+          "opportunities": 128,
+          "accepted": 88
+        },
+        {
+          "index": 2,
+          "proposed": 157,
+          "opportunities": 88,
+          "accepted": 63
+        },
+        {
+          "index": 3,
+          "proposed": 157,
+          "opportunities": 63,
+          "accepted": 36
+        },
+        {
+          "index": 4,
+          "proposed": 157,
+          "opportunities": 36,
+          "accepted": 21
+        },
+        {
+          "index": 5,
+          "proposed": 156,
+          "opportunities": 21,
+          "accepted": 11
+        },
+        {
+          "index": 6,
+          "proposed": 156,
+          "opportunities": 11,
+          "accepted": 6
+        }
+      ],
+      "worker_sha256": "45daddf1394ecbf46442df6500eacdf3d6dcdc3f48c97cfe29db41e2b25eb1f1",
+      "fc_adapter": true,
+      "warm_protocol": true,
+      "warm_incremental": true,
+      "warm_first_prepare": true,
+      "trace_protocol_requests": 6
     },
     {
       "name": "dflash2-fullroutes-diagnostic-v27",
@@ -19005,6 +19438,11 @@
       "error": null,
       "decoder_returncode": 0,
       "worker_residency_checked": true,
+      "config_sha256": "32829aa245a81773e052d467d144d1cb03be2ce5c9264688ca4d54c1b0e4cb03",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
       "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
       "decode_tok_s": 31.008786834312343,
       "prefill_tok_s": 501.98231541794075,
@@ -19090,9 +19528,6 @@
         }
       ],
       "worker_sha256": "52691e1c69912a797c0fad385a55435947bbb0e91137402a94801a2498d4c45b",
-      "config_sha256": "32829aa245a81773e052d467d144d1cb03be2ce5c9264688ca4d54c1b0e4cb03",
-      "draft_backend": "sm70_half_qpn",
-      "cuda_graph": true,
       "linear_adapters": true,
       "warm_protocol": true,
       "warm_incremental": true,
@@ -19385,6 +19820,11 @@
       "error": null,
       "decoder_returncode": 0,
       "worker_residency_checked": true,
+      "config_sha256": "32829aa245a81773e052d467d144d1cb03be2ce5c9264688ca4d54c1b0e4cb03",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
       "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
       "decode_tok_s": 24.332058796920162,
       "prefill_tok_s": 504.3154926802842,
@@ -19494,9 +19934,6 @@
         }
       ],
       "worker_sha256": "52691e1c69912a797c0fad385a55435947bbb0e91137402a94801a2498d4c45b",
-      "config_sha256": "32829aa245a81773e052d467d144d1cb03be2ce5c9264688ca4d54c1b0e4cb03",
-      "draft_backend": "sm70_half_qpn",
-      "cuda_graph": true,
       "linear_adapters": true,
       "warm_protocol": true,
       "warm_incremental": true,
@@ -19766,6 +20203,11 @@
       "error": "DFlash2 worker timed requests swapped or faulted; residency qualification failed",
       "decoder_returncode": 0,
       "worker_residency_checked": true,
+      "config_sha256": "77a336ff622b3c290fa1051d9e02085904724868a28fc255830718d896779422",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
       "decode_tok_s": 30.394775191677425,
       "prefill_tok_s": 482.0723461599572,
       "repetitions_identical": true,
@@ -20138,6 +20580,11 @@
       "error": null,
       "decoder_returncode": 0,
       "worker_residency_checked": true,
+      "config_sha256": "77a336ff622b3c290fa1051d9e02085904724868a28fc255830718d896779422",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
       "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
       "decode_tok_s": 24.881314668289715,
       "prefill_tok_s": 503.14156384161356,
@@ -20247,9 +20694,6 @@
         }
       ],
       "worker_sha256": "52691e1c69912a797c0fad385a55435947bbb0e91137402a94801a2498d4c45b",
-      "config_sha256": "77a336ff622b3c290fa1051d9e02085904724868a28fc255830718d896779422",
-      "draft_backend": "sm70_half_qpn",
-      "cuda_graph": true,
       "linear_adapters": false,
       "warm_protocol": true,
       "warm_incremental": true,
@@ -30488,6 +30932,528 @@
             "elapsed_ms": 2904.2038100305945,
             "major_faults": 170,
             "minor_faults": 224
+          }
+        ],
+        "fit": false,
+        "performance_anchor": false,
+        "scope": "First six protocol operations in discarded warmup, with existing1s draft/selector and30s prepare deadlines. Counters alone do not attribute faults to a backing file; protocol intervals are not decode throughput."
+      },
+      {
+        "name": "dflash2-first-prepare-control-depth7-v266",
+        "raw_log_sha256": "ecd09e0668ceb92a7f63ea55f33535d7ff4d4d0e6b0a6fbac0981ca60c8e8642",
+        "phases": [
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "header",
+            "elapsed_ms": 0.04874798469245434,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "features_received",
+            "elapsed_ms": 832.6754700392485,
+            "major_faults": 76,
+            "minor_faults": 41073
+          },
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "context_appended",
+            "elapsed_ms": 1029.0058980463073,
+            "major_faults": 105,
+            "minor_faults": 41241
+          },
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "reply_sent",
+            "elapsed_ms": 1029.106087051332,
+            "major_faults": 105,
+            "minor_faults": 41241
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "header",
+            "elapsed_ms": 0.010935007594525814,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "features_received",
+            "elapsed_ms": 38.49562595132738,
+            "major_faults": 5,
+            "minor_faults": 8
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "context_appended",
+            "elapsed_ms": 38.584333029575646,
+            "major_faults": 5,
+            "minor_faults": 8
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "embedding_received",
+            "elapsed_ms": 38.83425495587289,
+            "major_faults": 5,
+            "minor_faults": 40
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "forward_copied",
+            "elapsed_ms": 49.382903962396085,
+            "major_faults": 6,
+            "minor_faults": 49
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "hidden_serialized",
+            "elapsed_ms": 168.5654519824311,
+            "major_faults": 21,
+            "minor_faults": 79
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "reply_sent",
+            "elapsed_ms": 168.62665594089776,
+            "major_faults": 21,
+            "minor_faults": 79
+          },
+          {
+            "request_id": 3,
+            "op": "select",
+            "phase": "header",
+            "elapsed_ms": 0.009767012670636177,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 3,
+            "op": "select",
+            "phase": "selected",
+            "elapsed_ms": 114.78267004713416,
+            "major_faults": 10,
+            "minor_faults": 45
+          },
+          {
+            "request_id": 3,
+            "op": "select",
+            "phase": "reply_sent",
+            "elapsed_ms": 114.85726002138108,
+            "major_faults": 10,
+            "minor_faults": 45
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "header",
+            "elapsed_ms": 0.04610291216522455,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "features_received",
+            "elapsed_ms": 1.09596096444875,
+            "major_faults": 0,
+            "minor_faults": 120
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "context_appended",
+            "elapsed_ms": 4.0726009756326675,
+            "major_faults": 0,
+            "minor_faults": 120
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "embedding_received",
+            "elapsed_ms": 4.285349976271391,
+            "major_faults": 0,
+            "minor_faults": 120
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "forward_copied",
+            "elapsed_ms": 11.341208941303194,
+            "major_faults": 0,
+            "minor_faults": 120
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "hidden_serialized",
+            "elapsed_ms": 11.454631923697889,
+            "major_faults": 0,
+            "minor_faults": 120
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "reply_sent",
+            "elapsed_ms": 11.506211943924427,
+            "major_faults": 0,
+            "minor_faults": 120
+          },
+          {
+            "request_id": 5,
+            "op": "select",
+            "phase": "header",
+            "elapsed_ms": 0.010192976333200932,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 5,
+            "op": "select",
+            "phase": "selected",
+            "elapsed_ms": 1.8372689373791218,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 5,
+            "op": "select",
+            "phase": "reply_sent",
+            "elapsed_ms": 1.9103019731119275,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "header",
+            "elapsed_ms": 0.04903401713818312,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "features_received",
+            "elapsed_ms": 0.7164659909904003,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "context_appended",
+            "elapsed_ms": 3.6908299662172794,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "embedding_received",
+            "elapsed_ms": 3.906126949004829,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "forward_copied",
+            "elapsed_ms": 11.32180297281593,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "hidden_serialized",
+            "elapsed_ms": 11.453859973698854,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "reply_sent",
+            "elapsed_ms": 11.504075024276972,
+            "major_faults": 0,
+            "minor_faults": 0
+          }
+        ],
+        "fit": false,
+        "performance_anchor": false,
+        "scope": "First six protocol operations in discarded warmup, with existing1s draft/selector and30s prepare deadlines. Counters alone do not attribute faults to a backing file; protocol intervals are not decode throughput."
+      },
+      {
+        "name": "dflash2-first-prepare-first-prepare-depth7-v266",
+        "raw_log_sha256": "92f95206da4d1556f8540763ecc668b1d36ba53810818ab3c69fef43859452f9",
+        "phases": [
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "header",
+            "elapsed_ms": 0.05122995935380459,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "features_received",
+            "elapsed_ms": 710.6904790271074,
+            "major_faults": 60,
+            "minor_faults": 40985
+          },
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "context_appended",
+            "elapsed_ms": 893.8556159846485,
+            "major_faults": 79,
+            "minor_faults": 41023
+          },
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "prepared_warmed",
+            "elapsed_ms": 1119.5661800447851,
+            "major_faults": 97,
+            "minor_faults": 41103
+          },
+          {
+            "request_id": 1,
+            "op": "prepare",
+            "phase": "reply_sent",
+            "elapsed_ms": 1119.6609520120546,
+            "major_faults": 97,
+            "minor_faults": 41103
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "header",
+            "elapsed_ms": 0.011584023013710976,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "features_received",
+            "elapsed_ms": 8.611029013991356,
+            "major_faults": 1,
+            "minor_faults": 8
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "context_appended",
+            "elapsed_ms": 8.686956018209457,
+            "major_faults": 1,
+            "minor_faults": 8
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "embedding_received",
+            "elapsed_ms": 8.868325036019087,
+            "major_faults": 1,
+            "minor_faults": 8
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "forward_copied",
+            "elapsed_ms": 15.865384018979967,
+            "major_faults": 1,
+            "minor_faults": 8
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "hidden_serialized",
+            "elapsed_ms": 15.995856956578791,
+            "major_faults": 1,
+            "minor_faults": 16
+          },
+          {
+            "request_id": 2,
+            "op": "draft",
+            "phase": "reply_sent",
+            "elapsed_ms": 16.055144951678813,
+            "major_faults": 1,
+            "minor_faults": 16
+          },
+          {
+            "request_id": 3,
+            "op": "select",
+            "phase": "header",
+            "elapsed_ms": 0.009568990208208561,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 3,
+            "op": "select",
+            "phase": "selected",
+            "elapsed_ms": 132.26872601080686,
+            "major_faults": 6,
+            "minor_faults": 3
+          },
+          {
+            "request_id": 3,
+            "op": "select",
+            "phase": "reply_sent",
+            "elapsed_ms": 132.3575610294938,
+            "major_faults": 6,
+            "minor_faults": 4
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "header",
+            "elapsed_ms": 0.044477987103164196,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "features_received",
+            "elapsed_ms": 12.74555001873523,
+            "major_faults": 28,
+            "minor_faults": 120
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "context_appended",
+            "elapsed_ms": 36.91082401201129,
+            "major_faults": 40,
+            "minor_faults": 128
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "embedding_received",
+            "elapsed_ms": 37.151076016016304,
+            "major_faults": 40,
+            "minor_faults": 128
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "forward_copied",
+            "elapsed_ms": 44.51527807395905,
+            "major_faults": 42,
+            "minor_faults": 128
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "hidden_serialized",
+            "elapsed_ms": 46.73233604989946,
+            "major_faults": 48,
+            "minor_faults": 128
+          },
+          {
+            "request_id": 4,
+            "op": "draft",
+            "phase": "reply_sent",
+            "elapsed_ms": 46.786930062808096,
+            "major_faults": 48,
+            "minor_faults": 128
+          },
+          {
+            "request_id": 5,
+            "op": "select",
+            "phase": "header",
+            "elapsed_ms": 0.010541058145463467,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 5,
+            "op": "select",
+            "phase": "selected",
+            "elapsed_ms": 1.793505041860044,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 5,
+            "op": "select",
+            "phase": "reply_sent",
+            "elapsed_ms": 1.8668790580704808,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "header",
+            "elapsed_ms": 0.043865060433745384,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "features_received",
+            "elapsed_ms": 0.7183309644460678,
+            "major_faults": 0,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "context_appended",
+            "elapsed_ms": 29.506686027161777,
+            "major_faults": 2,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "embedding_received",
+            "elapsed_ms": 29.71352299209684,
+            "major_faults": 2,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "forward_copied",
+            "elapsed_ms": 36.73459799028933,
+            "major_faults": 2,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "hidden_serialized",
+            "elapsed_ms": 36.857036990113556,
+            "major_faults": 2,
+            "minor_faults": 0
+          },
+          {
+            "request_id": 6,
+            "op": "draft",
+            "phase": "reply_sent",
+            "elapsed_ms": 36.90725495107472,
+            "major_faults": 2,
+            "minor_faults": 0
           }
         ],
         "fit": false,
@@ -47066,6 +48032,52 @@
       "raw_sha256": "6a499ed357c5027d56290fa8f958cc4dc4f3a4eac5f668e2e741d88cfe1413fa"
     }
   ],
+  "native_first_prepare_screens": [
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "worker_sha256": "45daddf1394ecbf46442df6500eacdf3d6dcdc3f48c97cfe29db41e2b25eb1f1",
+      "config_sha256": {
+        "control": "bd3005da621b80d771efee8887b0fd956f2505e659216aeef7b51eece31ae8e3",
+        "first-prepare": "c13c38aa860b6142e73a93ddb7637c8034c8304330b0ede320289311b57d0c86"
+      },
+      "reference_result_sha256": "3cd7e70d535f7897a9352e9e7bf9e615cc671bdf91c0b331334dd56a559f747e",
+      "performance_floor": 38.58554609034793,
+      "results": [
+        {
+          "name": "control",
+          "depth": 7,
+          "label": "dflash2-first-prepare-control-depth7-v266",
+          "returncode": 0,
+          "complete": true,
+          "qualified_screen": true,
+          "raw_sha256": "4ac15366ec4daed679bc95d8a173d1397417d5a69a4963f1bbe4317fe47effec",
+          "decode": 24.084006522948144,
+          "prefill": 503.16628687603264,
+          "raw_reference_ids_equal": true
+        },
+        {
+          "name": "first-prepare",
+          "depth": 7,
+          "label": "dflash2-first-prepare-first-prepare-depth7-v266",
+          "returncode": 0,
+          "complete": true,
+          "qualified_screen": true,
+          "raw_sha256": "41077cc5041eb21981f65068d2eddb058a6d4a7f777b80acc1ae2cf3356b483a",
+          "decode": 24.170013101944477,
+          "prefill": 502.90372880523535,
+          "raw_reference_ids_equal": true,
+          "paired_ratio": 1.0035711076109526
+        }
+      ],
+      "eligible_for_full_pair": false,
+      "scope": "Same native234sealedRAM image and source264FC32 worker,pre-ready protocol+append1..8 warmup both sides, optional extra first-real-prepare warmup only candidate. Existing1s draft/selector and30s prepare deadlines unchanged. CPU_M1/QKV1both sides,depth7margin3soft3drop.5affinity.025,3fullwarmups+1timed512each. All timed IDs compared with frozen229reference independently of timing. Zero-fault/swap gate unchanged; no fresh20.",
+      "mitigation_screen_passed": true,
+      "raw_sha256": "7a2238199742f47d64d88e4fe2dcae5b8a4b2529a21fb994bab4f1f8e7a8a5d7"
+    }
+  ],
   "calibration_training_failures": [
     {
       "training_version": 208,
@@ -47838,6 +48850,28 @@
       "goal50_decode_budget_ms": 10220.0,
       "zero_nonverification_tok_s": 27.002605143705647,
       "verification_speedup_needed_if_other_work_unchanged": 2.424488174853307,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-first-prepare-control-depth7-v266",
+      "advances": 511,
+      "observed_decode_ms": 21217.4,
+      "verification_ms": 18574.5,
+      "other_ms": 2642.9000000000015,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 27.510834746561144,
+      "verification_speedup_needed_if_other_work_unchanged": 2.451399611988756,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-first-prepare-first-prepare-depth7-v266",
+      "advances": 511,
+      "observed_decode_ms": 21141.9,
+      "verification_ms": 18509.4,
+      "other_ms": 2632.5,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 27.607593979275393,
+      "verification_speedup_needed_if_other_work_unchanged": 2.4394596375617796,
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {

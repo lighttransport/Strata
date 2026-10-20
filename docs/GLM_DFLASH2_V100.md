@@ -121,8 +121,12 @@ context and leaves no draft output; short contexts retain eager execution.
 All 41 CPU tests passed. Real-weight V100 checks preserved subsequent output
 bits at context lengths 8 and 2,048 with an existing captured graph. A separate
 19-operation socket check passed with 3,046 MiB at readiness, a 282.14 ms
-prepare and 9.74–10.33 ms incremental calls. Full-target mitigation and
-throughput are separate checks; no speed gain is claimed from this validation.
+prepare and 9.74–10.33 ms incremental calls. The depth-seven native control /
+candidate screen measured 24.08 / 24.17 decode and 503.17 / 502.90 prefill
+tok/s after three full warmups and one timed 512-output request per side.
+Both passed the existing deadlines and residency checks and matched all 512
+reference IDs. The 0.36% difference missed the speed gate. Since the control
+also completed, this pair does not establish that intermittent paging is fixed.
 
 The target's KDA mixers can also use verification graphs. Add `--decode-graphs`
 and set `STRATA_GLM_VERIFY_GRAPHS=1` with

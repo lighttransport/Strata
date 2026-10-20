@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "e60148d05818f37d2f82e4b50c3d08d6899c61cbad350a10d6266d42947c6d3d"
+      "sha256": "d1ab46c0d3c01f82982ac732f914a83a4b159e12eeb29b36db67b2269b511b8b"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6798,6 +6798,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-first-prepare-control-depth7-v266",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 24.084006522948144,
+      "prefill_tok_s": 503.16628687603264,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-first-prepare-first-prepare-depth7-v266",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 24.170013101944477,
+      "prefill_tok_s": 502.90372880523535,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-fusion-full-0-v109",
       "experiment_family": "dflash2",
       "decode_tok_s": 36.882258262419796,
@@ -8026,6 +8046,7 @@
     "DFlash2: selector-aware training213 selected step320 with mean correct prefix3.875 versus3.375 on8calibration windows. This proxy does not establish native speed or coding quality and changes no selected preset or capacity.",
     "DFlash2: selector-aware training214 selected step896 with mean correct prefix2.375 versus2.21875 on32calibration windows. This proxy does not establish native speed or coding quality and changes no selected preset or capacity.",
     "DFlash2: offline discounted selector lookahead0.25 onfc32 raised mean correct teacher-prefix length2.15625to2.6875 across32independent windows. Zero-discount paths matched existing serving selection on every base/FC32window. This calibration proxy is separate from native TPS and coding quality; no selected preset or resource capacity changed.",
+    "DFlash2: optional first-real-prepare warmup depth7control/candidate measured 24.08/24.17 decode tok/s, three full warmups and one timed512 request per side. Both passed unchanged deadlines/residency and matched all512reference IDs. The 0.36percent difference is below the speed gate; no throughput gain or causal elimination of intermittent paging is established. No selected preset/capacity changed.",
     "DFlash2: native discounted-selector depth3 control/lookahead measured 34.79/31.50 decode tok/s after three full warmups and one timed512 request per side. The proxy improvement did not translate to native speed; no lookahead preset is selected and coding quality remains unscored.",
     "DFlash2: discounted-selector depth7 control and candidate failed before timing with an unavailable external draft. Pre-readiness append-width warmup did not ensure the later target-loaded protocol met its one-second deadline; these failures provide no throughput measurement. Fault counters do not identify their backing file.",
     "DFlash2: offline selector evaluation of training178 chose step0 and transition scale1.5 with mean correct prefix3.75 on8synthetic windows. Packed graph/eager outputs matched. This calibration proxy is not native TPS, coding quality or a hardware capacity.",
@@ -8560,6 +8581,30 @@
       "rounds": 147,
       "verification_rows": 1173,
       "single_tail_steps": 0,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-first-prepare-control-depth7-v266",
+      "advances": 511,
+      "decode_ms": 21217.4,
+      "verify_ms": 18574.5,
+      "draft_ms": 2261.68,
+      "restore_ms": 91.85,
+      "rounds": 157,
+      "verification_rows": 1254,
+      "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
+      "name": "dflash2-first-prepare-first-prepare-depth7-v266",
+      "advances": 511,
+      "decode_ms": 21141.9,
+      "verify_ms": 18509.4,
+      "draft_ms": 2251.13,
+      "restore_ms": 91.3942,
+      "rounds": 157,
+      "verification_rows": 1254,
+      "single_tail_steps": 1,
       "block_size": 8
     },
     {
