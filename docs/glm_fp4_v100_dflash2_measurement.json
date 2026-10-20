@@ -96,6 +96,7 @@
     "dflash2-evidence-48.tar.gz": "435f49c0e04bba8e94656cb7930f60d3fef43313864397bd58c6dcbea686eafd",
     "dflash2-evidence-49.tar.gz": "eada72ce0de71b361addb8cfa6464a1c70ba60eb42993a7f805ff0de38772cbd",
     "dflash2-evidence-5.tar.gz": "092c96309fc1fa062780ab20b5125111a2f1629241117893491e3779ee2b3d3e",
+    "dflash2-evidence-52.tar.gz": "b137fb309d7be83a4a64fb8f3448f8ccc2a86511a8c2332c86c384e0b746fa98",
     "dflash2-evidence-6.tar.gz": "3608bfa261ed6fe7174dc007307021ebbab7b7757e0509d13c16132e2e250b8e",
     "dflash2-evidence-7.tar.gz": "d7d5cfb82abc77abe409c40c05a793a7e91abaebdb8e1802bd103f99efd77eb1",
     "dflash2-evidence-8.tar.gz": "65c90734e6036b89c898a51a2dab3b0081cc69a54964e658fb1fbe4f3a2673d8",
@@ -5927,6 +5928,183 @@
       "fc_adapter": true
     },
     {
+      "name": "dflash2-fc-adapter-depth3-v228",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "e616331c2edc5113490e69076a4e0143254b9404b0c8905daeadfdd741c74f93",
+      "source_log_sha256": "ca4df516c2dd9341ccb1e857787a3218366c89401176ed5aadee88db4596627d",
+      "engine_version": 132,
+      "binary_sha256": "c4135a5df851de9564e97164116cae38af38060946b04a96bbe20d2719a6dea0",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "0",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "0",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "9787c16f191cc8886644fd97c4bc70ecb2b4d94768434099e5940972e194059e",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 33.38625479396565,
+      "prefill_tok_s": 504.2037495230006,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16247.4,
+          "decode_ms": 15305.7,
+          "decode_tok_s": 33.38625479396565,
+          "prefill_tok_s": 504.2037495230006,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 1054699520,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "c9acc42986799fe9c1484e9eded4539635715c42f439d752a70a978fa80d293e",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 183,
+          "repeated_4gram_fraction": 0.10609037328094306,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 147,
+            "proposed": 441,
+            "accepted": 363,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 2064.19,
+            "verify_ms": 12927.2,
+            "restore_ms": 39.6345,
+            "proposal_calls": 147
+          },
+          "native_cpu_expert_groups_delta": 21995,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 21995,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 195700158
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": false,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 3.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 102.0,
+        "sum_logit_regret": 126.375,
+        "repeat_blocked": 2.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 147,
+          "opportunities": 147,
+          "accepted": 138
+        },
+        {
+          "index": 1,
+          "proposed": 147,
+          "opportunities": 138,
+          "accepted": 121
+        },
+        {
+          "index": 2,
+          "proposed": 147,
+          "opportunities": 121,
+          "accepted": 104
+        }
+      ],
+      "worker_sha256": "0a682e3a3e16b885cadbe2b63a82a65accaa4615d884485d9d56de03bb480154",
+      "fc_adapter": true,
+      "warm_protocol": true,
+      "trace_protocol_requests": 6,
+      "last_request_proposal_depth_histogram": {
+        "3": 147
+      }
+    },
+    {
       "name": "dflash2-fc-adapter-depth7-v168",
       "fit": false,
       "performance_anchor": false,
@@ -6465,6 +6643,184 @@
       ],
       "worker_sha256": "7a660ce728ea85501edec4eafac978ba4d739f6afd35efedbe257a89ca0c9e82",
       "fc_adapter": false
+    },
+    {
+      "name": "dflash2-fc-control-depth3-v228",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "134371c851245af19c276226ad94e1724c9f076d1991a007a076ae73c7ff9bd2",
+      "source_log_sha256": "0d3a2eb2de9360e08f4d57b4a05dbbccde8a1fdddfebc66dc3781b3edcaef710",
+      "engine_version": 132,
+      "binary_sha256": "c4135a5df851de9564e97164116cae38af38060946b04a96bbe20d2719a6dea0",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "dflash2",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "3.0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_DFLASH_GPU_TOP16": "1",
+        "STRATA_GLM_DFLASH_LOOKUP_DEPTH": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "0",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "0",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": true,
+      "config_sha256": "0fece1e80bcd4df9667f64547073fdcac6fbe39bf1478f2a184d7995990918bd",
+      "cuda_graph": true,
+      "draft_backend": "sm70_half_qpn",
+      "software_bf16_rounding": false,
+      "selector_transition_scale": 1.0,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 30.06306772720855,
+      "prefill_tok_s": 504.048632817307,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": 0,
+      "requests": [
+        {
+          "prefill_ms": 16252.4,
+          "decode_ms": 16997.6,
+          "decode_tok_s": 30.06306772720855,
+          "prefill_tok_s": 504.048632817307,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 262147,
+          "stop_reason": "length",
+          "draft_worker_residency": {
+            "major_faults": 0,
+            "minor_faults": 40961,
+            "rss_bytes": 971010048,
+            "swap_bytes": 0
+          },
+          "tokens_sha256": "7e34bf6c856448faa420064d745b4653ce06dee45d5e6f9ec10c3187a39875c2",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 240,
+          "repeated_4gram_fraction": 0.04125736738703345,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "dflash2",
+            "generated": 512,
+            "rounds": 168,
+            "proposed": 503,
+            "accepted": 343,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.0,
+            "draft_ms": 2331.41,
+            "verify_ms": 14370.4,
+            "restore_ms": 60.2551,
+            "proposal_calls": 168
+          },
+          "native_cpu_expert_groups_delta": 21608,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 21608,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 220128008
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": false,
+      "bounded_acceptance": {
+        "margin": 3.0,
+        "top_k": 8.0,
+        "max_soft_per_window": 3.0,
+        "repeat_ngram": 4.0,
+        "history": 128.0,
+        "soft_accepted": 92.0,
+        "sum_logit_regret": 119.263,
+        "repeat_blocked": 2.0
+      },
+      "positions": [
+        {
+          "index": 0,
+          "proposed": 168,
+          "opportunities": 168,
+          "accepted": 143
+        },
+        {
+          "index": 1,
+          "proposed": 168,
+          "opportunities": 143,
+          "accepted": 115
+        },
+        {
+          "index": 2,
+          "proposed": 167,
+          "opportunities": 114,
+          "accepted": 85
+        }
+      ],
+      "worker_sha256": "0a682e3a3e16b885cadbe2b63a82a65accaa4615d884485d9d56de03bb480154",
+      "fc_adapter": false,
+      "warm_protocol": true,
+      "trace_protocol_requests": 6,
+      "last_request_proposal_depth_histogram": {
+        "2": 1,
+        "3": 167
+      }
     },
     {
       "name": "dflash2-fc-control-depth7-v168",
@@ -12799,6 +13155,245 @@
         "acceptance": "greedy"
       },
       "worker_sha256": "50809a7f4f89fe2459bafdd3d50f5c8adeddda45e588b25a19c49820896a9b58"
+    },
+    {
+      "name": "dflash2-major-fault-attribution-v216",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "912aebd38c4cd3e6b8a0e53f1cd97b3abdec0e12fb5dbb5407f8f4879261abe3",
+      "source_log_sha256": "d7d89b3f2d966af79fda54cf30c27a1abde9423802773568516014eb77bf732e",
+      "engine_version": 132,
+      "binary_sha256": "c4135a5df851de9564e97164116cae38af38060946b04a96bbe20d2719a6dea0",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": true,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 37.96885216667658,
+      "prefill_tok_s": 520.1765247483887,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15683.7,
+          "decode_ms": 13463.0,
+          "decode_tok_s": 37.95587907598603,
+          "prefill_tok_s": 522.3257267098962,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.48861,
+            "draft_ms": 1182.21,
+            "verify_ms": 11490.6,
+            "resync_ms": 552.969
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15748.5,
+          "decode_ms": 13375.1,
+          "decode_tok_s": 38.2053218293695,
+          "prefill_tok_s": 520.1765247483887,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.671226,
+            "draft_ms": 1178.77,
+            "verify_ms": 11408.4,
+            "resync_ms": 550.911
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15756.9,
+          "decode_ms": 13458.4,
+          "decode_tok_s": 37.96885216667658,
+          "prefill_tok_s": 519.8992187549582,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.696807,
+            "draft_ms": 1184.07,
+            "verify_ms": 11481.4,
+            "resync_ms": 556.004
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": false,
+      "full512_protocol": true
     },
     {
       "name": "dflash2-margin15-depth7-v26",
@@ -22057,6 +22652,20 @@
       "raw_sha256": "e5e557cf8168c567bab98868bce927d8ff89097647e53e354c16f37bdc0935b2"
     },
     {
+      "name": "default-v223-parity128",
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "c08164880ebec2abb91daf74cac92fc710f033e10f063a36303608ee384e4c0d",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 19,
+      "benchmark_error": "native FP4 timed requests swapped or faulted weight pages; residency qualification failed",
+      "result_sha256": "ec4f35de880cd0ab974decd05adb0bdf8b403d95e4948d1972f2a2471d92f045",
+      "scope": "Output parity only, all new options off. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "db8c4327ef4a76e6cc0f1ca2a243ea1cf75edcf108d7192a4c659e2da2918e5a"
+    },
+    {
       "name": "default-v24-parity128",
       "passed": true,
       "tokens": 128,
@@ -25250,6 +25859,38 @@
       "205": "CPU30 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged",
       "212": "CPU31 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged"
     },
+    "adaptive_depth": {
+      "passed": true,
+      "source_manifest_sha256": "6d2ce906e4674e5eb5654023ab80535b6048e5fce094494ebe61931fff9a57c3",
+      "compiled_source_sha256": {
+        "CMakeLists.txt": "2aca47a4ffdaa9396127695df44a670e8e76c19b9c597dfcbd87fed8f378d5dd",
+        "include/strata/host/glm_draft.h": "77615964ccbedc9861fbfa88f4a4acead030de6f8837f44ef4f433a317eb30a8",
+        "src/host/glm_draft.c": "20e4cbe89e9a6263189e235638c84e373aad34dec2f8ff52b5f72856a943ea34",
+        "src/program/glm_decode.cpp": "9a4e3fd7a01d77c070eed55d7f68514aa6b213284aa22de76420f2eaa9a8e3f0",
+        "tests/host/glm_draft_test.c": "3b463f757a31c8d92e7a37b818f0e2efc342d29c867fe683a55ece3466f7aa81"
+      },
+      "c11_strict_test": true,
+      "address_undefined_sanitizers": true,
+      "leak_sanitizer": "unavailable under sandbox ptrace; reran with detect_leaks=0, test performs no dynamic allocation",
+      "hip_compile_only": true,
+      "hip_decoder_sha256": "911d6f39ff6c9526c671afad01726f8ed1f59579d063a5e161eb53e3ace5e9e4",
+      "host_tests": 4,
+      "hip_gpu_execution": false,
+      "sycl": "not applicable: native GLM target is CUDA/HIP; SYCL returns before modified CMake rules",
+      "cuda_validation": "CUDA native decoder compiled; all-default128token parity recorded separately",
+      "fit": false,
+      "performance_anchor": false,
+      "host_record_sha256": "2cbe28cbe6c570e6162e489cf745e135af7893c1f4f3671eee883e5695b8ea0c",
+      "cuda_build_raw_sha256": {
+        "config.log": "4474f6d12386d8d284e417f27c4e3d6d2dcec44dd8cd617e4e189b68ada1fd2f",
+        "host.log": "0ca3269075c67c0bb02d6ef3a045870270fd02cb0b4216e4c1656e3142b886f2",
+        "ready": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "identity.sha256": "dad04dab5ce71f9c0747f26a78773c533c54f57f9eff4f9448fab86c16fde1cc",
+        "build.log": "fe4188bb30e02a1ec1d01a5a85717cb6f7dcd1fdde6625a89793fac4208dffbe",
+        "source-audit.json": "bac8c030c64f06b97092e437b709dd11b2b21acb423a64ea740518c0b61444b8",
+        "ctest.log": "ff5ac0501359f4f62d16194b3622786c5d2ac2b19cac098a3a3fbbc4ab6803a8"
+      }
+    },
     "linear_adapter_gradients": {
       "passed": true,
       "gpu": "Tesla V100-PCIE-32GB",
@@ -25493,6 +26134,28 @@
         "holding": true
       }
     ],
+    "major_fault_address_diagnostic": {
+      "complete": true,
+      "attached_tasks": 40,
+      "captured_events": 0,
+      "lost_samples": 0,
+      "timed_target_major_faults": [
+        0,
+        0,
+        0
+      ],
+      "warmup_target_major_faults": [
+        5,
+        0,
+        0
+      ],
+      "sampler_sha256": "8d02f77a83779f482a24647faeed02af04655226391fe4df6843248b1e71774c",
+      "native_result_sha256": "912aebd38c4cd3e6b8a0e53f1cd97b3abdec0e12fb5dbb5407f8f4879261abe3",
+      "instrumented": true,
+      "fit": false,
+      "performance_anchor": false,
+      "scope": "External per-thread user major-fault sampler attaches after one discarded warmup. This run did not reproduce the earlier timed faults, so their backing file remains unidentified. No timing promotion."
+    },
     "skinny": {
       "numerical": {
         "passed": true,
@@ -39496,7 +40159,31 @@
       "quality_scored": false,
       "fit": false,
       "performance_anchor": false,
-      "scope": "Same-allocation direct source151 worker;3fullwarmups+1timed512 request per side. Target and actual GPU worker residency checked. Target checkpoint and selected preset unchanged."
+      "scope": "Same-allocation direct source185 worker;3fullwarmups+1timed512 request per side. Target and actual GPU worker residency checked. Target checkpoint and selected preset unchanged."
+    },
+    {
+      "screen_version": 228,
+      "training_version": 178,
+      "depth": 3,
+      "decode": [
+        30.06306772720855,
+        33.38625479396565
+      ],
+      "prefill": [
+        504.048632817307,
+        504.2037495230006
+      ],
+      "decode_ratio": 1.1105405175849519,
+      "raw_sha256": [
+        "134371c851245af19c276226ad94e1724c9f076d1991a007a076ae73c7ff9bd2",
+        "e616331c2edc5113490e69076a4e0143254b9404b0c8905daeadfdd741c74f93"
+      ],
+      "single_request_screen": true,
+      "repeated_gain_qualified": false,
+      "quality_scored": false,
+      "fit": false,
+      "performance_anchor": false,
+      "scope": "Same-allocation direct source212 worker;3fullwarmups+1timed512 request per side. Target and actual GPU worker residency checked. Target checkpoint and selected preset unchanged."
     }
   ],
   "calibrated_selector_adapter_screens": [
@@ -40462,6 +41149,17 @@
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {
+      "name": "dflash2-fc-adapter-depth3-v228",
+      "advances": 511,
+      "observed_decode_ms": 15305.7,
+      "verification_ms": 12927.2,
+      "other_ms": 2378.5,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 39.52905501578068,
+      "verification_speedup_needed_if_other_work_unchanged": 1.6485621373461712,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
       "name": "dflash2-fc-adapter-depth7-v168",
       "advances": 511,
       "observed_decode_ms": 20466.0,
@@ -40492,6 +41190,17 @@
       "goal50_decode_budget_ms": 10220.0,
       "zero_nonverification_tok_s": 35.8417911075885,
       "verification_speedup_needed_if_other_work_unchanged": 1.8762057666241168,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-fc-control-depth3-v228",
+      "advances": 511,
+      "observed_decode_ms": 16997.6,
+      "verification_ms": 14370.4,
+      "other_ms": 2627.199999999999,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 35.55920503256694,
+      "verification_speedup_needed_if_other_work_unchanged": 1.8926351280160147,
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {

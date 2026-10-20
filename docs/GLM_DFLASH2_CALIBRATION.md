@@ -153,6 +153,14 @@ block remained slower than depth three. Neither pair qualifies for promotion;
 coding quality was not scored. The calibration proxy does not establish a
 native speed gain.
 
+With protocol warmup enabled, the earlier rank-32 FC adapter completed a
+matched depth-three screen at 30.06 / 33.39 decode and 504.05 / 504.20 prefill
+tok/s, base / trained, on the same two V100s and 181 GiB allocation. Both
+used three full warmups and one timed 512-output request and passed residency
+checks. This 11.1% single-request gain remains below the 36.33 tok/s candidate
+that passed both reused coding panels. Repeated timing and coding quality for
+rank-32 remain unqualified.
+
 Each adapter still needs repeated native inference timing, target and worker
 residency checks, and separate coding checks. Freeze a final policy before
 scoring fresh holdouts. Keep original baselines, failed runs and all artifact
