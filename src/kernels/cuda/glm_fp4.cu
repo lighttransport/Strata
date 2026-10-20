@@ -380,6 +380,76 @@ __global__ void csf32_kernel(const uint8_t* bases,const uint8_t* codes,const uin
     if(out[packed_scale_index(row,col,C)]>=127 || out[packed_scale_index(row,col+1,C)]>=127)
         atomicExch(invalid,1);
 }
+// Canonical adjacent nibbles become adjacent half lanes. Preserve both
+// FP16 scale roundings and the final half multiply used by fp4_sm70_operands.
+// Every thread writes one contiguous 32-byte row span; no packed-code copy.
+template <bool PACKED_SCALES>
+__global__ void fp4_raw_operands(const uint2* codes,const uint8_t* scales,float global,half* out,int N,int K) {
+    const size_t i=size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(i>=size_t(N)*(K/16))return;
+    const int row=i/(K/16),group=i%(K/16);
+    const uint2 q=codes[i];
+    const size_t si=PACKED_SCALES?packed_scale_index(row,group,K/16):i;
+    const half2 scale=__hmul2(fp8e4m3_to_half2(scales[si]),__float2half2_rn(global*16384.f));
+    alignas(16) half2 values[8];
+    const unsigned words[2]={q.x,q.y};
+    #pragma unroll
+    for(int j=0;j<8;++j) {
+        const unsigned b=(words[j/4]>>((j%4)*8))&255;
+        const unsigned bits=((b&8)<<12)|((b&7)<<9)|((b&128)<<24)|((b&112)<<21);
+        values[j]=__hmul2(*reinterpret_cast<const half2*>(&bits),scale);
+    }
+    auto* dst=reinterpret_cast<uint4*>(out+i*16);
+    dst[0]=reinterpret_cast<const uint4*>(values)[0];
+    dst[1]=reinterpret_cast<const uint4*>(values)[1];
+}
+// One CSF32 tile covers 128 rows and four scale groups. Resolve each
+// warp's exception list in shared memory, then emit coalesced FP16 row spans.
+__global__ void fp4_csf32_operands(const uint2* weights,const uint8_t* bases,const uint8_t* codes,
+                                  const uint16_t* offsets,const uint32_t* pages,const uint16_t* exceptions,
+                                  float global,half* out,int* invalid,int K) {
+    __shared__ uint8_t scales[128*4];
+    __shared__ __align__(16) half tile_values[128][72];
+    const int tid=threadIdx.x,tile=blockIdx.x,C=K/16;
+    const int row0=(tile/(C/4))*128,col0=(tile%(C/4))*4;
+    if(tid<256) {
+        const int lane=tid&31,part=tid>>5,r=(part%4)*32+lane,col=(part/4)*2;
+        const int block=tile*8+part,page=tile/32;
+        const uint8_t code=codes[size_t(block)*32+lane];
+        scales[r*4+col]=uint8_t(bases[row0+r]+(code&15));
+        scales[r*4+col+1]=uint8_t(bases[row0+r]+(code>>4));
+        __syncwarp();
+        const size_t first=pages[page]/2+offsets[block+page],last=pages[page]/2+offsets[block+page+1];
+        for(size_t i=first+lane;i<last;i+=32) {
+            const unsigned value=exceptions[i],slot=value&255;
+            if(slot>=64){atomicExch(invalid,1);continue;}
+            scales[((part%4)*32+slot/2)*4+col+slot%2]=value>>8;
+        }
+    }
+    __syncthreads();
+    const int r=tid/4,group=tid%4;
+    const uint8_t code_scale=scales[tid];
+    if(code_scale>=127)atomicExch(invalid,1);
+    const half2 scale=__hmul2(fp8e4m3_to_half2(code_scale),__float2half2_rn(global*16384.f));
+    const uint2 q=weights[size_t(row0+r)*(K/16)+col0+group];
+    const unsigned words[2]={q.x,q.y};
+    alignas(16) half2 values[8];
+    #pragma unroll
+    for(int j=0;j<8;++j) {
+        const unsigned b=(words[j/4]>>((j%4)*8))&255;
+        const unsigned bits=((b&8)<<12)|((b&7)<<9)|((b&128)<<24)|((b&112)<<21);
+        values[j]=__hmul2(*reinterpret_cast<const half2*>(&bits),scale);
+    }
+    auto* dst=reinterpret_cast<uint4*>(&tile_values[r][group*16]);
+    dst[0]=reinterpret_cast<const uint4*>(values)[0];dst[1]=reinterpret_cast<const uint4*>(values)[1];
+    __syncthreads();
+    #pragma unroll
+    for(int pass=0;pass<2;++pass) {
+        const int row=tid/8+pass*64,col=(tid%8)*8;
+        *reinterpret_cast<uint4*>(out+size_t(row0+row)*K+col0*16+col)=
+            *reinterpret_cast<const uint4*>(&tile_values[row][col]);
+    }
+}
 __global__ void reference_kernel(GlmPackedFormat format,const void* w,const void* scales,float global,
                                   const half* x,float* y,int N,int K,int M) {
     const int row=blockIdx.x*8+(threadIdx.x>>5),lane=threadIdx.x&31,t=blockIdx.y;
@@ -850,6 +920,25 @@ void glm_fp4_gate_up_f16(const uint8_t* gate,const uint8_t* gate_scales,float ga
     auto s=static_cast<cudaStream_t>(stream);
     if(N<=2048&&K%512==0)fp4_gate_up<true><<<N/8,256,0,s>>>(gate,gate_scales,gate_global,up,up_scales,up_global,reinterpret_cast<const half*>(x),reinterpret_cast<half*>(hidden),N,K,M,limit);
     else fp4_gate_up<false><<<N/32,256,0,s>>>(gate,gate_scales,gate_global,up,up_scales,up_global,reinterpret_cast<const half*>(x),reinterpret_cast<half*>(hidden),N,K,M,limit);
+}
+void glm_fp4_csf32_dequant_f16(const uint8_t* weights,const uint8_t* bases,const uint8_t* codes,
+                              const uint16_t* offsets,const uint32_t* pages,const uint16_t* exceptions,
+                              float global,uint16_t* output,int* invalid,int N,int K,void* stream) {
+    valid(N,K,1);
+    if(N%128||!weights||!bases||!codes||!offsets||!pages||!exceptions||!output||!invalid)
+        throw std::invalid_argument("GLM FP4: fused CSF operands require aligned validated matrices");
+    const auto s=static_cast<cudaStream_t>(stream);
+    cudaMemsetAsync(invalid,0,sizeof(int),s);
+    fp4_csf32_operands<<<(N/128)*(K/64),512,0,s>>>(reinterpret_cast<const uint2*>(weights),bases,codes,offsets,pages,exceptions,global,reinterpret_cast<half*>(output),invalid,K);
+}
+void glm_fp4_raw_dequant_f16(const uint8_t* weights,const uint8_t* scales,float global,
+                            uint16_t* output,int N,int K,bool packed_scales,void* stream) {
+    valid(N,K,1);
+    if(N%32||!weights||!scales||!output)
+        throw std::invalid_argument("GLM FP4: raw operands need aligned NVFP4 matrices");
+    const size_t count=size_t(N)*(K/16);const auto s=static_cast<cudaStream_t>(stream);
+    if(packed_scales)fp4_raw_operands<true><<<(count+255)/256,256,0,s>>>(reinterpret_cast<const uint2*>(weights),scales,global,reinterpret_cast<half*>(output),N,K);
+    else fp4_raw_operands<false><<<(count+255)/256,256,0,s>>>(reinterpret_cast<const uint2*>(weights),scales,global,reinterpret_cast<half*>(output),N,K);
 }
 void glm_fp4_dequant_f16(GlmPackedFormat format,const void* w,const void* s,float global,
                          uint16_t* out,int N,int K,void* stream,bool sm70) {

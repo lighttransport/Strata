@@ -63,6 +63,18 @@ constexpr size_t glm_fp4_partial_bytes(int rows) {return size_t(64)*8*rows*sizeo
 // Bounded prefill reconstruction from the same resident compressed matrix.
 void glm_fp4_dequant_f16(GlmPackedFormat format,const void* weights,const void* scales,
                          float global,uint16_t* output,int rows,int columns,void* stream,bool sm70=false);
+// Reconstruct exact SM70 FP16 operands directly from canonical FP4 codes.
+// Scales may be row-major or the existing packed scale plane. N%32=0, K%64=0.
+void glm_fp4_raw_dequant_f16(const uint8_t* weights,const uint8_t* scales,
+                            float global,uint16_t* output,int rows,int columns,
+                            bool packed_scales,void* stream);
+// Fuse CSF32 scale decoding and canonical-code reconstruction into FP16.
+// Validated CSF32 metadata, N%128=0 and K%64=0; invalid is reset by this call.
+void glm_fp4_csf32_dequant_f16(const uint8_t* weights,const uint8_t* bases,
+                              const uint8_t* codes,const uint16_t* offsets,
+                              const uint32_t* pages,const uint16_t* exceptions,
+                              float global,uint16_t* output,int* invalid,
+                              int rows,int columns,void* stream);
 // SM70 FP4 prefill: reconstruct tiles in shared memory, then accumulate with
 // FP16 WMMA / FP32 accumulators. Same rounded operands as dequant_f16(sm70).
 // Requires rows%32=0, columns%64=0, tokens>8, tile_tokens in {32,64}.

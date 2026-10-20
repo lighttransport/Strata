@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "7d99d883096cc57a5eb40ea3711f81ade723749602368bd676503d3013fba878"
+      "sha256": "c7c8367a86abff3691c8409ef453d8ffce17ea73002ce9fe90385466d777722f"
     },
     {
       "path": "configs/experimental/glm53f-fp4-dual-v100-grouped.json",
@@ -6632,6 +6632,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-compact-cpu-mtp-candidate-full-v387",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 42.12522154898809,
+      "prefill_tok_s": 518.7830888872002,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-compact-cpu-mtp-control-full-v387",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 41.50118980906204,
+      "prefill_tok_s": 518.8915281076801,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-control-v25",
       "experiment_family": "dflash2",
       "decode_tok_s": 21.943086200044924,
@@ -7356,6 +7376,36 @@
       "experiment_family": "dflash2",
       "decode_tok_s": 36.039212920516256,
       "prefill_tok_s": 518.0908050265939,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-prefill-combined-candidate-full-v443",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 42.01266134999589,
+      "prefill_tok_s": 536.539998166123,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-prefill-workspace-candidate-full-v423",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 41.42414760291185,
+      "prefill_tok_s": 524.3383364803021,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-prefill-workspace-control-full-v423",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 41.44464179988159,
+      "prefill_tok_s": 518.8028017377867,
       "fit": false,
       "performance_anchor": false,
       "worker_residency_checked": false,
@@ -8218,7 +8268,7 @@
     "Prepared ordered four-part KDA prefill measured 520.894 tok/s against the same-binary 454.220 tok/s control, 14.68% faster. Decode 32.099 tok/s versus 31.872 tok/s is not claimed as a general gain.",
     "Three timed512-ID outputs and eight reused training outputs are identical to the matched control. Newly frozen 20 holdouts remain unscored.",
     "The separate old activity profile retains the original measured capture. Its KDA durations are not copied to this optimized profile.",
-    "DFlash2: a 41.29 tok/s timing passed residency checks but its reused coding panel passed 7/8. It is not selected as a usable preset.",
+    "DFlash2: a 42.01 tok/s timing passed residency checks but its reused coding panel passed 7/8. It is not selected as a usable preset.",
     "DFlash2: real weights run on SM70 using FP16 tensor operands and FP32 GEMM outputs. FP16 outputs overflowed; no model weights were changed. All new observations are non-fitted screens and do not replace the qualified MTP anchor.",
     "DFlash2: native verification graph widths4/8 measured 24.87 / 24.94 tok/s with identical three512-ID outputs in each mode. These observations do not replace the qualified MTP anchor.",
     "DFlash2: MLA graphs off/on measured 24.94 / 24.92 tok/s with identical three512-ID outputs in each mode. These observations do not replace the qualified MTP anchor.",
@@ -8269,6 +8319,7 @@
     "DFlash2: separate source352functional coding checks passed all eight reused long and eight natural-length cases on both sides of the41.24MTP pair. Original366absolute speed-selection gate remains failed and original367conditional panels remain skipped. These checks establish reused functional coverage, not a new selected preset or fresh holdout quality.",
     "DFlash2: private nativeVNNI compact scalar scale lookup component ratio1.052376 with32workers, two expert shapes, five cyclic samples,16rotating4MiB weights and shared activation storage. Four-lane gather ratio0.531222 regressed. Scalar passed proxy gate only; no model tok/s inference, capacity fit or selected preset change. Native1920bitwise cases and forcedAVX2/scalar1920each passed.",
     "DFlash2: external frozen rank32FC drafter, same377targetbinary and acceptance/routing policy, combined early readback/route upload/resident products/ordered scatter OFFversusON measured 35.30/37.89 decode and 513.15/513.47 prefill tok/s. Three fullwarmups and three timed512requests each, zero timed targetANDworker majorfaults/swap, clean uninstrumented exits. Allsixstreamsequal=True. This measures combined target changes, not any individual option or MTP throughput. Both sides passed eight reused long and eight natural-length coding cases. Fresh20unscored, reference/capacities unchanged.",
+    "DFlash2: exact compact scalar CPU factor lookup0vs1 on the same385MTP3target/groupedGPUcore measured 41.50/42.13 decode and 518.89/518.78 prefill tok/s. Three fullwarmups and three timed512requests per side, zero timed target faults/swap, clean uninstrumented exits. Allsixmatchmild=True. Pairedratio1.015036, speedgate=False. 129entrytable includes original zero sentinel;1728paddedbytes/expert charged unchanged6144MiBcache. Component1.052376ratio is separate from model timing; quality gates remain separate. No default/preset/capacity change.",
     "DFlash2: counting all usable GPU arena holes for decode admission measured 39.68/37.59 MTPdecode and 519.55/495.80prefill tok/s. Three full warmups and three timed512requests each, zero timed target faults/swap. Candidate outputs changed under existing affinity/drop policy but were repeatable and passed length/EOS/repetition gates; this is not a quality result. Decode regressed5.28percent, coding skipped. Original scratch reserves retained; no selected preset/capacity changed.",
     "DFlash2: coalesced NVFP4 operand reconstruction control/candidate measured 39.53/39.82decode and 519.19/520.63prefill tok/s, three full warmups and three timed512requests each. All six match the mild reference, zero timed target faults/swap. Prefill improved only0.28percent, below gate; coding skipped. Component speedup did not translate to material model speed. No selected preset/capacity changed.",
     "DFlash2: shared-tile transpose before NVFP4 operand stores passed35bitwise14graphcases and clean CUDA memcheck/racecheck. Same-allocation component geomean ratio1.665286 on the two expert matrix shapes; five alternating32call event samples, not model timing or a capacity fit. Both original128-output model checks matched; cold defaultOFF timing was unqualified due30majorfaults, whose backing file is unproven. Matched full-model results are separate.",
@@ -8286,7 +8337,12 @@
     "DFlash2: the separately instrumented hot512-output request had zero new CPU metadata entries; target CPU setup totaled271ms, fused CPU products4147ms, and routing/input preparation plus coordinator waiting4857ms. Profiling synchronizes streams, phase sums overlap and must not be added, used as model timing, or fitted to capacities.",
     "DFlash2: the later CPU microbenchmark gives variants identical activation/scales storage. Earlier copies changed storage as well as kernels; the apparent eight-token gain did not persist in the controlled comparison. CPU component rows remain diagnostic, not model forecasts or fitted resource capacities.",
     "DFlash2: the uniform activation-bias VNNI option passed CPU bitwise checks but failed its original one-token CPU product gate. No full-model timing was run for that uniform configuration. Later mixed dispatch policies use separately recorded experiments; component timings alone do not establish model throughput.",
-    "Working decode: tuning paused at41.24tok/s; opt-in grouped MTP3 profile freezes the repeated366configuration with separate376both8long+8natural functional coverage. The original absolute speed-selection gate remains failed, original5.26andqualified32.10references preserved, and fresh20unscored. Active prefill800target needs1.5405times the519.34working rate; no hardware capacity or performance anchor fitted."
+    "Prefill focus: decode working profile fixed at41.24tok/s with519.34prefill. Separate source377diagnostic8192input/8output request,2warmups+discard,16.0435seconds,0fault/swap andfirst8equal: GPU0matrixH2D6.1483s,prepack/scales.9184s,reconstruction1.1666s,GEMM3.4517s. GPU1H2D4.6545s,prepack.6825s,reconstruction1.0087s,GEMM1.8662s. Intervals overlap and include host enqueue gaps; not GPU unions, a new throughput anchor or fitted capacities. Target800needs1.5404times working prefill and5.5339s reduction for8192tokens.",
+    "Prefill experiment: exact fused-CSF operand workspace measured 518.80/524.34prefill and 41.44/41.42decode tok/s,3warm3timed512each/all6mild/0faultswap. 1.07percent prefill gain missed3percent gate; original coding/memcheck skipped. Separate functional and instrumented followups retain their own scope. Component3.1444ratio is not model speed or capacity fitting.",
+    "Prefill experiment: ordered4versusunordered8/column-tiles measured 520.19/531.70prefill tok/s,3warm3timed8192input/8output each, all6prefixes equal/0faultswap. 2.21percent gain below3percent gate. Prefill-only screen, not decode qualification or coding quality; no selection/capacity fit.",
+    "Prefill activity: separate warmed Nsight377baseline capture,16.283s diagnostic8192-token prefill. GPU0kernel/copy/all unions9.6728/6.7831/14.5526s,idle1.7304s;GPU1unions3.4046/5.2130/7.1993s,idle9.0837s. Unions account foroverlap, not additivetimers. Retained-allactivity+noidle scenario562.9tok/s; kernel-only846.9tok/s;800budgetleaves.567s afterretainedprimarykernels. Conditional trace-duration scenarios, not hardware roofs or predictions; launcher residency is not native qualification. Focus on copy/compute overlap and secondary work distribution.",
+    "Prefill experiment: combined fused-CSF/workspace and unordered8prefill measured 536.54prefill/42.01decode tok/s,3warm3timed512,0faultswap/repeatable. Earlier same-day identical-binary control=518.80prefill; two screens and Nsight trace intervened, clocks unlocked, not adjacent. Quality_failed=True, reused_quality_passed=False. Unselected; no new reference/default/capacity or fresh20 claim.",
+    "Working decode: tuning paused at41.24tok/s; opt-in grouped MTP3 profile freezes the repeated366configuration with separate376both8long+8natural functional coverage. The original absolute speed-selection gate remains failed, original5.26andqualified32.10references preserved, and fresh20unscored. Active prefill800target needs1.5404times the519.34working rate; no hardware capacity or performance anchor fitted."
   ],
   "limitations": [
     "Conditional resource roofs are optimistic workload bounds, not forecasts or fitted timing predictions.",
@@ -8615,6 +8671,42 @@
       "advances": 511,
       "decode_ms": 12925.6,
       "verify_ms": 11032.1
+    },
+    {
+      "name": "dflash2-compact-cpu-mtp-candidate-full-v387-trial0",
+      "advances": 511,
+      "decode_ms": 12136.3,
+      "verify_ms": 10295.4
+    },
+    {
+      "name": "dflash2-compact-cpu-mtp-candidate-full-v387-trial1",
+      "advances": 511,
+      "decode_ms": 12118.4,
+      "verify_ms": 10282.5
+    },
+    {
+      "name": "dflash2-compact-cpu-mtp-candidate-full-v387-trial2",
+      "advances": 511,
+      "decode_ms": 12130.5,
+      "verify_ms": 10295.2
+    },
+    {
+      "name": "dflash2-compact-cpu-mtp-control-full-v387-trial0",
+      "advances": 511,
+      "decode_ms": 12295.4,
+      "verify_ms": 10455.1
+    },
+    {
+      "name": "dflash2-compact-cpu-mtp-control-full-v387-trial1",
+      "advances": 511,
+      "decode_ms": 12331.2,
+      "verify_ms": 10493.5
+    },
+    {
+      "name": "dflash2-compact-cpu-mtp-control-full-v387-trial2",
+      "advances": 511,
+      "decode_ms": 12312.9,
+      "verify_ms": 10475.3
     },
     {
       "name": "dflash2-control-v25",
@@ -9721,6 +9813,60 @@
       "verify_ms": 12257.1
     },
     {
+      "name": "dflash2-prefill-combined-candidate-full-v443-trial0",
+      "advances": 511,
+      "decode_ms": 12124.6,
+      "verify_ms": 10295.7
+    },
+    {
+      "name": "dflash2-prefill-combined-candidate-full-v443-trial1",
+      "advances": 511,
+      "decode_ms": 12163.0,
+      "verify_ms": 10337.8
+    },
+    {
+      "name": "dflash2-prefill-combined-candidate-full-v443-trial2",
+      "advances": 511,
+      "decode_ms": 12180.0,
+      "verify_ms": 10351.0
+    },
+    {
+      "name": "dflash2-prefill-workspace-candidate-full-v423-trial0",
+      "advances": 511,
+      "decode_ms": 12324.2,
+      "verify_ms": 10535.3
+    },
+    {
+      "name": "dflash2-prefill-workspace-candidate-full-v423-trial1",
+      "advances": 511,
+      "decode_ms": 12349.8,
+      "verify_ms": 10571.1
+    },
+    {
+      "name": "dflash2-prefill-workspace-candidate-full-v423-trial2",
+      "advances": 511,
+      "decode_ms": 12335.8,
+      "verify_ms": 10550.6
+    },
+    {
+      "name": "dflash2-prefill-workspace-control-full-v423-trial0",
+      "advances": 511,
+      "decode_ms": 12329.7,
+      "verify_ms": 10522.2
+    },
+    {
+      "name": "dflash2-prefill-workspace-control-full-v423-trial1",
+      "advances": 511,
+      "decode_ms": 12320.3,
+      "verify_ms": 10514.9
+    },
+    {
+      "name": "dflash2-prefill-workspace-control-full-v423-trial2",
+      "advances": 511,
+      "decode_ms": 12334.0,
+      "verify_ms": 10526.0
+    },
+    {
       "name": "dflash2-prefix-graphs-mtp-candidate-full-v278-trial0",
       "advances": 511,
       "decode_ms": 12841.0,
@@ -10261,5 +10407,2089 @@
     "active_target_prefill_tok_s": 800,
     "fresh_holdout_scored": false,
     "scope": "Settled opt-in working configuration after decode optimization stopped. Original qualification gate and selected performance anchor are unchanged. Prefill measurements must retain this decode policy."
+  },
+  "prefill_phase_diagnostic": {
+    "complete": true,
+    "instrumented": true,
+    "fit": false,
+    "performance_anchor": false,
+    "model_throughput_qualification": false,
+    "binary_sha256": "3367c1f252751807a18747a0586271d671cd92041031d53fe28dcf5a301fc175",
+    "result_sha256": "a7306835ea2fc1242690e4d979a7ce7416d7c43677114cd024d964d8cd7e67f4",
+    "log_sha256": "3a457fb175ed897d125d4a0de7e84548f1fd32af3deb8883cbb541b481601486",
+    "script_sha256": "0c3451577404b943dea58fc0d6b30f1f83c015cd6541035ae17a22b2a047b053",
+    "prefill_ms": 16043.5,
+    "timed_major_faults": 0,
+    "peak_swap_bytes": 0,
+    "layers": [
+      {
+        "layer": 3.0,
+        "tokens": 8192.0,
+        "wall_ms": 325.804,
+        "input_wait_ms": 94.0124,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 107.074,
+        "gpu0_gather_ms": 0.004225,
+        "gpu0_product_ms": 90.7393,
+        "gpu0_reduce_ms": 0.003233,
+        "gpu1_upload_ms": 81.0435,
+        "gpu1_gather_ms": 0.004466,
+        "gpu1_product_ms": 113.438,
+        "gpu1_reduce_ms": 0.003197
+      },
+      {
+        "layer": 4.0,
+        "tokens": 8192.0,
+        "wall_ms": 312.376,
+        "input_wait_ms": 91.4226,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.174,
+        "gpu0_gather_ms": 0.004207,
+        "gpu0_product_ms": 92.2693,
+        "gpu0_reduce_ms": 0.003191,
+        "gpu1_upload_ms": 83.7444,
+        "gpu1_gather_ms": 0.008169,
+        "gpu1_product_ms": 96.7276,
+        "gpu1_reduce_ms": 0.003204
+      },
+      {
+        "layer": 5.0,
+        "tokens": 8192.0,
+        "wall_ms": 309.292,
+        "input_wait_ms": 88.8401,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 116.118,
+        "gpu0_gather_ms": 0.004459,
+        "gpu0_product_ms": 89.6825,
+        "gpu0_reduce_ms": 0.003231,
+        "gpu1_upload_ms": 80.8102,
+        "gpu1_gather_ms": 0.00423,
+        "gpu1_product_ms": 98.9461,
+        "gpu1_reduce_ms": 0.003233
+      },
+      {
+        "layer": 6.0,
+        "tokens": 8192.0,
+        "wall_ms": 313.308,
+        "input_wait_ms": 92.4282,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.642,
+        "gpu0_gather_ms": 0.004185,
+        "gpu0_product_ms": 92.044,
+        "gpu0_reduce_ms": 0.003191,
+        "gpu1_upload_ms": 82.6525,
+        "gpu1_gather_ms": 0.004402,
+        "gpu1_product_ms": 97.2996,
+        "gpu1_reduce_ms": 0.003234
+      },
+      {
+        "layer": 7.0,
+        "tokens": 8192.0,
+        "wall_ms": 380.421,
+        "input_wait_ms": 158.147,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.836,
+        "gpu0_gather_ms": 0.003974,
+        "gpu0_product_ms": 93.1868,
+        "gpu0_reduce_ms": 0.003227,
+        "gpu1_upload_ms": 82.9945,
+        "gpu1_gather_ms": 0.004433,
+        "gpu1_product_ms": 96.1287,
+        "gpu1_reduce_ms": 0.003213
+      },
+      {
+        "layer": 8.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.632,
+        "input_wait_ms": 90.4622,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.351,
+        "gpu0_gather_ms": 0.003604,
+        "gpu0_product_ms": 90.4012,
+        "gpu0_reduce_ms": 0.003195,
+        "gpu1_upload_ms": 80.8365,
+        "gpu1_gather_ms": 0.004302,
+        "gpu1_product_ms": 98.9575,
+        "gpu1_reduce_ms": 0.003255
+      },
+      {
+        "layer": 9.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.077,
+        "input_wait_ms": 90.6273,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.915,
+        "gpu0_gather_ms": 0.004025,
+        "gpu0_product_ms": 89.2989,
+        "gpu0_reduce_ms": 0.00322,
+        "gpu1_upload_ms": 78.9583,
+        "gpu1_gather_ms": 0.004241,
+        "gpu1_product_ms": 100.723,
+        "gpu1_reduce_ms": 0.003223
+      },
+      {
+        "layer": 10.0,
+        "tokens": 8192.0,
+        "wall_ms": 311.676,
+        "input_wait_ms": 91.133,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 113.777,
+        "gpu0_gather_ms": 0.00418,
+        "gpu0_product_ms": 92.4369,
+        "gpu0_reduce_ms": 0.003157,
+        "gpu1_upload_ms": 80.52,
+        "gpu1_gather_ms": 0.004455,
+        "gpu1_product_ms": 98.8064,
+        "gpu1_reduce_ms": 0.003108
+      },
+      {
+        "layer": 11.0,
+        "tokens": 8192.0,
+        "wall_ms": 379.668,
+        "input_wait_ms": 157.941,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 116.717,
+        "gpu0_gather_ms": 0.004115,
+        "gpu0_product_ms": 90.6473,
+        "gpu0_reduce_ms": 0.003425,
+        "gpu1_upload_ms": 79.5157,
+        "gpu1_gather_ms": 0.004313,
+        "gpu1_product_ms": 99.6559,
+        "gpu1_reduce_ms": 0.003218
+      },
+      {
+        "layer": 12.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.793,
+        "input_wait_ms": 90.3248,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.897,
+        "gpu0_gather_ms": 0.004021,
+        "gpu0_product_ms": 90.3512,
+        "gpu0_reduce_ms": 0.003217,
+        "gpu1_upload_ms": 82.5404,
+        "gpu1_gather_ms": 0.004317,
+        "gpu1_product_ms": 99.6095,
+        "gpu1_reduce_ms": 0.003204
+      },
+      {
+        "layer": 13.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.657,
+        "input_wait_ms": 91.5903,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.494,
+        "gpu0_gather_ms": 0.004125,
+        "gpu0_product_ms": 88.9496,
+        "gpu0_reduce_ms": 0.003129,
+        "gpu1_upload_ms": 80.6,
+        "gpu1_gather_ms": 0.004271,
+        "gpu1_product_ms": 101.277,
+        "gpu1_reduce_ms": 0.003262
+      },
+      {
+        "layer": 14.0,
+        "tokens": 8192.0,
+        "wall_ms": 311.225,
+        "input_wait_ms": 91.8057,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.757,
+        "gpu0_gather_ms": 0.003935,
+        "gpu0_product_ms": 89.5279,
+        "gpu0_reduce_ms": 0.003155,
+        "gpu1_upload_ms": 83.8624,
+        "gpu1_gather_ms": 0.004077,
+        "gpu1_product_ms": 98.6306,
+        "gpu1_reduce_ms": 0.003231
+      },
+      {
+        "layer": 15.0,
+        "tokens": 8192.0,
+        "wall_ms": 377.575,
+        "input_wait_ms": 158.303,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.808,
+        "gpu0_gather_ms": 0.004015,
+        "gpu0_product_ms": 89.3134,
+        "gpu0_reduce_ms": 0.003171,
+        "gpu1_upload_ms": 81.2087,
+        "gpu1_gather_ms": 0.004151,
+        "gpu1_product_ms": 101.012,
+        "gpu1_reduce_ms": 0.003263
+      },
+      {
+        "layer": 16.0,
+        "tokens": 8192.0,
+        "wall_ms": 311.381,
+        "input_wait_ms": 89.5509,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 116.313,
+        "gpu0_gather_ms": 0.003973,
+        "gpu0_product_ms": 91.2967,
+        "gpu0_reduce_ms": 0.003234,
+        "gpu1_upload_ms": 81.6957,
+        "gpu1_gather_ms": 0.004351,
+        "gpu1_product_ms": 98.5976,
+        "gpu1_reduce_ms": 0.003194
+      },
+      {
+        "layer": 17.0,
+        "tokens": 8192.0,
+        "wall_ms": 311.815,
+        "input_wait_ms": 91.6235,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.835,
+        "gpu0_gather_ms": 0.004275,
+        "gpu0_product_ms": 91.0334,
+        "gpu0_reduce_ms": 0.003217,
+        "gpu1_upload_ms": 81.8287,
+        "gpu1_gather_ms": 0.00451,
+        "gpu1_product_ms": 98.384,
+        "gpu1_reduce_ms": 0.003128
+      },
+      {
+        "layer": 18.0,
+        "tokens": 8192.0,
+        "wall_ms": 308.416,
+        "input_wait_ms": 90.0373,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 116.963,
+        "gpu0_gather_ms": 0.004186,
+        "gpu0_product_ms": 87.3725,
+        "gpu0_reduce_ms": 0.003166,
+        "gpu1_upload_ms": 83.6369,
+        "gpu1_gather_ms": 0.004186,
+        "gpu1_product_ms": 99.3843,
+        "gpu1_reduce_ms": 0.00327
+      },
+      {
+        "layer": 19.0,
+        "tokens": 8192.0,
+        "wall_ms": 378.673,
+        "input_wait_ms": 157.925,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.237,
+        "gpu0_gather_ms": 0.003955,
+        "gpu0_product_ms": 91.6294,
+        "gpu0_reduce_ms": 0.003198,
+        "gpu1_upload_ms": 81.3584,
+        "gpu1_gather_ms": 0.004211,
+        "gpu1_product_ms": 96.3998,
+        "gpu1_reduce_ms": 0.003265
+      },
+      {
+        "layer": 20.0,
+        "tokens": 8192.0,
+        "wall_ms": 305.772,
+        "input_wait_ms": 89.6534,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 112.698,
+        "gpu0_gather_ms": 0.003981,
+        "gpu0_product_ms": 89.3097,
+        "gpu0_reduce_ms": 0.003164,
+        "gpu1_upload_ms": 80.8549,
+        "gpu1_gather_ms": 0.00427,
+        "gpu1_product_ms": 96.5935,
+        "gpu1_reduce_ms": 0.003225
+      },
+      {
+        "layer": 21.0,
+        "tokens": 8192.0,
+        "wall_ms": 311.335,
+        "input_wait_ms": 92.1781,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 113.492,
+        "gpu0_gather_ms": 0.004129,
+        "gpu0_product_ms": 91.3359,
+        "gpu0_reduce_ms": 0.003189,
+        "gpu1_upload_ms": 81.6767,
+        "gpu1_gather_ms": 0.00419,
+        "gpu1_product_ms": 95.743,
+        "gpu1_reduce_ms": 0.003231
+      },
+      {
+        "layer": 22.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.509,
+        "input_wait_ms": 90.369,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.089,
+        "gpu0_gather_ms": 0.004017,
+        "gpu0_product_ms": 90.5737,
+        "gpu0_reduce_ms": 0.003169,
+        "gpu1_upload_ms": 81.6011,
+        "gpu1_gather_ms": 0.004478,
+        "gpu1_product_ms": 98.0354,
+        "gpu1_reduce_ms": 0.003162
+      },
+      {
+        "layer": 23.0,
+        "tokens": 8192.0,
+        "wall_ms": 372.529,
+        "input_wait_ms": 158.251,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 113.465,
+        "gpu0_gather_ms": 0.004092,
+        "gpu0_product_ms": 86.9054,
+        "gpu0_reduce_ms": 0.003069,
+        "gpu1_upload_ms": 79.4398,
+        "gpu1_gather_ms": 0.00445,
+        "gpu1_product_ms": 99.764,
+        "gpu1_reduce_ms": 0.003314
+      },
+      {
+        "layer": 24.0,
+        "tokens": 8192.0,
+        "wall_ms": 308.818,
+        "input_wait_ms": 89.5957,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.132,
+        "gpu0_gather_ms": 0.004175,
+        "gpu0_product_ms": 90.5392,
+        "gpu0_reduce_ms": 0.003147,
+        "gpu1_upload_ms": 82.4092,
+        "gpu1_gather_ms": 0.004781,
+        "gpu1_product_ms": 97.9809,
+        "gpu1_reduce_ms": 0.003212
+      },
+      {
+        "layer": 25.0,
+        "tokens": 8192.0,
+        "wall_ms": 308.316,
+        "input_wait_ms": 91.8039,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 111.645,
+        "gpu0_gather_ms": 0.003971,
+        "gpu0_product_ms": 90.623,
+        "gpu0_reduce_ms": 0.00316,
+        "gpu1_upload_ms": 82.3843,
+        "gpu1_gather_ms": 0.004329,
+        "gpu1_product_ms": 96.5219,
+        "gpu1_reduce_ms": 0.00312
+      },
+      {
+        "layer": 26.0,
+        "tokens": 8192.0,
+        "wall_ms": 306.106,
+        "input_wait_ms": 90.4159,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 112.037,
+        "gpu0_gather_ms": 0.004081,
+        "gpu0_product_ms": 89.6156,
+        "gpu0_reduce_ms": 0.003169,
+        "gpu1_upload_ms": 82.8141,
+        "gpu1_gather_ms": 0.004582,
+        "gpu1_product_ms": 97.932,
+        "gpu1_reduce_ms": 0.003191
+      },
+      {
+        "layer": 27.0,
+        "tokens": 8192.0,
+        "wall_ms": 372.495,
+        "input_wait_ms": 158.079,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 111.818,
+        "gpu0_gather_ms": 0.003949,
+        "gpu0_product_ms": 88.5076,
+        "gpu0_reduce_ms": 0.003086,
+        "gpu1_upload_ms": 79.7936,
+        "gpu1_gather_ms": 0.004463,
+        "gpu1_product_ms": 99.1475,
+        "gpu1_reduce_ms": 0.003181
+      },
+      {
+        "layer": 28.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.072,
+        "input_wait_ms": 91.5508,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 112.428,
+        "gpu0_gather_ms": 0.004049,
+        "gpu0_product_ms": 92.1072,
+        "gpu0_reduce_ms": 0.003137,
+        "gpu1_upload_ms": 81.7611,
+        "gpu1_gather_ms": 0.004419,
+        "gpu1_product_ms": 95.3303,
+        "gpu1_reduce_ms": 0.003134
+      },
+      {
+        "layer": 29.0,
+        "tokens": 8192.0,
+        "wall_ms": 303.779,
+        "input_wait_ms": 91.2618,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 109.216,
+        "gpu0_gather_ms": 0.004124,
+        "gpu0_product_ms": 89.3313,
+        "gpu0_reduce_ms": 0.003136,
+        "gpu1_upload_ms": 80.3687,
+        "gpu1_gather_ms": 0.004397,
+        "gpu1_product_ms": 97.7163,
+        "gpu1_reduce_ms": 0.003141
+      },
+      {
+        "layer": 30.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.682,
+        "input_wait_ms": 90.6588,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.848,
+        "gpu0_gather_ms": 0.004131,
+        "gpu0_product_ms": 91.1017,
+        "gpu0_reduce_ms": 0.003251,
+        "gpu1_upload_ms": 81.9311,
+        "gpu1_gather_ms": 0.004205,
+        "gpu1_product_ms": 98.0106,
+        "gpu1_reduce_ms": 0.003144
+      },
+      {
+        "layer": 31.0,
+        "tokens": 8192.0,
+        "wall_ms": 379.722,
+        "input_wait_ms": 158.598,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.915,
+        "gpu0_gather_ms": 0.003987,
+        "gpu0_product_ms": 91.2806,
+        "gpu0_reduce_ms": 0.003204,
+        "gpu1_upload_ms": 81.6726,
+        "gpu1_gather_ms": 0.00429,
+        "gpu1_product_ms": 96.5097,
+        "gpu1_reduce_ms": 0.003096
+      },
+      {
+        "layer": 32.0,
+        "tokens": 8192.0,
+        "wall_ms": 308.772,
+        "input_wait_ms": 89.6385,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.807,
+        "gpu0_gather_ms": 0.004087,
+        "gpu0_product_ms": 88.8528,
+        "gpu0_reduce_ms": 0.003253,
+        "gpu1_upload_ms": 79.7796,
+        "gpu1_gather_ms": 0.004329,
+        "gpu1_product_ms": 100.797,
+        "gpu1_reduce_ms": 0.003158
+      },
+      {
+        "layer": 33.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.961,
+        "input_wait_ms": 92.0662,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 113.985,
+        "gpu0_gather_ms": 0.004075,
+        "gpu0_product_ms": 90.9762,
+        "gpu0_reduce_ms": 0.003282,
+        "gpu1_upload_ms": 81.1415,
+        "gpu1_gather_ms": 0.004261,
+        "gpu1_product_ms": 95.8282,
+        "gpu1_reduce_ms": 0.003176
+      },
+      {
+        "layer": 34.0,
+        "tokens": 8192.0,
+        "wall_ms": 309.274,
+        "input_wait_ms": 89.4831,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.427,
+        "gpu0_gather_ms": 0.007454,
+        "gpu0_product_ms": 89.7436,
+        "gpu0_reduce_ms": 0.003191,
+        "gpu1_upload_ms": 80.5133,
+        "gpu1_gather_ms": 0.004574,
+        "gpu1_product_ms": 98.799,
+        "gpu1_reduce_ms": 0.003145
+      },
+      {
+        "layer": 35.0,
+        "tokens": 8192.0,
+        "wall_ms": 376.575,
+        "input_wait_ms": 157.989,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 116.97,
+        "gpu0_gather_ms": 0.004188,
+        "gpu0_product_ms": 87.5412,
+        "gpu0_reduce_ms": 0.003181,
+        "gpu1_upload_ms": 78.8682,
+        "gpu1_gather_ms": 0.004461,
+        "gpu1_product_ms": 99.9986,
+        "gpu1_reduce_ms": 0.003275
+      },
+      {
+        "layer": 36.0,
+        "tokens": 8192.0,
+        "wall_ms": 312.969,
+        "input_wait_ms": 91.6615,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.173,
+        "gpu0_gather_ms": 0.004177,
+        "gpu0_product_ms": 91.9642,
+        "gpu0_reduce_ms": 0.003196,
+        "gpu1_upload_ms": 80.2192,
+        "gpu1_gather_ms": 0.004243,
+        "gpu1_product_ms": 98.6459,
+        "gpu1_reduce_ms": 0.003127
+      },
+      {
+        "layer": 37.0,
+        "tokens": 8192.0,
+        "wall_ms": 308.691,
+        "input_wait_ms": 89.7101,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 116.388,
+        "gpu0_gather_ms": 0.004075,
+        "gpu0_product_ms": 88.5718,
+        "gpu0_reduce_ms": 0.003275,
+        "gpu1_upload_ms": 80.4153,
+        "gpu1_gather_ms": 0.004446,
+        "gpu1_product_ms": 98.7884,
+        "gpu1_reduce_ms": 0.003136
+      },
+      {
+        "layer": 38.0,
+        "tokens": 8192.0,
+        "wall_ms": 309.75,
+        "input_wait_ms": 92.0299,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 115.274,
+        "gpu0_gather_ms": 0.004039,
+        "gpu0_product_ms": 87.9429,
+        "gpu0_reduce_ms": 0.003078,
+        "gpu1_upload_ms": 79.2117,
+        "gpu1_gather_ms": 0.004522,
+        "gpu1_product_ms": 102.075,
+        "gpu1_reduce_ms": 0.003277
+      },
+      {
+        "layer": 39.0,
+        "tokens": 8192.0,
+        "wall_ms": 378.381,
+        "input_wait_ms": 158.595,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.851,
+        "gpu0_gather_ms": 0.004187,
+        "gpu0_product_ms": 90.7761,
+        "gpu0_reduce_ms": 0.00331,
+        "gpu1_upload_ms": 81.1009,
+        "gpu1_gather_ms": 0.004303,
+        "gpu1_product_ms": 97.7675,
+        "gpu1_reduce_ms": 0.003119
+      },
+      {
+        "layer": 40.0,
+        "tokens": 8192.0,
+        "wall_ms": 310.946,
+        "input_wait_ms": 90.5464,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 113.304,
+        "gpu0_gather_ms": 0.003978,
+        "gpu0_product_ms": 92.7246,
+        "gpu0_reduce_ms": 0.00319,
+        "gpu1_upload_ms": 84.3143,
+        "gpu1_gather_ms": 0.004257,
+        "gpu1_product_ms": 94.1652,
+        "gpu1_reduce_ms": 0.003145
+      },
+      {
+        "layer": 41.0,
+        "tokens": 8192.0,
+        "wall_ms": 309.051,
+        "input_wait_ms": 92.3891,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 109.991,
+        "gpu0_gather_ms": 0.004049,
+        "gpu0_product_ms": 92.6174,
+        "gpu0_reduce_ms": 0.003237,
+        "gpu1_upload_ms": 80.4836,
+        "gpu1_gather_ms": 0.004494,
+        "gpu1_product_ms": 95.0464,
+        "gpu1_reduce_ms": 0.003191
+      },
+      {
+        "layer": 42.0,
+        "tokens": 8192.0,
+        "wall_ms": 306.147,
+        "input_wait_ms": 90.934,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 112.955,
+        "gpu0_gather_ms": 0.003898,
+        "gpu0_product_ms": 88.4188,
+        "gpu0_reduce_ms": 0.003085,
+        "gpu1_upload_ms": 81.6968,
+        "gpu1_gather_ms": 0.00451,
+        "gpu1_product_ms": 99.4044,
+        "gpu1_reduce_ms": 0.003183
+      },
+      {
+        "layer": 43.0,
+        "tokens": 8192.0,
+        "wall_ms": 376.604,
+        "input_wait_ms": 158.53,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 113.789,
+        "gpu0_gather_ms": 0.003932,
+        "gpu0_product_ms": 90.3676,
+        "gpu0_reduce_ms": 0.003071,
+        "gpu1_upload_ms": 79.5059,
+        "gpu1_gather_ms": 0.004226,
+        "gpu1_product_ms": 97.2603,
+        "gpu1_reduce_ms": 0.003059
+      },
+      {
+        "layer": 44.0,
+        "tokens": 8192.0,
+        "wall_ms": 309.078,
+        "input_wait_ms": 91.193,
+        "cpu_groups": 0.0,
+        "cpu_load_ms": 0.0,
+        "cpu_gu_ms": 0.0,
+        "cpu_down_ms": 0.0,
+        "cpu_reduce_ms": 0.0,
+        "cpu_fused_ms": 0.0,
+        "gpu0_upload_ms": 114.371,
+        "gpu0_gather_ms": 0.004294,
+        "gpu0_product_ms": 89.5609,
+        "gpu0_reduce_ms": 0.003099,
+        "gpu1_upload_ms": 78.64,
+        "gpu1_gather_ms": 0.004278,
+        "gpu1_product_ms": 97.075,
+        "gpu1_reduce_ms": 0.0031
+      }
+    ],
+    "gpu_intervals": [
+      {
+        "device": 0,
+        "stage": "gemm",
+        "ms": 3451.6746,
+        "calls": 18325
+      },
+      {
+        "device": 0,
+        "stage": "matrix_h2d",
+        "ms": 6148.294999999999,
+        "calls": 5217
+      },
+      {
+        "device": 0,
+        "stage": "prepack_scales",
+        "ms": 918.4460000000001,
+        "calls": 5217
+      },
+      {
+        "device": 0,
+        "stage": "reconstruct",
+        "ms": 1166.5693999999996,
+        "calls": 17979
+      },
+      {
+        "device": 0,
+        "stage": "skinny",
+        "ms": 7.854624,
+        "calls": 381
+      },
+      {
+        "device": 1,
+        "stage": "gemm",
+        "ms": 1866.1542,
+        "calls": 17736
+      },
+      {
+        "device": 1,
+        "stage": "matrix_h2d",
+        "ms": 4654.466000000002,
+        "calls": 3965
+      },
+      {
+        "device": 1,
+        "stage": "prepack_scales",
+        "ms": 682.4818,
+        "calls": 3965
+      },
+      {
+        "device": 1,
+        "stage": "reconstruct",
+        "ms": 1008.7415,
+        "calls": 17736
+      },
+      {
+        "device": 1,
+        "stage": "skinny",
+        "ms": 6.196192000000001,
+        "calls": 333
+      }
+    ],
+    "fixed_intervals": [
+      {
+        "tensor_suffix": "attn_output.weight",
+        "ms": 408.1294,
+        "calls": 45
+      },
+      {
+        "tensor_suffix": "attn_v.weight",
+        "ms": 223.62815000000006,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "attn_q.weight",
+        "ms": 223.00867999999997,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "attn_k.weight",
+        "ms": 222.70861999999997,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "ffn_gate_shexp.weight",
+        "ms": 88.18068,
+        "calls": 42
+      },
+      {
+        "tensor_suffix": "ffn_up_shexp.weight",
+        "ms": 88.02918,
+        "calls": 42
+      },
+      {
+        "tensor_suffix": "ffn_down_shexp.weight",
+        "ms": 78.76689999999999,
+        "calls": 42
+      },
+      {
+        "tensor_suffix": "hc_ffn_fn.weight",
+        "ms": 69.50295999999999,
+        "calls": 45
+      },
+      {
+        "tensor_suffix": "hc_attn_fn.weight",
+        "ms": 69.32252,
+        "calls": 45
+      },
+      {
+        "tensor_suffix": "attn_q_b.weight",
+        "ms": 59.24350999999999,
+        "calls": 11
+      },
+      {
+        "tensor_suffix": "ffn_down.weight",
+        "ms": 36.2967,
+        "calls": 3
+      },
+      {
+        "tensor_suffix": "ffn_gate.weight",
+        "ms": 30.85,
+        "calls": 3
+      },
+      {
+        "tensor_suffix": "ffn_up.weight",
+        "ms": 30.780499999999996,
+        "calls": 3
+      },
+      {
+        "tensor_suffix": "ffn_gate_inp.weight",
+        "ms": 28.142528,
+        "calls": 42
+      },
+      {
+        "tensor_suffix": "attn_q_a.weight",
+        "ms": 16.93288,
+        "calls": 11
+      },
+      {
+        "tensor_suffix": "ssm_f_b.weight",
+        "ms": 16.722944,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "ssm_g_b.weight",
+        "ms": 16.682976,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "ssm_beta.weight",
+        "ms": 15.822591999999998,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "ssm_g_a.weight",
+        "ms": 15.409983999999998,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "ssm_f_a.weight",
+        "ms": 15.370112000000004,
+        "calls": 34
+      },
+      {
+        "tensor_suffix": "indexer.attn_q_b.weight",
+        "ms": 15.02311,
+        "calls": 11
+      },
+      {
+        "tensor_suffix": "attn_kv_a_mqa.weight",
+        "ms": 8.45824,
+        "calls": 11
+      },
+      {
+        "tensor_suffix": "indexer_compressor_gate.weight",
+        "ms": 4.962304,
+        "calls": 11
+      },
+      {
+        "tensor_suffix": "indexer.attn_k.weight",
+        "ms": 4.953088,
+        "calls": 11
+      },
+      {
+        "tensor_suffix": "indexer.proj.weight",
+        "ms": 4.2455039999999995,
+        "calls": 11
+      }
+    ],
+    "scope": "Last 8192-input, 8-output request after two complete warmups and a discarded request; settled MTP3/early/grouped policy. Diagnostic event intervals include host enqueue gaps and overlap enclosing timers. No throughput claim or fitted capacity.",
+    "summary_sha256": "52897a87cbb6e79f673f97ef049b839bd3d5c995029100e1afa716799cc8395d",
+    "source_version": 377,
+    "phase_boundary": "Last request_reset through next decode_cache, excluding cached MTP-prefix preparation.",
+    "layer_wall_sum_ms": 13701.123,
+    "routed_input_wait_sum_ms": 4493.3555,
+    "first8_equal_settled": true,
+    "limitations": [
+      "Single instrumented request, eight output tokens; not a throughput anchor.",
+      "Events can include host enqueue gaps and overlap enclosing timers; durations are not disjoint GPU activity unions.",
+      "Input waits include dependencies on earlier fixed work and are part of routed wall time.",
+      "The summary excludes MTP-prefix preparation using explicit phase markers."
+    ]
+  },
+  "prefill_fused_component": {
+    "passed": true,
+    "complete": true,
+    "checks": [
+      {
+        "name": "direct",
+        "returncode": 0,
+        "bitwise_checks": 40,
+        "graph_checks": 8,
+        "log_sha256": "bd216f8d6e925f31bf69cada21399c1a2e31288092e7c759d0c4c73d1fd27451"
+      },
+      {
+        "name": "memcheck",
+        "returncode": 0,
+        "bitwise_checks": 40,
+        "graph_checks": 8,
+        "log_sha256": "de760e94e2c3866cdd6d0d4fbedab55396667441c2a3065bc3e4cba04d2ef47f"
+      },
+      {
+        "name": "racecheck",
+        "returncode": 0,
+        "bitwise_checks": 40,
+        "graph_checks": 8,
+        "log_sha256": "5de3b66dd5e617bb917da95b48dc2263fa900c9e6fd0ad66b63487f809c85dbb"
+      }
+    ],
+    "medians": [
+      {
+        "N": 2048,
+        "K": 4096,
+        "medians_us": {
+          "0": 112.544,
+          "1": 60.864,
+          "2": 35.68
+        },
+        "original_over_fused": 3.1542600896860984,
+        "direct_over_fused": 1.705829596412556
+      },
+      {
+        "N": 4096,
+        "K": 2048,
+        "medians_us": {
+          "0": 112.544,
+          "1": 60.384,
+          "2": 35.903
+        },
+        "original_over_fused": 3.1346684121104085,
+        "direct_over_fused": 1.6818650252068073
+      }
+    ],
+    "selection_geometric_mean_ratio": 3.1444489925453647,
+    "direct_geometric_mean_ratio": 1.6938049289008819,
+    "selected_for_model": true,
+    "binary_sha256": "1875d498790227aed38131b424a8317b28b63396ffb42584c961624078ca0584",
+    "source_manifest_sha256": "e30368496db998ddf1bf85712e7822c377b18a85bfe033c0a2540c7fec932187",
+    "probe_sha256": "ef8eb5236e52a4ddc0a86320763cde9b283c6f4a77a389e80326736fd21fcf7b",
+    "fit": false,
+    "performance_anchor": false,
+    "fresh_holdout_scored": false,
+    "scope": "Fused CSF32 and canonical FP4 to exact FP16. Independent C11 CSF32 fixture; four shapes/five global scales,40bitwise8changed-inputgraphcases,guards/invalidscales/invalidslots. Three modes: originalprepack+CSF+reconstruct, separateCSF+direct, fused. Fivecyclic32call event samples each expertshape; no modelTPSforecast orcapacity fit.",
+    "validation_sha256": "b57fe8c89b8c88e82a3809b9cc03ea2eb94b2bc58baebde55d5190fe3a26bf88",
+    "source_version": 414,
+    "source_public": false
+  },
+  "prefill_direct_component": {
+    "passed": true,
+    "complete": true,
+    "checks": [
+      {
+        "name": "direct",
+        "returncode": 0,
+        "bitwise_checks": 70,
+        "graph_checks": 28,
+        "log_sha256": "df11cdec75897285224c7f0d3ba6656e8678b08c5329177b12b30c298abcacf1"
+      },
+      {
+        "name": "memcheck",
+        "returncode": 0,
+        "bitwise_checks": 70,
+        "graph_checks": 28,
+        "log_sha256": "0f25dd004773bea28be8470df6e9f1b82f7ef709fed32a59dd10bf5bb82fafc8"
+      },
+      {
+        "name": "racecheck",
+        "returncode": 0,
+        "bitwise_checks": 70,
+        "graph_checks": 28,
+        "log_sha256": "8b0521ebeb42e9904d55ab4f96a33d6dc983707b4a9d4f27653ea8ce575ad75a"
+      }
+    ],
+    "medians": [
+      {
+        "N": 2048,
+        "K": 4096,
+        "packed_scales": false,
+        "control_us": 108.736,
+        "candidate_us": 50.72,
+        "ratio": 2.1438485804416407
+      },
+      {
+        "N": 2048,
+        "K": 4096,
+        "packed_scales": true,
+        "control_us": 102.56,
+        "candidate_us": 51.136,
+        "ratio": 2.0056320400500627
+      },
+      {
+        "N": 4096,
+        "K": 2048,
+        "packed_scales": false,
+        "control_us": 108.896,
+        "candidate_us": 50.624,
+        "ratio": 2.1510745891276866
+      },
+      {
+        "N": 4096,
+        "K": 2048,
+        "packed_scales": true,
+        "control_us": 102.784,
+        "candidate_us": 51.104,
+        "ratio": 2.0112711333750783
+      },
+      {
+        "N": 8192,
+        "K": 1024,
+        "packed_scales": false,
+        "control_us": 106.144,
+        "candidate_us": 50.783,
+        "ratio": 2.090148277967036
+      },
+      {
+        "N": 8192,
+        "K": 1024,
+        "packed_scales": true,
+        "control_us": 102.879,
+        "candidate_us": 50.976,
+        "ratio": 2.018185028248588
+      }
+    ],
+    "selection_geometric_mean_ratio": 2.0084496076140073,
+    "selected_for_model": true,
+    "binary_sha256": "c3602b5139fcaf459f2ad8e87648bb86187b337b2ee2d3e5bb875a579e4341c2",
+    "source_manifest_sha256": "639c1baf3f8b5d70dd9e480583e70d9260f07f632d8e7428a0ae751581f87ea6",
+    "probe_sha256": "3d6d178f1833443a583db4a14b6052a1ae1f709e69320d7fb0fd68cf79e921af",
+    "fit": false,
+    "performance_anchor": false,
+    "fresh_holdout_scored": false,
+    "recovery_source": "dflash2-prefill-direct-component-v403",
+    "failed_wrapper_sha256": "ec050084407d17f6baaf1b225d83cd05bf3782a03c708d3999e84d106564d6ea",
+    "scope": "403completed all GPU checks and probes, then its summary selected an extra equal-element-count shape and failed. 408selects explicit expert shapes from unchanged403raw samples; no repeated GPU timing. Canonical FP4 to exact SM70 FP16 operands. Seven shapes, five global scales, row-major and packed scale planes, 70bitwise28changed-inputgraphcases, guards/invalidextents. Component timing compares prepack+original reconstruction with direct reconstruction, five alternating32call samples. CSF decoding/H2D/wholemodel not timed here; gate expert packed-scale shapes>=3percent and geometric mean>=5percent. No model TPS forecast.",
+    "validation_sha256": "ae5668d3b168a68aaf95f00211bfbd40c8a42f2a4dbf7ea7fb24e3cb0bd2a693",
+    "source_version": 402,
+    "source_public": false
+  },
+  "prefill_activity_diagnostic": {
+    "instrumented": true,
+    "fit": false,
+    "performance_anchor": false,
+    "binary_sha256": "3367c1f252751807a18747a0586271d671cd92041031d53fe28dcf5a301fc175",
+    "source_manifest_sha256": "cfbbca685256ec2918676f607220abd76efae251fb1ce95429d4dff11aa84c8e",
+    "wrapper_sha256": "0178de24673b53b6605fdf9f7fdf876b3c43fc605cfe3383d891e3eb88017f69",
+    "capture_request_1based": 4,
+    "environment": {
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+      "STRATA_GLM_FP4_CPU_BORROW": "1",
+      "STRATA_GLM_FP4_CPU_CSF32": "1",
+      "STRATA_GLM_FP4_CPU_FUSED": "1",
+      "STRATA_GLM_FP4_CPU_Q8": "1",
+      "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+      "STRATA_GLM_FP4_CPU_SPARSE": "1",
+      "STRATA_GLM_FP4_CPU_SPIN": "1",
+      "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+      "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+      "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+      "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+      "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+      "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+      "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+      "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+      "STRATA_GLM_MLA_ABSORB_F16": "1",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+      "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+      "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+      "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_VRAM_PREALLOC": "1",
+      "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024",
+      "STRATA_GLM_FP4_GPU_REDUCE": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "0",
+      "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+      "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+      "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+      "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+      "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+      "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+      "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+      "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+      "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+      "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+      "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+      "STRATA_GLM_RAM_EXECUTABLE": "1",
+      "STRATA_GLM_FP4_EARLY_READBACK": "1",
+      "STRATA_GLM_KDA_ROW_PARTS": "1",
+      "STRATA_GLM_FP4_ROUTE_ID_BATCH": "1",
+      "STRATA_GLM_FP4_RESIDENT_GROUPED": "1",
+      "STRATA_GLM_FP4_GROUPED_SCATTER": "1"
+    },
+    "scope": "Settled377baseline, two full8192-input/8-output warmups, discarded request, last timed request captured by Nsight2025.1.3. Benchmark monitors Nsight launcher rather than decoder; no native residency or throughput qualification. Large trace/SQLite stay outside Git.",
+    "complete": true,
+    "prefill_ms": 16283.0,
+    "decode_ms": 197.143,
+    "first8_equal_reference": true,
+    "result_sha256": "96f9fe608242bc4880d752e6d20c1997af1f6ec9a817418978a8bdfaac4e5c87",
+    "log_sha256": "c05c869e908223506b5fad765906822764abd623f1a849737d0bd64504b1ab84",
+    "trace_sha256": "dfe5e39e94dcc5333bb8d65ac984a7233e2a45fd3f85344357356541e8150d1a",
+    "trace_bytes": 26405997,
+    "sqlite_sha256": "0cc2180c653893e98227c85f1efac1a2b8404828d96f7475cba40e84954c4b47",
+    "sqlite_bytes": 59015168,
+    "devices": [
+      {
+        "phase": "decode_and_preparation",
+        "device": 0,
+        "kernel_union_ms": 103.874886,
+        "copy_union_ms": 17.401026,
+        "all_activity_union_ms": 120.645488,
+        "idle_ms": 76.497512,
+        "top_kernels": [
+          {
+            "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)6, (int)8, (int)1, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+            "calls": 163,
+            "sum_ms": 19.989886000000002
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)2, (int)8, (int)1, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+            "calls": 318,
+            "sum_ms": 18.163436999999995
+          },
+          {
+            "name": "strata::kernels::<unnamed>::mxfp8_qpn_three(strata::kernels::GlmFp8Projection, strata::kernels::GlmFp8Projection, strata::kernels::GlmFp8Projection, const __half *, int, int, int)",
+            "calls": 68,
+            "sum_ms": 12.134853000000001
+          },
+          {
+            "name": "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+            "calls": 174,
+            "sum_ms": 8.493653000000002
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::kda_chunk<(int)128, (bool)0>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, float *, long long, int, const float *)",
+            "calls": 68,
+            "sum_ms": 7.074167000000001
+          },
+          {
+            "name": "strata::kernels::<unnamed>::selection(const float *, int *, int *, int, int, int, int, int, const int *, int)",
+            "calls": 87,
+            "sum_ms": 4.376208
+          },
+          {
+            "name": "strata::kernels::<unnamed>::norm(const float *, const float *, const float *, float *, int, float, bool)",
+            "calls": 508,
+            "sum_ms": 3.887245999999997
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn_grouped<(int)8, (int)2, (bool)1, (bool)0>(const strata::kernels::GlmFp4ExpertGroup *, const __half *, float *, float *, int, int)",
+            "calls": 69,
+            "sum_ms": 3.884899999999999
+          },
+          {
+            "name": "volta_sgemm_64x32_sliced1x4_tn",
+            "calls": 174,
+            "sum_ms": 3.159088000000002
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)5, (int)8, (int)1, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+            "calls": 168,
+            "sum_ms": 2.7744809999999998
+          },
+          {
+            "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+            "calls": 1410,
+            "sum_ms": 2.3955750000000124
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn_grouped<(int)8, (int)2, (bool)0, (bool)1>(const strata::kernels::GlmFp4ExpertGroup *, const __half *, float *, float *, int, int)",
+            "calls": 69,
+            "sum_ms": 2.0995110000000006
+          },
+          {
+            "name": "strata::kernels::<unnamed>::conv(const float *, const float *, float *, float *, int, int)",
+            "calls": 714,
+            "sum_ms": 1.8275729999999946
+          },
+          {
+            "name": "volta_sgemm_64x32_sliced1x4_nn",
+            "calls": 87,
+            "sum_ms": 1.6073859999999995
+          },
+          {
+            "name": "strata::kernels::<unnamed>::gather(const float *, const int *, const int *, float *, int, int, int)",
+            "calls": 87,
+            "sum_ms": 1.545688
+          },
+          {
+            "name": "strata::kernels::<unnamed>::reduce_partials(const float *, float *, int, int, int)",
+            "calls": 606,
+            "sum_ms": 1.4755490000000022
+          }
+        ]
+      },
+      {
+        "phase": "decode_and_preparation",
+        "device": 1,
+        "kernel_union_ms": 11.253423,
+        "copy_union_ms": 0.812347,
+        "all_activity_union_ms": 12.211818,
+        "idle_ms": 184.931182,
+        "top_kernels": [
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn_grouped<(int)8, (int)2, (bool)1, (bool)0>(const strata::kernels::GlmFp4ExpertGroup *, const __half *, float *, float *, int, int)",
+            "calls": 92,
+            "sum_ms": 6.997282
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn_grouped<(int)8, (int)2, (bool)0, (bool)1>(const strata::kernels::GlmFp4ExpertGroup *, const __half *, float *, float *, int, int)",
+            "calls": 92,
+            "sum_ms": 3.3846650000000005
+          },
+          {
+            "name": "strata::kernels::<unnamed>::grouped_route_scatter(const strata::kernels::GlmFp4ExpertGroup *, int, const int *, const float *, const float *, float *)",
+            "calls": 92,
+            "sum_ms": 0.28053800000000007
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_gather(const float *, const int *, __half *, int, int, int)",
+            "calls": 94,
+            "sum_ms": 0.180957
+          },
+          {
+            "name": "strata::kernels::<unnamed>::swiglu(const float *, const float *, float *, int, float)",
+            "calls": 94,
+            "sum_ms": 0.18070300000000017
+          },
+          {
+            "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+            "calls": 94,
+            "sum_ms": 0.15443099999999993
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)1>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+            "calls": 4,
+            "sum_ms": 0.0456
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)0>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+            "calls": 2,
+            "sum_ms": 0.025631
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_scatter(const float *, const int *, const float *, float *, int, int, int)",
+            "calls": 2,
+            "sum_ms": 0.0036160000000000003
+          }
+        ]
+      },
+      {
+        "phase": "prefill",
+        "device": 0,
+        "kernel_union_ms": 9672.806742,
+        "copy_union_ms": 6783.052311,
+        "all_activity_union_ms": 14552.617324,
+        "idle_ms": 1730.3826759999993,
+        "top_kernels": [
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8>(T1::Params)",
+            "calls": 1767,
+            "sum_ms": 1021.5359399999998
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::kda_rows_columns<(int)4, (bool)1, (int)32, (bool)1>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, const float *, float *, long long, int)",
+            "calls": 4352,
+            "sum_ms": 997.8855029999996
+          },
+          {
+            "name": "volta_s884gemm_fp16_256x128_ldg8_tn",
+            "calls": 4086,
+            "sum_ms": 977.7248009999979
+          },
+          {
+            "name": "strata::kernels::<unnamed>::fp4_sm70_operands(const uint2 *, const unsigned char *, float, __half *, int, int)",
+            "calls": 17664,
+            "sum_ms": 861.2538399999938
+          },
+          {
+            "name": "strata::kernels::<unnamed>::prepack_kernel(const unsigned char *, const unsigned char *, unsigned char *, unsigned char *, int, int)",
+            "calls": 15651,
+            "sum_ms": 714.2859530000017
+          },
+          {
+            "name": "volta_s884gemm_fp16_128x64_ldg8_tn",
+            "calls": 6753,
+            "sum_ms": 630.0053819999997
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x64_tn_align2>(T1::Params)",
+            "calls": 1408,
+            "sum_ms": 605.536179999999
+          },
+          {
+            "name": "strata::kernels::<unnamed>::gather_vector_half8(const float *, const int *, const int *, unsigned short *, int, int)",
+            "calls": 1408,
+            "sum_ms": 512.2517740000002
+          },
+          {
+            "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+            "calls": 12335,
+            "sum_ms": 466.44309700000355
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x64_nn_align2>(T1::Params)",
+            "calls": 1408,
+            "sum_ms": 425.9021149999998
+          },
+          {
+            "name": "strata::kernels::<unnamed>::norm(const float *, const float *, const float *, float *, int, float, bool)",
+            "calls": 219,
+            "sum_ms": 239.696295
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+            "calls": 3030,
+            "sum_ms": 232.54357700000028
+          },
+          {
+            "name": "volta_sgemm_128x64_tn",
+            "calls": 1408,
+            "sum_ms": 190.82058299999986
+          },
+          {
+            "name": "volta_s884gemm_fp16_64x64_ldg8_tn",
+            "calls": 2858,
+            "sum_ms": 168.87386899999993
+          },
+          {
+            "name": "strata::kernels::<unnamed>::softmax(float *, const int *, int, int, float)",
+            "calls": 1408,
+            "sum_ms": 152.24675800000014
+          },
+          {
+            "name": "strata::kernels::<unnamed>::mhc_write(const float *, const float *, const float *, float *, int, int)",
+            "calls": 90,
+            "sum_ms": 134.16568500000002
+          }
+        ]
+      },
+      {
+        "phase": "prefill",
+        "device": 1,
+        "kernel_union_ms": 3404.610965,
+        "copy_union_ms": 5213.028776,
+        "all_activity_union_ms": 7199.342306,
+        "idle_ms": 9083.657694000001,
+        "top_kernels": [
+          {
+            "name": "strata::kernels::<unnamed>::fp4_sm70_operands(const uint2 *, const unsigned char *, float, __half *, int, int)",
+            "calls": 17736,
+            "sum_ms": 845.7577229999944
+          },
+          {
+            "name": "volta_s884gemm_fp16_128x64_ldg8_tn",
+            "calls": 6845,
+            "sum_ms": 596.4887590000003
+          },
+          {
+            "name": "strata::kernels::<unnamed>::prepack_kernel(const unsigned char *, const unsigned char *, unsigned char *, unsigned char *, int, int)",
+            "calls": 11895,
+            "sum_ms": 530.2130000000068
+          },
+          {
+            "name": "volta_s884gemm_fp16_256x128_ldg8_tn",
+            "calls": 3830,
+            "sum_ms": 402.9104619999999
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8>(T1::Params)",
+            "calls": 1699,
+            "sum_ms": 233.94197899999955
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+            "calls": 2852,
+            "sum_ms": 172.0765660000004
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_scatter(const float *, const int *, const float *, float *, int, int, int)",
+            "calls": 6023,
+            "sum_ms": 109.84426299999937
+          },
+          {
+            "name": "volta_s884gemm_fp16_64x128_ldg8_tn",
+            "calls": 700,
+            "sum_ms": 109.41542400000002
+          },
+          {
+            "name": "strata::kernels::<unnamed>::csf32_kernel(const unsigned char *, const unsigned char *, const unsigned short *, const unsigned int *, const unsigned short *, unsigned char *, int *, int)",
+            "calls": 11895,
+            "sum_ms": 87.07003699999895
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_gather(const float *, const int *, __half *, int, int, int)",
+            "calls": 6023,
+            "sum_ms": 80.76171000000014
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_64x64_tn_align8>(T1::Params)",
+            "calls": 1111,
+            "sum_ms": 76.94829799999987
+          },
+          {
+            "name": "strata::kernels::<unnamed>::swiglu(const float *, const float *, float *, int, float)",
+            "calls": 6023,
+            "sum_ms": 50.52054000000052
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_wmma_tensorop_s161616gemm_f16_16x16_64x2_tn_align8>(T1::Params)",
+            "calls": 603,
+            "sum_ms": 40.06082600000001
+          },
+          {
+            "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+            "calls": 6023,
+            "sum_ms": 37.695882999999625
+          },
+          {
+            "name": "volta_s884gemm_fp16_128x256_ldg8_tn",
+            "calls": 96,
+            "sum_ms": 25.262430000000005
+          },
+          {
+            "name": "void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, float, float, float, (bool)0, float, float, float, (bool)1, (bool)0, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T10 *, T9 *, T5 *, const T6 *, const T6 *, const T11 *, const T4 *, T11 *, void *, long, T6 *, int *, T6 *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *, const T6 *)",
+            "calls": 574,
+            "sum_ms": 4.126492000000001
+          }
+        ]
+      }
+    ],
+    "kda_shapes": [
+      {
+        "phase": "prefill",
+        "grid_x": 524288,
+        "grid_y": 1,
+        "block_x": 128,
+        "registers": 32,
+        "name": "strata::kernels::<unnamed>::kda_prepare(const float *, float *, float *, float *, float *)",
+        "calls": 34,
+        "sum_ms": 63.864070000000005
+      },
+      {
+        "phase": "prefill",
+        "grid_x": 64,
+        "grid_y": 4,
+        "block_x": 128,
+        "registers": 102,
+        "name": "void strata::kernels::<unnamed>::kda_rows_columns<(int)4, (bool)1, (int)32, (bool)1>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, const float *, float *, long long, int)",
+        "calls": 4352,
+        "sum_ms": 997.8855029999996
+      },
+      {
+        "phase": "prefill",
+        "grid_x": 524288,
+        "grid_y": 1,
+        "block_x": 128,
+        "registers": 32,
+        "name": "strata::kernels::<unnamed>::kda_output(const float *, const float *, const float *, float *, int, float)",
+        "calls": 34,
+        "sum_ms": 97.25034
+      },
+      {
+        "phase": "decode_and_preparation",
+        "grid_x": 32,
+        "grid_y": 1,
+        "block_x": 256,
+        "registers": 16,
+        "name": "strata::kernels::<unnamed>::kda_gate(const float *, const float *, const float *, float *, int, int, float)",
+        "calls": 238,
+        "sum_ms": 0.43558100000000055
+      },
+      {
+        "phase": "decode_and_preparation",
+        "grid_x": 64,
+        "grid_y": 1,
+        "block_x": 128,
+        "registers": 255,
+        "name": "void strata::kernels::<unnamed>::kda_chunk<(int)128, (bool)0>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, float *, long long, int, const float *)",
+        "calls": 68,
+        "sum_ms": 7.074167000000001
+      },
+      {
+        "phase": "decode_and_preparation",
+        "grid_x": 64,
+        "grid_y": 1,
+        "block_x": 128,
+        "registers": 32,
+        "name": "strata::kernels::<unnamed>::kda_output(const float *, const float *, const float *, float *, int, float)",
+        "calls": 238,
+        "sum_ms": 1.2925059999999993
+      }
+    ],
+    "phase_boundary": "Inferred from cuProfilerStart end plus engine wall-clock prefill time, including reset. Boundary has host logging/timer uncertainty; these are diagnostic unions, not fitted capacities.",
+    "summary_sha256": "34231ea78016d97531b2c8e5979ba7c065fea0b3655d22378cde6f02d2aa2198",
+    "actual_target_version": 377,
+    "benchmark_residency_scope": "Launcher counters are not native decoder residency evidence.",
+    "retained_duration_scenarios": {
+      "kernel_only_ceiling_tok_s": 846.9103351801464,
+      "all_activity_ceiling_if_idle_removed_tok_s": 562.9227937224634,
+      "target800_ms": 10240.0,
+      "kernel_to_target800_time_margin_ms": 567.1932579999993,
+      "target1000_kernel_speedup_needed": 1.180762541748047,
+      "scope": "Conditional deletion/retiming of this single instrumented request; not a hardware roof or a prediction."
+    }
+  },
+  "prefill_kda_comparison": {
+    "complete": true,
+    "results": [
+      {
+        "name": "control",
+        "label": "dflash2-prefill-kda-control-v440",
+        "qualified_prefill": true,
+        "returncode": 0,
+        "prefill_tok_s": 520.1864340051561,
+        "raw_sha256": "2edd2026478b29f8a4af2863ef24f877bae4bf104db30b50ff511e48605483fe",
+        "output_sha256": [
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e"
+        ]
+      },
+      {
+        "name": "candidate",
+        "label": "dflash2-prefill-kda-candidate-v440",
+        "qualified_prefill": true,
+        "returncode": 0,
+        "prefill_tok_s": 531.6960142270223,
+        "raw_sha256": "769405e1653643227df5e0cde28b809169be24626acc8a41fa42550fec8ff465",
+        "output_sha256": [
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e",
+          "54f4551408afaf228390d6317294b2295b52b3abdf773567c691cd6faeb3967e"
+        ]
+      }
+    ],
+    "fit": false,
+    "performance_anchor": false,
+    "eligible_for_quality": false,
+    "fresh_holdout_scored": false,
+    "scope": "Same frozen377binary and settledMTP3/decodepolicy. Prefill ordered4 versus unordered8 with column tiling; changes FP32 prefill reduction order only, serialdecode remains1. Three full warmups and three timed8192-input/8-output requests per side, uninstrumented/zero faults/swap/identical repeats/length/EOS required. Prefill-only experiment; eight-output decode timing is not a40tok/s guard or512-output qualification. Reused coding checks required before use; noFresh20.",
+    "paired_prefill_ratio": 1.0221258753967275,
+    "goal800_prefill_timing_met": false,
+    "summary_sha256": "377872dda648256977e5db72a08cfd0c05338054584c4a34a0512f6ca9403a2b",
+    "qualified_decode_timing": false,
+    "source_version": 377
+  },
+  "prefill_workspace_comparisons": [
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "eligible_for_quality": false,
+      "results": [
+        {
+          "name": "control",
+          "label": "dflash2-prefill-workspace-control-full-v423",
+          "returncode": 0,
+          "complete": true,
+          "qualified": true,
+          "raw_sha256": "70d30cec85d45f2be9944c987b4a35cde61fd463fcb973cbcd4084cd7f8d94a5",
+          "grouped_stats": {
+            "0": {
+              "calls": 33459,
+              "experts": 133930,
+              "rows": 187402
+            },
+            "1": {
+              "calls": 38514,
+              "experts": 263134,
+              "rows": 355868
+            }
+          },
+          "grouped_scatter_stats": {
+            "0": 33459,
+            "1": 38514
+          },
+          "direct_groups": {},
+          "decode": 41.44464179988159,
+          "prefill": 518.8028017377867,
+          "timed_major_faults": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "candidate",
+          "label": "dflash2-prefill-workspace-candidate-full-v423",
+          "returncode": 0,
+          "complete": true,
+          "qualified": true,
+          "raw_sha256": "3051c74f6ba19f10f6b899c7a9edb78728ead0204e7e07bcbebdaf758d5423b8",
+          "grouped_stats": {
+            "0": {
+              "calls": 33459,
+              "experts": 133930,
+              "rows": 187402
+            },
+            "1": {
+              "calls": 38509,
+              "experts": 263083,
+              "rows": 355813
+            }
+          },
+          "grouped_scatter_stats": {
+            "0": 33459,
+            "1": 38509
+          },
+          "direct_groups": {
+            "0": 32756,
+            "1": 25060
+          },
+          "decode": 41.42414760291185,
+          "prefill": 524.3383364803021,
+          "timed_major_faults": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "scope": "Same source420sealedRAM binary, settled MTP3/early/grouped policy fixed. Direct fused-CSF transient FP16 prefill0vs1: uncached nonkept experts with>8rows only, borrowed views in existing96MiB dequant workspace with two-slot retirement; no transientFP16 Device allocations, within original256MiB working-set and existing181GiB allocation. Checkpoint/allroutes/cache-admission/CPU/decode arithmetic unchanged. Three full warmups plus three timed8192-input/512-output requests each, allsixmild IDs/zero faults/swap/clean/uninstrumented; require>=3percent prefill and decodewithin3percent before reusedcoding quality.",
+      "all_six_match_mild_reference": true,
+      "paired_ratio": 1.0106698243031331,
+      "decode_ratio": 0.9995055043045445,
+      "goal800_timing_met": false,
+      "summary_sha256": "b892aed1bbb7ad03dbbe83341cca8cadd1e3f4e8796c364bb89d77eeb08c90fd",
+      "same_build": true,
+      "source_public": false,
+      "quality_panels": {
+        "control": {},
+        "candidate": {}
+      },
+      "quality_scored": false,
+      "repeated_timing_qualified": true,
+      "reused_quality_passed": false,
+      "repeated_gain_and_quality_qualified": false
+    }
+  ],
+  "prefill_combined_full_guard": {
+    "complete": true,
+    "qualified": true,
+    "returncode": 0,
+    "decode": 42.01266134999589,
+    "prefill": 536.539998166123,
+    "raw_sha256": "b25037f78ff8fca341d28c0f8aaaa7a33f4f754ceab362ec6d647ec22c75aefb",
+    "control": {
+      "name": "control",
+      "label": "dflash2-prefill-workspace-control-full-v423",
+      "returncode": 0,
+      "complete": true,
+      "qualified": true,
+      "raw_sha256": "70d30cec85d45f2be9944c987b4a35cde61fd463fcb973cbcd4084cd7f8d94a5",
+      "grouped_stats": {
+        "0": {
+          "calls": 33459,
+          "experts": 133930,
+          "rows": 187402
+        },
+        "1": {
+          "calls": 38514,
+          "experts": 263134,
+          "rows": 355868
+        }
+      },
+      "grouped_scatter_stats": {
+        "0": 33459,
+        "1": 38514
+      },
+      "direct_groups": {},
+      "decode": 41.44464179988159,
+      "prefill": 518.8028017377867,
+      "timed_major_faults": [
+        0,
+        0,
+        0
+      ]
+    },
+    "control_raw_sha256": "70d30cec85d45f2be9944c987b4a35cde61fd463fcb973cbcd4084cd7f8d94a5",
+    "ratio_to_same_day_control": 1.0341887059378316,
+    "decode_ratio": 1.013705500287758,
+    "shape": [
+      {
+        "distinct": 196,
+        "repeated_4gram_fraction": 0.0982318271119843,
+        "longest_identical_run": 1,
+        "passed": true
+      },
+      {
+        "distinct": 196,
+        "repeated_4gram_fraction": 0.0982318271119843,
+        "longest_identical_run": 1,
+        "passed": true
+      },
+      {
+        "distinct": 196,
+        "repeated_4gram_fraction": 0.0982318271119843,
+        "longest_identical_run": 1,
+        "passed": true
+      }
+    ],
+    "eligible_for_quality": true,
+    "goal800_timing_met": false,
+    "fit": false,
+    "performance_anchor": false,
+    "fresh_holdout_scored": false,
+    "scope": "Combined exact fused-CSF operand workspace and unordered8FP32prefill rows. Three full warmups plus three timed8192-input/512-output requests. Comparison uses the earlier same-day423control on the identical420binary; two intervening screens and unlocked clocks, not a fresh adjacent pair. Prefill arithmetic may change outputs; repetitions/shape/0faultswap/40decode and>=3percentprefill gates required before reused coding. Original references and defaults unchanged.",
+    "qualification_sha256": "86772131a91f7c537b2483f57e9b9aab1a13ab8f72232cc0df1510d80d020192",
+    "source_version": 420,
+    "source_public": false,
+    "comparison_protocol_note": "Earlier same-day identical-binary control, with the fused-only trial, KDA screen and Nsight baseline trace intervening; not an adjacent pair.",
+    "quality_panels": {
+      "quality_evidence": {
+        "name": "quality-long4096-dflash2-prefill-combined-candidate-v444-long-training",
+        "complete": true,
+        "passed": 7,
+        "total": 8,
+        "reused_training": true,
+        "raw_sha256": "8173cef2cc09f6921c74e265d129c8e3f66d5861e4ee0715598504608e9e7f0a",
+        "scope": "Separate roughly4096-input coding panel; not a general accuracy claim."
+      }
+    },
+    "quality_failed": true,
+    "reused_quality_passed": false,
+    "selected": false
+  },
+  "public_prefill_kernels": {
+    "source_version": 451,
+    "source_public": true,
+    "source_manifest_sha256": "df4e0624f5aab6f0d4f224f6ee6fc361ea154350c0cbeece7d0ec8d60443fe79",
+    "source_files_sha256": {
+      "CMakeLists.txt": "6f2cc448e7dc3cb8457f51fd2baebf5c355c549b5266ff532ed8834816f96f2f",
+      "include/strata/kernels/glm_fp4.hpp": "56870a8bd37b419ac5d04174d104529d8753b96ef81e3b630fe7beef29a1fca2",
+      "src/kernels/cuda/glm_fp4.cu": "db9cd537b22c44b98801f2072339251d081404a62d84e42309c6d1029193c212",
+      "tests/cuda/glm_fp4_raw_operands_test.cpp": "30bfdb8e1727da6054c5956215f6b46258a1b56abf2ce9f7cb67073e3e9fb8c8",
+      "tests/cuda/glm_fp4_fused_operands_test.cpp": "309feda1fcf7c4bea92685740ab7daddb63de27bd2b775075aa7725c8a2b2ae2"
+    },
+    "native_executor_sha256": "9cdad37005fc9fb5f8d2b0482ef90a4c606018ced5870dc49a1f049f28479f00",
+    "native_executor_unchanged_from": 377,
+    "model_profile_selected": false,
+    "fit": false,
+    "performance_anchor": false,
+    "scope": "Public CUDA operand APIs and standalone probes only. Native scheduling and all presets unchanged; experimental420host integration remains private and unselected.",
+    "cuda_build": {
+      "passed": true,
+      "host_tests": 6,
+      "compiled_source_entries": 564,
+      "binary_sha256": "00ebbe29e6db411b497a7bc5bafe231f55ce97cfb404842ccdd71ced943dbf14",
+      "raw_bitwise": 70,
+      "raw_graphs": 28,
+      "fused_bitwise": 40,
+      "fused_graphs": 8,
+      "logs_sha256": {
+        "source-audit.json": "9479a10a2a6eee46ff3528fc02ecc80245088a0e0bcbaa1c1eee1db5e8c7cfdb",
+        "config.log": "56502dc9ff29e150edbdfc306533599ef304f27a666d30ab292ad953eb4545ed",
+        "build.log": "22f554badcac00bb7e413da98710d7b55c2d5550d1becbd841de18e2b0bfb381",
+        "ctest.log": "89ff89585f45e7b2527f9e2d1442a95433dbb6b0df1bfd8aafd32f547f599b46",
+        "raw-numeric.log": "df11cdec75897285224c7f0d3ba6656e8678b08c5329177b12b30c298abcacf1",
+        "fused-numeric.log": "bd216f8d6e925f31bf69cada21399c1a2e31288092e7c759d0c4c73d1fd27451"
+      }
+    },
+    "hip_build": {
+      "passed": true,
+      "source_manifest_sha256": "df4e0624f5aab6f0d4f224f6ee6fc361ea154350c0cbeece7d0ec8d60443fe79",
+      "compiled_source_entries": 564,
+      "hip_compile_only": true,
+      "hip_gpu_execution": false,
+      "hip_backend_query": true,
+      "host_tests": 6,
+      "binary_sha256": "bcf69be04650dad3d812253cd48b3d3f3a97a26f446069fa543f940db490f530",
+      "logs_sha256": {
+        "prefill451-hip-build.log": "96202b427493d5273ff879e6aec46036c88b3520c4b6ab43786a5dd350976428",
+        "prefill451-hip-host.log": "02925dcb93641f185827748da088072de2d78c1b11c5d8dac7c57129c6ecdabb",
+        "prefill451-hip-backend.log": "f0b2516365f89fc441621bdd875d951e5d5ad9b4d8a3770e8e649b5db5e4454b"
+      },
+      "fit": false,
+      "performance_anchor": false,
+      "scope": "HIP decoder rebuild/link and six host tests with frozen451compiled closure. CUDA FP4 executor and kernels are excluded on HIP; no HIP GPU/model execution. SYCL separate project excludes this native executor.",
+      "proof_sha256": "71969bc00b42a55aae5bb1b334a34c8a3eee3feb61676006b7efc458bdd4ae07"
+    },
+    "default_output_parity": {
+      "ram_executable": true,
+      "early_readback": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "00ebbe29e6db411b497a7bc5bafe231f55ce97cfb404842ccdd71ced943dbf14",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "e0fd9ad23e6e8afe5f3ad69cb2c8da9500b3dbe0ae393fb63ccc8e1be86ef914",
+      "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "proof_sha256": "6fc8bb555eaffe5a79ae97a67892db765e82310646a7439868d7112eb3482242"
+    },
+    "fused_component": {
+      "passed": true,
+      "complete": true,
+      "checks": [
+        {
+          "name": "direct",
+          "returncode": 0,
+          "bitwise_checks": 40,
+          "graph_checks": 8,
+          "log_sha256": "bd216f8d6e925f31bf69cada21399c1a2e31288092e7c759d0c4c73d1fd27451"
+        },
+        {
+          "name": "memcheck",
+          "returncode": 0,
+          "bitwise_checks": 40,
+          "graph_checks": 8,
+          "log_sha256": "de760e94e2c3866cdd6d0d4fbedab55396667441c2a3065bc3e4cba04d2ef47f"
+        },
+        {
+          "name": "racecheck",
+          "returncode": 0,
+          "bitwise_checks": 40,
+          "graph_checks": 8,
+          "log_sha256": "5de3b66dd5e617bb917da95b48dc2263fa900c9e6fd0ad66b63487f809c85dbb"
+        }
+      ],
+      "medians": [
+        {
+          "N": 2048,
+          "K": 4096,
+          "medians_us": {
+            "0": 112.64,
+            "1": 60.896,
+            "2": 35.841
+          },
+          "original_over_fused": 3.1427694539772886,
+          "direct_over_fused": 1.6990597360564716
+        },
+        {
+          "N": 4096,
+          "K": 2048,
+          "medians_us": {
+            "0": 112.704,
+            "1": 60.448,
+            "2": 35.807
+          },
+          "original_over_fused": 3.147540983606557,
+          "direct_over_fused": 1.6881615326612114
+        }
+      ],
+      "selection_geometric_mean_ratio": 3.1451543139280647,
+      "direct_geometric_mean_ratio": 1.6936018682394178,
+      "binary_sha256": "9cabbfc65231648f9e9ff72c140d90d5fa6fb94b3aa2220ef1a5da7769391fd2",
+      "source_manifest_sha256": "df4e0624f5aab6f0d4f224f6ee6fc361ea154350c0cbeece7d0ec8d60443fe79",
+      "probe_sha256": "30743df7024da8ea7a3594560955eda4c4425c9e0397229eec79870aa6b29d77",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "Fused CSF32 and canonical FP4 to exact FP16. Independent C11 CSF32 fixture; four shapes/five global scales,40bitwise8changed-inputgraphcases,guards/invalidscales/invalidslots. Three modes: originalprepack+CSF+reconstruct, separateCSF+direct, fused. Fivecyclic32call event samples each expertshape; no modelTPSforecast orcapacity fit.",
+      "eligible_for_model_trial": true,
+      "model_profile_selected": false,
+      "validation_sha256": "82c530b15cb80c7b0a2870e9dbd751cff685775b153b90544f8389855455cb7a"
+    }
+  },
+  "prefill_fused_functional_coding": {
+    "source_version": 420,
+    "source_public": false,
+    "panels": {
+      "control_long": {
+        "name": "quality-long4096-dflash2-prefill-fused-functional-control-v448-long-training",
+        "complete": true,
+        "passed": 8,
+        "total": 8,
+        "raw_sha256": "5e15e6e0204b6ca158486b14e9da294ded3daa770111438451992c13b52e2207",
+        "failed_tasks": []
+      },
+      "control_short": {
+        "name": "quality-short-dflash2-prefill-fused-functional-control-v448-short-training",
+        "complete": true,
+        "passed": 8,
+        "total": 8,
+        "raw_sha256": "9c22d761e50a50d3b7cc92070df074c6fc64915e815823a6955a3a17c12257de",
+        "failed_tasks": []
+      },
+      "candidate_long": {
+        "name": "quality-long4096-dflash2-prefill-fused-functional-candidate-v448-long-training",
+        "complete": true,
+        "passed": 8,
+        "total": 8,
+        "raw_sha256": "49ad0b0ed9fb0d987921983582d2a222cbb1e67584bdbc77ad32f04f7b8cc1ef",
+        "failed_tasks": []
+      },
+      "candidate_short": {
+        "name": "quality-short-dflash2-prefill-fused-functional-candidate-v448-short-training",
+        "complete": true,
+        "passed": 8,
+        "total": 8,
+        "raw_sha256": "aea433d68970db94e479b2e6f63253640341e355a278c4e4964240334b8410f5",
+        "failed_tasks": []
+      }
+    },
+    "original_speed_gate_passed": false,
+    "scope": "Separate functional448control/candidate coding after423missed its3percent speed gate. Both use ordered4prefill rows; isolates fused operands from combined444unordered8regression. Original gate remains failed; no selected profile or fresh holdout claim."
   }
 }

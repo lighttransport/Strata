@@ -7,8 +7,9 @@ and ordered scatter. Its repeated 8,192-input / 512-output measurements and
 separate reused coding checks are recorded below. The original **5.26 tok/s**
 reference and qualified KDA preset remain available. Fresh20 remain unscored.
 
-The active optimization target is **800+ prefill tok/s**, starting from
-**519.34 tok/s** on this configuration: **1.54×** more throughput, or reducing
+The [prefill work log](GLM_FP4_V100_PREFILL.md) records the new phase profile
+and component checks. The active optimization target is **800+ prefill tok/s**,
+starting from **519.34 tok/s** on this configuration: **1.54×** more throughput, or reducing
 an 8,192-token prefill from **15.77 seconds to 10.24 seconds**. Decode settings
 are fixed during prefill experiments. The earlier 1.67× operand-reconstruction
 component gain produced only 0.28% model prefill improvement, so it is not
