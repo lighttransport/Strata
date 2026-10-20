@@ -1,4 +1,5 @@
 #include "strata/host/glm_env.h"
+#include "strata/host/q3_layout.h"
 #include "strata/kernels/cpu/q23_avx2.hpp"
 #include "strata/kernels/canon_expert.hpp"
 #define GGML_COMMON_DECL_CPP
@@ -12,8 +13,18 @@
 #include <utility>
 
 namespace strata::kernels::cpu {
+#if defined(STRATA_HAVE_Q3_CLANG_NT4) || defined(STRATA_HAVE_Q3_CLANG_NT2)
+void strata_q3_clang_rows(int,const uint8_t*,size_t,int,const void* const*,int,float* const*,int,int);
+#endif
 namespace {
 float half(ggml_half h) { uint16_t u; std::memcpy(&u,&h,2);return _mm_cvtss_f32(_mm_cvtph_ps(_mm_cvtsi32_si128(u))); }
+#if defined(STRATA_Q2_HALF_PAIR_NT1)
+inline void half_pair(const uint8_t* p,float& d,float& dm) {
+    uint32_t bits;std::memcpy(&bits,p,4);
+    const auto v=_mm_cvtph_ps(_mm_cvtsi32_si128(int(bits)));
+    d=_mm_cvtss_f32(v);dm=_mm_cvtss_f32(_mm_movehdup_ps(v));
+}
+#endif
 float sum(__m256 v) {
     __m128 a=_mm_add_ps(_mm256_castps256_ps128(v),_mm256_extractf128_ps(v,1));
     a=_mm_hadd_ps(a,a);return _mm_cvtss_f32(_mm_hadd_ps(a,a));
@@ -53,23 +64,34 @@ template<int TY,int NT,int... H> inline void chunks(std::integer_sequence<int,H.
 // Per 32-value chunk: unpack 2-bit (and Q3_K high-bit) codes once, broadcast the two 16-value scales with one byte
 // shuffle, then one maddubs + madd per token. Q3_K codes are kept unsigned (q + 4) and the 4 * y term is subtracted
 // in int16 before the scale, so every lane's integer sum and the float order match the previous kernel exactly.
-template<int TY,int NT> void dot(const uint8_t* w,int blocks,const void* const* acts,float* result,const __m256i* p4,int pf) {
-    constexpr size_t stride=TY==10?sizeof(block_q2_K):sizeof(block_q3_K);
+template<int TY,int NT,bool Expanded=false, bool Nta=false> void dot(const uint8_t* w,int blocks,const void* const* acts,float* result,const __m256i* p4,int pf) {
+    constexpr size_t stride=TY==10?sizeof(block_q2_K):(Expanded?STRATA_Q3K_EXPANDED_BLOCK_BYTES:sizeof(block_q3_K));
     const __m256i masks[4]={scale_mask(0),scale_mask(1),scale_mask(2),scale_mask(3)};
     __m256 acc[NT];for(auto& a:acc)a=_mm256_setzero_ps();
     for(int b=0;b<blocks;++b) {
         const auto* raw=w+b*stride;
         if(pf) {
-            _mm_prefetch(reinterpret_cast<const char*>(raw)+pf,_MM_HINT_T0);
-            _mm_prefetch(reinterpret_cast<const char*>(raw)+pf+64,_MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(raw)+pf,Nta ? _MM_HINT_NTA : _MM_HINT_T0);
+            _mm_prefetch(reinterpret_cast<const char*>(raw)+pf+64,Nta ? _MM_HINT_NTA : _MM_HINT_T0);
         }
         const uint8_t* qs;float d,dm=0;__m128i lo,hi;__m256i mins{},hm{};
         if constexpr(TY==10) {
-            const auto& x=*reinterpret_cast<const block_q2_K*>(raw);qs=x.qs;ggml_half h[2];std::memcpy(h,raw+80,4);d=half(h[0]);dm=half(h[1]);
+            const auto& x=*reinterpret_cast<const block_q2_K*>(raw);qs=x.qs;
+#if defined(STRATA_Q2_HALF_PAIR_NT1)
+            if constexpr(NT==1) half_pair(raw+80,d,dm);
+            else
+#endif
+            {ggml_half h[2];std::memcpy(h,raw+80,4);d=half(h[0]);dm=half(h[1]);}
             const auto sc=_mm_loadu_si128(reinterpret_cast<const __m128i*>(x.scales));
             const auto s8=_mm_and_si128(sc,_mm_set1_epi8(15));
             lo=_mm_cvtepu8_epi16(s8);hi=_mm_cvtepu8_epi16(_mm_srli_si128(s8,8));
             mins=_mm256_cvtepu8_epi16(_mm_and_si128(_mm_srli_epi16(sc,4),_mm_set1_epi8(15)));
+        } else if constexpr(Expanded) {
+            qs=raw+32;
+            ggml_half hd;std::memcpy(&hd,raw+112,2);d=half(hd);
+            const auto s8=_mm_loadu_si128(reinterpret_cast<const __m128i*>(raw+96));
+            lo=_mm_cvtepi8_epi16(s8);hi=_mm_cvtepi8_epi16(_mm_srli_si128(s8,8));
+            hm=_mm256_loadu_si256(reinterpret_cast<const __m256i*>(raw));
         } else {
             const auto& x=*reinterpret_cast<const block_q3_K*>(raw);qs=x.qs;d=half(x.d);
             uint32_t a[4];std::memcpy(a,x.scales,12);const uint32_t t=a[2],m=0x0f0f0f0f,u=0x03030303;
@@ -156,11 +178,14 @@ template<int NT> void dot_q2k_lut(const uint8_t* w,int blocks,const void* const*
     }
     for(int t=0;t<NT;++t)result[t]=sum(acc[t]);
 }
-template<int TY,int NT> inline void dot_any(const uint8_t* w,int blocks,const void* const* act,float* result,const __m256i* p4,int pf) {
+template<int TY,int NT,bool Expanded=false> inline void dot_any(const uint8_t* w,int blocks,const void* const* act,float* result,const __m256i* p4,int pf) {
     if constexpr(TY==10) { if(q2k_lut()) { dot_q2k_lut<NT>(w,blocks,act,result,pf); return; } }
-    dot<TY,NT>(w,blocks,act,result,p4,pf);
+    if constexpr(!Expanded && NT<=2) {
+        if(pf<0) { dot<TY,NT,Expanded,true>(w,blocks,act,result,p4,-pf); return; }
+    }
+    dot<TY,NT,Expanded>(w,blocks,act,result,p4,pf);
 }
-template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,float* const* out,int first,int last,float clamp,bool canon,float skip) {
+template<int TY,int NT,bool Expanded=false> void rows(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,float* const* out,int first,int last,float clamp,bool canon,float skip) {
     // Q3_K: 4 * (pair sums of activations) per 32-value chunk, so (q + 4) * y - 4 * y stays exact in int16.
     alignas(32) __m256i p4[TY==11?NT*kMaxBlocks*8:1];
     if constexpr(TY==11) {
@@ -170,13 +195,20 @@ template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stri
                 for(int h=0;h<8;++h)
                     p4[(t*kMaxBlocks+b)*8+h]=_mm256_maddubs_epi16(four,_mm256_loadu_si256(reinterpret_cast<const __m256i*>(static_cast<const block_q8_K*>(act[t])[b].qs+32*h)));
     }
-    const int pf=prefetch_distance();
+    int pf=prefetch_distance();
+#if !defined(q23_rows) // Alternate Clang objects retain their measured T0 policy.
+    if constexpr(!Expanded && NT<=2) {
+        static const bool nta = strata_env_is_one("STRATA_Q23_NTA") != 0;
+        // Keep LUT and unmeasured layouts on their existing path.
+        if(nta && pf>0 && !(TY==10 && q2k_lut())) pf=-pf;
+    }
+#endif
     for(int r=first;r<last;++r) {
-        float a[NT],u[NT];dot_any<TY,NT>(w+size_t(r)*stride,n/256,act,a,p4,pf);
+        float a[NT],u[NT];dot_any<TY,NT,Expanded>(w+size_t(r)*stride,n/256,act,a,p4,pf);
         // Gate skipping (canonical, opt-in): when every token's unit is below the threshold its up row is not read.
         bool need_up=up!=nullptr;
         if(need_up&&canon&&skip>0) {need_up=false;for(int t=0;t<NT;++t){need_up=need_up||!canon_gate_skipped(a[t],clamp,skip);u[t]=0;}}
-        if(need_up)dot_any<TY,NT>(up+size_t(r)*stride,n/256,act,u,p4,pf);
+        if(need_up)dot_any<TY,NT,Expanded>(up+size_t(r)*stride,n/256,act,u,p4,pf);
         for(int t=0;t<NT;++t) {
             if(up&&canon)out[t][r]=canon_swiglu(a[t],u[t],clamp,skip);
             else if(up) {float g=clamp>0?std::fmin(a[t],clamp):a[t],v=clamp>0?std::fmax(-clamp,std::fmin(u[t],clamp)):u[t];out[t][r]=g/(1.f+std::exp(-g))*v;}
@@ -184,8 +216,8 @@ template<int TY,int NT> void rows(const uint8_t* w,const uint8_t* up,size_t stri
         }
     }
 }
-template<int TY> void dispatch(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp,bool canon,float skip) {
-#define CASE(N) case N:rows<TY,N>(w,up,stride,n,act,out,first,last,clamp,canon,skip);break
+template<int TY,bool Expanded=false> void dispatch(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp,bool canon,float skip) {
+#define CASE(N) case N:rows<TY,N,Expanded>(w,up,stride,n,act,out,first,last,clamp,canon,skip);break
     switch(nt){CASE(1);CASE(2);CASE(3);CASE(4);CASE(5);CASE(6);CASE(7);CASE(8);default:throw std::invalid_argument("Q23: token width must be 1..8");}
 #undef CASE
 }
@@ -196,7 +228,50 @@ void run(int type,const uint8_t* w,const uint8_t* up,size_t stride,int n,const v
     else if(type==11)dispatch<11>(w,up,stride,n,act,nt,out,first,last,clamp,canon,skip);
     else throw std::invalid_argument("Q23: unsupported weight type");
 }
+// Validate all geometry and token pointers before entering vectorized code.
+// Buffer lengths and expanded scale validity are the caller's responsibility.
+bool expanded_valid(const uint8_t* w,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last) {
+    if(n<=0||n>4096||n%256||nt<1||nt>8||first<0||last<first||
+       stride<size_t(n/256)*STRATA_Q3K_EXPANDED_BLOCK_BYTES||
+       (last && stride>SIZE_MAX/size_t(last)))
+        throw std::invalid_argument("Q3 expanded: invalid geometry");
+    if(first==last)return false;
+    if(!w||!act||!out)throw std::invalid_argument("Q3 expanded: null buffer");
+    for(int t=0;t<nt;++t)if(!act[t]||!out[t])throw std::invalid_argument("Q3 expanded: null token buffer");
+    return true;
 }
-void q23_rows(int type,const uint8_t* w,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last){run(type,w,nullptr,stride,n,act,nt,out,first,last,0,false,0);}
+
+}
+void q23_rows(int type,const uint8_t* w,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last){
+#if defined(STRATA_HAVE_Q3_CLANG_NT2)
+    if(type==11 && nt==2) {
+        static const bool enabled=strata_env_is_one("STRATA_Q3_CLANG_NT2");
+        if(enabled) {
+            strata_q3_clang_rows(type,w,stride,n,act,nt,out,first,last);
+            return;
+        }
+    }
+#endif
+#if defined(STRATA_HAVE_Q3_CLANG_NT4)
+    if(type==11 && nt==4) {
+        static const bool enabled=strata_env_is_one("STRATA_Q3_CLANG_NT4");
+        if(enabled) {
+            strata_q3_clang_rows(type,w,stride,n,act,nt,out,first,last);
+            return;
+        }
+    }
+#endif
+    run(type,w,nullptr,stride,n,act,nt,out,first,last,0,false,0);
+}
 void q23_gu_rows(int type,const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp,bool canon,float gate_skip){run(type,w,up,stride,n,act,nt,out,first,last,clamp,canon,gate_skip);}
+
+void q3k_expanded_rows(const uint8_t* w,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last) {
+    if(!expanded_valid(w,stride,n,act,nt,out,first,last))return;
+    dispatch<11,true>(w,nullptr,stride,n,act,nt,out,first,last,0,false,0);
+}
+void q3k_expanded_gu_rows(const uint8_t* w,const uint8_t* up,size_t stride,int n,const void* const* act,int nt,float* const* out,int first,int last,float clamp,bool canon,float skip) {
+    if(!expanded_valid(w,stride,n,act,nt,out,first,last))return;
+    if(!up)throw std::invalid_argument("Q3 expanded: null up buffer");
+    dispatch<11,true>(w,up,stride,n,act,nt,out,first,last,clamp,canon,skip);
+}
 }

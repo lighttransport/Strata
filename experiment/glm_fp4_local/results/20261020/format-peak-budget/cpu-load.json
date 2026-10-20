@@ -1,0 +1,10 @@
+{
+  "sample_seconds": 3,
+  "logical_cpus": 32,
+  "busy_fraction": {
+    "min": 0.19397993311036787,
+    "median": 0.5506699889258029,
+    "max": 0.973421926910299
+  },
+  "cpu_pressure": "some avg10=0.78 avg60=0.78 avg300=3.96 total=3596452919\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+}

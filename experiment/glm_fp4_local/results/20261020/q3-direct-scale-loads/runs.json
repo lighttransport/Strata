@@ -1,0 +1,290 @@
+[
+  {
+    "name": "ty11-nt1-min1280-banks1-cpu3",
+    "type": 11,
+    "tokens": 1,
+    "min128": false,
+    "copies": 1,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "1",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt1-min1280-banks1-cpu11",
+    "type": 11,
+    "tokens": 1,
+    "min128": false,
+    "copies": 1,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "1",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt1-min1280-banks64-cpu3",
+    "type": 11,
+    "tokens": 1,
+    "min128": false,
+    "copies": 64,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "64",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt1-min1280-banks64-cpu11",
+    "type": 11,
+    "tokens": 1,
+    "min128": false,
+    "copies": 64,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "64",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt1-min1281-banks1-cpu3",
+    "type": 11,
+    "tokens": 1,
+    "min128": true,
+    "copies": 1,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "1",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt1-min1281-banks1-cpu11",
+    "type": 11,
+    "tokens": 1,
+    "min128": true,
+    "copies": 1,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "1",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt1-min1281-banks64-cpu3",
+    "type": 11,
+    "tokens": 1,
+    "min128": true,
+    "copies": 64,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "64",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt1-min1281-banks64-cpu11",
+    "type": 11,
+    "tokens": 1,
+    "min128": true,
+    "copies": 64,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "64",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt2-min1280-banks1-cpu3",
+    "type": 11,
+    "tokens": 2,
+    "min128": false,
+    "copies": 1,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "2",
+      "1",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt2-min1280-banks1-cpu11",
+    "type": 11,
+    "tokens": 2,
+    "min128": false,
+    "copies": 1,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "2",
+      "1",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt2-min1280-banks64-cpu3",
+    "type": 11,
+    "tokens": 2,
+    "min128": false,
+    "copies": 64,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "2",
+      "64",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty11-nt2-min1280-banks64-cpu11",
+    "type": 11,
+    "tokens": 2,
+    "min128": false,
+    "copies": 64,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "2",
+      "64",
+      "11"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty10-nt1-min1280-banks1-cpu3",
+    "type": 10,
+    "tokens": 1,
+    "min128": false,
+    "copies": 1,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "1",
+      "10"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty10-nt1-min1280-banks1-cpu11",
+    "type": 10,
+    "tokens": 1,
+    "min128": false,
+    "copies": 1,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "1",
+      "10"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty10-nt1-min1280-banks64-cpu3",
+    "type": 10,
+    "tokens": 1,
+    "min128": false,
+    "copies": 64,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "64",
+      "10"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "ty10-nt1-min1280-banks64-cpu11",
+    "type": 10,
+    "tokens": 1,
+    "min128": false,
+    "copies": 64,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/q3-direct-scale-loads/probe",
+      "1",
+      "64",
+      "10"
+    ],
+    "returncode": 0
+  }
+]

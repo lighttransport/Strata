@@ -8,6 +8,7 @@
 #include <array>
 #include <vector>
 #include "strata/kernels/cpu/q23_avx2.hpp"
+#include "strata/host/q3_layout.h"
 #ifdef __linux__
 #include <linux/mempolicy.h>
 #include <sys/mman.h>
@@ -95,10 +96,21 @@ public:
         unmoved_pages=failed[0]+failed[1];
 #endif
     }
-    NumaTensor(const uint8_t* source,size_t row,size_t rows,size_t count,std::array<int,2> cpus,bool huge=false,int packed_type=0,int columns=0)
+    NumaTensor(const uint8_t* source,size_t row,size_t rows,size_t count,std::array<int,2> cpus,bool huge=false,int packed_type=0,int columns=0,bool expanded_q3=false)
         : packed_type_(packed_type),columns_(columns),row_bytes(row),half_rows(rows/2),experts(count) {
         if(!source || !row || !rows || rows%2 || !count || row>SIZE_MAX/rows || count>SIZE_MAX/(row*rows))
             throw std::invalid_argument("NUMA packed tensor: invalid geometry");
+        // Expanded rows are CPU-only. copy() returns expanded bytes; callers
+        // must retain original tensors for GPU uploads, never register these
+        // arenas as an original-GGML upload source.
+        size_t source_row=row;
+        if(expanded_q3) {
+            if(packed_type || columns<=0 || columns%256 || row!=size_t(columns/256)*STRATA_Q3K_EXPANDED_BLOCK_BYTES)
+                throw std::invalid_argument("NUMA expanded Q3: incompatible row layout");
+            source_row=size_t(columns/256)*STRATA_Q3K_GGML_BLOCK_BYTES;
+            if(source_row>SIZE_MAX/rows || count>SIZE_MAX/(source_row*rows))
+                throw std::invalid_argument("NUMA expanded Q3: source extent overflow");
+        }
         bytes=row*rows*count;
 #ifndef STRATA_NATIVE_EXPERTS
         if(packed_type_)throw std::invalid_argument("Q23 tiles require native expert support");
@@ -130,7 +142,11 @@ public:
                     cpu_set_t set;CPU_ZERO(&set);CPU_SET(cpus[node],&set);
                     if(pthread_setaffinity_np(pthread_self(),sizeof(set),&set))throw std::runtime_error("NUMA packed tensor: affinity failed");
                     for(size_t e=0;e<count;++e) {
-                        auto* dest=data_[node]+e*half_rows*row;const auto* src=source+(e*rows+node*half_rows)*row;
+                        auto* dest=data_[node]+e*half_rows*row;const auto* src=source+(e*rows+node*half_rows)*source_row;
+                        if(expanded_q3) {
+                            if(strata_q3k_expand_scales(src,half_rows*source_row,dest,half_rows*row))
+                                throw std::runtime_error("NUMA expanded Q3 conversion failed");
+                        } else
 #ifdef STRATA_NATIVE_EXPERTS
                         if(packed_type_)q23_pack(packed_type_,src,dest,columns_,half_rows);
                         else

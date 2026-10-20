@@ -1,6 +1,7 @@
 """Estimate GLM-5.3-Flash decode and prefill speed for a hardware configuration, without the hardware.
 
 Subcommands:
+  fp4        theoretical FP4 dequant + BF16 MoE cost (uncalibrated, no hardware execution)
   estimate   one configuration: tok/s, per-step breakdown, VRAM plan, bottleneck
   sweep      a grid over knobs (--affinity 0 0.05 0.1 --decode-cache-mib 3000 4800 ...)
   validate   predicted vs measured for every record in tools/sim/data/measured_tr16.json
@@ -504,6 +505,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
 
+    import fp4
+    fp4.add_parser(sub)
+
     p = sub.add_parser("heterogeneous", help="dependency/resource replay; explicit measured manifest")
     p.add_argument('--manifest',required=True)
     p.add_argument('--output')
@@ -559,6 +563,8 @@ def main(argv=None):
     p.set_defaults(func=show_hw)
 
     args = ap.parse_args(argv)
+    if args.command == "fp4" and chosen != "flash":
+        ap.error("fp4 currently models GLM-5.3-Flash only (--model flash)")
     return args.func(args) or 0
 
 

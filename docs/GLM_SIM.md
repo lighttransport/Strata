@@ -7,6 +7,8 @@ directory, so it can be used to compare placements, packs, MTP depths and even m
 machine is busy or absent. It is an estimate: on the rows it was calibrated on it is within 5 % on average,
 and on the other recorded runs within 10-25 % (see "Validation").
 
+The opt-in [`fp4` mode](#fp4-dequantization-theoretical-mode) adds software FP4 dequantization and three-node MoE costs using explicitly labelled theoretical assumptions. It is not calibrated and does not inherit the accuracy claims above.
+
 B550 has a separate [measurement report and reproducible calibration](GLM_B550_SIM.md). Its 512-token lever checkpoint averages 2.01% error on same-fixture timing checks, with one continuation-margin forecast outside tolerance. Its fit is provisional and must be selected with `--params tools/sim/data/params_b550.json`; no 20 tok/s configuration is qualified.
 
 The [2026-10-09 TR16 experiment](GLM_TR16_OPTIMIZATION.md) adds guarded CUDA runs,
@@ -506,3 +508,230 @@ measured independently. Three completed, performance-qualified trials are
 still required. Runs rejected for background CPU activity, interrupted runs,
 and correctness-only timings cannot replace the qualified calibration above.
 Forecasts remain scoped to the measured prompt, window, and route assignment.
+
+## FP4 dequantization: theoretical mode
+
+`fp4` is an opt-in, **uncalibrated** model of GLM-5.3-Flash-FP4-Local routed MoE
+work on three nodes. It uses the existing dependency/resource scheduler, with
+explicit assumed rates instead of measured kernel tables. It does not run GPU
+kernels, contact workers, load weights, or benchmark the CPU. Existing `estimate`,
+`multinode`, calibrated runner tables and their defaults are unchanged. The
+validation percentages elsewhere in this document do **not** apply to this mode.
+
+```sh
+# Two MoE layers, one real-sized expert per node, direct links, warm packed cache:
+python3 tools/sim/glm_sim.py fp4 --experts 1,1,1 --tokens 16 --layers 2 \
+  --mode fused --cache warm --topology direct --output fp4-estimate.json
+
+# Compare BF16 expansion retained in VRAM, or the relay topology:
+python3 tools/sim/glm_sim.py fp4 --experts 1,1,1 --tokens 16 --cache warm --mode cached-bf16
+python3 tools/sim/glm_sim.py fp4 --experts 1,1,1 --tokens 16 --cache warm --topology relay
+
+# Replace a hypothesis rather than treating the example as calibration:
+python3 tools/sim/glm_sim.py fp4 --assume nodes.2.dequant_gweights_s=20 \
+  --assume nodes.2.hca_pcie_gbps=2 --assume dequant_overlap=0.5
+```
+
+The editable profile is `tools/sim/data/fp4_theoretical.json`. Node 0 represents
+RDNA4, node 1 SM120, node 2 SM86. **Every rate and budget in that example is an
+illustrative assumption**, not a vendor peak, a fresh measurement or a forecast
+of mining contention. `availability` is an assumed fraction of a node's resource
+rates, not a GPU-utilization reading. Results carry the complete profile and
+limitations. An alternative profile can be supplied with `--profile FILE`.
+
+The reported latency covers only the selected MoE layers; no full-model tok/s is
+reported. Attention, shared experts, router, mHC, embeddings, head, MTP and quality
+are excluded. All tokens are assumed to reuse the specified expert set (sum 1–8;
+smaller sets represent partial tests). There is no routing-trace or popularity
+model. `--layers` accepts 1–42; `--tokens` accepts 1–512. Worker weights initially
+reside in host RAM; startup distribution and disk reads are excluded.
+
+### Costs charged
+
+An expert has two 2048x4096 projections and one 4096x2048 projection. For `W`
+weights in a projection, packed GPU storage is `W/2 + W/16 + 4` bytes: E2M1 codes,
+one E4M3 scale per K16 group and one F32 global scale. A complete packed expert
+uses 14,155,788 bytes; BF16 expansion plus globals uses 50,331,660 bytes. Host CSF
+storage uses an editable average number of bytes per scale, including metadata
+and exceptions. Its default 0.55 is a hypothesis, not a full-checkpoint census.
+
+- **Cold cache:** CPU CSF expansion, host memory traffic and packed H2D upload
+  are charged for each selected expert. Warm cache omits those operations.
+- **Fused:** software FP4 unpack feeds BF16 WMMA. The kernel cost is the maximum
+  of VRAM traffic, matrix time plus the non-overlapped unpack time, and unpack
+  time, plus launch overhead. `dequant_overlap=0` is conservative serial compute;
+  1 assumes full possible overlap. FP4 decode is never free or native.
+- **Staged:** every call unpacks into a temporary BF16 buffer, charging packed
+  reads, BF16 writes, decode work and an extra launch; GEMM then reads BF16.
+- **Cached BF16:** expansion is charged on a cold miss, then retained in VRAM.
+  Warm requests omit expansion but pay BF16 reads and the larger cache footprint.
+- Matrix work includes padding to 16 rows even for one token. Packed weights
+  are reread/redecoded once per 16-row token tile in the fused model. Activation
+  memory uses F32 buffers, rounded to BF16 in registers; output is F32.
+- Default `--activation-path host` charges the current partial runner's gate/up
+  H2D copies, intermediate D2H, CPU SiLU, down H2D and final D2H. `device` is a
+  hypothetical GPU-intermediate path with only input/output copies.
+- Direct or relay activation/result transfers share explicit link, NIC PCIe,
+  root-complex and DRAM resources. The third node's restricted HCA link is
+  independently configurable from its GPU link. Node-local expert groups run
+  serially; different nodes overlap. GPU compute has one stream per node.
+
+Warm selected weights across all requested layers must fit the configured cache;
+otherwise the model rejects the scenario. Cold mode may stream/evict, but one
+expert plus scratch must fit. RAM checks cover only the selected experts, not the
+whole checkpoint or other model state. Kernel rooflines, event times and resource
+loads are exposed in JSON. Resource-service totals can overlap and must not be
+added to infer wall time. The scheduler's lower bound is conditional on this DAG
+and its assumed capacities, not a physical bound for the full model.
+
+### Example sensitivity, not measurements
+
+With the supplied hypothetical profile, direct links, host activation handling,
+one expert per node and two layers:
+
+| Tokens | Fused cold | Fused warm | Staged warm | Cached BF16 warm |
+|---|---:|---:|---:|---:|
+| 1 | 9.481 ms | 1.477 ms | 1.704 ms | 0.398 ms |
+| 16 | 9.708 ms | 1.876 ms | 2.108 ms | 0.874 ms |
+| 128 | 19.745 ms | 14.633 ms | 7.565 ms | 6.650 ms |
+
+These examples illustrate the cost of misses, repeated unpacking and BF16 cache
+space. They do not establish which implementation is faster on the occupied
+machines. Revisit decode rate, utilization, CSF expansion rate and overlap when
+measurements become available.
+
+Validation: 59 targeted CPU-only tests passed, including geometry, units, WMMA
+padding, cold/warm transitions, cache bounds, link routing and legacy multinode
+predictions. A broader 125-test run had 124 passes and one blocked legacy trace
+replay test because NumPy is absent; the new FP4 mode requires only the standard
+library. Reproduce the targeted checks with:
+
+```sh
+python3 -m unittest tools.test_sim_fp4 tools.test_sim_multinode tools.test_glm_heterogeneous
+```
+
+### Cache-hit and transfer-overlap assumptions
+
+The FP4 command also accepts `--cache mixed --hit-rates 0.8,0.8,0.8`.
+Rates are per node, in [0,1]. Hits are spread deterministically over each node's
+`layers * experts` accesses, rounding the cumulative requested count to the
+nearest integer. JSON reports both requested rates and actual integer hit/miss
+counts. A hit omits CSF expansion and weight H2D; cached-BF16 hits also omit GPU
+dequantization. Fused hits still unpack FP4 on every use, and staged hits still
+materialize BF16. This is an explicit assumed access pattern, not a cache policy
+or a prediction of routing locality.
+
+`--csf-preexpanded` assumes scales were expanded once before timing and that the
+compressed host representation was replaced. It charges the larger packed host
+footprint and retains weight uploads on misses. Initial expansion time and peak
+RAM while replacing the compressed representation are excluded. Host RAM checks
+still cover selected experts only, not the full checkpoint.
+
+`--transfer-overlap` enables double-buffered weight prefetch within each layer.
+Routing becomes available at the layer boundary; there is no future-layer oracle.
+The next expert's preparation can start after the current expert's input upload,
+while GPU computation proceeds. Reusing a buffer waits for the expert two positions
+back to finish. Weight uploads, activation copies and network traffic share the
+existing PCIe, copy-engine and DRAM bandwidth resources. Compute remains serial
+per node. GPU VRAM contention between DMA and compute is not modeled, so overlap
+remains an optimistic assumption in that respect.
+
+Mixed-cache scenarios reserve unique pinned hit experts across the requested
+layers plus one streaming buffer (two with prefetch, limited by experts per node).
+Cached-BF16 prefetch also reserves packed staging space per buffer. Impossible
+VRAM budgets are rejected. This conservative residency rule does not infer that a
+high hit rate is attainable for real routing. The cold/warm defaults are unchanged.
+
+```sh
+python3 tools/sim/glm_sim.py fp4 --layers 42 --experts 3,3,2 \
+  --cache mixed --hit-rates 0.8,0.8,0.8 \
+  --csf-preexpanded --transfer-overlap
+python3 experiment/glm_fp4_local/simulator/full_decode_report.py
+```
+
+With the supplied uncalibrated rates, batch 1, 42 MoE layers, 3/3/2 selected
+experts, direct links, fused FP4 kernels, host activations and preexpanded scales:
+
+| Requested hit rate on each node | Serial weight loading | With prefetch |
+|---|---:|---:|
+| 0% | 200.929 ms | 169.905 ms |
+| 50% | 137.228 ms | 121.716 ms |
+| 80% | 104.187 ms | 95.256 ms |
+
+These are MoE latencies only, not full-model decode measurements. The separate
+full-decode report script adds an explicit 50–150 ms hypothetical non-MoE budget;
+that budget is a sensitivity parameter, not a calibrated attention prediction or
+a confidence interval. Neither script validates a 20 tok/s full-model target.
+The new switches model proposed execution strategies; they do not enable these
+strategies in the engine. The targeted suite now has 65 passing tests, including
+hit/miss endpoints, miss-only BF16 dequantization, preexpanded storage, prefetch
+dependencies and buffer-capacity checks.
+
+### CPU execution of GPU-cache misses
+
+`--cpu-misses` models host execution of nonresident experts, while cache hits
+continue on the GPU. This is an opt-in W4A8 path with lossy Q8 activations; it
+does not establish quality equivalence to GPU W4A16. Both CPU kernel and activation
+quantization rates must be supplied explicitly for all three nodes. No rates
+were added to the default profile and no measurements are silently substituted.
+
+```sh
+python3 tools/sim/glm_sim.py fp4 --layers 42 --experts 3,3,2 \
+  --cache mixed --hit-rates 0.5,0.5,0.5 --activation-path device \
+  --csf-preexpanded --cpu-misses --cpu-gweights-s 50,40,40 \
+  --cpu-quant-gitems-s 1,1,1 --cpu-availability 1,1,1
+```
+
+Those numbers are illustrative assumptions. `--cpu-gweights-s` is billions of
+weight/token evaluations per second, including unpack, scale and dot arithmetic.
+`--cpu-quant-gitems-s` is billions of input values quantized per second. CPU
+availability defaults to one and applies separately to CPU compute, quantization,
+CSF expansion and host activation processing. The model supports CPU widths 1–8;
+it charges arithmetic linearly with token count and does not infer a measured
+batching speedup. CPU worker dispatch overhead is not separately calibrated.
+
+CPU misses avoid weight and activation GPU copies. They pay for input/hidden Q8
+quantization, three projections, SiLU, host-memory reads/writes, and optional CSF
+expansion. Remote inputs and results still traverse the selected direct or relay
+links. CPU and GPU lanes can overlap within a layer, sharing the existing DRAM,
+PCIe and HCA resource limits. CPU projection, quantization and host activation
+work share one worker-pool slot per node; the next layer waits for both lanes.
+`--cpu-no-overlap` serializes the lanes for comparison.
+
+GPU memory budgets reserve hits and their scratch, without streaming buffers for
+CPU misses. Host budgets include selected expert weights, Q8/F32 working buffers
+and temporary expanded scales. As elsewhere in this simulator, this budgets the
+selected experts, not the complete checkpoint, trunk or runtime allocations.
+
+For the command above and the unchanged illustrative GPU profile:
+
+| Miss execution policy | Estimated 42-layer MoE time |
+|---|---:|
+| GPU uploads with double-buffered prefetch | 112.251 ms |
+| CPU misses, serialized with GPU hits | 73.172 ms |
+| CPU misses overlapping GPU hits | 51.638 ms |
+
+These are conditional MoE estimates, not achieved decode rates or a 20 tok/s
+claim. Attention, shared experts, routing, mHC, embedding, head, speculation and
+quality validation remain outside scope. Eighteen captured GPU-only scenario
+outputs remained identical after this addition. The targeted suite passes 75
+tests, including hand-computable CPU costs, CPU/GPU resource contention, layer
+barriers, RAM limits, topology and required assumptions.
+
+### Shared CPU input quantization for FP4 batches
+
+`fp4 --cpu-misses --cpu-shared-input` models a common quantized input reused by
+CPU experts on the same node within one layer, as in the experimental native
+FP4 batch adapter. It is off by default and requires the existing explicit CPU
+rate assumptions. Quantization work becomes `tokens * (4096 + 2048 * misses)`
+per node/layer with at least one CPU miss, instead of
+`tokens * misses * (4096 + 2048)`. Hidden quantization remains per expert;
+GPU-only layers create no CPU input quantization event. Reuse never crosses a
+node or layer boundary.
+
+This option changes quantization work and its associated memory demand only.
+It keeps per-expert network transfers and the conservative scratch allocation,
+and does not model mixed token routes, grouped CPU products or pool dispatch
+savings. Measured combined-scheduler gains must not be applied as a multiplier
+to the simulator's CPU compute rate. Default output and rate assumptions remain
+unchanged; the shared-input scenario is explicitly identified in JSON output.

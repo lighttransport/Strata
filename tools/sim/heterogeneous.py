@@ -1,7 +1,7 @@
 """Dependency/resource simulation for heterogeneous GLM execution.
 
-Units are bytes, milliseconds and bytes/ms. Timings are supplied by measurements,
-not inferred from advertised FLOPS. A work item progresses only while all of its
+Units are bytes, milliseconds and bytes/ms. Timings are supplied explicitly by measurements or labelled assumptions; this
+scheduler does not infer rates from advertised FLOPS. A work item progresses only while all of its
 resources are available. Progressive filling redistributes unused bandwidth.
 The lower bound belongs to the supplied workload/DAG, never to the model in general.
 """

@@ -5,6 +5,7 @@
 #include "strata/kernels/cpu/numa_weights.hpp"
 #include "ggml.h"
 #include <cstring>
+#include "strata/host/glm_env.h"
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -128,6 +129,7 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
         std::vector<float> results((size_t)nt * K * H, std::numeric_limits<float>::quiet_NaN()),
             sum((size_t)nt * H, std::numeric_limits<float>::quiet_NaN());
         build(results, jobs);
+        const double flow_before = pool.ms_layer_flow;
         if (grouped) {
             std::vector<float> second_sum((size_t)(nt - nt / 2) * H, std::numeric_limits<float>::quiet_NaN());
             struct Ready {
@@ -149,6 +151,12 @@ int run(ExpertPool &pool, Weights &w, bool owned, bool fuse, int nt, int skip_ex
                 throw std::runtime_error("group published incomplete rows or completed more than once");
             std::copy(second_sum.begin(), second_sum.end(), sum.begin() + (size_t)ready.split * H);
         } else pool.run_layer_native(w.f, jobs.data(), (int)jobs.size(), results.data(), masked.data(), sum.data(), nt, K);
+        // These cases have no observer/transform and fit the combined scheduler.
+        if (owned && !jobs.empty() && pool.ms_layer_flow <= flow_before)
+            throw std::runtime_error("owned layer unexpectedly fell back to split execution");
+        if (!owned && strata_env_is_one("STRATA_NATIVE_NUMA_LOCAL") &&
+            pool.ms_layer_flow != flow_before)
+            throw std::runtime_error("unowned layer bypassed native-local fallback");
         if (std::memcmp(results.data(), ref_results.data(), results.size() * 4) ||
             std::memcmp(sum.data(), ref_sum.data(), sum.size() * 4))
             throw std::runtime_error("layer dataflow differs: owned=" + std::to_string(owned) + " fuse=" +

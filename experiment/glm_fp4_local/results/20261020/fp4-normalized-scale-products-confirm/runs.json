@@ -1,0 +1,230 @@
+[
+  {
+    "name": "nt2-normal-safe-banks64-cpu11",
+    "tokens": 2,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 64,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "2",
+      "64",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt2-normal-safe-banks64-cpu3",
+    "tokens": 2,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 64,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "2",
+      "64",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt2-normal-safe-banks1-cpu11",
+    "tokens": 2,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 1,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "2",
+      "1",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt2-normal-safe-banks1-cpu3",
+    "tokens": 2,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 1,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "2",
+      "1",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-min128-banks64-cpu11",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "min128",
+    "banks": 64,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "64",
+      "normal",
+      "min128"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-min128-banks64-cpu3",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "min128",
+    "banks": 64,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "64",
+      "normal",
+      "min128"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-min128-banks1-cpu11",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "min128",
+    "banks": 1,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "1",
+      "normal",
+      "min128"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-min128-banks1-cpu3",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "min128",
+    "banks": 1,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "1",
+      "normal",
+      "min128"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-safe-banks64-cpu11",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 64,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "64",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-safe-banks64-cpu3",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 64,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "64",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-safe-banks1-cpu11",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 1,
+    "core": 11,
+    "command": [
+      "taskset",
+      "-c",
+      "11",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "1",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "nt1-normal-safe-banks1-cpu3",
+    "tokens": 1,
+    "scale": "normal",
+    "activation": "safe",
+    "banks": 1,
+    "core": 3,
+    "command": [
+      "taskset",
+      "-c",
+      "3",
+      "build-fp4-local/fp4-normalized-scale-products-confirm/probe",
+      "1",
+      "1",
+      "normal",
+      "safe"
+    ],
+    "returncode": 0
+  }
+]

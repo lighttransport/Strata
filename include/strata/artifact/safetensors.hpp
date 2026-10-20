@@ -16,8 +16,8 @@
 namespace strata::artifact {
 enum class TensorDtype { F32, BF16, F16, I16, I32, I64, U8, I8, Bool };
 inline size_t dtype_bytes(const std::string& name) {
-    if(name=="F32"||name=="I32") return 4;
-    if(name=="BF16"||name=="F16"||name=="I16") return 2;
+    if(name=="F32"||name=="I32"||name=="U32") return 4;
+    if(name=="BF16"||name=="F16"||name=="I16"||name=="U16") return 2;
     if(name=="I64") return 8;
     if(name=="U8"||name=="I8"||name=="BOOL"||name=="F8_E4M3") return 1;
     throw std::runtime_error("safetensors: unsupported dtype " + name);

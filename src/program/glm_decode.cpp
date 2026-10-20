@@ -18,6 +18,7 @@
 #include "strata/core/glm_mixed.hpp"
 #include "strata/host/glm_expert_replay.h"
 #include "strata/host/glm_env.h"
+#include "strata/kernels/cpu/input_quant_ready.hpp"
 #include "strata/core/device.hpp"
 #include "strata/core/runtime_memory.hpp"
 #include "strata/artifact/expert_calibration.hpp"
@@ -29,6 +30,8 @@
 #include "strata/spec/suffix_drafter.hpp"
 #include "strata/kernels/cpu/pool.hpp"
 #include "strata/kernels/cpu/numa_weights.hpp"
+#include "strata/kernels/cpu/expert_layout.hpp"
+#include "strata/host/q3_layout.h"
 #include "strata/kernels/cpu/iq_avx2.hpp"
 #include "strata/kernels/glm.hpp"
 #include "strata/kernels/glm_prefill.hpp"
@@ -2115,13 +2118,14 @@ class Decoder {
         std::unique_ptr<uint8_t[]> gate, up, down;
     };
     std::map<int, PreparedExperts> prepared_experts;
-    struct NumaExperts {std::unique_ptr<cpu::NumaTensor> gate,up,down;};
+    struct NumaExperts {std::unique_ptr<cpu::NumaTensor> gate,up,down;bool q3_expanded=false;};
     std::map<int,NumaExperts> numa_experts;
     std::map<const strata::TensorInfo*,const cpu::NumaTensor*> numa_sources;
     std::set<const strata::TensorInfo*> numa_local_only; // remote TP: owned rows hold part of each expert
     std::map<const strata::TensorInfo*,TrimmedSource> trimmed_sources; // the same tensors, for whole-expert uploads
     std::vector<uint8_t> trim_buffer;                    // remote TP: the local rows of one tensor, before the copy to nodes
     size_t numa_weight_bytes=0;
+    bool expanded_q3_numa=false;
     int q23_layout=0;
     bool packed_huge_pages=false;
     std::unique_ptr<strata::artifact::ExpertCalibration> expert_observer;
@@ -2182,6 +2186,16 @@ class Decoder {
     bool layer_fmt(int l, const Tensor& G, const Tensor& D, int64_t ff, cpu::NativeFmt& f, std::string& error) const {
         return llvq_layer(l) ? cpu::native_fmt(cpu::kLlvqType, cpu::kLlvqType, m.hidden, ff, f, error)
                              : cpu::native_fmt(G.tensor->type, D.tensor->type, m.hidden, ff, f, error);
+    }
+    void apply_numa_q3_format(int layer,cpu::NativeFmt& f) const {
+        if(!expanded_q3_numa)return;
+        const auto owned=numa_experts.find(layer);
+        if(owned==numa_experts.end() || !owned->second.q3_expanded)return;
+        strata_q2q3_layout layout;
+        if(f.gu_type!=10 || f.d_type!=11 || f.q23_layout || f.lossless || f.nvfp4_k32 ||
+           strata_q2q3_scale_layout(size_t(f.n_embd),size_t(f.n_ff),1,&layout))
+            throw std::runtime_error("expanded NUMA Q3 format is incompatible with this CPU job");
+        f.q3_expanded_down=true;f.d_row=layout.d_row;f.bytes=layout.bytes;
     }
     // the GGUF-only options of a layer's CPU format, off for llvq experts
     void llvq_plain(int l, cpu::NativeFmt& f) const {
@@ -4693,6 +4707,7 @@ class Decoder {
         f.fuse_h_quant=artifact.has_expert_pack()&&(!std::getenv("STRATA_GLM_PACK_FUSE_QUANT")||std::string(std::getenv("STRATA_GLM_PACK_FUSE_QUANT"))!="0");
         auto prepared = prepared_experts.find(l);
         if (prepared != prepared_experts.end()) f = prepared->second.format;
+        apply_numa_q3_format(l,f);
         f.canon = canon_types(G.tensor->type, D.tensor->type);
         f.gate_skip = f.canon ? gate_skip[l] : 0.f;
         if(block_screen){f.hidden_transform=block_screen.get();f.observer_layer=l;f.fuse_h_quant=false;}
@@ -4752,7 +4767,7 @@ class Decoder {
                 const auto *down = prepared == prepared_experts.end() || !prepared->second.down ? D.data() : prepared->second.down.get();
                 job.blob = gate + (size_t)e * f.up_off;
                 job.native_up = up + (size_t)e * f.up_off;
-                job.native_down = down + (size_t)e * (f.bytes - f.down_off);
+                job.native_down = down + (size_t)e * (f.q3_expanded_down ? D.bytes / size_t(m.experts) : f.bytes - f.down_off);
                 if (llvq_layer(l)) {   // the expert's [gate | up | down] records in its unit
                     job.blob = llvq_units->expert(l, e);
                     job.native_up = job.blob + f.up_off;
@@ -5045,6 +5060,7 @@ class Decoder {
                                                         std::string(std::getenv("STRATA_GLM_PACK_FUSE_QUANT")) != "0");
         auto prepared = prepared_experts.find(l);
         if (prepared != prepared_experts.end()) f = prepared->second.format;
+        apply_numa_q3_format(l,f);
         f.canon = canon_types(G.tensor->type, D.tensor->type);
         f.gate_skip = f.canon ? gate_skip[l] : 0.f;
         if(block_screen){f.hidden_transform=block_screen.get();f.observer_layer=l;f.fuse_h_quant=false;}
@@ -5052,10 +5068,17 @@ class Decoder {
         if (f.canon && primary) cpu::canon_gate_stats_layer(l);
         if (f.canon && (prepared != prepared_experts.end() || remote_tp))
             throw std::runtime_error("GLM: canonical experts cannot be combined with prepared experts or remote TP");
+        const bool lazy_cpu_quant = cpu::defer_input_quantization(
+            strata_env_is_one("STRATA_GLM_LAZY_CPU_QUANT"), bool(remote_tp),
+            strata_env_is_set("STRATA_GLM_CHECK_RESIDENT_ROWS"));
+        cpu::InputQuantReady input_ready(nt);
+        const auto quantize_input = [&](int t) {
+            cpu::native_quant_act(f, activation + (size_t)t * H, host_quant[t].data());
+        };
         host_quant.resize(nt);
         for (int t = 0; t < nt; ++t) {
             host_quant[t].resize(f.act_bytes);
-            cpu::native_quant_act(f, activation + (size_t)t * H, host_quant[t].data());
+            if (!lazy_cpu_quant) quantize_input(t);
         }
         // Canonical rows go straight into the mailbox: the GPU reads the ones its part of the chain needs.
         if (!f.canon) host_results.resize((size_t)nt * K * H);
@@ -5155,7 +5178,7 @@ class Decoder {
                 const auto *down = prepared == prepared_experts.end() || !prepared->second.down ? D.data() : prepared->second.down.get();
                 job.blob = gate + (size_t)e * f.up_off;
                 job.native_up = up + (size_t)e * f.up_off;
-                job.native_down = down + (size_t)e * (f.bytes - f.down_off);
+                job.native_down = down + (size_t)e * (f.q3_expanded_down ? D.bytes / size_t(m.experts) : f.bytes - f.down_off);
                 if (llvq_layer(l)) {
                     job.blob = llvq_units->expert(l, e);
                     job.native_up = job.blob + f.up_off;
@@ -5168,6 +5191,7 @@ class Decoder {
             }
             auto &job = host_jobs[job_of[e]];
             const int slot = job.nt++;
+            if (lazy_cpu_quant) input_ready.ensure(t, quantize_input);
             job.nact[slot] = host_quant[t].data();
             job.out[slot] = results + (size_t)j * H;
         }
@@ -5287,6 +5311,13 @@ class Decoder {
                                     H, results + (size_t)j * H);
             }
             if (std::getenv("STRATA_GLM_CHECK_RESIDENT_ROWS")) {
+                cpu::NativeFmt reference_format=f;
+                if(f.q3_expanded_down) {
+                    reference_format.q3_expanded_down=false;
+                    reference_format.d_row=ggml_row_size(ggml_type(D.tensor->type),layer.intermediate);
+                    reference_format.bytes=reference_format.down_off+reference_format.d_row*H;
+                    reference_format.fuse_h_quant=false;
+                }
                 std::vector<float> reference(H);
                 for (int j = 0; j < nt * K; ++j) {
                     const int e = selected[j];
@@ -5295,9 +5326,9 @@ class Decoder {
                     job.expert_id = e; job.nt = 1;
                     job.blob = G.data() + (size_t)e * f.up_off;
                     job.native_up = U.data() + (size_t)e * f.up_off;
-                    job.native_down = D.data() + (size_t)e * (f.bytes - f.down_off);
+                    job.native_down = D.data() + (size_t)e * (reference_format.bytes - reference_format.down_off);
                     job.nact[0] = host_quant[j / K].data(); job.out[0] = reference.data();
-                    pool.run_split_multi_native(f, &job, 1);
+                    pool.run_split_multi_native(reference_format, &job, 1);
                     if (std::memcmp(reference.data(), results + (size_t)j * H, H * sizeof(float))) {
                         size_t different = 0; float max_error = 0;
                         for (int r = 0; r < H; ++r) {
@@ -5313,7 +5344,7 @@ class Decoder {
                             out.write((const char *)&f.swiglu_limit, sizeof(float));
                             out.write((const char *)job.blob, f.up_off);
                             out.write((const char *)job.native_up, f.up_off);
-                            out.write((const char *)job.native_down, f.bytes - f.down_off);
+                            out.write((const char *)job.native_down, reference_format.bytes - reference_format.down_off);
                             out.write((const char *)(activation + (size_t)(j / K) * H), H * sizeof(float));
                             if (!out) throw std::runtime_error("GLM: failed writing resident parity fixture");
                         }
@@ -8424,6 +8455,11 @@ class Decoder {
         std::cerr<<"BLOCK_SCREEN mode=oracle diagnostic_only=1 profile="<<profile<<'\n';
     }
     void prepare_numa_weights() {
+        const bool expand_q3=strata_env_is_one("STRATA_GLM_Q3_EXPANDED_DOWN");
+        if(expand_q3 && (llvq_units || layer_stage || remote_tp || q23_layout ||
+           strata_env_is_one("STRATA_GLM_MAPPED_OWNED") ||
+           !strata_env_is_one("STRATA_GLM_Q2_NUMA_WEIGHTS") || !cpu::cpu_avx2_ok()))
+            throw std::invalid_argument("expanded Q3 requires copied Q2 NUMA weights, AVX2, and no mapped/tiled/remote-TP/layer-stage/LLVQ path");
         if (llvq_units) { std::cerr << "LLVQ_EXPERTS NUMA owned rows off: the experts are read from their mapped units\n"; return; }
         if (layer_stage) return; // the shared mapping is owned and locked once by the layer coordinator
         const char* enabled=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHTS");
@@ -8466,8 +8502,36 @@ class Decoder {
             throw std::invalid_argument("Q2 NUMA weights require native GGUF, pinned workers on two nodes, single GPU, no TP/prepack/direct upload");
         for(const auto& cache:expert_cache)if(cache)throw std::invalid_argument("Q2 NUMA weights cannot use legacy expert cache");
         size_t required=0;
-        for(size_t l=3;l<m.layers.size();++l)if(owns_layer(l))for(const auto* part:{"gate","up","down"})
-            required+=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight").bytes;
+        for(size_t l=3;l<m.layers.size();++l)if(owns_layer(l)) {
+            strata_q2q3_layout expanded_layout{};
+            if(expand_q3 && (m.hidden>4096 || m.layers[l].intermediate>cpu::kNativeFF ||
+               strata_q2q3_scale_layout(size_t(m.hidden),size_t(m.layers[l].intermediate),1,&expanded_layout)))
+                throw std::invalid_argument("expanded Q3 NUMA dimensions are unsupported");
+            for(const auto* part:{"gate","up","down"}) {
+                const auto& tensor=artifact.at("blk."+std::to_string(l)+".ffn_"+part+"_exps.weight");
+                size_t allocation=tensor.bytes;
+                if(expand_q3) {
+                    const bool down=std::string(part)=="down";
+                    if(tensor.tensor->type!=(down?11:10))throw std::invalid_argument("expanded Q3 NUMA requires Q2 gate/up and Q3 down on every owned layer");
+                    strata_q2q3_layout original_layout;
+                    if(strata_q2q3_scale_layout(size_t(m.hidden),size_t(m.layers[l].intermediate),0,&original_layout))
+                        throw std::invalid_argument("expanded Q3 source dimensions are invalid");
+                    const auto& shape=tensor.tensor->shape;
+                    const size_t original_expert=down?original_layout.bytes-original_layout.down_off:original_layout.up_off;
+                    if(shape.size()!=3 || shape[0]!=size_t(down?m.layers[l].intermediate:m.hidden) ||
+                       shape[1]!=size_t(down?m.hidden:m.layers[l].intermediate) || shape[2]!=size_t(m.experts) ||
+                       size_t(m.experts)>SIZE_MAX/original_expert || tensor.bytes!=original_expert*size_t(m.experts))
+                        throw std::invalid_argument("expanded Q3 source tensor extents are invalid");
+                    if(down) {
+                        const size_t per_expert=expanded_layout.bytes-expanded_layout.down_off;
+                        if(size_t(m.experts)>SIZE_MAX/per_expert)throw std::overflow_error("expanded Q3 allocation overflow");
+                        allocation=per_expert*size_t(m.experts);
+                    }
+                }
+                if(allocation>SIZE_MAX-required)throw std::overflow_error("NUMA allocation overflow");
+                required+=allocation;
+            }
+        }
         size_t budget_mib=artifact.has_expert_pack()?114688:98304;
         if(const char* value=std::getenv("STRATA_GLM_Q2_NUMA_WEIGHT_MIB")) {
             size_t used=0;budget_mib=std::stoull(value,&used);
@@ -8501,7 +8565,7 @@ class Decoder {
         try {
             for(size_t l=3;l<m.layers.size();++l) {
                 if(!owns_layer(l))continue;
-                check_stop();auto& entry=numa_experts[l];const auto prefix="blk."+std::to_string(l)+".ffn_";
+                check_stop();auto& entry=numa_experts[l];entry.q3_expanded=expand_q3;const auto prefix="blk."+std::to_string(l)+".ffn_";
                 for(const auto* part:{"gate","up","down"}) {
                     const auto& t=artifact.at(prefix+part+"_exps.weight");const auto& shape=t.tensor->shape;
                     if(shape.size()!=3 || shape[2]!=size_t(m.experts) || shape[1]%2)throw std::invalid_argument("Q2 NUMA weights: unsupported tensor shape");
@@ -8534,6 +8598,13 @@ class Decoder {
                         numa_local_only.insert(t.tensor);numa_weight_bytes+=local_bytes;
                         trimmed_sources[t.tensor]={owned.get(),row,local_row,shape[1],local_rows,down};
                         t.file->discard_tensor_pages(*t.tensor,t.bytes);
+                    } else if(expand_q3 && std::string(part)=="down") {
+                        const size_t expanded_row=size_t(shape[0]/256)*STRATA_Q3K_EXPANDED_BLOCK_BYTES;
+                        owned=std::make_unique<cpu::NumaTensor>(source,expanded_row,shape[1],shape[2],pool.numa_cores(),packed_huge_pages,0,int(shape[0]),true);
+                        // CPU-only representation: GPU uploads must read original artifact bytes.
+                        // Avoid also locking the original file pages after allocating the arenas.
+                        numa_local_only.insert(t.tensor);numa_weight_bytes+=owned->bytes;
+                        t.file->discard_tensor_pages(*t.tensor,t.bytes);
                     } else if(mapped) {
                         owned=std::make_unique<cpu::NumaTensor>(cpu::NumaTensor::View{},source,row,shape[1],shape[2],lazy);
                         unmoved+=owned->unmoved_pages;numa_weight_bytes+=t.bytes;
@@ -8554,7 +8625,9 @@ class Decoder {
                 }
 #endif
             }
-        }catch(...) {numa_sources.clear();numa_local_only.clear();trimmed_sources.clear();numa_experts.clear();numa_weight_bytes=0;if(remote_tp)remote_tp->trimmed.clear();throw;}
+        }catch(...) {numa_sources.clear();numa_local_only.clear();trimmed_sources.clear();numa_experts.clear();numa_weight_bytes=0;expanded_q3_numa=false;if(remote_tp)remote_tp->trimmed.clear();throw;}
+        expanded_q3_numa=expand_q3;
+        if(expand_q3)std::cerr<<"Q3_EXPANDED_DOWN cpu_only=1 gpu_source=original bytes="<<numa_weight_bytes<<'\n';
         std::vector<uint8_t>().swap(trim_buffer);
         if(gpu){gpu->numa_sources=&numa_sources;gpu->trimmed_sources=&trimmed_sources;}
         std::cerr<<"Q2_NUMA_WEIGHTS mapped="<<mapped<<" lazy="<<lazy<<" unmoved_pages="<<unmoved<<" bytes="<<numa_weight_bytes<<" node0_MiB="<<numa_weight_bytes/double(2*MiB)

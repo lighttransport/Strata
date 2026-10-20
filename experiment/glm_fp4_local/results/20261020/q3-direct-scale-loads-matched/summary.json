@@ -1,0 +1,359 @@
+{
+  "scope": "Synthetic Q3 NT1 direct scalar scale loads versus same-source baseline with identical flags",
+  "cells": [
+    {
+      "name": "ty11-nt1-min1280-banks1-cpu3",
+      "type": 11,
+      "tokens": 1,
+      "min128": false,
+      "copies": 1,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "1",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9970999256273351,
+      "candidate_wins": 7,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt1-min1280-banks1-cpu11",
+      "type": 11,
+      "tokens": 1,
+      "min128": false,
+      "copies": 1,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "1",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9968195398146362,
+      "candidate_wins": 8,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt1-min1280-banks64-cpu3",
+      "type": 11,
+      "tokens": 1,
+      "min128": false,
+      "copies": 64,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "64",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9976179036095256,
+      "candidate_wins": 7,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt1-min1280-banks64-cpu11",
+      "type": 11,
+      "tokens": 1,
+      "min128": false,
+      "copies": 64,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "64",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9945446808490518,
+      "candidate_wins": 7,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt1-min1281-banks1-cpu3",
+      "type": 11,
+      "tokens": 1,
+      "min128": true,
+      "copies": 1,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "1",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9963475469667954,
+      "candidate_wins": 10,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt1-min1281-banks1-cpu11",
+      "type": 11,
+      "tokens": 1,
+      "min128": true,
+      "copies": 1,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "1",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9979319154616312,
+      "candidate_wins": 7,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt1-min1281-banks64-cpu3",
+      "type": 11,
+      "tokens": 1,
+      "min128": true,
+      "copies": 64,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "64",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9934672646856214,
+      "candidate_wins": 9,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt1-min1281-banks64-cpu11",
+      "type": 11,
+      "tokens": 1,
+      "min128": true,
+      "copies": 64,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "64",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9990880066791736,
+      "candidate_wins": 7,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt2-min1280-banks1-cpu3",
+      "type": 11,
+      "tokens": 2,
+      "min128": false,
+      "copies": 1,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "2",
+        "1",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 1.0117841231402904,
+      "candidate_wins": 2,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt2-min1280-banks1-cpu11",
+      "type": 11,
+      "tokens": 2,
+      "min128": false,
+      "copies": 1,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "2",
+        "1",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 1.0126093662949291,
+      "candidate_wins": 4,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt2-min1280-banks64-cpu3",
+      "type": 11,
+      "tokens": 2,
+      "min128": false,
+      "copies": 64,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "2",
+        "64",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 1.0087309469054109,
+      "candidate_wins": 2,
+      "pairs": 12
+    },
+    {
+      "name": "ty11-nt2-min1280-banks64-cpu11",
+      "type": 11,
+      "tokens": 2,
+      "min128": false,
+      "copies": 64,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "2",
+        "64",
+        "11"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9952612151866571,
+      "candidate_wins": 7,
+      "pairs": 12
+    },
+    {
+      "name": "ty10-nt1-min1280-banks1-cpu3",
+      "type": 10,
+      "tokens": 1,
+      "min128": false,
+      "copies": 1,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "1",
+        "10"
+      ],
+      "returncode": 0,
+      "median_ratio": 1.0082928260073298,
+      "candidate_wins": 4,
+      "pairs": 12
+    },
+    {
+      "name": "ty10-nt1-min1280-banks1-cpu11",
+      "type": 10,
+      "tokens": 1,
+      "min128": false,
+      "copies": 1,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "1",
+        "10"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9954924166377024,
+      "candidate_wins": 8,
+      "pairs": 12
+    },
+    {
+      "name": "ty10-nt1-min1280-banks64-cpu3",
+      "type": 10,
+      "tokens": 1,
+      "min128": false,
+      "copies": 64,
+      "core": 3,
+      "command": [
+        "taskset",
+        "-c",
+        "3",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "64",
+        "10"
+      ],
+      "returncode": 0,
+      "median_ratio": 0.9888459682744513,
+      "candidate_wins": 9,
+      "pairs": 12
+    },
+    {
+      "name": "ty10-nt1-min1280-banks64-cpu11",
+      "type": 10,
+      "tokens": 1,
+      "min128": false,
+      "copies": 64,
+      "core": 11,
+      "command": [
+        "taskset",
+        "-c",
+        "11",
+        "build-fp4-local/q3-direct-scale-loads-matched/probe",
+        "1",
+        "64",
+        "10"
+      ],
+      "returncode": 0,
+      "median_ratio": 1.0052120979878167,
+      "candidate_wins": 4,
+      "pairs": 12
+    }
+  ],
+  "timed_arm_checks": 384,
+  "timed_calls": 24576,
+  "limitations": [
+    "Single-thread screening with concurrent host load",
+    "No complete expert service, full-model throughput, GPU execution or theoretical peak qualification",
+    "Q3 safe fixtures replace -128 with -127 before the independent FP64 reference; fallback fixtures inject -128",
+    "Q2 and NT2 are unchanged controls; NTA disabled in both arms"
+  ],
+  "decision": "Not selected: small mixed NT1 changes do not establish a service gain",
+  "sha256": {
+    "build-fp4-local/q3-direct-scale-loads-matched/candidate.cpp": "cc485655b10b77da8e1f783326a493c6e5f713a659f52ada6f91094d99553ada",
+    "build-fp4-local/q3-direct-scale-loads-matched/candidate.o": "5e9d17346fd0acf78143443a20804d178b8d165fdb009d0464e2353ce44e8e2c",
+    "build-fp4-local/q3-direct-scale-loads-matched/baseline.cpp": "04aff40868d29fed658b04e286af50d905c0ecaaf7f73ac0e114eff94f522fe2",
+    "build-fp4-local/q3-direct-scale-loads-matched/baseline.o": "0a7e12d4272e0150c449393c320198c465c060177f8c84ffdfa880d3911ab8f4",
+    "build-fp4-local/q3-direct-scale-loads-matched/probe": "2df89462bbd8edc770c39c3ae57bbe08bccfebdd868af9e910d2bd5bf169481e",
+    "src/kernels/cpu/q23_avx2.cpp": "04aff40868d29fed658b04e286af50d905c0ecaaf7f73ac0e114eff94f522fe2",
+    "build-hip-rocm101-tr16/libstrata_kernels_cpu.a": "c656ab000052d6b52c3569326ba8b3db6d10d7dfc1bf08548c4c87bc33afe8a8"
+  }
+}

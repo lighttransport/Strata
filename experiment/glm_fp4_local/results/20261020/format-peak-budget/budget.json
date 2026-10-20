@@ -1,0 +1,236 @@
+{
+  "basis": "ILLUSTRATIVE assumptions only: DDR4-2400, four populated channels, 16 cores at 3 GHz; not verified hardware settings",
+  "formats": {
+    "nvfp4": {
+      "basis": "CONDITIONAL BUDGET, NOT PEAK UTILIZATION OR FULL-MODEL THROUGHPUT",
+      "assumptions": {
+        "memory_mts": 2400.0,
+        "channels": 4,
+        "cores": 16,
+        "ghz": [
+          3.0
+        ],
+        "target": 0.9,
+        "format": "nvfp4",
+        "counter_summary": "experiment/glm_fp4_local/results/20261020/fp4-counter-load-audit/summary.json",
+        "weights_per_probe": 8589934592
+      },
+      "channel_payload_bits": 64,
+      "theoretical_payload_gb_s": 76.8,
+      "target_payload_gb_s": 69.12,
+      "packed_bytes_per_weight": 0.5625,
+      "target_gweights_s": 122.88000000000001,
+      "max_cycles_per_weight": [
+        {
+          "ghz": 3.0,
+          "cycles": 0.39062499999999994
+        }
+      ],
+      "observed_counter_projection": [
+        {
+          "source": "nv-absact-counter-0-0.csv",
+          "whole_probe_cycles_per_weight": 0.32749444141518325,
+          "idealized_packed_gb_s": [
+            {
+              "ghz": 3.0,
+              "gb_s": 82.4441473978197
+            }
+          ]
+        },
+        {
+          "source": "nv-absact-counter-0-1.csv",
+          "whole_probe_cycles_per_weight": 0.5679079688852653,
+          "idealized_packed_gb_s": [
+            {
+              "ghz": 3.0,
+              "gb_s": 47.54291448489046
+            }
+          ]
+        },
+        {
+          "source": "nv-absact-counter-1-0.csv",
+          "whole_probe_cycles_per_weight": 0.34302953199949116,
+          "idealized_packed_gb_s": [
+            {
+              "ghz": 3.0,
+              "gb_s": 78.71042426761102
+            }
+          ]
+        },
+        {
+          "source": "nv-absact-counter-1-1.csv",
+          "whole_probe_cycles_per_weight": 0.5544877448119223,
+          "idealized_packed_gb_s": [
+            {
+              "ghz": 3.0,
+              "gb_s": 48.693591973179096
+            }
+          ]
+        }
+      ],
+      "limitations": [
+        "Q2/Q3 expert mixtures assume equal gate/up/down matrix element counts and NT1; phase throughput can differ",
+        "Counter evidence must match the selected format; absent evidence means no measured throughput projection",
+        "Memory data rate, populated channels and all-core frequency are explicit assumptions, not verified here",
+        "Probe counts include initialization, checking and scalar overhead; no timing subtraction was made",
+        "Idealized scaling assumes equal per-core throughput with no shared-resource or scheduling penalty",
+        "Only packed weights/scales are counted; activations, outputs, routing and other traffic consume bandwidth too",
+        "Integer-dot/unpack instruction throughput is not comparable to advertised FP32 FMA FLOPS",
+        "Concurrent host load and the observed counter drift prevent inferring a hardware ceiling"
+      ]
+    },
+    "q2_k": {
+      "basis": "CONDITIONAL BUDGET, NOT PEAK UTILIZATION OR FULL-MODEL THROUGHPUT",
+      "assumptions": {
+        "memory_mts": 2400.0,
+        "channels": 4,
+        "cores": 16,
+        "ghz": [
+          3.0
+        ],
+        "target": 0.9,
+        "format": "q2_k",
+        "counter_summary": null,
+        "weights_per_probe": null
+      },
+      "channel_payload_bits": 64,
+      "theoretical_payload_gb_s": 76.8,
+      "target_payload_gb_s": 69.12,
+      "packed_bytes_per_weight": 0.328125,
+      "target_gweights_s": 210.6514285714286,
+      "max_cycles_per_weight": [
+        {
+          "ghz": 3.0,
+          "cycles": 0.22786458333333331
+        }
+      ],
+      "observed_counter_projection": [],
+      "limitations": [
+        "Q2/Q3 expert mixtures assume equal gate/up/down matrix element counts and NT1; phase throughput can differ",
+        "Counter evidence must match the selected format; absent evidence means no measured throughput projection",
+        "Memory data rate, populated channels and all-core frequency are explicit assumptions, not verified here",
+        "Probe counts include initialization, checking and scalar overhead; no timing subtraction was made",
+        "Idealized scaling assumes equal per-core throughput with no shared-resource or scheduling penalty",
+        "Only packed weights/scales are counted; activations, outputs, routing and other traffic consume bandwidth too",
+        "Integer-dot/unpack instruction throughput is not comparable to advertised FP32 FMA FLOPS",
+        "Concurrent host load and the observed counter drift prevent inferring a hardware ceiling"
+      ]
+    },
+    "q3_k": {
+      "basis": "CONDITIONAL BUDGET, NOT PEAK UTILIZATION OR FULL-MODEL THROUGHPUT",
+      "assumptions": {
+        "memory_mts": 2400.0,
+        "channels": 4,
+        "cores": 16,
+        "ghz": [
+          3.0
+        ],
+        "target": 0.9,
+        "format": "q3_k",
+        "counter_summary": null,
+        "weights_per_probe": null
+      },
+      "channel_payload_bits": 64,
+      "theoretical_payload_gb_s": 76.8,
+      "target_payload_gb_s": 69.12,
+      "packed_bytes_per_weight": 0.4296875,
+      "target_gweights_s": 160.86109090909093,
+      "max_cycles_per_weight": [
+        {
+          "ghz": 3.0,
+          "cycles": 0.29839409722222215
+        }
+      ],
+      "observed_counter_projection": [],
+      "limitations": [
+        "Q2/Q3 expert mixtures assume equal gate/up/down matrix element counts and NT1; phase throughput can differ",
+        "Counter evidence must match the selected format; absent evidence means no measured throughput projection",
+        "Memory data rate, populated channels and all-core frequency are explicit assumptions, not verified here",
+        "Probe counts include initialization, checking and scalar overhead; no timing subtraction was made",
+        "Idealized scaling assumes equal per-core throughput with no shared-resource or scheduling penalty",
+        "Only packed weights/scales are counted; activations, outputs, routing and other traffic consume bandwidth too",
+        "Integer-dot/unpack instruction throughput is not comparable to advertised FP32 FMA FLOPS",
+        "Concurrent host load and the observed counter drift prevent inferring a hardware ceiling"
+      ]
+    },
+    "q2q3": {
+      "basis": "CONDITIONAL BUDGET, NOT PEAK UTILIZATION OR FULL-MODEL THROUGHPUT",
+      "assumptions": {
+        "memory_mts": 2400.0,
+        "channels": 4,
+        "cores": 16,
+        "ghz": [
+          3.0
+        ],
+        "target": 0.9,
+        "format": "q2q3",
+        "counter_summary": null,
+        "weights_per_probe": null
+      },
+      "channel_payload_bits": 64,
+      "theoretical_payload_gb_s": 76.8,
+      "target_payload_gb_s": 69.12,
+      "packed_bytes_per_weight": 0.3619791666666667,
+      "target_gweights_s": 190.95021582733813,
+      "max_cycles_per_weight": [
+        {
+          "ghz": 3.0,
+          "cycles": 0.2513744212962963
+        }
+      ],
+      "observed_counter_projection": [],
+      "limitations": [
+        "Q2/Q3 expert mixtures assume equal gate/up/down matrix element counts and NT1; phase throughput can differ",
+        "Counter evidence must match the selected format; absent evidence means no measured throughput projection",
+        "Memory data rate, populated channels and all-core frequency are explicit assumptions, not verified here",
+        "Probe counts include initialization, checking and scalar overhead; no timing subtraction was made",
+        "Idealized scaling assumes equal per-core throughput with no shared-resource or scheduling penalty",
+        "Only packed weights/scales are counted; activations, outputs, routing and other traffic consume bandwidth too",
+        "Integer-dot/unpack instruction throughput is not comparable to advertised FP32 FMA FLOPS",
+        "Concurrent host load and the observed counter drift prevent inferring a hardware ceiling"
+      ]
+    },
+    "q2q3-expanded": {
+      "basis": "CONDITIONAL BUDGET, NOT PEAK UTILIZATION OR FULL-MODEL THROUGHPUT",
+      "assumptions": {
+        "memory_mts": 2400.0,
+        "channels": 4,
+        "cores": 16,
+        "ghz": [
+          3.0
+        ],
+        "target": 0.9,
+        "format": "q2q3-expanded",
+        "counter_summary": null,
+        "weights_per_probe": null
+      },
+      "channel_payload_bits": 64,
+      "theoretical_payload_gb_s": 76.8,
+      "target_payload_gb_s": 69.12,
+      "packed_bytes_per_weight": 0.3671875,
+      "target_gweights_s": 188.24170212765958,
+      "max_cycles_per_weight": [
+        {
+          "ghz": 3.0,
+          "cycles": 0.2549913194444444
+        }
+      ],
+      "observed_counter_projection": [],
+      "limitations": [
+        "Q2/Q3 expert mixtures assume equal gate/up/down matrix element counts and NT1; phase throughput can differ",
+        "Counter evidence must match the selected format; absent evidence means no measured throughput projection",
+        "Memory data rate, populated channels and all-core frequency are explicit assumptions, not verified here",
+        "Probe counts include initialization, checking and scalar overhead; no timing subtraction was made",
+        "Idealized scaling assumes equal per-core throughput with no shared-resource or scheduling penalty",
+        "Only packed weights/scales are counted; activations, outputs, routing and other traffic consume bandwidth too",
+        "Integer-dot/unpack instruction throughput is not comparable to advertised FP32 FMA FLOPS",
+        "Concurrent host load and the observed counter drift prevent inferring a hardware ceiling"
+      ]
+    }
+  },
+  "tests": "test_cpu_peak_budget.py 3 passed; test_cpu_roofline.py 3 passed",
+  "source_sha256": {
+    "experiment/glm_fp4_local/cpu_peak_budget.py": "b802f073b22b6856c7a2215950aa23fefdf73adba630149bdeedf03f8abbb64d",
+    "experiment/glm_fp4_local/test_cpu_peak_budget.py": "b6e7c25ca5ea263522c70831fca664a061fd810957b848ed6a3e235e01a5edea"
+  }
+}

@@ -1,0 +1,96 @@
+[0/1] Re-running CMake...
+-- Strata: CUDA enabled, arch 120
+-- strata: pack/full/experts.bin absent - the expert arena load test is NOT registered
+-- STRATA tests: no python3 with numpy was found (the configured interpreter and .venv were probed) - the iq_parity fixtures and its test are not registered; the fixtures need python3 with numpy and the repository's vendored gguf-py
+-- ccache found, compilation results will be cached. Disable with GGML_CCACHE=OFF.
+-- CMAKE_SYSTEM_PROCESSOR: x86_64
+-- GGML_SYSTEM_ARCH: x86
+-- Including CPU backend
+-- x86 detected
+-- Adding CPU backend variant ggml-cpu: -march=native 
+-- ggml version: 0.24.0
+-- ggml commit:  5aec00d5
+-- Configuring done (1.1s)
+-- Generating done (0.4s)
+-- Build files have been written to: <repo>/build-fp4-local/offset-cuda
+[1/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/session.cpp.o
+[2/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/remote_experts.cpp.o
+[3/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/expert_source.cpp.o
+[4/18] Building CUDA object CMakeFiles/strata_engine.dir/src/core/remote_expert_opt.cu.o
+<repo>/include/strata/core/expert_source.hpp(527): warning #611-D: overloaded virtual function "strata::core::ExpertSource::prefetch" is only partially overridden in class "strata::core::FileExpertSource"
+  class FileExpertSource : public ExpertSource {
+        ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+<repo>/include/strata/core/expert_source.hpp(922): warning #611-D: overloaded virtual function "strata::core::ExpertSource::prefetch" is only partially overridden in class "strata::core::ArenaExpertSource"
+  class ArenaExpertSource : public ExpertSource {
+        ^
+
+<repo>/include/strata/core/expert_source.hpp(527): warning #611-D: overloaded virtual function "strata::core::ExpertSource::prefetch" is only partially overridden in class "strata::core::FileExpertSource"
+  class FileExpertSource : public ExpertSource {
+        ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+<repo>/include/strata/core/expert_source.hpp(922): warning #611-D: overloaded virtual function "strata::core::ExpertSource::prefetch" is only partially overridden in class "strata::core::ArenaExpertSource"
+  class ArenaExpertSource : public ExpertSource {
+        ^
+
+[5/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/mtp.cpp.o
+[6/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/verify.cpp.o
+<repo>/src/core/verify.cpp: In static member function ‘static void strata::core::Verifier::raise_flag(uint32_t*, uint32_t)’:
+<repo>/src/core/verify.cpp:2498:20: warning: unused variable ‘f’ [-Wunused-variable]
+ 2498 |     volatile long* f = (volatile long*) flag;
+      |                    ^
+[7/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/conversation_snapshot.cpp.o
+[8/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/conversation_state.cpp.o
+[9/18] Building CXX object CMakeFiles/strata_engine.dir/src/core/peer_experts.cpp.o
+[10/18] Linking CXX shared library libstrata_kq.so
+[11/18] Linking CXX static library libstrata_engine.a
+[12/18] Building CXX object CMakeFiles/strata_prefill.dir/src/prefill/prefill.cpp.o
+[13/18] Linking CXX static library libstrata_prefill.a
+[14/18] Building CXX object CMakeFiles/input_quant_ready_test.dir/src/kernels/cpu/input_quant_ready_test.cpp.o
+[15/18] Linking CXX executable input_quant_ready_test
+[16/18] Building CXX object CMakeFiles/strata-glm-decode.dir/src/program/glm_decode.cpp.o
+In file included from <repo>/include/strata/llvq/tetra_decode.hpp:10,
+                 from <repo>/src/program/glm_decode.cpp:11:
+<repo>/include/strata/llvq/tetra.hpp: In member function ‘void strata::llvq::Tetra::build_trellis()’:
+<repo>/include/strata/llvq/tetra.hpp:266:23: warning: suggest parentheses around arithmetic in operand of ‘|’ [-Wparentheses]
+  266 |         need((TRIO[0] & TRIO[1] | TRIO[0] & TRIO[2] | TRIO[1] & TRIO[2]) == 0 && (TRIO[0] | TRIO[1] | TRIO[2]) == 0xffffff,
+<repo>/include/strata/llvq/tetra.hpp:266:63: warning: suggest parentheses around arithmetic in operand of ‘|’ [-Wparentheses]
+  266 |         need((TRIO[0] & TRIO[1] | TRIO[0] & TRIO[2] | TRIO[1] & TRIO[2]) == 0 && (TRIO[0] | TRIO[1] | TRIO[2]) == 0xffffff,
+In file included from <repo>/src/program/glm_decode.cpp:16:
+<repo>/include/strata/core/exact_expert_cache.hpp: In member function ‘void strata::core::ExactExpertCache::worker()’:
+<repo>/include/strata/core/exact_expert_cache.hpp:143:15: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  143 |               if(stopping_)return; read=reads_[next_++]; }
+      |               ^~
+<repo>/include/strata/core/exact_expert_cache.hpp:143:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  143 |               if(stopping_)return; read=reads_[next_++]; }
+      |                                    ^~~~
+<repo>/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::moe(const std::string&, int, const float*, float*, const strata::core::LayerDescriptor&)’:
+<repo>/src/program/glm_decode.cpp:4687:45: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
+ 4687 |                 const int header[2] = {l, m.experts};
+      |                                           ~~^~~~~~~
+<repo>/src/program/glm_decode.cpp:4693:59: warning: narrowing conversion of ‘(int64_t)(({anonymous}::Decoder*)this)->{anonymous}::Decoder::m.strata::core::ModelDescriptor::experts’ from ‘int64_t’ {aka ‘long int’} to ‘int’ [-Wnarrowing]
+ 4693 |                 const int header[3] = {position + t, l, m.experts};
+      |                                                         ~~^~~~~~~
+<repo>/src/program/glm_decode.cpp: In member function ‘void {anonymous}::Decoder::cpu_moe_mailbox(int, int, int, int, int, int, uint64_t, int)’:
+<repo>/src/program/glm_decode.cpp:5342:62: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)G.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+ 5342 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
+      |                                                    ~~~~~~~~~~^~~~
+<repo>/src/program/glm_decode.cpp:5342:78: warning: narrowing conversion of ‘(uint32_t)((const strata::TensorInfo*)D.strata::core::ArtifactTensor::tensor)->strata::TensorInfo::type’ from ‘uint32_t’ {aka ‘unsigned int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+ 5342 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
+      |                                                                    ~~~~~~~~~~^~~~
+<repo>/src/program/glm_decode.cpp:5342:93: warning: narrowing conversion of ‘(int64_t)layer.strata::core::LayerDescriptor::intermediate’ from ‘int64_t’ {aka ‘long int’} to ‘int32_t’ {aka ‘int’} [-Wnarrowing]
+ 5342 |                             const int32_t header[]{G.tensor->type, D.tensor->type, H, layer.intermediate};
+      |                                                                                       ~~~~~~^~~~~~~~~~~~
+<repo>/src/program/glm_decode.cpp: In member function ‘{anonymous}::Decoder::Snapshot {anonymous}::Decoder::snapshot() const’:
+<repo>/src/program/glm_decode.cpp:7149:47: warning: missing initializer for member ‘{anonymous}::Decoder::Snapshot::layers’ [-Wmissing-field-initializers]
+ 7149 |         Snapshot result{position, mtp_position};
+      |                                               ^
+<repo>/src/program/glm_decode.cpp: In member function ‘std::vector<float> {anonymous}::Decoder::verify(const std::vector<int>&)’:
+<repo>/src/program/glm_decode.cpp:8415:20: warning: variable ‘verify_begin’ set but not used [-Wunused-but-set-variable]
+ 8415 |         const auto verify_begin = std::chrono::steady_clock::now();
+      |                    ^~~~~~~~~~~~
+[17/18] Linking CXX executable strata-glm-decode

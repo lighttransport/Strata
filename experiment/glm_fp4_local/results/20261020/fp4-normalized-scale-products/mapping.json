@@ -1,0 +1,8 @@
+{
+  "scale_code_checks": 256,
+  "original_127": 0.0,
+  "original_255": 240.0,
+  "prepared_0": 0.0,
+  "prepared_127": 240.0,
+  "scope": "independent scalar binary32 bit comparison of normalized-code mapping"
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "strata.fp4.theoretical.v1",
+  "provenance": "Illustrative effective-rate assumptions only. Not calibrated, not advertised GPU peaks. Replace with measurements when hardware is free.",
+  "csf_bytes_per_scale": 0.55,
+  "dequant_overlap": 0.0,
+  "nodes": [
+    {"name":"primary-rdna4", "vram_gbps":640, "bf16_tflops":40, "dequant_gweights_s":50, "gpu_pcie_gbps":14, "hca_pcie_gbps":6, "pcie_root_gbps":20, "dram_gbps":60, "csf_gscales_s":0.5, "host_activation_gitems_s":0.5, "device_activation_gitems_s":30, "cache_gib":4, "ram_budget_gib":110, "availability":1, "launch_us":8, "copy_us":8},
+    {"name":"worker-sm120", "vram_gbps":448, "bf16_tflops":50, "dequant_gweights_s":60, "gpu_pcie_gbps":14, "hca_pcie_gbps":6, "pcie_root_gbps":20, "dram_gbps":35, "csf_gscales_s":0.8, "host_activation_gitems_s":0.8, "device_activation_gitems_s":30, "cache_gib":4, "ram_budget_gib":52, "availability":1, "launch_us":8, "copy_us":8},
+    {"name":"worker-sm86", "vram_gbps":448, "bf16_tflops":35, "dequant_gweights_s":40, "gpu_pcie_gbps":24, "hca_pcie_gbps":3.2, "pcie_root_gbps":24, "dram_gbps":35, "csf_gscales_s":0.8, "host_activation_gitems_s":0.8, "device_activation_gitems_s":30, "cache_gib":1, "ram_budget_gib":52, "availability":1, "launch_us":8, "copy_us":8}
+  ],
+  "links": {
+    "01":{"gbps":3.2,"latency_us":10},
+    "02":{"gbps":3.2,"latency_us":14},
+    "12":{"gbps":3.2,"latency_us":14}
+  }
+}

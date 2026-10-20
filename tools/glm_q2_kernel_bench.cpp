@@ -139,7 +139,7 @@ int replay(const char *model_path, const char *trace_path, int rounds, int worke
 int main(int argc,char** argv){try {
     if (argc >= 4 && std::string(argv[2]) == "--replay")
         return replay(argv[1], argv[3], argc > 4 ? std::stoi(argv[4]) : 6, argc > 5 ? std::stoi(argv[5]) : 15);
-    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-kernel-bench MODEL --replay TRACE [rounds=6] [workers=15], or MODEL ROUTES [mmap|numa] [nt=1] [workers=15] [rounds=5] [native|q2|q23] [first-layer=3] [last-layer=44] [row|direct|lut] [skip-positions=0]");
+    if(argc<3)throw std::runtime_error("usage: strata-glm-q2-kernel-bench MODEL --replay TRACE [rounds=6] [workers=15], or MODEL ROUTES [mmap|numa] [nt=1] [workers=15] [rounds=5] [native|q2|q23] [first-layer=3] [last-layer=44] [row|direct|lut] [skip-positions=0] [--fuse-quant]");
     if(argc>3 && std::string(argv[3])!="numa" && std::string(argv[3])!="mmap")throw std::runtime_error("invalid placement policy");
     bool owned=argc>3 && std::string(argv[3])=="numa";int nt=argc>4?std::stoi(argv[4]):1,workers=argc>5?std::stoi(argv[5]):15,rounds=argc>6?std::stoi(argv[6]):5;
     if(nt<1||nt>MAXT||workers<1||rounds<1||rounds>20)throw std::runtime_error("invalid benchmark bounds");
@@ -151,6 +151,9 @@ int main(int argc,char** argv){try {
     if(layout!="row" && layout!="direct" && layout!="lut")throw std::runtime_error("invalid layout");
     const int skip=argc>11?std::stoi(argv[11]):0;
     if(skip<0)throw std::runtime_error("negative routing position offset");
+    const bool fused_quant=argc==13&&std::string(argv[12])=="--fuse-quant";
+    if(argc>13||(argc==13&&!fused_quant))throw std::runtime_error("invalid fused quantization selector");
+    if(fused_quant&&!owned)throw std::runtime_error("fused quantization requires NUMA-owned rows");
     strata::core::ModelArtifact model(argv[1]);
     const auto& descriptor=model.descriptor();
     if(descriptor.architecture!="glm5next" || descriptor.hidden!=4096 || (descriptor.experts%16!=0 || descriptor.experts>288) || descriptor.top_k!=8 || descriptor.layers.size()!=45)
@@ -191,6 +194,7 @@ int main(int argc,char** argv){try {
         if(!native_fmt(gt,dt,4096,2048,x.f,error))throw std::runtime_error(error);
         x.f.swiglu_limit=descriptor.layers[l].swiglu_limit;
         x.f.canon=canonical;
+        x.f.fuse_h_quant=fused_quant;
         if(canonical && !((gt==10||gt==11)&&(dt==10||dt==11)))throw std::runtime_error("canonical benchmark requires Q2_K/Q3_K");
         x.f.q23_layout=layout=="row"?0:layout=="direct"?1:2;
         std::map<int,int> selected;auto row=routes.begin();for(int t=0;t<nt;++t,++row)for(int e:row->second.at(l))selected.emplace(e,selected.size());
@@ -213,15 +217,23 @@ int main(int argc,char** argv){try {
                     }
                 });
                 for(auto& t:converters)t.join();
-                if(x.f.q23_layout) {
-                    std::vector<uint8_t> tiled(x.packed[part].size());
-                    for(size_t e=0;e<selected.size();++e)q23_pack(target,x.packed[part].data()+e*slice,tiled.data()+e*slice,columns,rows);
-                    x.packed[part]=std::move(tiled);
+            }
+            if(x.f.q23_layout) {
+                if(target!=10&&target!=11)throw std::runtime_error("packed layout requires Q2_K/Q3_K projections");
+                // Pack native Q23 too, not only projections requantized above.
+                std::vector<uint8_t> tiled(selected.size()*slice),restored(slice);
+                for(auto [e,index]:selected) {
+                    const uint8_t* plain=x.packed[part].empty()?tensors[part]->data()+size_t(e)*original_slice:x.packed[part].data()+size_t(index)*slice;
+                    auto* dest=tiled.data()+size_t(index)*slice;
+                    q23_pack(target,plain,dest,columns,rows);
+                    q23_unpack(target,dest,restored.data(),columns,rows);
+                    if(std::memcmp(plain,restored.data(),slice))throw std::runtime_error("packed layout changed model bytes");
                 }
+                x.packed[part]=std::move(tiled);
             }
             if(owned) {
-                if(target==original) {source[part].resize(selected.size()*slice);for(auto [e,index]:selected)std::memcpy(source[part].data()+size_t(index)*slice,tensors[part]->data()+size_t(e)*slice,slice);}
-                x.owned[part]=std::make_unique<NumaTensor>(target==original?source[part].data():x.packed[part].data(),part==2?x.f.d_row:x.f.gu_row,rows,selected.size(),pool.numa_cores(),std::getenv("STRATA_BENCH_HUGE")!=nullptr);
+                if(x.packed[part].empty()) {source[part].resize(selected.size()*slice);for(auto [e,index]:selected)std::memcpy(source[part].data()+size_t(index)*slice,tensors[part]->data()+size_t(e)*slice,slice);}
+                x.owned[part]=std::make_unique<NumaTensor>(x.packed[part].empty()?source[part].data():x.packed[part].data(),part==2?x.f.d_row:x.f.gu_row,rows,selected.size(),pool.numa_cores(),std::getenv("STRATA_BENCH_HUGE")!=nullptr);
             }
         }
         x.acts.resize(nt);std::vector<float> a(4096);
@@ -236,15 +248,16 @@ int main(int argc,char** argv){try {
         bytes+=x.jobs.size()*x.f.bytes;layers.push_back(std::move(x));std::cerr<<"prepared_layer="<<l<<'\n';
     }
     std::cout<<"policy="<<(owned?"numa":"mmap")<<" conversion="<<conversion<<" layout="<<layout<<" nt="<<nt<<" workers="<<workers<<" skip_positions="<<skip<<" first_position="<<routes.begin()->first<<" packed_bytes="<<bytes<<" scope=real_weight_expert_only activations="<<(captured.empty()?"synthetic":"captured")<<'\n';
-    std::cout<<"flow="<<flow<<" canon="<<canonical<<" reduction_weights=uniform\n";
+    std::cout<<"flow="<<flow<<" canon="<<canonical<<" fused_quant="<<fused_quant<<" reduction_weights=uniform\n";
     std::vector<float> route_weights(nt*8,.125f), routed_output(nt*4096);
     std::vector<std::vector<float>> references;
     for(int round=-1;round<rounds;++round) {
+        const double gu_before=pool.ms_multi_gu,q_before=pool.ms_multi_q,down_before=pool.ms_multi_down,flow_before=pool.ms_layer_flow;
         double ms=0,checksum=0;uint64_t output_hash=14695981039346656037ULL;
         for(auto& x:layers) {auto start=std::chrono::steady_clock::now();if(flow)pool.run_layer_native(x.f,x.jobs.data(),x.jobs.size(),x.out.data(),route_weights.data(),routed_output.data(),nt,8);else pool.run_split_multi_native(x.f,x.jobs.data(),x.jobs.size());ms+=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();for(float v:x.out){if(!std::isfinite(v))throw std::runtime_error("nonfinite output");checksum+=v;const auto* bits=reinterpret_cast<const uint8_t*>(&v);for(size_t k=0;k<sizeof(v);++k){output_hash^=bits[k];output_hash*=1099511628211ULL;}}}
                 if(round<0){for(auto& x:layers)references.push_back(x.out);continue;}
         for(size_t l=0;l<layers.size();++l)if(layers[l].out!=references[l])throw std::runtime_error("unstable repeated outputs");
-        std::cout<<"round="<<round<<" ms="<<ms<<" packed_GB_s="<<bytes/ms/1e6<<" expert_only_tok_s="<<nt*1000/ms<<" output_hash="<<output_hash<<" checksum="<<checksum<<'\n';
+        std::cout<<"round="<<round<<" ms="<<ms<<" packed_GB_s="<<bytes/ms/1e6<<" expert_only_tok_s="<<nt*1000/ms<<" output_hash="<<output_hash<<" checksum="<<checksum<<" gu_ms="<<pool.ms_multi_gu-gu_before<<" quant_ms="<<pool.ms_multi_q-q_before<<" down_ms="<<pool.ms_multi_down-down_before<<" flow_ms="<<pool.ms_layer_flow-flow_before<<'\n';
     }
     if(previous.valid)restore_thread_affinity(previous);
 }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

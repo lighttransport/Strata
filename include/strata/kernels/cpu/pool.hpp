@@ -58,6 +58,7 @@ struct ExpertJob {
 /// is bitwise the single-token job's.
 struct ExpertJobMulti {
     int expert_id = -1; // model ID for optional calibration, not a scheduling slot
+    // NVFP4 NUMA shards still use this original blob for its global-scale tail.
     const uint8_t* blob = nullptr;
     int nt = 0;
     const ActQ* act[MAXT] = {};
@@ -220,6 +221,10 @@ public:
         if (count < 1 || count > 16) throw std::invalid_argument("native tasks per thread must be 1..16");
         native_tasks_per_thread_ = count;
     }
+    // Opt-in tuning between completed calls; only measured Q2/Q3 split shapes.
+    void set_q23_route_tasks(bool enabled) { q23_route_tasks_ = enabled; }
+    // Opt-in measured FP4 worker routes; recomputed for each call.
+    void set_nvfp4_route_tasks(bool enabled) { nvfp4_route_tasks_ = enabled; }
     static constexpr int kMaxSplitMulti = 96;
     /// run_split_multi's phases, accumulated ms: gate/up rows, the intermediate quantization, down rows.
     double ms_multi_gu = 0, ms_multi_q = 0, ms_multi_down = 0;
@@ -303,6 +308,8 @@ private:
     int n_ = 0;
     bool host_works_ = true;
     int native_tasks_per_thread_ = 3;
+    bool q23_route_tasks_ = false;
+    bool nvfp4_route_tasks_ = false;
     bool native_local_enabled_ = false;
     // A late parked worker can inspect dispatch flags while the host prepares
     // the next epoch. Queue claims remain protected by their epoch tags.

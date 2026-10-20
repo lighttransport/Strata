@@ -1,0 +1,23 @@
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+-- Strata HIP: ROCm prefix /opt/rocm/core-10.1;/opt/rocm/core-10
+-- HIP: Using hipcc from relative path: /opt/rocm/core-10.1/bin/hipcc
+-- HIP_PLATFORM using hip_HIPCONFIG_EXECUTABLE: amd
+-- HIP: Using hipcc from relative path: /opt/rocm/core-10.1/bin/hipcc
+-- Strata: HIP enabled, arch gfx1201
+-- strata: pack/full/experts.bin absent - the expert arena load test is NOT registered
+-- STRATA tests: no python3 with numpy was found (the configured interpreter and .venv were probed) - the iq_parity fixtures and its test are not registered; the fixtures need python3 with numpy and the repository's vendored gguf-py
+-- ccache found, compilation results will be cached. Disable with GGML_CCACHE=OFF.
+-- CMAKE_SYSTEM_PROCESSOR: x86_64
+-- GGML_SYSTEM_ARCH: x86
+-- Including CPU backend
+-- x86 detected
+-- Adding CPU backend variant ggml-cpu: -march=native 
+-- ggml version: 0.24.0
+-- ggml commit:  5aec00d5
+-- Configuring done (1.6s)
+-- Generating done (0.4s)
+-- Build files have been written to: <repo>/build-hip-rocm101-tr16
+[0/4] Re-checking globbed directories...
+[1/5] Building CXX object CMakeFiles/input_quant_ready_test.dir/src/kernels/cpu/input_quant_ready_test.cpp.o
+[2/5] Linking CXX executable input_quant_ready_test

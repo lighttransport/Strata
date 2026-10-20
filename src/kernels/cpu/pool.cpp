@@ -1,6 +1,8 @@
 // src/kernels/cpu/pool.cpp - P2.S3: the CPU expert pool.  Read pool.hpp first; it explains the protocol.
 #include "strata/kernels/cpu/pool.hpp"
+#include "strata/kernels/cpu/native_task_policy.hpp"
 #include "strata/kernels/canon_expert.hpp"
+#include "strata/host/glm_env.h"
 #include <stdexcept>
 #include "strata/core/progress.hpp"
 #include "strata/platform/aux_cpus.hpp"
@@ -546,6 +548,8 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
         throw std::invalid_argument("socket rows require Linux CPU topology");
 #endif
     }
+    q23_route_tasks_ = strata_env_is_one("STRATA_Q23_ROUTE_TASKS");
+    nvfp4_route_tasks_ = strata_env_is_one("STRATA_NVFP4_ROUTE_TASKS");
     if (const char* e = std::getenv("STRATA_NATIVE_TASKS_PER_THREAD")) {
         char* end = nullptr;
         const long value = std::strtol(e, &end, 10);
@@ -856,10 +860,10 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
                     act[t]=mode_==5?j.nact[t]:split_multi_[e].hq[t];
                 }
                 if(mode_==5) {
-                    native_gu_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].up);
+                    native_gu_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].up,j.blob);
                     if(nfmt_->fuse_h_quant)for(int t=0;t<j.nt;++t)native_quant_h_rows(*nfmt_,split_multi_[e].ff[t],split_multi_[e].hq[t],node*half+r0,node*half+r1);
                 }
-                else native_down_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].down);
+                else native_down_rows(*nfmt_,j.numa[node].gate,act,j.nt,output,r0,r1,j.numa[node].down,j.blob);
                 complete_task(node);continue;
             }
             const int per = (int) (mode_ == 5 ? nfmt_->n_ff : nfmt_->n_embd);
@@ -1076,10 +1080,17 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         throw std::invalid_argument("native NUMA rows require pinned workers on both nodes and native IQ geometry");
     for(int e=0;e<n;++e)for(int node=0;node<2;++node) {
         const auto& row=jobs[e].numa[node];
+        if(owned && f.tail_off && !jobs[e].blob)throw std::invalid_argument("native NUMA rows require the original scale-tail blob");
         if(owned?(!row.gate||!row.up||!row.down):(row.gate||row.up||row.down))
             throw std::invalid_argument("native NUMA row batch must have complete, consistent shards");
     }
     const auto t0 = std::chrono::steady_clock::now();
+    const int q23_tasks = detail::q23_split_tasks(
+        q23_route_tasks_ && host_works_ && !native_local_enabled_,
+        native_tasks_per_thread_, tasks_, n_ + (host_works_ ? 1 : 0), owned, f, jobs, n);
+    const int split_tasks = detail::nvfp4_split_tasks(
+        nvfp4_route_tasks_ && host_works_ && !native_local_enabled_,
+        q23_tasks, tasks_, n_ + (host_works_ ? 1 : 0), owned, f, jobs, n);
     // more distinct experts than buffers: run them in batches
     for (int b0 = 0; b0 < n; b0 += kMaxSplitMulti) {
         const int nb = (std::min)(kMaxSplitMulti, n - b0);
@@ -1087,7 +1098,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         nfmt_ = &f;
         const int threads = n_ + (host_works_ ? 1 : 0);
         native_owned_phase_=owned;
-        const int gu_target = tasks_ ? phase_tasks(int64_t(nb) * f.n_ff) : native_tasks_per_thread_ * threads;
+        const int gu_target = tasks_ ? phase_tasks(int64_t(nb) * f.n_ff) : split_tasks * threads;
         native_owned_parts_=f.fuse_h_quant?f.n_ff/512:std::max(1,(gu_target+2*nb-1)/(2*nb));
         mtasks_ = owned?2*nb*native_owned_parts_:gu_target;
         mrows_ = (int64_t) nb * f.n_ff;
@@ -1102,7 +1113,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
                 else native_quant_h(f, split_multi_[(size_t) e].ff[t], split_multi_[(size_t) e].hq[t]);
             }
         const auto c = std::chrono::steady_clock::now();
-        const int down_target = tasks_ ? phase_tasks(int64_t(nb) * f.n_embd) : native_tasks_per_thread_ * threads;
+        const int down_target = tasks_ ? phase_tasks(int64_t(nb) * f.n_embd) : split_tasks * threads;
         if(f.fuse_h_quant || tasks_){native_owned_parts_=std::max(1,(down_target+2*nb-1)/(2*nb));mtasks_=owned?2*nb*native_owned_parts_:down_target;}
         mrows_ = (int64_t) nb * f.n_embd;
         run_phase(6, mtasks_);
@@ -1129,7 +1140,7 @@ void ExpertPool::flow_task(int i) {
         if (flow_owned_) {
             const int half = (int) f.n_ff / 2, r0 = half * part / parts, r1 = half * (part + 1) / parts;
             for (int t = 0; t < j.nt; ++t) ff[t] = sb.ff[t] + node * half;
-            native_gu_rows(f, j.numa[node].gate, j.nact, j.nt, ff, r0, r1, j.numa[node].up);
+            native_gu_rows(f, j.numa[node].gate, j.nact, j.nt, ff, r0, r1, j.numa[node].up, j.blob);
             if (f.fuse_h_quant)
                 for (int t = 0; t < j.nt; ++t) native_quant_h_rows(f, sb.ff[t], sb.hq[t], node * half + r0, node * half + r1);
         } else {
@@ -1172,7 +1183,7 @@ void ExpertPool::flow_task(int i) {
     if (flow_owned_) {
         const int half = (int) f.n_embd / 2, r0 = half * part / parts, r1 = half * (part + 1) / parts;
         for (int t = 0; t < j.nt; ++t) out[t] = j.out[t] + node * half;
-        native_down_rows(f, j.numa[node].gate, hq, j.nt, out, r0, r1, j.numa[node].down);
+        native_down_rows(f, j.numa[node].gate, hq, j.nt, out, r0, r1, j.numa[node].down, j.blob);
         first = node * half + r0; last = node * half + r1; chunk = node * parts + part;
     } else {
         first = (int) f.n_embd * part / parts; last = (int) f.n_embd * (part + 1) / parts; chunk = part;
@@ -1232,9 +1243,11 @@ void ExpertPool::run_layer_native_impl(const NativeFmt& f, ExpertJobMulti* jobs,
     if (nt < 1 || nt > MAXT || top_k < 1 || top_k > 32 || !results || !weights || !sum)
         throw std::invalid_argument("layer dataflow: invalid routed geometry");
     const bool owned = n > 0 && jobs[0].numa[0].gate != nullptr;
-    // Paths this scheduler does not cover keep the phased execution.
+    // Owned rows already get node-local queues below. Only unowned weights
+    // need the separate native-local placement query in the phased scheduler.
+    // Other paths this scheduler does not cover keep the phased execution.
     if (n <= 0 || n > kMaxSplitMulti || n_ == 1 || f.observer || f.hidden_transform || f.gu_type == 42 || f.d_type == 42 ||
-        native_local_enabled_ || (owned && !numa_rows_available_)) {
+        (native_local_enabled_ && !owned) || (owned && !numa_rows_available_)) {
         if (n > 0) run_split_multi_native(f, jobs, n);
         if (groups) {
             for (int group = 0; group < 2; ++group) {
@@ -1251,6 +1264,7 @@ void ExpertPool::run_layer_native_impl(const NativeFmt& f, ExpertJobMulti* jobs,
         throw std::invalid_argument("layer dataflow: unsupported scratch geometry");
     for (int i = 0; i < n; ++i) {
         if (jobs[i].nt < 1 || jobs[i].nt > MAXT) throw std::invalid_argument("layer dataflow: invalid token count");
+        if (owned && f.tail_off && !jobs[i].blob) throw std::invalid_argument("layer dataflow: missing scale-tail blob");
         for (int node = 0; node < 2; ++node) {
             const auto& row = jobs[i].numa[node];
             if (owned ? (!row.gate || !row.up || !row.down) : (row.gate || row.up || row.down))
@@ -1259,6 +1273,26 @@ void ExpertPool::run_layer_native_impl(const NativeFmt& f, ExpertJobMulti* jobs,
     }
     if (f.fuse_h_quant && (!owned || f.n_ff % 512))
         throw std::invalid_argument("layer dataflow: fused hidden quantization requires owned 256-row chunks");
+    // The measured small-expert geometries have only 8 or 16 fused GU tasks.
+    // Let all 16 participants work on GU, then quantize the completed hidden.
+    static const bool single_unfused = strata_env_is_one("STRATA_Q23_SINGLE_UNFUSED");
+    static const bool q23_small_unfused = strata_env_is_one("STRATA_Q23_SMALL_UNFUSED");
+    static const bool fp4_single_unfused = strata_env_is_one("STRATA_NVFP4_SINGLE_UNFUSED");
+    static const bool fp4_small_unfused = strata_env_is_one("STRATA_NVFP4_SMALL_UNFUSED");
+    const bool select_unfused = (((single_unfused && n == 1) || (q23_small_unfused && n <= 2)) &&
+                                 f.gu_type == 10 && f.d_type == 11) ||
+        (((fp4_single_unfused && n == 1) || (fp4_small_unfused && n <= 2)) &&
+         f.gu_type == kNvfp4Type && f.d_type == kNvfp4Type);
+    if (select_unfused && f.fuse_h_quant && !f.canon && owned &&
+        f.n_embd == 4096 && f.n_ff == 2048 &&
+        (nt == 1 || nt == 4) && n_ + (host_works_ ? 1 : 0) == 16) {
+        NativeFmt unfused = f;
+        unfused.fuse_h_quant = false;
+        // The recursive call is synchronous and parks workers before returning;
+        // the format copy remains alive for every task. Recursion stops here.
+        run_layer_native_impl(unfused, jobs, n, results, weights, sum, groups, nt, top_k);
+        return;
+    }
     const auto t0 = std::chrono::steady_clock::now();
     wait_parked("before a layer");
     const int threads = n_ + (host_works_ ? 1 : 0), sides = owned ? 2 : 1;

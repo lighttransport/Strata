@@ -1,0 +1,10 @@
+Test project <repo>/build-hip-rocm101-tr16
+    Start 169: input_quant_ready_test
+1/1 Test #169: input_quant_ready_test ...........   Passed    0.25 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+glm    =   0.25 sec*proc (1 test)
+
+Total Test time (real) =   0.26 sec

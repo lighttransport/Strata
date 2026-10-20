@@ -14,6 +14,7 @@
 #include "strata/kernels/cpu/nvfp4_avx512.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
 #include "strata/host/glm_env.h"
+#include "strata/host/q3_layout.h"
 
 #include "ggml.h"
 #include "ggml-cpu.h"
@@ -99,6 +100,8 @@ bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt
         err = "native experts: expert geometry is not whole blocks";
         return false;
     }
+    f.q3_expanded_down = false;
+    f.nvfp4_k32 = false;
     f.lossless = false;
     f.q23_layout = 0;
     f.observer = nullptr;
@@ -152,7 +155,42 @@ bool q8k_avx1(int type) {
     static const bool on = !cpu_avx2_ok() && cpu_avx1_ok() && std::getenv("STRATA_NO_Q8K_AVX1") == nullptr;
     return on && type == (int) GGML_TYPE_Q8_K;
 }
+void native_q3_expanded_check(const NativeFmt& f) {
+    if(f.gu_type!=10 || f.d_type!=11 || f.gu_act!=GGML_TYPE_Q8_K || f.d_act!=GGML_TYPE_Q8_K ||
+       f.lossless || f.q23_layout || f.nvfp4_k32 || f.tail_off || !cpu_avx2_ok() ||
+       f.n_embd<=0 || f.n_embd>4096 || f.n_ff<=0 || f.n_ff>4096 || f.n_embd%256 || f.n_ff%256)
+        throw std::invalid_argument("expanded Q3 down requires AVX2 and compatible Q2/Q3 expert geometry");
+    strata_q2q3_layout layout;
+    if(strata_q2q3_scale_layout(size_t(f.n_embd),size_t(f.n_ff),1,&layout) ||
+       f.gu_row!=layout.gu_row || f.d_row!=layout.d_row || f.up_off!=layout.up_off ||
+       f.down_off!=layout.down_off || f.bytes!=layout.bytes)
+        throw std::invalid_argument("expanded Q3 down has incompatible blob extents");
+}
+void native_k32_check(const NativeFmt& f) {
+    if (f.gu_type != kNvfp4Type || f.d_type != kNvfp4Type || f.canon || f.lossless || f.q23_layout ||
+        !cpu_avx2_ok() || f.n_embd <= 0 || f.n_embd > 4096 || f.n_ff <= 0 || f.n_ff > 4096 ||
+        !nvfp4_256_fits(int(f.n_embd)) || !nvfp4_256_fits(int(f.n_ff)))
+        throw std::invalid_argument("native K32 experts require AVX2 and compatible all-NVFP4 geometry");
+}
 }  // namespace
+
+void native_prepare_q3_expanded_down(const NativeFmt& source,const uint8_t* input,size_t input_bytes,
+                                     NativeFmt& prepared,std::vector<uint8_t>& output_blob) {
+    strata_q2q3_layout old,expanded;
+    if(source.q3_expanded_down || !input || source.n_embd<=0 || source.n_ff<=0 ||
+       strata_q2q3_scale_layout(size_t(source.n_embd),size_t(source.n_ff),0,&old) ||
+       strata_q2q3_scale_layout(size_t(source.n_embd),size_t(source.n_ff),1,&expanded) ||
+       input_bytes!=old.bytes || source.gu_row!=old.gu_row || source.d_row!=old.d_row ||
+       source.up_off!=old.up_off || source.down_off!=old.down_off || source.bytes!=old.bytes)
+        throw std::invalid_argument("Q3 preparation requires a complete original Q2/Q3 blob");
+    NativeFmt candidate=source;
+    candidate.q3_expanded_down=true;candidate.d_row=expanded.d_row;candidate.bytes=expanded.bytes;
+    native_q3_expanded_check(candidate);
+    std::vector<uint8_t> converted(expanded.bytes);
+    if(strata_q2q3_expand_down(size_t(source.n_embd),size_t(source.n_ff),input,input_bytes,converted.data(),converted.size()))
+        throw std::invalid_argument("Q3 preparation conversion failed");
+    prepared=candidate;output_blob.swap(converted);
+}
 
 void native_quant_act(const NativeFmt& f, const float* x, void* dst) {
     if (f.gu_type == kLlvqType) { llvq_prepare(x, int(f.n_embd), static_cast<float*>(dst)); return; }
@@ -174,6 +212,10 @@ void native_quant_h_rows(const NativeFmt& f,const float* h,void* dst,int first,i
     const int block=ggml_blck_size(ggml_type(f.d_act));
     if(first<0||last<first||last>f.n_ff||first%block||last%block)throw std::invalid_argument("unaligned hidden quantization chunk");
     if(f.canon){canon_quant_q8k(h+first,static_cast<uint8_t*>(dst)+ggml_row_size(ggml_type(f.d_act),first),last-first);return;}
+    // Fused hidden chunks use the same ISA policy as whole hidden vectors.
+    auto* chunk=static_cast<uint8_t*>(dst)+ggml_row_size(ggml_type(f.d_act),first);
+    if(q8k_avx2(f.d_act)){q8k_quant_avx2(h+first,chunk,last-first);return;}
+    if(q8k_avx1(f.d_act)){q8k_quant_avx1(h+first,chunk,last-first);return;}
     traits(f.d_act)->from_float(h+first,static_cast<uint8_t*>(dst)+ggml_row_size(ggml_type(f.d_act),first),last-first);
 }
 
@@ -197,7 +239,9 @@ int native_gu_mt_min(int gu_type) {
 }
 
 void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* act, int nt, float* const* ff,
-                    int r0, int r1, const uint8_t* separate_up) {
+                    int r0, int r1, const uint8_t* separate_up, const uint8_t* scale_blob) {
+    if (f.q3_expanded_down) native_q3_expanded_check(f);
+    if (f.nvfp4_k32) native_k32_check(f);
     if (f.gu_type == kLlvqType) {
         llvq_gu_rows(blob, separate_up ? separate_up : blob + f.up_off, act, nt, ff, r0, r1, f.swiglu_limit);
         return;
@@ -283,14 +327,19 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
     float sg = 1.f, su = 1.f;
     if (f.tail_off) {
         float tail[4];
-        std::memcpy(tail, blob + f.tail_off, sizeof tail);
+        std::memcpy(tail, (scale_blob ? scale_blob : blob) + f.tail_off, sizeof tail);
         sg = tail[0];
         su = tail[1];
+    }
+    if (f.nvfp4_k32) {
+        nvfp4_256_k32_gu_rows_clamped(blob, f.gu_row, f.up_off, n, act, nt, ff, r0, r1, sg, su, f.swiglu_limit, separate_up);
+        return;
     }
     // NVFP4 in 512-bit lanes: ggml's arithmetic, blocks decoded once per window; 1.8x at one token, 3.7x at seven
     // (nvfp4_avx512_parity). STRATA_NO_NVFP4_512 falls back to ggml-cpu.
     static const bool nvfp4_512 = cpu_avx512_ok() && std::getenv("STRATA_NO_NVFP4_512") == nullptr;
-    if (f.gu_type == kNvfp4Type && nvfp4_512 && nvfp4_512_fits(n)) {
+    // The 512-bit gate/up kernel has no clamp/separate-up contract; those use AVX2 or GGML.
+    if (f.gu_type == kNvfp4Type && nvfp4_512 && nvfp4_512_fits(n) && !(f.swiglu_limit > 0) && !separate_up) {
         nvfp4_512_gu_rows(blob, f.gu_row, f.up_off, n, act, nt, ff, r0, r1, sg, su);
         return;
     }
@@ -298,7 +347,9 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
     // tokens, 2x under DRAM load with 6 threads (nvfp4_avx512_parity). STRATA_NO_NVFP4_256 falls back to ggml-cpu.
     static const bool nvfp4_256 = cpu_avx2_ok() && std::getenv("STRATA_NO_NVFP4_256") == nullptr;
     if (f.gu_type == kNvfp4Type && nvfp4_256 && nvfp4_256_fits(n)) {
-        nvfp4_256_gu_rows(blob, f.gu_row, f.up_off, n, act, nt, ff, r0, r1, sg, su);
+        if (f.swiglu_limit > 0 || separate_up)
+            nvfp4_256_gu_rows_clamped(blob, f.gu_row, f.up_off, n, act, nt, ff, r0, r1, sg, su, f.swiglu_limit, separate_up);
+        else nvfp4_256_gu_rows(blob, f.gu_row, f.up_off, n, act, nt, ff, r0, r1, sg, su);
         return;
     }
     const ggml_vec_dot_t dot = traits(f.gu_type)->vec_dot;
@@ -321,7 +372,13 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* 
 }
 
 void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const* hq, int nt, float* const* out,
-                      int r0, int r1, const uint8_t* separate_down) {
+                      int r0, int r1, const uint8_t* separate_down, const uint8_t* scale_blob) {
+    if (f.q3_expanded_down) native_q3_expanded_check(f);
+    if (f.nvfp4_k32) native_k32_check(f);
+    if (f.q3_expanded_down) {
+        q3k_expanded_rows(separate_down?separate_down:(blob?blob+f.down_off:nullptr),f.d_row,int(f.n_ff),hq,nt,out,r0,r1);
+        return;
+    }
     if (f.d_type == kLlvqType) { llvq_down_rows(separate_down ? separate_down : blob + f.down_off, hq, nt, out, r0, r1); return; }
     if (f.q23_layout && (f.d_type==10 || f.d_type==11)) {
         q23_packed_rows(f.d_type,separate_down?separate_down:blob+f.down_off,int(f.n_ff),hq,nt,out,r0,r1,f.q23_layout==2);return;
@@ -359,15 +416,19 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
     }
     const int n = (int) f.n_ff;
     float sd = 1.f;                                   // NVFP4: the expert's s_down (see native_gu_rows)
-    if (f.tail_off) std::memcpy(&sd, blob + f.tail_off + 2 * sizeof(float), sizeof sd);
+    if (f.tail_off) std::memcpy(&sd, (scale_blob ? scale_blob : blob) + f.tail_off + 2 * sizeof(float), sizeof sd);
+    if (f.nvfp4_k32) {
+        nvfp4_256_k32_rows(separate_down ? separate_down : blob + f.down_off, f.d_row, n, hq, nt, out, r0, r1, sd);
+        return;
+    }
     static const bool nvfp4_512 = cpu_avx512_ok() && std::getenv("STRATA_NO_NVFP4_512") == nullptr;
     if (f.d_type == kNvfp4Type && nvfp4_512 && nvfp4_512_fits(n)) {
-        nvfp4_512_rows(blob + f.down_off, f.d_row, n, hq, nt, out, r0, r1, sd);
+        nvfp4_512_rows(separate_down ? separate_down : blob + f.down_off, f.d_row, n, hq, nt, out, r0, r1, sd);
         return;
     }
     static const bool nvfp4_256 = cpu_avx2_ok() && std::getenv("STRATA_NO_NVFP4_256") == nullptr;   // see above
     if (f.d_type == kNvfp4Type && nvfp4_256 && nvfp4_256_fits(n)) {
-        nvfp4_256_rows(blob + f.down_off, f.d_row, n, hq, nt, out, r0, r1, sd);
+        nvfp4_256_rows(separate_down ? separate_down : blob + f.down_off, f.d_row, n, hq, nt, out, r0, r1, sd);
         return;
     }
     const ggml_vec_dot_t dot = traits(f.d_type)->vec_dot;

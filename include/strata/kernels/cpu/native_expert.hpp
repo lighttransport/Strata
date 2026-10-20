@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 #include "strata/kernels/cpu/expert_observer.hpp"
 #include "strata/kernels/cpu/llvq_expert.hpp"
 
@@ -30,6 +31,11 @@ struct NativeFmt {
     size_t up_off = 0, down_off = 0;    ///< inside the blob
     size_t bytes = 0;                   ///< the whole blob
     size_t act_bytes = 0, h_bytes = 0;  ///< quantized activation sizes (n_embd of gu_act, n_ff of d_act)
+    // CPU-only Q2_K gate/up + expanded Q3_K down. Convert down bytes with the
+    // shared C11 converter, set d_row=n_ff/256*114 and bytes=down_off+d_row*n_embd.
+    // Original Q2 gate/up offsets stay unchanged. Explicit selection; no fallback.
+    bool q3_expanded_down = false;
+    bool nvfp4_k32 = false;         ///< explicit CPU-only repacked NVFP4 rows; all three projections must use K32
     bool lossless = false;          ///< direct magnitude planes for IQ2_S/IQ3_S
     int q23_layout = 0;             ///< 0: GGML rows; 1: tiled direct; 2: tiled lookup (Q2_K/Q3_K only)
     ExpertObserver* observer = nullptr;
@@ -54,6 +60,13 @@ bool native_experts_available() noexcept;
 /// llvq Tetra records (llvq_expert.hpp; llvq_expert_init first), blob = [gate record | up record | down record].
 bool native_fmt(int gu_type, int d_type, int64_t n_embd, int64_t n_ff, NativeFmt& f, std::string& err);
 
+/// Prepare a complete original Q2_K/Q3_K expert for expanded down scales.
+/// Throws on incompatible format, wrong input size, or allocation failure.
+/// Both output objects remain unchanged on failure; input may alias output_blob.
+/// source and prepared may be the same object. No loader/default selection.
+void native_prepare_q3_expanded_down(const NativeFmt& source, const uint8_t* input, size_t input_bytes,
+                                     NativeFmt& prepared, std::vector<uint8_t>& output_blob);
+
 /// x (n_embd floats) -> the gate/up activation (act_bytes).
 void native_quant_act(const NativeFmt& f, const float* x, void* dst);
 /// h (n_ff floats) -> the down activation (h_bytes).
@@ -63,11 +76,12 @@ void native_quant_h_rows(const NativeFmt& f,const float* h,void* dst,int first,i
 /// From how many tokens native_gu_rows gives this gate/up type to a multi-token kernel (#152; ggml-cpu's per-token dot
 /// below that).  1: a token's rows are the same alone and in any group.
 int native_gu_mt_min(int gu_type);
+/// For split storage, scale_blob points to the original complete blob holding the NVFP4 tail.
 /// ff[t][r] = silu(gate_r . a[t]) * (up_r . a[t]) for rows r in [r0, r1), `nt` tokens.
 void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const* act, int nt, float* const* ff,
-                    int r0, int r1, const uint8_t* separate_up = nullptr);
+                    int r0, int r1, const uint8_t* separate_up = nullptr, const uint8_t* scale_blob = nullptr);
 /// out[t][r] = down_r . hq[t] for rows r in [r0, r1).
 void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const* hq, int nt, float* const* out,
-                      int r0, int r1, const uint8_t* separate_down = nullptr);
+                      int r0, int r1, const uint8_t* separate_down = nullptr, const uint8_t* scale_blob = nullptr);
 
 }  // namespace strata::kernels::cpu

@@ -1,0 +1,17 @@
+HIPCC ?= hipcc
+BUILD := build
+FLAGS := -O3 -std=c++17 --offload-arch=gfx1201 -Wall -Wextra -Wpedantic
+
+.PHONY: all test bench isa
+all: $(BUILD)/w4a16
+$(BUILD):
+	mkdir -p $@
+$(BUILD)/w4a16: w4a16.hip ../nvfp4_rdna4/numeric.hpp Makefile | $(BUILD)
+	$(HIPCC) $(FLAGS) w4a16.hip -o $@
+test: all
+	./$(BUILD)/w4a16 --test
+bench: all
+	./$(BUILD)/w4a16 --bench --output $(BUILD)/w4a16.csv
+isa: | $(BUILD)
+	$(HIPCC) $(FLAGS) --cuda-device-only -S w4a16.hip -o $(BUILD)/w4a16.s
+	rg 'v_wmma_f32_.*(f16|bf16)' $(BUILD)/w4a16.s

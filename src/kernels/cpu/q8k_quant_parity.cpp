@@ -118,6 +118,19 @@ int main(int argc, char** argv) {
         failures += !same("native_quant_act", 2560, 0, ref, via_act, x, ggml_row_size(GGML_TYPE_Q8_K, 2560));
     for (const auto& x : cases(512))
         failures += !same("native_quant_h", 512, 0, ref, via_h, x, ggml_row_size(GGML_TYPE_Q8_K, 512));
+    // Exercise interior/empty chunk offsets and untouched bytes, including
+    // zero-block fields which the reference deliberately leaves unwritten.
+    for (int type : {10, 11, 21}) {
+        if (!cpu::native_fmt(type, type, 2560, 1024, f, err)) return 1;
+        const size_t bytes = ggml_row_size(GGML_TYPE_Q8_K, 1024);
+        for (const auto& x : cases(1024)) for (int first : {0, 256, 512, 1024}) {
+            const int last = std::min(first + 512, 1024);
+            std::vector<uint8_t> expected(bytes + 32, 0xAB), actual = expected;
+            ref(x.data()+first, expected.data()+16+ggml_row_size(GGML_TYPE_Q8_K,first), last-first);
+            cpu::native_quant_h_rows(f,x.data(),actual.data()+16,first,last);
+            if (actual != expected) { ++failures; std::printf("hidden chunk mismatch type=%d first=%d\n",type,first); }
+        }
+    }
     std::printf("q8k_quant_parity: %d rows x 4 sizes, AVX-2 copy %s, AVX1 copy %s: %s\n", checked / 4,
                 avx2 ? "checked" : "skipped (no AVX2, or STRATA_FORCE_ISA)",
                 avx1 ? "checked" : "skipped (AVX2 present, no AVX, or STRATA_FORCE_ISA)", failures ? "FAILED" : "identical");
@@ -143,6 +156,36 @@ int main(int argc, char** argv) {
         const double a = time("ggml-cpu", gcpu);
         const double b = avx2 ? time("AVX-2", cpu::q8k_quant_avx2) : time("AVX1", cpu::q8k_quant_avx1);
         std::printf("  %.1fx\n", a / b);
+    }
+    if (argc > 1 && std::string(argv[1]) == "--chunks-bench" && !failures) {
+        // Compare the old generic dispatch with native chunk dispatch in one
+        // process. Hot input/output isolates quantization from DRAM traffic.
+        constexpr int n=2048, passes=16384;
+        if (!cpu::native_fmt(10,10,n,n,f,err)) return 1;
+        const auto input=cases(n)[0];
+        const size_t bytes=ggml_row_size(GGML_TYPE_Q8_K,n);
+        std::vector<uint8_t> expected(bytes,0xAB), output=expected;
+        gcpu(input.data(),expected.data(),n);
+        for(int chunk : {256,512,2048}) {
+            std::vector<double> samples[2];
+            for(int trial=-1;trial<7;++trial) for(int order=0;order<2;++order) {
+                const int mode=trial<0?order:(trial+order)%2;
+                const auto start=std::chrono::steady_clock::now();
+                for(int rep=0;rep<passes;++rep) for(int first=0;first<n;first+=chunk) {
+                    if(mode) cpu::native_quant_h_rows(f,input.data(),output.data(),first,first+chunk);
+                    else gcpu(input.data()+first,output.data()+ggml_row_size(GGML_TYPE_Q8_K,first),chunk);
+                }
+                const double ns=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-start).count()/passes;
+                if(output!=expected){std::printf("chunk bench parity failed\n");return 1;}
+                if(trial>=0)samples[mode].push_back(ns);
+            }
+            for(int mode=0;mode<2;++mode) {
+                std::printf("chunk=%d mode=%s ns_per_2048=",chunk,mode?"native":"generic");
+                for(double ns:samples[mode])std::printf("%.3f,",ns);
+                std::sort(samples[mode].begin(),samples[mode].end());
+                std::printf(" median_ns=%.3f\n",samples[mode][3]);
+            }
+        }
     }
     return failures ? 1 : 0;
 }

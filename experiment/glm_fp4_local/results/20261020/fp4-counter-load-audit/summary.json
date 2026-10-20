@@ -1,0 +1,50 @@
+{
+  "hardware": "Threadripper 1950X, pinned logical CPU 11, SMT sibling 27",
+  "probe": "128 rows, K4096, 2097152 total row dots; GGML parity before/after",
+  "order": [
+    "baseline 0",
+    "candidate 0",
+    "candidate 1",
+    "baseline 1"
+  ],
+  "source_sha256": "aaf3ace7c7ccce450cd103c1b94ee3a0d4dbd5c5e6f4479e7efc8561fadcb728",
+  "probe_sha256": "27bcd25b86f59600b90d7663e11aedf4d7ed24e99c79b813f1d9dedfd17d23c8",
+  "host_load_observation": {
+    "sample_seconds": 2,
+    "browser_cpu_cores": 6.28,
+    "python_cpu_cores": 1.0,
+    "sandbox_visible_processes": 3,
+    "host_visible_processes": 827,
+    "configured_memory_speed": "unavailable; privileged DMI read not obtained"
+  },
+  "results": [
+    {
+      "log": "nv-absact-counter-0-0.csv",
+      "cycles": 2813155831.0,
+      "instructions": 7246725085.0,
+      "task-clock": 819.82,
+      "context-switches": 312.0
+    },
+    {
+      "log": "nv-absact-counter-0-1.csv",
+      "cycles": 4878292307.0,
+      "instructions": 7257091300.0,
+      "task-clock": 1548.11,
+      "context-switches": 683.0
+    },
+    {
+      "log": "nv-absact-counter-1-0.csv",
+      "cycles": 2946601243.0,
+      "instructions": 7143949996.0,
+      "task-clock": 876.07,
+      "context-switches": 345.0
+    },
+    {
+      "log": "nv-absact-counter-1-1.csv",
+      "cycles": 4763013460.0,
+      "instructions": 7152698280.0,
+      "task-clock": 1507.71,
+      "context-switches": 647.0
+    }
+  ]
+}

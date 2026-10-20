@@ -1,0 +1,40 @@
+{
+  "baseline": [
+    {
+      "Instructions": 13500.0,
+      "Total Cycles": 11825.0,
+      "Total uOps": 21300.0,
+      "Block RThroughput": 53.3,
+      "has_prefetch": false
+    },
+    {
+      "Instructions": 13800.0,
+      "Total Cycles": 11723.0,
+      "Total uOps": 21600.0,
+      "Block RThroughput": 54.0,
+      "has_prefetch": true
+    }
+  ],
+  "candidate": [
+    {
+      "Instructions": 13300.0,
+      "Total Cycles": 11521.0,
+      "Total uOps": 21100.0,
+      "Block RThroughput": 52.8,
+      "has_prefetch": false
+    },
+    {
+      "Instructions": 13500.0,
+      "Total Cycles": 11522.0,
+      "Total uOps": 21300.0,
+      "Block RThroughput": 53.3,
+      "has_prefetch": true
+    }
+  ],
+  "limitations": [
+    "Static znver1 scheduling model, not hardware measurement or peak utilization",
+    "Loop addresses normalized to local branch label; actual loop instructions retained",
+    "Baseline object and candidate use different build configurations; paired runtime compares these same objects",
+    "Does not model cache misses or concurrent host work"
+  ]
+}

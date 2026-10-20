@@ -1,0 +1,33 @@
+{
+  "two_second_intervals": [
+    {
+      "min": 0.06467661691542292,
+      "median": 0.28,
+      "max": 1.0,
+      "busy_core_equivalents": 13.185663400189796
+    },
+    {
+      "min": 0.010000000000000009,
+      "median": 0.2562814070351759,
+      "max": 1.0,
+      "busy_core_equivalents": 13.204965563653008
+    },
+    {
+      "min": 0.07499999999999996,
+      "median": 0.4724993124828121,
+      "max": 1.0,
+      "busy_core_equivalents": 17.075258972271175
+    }
+  ],
+  "logical_cpus": 32,
+  "cpu_pressure": "some avg10=0.00 avg60=0.01 avg300=0.12 total=3605792682\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+  "edac_files": [],
+  "note": "No task benchmark or compilation was running during this sample. No unrelated workloads were changed.",
+  "decision": "Defer all-core throughput qualification; awaiting actual DDR data rate/channel count and a quiet CPU measurement window. Keep GPU miners unchanged.",
+  "raw_sha256": "8911ffa0da0aacc06d75984b3ad37cff62afc14f9cccee09a97a786189bfd290",
+  "preparation_evidence": [
+    "experiment/glm_fp4_local/results/20261020/q3-prepare-profile",
+    "experiment/glm_fp4_local/results/20261020/fp4-nta-prepare-profile"
+  ],
+  "reason_not_to_add_prepared_activation_api": "Prior Q3 and FP4 profiles already bound preparation to a small service budget; adding ownership/lifetime machinery is not supported by those measurements."
+}

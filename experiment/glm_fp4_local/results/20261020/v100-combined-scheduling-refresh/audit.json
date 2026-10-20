@@ -1,0 +1,62 @@
+{
+  "scope": "Read-only worker report refresh and local scheduling source audit",
+  "source_report": "docs/GLM_DFLASH2_V100.md on connected worker checkout",
+  "source_snapshot_sha256": "1e22268379074ea9b0f196055dfdb80301774812b813a834b56cf4651b69d06e",
+  "remote_results": {
+    "hardware": "Dual Xeon Gold 6240 and two V100 PCIe 32 GB GPUs",
+    "combined_external_dflash2": {
+      "baseline_decode_tok_s": 35.3,
+      "candidate_decode_tok_s": 37.89,
+      "baseline_prefill_tok_s": 513.15,
+      "candidate_prefill_tok_s": 513.47,
+      "changes": [
+        "early input readback",
+        "route upload batching",
+        "resident expert grouping",
+        "ordered scatter"
+      ],
+      "protocol": "Three full warmups and three timed 512-output requests per side; same six output streams; no timed major faults or observed swap in target/draft workers",
+      "quality": "Both sides passed eight reused long and eight reused natural-length checks; Fresh20 unscored",
+      "verification_rounds": 147,
+      "verification_seconds": [
+        12.06,
+        11.12
+      ],
+      "drafting_seconds": [
+        2.11,
+        2.06
+      ],
+      "candidate_phase_deletion_tok_s": 45.95,
+      "verification_speedup_needed_for_50_with_other_work_fixed": 1.42
+    },
+    "working_grouped_mtp_profile_decode_tok_s": 41.24,
+    "working_profile_status": "Report now freezes grouped profile and shifts effort toward prefill; earlier absolute speed-selection gate still failed and experimental reference remains 40.26",
+    "compact_cpu_scale_lookup": "Still component-only in inspected report; no new qualified full-model lookup result"
+  },
+  "local_source_sha256": "cd21421d2c66833dfc31ddc37a84d2d57079fea39386bab1fbc3c86c3280109a",
+  "local_audit": [
+    {
+      "function": "enqueue_moe_publish",
+      "finding": "Router/mailbox publication precedes enqueue_moe_residents; optional batched fused publication exists."
+    },
+    {
+      "function": "enqueue_moe_residents",
+      "finding": "Resident run_device is enqueued before shared ffn, while CPU processes published nonresident routes."
+    },
+    {
+      "function": "enqueue_moe_combine",
+      "finding": "Mailbox wait/add and resident-aware combine already exist."
+    },
+    {
+      "function": "pipeline_ready",
+      "finding": "Several configurations disable this path; source presence alone does not prove it executes in a particular model run."
+    }
+  ],
+  "decision": "Do not multiply remote gains into local forecasts or duplicate existing publication/combine scheduling. A future local gain needs evidence from the actually selected execution path and its critical-path phases.",
+  "limitations": [
+    "Remote measurements are reported results, not rerun locally",
+    "Combined changes cannot identify individual CPU contribution",
+    "Speculation and lossy routing settings differ from local exact-decode planning",
+    "No local GPU/model execution or performance measurement in this audit"
+  ]
+}

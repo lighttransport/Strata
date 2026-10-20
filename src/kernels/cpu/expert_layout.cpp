@@ -1,3 +1,4 @@
+#include <stdexcept>
 // src/kernels/cpu/expert_layout.cpp - plan v0.3 P6: the per-layer expert table.  See the header.
 #include "strata/kernels/cpu/expert_layout.hpp"
 
@@ -377,6 +378,7 @@ void act_quant_any(const float* x, int n, ActQ& a) {
 // Without ggml-cpu no native pack loads (expert_layout_load refuses), so these are never reached.
 bool native_experts_available() noexcept { return false; }
 bool native_fmt(int, int, int64_t, int64_t, NativeFmt&, std::string& err) { err = "built without native experts"; return false; }
+void native_prepare_q3_expanded_down(const NativeFmt&, const uint8_t*, size_t, NativeFmt&, std::vector<uint8_t>&) { throw std::runtime_error("built without native experts"); }
 void native_quant_act(const NativeFmt&, const float*, void*) { std::abort(); }
 void native_quant_h(const NativeFmt&, const float*, void*) { std::abort(); }
 int native_gu_mt_min(int) { return 2; }

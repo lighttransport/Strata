@@ -1,0 +1,10 @@
+{
+  "sample_seconds": 3,
+  "busy_core_equivalents": 14.3480774881874,
+  "logical_cpus": 32,
+  "median_busy_fraction": 0.32278516057585827,
+  "max_busy_fraction": 0.9966666666666667,
+  "dmi_table_exists": true,
+  "dmi_table_readable": false,
+  "edac_controller_count": 0
+}

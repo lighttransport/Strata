@@ -1,0 +1,72 @@
+{
+  "scope": "Opt-in deferred input quantization in pipelined CPU expert dispatch",
+  "flag": "STRATA_GLM_LAZY_CPU_QUANT=1",
+  "default": "off",
+  "guards": [
+    "remote TP forces eager preparation",
+    "resident-row diagnostic presence forces eager preparation"
+  ],
+  "builds": {
+    "HIP": "decoder and CPU test target succeeded; original process exit 0 observed",
+    "CUDA": "decoder and CPU test target succeeded; confirmation build exit 0 observed after original handle expired"
+  },
+  "tests": {
+    "HIP": {
+      "demand_layer_cases": 1048,
+      "ctest_passed": true
+    },
+    "CUDA": {
+      "demand_layer_cases": 1048,
+      "ctest_passed": true
+    }
+  },
+  "unqualified": [
+    "end-to-end model parity",
+    "GPU routing execution",
+    "remote transport execution",
+    "decode throughput",
+    "theoretical CPU peak utilization",
+    "SYCL build (compiler unavailable)"
+  ],
+  "source_sha256": {
+    "include/strata/kernels/cpu/input_quant_ready.hpp": "fe57a959458ec3819cb60015b277508773134a40ec1a209f7f156705c444358f",
+    "src/kernels/cpu/input_quant_ready_test.cpp": "2412783aa5178ed463b36afa89a20637f55e495d0aa744bc14fe0221cea3c1aa",
+    "src/program/glm_decode.cpp": "cd21421d2c66833dfc31ddc37a84d2d57079fea39386bab1fbc3c86c3280109a",
+    "CMakeLists.txt": "e6d3100905d3b7cbf9245d75ce2c1b774ba12d02473883bd1e22d2b4ea3eae90"
+  },
+  "log_transformation": "Repository root replaced with <repo>; remaining personal home/mount paths redacted; raw logs retained locally.",
+  "logs": {
+    "cuda-build-confirm.log": {
+      "raw_sha256": "8c35b1682f73592d30612d7b0fabdb384fcfff35cb5a076cb48b85b1368aa794",
+      "published_sha256": "8c35b1682f73592d30612d7b0fabdb384fcfff35cb5a076cb48b85b1368aa794"
+    },
+    "cuda-build.log": {
+      "raw_sha256": "e70da94ef5308ee38fb737922024eb1e8e9c39915daf9627b82123e10b0e6b50",
+      "published_sha256": "2f7a4dcca45ea4181672aa5ae78b1f874b60a64fded77689334b1ed945d96b5c"
+    },
+    "cuda-ctest.log": {
+      "raw_sha256": "f167bf5ea83f0e9762eb51c0a78f121295f994fa00a079ca04013c86f200947c",
+      "published_sha256": "5621c08e7f9751d2697143ba825a12c1f2a02bb9f190be4807ffe4d18a18f0fa"
+    },
+    "cuda-test.log": {
+      "raw_sha256": "dd878eb1e37bc4738eb7ad6d424abb5f729c5c01110149d21b65aa3c85778f12",
+      "published_sha256": "dd878eb1e37bc4738eb7ad6d424abb5f729c5c01110149d21b65aa3c85778f12"
+    },
+    "hip-build.log": {
+      "raw_sha256": "1e25eb8d4964bc1db984c60c88f3973073d8e2056426d1d6f1084b40bbe01c88",
+      "published_sha256": "72a88ec8e94dd4ecb53e053129eb6dbe3d006fab709d65abdfedad94a3fda35c"
+    },
+    "hip-ctest.log": {
+      "raw_sha256": "575fef6bd424774e01097e1d036ab9ad268517e1c2315e6e8270d1547b3988d8",
+      "published_sha256": "d2e5e85bfdf87d43c604c65d19a9250bd252561bdee2090bb7a6a46e98c62362"
+    },
+    "hip-test-build.log": {
+      "raw_sha256": "68748bc93f8928a66b256a20f6e0d5f8d25696c8f7f2e4a042858e0dc6260e96",
+      "published_sha256": "61cf0ec5325975ed531207d4c93a7bc8586c4f03ea9cefc259b53e20aa6933c0"
+    },
+    "hip-test.log": {
+      "raw_sha256": "dd878eb1e37bc4738eb7ad6d424abb5f729c5c01110149d21b65aa3c85778f12",
+      "published_sha256": "dd878eb1e37bc4738eb7ad6d424abb5f729c5c01110149d21b65aa3c85778f12"
+    }
+  }
+}
