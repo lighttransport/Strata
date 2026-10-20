@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "0e9e7fa85acd7f6cec0f250f039e67f4caf91ea8b7f2f8d832a6ebecff019622"
+      "sha256": "48a88239774dc774dec203733d8187794c628cb9850974a51551fa7cb7627552"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -7843,6 +7843,7 @@
     "DFlash2: rank 8 fc calibration has a depth 3 single-request native pair of 30.35 / 32.02 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
     "DFlash2: rank 8 fc calibration has a depth 7 single-request native pair of 23.95 / 24.97 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
     "DFlash2: rank 8 fc-mlp-down calibration has a depth 3 single-request native pair of 30.28 / 30.03 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
+    "DFlash2: selector-aware training213 selected step320 with mean correct prefix3.875 versus3.375 on8calibration windows. This proxy does not establish native speed or coding quality and changes no selected preset or capacity.",
     "DFlash2: offline selector evaluation of training178 chose step0 and transition scale1.5 with mean correct prefix3.75 on8synthetic windows. Packed graph/eager outputs matched. This calibration proxy is not native TPS, coding quality or a hardware capacity.",
     "DFlash2: offline selector evaluation of training186 chose step320 and transition scale1.0 with mean correct prefix3.875 on8synthetic windows. Packed graph/eager outputs matched. This calibration proxy is not native TPS, coding quality or a hardware capacity.",
     "DFlash2: selector-aware training208failed before its first update because evaluation cached an inference-only operand. The failed run is retained; the fix passed31CPU tests and real-weight V100 evaluate-before-training, gradient, selector and graph checks in source212. No trained speed gain is claimed.",

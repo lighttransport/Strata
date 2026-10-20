@@ -137,6 +137,12 @@ gradients for every adapter and unchanged base weights. Packed skinny relative
 L2 error was 0.00276; peak reserved memory was 10,661,920,768 bytes.
 The failed source and artifacts are retained.
 
+The corrected selector-aware run completed 512 rank-8 updates in 187.09
+training seconds, or 266.56 seconds including preparation. Selection chose
+step 320: mean correct prefix rose from
+3.375 to 3.875 on the same eight calibration windows, with 31/56 selected
+tokens matching the teacher. Native throughput and coding checks are pending.
+
 Each adapter still needs repeated native inference timing, target and worker
 residency checks, and separate coding checks. Freeze a final policy before
 scoring fresh holdouts. Keep original baselines, failed runs and all artifact

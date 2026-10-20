@@ -92,6 +92,7 @@
     "dflash2-evidence-43.tar.gz": "b2f47b91485428b3b3caf9ab50a412a6e19ff8a8a32e9c81a7d39832456dbc96",
     "dflash2-evidence-44.tar.gz": "53e9880b4edd9edcf7245b3016dbb4d4faa43ba41efd5474aacc061ff45bad8f",
     "dflash2-evidence-45.tar.gz": "2908ce2dffbd2457304e797c39d660c38e3f55b7cb3f0c1677d25c5963952de3",
+    "dflash2-evidence-48.tar.gz": "435f49c0e04bba8e94656cb7930f60d3fef43313864397bd58c6dcbea686eafd",
     "dflash2-evidence-5.tar.gz": "092c96309fc1fa062780ab20b5125111a2f1629241117893491e3779ee2b3d3e",
     "dflash2-evidence-6.tar.gz": "3608bfa261ed6fe7174dc007307021ebbab7b7757e0509d13c16132e2e250b8e",
     "dflash2-evidence-7.tar.gz": "d7d5cfb82abc77abe409c40c05a793a7e91abaebdb8e1802bd103f99efd77eb1",
@@ -33686,7 +33687,7 @@
     "files": 42,
     "bytes": 177463841024,
     "manifest_sha256": "b1389a9ecaee05ba182687bce9bb217e1f99d21ffe84bb1a5c7fbacc5257039f",
-    "copies_checked": 5,
+    "copies_checked": 6,
     "copies_identical": true,
     "manifest_encoding": "UTF8 JSON of per-file name/bytes/sha256 records sorted by name; sort_keys=True, separators=(comma,colon), no trailing newline.",
     "checks": [
@@ -33732,6 +33733,15 @@
         "bytes": 177463841024,
         "raw_sha256": "d891968047d3c5b6c66f1586ca85b4c0f186b9fae31c8985ae062c08b2e4a9af",
         "startup_seconds": 316.67945722700097,
+        "direct_read": true,
+        "backing": "sealed memfd; one shared physical copy"
+      },
+      {
+        "manifest_sha256": "b1389a9ecaee05ba182687bce9bb217e1f99d21ffe84bb1a5c7fbacc5257039f",
+        "files": 42,
+        "bytes": 177463841024,
+        "raw_sha256": "6b329f82510c977d81b1aa391c8c426b0da7b161d4377b39671310c1e3ae7be4",
+        "startup_seconds": 317.43071899493225,
         "direct_read": true,
         "backing": "sealed memfd; one shared physical copy"
       }
@@ -38455,6 +38465,199 @@
       "eligible_for_model_screen": true,
       "raw_sha256": "7fb35b71fcb3d82e143c2fd4d078f860646291406f3cf23672e6274f207942ce",
       "training_result_sha256": "99fb9c337abdb43f8d8ea7f8b63cd10e1c5ec17d459c7179dee143c132eaf0a0",
+      "fit": false,
+      "performance_anchor": false,
+      "scope": "Frozen independent synthetic prompts with8held-out windows/56labels. Calibration agreement and loss are not model throughput or general coding accuracy."
+    },
+    {
+      "training_version": 213,
+      "training": {
+        "complete": true,
+        "schema": "strata.dflash2.calibration.v1",
+        "fit": false,
+        "performance_anchor": false,
+        "fresh_holdout_scored": false,
+        "seed": 140,
+        "steps": 512,
+        "rank": 8,
+        "alpha": 8.0,
+        "learning_rate": 0.0003,
+        "training_samples": 1064,
+        "evaluation_samples": 8,
+        "evaluation_prompt_rule": "prompt_index modulo4 equals3; first and middle usable frames",
+        "dataset_result_sha256": "1a566d121e553dd83c55081faaa80d98bea1c989c9d5a200a336bb8078489d3a",
+        "base_checkpoint_sha256": "b038e1d9d1e7833fa3880c2c0135ba9b673013f03da1b29fb831931584759dac",
+        "head_proof_sha256": "8223fe515192486a61c52446e6c03acb55f3bb417363d00062699f52225db294",
+        "helper_sha256": "58083785055f5350f69c1a710bd4a7549d3806bc3b55f76996437d555daa07f4",
+        "training_source_sha256": "e9fe3d69055110123a53966cb662445de1feae893ae9125775659c23a00f3435",
+        "records": [
+          {
+            "step": 0,
+            "evaluation_loss": 2.9439317018300244,
+            "evaluation_agreement": 0.5,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.625,
+              0.5,
+              0.375,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10368319488,
+            "selector_mean_prefix": 3.375,
+            "selector_agreement": 0.5
+          },
+          {
+            "step": 64,
+            "evaluation_loss": 2.9086637079940374,
+            "evaluation_agreement": 0.5178571428571429,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.625,
+              0.5,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.375,
+            "selector_agreement": 0.5
+          },
+          {
+            "step": 128,
+            "evaluation_loss": 2.6539657977473325,
+            "evaluation_agreement": 0.5357142857142857,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.75,
+              0.5,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.375,
+            "selector_agreement": 0.6071428571428571
+          },
+          {
+            "step": 192,
+            "evaluation_loss": 2.476536666663378,
+            "evaluation_agreement": 0.5178571428571429,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.625,
+              0.5,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.5,
+            "selector_agreement": 0.6071428571428571
+          },
+          {
+            "step": 256,
+            "evaluation_loss": 2.45785665605581,
+            "evaluation_agreement": 0.5357142857142857,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.625,
+              0.625,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.5,
+            "selector_agreement": 0.5178571428571429
+          },
+          {
+            "step": 320,
+            "evaluation_loss": 2.462634690120467,
+            "evaluation_agreement": 0.5357142857142857,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.625,
+              0.625,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.875,
+            "selector_agreement": 0.5535714285714286
+          },
+          {
+            "step": 384,
+            "evaluation_loss": 2.2948345120348677,
+            "evaluation_agreement": 0.5357142857142857,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.625,
+              0.625,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.75,
+            "selector_agreement": 0.6607142857142857
+          },
+          {
+            "step": 448,
+            "evaluation_loss": 2.2511231830249017,
+            "evaluation_agreement": 0.5892857142857143,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.875,
+              0.75,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.75,
+            "selector_agreement": 0.6607142857142857
+          },
+          {
+            "step": 512,
+            "evaluation_loss": 2.1356900159589713,
+            "evaluation_agreement": 0.5892857142857143,
+            "position_agreement": [
+              0.75,
+              0.75,
+              0.875,
+              0.75,
+              0.5,
+              0.25,
+              0.25
+            ],
+            "peak_reserved_bytes": 10376708096,
+            "selector_mean_prefix": 3.75,
+            "selector_agreement": 0.6607142857142857
+          }
+        ],
+        "selector_loss_weight": 1.0,
+        "prefix_decay": 0.8,
+        "selection_metric": "selector-prefix",
+        "adapter_targets": "fc-mlp-down-selector",
+        "zero_adapter_serving_max_abs_error": 0.0,
+        "selected_step": 320,
+        "training_seconds": 187.0851090250071,
+        "peak_reserved_bytes": 10376708096,
+        "scope": "Independent synthetic calibration prompt split. Agreement/loss do not prove tok/s or coding quality; target checkpoint is unchanged."
+      },
+      "eligible_for_model_screen": true,
+      "raw_sha256": "5eece9593f9229fc02445a641ff7e8a0a526c7a1a1d9e57df66874f656c13a59",
+      "training_result_sha256": "f36079ad6edf3b9968a2f4aca9e79104408ac80cc53831feff73e7e195e9a813",
       "fit": false,
       "performance_anchor": false,
       "scope": "Frozen independent synthetic prompts with8held-out windows/56labels. Calibration agreement and loss are not model throughput or general coding accuracy."
