@@ -141,7 +141,17 @@ The corrected selector-aware run completed 512 rank-8 updates in 187.09
 training seconds, or 266.56 seconds including preparation. Selection chose
 step 320: mean correct prefix rose from
 3.375 to 3.875 on the same eight calibration windows, with 31/56 selected
-tokens matching the teacher. Native throughput and coding checks are pending.
+tokens matching the teacher.
+
+Its matched native screens measured 30.15 / 30.07 decode tok/s at depth three
+and 23.90 / 25.00 at depth seven, base / trained. Each side used three full
+warmups and one timed 512-output request on the same two V100s and 181 GiB
+allocation. Target and worker residency checks passed. At depth three,
+accepted proposals fell from 343 to 340. At depth seven, rounds fell from
+147 to 141 and verification time from 18.97 to 17.99 seconds, but the longer
+block remained slower than depth three. Neither pair qualifies for promotion;
+coding quality was not scored. The calibration proxy does not establish a
+native speed gain.
 
 Each adapter still needs repeated native inference timing, target and worker
 residency checks, and separate coding checks. Freeze a final policy before
