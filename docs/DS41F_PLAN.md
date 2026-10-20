@@ -323,6 +323,67 @@ A64FX plan's shape (docs/GLM_A64FX_PLAN.md section 4) with a second architecture
    union ratio, so acceptance below ~0.9 per position does not pay).
 5. Two nodes over `expert_tp.hpp` / `ucomm`; A64FX through the GLM port (uTofu `ucomm` backend, 4-CMG pool).
 
+## 8b. The runner on TR16 + RX 9070 XT (measured 2026-10-21)
+
+The DS4.1F runner is `src/program/ds41_decode.cpp`. `strata-glm-decode` takes a GGUF whose architecture is
+`deepseek41`, the schema of llama.cpp PR #30817, for example Unsloth's UD-IQ1_S.
+
+Placement:
+- The trunk runs on the GPU from the GGUF's own Q6_K/Q5_K/Q8_0/BF16/F32 tensors.
+- The routed experts are mapped from the GGUF and run on the CPU lane (IQ1_S `Fmt32<19>`), or on the GPU from an
+  adaptive VRAM tier: one arena of about 1100 experts, 2 promotions per token.
+- In prompts of 512 tokens or more, the experts are streamed to the GPU through llama.cpp's MMQ.
+- Engram rows are read from the mapped table.
+
+Against llama.cpp on the same GGUF (out-of-sample wikitext, 1063 tokens), mean KL is 0.05 and perplexity 5.55
+vs 5.56.
+
+Measured:
+
+| What | tok/s |
+|---|---:|
+| Decode, 128 tokens after a 1K prompt, GPU tier hit 0.61 | 12.5 |
+| Prefill, 1063 tokens, chunks of 256, CPU lane + GPU tier | 27.3 |
+| Prefill, 1063 tokens, a 1024-token pass with streamed MMQ experts | 42.1 |
+
+`python3 tools/glm_ds41f_sim.py roofline` (`ds41f.RunnerHw`, fitted to the three rows above) gives these decode
+estimates, with exact routing, in ms per token:
+
+| Config | Trunk | Experts | Other | Hit | tok/s |
+|---|---:|---:|---:|---:|---:|
+| now | 30.6 | 40.1 | 7.5 | 0.61 | 12.8 |
+| misses split between the CPU lane and PCIe uploads | 30.6 | 22.4 | 7.5 | 0.61 | 16.5 |
+| next-layer prefetch (+0.09 hit) | 30.6 | 30.9 | 7.5 | 0.70 | 14.5 |
+| target: trunk GEMV at 480 GB/s, prefetch, split, fewer syncs | 17.6 | 17.3 | 2.5 | 0.70 | 26.8 |
+| target without the split | 17.6 | 30.9 | 2.5 | 0.70 | 19.6 |
+
+And these prefill estimates, in tok/s:
+
+| Config | 1K | 2K | 4K | 8K |
+|---|---:|---:|---:|---:|
+| now: CPU lane, chunks of 256 | 29 | 28 | 27 | 26 |
+| now: streamed, chunks of 1024 | 42 | 41 | 39 | 36 |
+| target: one layer-major pass per prompt | 127 | 247 | 303 | 251 |
+| target, enc-skip (layers past 20 on the last 2560 tokens) | 127 | 247 | 354 | 345 |
+| same, with 15 GB of experts not page-cached (SSD at 1.7 GB/s) | 61 | 120 | 232 | 345 |
+
+The target assumes:
+- the copies of one layer overlap the GPU work of another;
+- host copies reach 13.8 GB/s, the PCIe 3.0 x16 DMA rate; the shared mapping copies at 21 GB/s;
+- the dense half runs at 2.3 ms per token (batched attention, indexer and compressor; GPU top-k);
+- MMQ experts take 0.4 ms per token.
+
+Every expert must stay in RAM. The 115 GB of experts fit in 128 GB only if Engram reads do not fill the page cache,
+and on 2026-10-21 about 15 % of the expert pages were not cached.
+
+Comparison with Xolotl (a Strata fork; RTX 4090, 90 GB RAM, about 152 GiB of experts mostly on NVMe):
+- **Prefill.** Its exact 244-317 tok/s comes from the same layer-major pass (8K tokens), enc-skip, next-layer prestage
+  and background Engram reads. The table's target is that design on this machine's PCIe 3.0.
+- **Decode.** Its 26-27 tok/s relies on a route bias toward VRAM-resident experts (lossy: code perplexity
+  2.38 -> 2.87) and DSpark. With exact routing it runs at about 3.5 tok/s, because its experts live on NVMe.
+- **Here,** every expert is in RAM, so exact routing already gives 12.5 tok/s, and the decode target above is about
+  20-27 tok/s without changing the routing.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;

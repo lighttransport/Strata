@@ -128,6 +128,32 @@ def cmd_validate(args):
     return 1 if bad else 0
 
 
+def cmd_roofline(args):
+    """The Strata runner on TR16 + RX 9070 XT (ds41f.RunnerHw): decode and prefill per profile and option."""
+    print("decode (exact routing, ms per token)")
+    print(f"{'config':<44}{'trunk':>7}{'experts':>9}{'other':>7}{'hit':>6}{'tok/s':>8}")
+    rows = [("now (measured 12.5)", ds41f.RunnerPlan()),
+            ("now + misses split CPU/PCIe", ds41f.RunnerPlan(set=dict(split_misses=True))),
+            ("now + prefetch (+0.09 hit)", ds41f.RunnerPlan(set=dict(prefetch_gain=0.09))),
+            ("target: tuned trunk, prefetch, split, syncs", ds41f.RunnerPlan(profile="target")),
+            ("target without the split", ds41f.RunnerPlan(profile="target", set=dict(split_misses=False)))]
+    for name, rp in rows:
+        r = ds41f.runner_decode(rp)
+        print(f"{name:<44}{r['trunk_ms']:>7.1f}{r['experts_ms']:>9.1f}{r['other_ms']:>7.1f}{r['hit']:>6.2f}{r['tok_s']:>8.1f}")
+    print("\nprefill (tok/s; stream = every touched expert over PCIe once per pass)")
+    prompts = (1024, 2048, 4096, 8192)
+    print(f"{'config':<52}" + "".join(f"{p:>8}" for p in prompts))
+    rows = [("now: CPU experts, chunks of 256", ds41f.RunnerPlan(mode="cpu_experts", chunk=256)),
+            ("now: stream, chunks of 1024", ds41f.RunnerPlan(mode="stream", chunk=1024)),
+            ("now: stream, one pass (chunk = prompt)", ds41f.RunnerPlan(mode="stream", chunk=1 << 20)),
+            ("target: stream, one pass", ds41f.RunnerPlan(profile="target", mode="stream", chunk=1 << 20)),
+            ("target: stream, one pass, enc-skip 2560", ds41f.RunnerPlan(profile="target", mode="stream", chunk=1 << 20, enc_skip=2560)),
+            ("target, one pass, enc-skip, 15 GB of experts on SSD", ds41f.RunnerPlan(profile="target", mode="stream", chunk=1 << 20, enc_skip=2560, uncached_gb=15))]
+    for name, rp in rows:
+        print(f"{name:<52}" + "".join(f"{ds41f.runner_prefill(rp, p)['tok_s']:>8.0f}" for p in prompts))
+    return 0
+
+
 def md(header, rows):
     return "\n".join(["| " + " | ".join(header) + " |", "|" + "|".join("---:" if i else "---" for i in range(len(header))) + "|"]
                      + ["| " + " | ".join(str(c) for c in r) + " |" for r in rows])
@@ -188,7 +214,8 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="command", required=True)
     for name, fn, help_ in (("estimate", cmd_estimate, "one plan"), ("packs", cmd_packs, "candidate packs on one machine"),
                             ("memory", cmd_memory, "memory fit per pack"), ("validate", cmd_validate, "predicted vs measured"),
-                            ("report", cmd_report, "markdown tables for docs/DS41F_PLAN.md")):
+                            ("report", cmd_report, "markdown tables for docs/DS41F_PLAN.md"),
+                            ("roofline", cmd_roofline, "the Strata runner on TR16 + RX 9070 XT: decode and prefill per profile")):
         p = sub.add_parser(name, help=help_)
         add_args(p)
         p.set_defaults(func=fn)

@@ -181,6 +181,10 @@ inline bool block_geometry(uint32_t t, int& elems, int& bytes) {
         elems = 256;
         bytes = 66;
         return true;
+    case 19:   // IQ1_S: fp16 d, qs[32], qh[8] u16
+        elems = 256;
+        bytes = 50;
+        return true;
     case 17:
         elems = 256;
         bytes = 74;
@@ -282,7 +286,8 @@ struct MetaValue {
     std::string s;                 // string payloads
     MetaType elem = MetaType::U32; // arrays
     uint64_t count = 0;
-    std::vector<MetaValue> items;
+    std::vector<MetaValue> items;  // arrays: the first 64 elements only (GgufFile::int_array reads all of them)
+    uint64_t offset = 0;           // arrays: file offset of the first element
     bool is_num() const { return type != MetaType::STRING && type != MetaType::ARRAY; }
     double num() const { return (type == MetaType::F32 || type == MetaType::F64) ? f : (double)u; }
 };
@@ -335,6 +340,7 @@ inline MetaValue read_value(Cursor& c, MetaType t, int depth = 0) {
         v.elem = (MetaType)c.read<uint32_t>();
         v.count = c.read<uint64_t>();
         if (v.count > (1u << 24)) throw std::runtime_error("GGUF: implausible array length");
+        v.offset = c.pos();
         v.items.reserve((size_t)std::min<uint64_t>(v.count, 64));
         for (uint64_t i = 0; i < v.count; ++i) {
             MetaValue e = read_value(c, v.elem, depth + 1);
@@ -382,6 +388,35 @@ public:
         return it == meta_.end() ? nullptr : &it->second;
     }
     const uint8_t* tensor_data(const TensorInfo& t) const { return base_ + data_start_ + t.offset; }
+    /// Every element of an integer array (the metadata keeps only a sample of long arrays). Signed types keep their
+    /// sign. Throws for a missing key or a non-integer array.
+    std::vector<int64_t> int_array(const std::string& key) const {
+        const MetaValue* v = get(key);
+        if (!v || v->type != MetaType::ARRAY) throw std::runtime_error("GGUF: missing array " + key);
+        size_t width = 0;
+        switch (v->elem) {
+        case MetaType::U8: case MetaType::I8: width = 1; break;
+        case MetaType::U16: case MetaType::I16: width = 2; break;
+        case MetaType::U32: case MetaType::I32: width = 4; break;
+        case MetaType::U64: case MetaType::I64: width = 8; break;
+        default: throw std::runtime_error("GGUF: " + key + " is not an integer array");
+        }
+        if (v->offset + v->count * width > size_) throw std::runtime_error("GGUF: truncated array " + key);
+        std::vector<int64_t> out((size_t)v->count);
+        const uint8_t* p = base_ + v->offset;
+        for (size_t i = 0; i < out.size(); ++i, p += width) {
+            switch (v->elem) {
+            case MetaType::U8: out[i] = *p; break;
+            case MetaType::I8: out[i] = (int8_t)*p; break;
+            case MetaType::U16: { uint16_t x; std::memcpy(&x, p, 2); out[i] = x; break; }
+            case MetaType::I16: { int16_t x; std::memcpy(&x, p, 2); out[i] = x; break; }
+            case MetaType::U32: { uint32_t x; std::memcpy(&x, p, 4); out[i] = x; break; }
+            case MetaType::I32: { int32_t x; std::memcpy(&x, p, 4); out[i] = x; break; }
+            default: { int64_t x; std::memcpy(&x, p, 8); out[i] = x; break; }   // U64 values above INT64_MAX wrap
+            }
+        }
+        return out;
+    }
     // Release only fully covered tensor pages after an owned copy or before a
     // bounded copy pass. File contents and adjacent metadata/tensors are intact.
     void discard_tensor_pages(const TensorInfo& t,uint64_t bytes)const {

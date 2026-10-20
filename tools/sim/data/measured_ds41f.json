@@ -102,6 +102,51 @@
    "measured": {
     "tok_s": 14.22
    }
+  },
+  {
+   "name": "DS4.1F Strata runner on TR16 + RX 9070 XT, decode 128 tokens after a 1K prompt (UD-IQ1_S, adaptive GPU tier)",
+   "kind": "runner_decode",
+   "tolerance": 0.15,
+   "fit": true,
+   "source": "Strata src/program/ds41_decode.cpp on TR16 + RX 9070 XT, UD-IQ1_S, out-of-sample wikitext 1063 tokens, 2026-10-21 (12.5 tok/s, tier hit 0.61)",
+   "plan": {
+    "profile": "now"
+   },
+   "measured": {
+    "tok_s": 12.5
+   }
+  },
+  {
+   "name": "DS4.1F Strata runner on TR16 + RX 9070 XT, prefill 1063 tokens, chunks of 256, CPU experts + GPU tier",
+   "kind": "runner_prefill",
+   "prompt": 1063,
+   "tolerance": 0.15,
+   "fit": true,
+   "source": "Strata src/program/ds41_decode.cpp on TR16 + RX 9070 XT, UD-IQ1_S, out-of-sample wikitext 1063 tokens, 2026-10-21 (27.3 tok/s)",
+   "plan": {
+    "profile": "now",
+    "mode": "cpu_experts",
+    "chunk": 256
+   },
+   "measured": {
+    "tok_s": 27.3
+   }
+  },
+  {
+   "name": "DS4.1F Strata runner on TR16 + RX 9070 XT, prefill 1063 tokens, 1024-token pass with streamed MMQ experts",
+   "kind": "runner_prefill",
+   "prompt": 1063,
+   "tolerance": 0.15,
+   "fit": true,
+   "source": "Strata src/program/ds41_decode.cpp on TR16 + RX 9070 XT, UD-IQ1_S, out-of-sample wikitext 1063 tokens, 2026-10-21 (42.1 tok/s; copies 12.7 s at ~8.4 GB/s)",
+   "plan": {
+    "profile": "now",
+    "mode": "stream",
+    "chunk": 1024
+   },
+   "measured": {
+    "tok_s": 42.1
+   }
   }
  ],
  "engram": {

@@ -467,6 +467,7 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
                           src/kernels/cuda/gdn.cu
                           src/kernels/cuda/glm.cu src/kernels/cuda/glm_prefill.cu src/kernels/cuda/glm_mailbox.cu src/kernels/cuda/glm_q23.cu src/kernels/cuda/glm_q8.cu src/kernels/cuda/exl3.cu
                           src/kernels/cuda/llvq_tetra.cu
+                          src/kernels/cuda/ds41.cu
                           src/kernels/cuda/qsa.cu
                           src/kernels/cuda/elementwise.cu
                           src/kernels/cuda/bf16_gemv.cu
@@ -1638,7 +1639,7 @@ if(STRATA_NATIVE_EXPERTS)
     add_test(NAME q8k_quant_parity COMMAND q8k_quant_parity)
     add_test(NAME q8k_quant_parity_avx COMMAND ${CMAKE_COMMAND} -E env STRATA_FORCE_ISA=avx $<TARGET_FILE:q8k_quant_parity>)
   endif()
-  set(_strata_mmq_types q2_0 iq2_xxs iq2_xs iq2_s iq3_xxs iq3_s iq4_nl iq4_xs q8_0)
+  set(_strata_mmq_types q2_0 iq1_s iq2_xxs iq2_xs iq2_s iq3_xxs iq3_s iq4_nl iq4_xs q8_0)
   # #296: OrcaRouter Q4_K_S's Q5_0 experts (Q4_K and Q5_1 come with STRATA_MMQ_KQUANTS on CUDA, S5's branch)
   if(STRATA_ORCA_Q4KS_MMQ)
     list(APPEND _strata_mmq_types q5_0)
@@ -1871,7 +1872,8 @@ if(STRATA_NATIVE_EXPERTS)
     if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
       add_executable(glm_native_expert_parity src/kernels/glm_native_expert_parity.cpp)
       target_link_libraries(glm_native_expert_parity PRIVATE strata_kernels strata_kernels_cpu strata_artifact strata_host ${_strata_gpu_runtime_target})
-      add_executable(strata-glm-decode src/program/glm_decode.cpp src/program/glm_state_store.cpp)
+      add_executable(strata-glm-decode src/program/glm_decode.cpp src/program/glm_state_store.cpp
+                     src/program/ds41_decode.cpp src/ds41/expert_lane.cpp)
       target_link_libraries(strata-glm-decode PRIVATE strata_engine strata_spec strata_prefill strata_kernels strata_kernels_cpu strata_artifact strata_ucomm ${_strata_gpu_runtime_target} ${_strata_gpu_blas_target})
       add_executable(strata-glm-gpu-worker src/program/glm_gpu_worker.cpp)
       target_link_libraries(strata-glm-gpu-worker PRIVATE strata_engine strata_spec strata_prefill strata_kernels strata_kernels_cpu strata_artifact strata_ucomm ${_strata_gpu_runtime_target} ${_strata_gpu_blas_target})

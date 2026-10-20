@@ -1,3 +1,4 @@
+#include "strata/ds41/decode.hpp"
 #include "strata/host/glm_layer.h"
 #include "strata/kernels/cpu/exl3/pool.hpp"
 #include "strata/kernels/cpu/exl3/dense_q8.hpp"
@@ -12124,6 +12125,8 @@ int main(int argc, char **argv) {
         return 2;
     }
     try {
+        // DeepSeek-V4.1-Flash GGUFs take their own decoder (src/program/ds41_decode.cpp)
+        if (strata::ds41::is_ds41(argv[1])) return strata::ds41::run(argc, argv);
         capture_allocation();
         if (auto result = layer_entry(argc, argv); result.first) return result.second;
         if (std::string(argv[1]) == "--serve")

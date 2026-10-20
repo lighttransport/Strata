@@ -20,7 +20,8 @@ namespace strata::kernels::cpu {
 inline constexpr size_t kNativeActBytes = 16384;
 /// Scratch capacity: GLM's 2048 values as Q8_K (8 x 292 bytes), or as llvq's rotated f32 (8192 bytes).
 inline constexpr size_t kNativeHBytes = 8192;
-inline constexpr int kNativeFF = 2048;
+/// Widest expert hidden: DeepSeek-V4.1-Flash's 2304 (GLM's 2048). Buffer sizes only: no layout or arithmetic depends on it.
+inline constexpr int kNativeFF = 4096;
 
 /// One layer's native expert geometry.
 struct NativeFmt {
@@ -45,6 +46,10 @@ struct NativeFmt {
     bool canon = false;               ///< canonical Q2_K/Q3_K arithmetic (canon_expert.hpp): the bits the GPU tier computes
     float gate_skip = 0;              ///< canonical mode: units with |silu(gate)| below this contribute zero (lossy, opt-in)
     float swiglu_limit = 0;           ///< 0 preserves the Qwen contract; GLM uses 10
+    /// IQ1_S (type 19) gate/up and down rows on the AVX-2 multi-token kernel from one token on (iq_avx2.cpp Fmt32<19>)
+    /// instead of ggml-cpu's dot, whose BMI2 pdep decode is microcoded on Zen 1/2. Set by the DeepSeek-V4.1 loader;
+    /// STRATA_IQ1S_256=1 sets it for every model. Off: a model already running IQ1_S experts keeps ggml's rounding.
+    bool iq1s_rows = false;
     /// NVFP4 (ggml type 40) only: the blob ends with {s_gate, s_up, s_down, 0} at this offset, the per-expert
     /// weight_scale_2 the block format has no room for (tools/iq_pack.py). 0 = no tail. Each scale goes on its own
     /// projection's FP32 output: gate * s_gate, up * s_up, down * s_down. Do not fold s_down into up: the hidden

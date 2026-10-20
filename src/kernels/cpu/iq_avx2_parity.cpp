@@ -3,7 +3,7 @@
 // index and sign pattern occurs, and random activations quantized the way the engine quantizes them.
 //
 //     iq_avx2_parity [--cpu N]
-//         IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S and IQ4_XS gate/up rows, IQ4_NL and Q2_0 down rows: every variant
+//         IQ2_XXS, IQ2_XS, IQ2_S, IQ3_XXS, IQ3_S, IQ4_XS and IQ1_S gate/up rows, IQ4_NL and Q2_0 down rows: every variant
 //         this CPU runs, 1..8 tokens, each token's rows bit for bit the scalar variant's rows for that token alone (so
 //         also the same at every width, #152); the scalar rows against ggml-cpu's vec_dot (Q2_0: a double
 //         reference), rel <= 1e-5; and where the engine's dispatch (native_gu_rows) takes the multi-token kernel from
@@ -542,7 +542,7 @@ int main(int argc, char** argv) {
 #endif
     if (do_bench) return bench(pairs, nts, mb, reps, dispatch_only);
     int failures = 0;
-    for (int type : {16, 17, 22, 18, 21, 23}) failures += check_gate_up(type);
+    for (int type : {16, 17, 22, 18, 21, 23, 19}) failures += check_gate_up(type);
     for (int type : {20, 42}) failures += check_down(type);
 #if !defined(STRATA_IQ_PARITY_DISPATCH_ONLY)
     for (int type : {16, 17, 22, 18, 21, 23}) failures += check_engine_width(type);

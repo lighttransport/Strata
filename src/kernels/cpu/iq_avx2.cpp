@@ -9,7 +9,8 @@
 // with one, `vpsignb`.  The arithmetic is ggml's (ggml-cpu/quants.c, the `_generic` references) - only the
 // order of the float additions differs.
 //
-// Formats: IQ2_XXS (16), IQ2_XS (17), IQ3_XXS (18), IQ3_S (21), IQ2_S (22), IQ4_XS (23).  IQ1_M stays on ggml-cpu.
+// Formats: IQ2_XXS (16), IQ2_XS (17), IQ3_XXS (18), IQ3_S (21), IQ2_S (22), IQ4_XS (23), and IQ1_S (19) for the callers
+// that ask for it (NativeFmt::iq1s_rows).  IQ1_M stays on ggml-cpu.
 //
 // IQ3_XXS, IQ3_S and IQ2_S also have a gathered decode (Fmt32<118>, <121>, <122>): the grid indices built in a
 // register and read with one vpgather, the same words into the same lanes, so the same bits.  Where it is faster
@@ -210,6 +211,32 @@ template <> struct Fmt32<16> {   // IQ2_XXS: d, qs[32] u16
         sgn = _mm256_set_epi64x((long long) even_signs.v[(w1 >> 21) & 127], (long long) even_signs.v[(w1 >> 14) & 127],
                                 (long long) even_signs.v[(w1 >> 7) & 127], (long long) even_signs.v[w1 & 127]);
         sc = sc32(2 * (int) (w1 >> 28) + 1);
+    }
+};
+
+// IQ1_S (Muse Spark Open's UD-IQ1_S experts): d, qs[32] (low 8 bits of the 11-bit grid indices), qh[8] u16 (3 high
+// index bits per 8 values in bits 0-11, the scale in bits 12-14, the delta's sign in bit 15).  A value is
+// d * (2s+1) * (g + delta), g in {-1, 0, 1} from iq1s_grid and delta = +-IQ1S_DELTA (1/8); eight times that, 8g +- 1,
+// is an odd integer in [-9, 9], so |8g +- 1| is the maddubs magnitude and the never-zero value itself is the vpsignb
+// operand, K = 1/8.  ggml adds the delta through the activation block sums instead (and decodes the indices with
+// BMI2 pdep, microcoded on Zen 1/2: 1.3 GB/s on 16 cores); the integer sums are the same, only the order of the float
+// additions differs.  Reached only where NativeFmt::iq1s_rows asks for it (native_expert.cpp).
+template <> struct Fmt32<19> {
+    static constexpr int bytes = 50;
+    static constexpr float K = 0.125f;
+    static inline void decode(const uint8_t* b, int j, int half, __m256i& g, __m256i& sgn, __m256i& sc) {
+        const int ib = 2 * j + half;
+        const uint8_t* q = b + 2 + 4 * ib;
+        const uint32_t h = u16(b + 34 + 2 * ib);
+        const __m256i v = _mm256_set_epi64x((long long) iq1s_grid[q[3] | ((h >> 1) & 0x700)],
+                                            (long long) iq1s_grid[q[2] | ((h << 2) & 0x700)],
+                                            (long long) iq1s_grid[q[1] | ((h << 5) & 0x700)],
+                                            (long long) iq1s_grid[q[0] | ((h << 8) & 0x700)]);
+        const __m256i v2 = _mm256_add_epi8(v, v), v4 = _mm256_add_epi8(v2, v2);   // bytewise: no carry between lanes
+        const __m256i w = _mm256_add_epi8(_mm256_add_epi8(v4, v4), _mm256_set1_epi8((h & 0x8000) ? -1 : 1));
+        g = _mm256_abs_epi8(w);
+        sgn = w;
+        sc = sc32(2 * (int) ((h >> 12) & 7) + 1);
     }
 };
 

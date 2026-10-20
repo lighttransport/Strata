@@ -15,7 +15,7 @@
 
 namespace strata::core {
 
-enum class MixerKind { Gdn, Qsa, Kda, SparseMla };
+enum class MixerKind { Gdn, Qsa, Kda, SparseMla, Csa };   // Csa: DeepSeek-V4.1's compressed sparse attention
 enum class FfnKind { Dense, Moe };
 enum class ResidualKind { Gated, Mhc };
 
@@ -86,7 +86,7 @@ struct ModelDescriptor {
         // Some converters (REAP-pruned GLM-5.3 GGUFs) spell the GLM architecture with a hyphen; its keys use it.
         const std::string p = m.architecture + ".";
         if (m.architecture == "glm5-next") m.architecture = "glm5next";
-        if (m.architecture != "glm5next" && m.architecture != "qwen4exp")
+        if (m.architecture != "glm5next" && m.architecture != "qwen4exp" && m.architecture != "deepseek41")
             throw std::runtime_error("model: unsupported architecture " + m.architecture);
         const int64_t blocks = integer(p + "block_count");
         m.hidden = integer(p + "embedding_length");
@@ -109,6 +109,42 @@ struct ModelDescriptor {
             m.has_ngram = true;
             for (int64_t l = 0; l < blocks; ++l)
                 m.layers.push_back({l % 4 == 3 ? MixerKind::Qsa : MixerKind::Gdn, FfnKind::Moe, 640});
+            return m;
+        }
+        if (m.architecture == "deepseek41") {
+            // DeepSeek-V4.1-Flash (llama.cpp PR #30817 GGUFs): the geometry shared with the GLM runner's vocabulary;
+            // strata/ds41/model.hpp reads the rest (compression, indexer sources, Engram) from the same keys.
+            m.residual = ResidualKind::Mhc;
+            m.streams = integer(p + "hyper_connection.count");
+            m.sinkhorn_iterations = integer(p + "hyper_connection.sinkhorn_iterations");
+            m.hc_epsilon = real(p + "hyper_connection.epsilon");
+            m.rms_epsilon = real(p + "attention.layer_norm_rms_epsilon");
+            m.q_rank = integer(p + "attention.q_lora_rank");
+            m.kv_rank = integer(p + "attention.key_length");
+            m.index_heads = integer(p + "attention.indexer.head_count");
+            m.index_dim = integer(p + "attention.indexer.key_length");
+            m.index_top_k = integer(p + "attention.indexer.top_k");
+            m.expert_scale = real(p + "expert_weights_scale");
+            m.rope_dim = integer(p + "rope.dimension_count");
+            m.gating_function = integer(p + "expert_gating_func");
+            m.shared_experts = integer(p + "expert_shared_count");
+            const int64_t ff = integer(p + "expert_feed_forward_length");
+            m.shared_intermediate = ff;
+            const auto *normalized = file.get(p + "expert_weights_norm");
+            m.normalize_expert_weights = normalized && normalized->type == MetaType::BOOL && normalized->u != 0;
+            const auto *clamp = file.get(p + "swiglu_clamp_exp");
+            const auto *shared_clamp = file.get(p + "swiglu_clamp_shexp");
+            if (!clamp || clamp->type != MetaType::ARRAY || clamp->items.size() != (size_t)blocks || !shared_clamp ||
+                shared_clamp->type != MetaType::ARRAY || shared_clamp->items.size() != (size_t)blocks)
+                throw std::runtime_error("model: incomplete DeepSeek-V4.1 clamp metadata");
+            // 4 = sqrt(softplus) scoring; one shared expert; four hyper-connection streams
+            if (m.streams != 4 || m.sinkhorn_iterations < 1 || !(m.hc_epsilon > 0) || !(m.rms_epsilon > 0) ||
+                m.q_rank < 1 || m.kv_rank < 1 || m.index_heads < 1 || m.index_dim < 1 || m.index_top_k < 1 ||
+                m.gating_function != 4 || m.shared_experts != 1 || ff < 1 || m.rope_dim < 1 || m.rope_dim > m.kv_rank)
+                throw std::runtime_error("model: unsupported DeepSeek-V4.1 geometry");
+            for (int64_t l = 0; l < blocks; ++l)
+                m.layers.push_back({MixerKind::Csa, FfnKind::Moe, ff, (float)clamp->items[(size_t)l].num(),
+                                    (float)shared_clamp->items[(size_t)l].num()});
             return m;
         }
         m.residual = ResidualKind::Mhc;
@@ -350,6 +386,8 @@ class ModelArtifact {
     bool is_fp8()const { return native_ && native_->model.codec==artifact::GlmExl3::Codec::Fp8; }
     artifact::GlmExl3& exl3() { if(!native_)throw std::runtime_error("not EXL3");return native_->model; }
     const ModelDescriptor &descriptor() const { return descriptor_; }
+    /// The first shard's metadata (a split GGUF carries the model's keys there); null for a native artifact.
+    const GgufFile *metadata() const { return files_.empty() ? nullptr : files_.front().get(); }
     const std::map<std::string, ArtifactTensor> &tensors() const { return tensors_; }
     // Bind an experimental converted expert sidecar to this exact source header
     // and file generation. The original GGUF stays immutable.

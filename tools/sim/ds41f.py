@@ -667,6 +667,105 @@ def a64fx_prefill(ap, prompt=8192):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# The Strata DS4.1F runner (src/program/ds41_decode.cpp) on TR16 + RX 9070 XT, Unsloth UD-IQ1_S (experts IQ1_S /
+# IQ2_XXS 115.2 GB, Engram IQ4_NL 110.6 GB on SSD, trunk Q6_K/Q5_K/Q8_0 6.3 GB on the GPU). Measured 2026-10-20/21 on
+# an idle TR16 (out-of-sample wikitext, 1063 tokens). Exact routing. Two constant sets: `now` (what the runner
+# measures) and `target` (the plan's tuned kernels: GEMV at 75 % of 640 GB/s, batched trunk prefill, prefetch).
+@dataclasses.dataclass
+class RunnerHw:
+    name: str = "tr16_9070xt"
+    trunk_gb: float = 6.30            # trunk + head read per decoded token (the GGUF's own quant types)
+    expert_mb: float = 7.5            # mean expert [gate|up|down] (115.2 GB / 15360)
+    resident_gib: float = 7.4         # GPU expert tier (one arena, ~1100 slots)
+    gemv_gbps: float = 320.0          # Q6_K MMVQ, rocprof 2026-10-21: 12.8 ms for 4.1 GB
+    small_ms: float = 8.5             # quantize / norms / hc mixes / adds / f32 GEMVs and their launch gaps per token
+    attn_ms_layer: float = 0.06       # head-grouped MQA kernel, <= 640 rows (window 128 + top-512)
+    other_ms: float = 7.5             # host syncs (router, indexer), Engram gather, head, sampling
+    cpu_lane_gbps: float = 17.5       # IQ1_S lane, one token (15 Zen 1 threads, Fmt32<19>)
+    cpu_gmacs_multi: float = 180.0    # the lane on a 256-token chunk (~25 ms/token for 54 % of routes)
+    h2d_gbps: float = 13.8            # pinned DMA (hipMemcpy, PCIe 3.0 x16)
+    staged_gbps: float = 21.0         # host copy mapping -> pinned (MAP_SHARED, 8 threads)
+    stream_eff_gbps: float = 9.0      # streamed prefill copies as measured (~15 % of the experts not page-cached)
+    hit_adaptive: float = 0.61        # tier hit out of sample, 2 promotions/token (static profile: 0.39)
+    hit_prefill: float = 0.46         # the same tier during chunked prefill (promotions once per pass)
+    prefetch_gain: float = 0.0        # next-layer prediction: hit += gain (Xolotl: +~0.08)
+    split_misses: bool = False        # misses split between the CPU lane and PCIe uploads
+    dense_ms_token: float = 9.0       # prefill dense half per token (GEMM trunk, per-token attention, host top-k), 1K context
+    mmq_ms_token: float = 3.1         # prefill MMQ experts per token not hidden under the copies (measured)
+    chunk_ms_layer: float = 1.0       # per layer per pass: syncs, batch setup
+    overlap: bool = False             # stream: expert copies under the dense/MMQ work (now: within a layer only, summed)
+    stream_min: int = 512             # passes shorter than this keep the CPU lane (STRATA_DS41_STREAM_MIN)
+    engram_prefill_ms_token: float = 0.25
+    ssd_gbps: float = 1.7             # Gen3 x2 NVMe: experts not in the page cache
+
+
+RUNNER_PROFILES = {
+    "now": RunnerHw(),
+    "target": RunnerHw(gemv_gbps=480.0, small_ms=2.5, attn_ms_layer=0.05, other_ms=2.5, prefetch_gain=0.09, split_misses=True,
+                       stream_eff_gbps=13.8, dense_ms_token=2.3, mmq_ms_token=0.4, chunk_ms_layer=0.5, overlap=True),
+}
+
+
+@dataclasses.dataclass
+class RunnerPlan:
+    profile: str = "now"
+    mode: str = "stream"              # prefill: "cpu_experts" (GPU trunk, CPU lane + GPU tier) or "stream" (all experts on the GPU)
+    chunk: int = 256                  # prefill tokens per pass (stream: the layer-major sweep is chunk = prompt)
+    enc_skip: int = 0                 # prefill: layers past the last KV source run only the last `enc_skip` tokens (0 off)
+    uncached_gb: float = 0.0          # experts read from the SSD per pass (not page-cached)
+    set: dict = dataclasses.field(default_factory=dict)   # RunnerHw overrides
+
+    def hw(self):
+        h = dataclasses.replace(RUNNER_PROFILES[self.profile])
+        for k, v in self.set.items():
+            setattr(h, k, v)
+        return h
+
+
+def runner_decode(rp, layers=40, top_k=6):
+    """ms per token = trunk (GEMV + small kernels + attention) + experts not on the GPU + other. Misses go to the CPU
+    lane, or split with PCIe uploads computed on the GPU (both streams in parallel)."""
+    h = rp.hw()
+    hit = min(0.98, h.hit_adaptive + h.prefetch_gain)
+    trunk = h.trunk_gb / h.gemv_gbps * 1e3 + h.small_ms + h.attn_ms_layer * layers
+    miss_gb = layers * top_k * (1 - hit) * h.expert_mb / 1e3
+    experts = miss_gb / ((h.cpu_lane_gbps + h.h2d_gbps) if h.split_misses else h.cpu_lane_gbps) * 1e3
+    step = trunk + experts + h.other_ms
+    return dict(tok_s=1e3 / step, step_ms=step, trunk_ms=trunk, experts_ms=experts, other_ms=h.other_ms, hit=hit, miss_gb=miss_gb)
+
+
+def runner_prefill(rp, prompt, layers=40, top_k=6, experts=384, last_source=20):
+    """Seconds for a prompt. cpu_experts: per pass, the GPU trunk then the CPU lane on the non-resident routes (no
+    overlap). stream: per pass and layer, max(expert uploads, dense + MMQ) - every touched expert crosses PCIe once
+    per pass; enc_skip shrinks the dense work of the layers past the last KV source."""
+    h = rp.hw()
+    chunk = max(1, min(rp.chunk, prompt))
+    passes = math.ceil(prompt / chunk)
+    resident = h.resident_gib * GIB / 1e9
+    total = 0.0
+    parts = {}
+    for i in range(passes):
+        n = min(chunk, prompt - i * chunk)
+        ctx_scale = 1.0 + 0.15 * ((i * chunk + n / 2) / 1024 - 1) if (i * chunk + n / 2) > 1024 else 1.0   # attention/indexer grow
+        dense_layers = layers if not rp.enc_skip else last_source + 1 + (layers - last_source - 1) * min(1.0, rp.enc_skip / n)
+        dense = n * h.dense_ms_token * ctx_scale * dense_layers / layers / 1e3
+        if rp.mode == "cpu_experts" or n < h.stream_min:
+            routes = n * top_k * layers * (1 - h.hit_prefill)
+            cpu = routes * 3 * 5120 * 2304 / (h.cpu_gmacs_multi * 1e9)
+            t = dense + cpu + layers * h.chunk_ms_layer / 1e3
+            parts = dict(dense_s=dense, cpu_s=cpu)
+        else:
+            distinct = experts * (1 - (1 - top_k / experts) ** n)
+            upload_gb = max(0.0, distinct * layers * h.expert_mb / 1e3 - resident)
+            upload = upload_gb / h.stream_eff_gbps + rp.uncached_gb / h.ssd_gbps
+            gpu = dense + n * h.mmq_ms_token / 1e3
+            t = (max(upload, gpu) if h.overlap else upload + gpu) + layers * h.chunk_ms_layer / 1e3
+            parts = dict(dense_s=dense, upload_s=upload, mmq_s=n * h.mmq_ms_token / 1e3)
+        total += t + n * h.engram_prefill_ms_token / 1e3
+    return dict(tok_s=prompt / total, seconds=total, passes=passes, **parts)
+
+
+# ---------------------------------------------------------------------------------------------------------------
 def load_records(path=None):
     import json
     return json.loads(pathlib.Path(path or DATA / "measured_ds41f.json").read_text())
@@ -682,6 +781,10 @@ def validate(records=None):
         elif rec["kind"] == "a64fx_prefill":
             r = a64fx_prefill(A64FXPlan(**rec["plan"]), rec.get("prompt", 8192))
             predicted = r["tok_s"]
+        elif rec["kind"] == "runner_decode":
+            predicted = runner_decode(RunnerPlan(**rec["plan"]))["tok_s"]
+        elif rec["kind"] == "runner_prefill":
+            predicted = runner_prefill(RunnerPlan(**rec["plan"]), rec.get("prompt", 1024))["tok_s"]
         elif rec["kind"] == "decode":
             m = MACHINES[rec["plan"]["machine"]]()
             for key, value in rec.get("machine_set", {}).items():

@@ -102,11 +102,11 @@ class KernelBoundTest(unittest.TestCase):
 class ValidationTest(unittest.TestCase):
     def test_rows(self):
         rows = ds41f.validate()
-        self.assertEqual(len(rows), 5)
+        self.assertEqual(len(rows), 8)
         for r in rows:
             self.assertTrue(r["within"], r["name"])
         fitted = [r for r in rows if r["fit"]]
-        self.assertEqual(len(fitted), 2)
+        self.assertEqual(len(fitted), 5)
         for r in fitted:
             self.assertLessEqual(abs(r["error"]), 0.05, r["name"])
 
@@ -150,7 +150,25 @@ class UntouchedTest(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             code = glm_ds41f_sim.main(["validate"])
         self.assertEqual(code, 0)
-        self.assertIn("5 of 5 rows within tolerance", out.getvalue())
+        self.assertIn("8 of 8 rows within tolerance", out.getvalue())
+
+class RunnerTest(unittest.TestCase):
+    def test_target_beats_now(self):
+        now = ds41f.runner_decode(ds41f.RunnerPlan())
+        target = ds41f.runner_decode(ds41f.RunnerPlan(profile="target"))
+        self.assertGreater(target["tok_s"], now["tok_s"])
+        self.assertGreater(target["hit"], now["hit"])
+
+    def test_sweep_and_enc_skip(self):
+        one = ds41f.runner_prefill(ds41f.RunnerPlan(profile="target", mode="stream", chunk=8192), 8192)
+        four = ds41f.runner_prefill(ds41f.RunnerPlan(profile="target", mode="stream", chunk=2048), 8192)
+        skip = ds41f.runner_prefill(ds41f.RunnerPlan(profile="target", mode="stream", chunk=8192, enc_skip=2560), 8192)
+        self.assertGreater(one["tok_s"], four["tok_s"])      # one pass moves each expert once
+        self.assertGreaterEqual(skip["tok_s"], one["tok_s"])
+        warm = ds41f.runner_prefill(ds41f.RunnerPlan(profile="target", mode="stream", chunk=2048), 2048)
+        cold = ds41f.runner_prefill(ds41f.RunnerPlan(profile="target", mode="stream", chunk=2048, uncached_gb=15), 2048)
+        self.assertLess(cold["tok_s"], warm["tok_s"])   # short prompts are upload-bound: SSD reads show
+
 
 class A64FXSdotTest(unittest.TestCase):
     def test_width_cost_interpolates_the_measured_points(self):
