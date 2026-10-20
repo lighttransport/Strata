@@ -185,6 +185,19 @@ as did CUDA and fresh HIP builds with six host tests each. HIP GPU execution
 was not tested. An initial launcher budget typo failed before model startup;
 the corrected launcher used the same binary, and the raw failure is retained.
 
+Coalescing the reconstructed FP16 operand stores reached a **1.665286×**
+component speed ratio on the two expert matrix shapes. It passed 35 bitwise
+cases, 14 graph checks, CUDA memcheck/racecheck and both original 128-output
+model checks. The cold default-off check had 30 major faults and supplies no
+throughput measurement; the counters do not identify their backing file.
+The matched model pair measured **519.19 / 520.63 prefill tok/s** and
+**39.53 / 39.82 decode tok/s**, after three full warmups and three timed
+512-output requests per side. All six streams matched the mild reference,
+with zero timed major faults or swap. The 0.28% prefill gain failed the gate;
+coding was skipped. HIP rebuilt with six host checks and an identical binary
+to the preceding HIP build, with no HIP GPU execution. The prototype remains
+private; the component improvement does not establish material model speed.
+
 ## Execution
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a
