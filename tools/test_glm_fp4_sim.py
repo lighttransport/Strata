@@ -178,6 +178,98 @@ class NativeFp4Tests(unittest.TestCase):
             self.assertEqual(result['rates']['cpu_gbps'], 120)
             self.assertAlmostEqual(result['decode']['observed_tok_s'], 31.01951619267308)
 
+    def current_profile(self):
+        return sim.load_profile(sim.DEFAULT_PROFILE.with_name('glm_fp4_v100_target50.json'))
+
+    def test_current_prefill_keeps_working_observation_separate_from_legacy_work(self):
+        profile = self.current_profile()
+        current = sim.analyze(profile, target_decode=40)
+        historical = copy.deepcopy(profile)
+        del historical['working_decode_profile']
+        legacy = sim.analyze(historical, target_decode=40)
+        self.assertEqual(current['decode'], legacy['decode'])
+        self.assertEqual(current['prefill'], legacy['prefill'])
+        observed = current['current_prefill']
+        self.assertAlmostEqual(observed['working']['decode_tok_s'], 41.24360360942065)
+        self.assertAlmostEqual(observed['working']['prefill_tok_s'], 519.3389079428676)
+        self.assertEqual(observed['working']['decode_optimization_status'], 'paused')
+        self.assertFalse(observed['fitted'])
+        self.assertFalse(observed['fresh_holdout_scored'])
+        self.assertFalse(observed['target']['met'])
+
+    def test_current_prefill_target_uses_unions_and_preserves_gpu_imbalance(self):
+        profile = self.current_profile()
+        current = sim.analyze(profile)['current_prefill']
+        self.assertAlmostEqual(current['target']['budget_ms'], 10240)
+        self.assertAlmostEqual(current['target']['time_reduction_required_ms'],
+                               8192 / 519.3389079428676 * 1000 - 10240)
+        activity = current['activity']
+        self.assertAlmostEqual(activity['conditional_kernel_only_ceiling_tok_s'],
+                               8192000 / 9672.806742)
+        self.assertAlmostEqual(activity['conditional_ceiling_if_all_gpu_idle_removed_tok_s'],
+                               8192000 / 14552.617324)
+        self.assertAlmostEqual(activity['retained_kernel_margin_ms'], 567.193258)
+        self.assertGreater(activity['devices'][1]['idle_ms'], 9000)
+        stretch = sim.analyze(profile, target_prefill=1000)['current_prefill']['activity']
+        self.assertLess(stretch['retained_kernel_margin_ms'], 0)
+        self.assertAlmostEqual(stretch['target']['retained_kernel_duration_speedup_required'],
+                               9672.806742 / 8192)
+
+    def test_current_prefill_retains_failed_and_unscored_gates(self):
+        rows = {r['name']: r for r in sim.analyze(self.current_profile())['current_prefill']['experiments']}
+        self.assertEqual(len(rows), 7)
+        short = rows['mla_combined_screen']
+        full = rows['mla_combined_full']
+        self.assertTrue(short['prefill_only'])
+        self.assertNotIn('candidate_decode_tok_s', short)
+        self.assertTrue(short['speed_gate_passed'])
+        self.assertFalse(short['selected'])
+        self.assertAlmostEqual(full['candidate_prefill_tok_s'], 524.9061294580498)
+        self.assertLess(full['decode_ratio'], .95)
+        self.assertFalse(full['speed_gate_passed'])
+        self.assertFalse(full['quality_scored'])
+        self.assertFalse(full['selected'])
+        rejected = rows['fused_workspace_and_unordered_kda']
+        self.assertTrue(rejected['quality_failed'])
+        self.assertFalse(rejected['adjacent_pair'])
+        self.assertFalse(rejected['selected'])
+        self.assertFalse(rows['mla_halfchain_screen']['adjacent_pair'])
+
+    def test_component_speedup_cannot_rescale_observed_model_throughput(self):
+        profile = self.current_profile()
+        baseline = sim.analyze(profile)['current_prefill']
+        profile['public_prefill_kernels']['fused_component']['selection_geometric_mean_ratio'] = 100
+        changed = sim.analyze(profile)['current_prefill']
+        self.assertEqual(changed['working'], baseline['working'])
+        self.assertEqual(changed['target'], baseline['target'])
+        self.assertEqual(changed['experiments'], baseline['experiments'])
+
+    def test_current_prefill_rejects_invalid_diagnostic_scope_or_unions(self):
+        for change in ({'instrumented': False}, {'performance_anchor': True}, {'complete': False}):
+            profile = self.current_profile()
+            profile['prefill_activity_diagnostic'].update(change)
+            with self.assertRaisesRegex(ValueError, 'diagnostic'):
+                sim.analyze(profile)
+        profile = self.current_profile()
+        for row in profile['prefill_activity_diagnostic']['devices']:
+            if row['phase'] == 'prefill':
+                row['all_activity_union_ms'] = 0
+        with self.assertRaisesRegex(ValueError, 'unions'):
+            sim.analyze(profile)
+
+    def test_cli_current_prefill_report_has_helper_provenance(self):
+        root = Path(__file__).resolve().parents[1]
+        profile = sim.DEFAULT_PROFILE.with_name('glm_fp4_v100_target50.json')
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'current.json'
+            run = subprocess.run([sys.executable, str(root / 'tools/glm_runner_sim.py'),
+                                  'native-fp4', '--profile', str(profile), '--target-decode', '40',
+                                  '--output', str(output)], cwd=directory, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            result = json.loads(output.read_text())
+            self.assertIn('current_prefill', result)
+            self.assertIn('tools/sim/glm_fp4_prefill.py', [r['path'] for r in result['provenance']])
+
 
 if __name__ == '__main__':
     unittest.main()

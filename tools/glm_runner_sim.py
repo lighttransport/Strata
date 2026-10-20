@@ -402,11 +402,17 @@ def cmd_native_fp4(args):
                              h2d_gbps=args.h2d_gbps, target_decode=args.target_decode,
                              target_prefill=args.target_prefill)
     result['provenance'] = []
-    for filename in (args.profile, __file__, glm_fp4.__file__):
+    filenames = [args.profile, __file__, glm_fp4.__file__]
+    if 'current_prefill' in result:
+        from sim import glm_fp4_prefill
+        filenames.append(glm_fp4_prefill.__file__)
+    for filename in filenames:
         path = pathlib.Path(filename).resolve()
         label = str(path.relative_to(glm_fp4.ROOT)) if path.is_relative_to(glm_fp4.ROOT) else '<external-profile>'
         result['provenance'].append(dict(path=label, sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
     keys = ['rates', 'decode', 'prefill']
+    if 'current_prefill' in result:
+        keys.insert(0, 'current_prefill')
     if 'diagnostic_activity' in result:
         keys.append('diagnostic_activity')
     if 'experimental_decode' in result:

@@ -162,3 +162,122 @@ passed six host tests. The public CUDA decoder also reproduced all 128 original
 default output tokens. HIP GPU execution was not tested; the separate SYCL
 backend does not compile this CUDA path. The original native executor and all
 selected presets retain their existing execution paths.
+
+## Current simulator report
+
+The simulator now exposes these observations in `current_prefill`, separate
+from the historical `decode` and `prefill` resource-accounting blocks. The
+[current analysis](glm_fp4_v100_prefill_analysis.json) keeps the settled
+**41.24 decode / 519.34 prefill tok/s** profile, all seven prefill experiment
+comparisons and their original gates, and the newer activity unions. A short
+screen has no decode throughput in this summary. The separate fused-operand
+coding follow-up does not turn its failed speed gate into a pass. No rejected
+candidate is selected and no component ratio rescales model throughput.
+
+```sh
+python3 tools/glm_runner_sim.py native-fp4 \
+  --profile tools/sim/data/glm_fp4_v100_target50.json \
+  --target-decode 40 --target-prefill 800 \
+  --output docs/glm_fp4_v100_prefill_analysis.json
+```
+
+| Prefill target | Budget for 8,192 tokens | Gain required from working profile | Time to remove |
+| --- | ---: | ---: | ---: |
+| 800 tok/s | 10.240 s | 1.54× | 5.534 s |
+| 1000 tok/s | 8.192 s | 1.93× | 7.582 s |
+
+The 800 target has only 0.567 s beyond the trace's retained primary-GPU
+kernel union. The 1000 target requires at least **1.181×** faster primary
+kernels even if every other cost were free. Neither calculation predicts an
+implementation's throughput. Current grouped-profile work counters have not
+been qualified for a new resource roofline; the simulator therefore retains
+the historical resource blocks with their original workloads and does not
+substitute current tok/s into them. See the
+[roofline notes](GLM_FP4_V100_ROOFLINE.md#current-grouped-profile-and-prefill-gaps)
+for the distinction.
+
+## Further prefill optimization opportunities
+
+The next work should change the measured critical path. The following order
+is an experiment priority, not an expected speedup. Keep the working decode
+profile and four ordered KDA partitions fixed while isolating each change.
+
+| Priority | Evidence | First implementation to test | Required observation |
+| --- | --- | --- | --- |
+| 1. Overlap matrix transfer and computation | GPU 0 has 6.783 s of copy activity and 14.553 s of total activity. Deleting idle alone reaches only 562.9 tok/s. | Prepare the next expert matrix in bounded, preallocated upload/reconstruction slots; use explicit events between upload, reconstruction and GEMM streams. | A smaller primary all-activity union and lower full-request latency, without extra matrix transfers, faults, workspace growth or decode loss. |
+| 2. Use GPU 1 for primary attention work | GPU 1 is idle for 9.084 s of the 16.283 s trace; GPU 0 has 9.673 s of kernels versus 3.405 s on GPU 1. | Partition independent MLA query tiles and their fixed projections between devices with explicit input, KV and result ownership. | Less primary kernel time after including peer copies and synchronization; preserved output and cache state. |
+| 3. Integrate exact operand reconstruction into the schedule | Standalone fused preparation is 3.145× faster, but the workspace prototype improved full-model prefill only 1.07%. | Reuse bounded operand slots and retirement events, preserving the existing half roundings; profile exposed reconstruction time rather than extrapolating the component ratio. | A full-length gain above the gate on a fresh adjacent pair; both coding panels pass. |
+| 4. Reduce ordered KDA and MLA launch/scratch costs | The prepared four-partition KDA kernel occupies about 0.998 s on GPU 0. Unordered rows failed coding in combination; the larger-tile/FP16-chain MLA combination failed full-length guards. | Batch launches and reuse scratch while keeping ordered recurrence; isolate MLA gather/cast fusion from score/value precision and decode cache layout. | Reduced relevant kernel/idle time, repeatable full-length outputs and unchanged settled decode throughput. |
+
+For transfer overlap, avoid per-expert allocation and global synchronization
+inside the hot loop. A slot must remain alive until its consuming GEMM has
+finished; reusing a code/scale or FP16 buffer after only the upload event is
+insufficient. Record bytes and event dependencies per slot, and distinguish
+compressed source wire extents from expanded expert allocations. Earlier
+queue, bank and pipeline variants already failed timing or quality checks;
+another queue depth or double-buffer flag alone is not evidence of a gain.
+
+Attention redistribution needs native ModelOpt integration. The current
+[`dense()` implementation](../src/program/glm_fp4_native.inc) chooses
+`contexts.front()`. The generic secondary MLA tile machinery in
+[`glm_decode.cpp`](../src/program/glm_decode.cpp) is not initialized by the
+native ModelOpt `configure_prefill()` branch, which returns after constructing
+the native executor. Merely enabling a generic split option or changing expert
+ownership does not move this attention work. A bridge must handle projected
+inputs, KV/index state and returned query tiles, preserve per-query GEMM shapes
+and reduction order where exactness is intended, and leave MTP history and
+rollback valid. Measure peer-transfer cost and contention with expert work;
+the observed idle interval is not a freely available speedup.
+
+KDA launch improvements cannot by themselves remove the 5.534 s needed for
+800 tok/s: the recorded prepared kernel is much smaller than that gap.
+Keep the recurrence order while trying memory-aware tiling or graph reuse.
+For MLA, the combined eight-output screen gained 3.14%, but its full run gained
+only 1.20% in prefill and lost 5.25% in decode. Separate prefill scratch lifetime
+from decode cache layout before revisiting those options. The FP16 chain also
+changes arithmetic, so a mild-prefix match cannot substitute for coding checks.
+
+Memory accounting is part of each experiment. The recorded 42-file resident
+weight image is **177,463,841,024 bytes** (about 165.3 GiB), within the **181 GiB**
+allocation. Keep that allocation and the two 32 GB device limits; budget host
+runtime, pinned staging, KV/history, dense weights, decode expert admission and
+all operand slots together. Keep the registered resident weights in place.
+Reserve and reuse stable arenas rather than growing scratch unnoticed or
+displacing the decode keep set. Failed allocating prototypes remain failures;
+their component timings do not justify changing the active executor.
+
+Each candidate should follow the existing staged protocol:
+
+1. Build the affected backends and check operand bits, changed-input graph
+   replay, bounds and memory ownership. Check the original 128 default tokens
+   when a runtime path changes; keep new behavior opt-in.
+2. Run a fresh same-build adjacent control/candidate pair on the two V100s:
+   three complete warmups, one discarded request, then three timed requests
+   with 8,192 inputs and 512 outputs on each side. Keep the 32-worker setting,
+   resident weights, zero timed major faults/swap and clean uninstrumented
+   exits. Record source, binary, environment and config hashes. Clocks were
+   unlocked and RAM speed unmeasured in the results above; disclose either
+   change. An eight-output screen can prioritize candidates but cannot
+   qualify decode throughput or replace this pair.
+3. Require at least 3% faster prefill, decode at least 40 tok/s and within 3%
+   of the fresh control before advancing. Then run both reused eight-case
+   long-context and eight-case natural-length coding panels on both sides.
+   Report changed outputs, EOS, length and repetition checks separately from
+   coding quality. Keep Fresh20 unscored until a policy is frozen.
+4. Capture activity only after a candidate passes those gates. Compare phase
+   boundaries, unions, transfers and workspace high-water marks. Keep profiler
+   timings separate from qualifications. A 512-input / eight-output memory
+   check covers that request only; it does not qualify long decode. Preserve
+   failed attempts and raw evidence hashes as well as successful runs.
+
+The present cleanup changes only formatting in the CUDA operand kernels and
+probes; their C++ token sequences and benchmark order are unchanged. Historical
+source and binary hashes in the frozen measurement records still identify the
+measured builds. CUDA 12.9 SM70 compilation and linking passed; standalone
+SM70 disassembly matched after normalizing translation-unit symbol names.
+Five relevant host tests passed; the two operand GPU probes skipped because
+the local driver was unavailable. HIP and SYCL do not compile the changed
+CUDA files. The Python run completed 151 tests with one existing routing-trace
+test skipped, and the generated analysis reproduced byte for byte. This
+simulator/documentation update adds no new GPU throughput measurement and
+promotes no prefill option.

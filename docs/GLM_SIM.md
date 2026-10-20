@@ -18,6 +18,11 @@ Native ModelOpt FP4 has a separate [V100 workload and roofline report](GLM_FP4_V
 Use `python3 tools/glm_runner_sim.py native-fp4` for the preserved 5.26 tok/s
 reference, measured 31.02 tok/s lossy decode and conditional decode/prefill
 ceilings. It does not reuse GGUF byte sizes or change the historical fits below.
+Select `--profile tools/sim/data/glm_fp4_v100_target50.json --target-decode 40`
+to include `current_prefill`: the settled 41.24 / 519.34 tok/s observations,
+failed prefill gates and current activity scenarios. Its historical resource
+blocks keep their original counters. See the
+[current report and optimization opportunities](GLM_FP4_V100_PREFILL.md#current-simulator-report).
 
 Run it with the system `python3` (numpy is needed only for routing-trace replay):
 

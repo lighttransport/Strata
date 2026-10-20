@@ -127,6 +127,37 @@ def _median_request(profile):
     return sorted(rows, key=lambda r: r['trial']['decode_ms'])[len(rows) // 2]
 
 
+def activity_phase_scenario(devices, wall_ms, gpus, tokens, target):
+    """Retain measured GPU unions; never add overlapping kernel/copy times."""
+    positive(wall_ms, 'activity phase time')
+    positive(tokens, 'activity tokens')
+    positive(target, 'activity target')
+    if sorted(d['device'] for d in devices) != list(range(gpus)):
+        raise ValueError('activity must cover each GPU exactly once per phase')
+    for device in devices:
+        kernel, copy, active = (device[k] for k in (
+            'kernel_union_ms', 'copy_union_ms', 'all_activity_union_ms'))
+        if not all(math.isfinite(v) and v >= 0 for v in (kernel, copy, active)):
+            raise ValueError('invalid activity duration')
+        if max(kernel, copy) > active + .01 or active > wall_ms + .01:
+            raise ValueError('activity unions exceed their enclosing interval')
+    kernel_ms = positive(max(d['kernel_union_ms'] for d in devices), 'kernel union')
+    active_ms = positive(max(d['all_activity_union_ms'] for d in devices), 'activity union')
+    target_ms = tokens / target * 1000
+    idle_ms = max(0, wall_ms - active_ms)
+    return dict(
+        observed_instrumented_ms=wall_ms,
+        slowest_gpu_kernel_union_ms=kernel_ms,
+        slowest_gpu_activity_union_ms=active_ms,
+        conditional_kernel_only_ceiling_tok_s=tokens * 1000 / kernel_ms,
+        conditional_ceiling_if_all_gpu_idle_removed_tok_s=tokens * 1000 / active_ms,
+        target=dict(tok_s=target, budget_ms=target_ms,
+                    retained_kernel_duration_speedup_required=max(1, kernel_ms / target_ms),
+                    idle_reduction_fraction_at_retained_activity=(
+                        max(0, (wall_ms - target_ms) / idle_ms)
+                        if idle_ms and target_ms >= active_ms else None)))
+
+
 def activity_scenarios(activity, gpus, target_decode, target_prefill):
     """Conditional retained-duration scenarios, separate from qualified anchors.
 
@@ -141,30 +172,9 @@ def activity_scenarios(activity, gpus, target_decode, target_prefill):
                   limitations=activity['limitations'])
     for phase, tokens, target in [('decode', capture['decode_advances'], target_decode),
                                   ('prefill', capture['input_tokens'], target_prefill)]:
-        wall_ms = positive(activity[phase + '_ms'], 'activity phase time')
         devices = [d for d in activity['devices'] if d['phase'] == phase]
-        if sorted(d['device'] for d in devices) != list(range(gpus)):
-            raise ValueError('activity must cover each GPU exactly once per phase')
-        for d in devices:
-            kernel, copy, active = (d[k] for k in ('kernel_union_ms', 'copy_union_ms', 'all_activity_union_ms'))
-            if not all(math.isfinite(v) and v >= 0 for v in (kernel, copy, active)):
-                raise ValueError('invalid activity duration')
-            if max(kernel, copy) > active + .01 or active > wall_ms + .01:
-                raise ValueError('activity unions exceed their enclosing interval')
-        kernel_ms = positive(max(d['kernel_union_ms'] for d in devices), 'kernel union')
-        active_ms = positive(max(d['all_activity_union_ms'] for d in devices), 'activity union')
-        target_ms = positive(tokens, 'activity tokens') / target * 1000
-        idle_ms = max(0, wall_ms - active_ms)
-        result[phase] = dict(
-            observed_instrumented_ms=wall_ms,
-            slowest_gpu_kernel_union_ms=kernel_ms,
-            slowest_gpu_activity_union_ms=active_ms,
-            conditional_kernel_only_ceiling_tok_s=tokens * 1000 / kernel_ms,
-            conditional_ceiling_if_all_gpu_idle_removed_tok_s=tokens * 1000 / active_ms,
-            target=dict(tok_s=target, budget_ms=target_ms,
-                        retained_kernel_duration_speedup_required=max(1, kernel_ms / target_ms),
-                        idle_reduction_fraction_at_retained_activity=(
-                            max(0, (wall_ms-target_ms) / idle_ms) if idle_ms and target_ms >= active_ms else None)))
+        result[phase] = activity_phase_scenario(
+            devices, activity[phase + '_ms'], gpus, tokens, target)
     return result
 
 
@@ -321,4 +331,7 @@ def analyze(profile, *, cpu_gbps=None, hbm_gbps=None, tensor_tflops=None,
     if 'diagnostic_activity' in profile:
         result['diagnostic_activity'] = activity_scenarios(
             profile['diagnostic_activity'], hw['gpus'], target_decode, target_prefill)
+    if 'working_decode_profile' in profile:
+        from .glm_fp4_prefill import current_prefill_analysis
+        result['current_prefill'] = current_prefill_analysis(profile, target_prefill)
     return result

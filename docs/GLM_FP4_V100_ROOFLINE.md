@@ -250,3 +250,48 @@ The KDA profile uses its measured requests and transfer counters. It deliberatel
 omits the older control's activity intervals. The 687.96 tok/s retained-kernel
 scenario above belongs to that earlier capture; an optimized KDA activity
 capture is needed to update it.
+
+## Current grouped profile and prefill gaps
+
+Decode tuning is now paused at the separately settled **41.24 decode /
+519.34 prefill tok/s** working profile on the same two V100 PCIe 32 GB GPUs,
+dual Xeon Gold 6240 and 181 GiB allocation. This observation does not replace
+the historical qualified workloads used by the resource blocks above.
+Clocks were unlocked; RAM speed was not measured. The
+[current prefill analysis](glm_fp4_v100_prefill_analysis.json) and
+[experiment notes and next opportunities](GLM_FP4_V100_PREFILL.md)
+include the newer measurements and failed gates.
+
+```sh
+python3 tools/glm_runner_sim.py native-fp4 \
+  --profile tools/sim/data/glm_fp4_v100_target50.json \
+  --target-decode 40 --target-prefill 800 \
+  --output docs/glm_fp4_v100_prefill_analysis.json
+```
+
+For this profile, read `current_prefill` for the working rates, seven recorded
+prefill comparisons and current trace scenarios. The top-level `decode` and
+`prefill` resource blocks retain their historical workload and counters; they
+do not model current grouped execution. No capacities or current work counters
+are fitted from tok/s. The default command/profile stays unchanged.
+
+At 800 prefill tok/s an 8,192-token request has a 10.240 s budget, requiring
+5.534 s to be removed from the working profile's 15.774 s. The newer single
+instrumented baseline records primary kernel/copy/all-activity unions of
+9.673 / 6.783 / 14.553 s and secondary idle time of 9.084 s within 16.283 s.
+Keeping those durations while deleting all idle reaches only 562.9 tok/s;
+keeping kernels alone reaches 846.9 tok/s. At 800 the retained primary kernels
+leave 0.567 s for other costs. At 1000 their duration must improve by at least
+1.181× even if all other costs disappear. Unions overlap and are not additive.
+These are conditional retained-duration scenarios, not hardware roofs or
+throughput forecasts; the trace's launcher residency monitoring also supplies
+no native decoder residency qualification.
+
+The simulator preserves the distinction between short prefill screens,
+full-length comparisons and quality checks. Fused preparation's 3.145×
+component ratio does not multiply model throughput: the full workspace trial
+gained only 1.07%. The fused/unordered KDA combination failed coding. The latest
+combined MLA screen gained 3.14%, but its fresh full comparison gained only
+1.20% prefill and lost 5.25% decode; subsequent coding was skipped. All remain
+unselected. Those results motivate scheduling and work redistribution before
+another microkernel or precision flag sweep. The 800 target remains unmet.
