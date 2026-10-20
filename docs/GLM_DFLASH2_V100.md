@@ -72,6 +72,22 @@ head candidates per slot on the GPU. This reduces the head readback from
 and selected logits retain their original FP32 bits. The default CPU selection
 remains available for exact candidate and generated-output comparisons.
 
+`STRATA_GLM_DFLASH_ADAPTIVE_DEPTH=1` optionally trims uncertain proposal tails
+before target verification. `STRATA_GLM_DFLASH_MIN_DEPTH` sets a minimum of one
+to seven proposals (default one); `STRATA_GLM_DFLASH_DEPTH_GAP` sets a finite
+logit gap from zero to 32 (default one). After that minimum, the engine stops
+before the first selected token whose unary logit is less than the strongest
+other candidate plus the gap. Equality retains the token. Short request tails
+can contain fewer proposals than the minimum.
+
+The seven-slot draft and its token choices stay unchanged; the policy uses
+candidates already copied to the host. Each retained proposal still receives
+target verification. The C11 rule lives in `glm_draft.h` and has GPU-free tests.
+The option is off by default. CUDA and HIP builds and four host tests passed.
+With new options off, a two-V100 run matched all 128 generated token IDs against
+the frozen default reference. Its cold timing was not qualified. Matched
+adaptive timing and coding qualification are still pending.
+
 Download the checkpoint revision above to a local directory.
 Create the worker configuration inside the ignored build directory, with paths
 appropriate to the machine:

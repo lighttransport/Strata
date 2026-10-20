@@ -328,7 +328,7 @@ target_link_libraries(strata-plan PRIVATE strata_plan)
 # read once through strata_env_init from main(), since C has no thread-safe function-local static for the
 # lambdas this replaces to lean on.
 enable_language(C)
-add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_layer.c src/host/glm_fp4.c src/host/glm_fp4_cache.c)
+add_library(strata_host STATIC src/host/glm_names.c src/host/glm_env.c src/host/glm_expert_pack.c src/host/glm_mixed.c src/host/glm_layer.c src/host/glm_fp4.c src/host/glm_fp4_cache.c src/host/glm_draft.c)
 set_target_properties(strata_host PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
 target_include_directories(strata_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(UNIX)
@@ -371,7 +371,7 @@ if(STRATA_BUILD_TESTS)
   add_test(NAME glm_route_drop_test COMMAND glm_route_drop_test)
   set_tests_properties(glm_route_drop_test PROPERTIES LABELS glm)
   # The spellings and the rules, on synthetic data: no model, no GPU, and no C++ in the way.
-  foreach(_host_test glm_names glm_env glm_expert_pack glm_expert_replay glm_layer glm_fp4_cache)
+  foreach(_host_test glm_names glm_env glm_expert_pack glm_expert_replay glm_layer glm_fp4_cache glm_draft)
     add_executable(${_host_test}_test tests/host/${_host_test}_test.c)
     target_include_directories(${_host_test}_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_link_libraries(${_host_test}_test PRIVATE strata_host)

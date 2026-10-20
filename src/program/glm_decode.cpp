@@ -13,6 +13,7 @@
 #include "strata/host/glm_env.h"
 #include "strata/host/glm_route_drop.h"
 #include "strata/host/glm_fp4_cache.h"
+#include "strata/host/glm_draft.h"
 #include "strata/core/device.hpp"
 #include "strata/core/runtime_memory.hpp"
 #include "strata/artifact/expert_calibration.hpp"
@@ -2390,6 +2391,9 @@ class Decoder {
     bool capture_hidden = false;
     bool dflash_enabled = false;
     bool dflash_gpu_top16 = false;
+    bool dflash_adaptive_depth = false;
+    int dflash_minimum_depth = 1;
+    float dflash_depth_gap = 1;
     std::unique_ptr<Device> dflash_allowed_tokens;
     std::vector<float> dflash_features;
     std::unique_ptr<Device> dflash_capture_buffer;
@@ -2401,6 +2405,16 @@ public:
             capture_hidden || defer_experts || split_verify || !row_sequences.empty())
             throw std::invalid_argument("DFlash2 requires native GLM FP4, no MTP, deferred experts, or split verification");
         dflash_enabled=true;
+        dflash_adaptive_depth=strata_env_is_one("STRATA_GLM_DFLASH_ADAPTIVE_DEPTH");
+        if(dflash_adaptive_depth) {
+            const auto minimum=strata_env_value_ll("STRATA_GLM_DFLASH_MIN_DEPTH",1);
+            const auto gap=strata_env_value_double("STRATA_GLM_DFLASH_DEPTH_GAP",1);
+            if(minimum<1 || minimum>7 || !std::isfinite(gap) || gap<0 || gap>32)
+                throw std::invalid_argument("DFlash2 adaptive minimum must be1..7 and gap0..32");
+            dflash_minimum_depth=int(minimum);dflash_depth_gap=float(gap);
+            std::cerr<<"DFLASH_ADAPTIVE min_depth="<<minimum<<" gap="<<gap
+                     <<" confidence=selected_unary_minus_best_other\n";
+        }
         dflash_gpu_top16=strata_env_is_one("STRATA_GLM_DFLASH_GPU_TOP16");
         if(dflash_gpu_top16) {
             std::vector<uint8_t> allowed(m.vocab);
@@ -2486,10 +2500,29 @@ public:
         if(tokens.kind!=strata::artifact::Json::Array || tokens.array.size()!=7)
             throw std::runtime_error("DFlash2 proposal shape mismatch");
         std::vector<int> result;
+        std::array<float,7> confidence{};
+        int row=0;
         for(const auto& token:tokens.array) {
             const auto id=token.integer();if(id>=size_t(m.vocab)||!artifact.exl3().token_ids[id])
                 throw std::runtime_error("DFlash2 proposal token invalid");
+            if(dflash_adaptive_depth) {
+                float selected=-std::numeric_limits<float>::infinity(),other=selected;
+                int found=0;
+                for(int i=0;i<16;++i) {
+                    const auto& candidate=candidates[row*16+i];
+                    if(candidate.token==int(id)){selected=candidate.logit;++found;}
+                    else other=std::max(other,candidate.logit);
+                }
+                if(found!=1)throw std::runtime_error("DFlash2 selected token missing from head candidates");
+                confidence[row]=selected-other;
+            }
             if(result.size()<size_t(limit))result.push_back(int(id));
+            ++row;
+        }
+        if(dflash_adaptive_depth) {
+            const int retained=strata_glm_draft_depth(confidence.data(),limit,dflash_minimum_depth,dflash_depth_gap);
+            if(retained<1)throw std::runtime_error("DFlash2 adaptive confidence invalid");
+            result.resize(retained);
         }
         return result;
     }
