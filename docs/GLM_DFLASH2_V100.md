@@ -215,9 +215,31 @@ initial sums, with clean CUDA memcheck/racecheck. With grouped products active
 in both variants, its component geometric mean speed ratio was **1.053437×**
 across twelve group/width cases. The original 128-output and real-model
 width/history/rollback checks passed on both GPUs. CUDA and HIP builds and six
-host checks per backend passed; HIP GPU execution was not tested. Full-model
-timing was deferred before startup to the next allocation, so this supplies no
-additional model throughput result yet.
+host checks per backend passed; HIP GPU execution was not tested.
+
+The subsequent matched MTP pair measured **39.85 / 41.24 decode** and
+**519.94 / 519.34 prefill tok/s**, with three full warmups and three timed
+512-output requests per side. All six streams matched the mild reference,
+with zero timed major faults or swap. The 3.50% paired gain missed the
+predeclared absolute threshold of 3% above 40.26, so its conditional coding
+panels were skipped. An earlier wrapper failed before either model started
+because an idle-check output filename already existed; the corrected wrapper
+used the same frozen binary and settings. Both records are retained.
+For the candidate's median request, removing all nonverification work would
+reach 48.37 tok/s. Reaching 50 with other phases fixed requires 1.26 times
+faster verification. These are conditional calculations for the measured
+proposal stream, not hardware rooflines or forecasts.
+
+On that same grouped core, increasing MTP depth and the soft acceptance cap
+from three to four measured **41.79 / 40.47 decode** and **519.59 / 520.57
+prefill tok/s**. Both sides used three full warmups and three timed 512-output
+requests, with zero timed major faults or swap. The candidate outputs changed
+but were repeatable and passed length, EOS and repetition checks. The 3.14%
+decode regression failed the speed gate; coding was skipped. The depth-three
+control's 41.79 timing and the separate pair's 41.24 timing use the same core
+configuration; neither establishes a new recommended preset. These are MTP
+results. The best result with both reused coding panels passed remains 40.26
+tok/s, and Fresh20 remain unscored.
 
 ## Execution
 

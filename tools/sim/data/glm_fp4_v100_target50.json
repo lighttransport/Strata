@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "2854e5bf3d941394a4c145ae343134a68032c32b3b20de31f57c784887fada29"
+      "sha256": "5a3fe4a70b4e7f0c12b928b958b6c780d0d5190c1a2d7b637e23997ac1e37a0b"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -7288,6 +7288,26 @@
       "protocol": "8192 frozen input IDs / 128 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-mtp-soft4-mtp-candidate-full-v362",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 40.47172127577003,
+      "prefill_tok_s": 520.5731897181711,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-mtp-soft4-mtp-control-full-v362",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 41.78557702529213,
+      "prefill_tok_s": 519.5859549421555,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-ordered-history-mtp-candidate-full-v305",
       "experiment_family": "dflash2",
       "decode_tok_s": 40.47877438826353,
@@ -7378,10 +7398,30 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v366",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 41.24360360942065,
+      "prefill_tok_s": 519.3389079428676,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-resident-grouped-mtp-control-full-v348",
       "experiment_family": "dflash2",
       "decode_tok_s": 39.96433710817744,
       "prefill_tok_s": 518.2809168612118,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v366",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 39.84933675418964,
+      "prefill_tok_s": 519.9421158191373,
       "fit": false,
       "performance_anchor": false,
       "worker_residency_checked": false,
@@ -8200,6 +8240,8 @@
     "DFlash2: earlier narrow router/input readback control/candidate measured 37.78/40.26 decode and 519.18/519.34 prefill tok/s, three full warmups and three timed512 requests per side. All six streams match the mild reference with zero timed target faults/swap. Same native build, CPU_M1/QKV1 and lossy policy; only scheduling differs. Both sides passed eight reused long and eight reused natural-length coding checks; fresh20remain unscored. No selected preset/capacity changed.",
     "DFlash2: pinned route ID batching control/candidate measured 39.60/40.12decode and 518.96/519.27prefill tok/s, three full warmups and three timed512requests each. All six match the mild reference, zero timed target faults/swap. The 1.32percent gain is below the3percent gate and best40.26reference; coding checks were skipped. Prototype stays private; no preset/capacity changed.",
     "DFlash2: resident GPU expert grouping control/candidate measured 39.96/41.33decode and 518.28/518.17prefill tok/s, three full warmups and three timed512requests each. All six match the mild reference, zero timed target faults/swap; actual positive grouped counters on both GPUs. Its 3.43percent paired gain missed the predeclared40.257reference plus3percent absolute gate; coding was skipped. Private prototype, not a new validated preset; no capacity fit.",
+    "DFlash2: resident GPU expert grouping control/candidate measured 39.85/41.24decode and 519.94/519.34prefill tok/s, three full warmups and three timed512requests each. All six match the mild reference, zero timed target faults/swap; actual positive grouped counters on both GPUs. Its 3.50percent paired gain missed the predeclared40.257reference plus3percent absolute gate; coding was skipped. Private prototype, not a new validated preset; no capacity fit.",
+    "DFlash2: MTP depth3/softcap3 versus depth4/softcap4 on the same private grouped core measured 41.79/40.47 decode and 519.59/520.57 prefill tok/s. Three full warmups and three timed512 requests per side, zero timed target faults/swap, clean uninstrumented exits. Candidate outputs changed but were repeatable and passed length/EOS/repetition gates. Decode regressed 3.14 percent; coding skipped. This is MTP timing, not external DFlash2 throughput or a quality result. Fresh20 unscored; selected reference and capacities unchanged.",
     "DFlash2: counting all usable GPU arena holes for decode admission measured 39.68/37.59 MTPdecode and 519.55/495.80prefill tok/s. Three full warmups and three timed512requests each, zero timed target faults/swap. Candidate outputs changed under existing affinity/drop policy but were repeatable and passed length/EOS/repetition gates; this is not a quality result. Decode regressed5.28percent, coding skipped. Original scratch reserves retained; no selected preset/capacity changed.",
     "DFlash2: coalesced NVFP4 operand reconstruction control/candidate measured 39.53/39.82decode and 519.19/520.63prefill tok/s, three full warmups and three timed512requests each. All six match the mild reference, zero timed target faults/swap. Prefill improved only0.28percent, below gate; coding skipped. Component speedup did not translate to material model speed. No selected preset/capacity changed.",
     "DFlash2: shared-tile transpose before NVFP4 operand stores passed35bitwise14graphcases and clean CUDA memcheck/racecheck. Same-allocation component geomean ratio1.665286 on the two expert matrix shapes; five alternating32call event samples, not model timing or a capacity fit. Both original128-output model checks matched; cold defaultOFF timing was unqualified due30majorfaults, whose backing file is unproven. Matched full-model results are separate.",
@@ -9489,6 +9531,42 @@
       "verify_ms": 4146.17
     },
     {
+      "name": "dflash2-mtp-soft4-mtp-candidate-full-v362-trial0",
+      "advances": 511,
+      "decode_ms": 12686.0,
+      "verify_ms": 10656.0
+    },
+    {
+      "name": "dflash2-mtp-soft4-mtp-candidate-full-v362-trial1",
+      "advances": 511,
+      "decode_ms": 12626.1,
+      "verify_ms": 10589.3
+    },
+    {
+      "name": "dflash2-mtp-soft4-mtp-candidate-full-v362-trial2",
+      "advances": 511,
+      "decode_ms": 12597.3,
+      "verify_ms": 10568.0
+    },
+    {
+      "name": "dflash2-mtp-soft4-mtp-control-full-v362-trial0",
+      "advances": 511,
+      "decode_ms": 12315.5,
+      "verify_ms": 10485.6
+    },
+    {
+      "name": "dflash2-mtp-soft4-mtp-control-full-v362-trial1",
+      "advances": 511,
+      "decode_ms": 12225.0,
+      "verify_ms": 10403.3
+    },
+    {
+      "name": "dflash2-mtp-soft4-mtp-control-full-v362-trial2",
+      "advances": 511,
+      "decode_ms": 12229.1,
+      "verify_ms": 10405.4
+    },
+    {
       "name": "dflash2-ordered-history-mtp-candidate-full-v305-trial0",
       "advances": 511,
       "decode_ms": 12544.1,
@@ -9651,6 +9729,24 @@
       "verify_ms": 10544.6
     },
     {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v366-trial0",
+      "advances": 511,
+      "decode_ms": 12331.8,
+      "verify_ms": 10503.4
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v366-trial1",
+      "advances": 511,
+      "decode_ms": 12389.8,
+      "verify_ms": 10564.7
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v366-trial2",
+      "advances": 511,
+      "decode_ms": 12404.0,
+      "verify_ms": 10577.3
+    },
+    {
       "name": "dflash2-resident-grouped-mtp-control-full-v348-trial0",
       "advances": 511,
       "decode_ms": 12715.8,
@@ -9667,6 +9763,24 @@
       "advances": 511,
       "decode_ms": 12846.2,
       "verify_ms": 10961.4
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v366-trial0",
+      "advances": 511,
+      "decode_ms": 12844.0,
+      "verify_ms": 10941.8
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v366-trial1",
+      "advances": 511,
+      "decode_ms": 12777.3,
+      "verify_ms": 10880.5
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v366-trial2",
+      "advances": 511,
+      "decode_ms": 12823.3,
+      "verify_ms": 10922.5
     },
     {
       "name": "dflash2-route-id-batch-mtp-candidate-full-v319-trial0",
