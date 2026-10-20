@@ -165,6 +165,26 @@ throughput or coding trial was selected. The scalar address-bank analysis was
 not a measurement of GPU memory transactions. Neither prototype changed a
 selected profile or a simulator capacity.
 
+Resident GPU expert grouping showed a larger component improvement. The first
+private version passed bitwise and sanitizer checks but had a 0.925120 speed
+ratio. A revision using descriptor references and the original runtime loop
+dimensions reached **1.535068×** across twelve group/width cases. Both versions
+passed 44 bitwise cases, 44 graph checks and clean CUDA memcheck/racecheck.
+The compiler reported an 80-byte stack frame for the initial grouped gate/up
+kernel and none for the revision; this is a static property, not measured
+runtime traffic or proof of the cause of the speed difference.
+
+The revised model pair measured **39.96 / 41.33 decode** and **518.28 / 518.17
+prefill tok/s**, with three full warmups and three timed 512-output requests per
+side. All six streams matched the mild reference, with zero timed major faults
+or swap. Its 3.43% paired decode gain missed the predeclared threshold of 3%
+above the historical 40.26 reference, so coding panels were skipped. The
+prototype stays private; 40.26 remains the best result with both reused panels
+passed. Default 128-output and real-model width/history/rollback checks passed,
+as did CUDA and fresh HIP builds with six host tests each. HIP GPU execution
+was not tested. An initial launcher budget typo failed before model startup;
+the corrected launcher used the same binary, and the raw failure is retained.
+
 ## Execution
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a

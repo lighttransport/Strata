@@ -56,6 +56,9 @@
     "source-v321.tar.gz": "6c53cfcc65e87dc71e72cab35c3a0dd693189c9d8bd9456129889cc10d277264",
     "source-v327.tar.gz": "9a4e58b14edf39e39ab8a3efa56bf552ea023aa7ab89b65422f05b9f39e7bc66",
     "source-v33.tar.gz": "b6a2df068c39d81835cca4b4452125b1197b297a05d66f778e0f1f43c214852b",
+    "source-v333.tar.gz": "e63b10d43157b1fe0199b19e054a22e94887fee5277bc36aed3b5b3fb395bf78",
+    "source-v340.tar.gz": "b935626eb3984d1a3b2b8e67e58b996bcb919ed8771263c63f0b76ebb0ce7e11",
+    "source-v352.tar.gz": "707db13740c4ea19e4f7d213773daa515c74888402cd8d639dca78591127a1de",
     "source-v39.tar.gz": "6478dee7fb52bd92d93eee26d1e84bedbdf062783f2ec79820015a411215e9dd",
     "source-v50.tar.gz": "d3895c66dac613aef60f94ed56e7383ffec326ac7cbe0467325fd482f9ef01b9",
     "source-v52.tar.gz": "241a5cb7f38e081cfaff2006f782cca46f73578d796aa61de82bd126f082ef8e",
@@ -133,6 +136,9 @@
     "dflash2-evidence-72.tar.gz": "739004e158fac3860b69211189359fdb6075342d730786104290d9c3e6fc33f3",
     "dflash2-evidence-73.tar.gz": "8a3ae9e1686dd8c2fef182d75ca87c0538fee60b954e78c56367443d84b77562",
     "dflash2-evidence-74.tar.gz": "3bda56650ee30960ec449c2c7e5d14e5ac16be6227ec02c9658e2f7ea6321f60",
+    "dflash2-evidence-75.tar.gz": "edf2b5ff90aeffde4d893ff86dc3891b7a441c5c7e9c9964b5853cf30e749c49",
+    "dflash2-evidence-76.tar.gz": "d6183729ee27ff7faf61fb36736e84ecc1c7e581c069fb127227d4bac24b5be2",
+    "dflash2-evidence-78.tar.gz": "b694b39dc5763c3a81eabd0ed56fcf4206a0b17122d352fa5e82169db04ec696",
     "dflash2-evidence-8.tar.gz": "65c90734e6036b89c898a51a2dab3b0081cc69a54964e658fb1fbe4f3a2673d8",
     "dflash2-evidence-9.tar.gz": "1175490aaa41fb992333b0b9e8b7dd1aa055390d224411fb2c16d303712c4f14"
   },
@@ -20694,6 +20700,494 @@
       }
     },
     {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v348",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "23d35e32b251c2498baa03a42f9751e81f36f22184d201a8fffd7c6562b16591",
+      "source_log_sha256": "04e22fb576b6d088265d0392160cb0af3ad5a0e8d0ecbf9979a99a0d248c38f8",
+      "engine_version": 333,
+      "binary_sha256": "4f2fbd4973198bd1d86c5cd3d5f92a2e9800de91afbf90c954bc9c2b27f6a028",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_GLM_KDA_ROW_PARTS": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EARLY_READBACK": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_RESIDENT_GROUPED": "1",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_ID_BATCH": "1",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 41.333678454719,
+      "prefill_tok_s": 518.172732678027,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15735.8,
+          "decode_ms": 12366.6,
+          "decode_tok_s": 41.32097747157667,
+          "prefill_tok_s": 520.5963471828569,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.668231,
+            "draft_ms": 1096.36,
+            "verify_ms": 10550.6,
+            "resync_ms": 480.495
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15809.4,
+          "decode_ms": 12352.2,
+          "decode_tok_s": 41.3691488155956,
+          "prefill_tok_s": 518.172732678027,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.661544,
+            "draft_ms": 1093.46,
+            "verify_ms": 10539.9,
+            "resync_ms": 479.333
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15830.3,
+          "decode_ms": 12362.8,
+          "decode_tok_s": 41.333678454719,
+          "prefill_tok_s": 517.4886136080808,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.695168,
+            "draft_ms": 1096.7,
+            "verify_ms": 10544.6,
+            "resync_ms": 481.807
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v348",
+      "fit": false,
+      "performance_anchor": false,
+      "source_result_sha256": "93056679c031d195fe9fd448f09e16bbf49858c131793c0dde105c97081bdd06",
+      "source_log_sha256": "7c9bd9781de86a28d6e4e62f603967229261a98decf046572c17e8dd864e6518",
+      "engine_version": 333,
+      "binary_sha256": "4f2fbd4973198bd1d86c5cd3d5f92a2e9800de91afbf90c954bc9c2b27f6a028",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "context": 12288,
+        "threads": 32,
+        "prefill_batch": 8192,
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "full_warmups": 3,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "decode_graphs": false
+      },
+      "environment": {
+        "STRATA_GLM_KDA_PREPARE": "1",
+        "STRATA_GLM_KDA_ROW_PARTS": "1",
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MARGIN": "0",
+        "STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_BORROW": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_FUSED": "1",
+        "STRATA_GLM_FP4_CPU_Q8": "1",
+        "STRATA_GLM_FP4_CPU_Q8_BIAS": "0",
+        "STRATA_GLM_FP4_CPU_Q8_POLICY": "0",
+        "STRATA_GLM_FP4_CPU_ROW_TILE": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_LOCAL_M1": "1",
+        "STRATA_GLM_FP4_CPU_SPARSE": "1",
+        "STRATA_GLM_FP4_CPU_SPIN": "1",
+        "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+        "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_EARLY_READBACK": "1",
+        "STRATA_GLM_FP4_EXPERT_FUSION": "0",
+        "STRATA_GLM_FP4_GLOBAL_CACHE": "0",
+        "STRATA_GLM_FP4_GPU_REDUCE": "1",
+        "STRATA_GLM_FP4_KDA_QKV_BATCH": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_RESIDENT_GROUPED": "0",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY": "0.025",
+        "STRATA_GLM_FP4_ROUTE_AFFINITY_SECONDARY": "0",
+        "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_CAP": "0.5",
+        "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+        "STRATA_GLM_FP4_ROUTE_ID_BATCH": "1",
+        "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+        "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+        "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+        "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+        "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+        "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+        "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+        "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+        "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+        "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+        "STRATA_GLM_RAM_EXECUTABLE": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "complete": true,
+      "instrumented": false,
+      "error": null,
+      "decoder_returncode": 0,
+      "worker_residency_checked": false,
+      "completion_proof_sha256": "df4d721d233a2334088d2d2e0110346ae9e509ff46bf0b379fbcfa85c715af4d",
+      "decode_tok_s": 39.96433710817744,
+      "prefill_tok_s": 518.2809168612118,
+      "repetitions_identical": true,
+      "target_peak_swap_bytes": 0,
+      "worker_peak_swap_bytes": null,
+      "requests": [
+        {
+          "prefill_ms": 15701.9,
+          "decode_ms": 12715.8,
+          "decode_tok_s": 40.18622501140314,
+          "prefill_tok_s": 521.720301364803,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.67014,
+            "draft_ms": 1131.69,
+            "verify_ms": 10833.2,
+            "resync_ms": 510.379
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15806.1,
+          "decode_ms": 12786.4,
+          "decode_tok_s": 39.96433710817744,
+          "prefill_tok_s": 518.2809168612118,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.653277,
+            "draft_ms": 1130.08,
+            "verify_ms": 10906.5,
+            "resync_ms": 508.995
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        },
+        {
+          "prefill_ms": 15808.7,
+          "decode_ms": 12846.2,
+          "decode_tok_s": 39.77830019772384,
+          "prefill_tok_s": 518.1956770638951,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "stop_reason": "length",
+          "draft_worker_residency": null,
+          "tokens_sha256": "2dbfec3da6256e44aa8481276585c24bed21a4a97d57bc51d9d106c9ca963399",
+          "first_eos_position_1based": null,
+          "distinct_token_count": 188,
+          "repeated_4gram_fraction": 0.11591355599214148,
+          "longest_identical_token_run": 1,
+          "speculative": {
+            "source": "mtp",
+            "generated": 512,
+            "rounds": 134,
+            "proposed": 437,
+            "accepted": 377,
+            "replayed": 0
+          },
+          "timing_ms": {
+            "prepare_ms": 0.645335,
+            "draft_ms": 1132.57,
+            "verify_ms": 10961.4,
+            "resync_ms": 511.963
+          },
+          "native_cpu_expert_groups_delta": 20455,
+          "native_cpu_expert_groups_scope": "Request counter difference; narrow CPU expert groups in preparation and decode. Full8192-row target prefill runs GPU experts.",
+          "native_cpu_scale_cache_delta": {
+            "hits": 20455,
+            "misses": 0
+          },
+          "native_cpu_scale_cache_bytes_after": 307361782,
+          "native_cpu_width_groups_delta": {
+            "1": 17841,
+            "2": 2084,
+            "3": 409,
+            "4": 89,
+            "5": 17,
+            "6": 9,
+            "7": 5,
+            "8": 1
+          },
+          "native_cpu_width_scope": "Narrow CPU expert groups by routed-token width; includes preparation and decode, not an isolated verification or CPU latency measurement.",
+          "timing_source": "MTP_TIMING in the same request log section"
+        }
+      ],
+      "qualified_timing": true,
+      "full512_protocol": true
+    },
+    {
       "name": "dflash2-route-id-batch-mtp-candidate-full-v319",
       "fit": false,
       "performance_anchor": false,
@@ -28472,6 +28966,38 @@
       "raw_sha256": "e49858e57c87f13d1747ae415f1336cada3d7ec1a2e19ccb2247b5ae9c836382"
     },
     {
+      "name": "default-v327-early0-parity128",
+      "ram_executable": true,
+      "early_readback": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "450b8b7da511e01e9ac8a8d03295ea4dc5fa8cfdd5defc97380f647c0975f0b0",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "22a874b110654ebe89f0468d6b79e39d73e132a38b399ffa255a88ede1ea9656",
+      "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "037d45c321edef626a9f57feb1444a523e2b26e6f8a7a3f3d0158ad69c290335"
+    },
+    {
+      "name": "default-v333-recovery346-early0-parity128",
+      "ram_executable": true,
+      "early_readback": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "4f2fbd4973198bd1d86c5cd3d5f92a2e9800de91afbf90c954bc9c2b27f6a028",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "c423687fff0285cbf4d11b61d40f109852088de841751aa85f7471aa9b245140",
+      "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+      "raw_sha256": "4acded5052e94f1a8b72a1e045db649618ba67667349b4ae89e8354556c7f086"
+    },
+    {
       "name": "default-v39-parity128",
       "passed": true,
       "tokens": 128,
@@ -32938,6 +33464,422 @@
       "hip_gpu_execution": false,
       "source_public": false
     },
+    "grouped_model": {
+      "passed": true,
+      "grouped_stats": {
+        "0": {
+          "calls": 18036,
+          "experts": 67364,
+          "rows": 76588
+        },
+        "1": {
+          "calls": 21056,
+          "experts": 105972,
+          "rows": 118192
+        }
+      },
+      "captures": [
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        }
+      ],
+      "allocations": 2,
+      "repetitions_per_width": 3,
+      "all_logits_bitwise_equal": true,
+      "rollback_next_logits_bitwise_equal": true,
+      "binary_sha256": "450b8b7da511e01e9ac8a8d03295ea4dc5fa8cfdd5defc97380f647c0975f0b0",
+      "source_manifest_sha256": "63dfbbdd4e2814bbd9dbe645ecda9d0cdb790d0248335d9b9efc0e07b6fb3c9e",
+      "raw_sha256": "d00290c6a3762095d7ffd93635974958c458060a0f4c8852a56a2cc21e8c2356",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "Real target widths1..4,bothhistorymodes,warm/capture/replay,retained-prefixrollbackandhistoryreallocation,ROUTE_ID_BATCH1 and RESIDENT_GROUPED1. Per-device counters require actual multi-expert dispatches. Weights/policy/FP32MMAandadditionorder unchanged. Functionalvalidationonly,no modelTPSclaim.",
+      "source_version": 327,
+      "validation_sha256": "3ad9f0a3a7fc9a953adcd0e69136eda20ea6c29085e05b235e3d19cd997fb660",
+      "default_output": {
+        "ram_executable": true,
+        "early_readback": false,
+        "passed": true,
+        "tokens": 128,
+        "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+        "candidate_sha256": "450b8b7da511e01e9ac8a8d03295ea4dc5fa8cfdd5defc97380f647c0975f0b0",
+        "decoder_returncode": 0,
+        "timing_qualified": false,
+        "timed_major_faults": 0,
+        "benchmark_error": null,
+        "result_sha256": "22a874b110654ebe89f0468d6b79e39d73e132a38b399ffa255a88ede1ea9656",
+        "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+        "proof_sha256": "037d45c321edef626a9f57feb1444a523e2b26e6f8a7a3f3d0158ad69c290335"
+      },
+      "cuda_host_tests": 6,
+      "hip_gpu_execution": false,
+      "source_public": false
+    },
+    "grouped_model_v333": {
+      "passed": true,
+      "grouped_stats": {
+        "0": {
+          "calls": 18036,
+          "experts": 67364,
+          "rows": 76588
+        },
+        "1": {
+          "calls": 21056,
+          "experts": 105972,
+          "rows": 118192
+        }
+      },
+      "captures": [
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 1,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 2,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 4,
+          "history": true,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": false,
+          "graphs": 34
+        },
+        {
+          "width": 3,
+          "history": true,
+          "graphs": 34
+        }
+      ],
+      "allocations": 2,
+      "repetitions_per_width": 3,
+      "all_logits_bitwise_equal": true,
+      "rollback_next_logits_bitwise_equal": true,
+      "binary_sha256": "4f2fbd4973198bd1d86c5cd3d5f92a2e9800de91afbf90c954bc9c2b27f6a028",
+      "source_manifest_sha256": "d54d71351d3ed42ee8d5425bbadd55533e5467fd58d429ba7dd3448e09b23c58",
+      "raw_sha256": "89faf3024773cb12cddd50f29cb63caa92bb6c416c1ff280e3edc9d69c70a8ac",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "Real target widths1..4,bothhistorymodes,warm/capture/replay,retained-prefixrollbackandhistoryreallocation,ROUTE_ID_BATCH1 and RESIDENT_GROUPED1. Per-device counters require actual multi-expert dispatches. Weights/policy/FP32MMAandadditionorder unchanged. Functionalvalidationonly,no modelTPSclaim.",
+      "source_version": 333,
+      "validation_sha256": "b5a6abc0e6593ee4c377125d971ce0b1a45b1389986999da7bee2127e3e2cc2e",
+      "default_output": {
+        "ram_executable": true,
+        "early_readback": false,
+        "passed": true,
+        "tokens": 128,
+        "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+        "candidate_sha256": "4f2fbd4973198bd1d86c5cd3d5f92a2e9800de91afbf90c954bc9c2b27f6a028",
+        "decoder_returncode": 0,
+        "timing_qualified": false,
+        "timed_major_faults": 0,
+        "benchmark_error": null,
+        "result_sha256": "c423687fff0285cbf4d11b61d40f109852088de841751aa85f7471aa9b245140",
+        "scope": "Frozen default numerical settings, requested early-readback placement only; output parity. Any cold runtime residency rejection is retained in the raw result; no throughput qualification.",
+        "proof_sha256": "4acded5052e94f1a8b72a1e045db649618ba67667349b4ae89e8354556c7f086"
+      },
+      "cuda_host_tests": 6,
+      "hip_gpu_execution": false,
+      "source_public": false
+    },
     "swizzle_component": {
       "passed": true,
       "checks": [
@@ -32975,6 +33917,191 @@
       ],
       "cuda_only": true,
       "source_public": false
+    },
+    "grouped_component": {
+      "passed": true,
+      "checks": [
+        {
+          "name": "direct",
+          "returncode": 0,
+          "bitwise_checks": 44,
+          "graph_checks": 44,
+          "log_sha256": "e68453477b4ad1ca8eb60bf30eca1508c5c3aba339eccfe80712a6dac42e3260"
+        },
+        {
+          "name": "memcheck",
+          "returncode": 0,
+          "bitwise_checks": 44,
+          "graph_checks": 44,
+          "log_sha256": "42e0f0cd0b0789208f362896f92cbb441958f24c7f2d14d88c9bf2cae81c8ee2"
+        },
+        {
+          "name": "racecheck",
+          "returncode": 0,
+          "bitwise_checks": 44,
+          "graph_checks": 44,
+          "log_sha256": "af3eb80d51631fa5151c53db252f7858f02cf1f4c0b2fadb64f8c8ca750bd4f8"
+        }
+      ],
+      "binary_sha256": "6bfb218e4ada0741708011862d41779edfa9fcc49a63012971899d753bfec349",
+      "source_manifest_sha256": "63dfbbdd4e2814bbd9dbe645ecda9d0cdb790d0248335d9b9efc0e07b6fb3c9e",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "SM70 resident expert batching;22group/widthlayouts,twochangedinputs,44bitwiseand44graph cases,allintermediates/sums/guards,1..64groups,mixedcountsandfull64rowextent. OriginalMMA/Kpartition/FP32scatterorder. Componentfunctional/sanitizerproofonly,no modelTPSclaim.",
+      "validation_sha256": "13a3fc12f16ce0a4e256cf254eacb8b289666058982a56926d1d289258e71085",
+      "devices_exercised": [
+        0
+      ],
+      "cuda_only": true,
+      "source_public": false
+    },
+    "grouped_component_v333": {
+      "passed": true,
+      "checks": [
+        {
+          "name": "direct",
+          "returncode": 0,
+          "bitwise_checks": 44,
+          "graph_checks": 44,
+          "log_sha256": "e68453477b4ad1ca8eb60bf30eca1508c5c3aba339eccfe80712a6dac42e3260"
+        },
+        {
+          "name": "memcheck",
+          "returncode": 0,
+          "bitwise_checks": 44,
+          "graph_checks": 44,
+          "log_sha256": "42e0f0cd0b0789208f362896f92cbb441958f24c7f2d14d88c9bf2cae81c8ee2"
+        },
+        {
+          "name": "racecheck",
+          "returncode": 0,
+          "bitwise_checks": 44,
+          "graph_checks": 44,
+          "log_sha256": "af3eb80d51631fa5151c53db252f7858f02cf1f4c0b2fadb64f8c8ca750bd4f8"
+        }
+      ],
+      "binary_sha256": "4dc52f1a3f9a651e921e4c0ca788864a27426e604b5350cbdcbcefc15a1ae09d",
+      "source_manifest_sha256": "d54d71351d3ed42ee8d5425bbadd55533e5467fd58d429ba7dd3448e09b23c58",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "SM70 resident expert batching;22group/widthlayouts,twochangedinputs,44bitwiseand44graph cases,allintermediates/sums/guards,1..64groups,mixedcountsandfull64rowextent. OriginalMMA/Kpartition/FP32scatterorder. Componentfunctional/sanitizerproofonly,no modelTPSclaim.",
+      "validation_sha256": "39a0b73ee212c2f3c9101da919505f5bf758c02e77fe978798208621781e3d6b",
+      "devices_exercised": [
+        0
+      ],
+      "cuda_only": true,
+      "source_public": false
+    },
+    "grouped_compiler_source327": {
+      "profiles": [
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__39cf59ae_10_glm_fp4_cu_3849d12915fp4_qpn_groupedILi8ELi2ELb1ELb0EEEvPKNS0_17GlmFp4ExpertGroupEPK6__halfPfS9_",
+          "registers": 50,
+          "stack_frame_bytes": 80,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        },
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__39cf59ae_10_glm_fp4_cu_3849d12915fp4_qpn_groupedILi8ELi2ELb0ELb1EEEvPKNS0_17GlmFp4ExpertGroupEPK6__halfPfS9_",
+          "registers": 48,
+          "stack_frame_bytes": 0,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        },
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__39cf59ae_10_glm_fp4_cu_3849d1297fp4_qpnILi8ELi2ELb0EEEvPKhS4_PK6__halfPfiiif",
+          "registers": 54,
+          "stack_frame_bytes": 0,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        },
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__39cf59ae_10_glm_fp4_cu_3849d1297fp4_qpnILi8ELi2ELb1EEEvPKhS4_PK6__halfPfiiif",
+          "registers": 51,
+          "stack_frame_bytes": 0,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        }
+      ],
+      "source_manifest_sha256": "63dfbbdd4e2814bbd9dbe645ecda9d0cdb790d0248335d9b9efc0e07b6fb3c9e",
+      "source_sha256": "81d47f713ad948891cd574bcb068afdbf39cdf9087f540696838802b646a556d",
+      "raw_sha256": "0ac3e230ba7e994b0836fbcfd75540fe3e8440b7798f0de1bd6bc9ad6faa1718",
+      "flags_sha256": "4cc5dc6daff6bc0e1503d7a88a6289d78cfd2157083a2b3f99f166c0a319285a",
+      "summary_sha256": "2cb834d2f125cc35328d473dffdf5f7f0da2e2db2d065bb714214a5f435f8ed4",
+      "fit": false,
+      "performance_anchor": false,
+      "scope": "StaticSM70compilerproperties fororiginalandgroupedNvFP4gate/up/down;noGPUruntime traffic orcausalperformanceclaim."
+    },
+    "grouped_compiler_source333": {
+      "profiles": [
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__52c1d877_10_glm_fp4_cu_3849d12915fp4_qpn_groupedILi8ELi2ELb1ELb0EEEvPKNS0_17GlmFp4ExpertGroupEPK6__halfPfS9_ii",
+          "registers": 56,
+          "stack_frame_bytes": 0,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        },
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__52c1d877_10_glm_fp4_cu_3849d12915fp4_qpn_groupedILi8ELi2ELb0ELb1EEEvPKNS0_17GlmFp4ExpertGroupEPK6__halfPfS9_ii",
+          "registers": 58,
+          "stack_frame_bytes": 0,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        },
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__52c1d877_10_glm_fp4_cu_3849d1297fp4_qpnILi8ELi2ELb0EEEvPKhS4_PK6__halfPfiiif",
+          "registers": 54,
+          "stack_frame_bytes": 0,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        },
+        {
+          "symbol": "_ZN6strata7kernels43_GLOBAL__N__52c1d877_10_glm_fp4_cu_3849d1297fp4_qpnILi8ELi2ELb1EEEvPKhS4_PK6__halfPfiiif",
+          "registers": 51,
+          "stack_frame_bytes": 0,
+          "static_spill_store_bytes": 0,
+          "static_spill_load_bytes": 0
+        }
+      ],
+      "source_manifest_sha256": "d54d71351d3ed42ee8d5425bbadd55533e5467fd58d429ba7dd3448e09b23c58",
+      "source_sha256": "781277f0ecf76802320e26b06a3831d95bfe12d98807c4fb41ca7f7d57a93bdb",
+      "raw_sha256": "d697f71ef3190d862877367b19b8a0a5c6ec9df2d9ed5f2a676ffc291d4795cd",
+      "flags_sha256": "4cc5dc6daff6bc0e1503d7a88a6289d78cfd2157083a2b3f99f166c0a319285a",
+      "summary_sha256": "e0192a45c22ac0e2b8ed7b75f0e48405fe9280616c1d8ff67927c73e4bcb69ed",
+      "fit": false,
+      "performance_anchor": false,
+      "scope": "StaticSM70compilerproperties fororiginalandgroupedNvFP4gate/up/down;noGPUruntime traffic orcausalperformanceclaim."
+    },
+    "grouped_hip_build": {
+      "passed": true,
+      "source_manifest_sha256": "d54d71351d3ed42ee8d5425bbadd55533e5467fd58d429ba7dd3448e09b23c58",
+      "compiled_source_entries": 561,
+      "hip_compile_only": true,
+      "hip_gpu_execution": false,
+      "hip_backend_query": true,
+      "host_tests": 6,
+      "binary_sha256": "bcf69be04650dad3d812253cd48b3d3f3a97a26f446069fa543f940db490f530",
+      "logs_sha256": {
+        "grouped333-hip-full-backend-library-path.log": "f0b2516365f89fc441621bdd875d951e5d5ad9b4d8a3770e8e649b5db5e4454b",
+        "grouped333-hip-full-backend.log": "2419a2ff70edd6942fd58024b86f434e4706008cd650213000a19728686c3711",
+        "grouped333-hip-full-build.log": "d423601d39988d976266a26bb05607b9e81a597684d9fa828f5e93c3f7a449d1",
+        "grouped333-hip-full-configure.log": "f980a059d44b52a1c78f89820a4e36d1e96f160d931a1e87d43b8e3d2f246a03",
+        "grouped333-hip-full-host.log": "3f66a9f3c25d45953ad4e4cbb975fe7e2a78af5a0808c9c14386893674896fd1"
+      },
+      "scope": "Fresh isolated CMake HIP decoder/kernel/library build from frozen333compiledclosure,sixhostchecks and backendquery with configuredinstalledlibrarypath passed. Initial barequeryloaderfailure preserved;not model failure. CUDA-onlyNvFP4kernel/test excludedbyguards;no HIP GPU/model execution.",
+      "fit": false,
+      "performance_anchor": false,
+      "proof_sha256": "7c60a6cfd3429e621f81b886fd31147f278d63a94550920eb1406c9a08271f7e"
+    },
+    "grouped_launcher_recovery": {
+      "failed_result_sha256": "eb19c68080be8141ea6aeb4d2944280bbd68afbb31d640db8165fab20aa9952b",
+      "failed_log_sha256": "42cf1030ca8b201fba79b88790c33da46398ce3414aa90687ff6068cfb7fcbb2",
+      "initial_gpu_budget_mib": 33368,
+      "corrected_gpu_budget_mib": 32768,
+      "model_timing": false,
+      "scope": "Initial333default launcher exceeded selected GPU capacity before modelstartup. Failedrawpreserved; corrected346original128and347mixed-widthrollback checks bind the qualified348pair to the same333binary."
     },
     "linear_adapter_gradients": {
       "passed": true,
@@ -53137,7 +54264,232 @@
       "performance_anchor": false,
       "fresh_holdout_scored": false,
       "scope": "V100componentonly,sameweights/inputs/outputallocation,32pairedwarm+five128call event samples pervariant,alternating order. Eventsincludehostenqueuegaps. Proxy gateuses8expertshapes/widths1..4,>=3%geomean andno>3%one-rowregression; no modelTPSforecast orcapacityfit.",
+      "source_version": 321,
       "summary_sha256": "f08af6e00755203e1100b55454b3e8b79e0cc0279c7d1591f35b407c4bf5e567"
+    }
+  ],
+  "native_grouped_components": [
+    {
+      "complete": true,
+      "medians": [
+        {
+          "groups": 2,
+          "width": 1,
+          "control_us": 92.352,
+          "candidate_us": 110.208,
+          "ratio": 0.837979094076655,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 2,
+          "control_us": 93.376,
+          "candidate_us": 110.912,
+          "ratio": 0.8418926716676284,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 3,
+          "control_us": 97.216,
+          "candidate_us": 112.192,
+          "ratio": 0.8665145464917284,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 4,
+          "control_us": 94.336,
+          "candidate_us": 110.528,
+          "ratio": 0.8535031847133757,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 1,
+          "control_us": 178.944,
+          "candidate_us": 195.904,
+          "ratio": 0.9134269846455406,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 2,
+          "control_us": 179.776,
+          "candidate_us": 196.864,
+          "ratio": 0.9131989596879064,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 3,
+          "control_us": 186.368,
+          "candidate_us": 199.11,
+          "ratio": 0.9360052232434332,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 4,
+          "control_us": 195.584,
+          "candidate_us": 202.752,
+          "ratio": 0.9646464646464646,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 1,
+          "control_us": 355.776,
+          "candidate_us": 362.24,
+          "ratio": 0.9821554770318022,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 2,
+          "control_us": 357.504,
+          "candidate_us": 363.584,
+          "ratio": 0.9832775919732442,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 3,
+          "control_us": 370.24,
+          "candidate_us": 369.152,
+          "ratio": 1.0029472954230236,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 4,
+          "control_us": 388.416,
+          "candidate_us": 376.192,
+          "ratio": 1.0324940455937393,
+          "samples_per_variant": 5
+        }
+      ],
+      "selection_geometric_mean_ratio": 0.9251203237960552,
+      "selected_for_model": false,
+      "source_manifest_sha256": "63dfbbdd4e2814bbd9dbe645ecda9d0cdb790d0248335d9b9efc0e07b6fb3c9e",
+      "raw_sha256": "f3aa4e6ed649eda73dbaf680b52bd13d391ca32bd8f598b6d303d287ebe51fe8",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "V100componentonly;allintermediatesandscatterssamebuffers;16pairedwarm+five16call samplesalternatingvariants. Eventsincludehostenqueuegaps. Twelve2/4/8group,width1..4shapes;>=3%geomean/no>3%one-rowregressiongate;no modelTPSforecast orcapacityfit.",
+      "source_version": 327,
+      "summary_sha256": "b209b5b33793160096ea3ee4b74114b9f88d7033945b4cf13d74836734ab6e2c"
+    },
+    {
+      "complete": true,
+      "medians": [
+        {
+          "groups": 2,
+          "width": 1,
+          "control_us": 92.416,
+          "candidate_us": 66.24,
+          "ratio": 1.395169082125604,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 2,
+          "control_us": 93.632,
+          "candidate_us": 66.88,
+          "ratio": 1.4000000000000001,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 3,
+          "control_us": 96.768,
+          "candidate_us": 68.864,
+          "ratio": 1.4052044609665426,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 2,
+          "width": 4,
+          "control_us": 103.36,
+          "candidate_us": 71.808,
+          "ratio": 1.4393939393939392,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 1,
+          "control_us": 178.88,
+          "candidate_us": 115.584,
+          "ratio": 1.5476190476190474,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 2,
+          "control_us": 180.032,
+          "candidate_us": 117.376,
+          "ratio": 1.5338058887677208,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 3,
+          "control_us": 185.728,
+          "candidate_us": 122.048,
+          "ratio": 1.5217619297325642,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 4,
+          "width": 4,
+          "control_us": 195.136,
+          "candidate_us": 128.128,
+          "ratio": 1.5229770229770232,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 1,
+          "control_us": 354.556,
+          "candidate_us": 207.872,
+          "ratio": 1.7056457820197042,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 2,
+          "control_us": 357.184,
+          "candidate_us": 212.032,
+          "ratio": 1.6845759130697253,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 3,
+          "control_us": 369.792,
+          "candidate_us": 222.656,
+          "ratio": 1.6608220753089966,
+          "samples_per_variant": 5
+        },
+        {
+          "groups": 8,
+          "width": 4,
+          "control_us": 388.16,
+          "candidate_us": 235.142,
+          "ratio": 1.6507472080700174,
+          "samples_per_variant": 5
+        }
+      ],
+      "selection_geometric_mean_ratio": 1.5350680858836991,
+      "selected_for_model": true,
+      "source_manifest_sha256": "d54d71351d3ed42ee8d5425bbadd55533e5467fd58d429ba7dd3448e09b23c58",
+      "raw_sha256": "34de478e63cf838e707c8c71c61b0d971b5fa3fd5e19ab37599f4abe42fc820d",
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "scope": "V100componentonly;allintermediatesandscatterssamebuffers;16pairedwarm+five16call samplesalternatingvariants. Eventsincludehostenqueuegaps. Twelve2/4/8group,width1..4shapes;>=3%geomean/no>3%one-rowregressiongate;no modelTPSforecast orcapacityfit.",
+      "source_version": 333,
+      "summary_sha256": "3dc537f1ab5c3cae87581e58c1b0e43f2667494de3966e2f58f10fc223da6119"
     }
   ],
   "native_route_id_batch_comparisons": [
@@ -53199,6 +54551,84 @@
       "same_build": true,
       "decoder_sha256": "397a2b9b792662c06d57102c87a8e91e2b16145663053b6012fd152989b0b564",
       "summary_sha256": "cd0e5f139c4dbbc09ab757ba13926eb9198c6eda747a5475eb2b4d047a21f602",
+      "quality_scored": false,
+      "quality_panels": {
+        "control": {},
+        "candidate": {}
+      },
+      "repeated_timing_qualified": true,
+      "reused_quality_passed": false,
+      "repeated_gain_and_quality_qualified": false
+    }
+  ],
+  "native_resident_grouped_comparisons": [
+    {
+      "complete": true,
+      "fit": false,
+      "performance_anchor": false,
+      "fresh_holdout_scored": false,
+      "eligible_for_quality": false,
+      "results": [
+        {
+          "name": "control",
+          "label": "dflash2-resident-grouped-mtp-control-full-v348",
+          "returncode": 0,
+          "complete": true,
+          "qualified": true,
+          "raw_sha256": "93056679c031d195fe9fd448f09e16bbf49858c131793c0dde105c97081bdd06",
+          "grouped_stats": {},
+          "decode": 39.96433710817744,
+          "prefill": 518.2809168612118,
+          "timed_major_faults": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "candidate",
+          "label": "dflash2-resident-grouped-mtp-candidate-full-v348",
+          "returncode": 0,
+          "complete": true,
+          "qualified": true,
+          "raw_sha256": "23d35e32b251c2498baa03a42f9751e81f36f22184d201a8fffd7c6562b16591",
+          "grouped_stats": {
+            "0": {
+              "calls": 33459,
+              "experts": 133930,
+              "rows": 187402
+            },
+            "1": {
+              "calls": 38514,
+              "experts": 263134,
+              "rows": 355868
+            }
+          },
+          "decode": 41.333678454719,
+          "prefill": 518.172732678027,
+          "timed_major_faults": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "scope": "Same source333sealedRAM native binary,EARLY1/CPU_M1/QKV1/mildMTP3margin3/drop.5affinity.025/serialKDA1 bothsides. ROUTE_ID_BATCH1both,RESIDENT_GROUPED0vs1 batches onlyresidentNvFP4experts; originalMMA/Kpartitions/FP32scatterorder. Default128andmixedwidthrollback347passed beforetiming. Three full warmups+three timed512requests each; all6mildIDs/strictzero-fault/swap/cleanexitgates unchanged.",
+      "all_six_match_mild_reference": true,
+      "paired_ratio": 1.0342640825702916,
+      "goal50_timing_met": false,
+      "scope_correction": {
+        "raw_summary_sha256": "1f313b24dada6f49aded11d6d6fe14c101d7d658e226102f4d1edf4dac2cec61",
+        "source_manifest_sha256": "d54d71351d3ed42ee8d5425bbadd55533e5467fd58d429ba7dd3448e09b23c58",
+        "numeric_version": 347,
+        "numeric_proof_sha256": "b5a6abc0e6593ee4c377125d971ce0b1a45b1389986999da7bee2127e3e2cc2e",
+        "default_proof_sha256": "4acded5052e94f1a8b72a1e045db649618ba67667349b4ae89e8354556c7f086",
+        "scope": "Frozen parent348mentions numeric336;336stopped before model startup because itsdefault launcher budget33368MiB exceeded devicecapacity. Corrected346default and actual347mixed-width/history/rollback checks passed on the SAME333binary before348timing. Rawparent and failedlaunch evidence preserved unchanged. Correctedlauncher GPUbudget32768MiB.",
+        "proof_sha256": "d0cdeff7041781cef1dc6c548d2a3375929ee6e04dc24dee9da21b45b78a978d"
+      },
+      "same_build": true,
+      "decoder_sha256": "4f2fbd4973198bd1d86c5cd3d5f92a2e9800de91afbf90c954bc9c2b27f6a028",
+      "summary_sha256": "1f313b24dada6f49aded11d6d6fe14c101d7d658e226102f4d1edf4dac2cec61",
       "quality_scored": false,
       "quality_panels": {
         "control": {},
@@ -55902,6 +57332,72 @@
       "goal50_decode_budget_ms": 10220.0,
       "zero_nonverification_tok_s": 41.83449585748436,
       "verification_speedup_needed_if_other_work_unchanged": 1.4845405930967428,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v348",
+      "advances": 511,
+      "observed_decode_ms": 12366.6,
+      "verification_ms": 10550.6,
+      "other_ms": 1816.0,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 48.43326445889333,
+      "verification_speedup_needed_if_other_work_unchanged": 1.2554259876249405,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v348",
+      "advances": 511,
+      "observed_decode_ms": 12352.2,
+      "verification_ms": 10539.9,
+      "other_ms": 1812.300000000001,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 48.482433419671914,
+      "verification_speedup_needed_if_other_work_unchanged": 1.2536008658729498,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-candidate-full-v348",
+      "advances": 511,
+      "observed_decode_ms": 12362.8,
+      "verification_ms": 10544.6,
+      "other_ms": 1818.199999999999,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 48.46082354949453,
+      "verification_speedup_needed_if_other_work_unchanged": 1.2550405865409793,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v348",
+      "advances": 511,
+      "observed_decode_ms": 12715.8,
+      "verification_ms": 10833.2,
+      "other_ms": 1882.5999999999985,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 47.16981132075471,
+      "verification_speedup_needed_if_other_work_unchanged": 1.2993499172403866,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v348",
+      "advances": 511,
+      "observed_decode_ms": 12786.4,
+      "verification_ms": 10906.5,
+      "other_ms": 1879.8999999999996,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 46.85279420529042,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3077181328761045,
+      "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
+    },
+    {
+      "name": "dflash2-resident-grouped-mtp-control-full-v348",
+      "advances": 511,
+      "observed_decode_ms": 12846.2,
+      "verification_ms": 10961.4,
+      "other_ms": 1884.800000000001,
+      "goal50_decode_budget_ms": 10220.0,
+      "zero_nonverification_tok_s": 46.61813272027296,
+      "verification_speedup_needed_if_other_work_unchanged": 1.3150734235531243,
       "scope": "Conditional phase deletion ceiling for this measured proposal/acceptance stream, not a hardware roof or a forecast."
     },
     {
