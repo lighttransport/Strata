@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "e0b3183a407cc9785bc2cefa93c48d5ac515c94ea0ed9bfd6a3c947dcff98080"
+      "sha256": "fabf3784b20d56b56de64d2f0609ee7503251e5bf3672184529f3708c446768f"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -7188,6 +7188,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 2 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-ram-executable-mtp-candidate-full-v235",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 37.461695233347506,
+      "prefill_tok_s": 520.3913098716808,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-ram-executable-mtp-control-full-v235",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 36.11052222457777,
+      "prefill_tok_s": 520.6261240935754,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-selector-adapter-depth3-v219",
       "experiment_family": "dflash2",
       "decode_tok_s": 30.071028829348386,
@@ -7920,6 +7940,7 @@
     "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment155, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 7]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
     "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment175, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 39, 1]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
     "DFlash2: diagnostic216attached40target tasks and captured0user major-fault events with0lost samples. Timed process counters were[0, 0, 0]. The earlier fault did not reproduce; its backing file remains unknown and this instrumented run supplies no qualified speed gain.",
+    "DFlash2: sealed-RAM-executable MTP paired timing: control=36.11052222457777 qualified=True, candidate=37.461695233347506 qualified=True. Both sides use the same binary and RAM-image setting, with CPU one-token scales and KDA batching off versus on. Coding qualification is separate; no selected preset or hardware capacity changes.",
     "DFlash2: external diagnostic232 captured 466 user major-fault events on 40 target tasks with 0 lost samples. Captured addresses split 464 in the decoder executable and 2 in cuBLAS; most were in discarded warmups, and this case had zero timed faults. Its instrumented timing is excluded. This does not attribute faults from other cases or change a hardware roof.",
     "DFlash2: the minimum-three confidence case failed before timing because an incremental worker operation exceeded its one-second deadline while recording major faults. The optional append-width startup warmup passed real-weight graph equality and a17operation synthetic socket smoke; full-target timing remains pending.",
     "DFlash2: native head operand export passed valid output bit checks at widths1/8. FC-adapter calibration passed20CPU tests and a real-weight V100 synthetic gradient/serving-forward probe; skinny relativeL2 differed by0.00254. These are validation results, not a trained speed or coding result, and fit no capacity.",
@@ -9064,6 +9085,42 @@
       "advances": 511,
       "decode_ms": 15862.7,
       "verify_ms": 13727.6
+    },
+    {
+      "name": "dflash2-ram-executable-mtp-candidate-full-v235-trial0",
+      "advances": 511,
+      "decode_ms": 13640.8,
+      "verify_ms": 11649.8
+    },
+    {
+      "name": "dflash2-ram-executable-mtp-candidate-full-v235-trial1",
+      "advances": 511,
+      "decode_ms": 13640.6,
+      "verify_ms": 11654.2
+    },
+    {
+      "name": "dflash2-ram-executable-mtp-candidate-full-v235-trial2",
+      "advances": 511,
+      "decode_ms": 13580.0,
+      "verify_ms": 11591.3
+    },
+    {
+      "name": "dflash2-ram-executable-mtp-control-full-v235-trial0",
+      "advances": 511,
+      "decode_ms": 13971.1,
+      "verify_ms": 11989.3
+    },
+    {
+      "name": "dflash2-ram-executable-mtp-control-full-v235-trial1",
+      "advances": 511,
+      "decode_ms": 14151.0,
+      "verify_ms": 12168.9
+    },
+    {
+      "name": "dflash2-ram-executable-mtp-control-full-v235-trial2",
+      "advances": 511,
+      "decode_ms": 14206.8,
+      "verify_ms": 12214.8
     },
     {
       "name": "dflash2-selector-adapter-depth3-v219",

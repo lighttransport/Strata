@@ -57,6 +57,19 @@ the case's timed request recorded zero major faults. Its instrumented timing
 is excluded. These samples do not identify the backing file of faults in other
 cases. An optional RAM executable is being tested as a mitigation.
 
+A subsequent matched pair used the RAM executable on both sides, with three
+full warmups and three timed 512-output requests per side. Enabling one-token
+CPU scale decoding and batched KDA Q/K/V projections measured 36.11 / 37.46
+decode tok/s for control / candidate, a 3.74% gain. Prefill measured 520.63 /
+520.39 tok/s. All six requests had zero timed target major faults and matched
+the earlier mild-policy 512-token reference. Reused coding checks remain
+pending, so the selected preset stays unchanged. This comparison measures the
+two kernel options with RAM execution enabled; it does not isolate a speedup
+from RAM execution itself.
+For the candidate's median request, removing every other phase would reach
+43.85 tok/s. With those phases held fixed, 50 tok/s still requires a 1.42×
+verification speedup. This calculation keeps the measured proposal stream.
+
 ## Execution
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a
