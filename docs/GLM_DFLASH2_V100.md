@@ -174,7 +174,7 @@ The compiler reported an 80-byte stack frame for the initial grouped gate/up
 kernel and none for the revision; this is a static property, not measured
 runtime traffic or proof of the cause of the speed difference.
 
-The revised model pair measured **39.96 / 41.33 decode** and **518.28 / 518.17
+The revised MTP model pair measured **39.96 / 41.33 decode** and **518.28 / 518.17
 prefill tok/s**, with three full warmups and three timed 512-output requests per
 side. All six streams matched the mild reference, with zero timed major faults
 or swap. Its 3.43% paired decode gain missed the predeclared threshold of 3%
@@ -190,13 +190,23 @@ component speed ratio on the two expert matrix shapes. It passed 35 bitwise
 cases, 14 graph checks, CUDA memcheck/racecheck and both original 128-output
 model checks. The cold default-off check had 30 major faults and supplies no
 throughput measurement; the counters do not identify their backing file.
-The matched model pair measured **519.19 / 520.63 prefill tok/s** and
+The matched MTP model pair measured **519.19 / 520.63 prefill tok/s** and
 **39.53 / 39.82 decode tok/s**, after three full warmups and three timed
 512-output requests per side. All six streams matched the mild reference,
 with zero timed major faults or swap. The 0.28% prefill gain failed the gate;
 coding was skipped. HIP rebuilt with six host checks and an identical binary
 to the preceding HIP build, with no HIP GPU execution. The prototype remains
 private; the component improvement does not establish material model speed.
+
+Counting all suitable GPU arena holes for decode cache admission, while keeping
+the scratch reserves, measured **39.68 / 37.59 MTP decode** and **519.55 / 495.80
+prefill tok/s**. Each side used three full warmups and three timed 512-output
+requests, with zero timed major faults or swap. The candidate outputs changed
+under the existing affinity/drop policy, but were repeatable and passed length,
+EOS and repetition checks. CPU expert groups fell from 20,455 to 20,138 per
+request, while speculative rounds rose from 134 to 137. These counters do not
+establish the cause of the slowdown. Coding was skipped after the 5.28% decode
+regression; the option stays disabled in the experimental profile.
 
 ## Execution
 
