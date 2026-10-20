@@ -1,0 +1,1692 @@
+{
+  "schema": "strata.glm.native_fp4.v1",
+  "name": "dual-v100-native-fp4-with-activity-20261019",
+  "scope": "Frozen native ModelOpt FP4 workload and conditional resource rooflines; no timing fit or unseen-prompt accuracy claim.",
+  "sources": [
+    {
+      "path": "docs/glm_fp4_v100_decode20_measurement.json",
+      "sha256": "10f06e80885f68517c5c439412da33ad2ccb836bb918a3615d3100748432902e"
+    },
+    {
+      "path": "docs/glm_fp4_v100_model_measurement.json",
+      "sha256": "24d7dc6debf12006abba62fe017ef38e8a0ea4fd47e20d23d28ea3ef9ccf9cfa"
+    },
+    {
+      "path": "docs/glm_fp4_v100_core_measurement.json",
+      "sha256": "a5471e67c68345956219e4856d6366cd67458e6b7ae378d181447b9214fce8c0"
+    },
+    {
+      "path": "docs/glm_fp4_v100_cpu_width_measurement.json",
+      "sha256": "38dfee05cc0b64c131f23a0957f9f3bad8043b94e429ce215fe77c109638cd49"
+    },
+    {
+      "path": "docs/glm_fp4_v100_optimization_measurement.json",
+      "sha256": "66cd43f41a4b9430989b3dd96b9486c1d737c1c3f7d52a60c53f57082fdf431a"
+    },
+    {
+      "path": "docs/glm_fp4_v100_activity_measurement.json",
+      "sha256": "d17f5c6de7dad5f58df63c3462c2f461a9b8a4f5f774ca9a7797468cd24ed1de"
+    }
+  ],
+  "raw_report_sha256": "ed62a0f5c116c7fd6ea485cfae3e21fdb0022a48477db5c3471e0fa6343313e7",
+  "raw_log_sha256": "99d0b0d821dd178fcd07676e75376d591f9916dd2fd01c24a2fc55dae5b825db",
+  "checkpoint_config_sha256": "dbf6aaf0d3651a5a297e6672bed57979c20528e2aa7475b80df5ba63d5402ba8",
+  "checkpoint_headers_sha256": "3fe45a6a6c274c502a0ba5c90a8d425c604225bec279f530cfea2b5f736595c3",
+  "hardware": {
+    "gpu": "Tesla V100-PCIE-32GB",
+    "gpus": 2,
+    "cpu": "2 x Xeon Gold 6240",
+    "sockets": 2,
+    "cpu_workers": 32,
+    "memory_gib": 181,
+    "cuda": "12.9",
+    "driver": "580.178.04",
+    "ram_speed_mt_s": null,
+    "hbm_gbps_per_gpu": 900,
+    "tensor_tflops_per_gpu": 112,
+    "cpu_memory_channels_per_socket": 6,
+    "cpu_max_supported_mt_s": 2933,
+    "h2d_gbps_per_gpu": [
+      12.3075,
+      12.3355
+    ],
+    "h2d_probe_raw_sha256": "2c390c159ae681580b145b00a27f92d3a155e8ca79ee29ffc62554ee1e92a793",
+    "h2d_gbps_aggregate": 24.615,
+    "h2d_scope": "Concurrent 256 MiB registered-RAM DMA probe; not sustained inference bandwidth.",
+    "specifications": [
+      {
+        "url": "https://www.nvidia.com/en-gb/data-center/tesla-v100/",
+        "scope": "V100 PCIe 900 GB/s HBM and 112 TFLOP/s tensor peak; not the V100S."
+      },
+      {
+        "url": "https://www.intel.com/content/www/us/en/products/sku/192443/intel-xeon-gold-6240-processor-24-75m-cache-2-60-ghz/specifications.html",
+        "scope": "Six DDR4-2933 channels per socket; installed DIMM speed and population were not measured."
+      }
+    ],
+    "cpu_stream_gbps": 117.816,
+    "peer_access": true,
+    "peer_transport_scope": "Peer access available on the measured dual-V100 node; no peer-bandwidth probe. Non-peer pinned-host fallback compiled but not exercised.",
+    "cpu_stream_scope": "4 GiB read-only AVX-512 probe, 32 pinned workers, 15 passes per sample, two warmups and five timed samples; excludes FP4 arithmetic and scale lookup.",
+    "cpu_stream_raw_sha256": "f1930a4a6c9bc67e5692790856d2f0146b56ae0fdd3cea7a6ea745bbe89bca1c"
+  },
+  "geometry": {
+    "layers": 45,
+    "dense_layers": 3,
+    "moe_layers": 42,
+    "experts": 288,
+    "top_k": 8,
+    "hidden": 4096,
+    "expert_ff": 2048,
+    "draft_moe_layers": 1
+  },
+  "census": {
+    "draft_fixed": {
+      "matrices": 13,
+      "elements": 184287232,
+      "weight_bytes": 219021312,
+      "gpu_bytes": 228368384,
+      "checkpoint_bytes": 223694848,
+      "formats": {
+        "BF16": 2,
+        "MXFP8": 11
+      }
+    },
+    "draft_experts": {
+      "matrices": 864,
+      "elements": 7247757312,
+      "weight_bytes": 3623878656,
+      "gpu_bytes": 4076863488,
+      "checkpoint_bytes": 4076866944,
+      "formats": {
+        "NVFP4": 864
+      }
+    },
+    "embedding": {
+      "matrices": 1,
+      "elements": 634388480,
+      "weight_bytes": 1268776960,
+      "gpu_bytes": 1268776960,
+      "checkpoint_bytes": 1268776960,
+      "formats": {
+        "BF16": 1
+      }
+    },
+    "main_fixed": {
+      "matrices": 661,
+      "elements": 7642415104,
+      "weight_bytes": 8104181760,
+      "gpu_bytes": 8418234368,
+      "checkpoint_bytes": 8261472256,
+      "formats": {
+        "BF16": 346,
+        "MXFP8": 145,
+        "block_FP8": 170
+      }
+    },
+    "head": {
+      "matrices": 1,
+      "elements": 634388480,
+      "weight_bytes": 634388480,
+      "gpu_bytes": 674037760,
+      "checkpoint_bytes": 654213120,
+      "formats": {
+        "MXFP8": 1
+      }
+    },
+    "main_experts": {
+      "matrices": 36288,
+      "elements": 304405807104,
+      "weight_bytes": 152202903552,
+      "gpu_bytes": 171228266496,
+      "checkpoint_bytes": 162524103840,
+      "formats": {
+        "NVFP4": 36288
+      }
+    }
+  },
+  "mandatory_main_matrix_bytes": 2311647232,
+  "mandatory_main_matrix_elements": 2193883136,
+  "head_bytes": 674037760,
+  "expert_gpu_bytes": 14155776,
+  "expert_code_bytes": 12582912,
+  "expert_transfer_sizes": [
+    {
+      "device": 0,
+      "source_bytes_min": 13434836,
+      "source_bytes_max": 14155776,
+      "source_bytes_mean": 13452897.191860465
+    },
+    {
+      "device": 1,
+      "source_bytes_min": 13434566,
+      "source_bytes_max": 14155776,
+      "source_bytes_mean": 13452920.343023255
+    }
+  ],
+  "observations": [
+    {
+      "name": "preserved-greedy",
+      "decode_tok_s": 5.260860433799639,
+      "prefill_tok_s": 393.8045014469623,
+      "fit": false,
+      "protocol": "8192 to 512, one full warmup, three clean timed requests; 35 CPU workers."
+    },
+    {
+      "name": "q8-drop-greedy",
+      "decode_tok_s": 19.084610931635265,
+      "prefill_tok_s": 394.7400122392533,
+      "fit": false,
+      "protocol": "8192 to 512, one full warmup, three clean timed requests; 32 CPU workers."
+    },
+    {
+      "name": "q8-drop-mtp-lookup",
+      "decode_tok_s": 31.01951619267308,
+      "prefill_tok_s": 390.7017560594065,
+      "fit": false,
+      "protocol": {
+        "prompt": "Same frozen 8192 token IDs as the reference; SHA256 recorded per run.",
+        "generation": "512 token IDs, fixed length with stop IDs disabled. Decode times 511 advances after the prefill token.",
+        "warmup": "Two complete requests, then a discarded prefill request; three timed requests in one process.",
+        "residency": "All timed major faults and observed swap must be zero. Decoder must exit successfully.",
+        "cgroup_scope": "before/after numeric memory-controller records; peaks include the whole allocation, not only the selected run.",
+        "quality_selection": "Select using throughput and three training tasks, then evaluate the frozen twenty held-out tasks once. No held-out tuning."
+      }
+    },
+    {
+      "name": "v4-qualified-reduce",
+      "decode_tok_s": 32.666994828258545,
+      "prefill_tok_s": 454.2908637182864,
+      "fit": false,
+      "protocol": "8192 to 512; two full warmups, discarded one-token request, three timed requests; all timed major faults/swap zero."
+    }
+  ],
+  "selected": {
+    "configuration": {
+      "fp4_kernel": "sm70",
+      "prompt_tokens": 8192,
+      "generated_tokens": 512,
+      "threads": 32,
+      "context": 12288,
+      "prefill_batch": 8192,
+      "speculative": "mtp",
+      "draft_depth": 3,
+      "decode_graphs": false,
+      "full_warmups": 2,
+      "repetitions": 3,
+      "cpu_affinity": "auto",
+      "gpu_devices": "0,1",
+      "gpu_budget_mib": 32768,
+      "stop_ids": "-1"
+    },
+    "environment": {
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+      "STRATA_GLM_FP4_CPU_BORROW": "1",
+      "STRATA_GLM_FP4_CPU_CSF32": "1",
+      "STRATA_GLM_FP4_CPU_FUSED": "1",
+      "STRATA_GLM_FP4_CPU_Q8": "1",
+      "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+      "STRATA_GLM_FP4_CPU_SPARSE": "1",
+      "STRATA_GLM_FP4_CPU_SPIN": "1",
+      "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+      "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+      "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+      "STRATA_GLM_FP4_GPU_REDUCE": "1",
+      "STRATA_GLM_FP4_RAM_FDS": "1",
+      "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+      "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+      "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+      "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+      "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+      "STRATA_GLM_MLA_ABSORB_F16": "1",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+      "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+      "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+      "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_VRAM_PREALLOC": "1",
+      "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+    },
+    "binary_sha256": "252e052c64c1c04757c42212eba946db0e6149ebef6626ecaa7201302a77b172",
+    "requests": [
+      {
+        "trial": {
+          "prefill_ms": 17943.0,
+          "decode_ms": 17524.0,
+          "prefill_tok_s": 456.5568745471772,
+          "decode_tok_s": 29.16000913033554,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 218407,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null
+        },
+        "speculative": {
+          "generated": 512.0,
+          "rounds": 146.0,
+          "proposed": 478.0,
+          "accepted": 364.0,
+          "replayed": 0.0,
+          "ms": 17523.3,
+          "tok_s": 29.1612
+        },
+        "timing": {
+          "prepare_ms": 0.612151,
+          "draft_ms": 1231.14,
+          "verify_ms": 15451.5,
+          "resync_ms": 516.274
+        },
+        "lookup": {
+          "rounds": 10.0,
+          "proposed": 46.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        },
+        "main_target_rows": 625.0,
+        "cpu_retained_route_rows": 32351.0,
+        "cpu_expert_groups": 27590,
+        "native_counters_before": [
+          {
+            "device": 0,
+            "hits": 40583,
+            "misses": 16680,
+            "uploaded_bytes": 245064653824,
+            "cache_bytes": 13915127808,
+            "mma": 334965,
+            "reference": 0,
+            "prefill": 54987
+          },
+          {
+            "device": 1,
+            "hits": 79238,
+            "misses": 14109,
+            "uploaded_bytes": 199723843584,
+            "cache_bytes": 31114395648,
+            "mma": 226833,
+            "reference": 0,
+            "prefill": 53208
+          }
+        ],
+        "native_counters_after": [
+          {
+            "device": 0,
+            "hits": 62018,
+            "misses": 21894,
+            "uploaded_bytes": 318872869888,
+            "cache_bytes": 14467203072,
+            "mma": 505382,
+            "reference": 0,
+            "prefill": 73316
+          },
+          {
+            "device": 1,
+            "hits": 117709,
+            "misses": 18077,
+            "uploaded_bytes": 255893962752,
+            "cache_bytes": 31114395648,
+            "mma": 336414,
+            "reference": 0,
+            "prefill": 70944
+          }
+        ],
+        "transfer_before": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 221270505370,
+            "decode_bytes": 3155133458
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 187609700052,
+            "decode_bytes": 2063866520
+          }
+        ],
+        "transfer_after": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 290802702152,
+            "decode_bytes": 3679141704
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 240884291668,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "scale_cache_before": {
+          "hits": 46950,
+          "misses": 5759,
+          "bytes": 315888880
+        },
+        "scale_cache_after": {
+          "hits": 74207,
+          "misses": 6092,
+          "bytes": 334157452
+        }
+      },
+      {
+        "trial": {
+          "prefill_ms": 18060.3,
+          "decode_ms": 15642.7,
+          "prefill_tok_s": 453.59157932038784,
+          "decode_tok_s": 32.666994828258545,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null
+        },
+        "speculative": {
+          "generated": 512.0,
+          "rounds": 146.0,
+          "proposed": 478.0,
+          "accepted": 364.0,
+          "replayed": 0.0,
+          "ms": 15642.0,
+          "tok_s": 32.6684
+        },
+        "timing": {
+          "prepare_ms": 0.653922,
+          "draft_ms": 1270.95,
+          "verify_ms": 13510.3,
+          "resync_ms": 536.296
+        },
+        "lookup": {
+          "rounds": 10.0,
+          "proposed": 46.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        },
+        "main_target_rows": 625.0,
+        "cpu_retained_route_rows": 32351.0,
+        "cpu_expert_groups": 27590,
+        "native_counters_before": [
+          {
+            "device": 0,
+            "hits": 62018,
+            "misses": 21894,
+            "uploaded_bytes": 318872869888,
+            "cache_bytes": 14467203072,
+            "mma": 505382,
+            "reference": 0,
+            "prefill": 73316
+          },
+          {
+            "device": 1,
+            "hits": 117709,
+            "misses": 18077,
+            "uploaded_bytes": 255893962752,
+            "cache_bytes": 31114395648,
+            "mma": 336414,
+            "reference": 0,
+            "prefill": 70944
+          }
+        ],
+        "native_counters_after": [
+          {
+            "device": 0,
+            "hits": 83413,
+            "misses": 27148,
+            "uploaded_bytes": 393247316992,
+            "cache_bytes": 14410579968,
+            "mma": 675799,
+            "reference": 0,
+            "prefill": 91645
+          },
+          {
+            "device": 1,
+            "hits": 156183,
+            "misses": 22042,
+            "uploaded_bytes": 312021614592,
+            "cache_bytes": 31114395648,
+            "mma": 445995,
+            "reference": 0,
+            "prefill": 88680
+          }
+        ],
+        "transfer_before": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 290802702152,
+            "decode_bytes": 3679141704
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 240884291668,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "transfer_after": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 360979842888,
+            "decode_bytes": 4115813356
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 294158883284,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "scale_cache_before": {
+          "hits": 74207,
+          "misses": 6092,
+          "bytes": 334157452
+        },
+        "scale_cache_after": {
+          "hits": 101797,
+          "misses": 6092,
+          "bytes": 334157452
+        }
+      },
+      {
+        "trial": {
+          "prefill_ms": 18032.5,
+          "decode_ms": 15631.4,
+          "prefill_tok_s": 454.2908637182864,
+          "decode_tok_s": 32.69060992617424,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null
+        },
+        "speculative": {
+          "generated": 512.0,
+          "rounds": 146.0,
+          "proposed": 478.0,
+          "accepted": 364.0,
+          "replayed": 0.0,
+          "ms": 15630.7,
+          "tok_s": 32.692
+        },
+        "timing": {
+          "prepare_ms": 0.632874,
+          "draft_ms": 1271.19,
+          "verify_ms": 13500.0,
+          "resync_ms": 534.875
+        },
+        "lookup": {
+          "rounds": 10.0,
+          "proposed": 46.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        },
+        "main_target_rows": 625.0,
+        "cpu_retained_route_rows": 32351.0,
+        "cpu_expert_groups": 27590,
+        "native_counters_before": [
+          {
+            "device": 0,
+            "hits": 83413,
+            "misses": 27148,
+            "uploaded_bytes": 393247316992,
+            "cache_bytes": 14410579968,
+            "mma": 675799,
+            "reference": 0,
+            "prefill": 91645
+          },
+          {
+            "device": 1,
+            "hits": 156183,
+            "misses": 22042,
+            "uploaded_bytes": 312021614592,
+            "cache_bytes": 31114395648,
+            "mma": 445995,
+            "reference": 0,
+            "prefill": 88680
+          }
+        ],
+        "native_counters_after": [
+          {
+            "device": 0,
+            "hits": 104808,
+            "misses": 32402,
+            "uploaded_bytes": 467621764096,
+            "cache_bytes": 14410579968,
+            "mma": 846216,
+            "reference": 0,
+            "prefill": 109974
+          },
+          {
+            "device": 1,
+            "hits": 194657,
+            "misses": 26007,
+            "uploaded_bytes": 368149266432,
+            "cache_bytes": 31114395648,
+            "mma": 555576,
+            "reference": 0,
+            "prefill": 106416
+          },
+          {
+            "device": 0,
+            "hits": 104808,
+            "misses": 32402,
+            "uploaded_bytes": 467621764096,
+            "cache_bytes": 14410579968,
+            "mma": 846216,
+            "reference": 0,
+            "prefill": 109974
+          },
+          {
+            "device": 1,
+            "hits": 194657,
+            "misses": 26007,
+            "uploaded_bytes": 368149266432,
+            "cache_bytes": 31114395648,
+            "mma": 555576,
+            "reference": 0,
+            "prefill": 106416
+          }
+        ],
+        "transfer_before": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 360979842888,
+            "decode_bytes": 4115813356
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 294158883284,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "transfer_after": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 431156983624,
+            "decode_bytes": 4552485008
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 347433474900,
+            "decode_bytes": 2106333848
+          },
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 431156983624,
+            "decode_bytes": 4552485008
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 347433474900,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "scale_cache_before": {
+          "hits": 101797,
+          "misses": 6092,
+          "bytes": 334157452
+        },
+        "scale_cache_after": {
+          "hits": 129387,
+          "misses": 6092,
+          "bytes": 334157452
+        }
+      }
+    ],
+    "route_drop": {
+      "token_layers": 130242.0,
+      "cpu_candidates": 680316.0,
+      "dropped": 521861.0,
+      "mean_share": 0.385704,
+      "max_share": 0.499999,
+      "max_multiplier": 2.0,
+      "configured_fraction": 0.5,
+      "configured_count": 7,
+      "renormalize": true,
+      "scope": "Cumulative reports across this qualification; maximum discarded original routing mass <= 0.5.",
+      "passed": true
+    },
+    "quality": {
+      "fixture_sha256": "cd4fb2c59b9c53c4d07576da11431d9a118f76cd69ff568df196ccc3c6fc8c68",
+      "training_cases": 8,
+      "holdout_cases": 20,
+      "reference_oracles_passed": 28,
+      "model_evaluation_status": "Complete: frozen fast baseline and selected GPU reduction each17/20, exact task output hashes identical; no held-out tuning.",
+      "fresh_runs": [
+        {
+          "name": "quality-baseline-holdout",
+          "complete": true,
+          "passed": 17,
+          "decoder_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+          "oracle_sha256": "cd4fb2c59b9c53c4d07576da11431d9a118f76cd69ff568df196ccc3c6fc8c68",
+          "raw_sha256": "a3c7c37fc75a8fa5477a1aaf9d830660df16f0da1dafdd8d57b6293443f08eb9",
+          "decoder_returncode": 0,
+          "tasks": [
+            {
+              "name": "exclusive_prefix",
+              "prompt_tokens": 80,
+              "prompt_sha256": "d2714d11ca2686608c4b65f6ecd85c34ebd1be1acb6d4ad17753ae08c35ea89c",
+              "output_tokens": 102,
+              "tokens_sha256": "41252fb91df6505872cf86f4c2688f4501b902a1a009a6c19c7c4000a3c25583",
+              "wall_seconds": 16.155695380060934,
+              "passed": true
+            },
+            {
+              "name": "run_lengths",
+              "prompt_tokens": 74,
+              "prompt_sha256": "86872d61910952a79d98ac299bdcd58e748cfa47afeda1a0c085e08177f6467e",
+              "output_tokens": 179,
+              "tokens_sha256": "bf0647851b3eaef9cc02055ef3fbb6be7264a29581ccd54ee4c5231246623baf",
+              "wall_seconds": 16.026877807918936,
+              "passed": true
+            },
+            {
+              "name": "popcount64",
+              "prompt_tokens": 56,
+              "prompt_sha256": "abe7bcc2773740df35a6c7940f56e8a3d66cf39718507e16ccc4cc44f7d344fc",
+              "output_tokens": 58,
+              "tokens_sha256": "832b23cbf245348363d3bb2cfbb853c4a816c3914102bc2b962c1d3b06e4caa4",
+              "wall_seconds": 7.606935270014219,
+              "passed": false
+            },
+            {
+              "name": "reverse_bits64",
+              "prompt_tokens": 60,
+              "prompt_sha256": "266b37263758ca7bfd289c7d70e01ff37501470aa917e35606b87a7f85ee9179",
+              "output_tokens": 588,
+              "tokens_sha256": "6c8c93cc9f8684e6f23b5058f8cd7919b142e2dd9d0894166b32a31502656823",
+              "wall_seconds": 30.982124491012655,
+              "passed": false
+            },
+            {
+              "name": "gcd_u64",
+              "prompt_tokens": 70,
+              "prompt_sha256": "0cbc70cea6f05214a72f529e4bf717c53d81ce53331f55b3aa65266b5ce5d45a",
+              "output_tokens": 60,
+              "tokens_sha256": "7e9f145d77ec613b3fb850ec01228d2a56388e47946de09aeeff2ebb2ba27d1b",
+              "wall_seconds": 7.132259387988597,
+              "passed": true
+            },
+            {
+              "name": "median_three",
+              "prompt_tokens": 62,
+              "prompt_sha256": "2abda837100d7a4a00cfe2c6e627eda2567191eed74c27f6b54f09371e52fce6",
+              "output_tokens": 456,
+              "tokens_sha256": "34dde5d30eeb560c94543c61af8cad310aea30960407bf8d8a5e1d3d8b850dff",
+              "wall_seconds": 23.415020131971687,
+              "passed": false
+            },
+            {
+              "name": "ceil_div_u64",
+              "prompt_tokens": 78,
+              "prompt_sha256": "8c4da3d8108474dc00b9813f8b4afbfe134169780242c1b7aeb644ba7a62ecb9",
+              "output_tokens": 211,
+              "tokens_sha256": "25e9eb97c21151eea1ccdf83bf06124eb4a37ef799fe8550547b8e66c105b832",
+              "wall_seconds": 12.574772157007828,
+              "passed": true
+            },
+            {
+              "name": "ceil_power_two",
+              "prompt_tokens": 82,
+              "prompt_sha256": "481edcef5c76530ab69cf853baddedf6bc4808c604cc27bd25488df9357b0197",
+              "output_tokens": 229,
+              "tokens_sha256": "59c5071b8e6ef3131948ef304d906ed4bb2066f52e68e60394050864fe2d9dd9",
+              "wall_seconds": 13.00126248493325,
+              "passed": true
+            },
+            {
+              "name": "byte_swap64",
+              "prompt_tokens": 62,
+              "prompt_sha256": "b54502c7d294499f2a028d7ddcd17e15b8f5e53c6095aeb010e5be5edb64cc7d",
+              "output_tokens": 88,
+              "tokens_sha256": "4b22a6e48c4d17605f1cf5a64b0a3bac67cfb595d27e8f2fa72ff613f05d5640",
+              "wall_seconds": 7.313403296051547,
+              "passed": true
+            },
+            {
+              "name": "hamming_bytes",
+              "prompt_tokens": 71,
+              "prompt_sha256": "c5d574f37b64586db800c01c3090ef0e0cdcaa149609fd45ede1843be6bd2565",
+              "output_tokens": 113,
+              "tokens_sha256": "50f2b0fb82281eaea155bf1cf91883a9ade06d5beafe21886bff6cf5abdc92c6",
+              "wall_seconds": 8.654655708931386,
+              "passed": true
+            },
+            {
+              "name": "stable_negative_first",
+              "prompt_tokens": 76,
+              "prompt_sha256": "db7b07df8cd4eeb900fb756cd3502ead922ca2f7c137a864548f391ff41176e5",
+              "output_tokens": 90,
+              "tokens_sha256": "e81be2dd9c41d2e272c3898c92d1f64c54759a64d4855754fa88b6e542505006",
+              "wall_seconds": 7.593378960969858,
+              "passed": true
+            },
+            {
+              "name": "longest_equal_run",
+              "prompt_tokens": 70,
+              "prompt_sha256": "ccddfa0aef5dc58406588d1d252235a2cb25713d98bfcb291c780c1f55a55b0d",
+              "output_tokens": 197,
+              "tokens_sha256": "1a7bcca5ec39bd729cb0e5c7287291261aae1a0827396e76c415c22a72045080",
+              "wall_seconds": 11.48292641993612,
+              "passed": true
+            },
+            {
+              "name": "interleave_vectors",
+              "prompt_tokens": 90,
+              "prompt_sha256": "201ef423e73c945c0853bd997b10bb1e7317819ea9cc7c277a317b107da48fba",
+              "output_tokens": 147,
+              "tokens_sha256": "0ec5f1d40e611858d661d9e85c200190926ada3ef3319a77bae841894aa6d1b2",
+              "wall_seconds": 10.682988682994619,
+              "passed": true
+            },
+            {
+              "name": "transpose_rect",
+              "prompt_tokens": 89,
+              "prompt_sha256": "b6e721be80dd74b35d16f80e7291e0ecd481cf9bf8973b6ee70a6fc8af193ad0",
+              "output_tokens": 350,
+              "tokens_sha256": "e8d824f8db5006ed1e035de72e67ef48400b3404827f87b9c40fde828d75720a",
+              "wall_seconds": 16.78968467900995,
+              "passed": true
+            },
+            {
+              "name": "delta_decode",
+              "prompt_tokens": 76,
+              "prompt_sha256": "3b3fd4fa9bc134a1009a6417d722008a35808b2664e8843573ef450885dc5f26",
+              "output_tokens": 152,
+              "tokens_sha256": "9268d0ed7a5f62c2bfe005acd56515d0aada8171cb1e0200eb0cb83e190eec7b",
+              "wall_seconds": 9.739642568980344,
+              "passed": true
+            },
+            {
+              "name": "rotate_bits",
+              "prompt_tokens": 71,
+              "prompt_sha256": "483e2954fe59c61293651ea3c5541b80e44913d90055e7be60e6270a41535cae",
+              "output_tokens": 63,
+              "tokens_sha256": "6a4b84f75f71289f063e8caf3ccf6be300d614510d9e357ddd7e29d060b7dd53",
+              "wall_seconds": 6.551872719079256,
+              "passed": true
+            },
+            {
+              "name": "is_subsequence",
+              "prompt_tokens": 75,
+              "prompt_sha256": "795d51ad9dcb9edcf670424851e23a670e476e31539b3f0b20e4cf9acce1fbbf",
+              "output_tokens": 117,
+              "tokens_sha256": "080d0f23560e9fffa3e3943053cd49821c765135f4e945560d80c91e705c16dd",
+              "wall_seconds": 8.907110154978,
+              "passed": true
+            },
+            {
+              "name": "common_prefix_bytes",
+              "prompt_tokens": 67,
+              "prompt_sha256": "ac629d0cc3da6c6c29b8c60daa5dc394d4062c6db945df6d1d7a4858d5f97c69",
+              "output_tokens": 87,
+              "tokens_sha256": "e04c04fc4f08c5052a5c1b3f736ec4a866e20681c52dc40e821c07dd3dc80d5c",
+              "wall_seconds": 7.206408884958364,
+              "passed": true
+            },
+            {
+              "name": "flatten_rows",
+              "prompt_tokens": 68,
+              "prompt_sha256": "bd9c3d8cea6ae2383c39974d2524c11b0a16d0ec8583b3da1f1f9f06893630d6",
+              "output_tokens": 71,
+              "tokens_sha256": "c806312fff0f8e94cdfa34b2f117940d77906479c7ccefa8ad3195cf69b3582a",
+              "wall_seconds": 6.6292689989786595,
+              "passed": true
+            },
+            {
+              "name": "count_inversions_small",
+              "prompt_tokens": 75,
+              "prompt_sha256": "55410a6830f59ed1ba8602456a76a2d40c2c9bd919eeef1bb551a55f9cc9a368",
+              "output_tokens": 123,
+              "tokens_sha256": "940234f0678d961e2c5eee47a7e4b17edc433a20ce67f0ea54f3c1d52f989465",
+              "wall_seconds": 8.863545621046796,
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "quality-baseline-training",
+          "complete": true,
+          "passed": 8,
+          "decoder_sha256": "8fd54679fb601a4511c655b1b59572a0f29941affe2be200849a33720d07eb20",
+          "oracle_sha256": "cd4fb2c59b9c53c4d07576da11431d9a118f76cd69ff568df196ccc3c6fc8c68",
+          "raw_sha256": "50ea73fb5e20d7849f7ff25ceb2dc09e6e1785ea5b45ebb22eb69e575b60141a",
+          "decoder_returncode": 0,
+          "tasks": [
+            {
+              "name": "sum_small",
+              "prompt_tokens": 63,
+              "prompt_sha256": "11bc686981d516bd310035b018d7642680fc667ce4aae622722e7b25a8faf5da",
+              "output_tokens": 58,
+              "tokens_sha256": "d2a38328bded8e2742767d9c85d04d471e036d52b52993950f282ff0d71c6559",
+              "wall_seconds": 12.334959755069576,
+              "passed": true
+            },
+            {
+              "name": "count_byte",
+              "prompt_tokens": 68,
+              "prompt_sha256": "09d781d5fe434c6283d4bc609636f9e6163f47fff6413e9f238cba40608b3294",
+              "output_tokens": 85,
+              "tokens_sha256": "1bc2b381a50d6c9d78769381072222ce2434a5e2c0143f8491f3ee9dae9643de",
+              "wall_seconds": 9.825852888054214,
+              "passed": true
+            },
+            {
+              "name": "ascii_upper",
+              "prompt_tokens": 63,
+              "prompt_sha256": "88a8c6206a59d98a61b10f12c7dd899bc917e454697f0503e0621030cf1d8573",
+              "output_tokens": 113,
+              "tokens_sha256": "02c36ad2fb3c40a4d0cde6ce8622f3e36636a103547dbd820a997c485cdd505b",
+              "wall_seconds": 10.751640290953219,
+              "passed": true
+            },
+            {
+              "name": "suffix_match",
+              "prompt_tokens": 68,
+              "prompt_sha256": "33cb4eddd23811c7a3011054485402af6a0371beff5484f547aaf4cd8d7cc93a",
+              "output_tokens": 112,
+              "tokens_sha256": "331d23bc14483bad4d08ed5777b2742b85915b03ac00cb7e46408f4e2e761200",
+              "wall_seconds": 10.40218615392223,
+              "passed": true
+            },
+            {
+              "name": "argmin_first",
+              "prompt_tokens": 66,
+              "prompt_sha256": "8d0a2d102db2ca544a671f34638c95d0c70ff2409c33ae8487978c524e8ed1ba",
+              "output_tokens": 89,
+              "tokens_sha256": "21a8429698cf3d63f1a8bcc7ceddaf2ab9a162c76d66641762f50d4a8f0b33f9",
+              "wall_seconds": 8.95747940801084,
+              "passed": true
+            },
+            {
+              "name": "clamp_int",
+              "prompt_tokens": 66,
+              "prompt_sha256": "de3dc6cfce96ed3472a4121e9b7d6e50d38e8c6b7c79a76ea3ba0e196e9eeaa6",
+              "output_tokens": 185,
+              "tokens_sha256": "680bf90e4cb44670284ea7735e75c34b8adc0860fc3280cbece29dd044db9386",
+              "wall_seconds": 14.771468063001521,
+              "passed": true
+            },
+            {
+              "name": "adjacent_changes",
+              "prompt_tokens": 62,
+              "prompt_sha256": "506345250778cac52ecf79c2f310d25ba1d0b1d983f10ecf1ddf58e055ac1292",
+              "output_tokens": 85,
+              "tokens_sha256": "d572334e4b773b90271c4495794ff5db740d8063a554e6944a35affb65cec508",
+              "wall_seconds": 7.674138050060719,
+              "passed": true
+            },
+            {
+              "name": "zip_sum",
+              "prompt_tokens": 76,
+              "prompt_sha256": "6b81a8c2f9d83c10fc8a25867a21509ac0e94dc7d0857bc1c133a8eb4fa48c0e",
+              "output_tokens": 121,
+              "tokens_sha256": "79a2232e372c98fcecfbb0904b89bab09a4f91a7780e4171a88fe44f4c0356d3",
+              "wall_seconds": 9.948152097989805,
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "quality-reduce-holdout",
+          "complete": true,
+          "passed": 17,
+          "decoder_sha256": "252e052c64c1c04757c42212eba946db0e6149ebef6626ecaa7201302a77b172",
+          "oracle_sha256": "cd4fb2c59b9c53c4d07576da11431d9a118f76cd69ff568df196ccc3c6fc8c68",
+          "raw_sha256": "d5e5577bd838c153a80141c3c3f32e7c6792dfc14c898c05653cc9285478f25f",
+          "decoder_returncode": 0,
+          "tasks": [
+            {
+              "name": "exclusive_prefix",
+              "prompt_tokens": 80,
+              "prompt_sha256": "d2714d11ca2686608c4b65f6ecd85c34ebd1be1acb6d4ad17753ae08c35ea89c",
+              "output_tokens": 102,
+              "tokens_sha256": "41252fb91df6505872cf86f4c2688f4501b902a1a009a6c19c7c4000a3c25583",
+              "wall_seconds": 16.06641240103636,
+              "passed": true
+            },
+            {
+              "name": "run_lengths",
+              "prompt_tokens": 74,
+              "prompt_sha256": "86872d61910952a79d98ac299bdcd58e748cfa47afeda1a0c085e08177f6467e",
+              "output_tokens": 179,
+              "tokens_sha256": "bf0647851b3eaef9cc02055ef3fbb6be7264a29581ccd54ee4c5231246623baf",
+              "wall_seconds": 15.943985583027825,
+              "passed": true
+            },
+            {
+              "name": "popcount64",
+              "prompt_tokens": 56,
+              "prompt_sha256": "abe7bcc2773740df35a6c7940f56e8a3d66cf39718507e16ccc4cc44f7d344fc",
+              "output_tokens": 58,
+              "tokens_sha256": "832b23cbf245348363d3bb2cfbb853c4a816c3914102bc2b962c1d3b06e4caa4",
+              "wall_seconds": 7.537486968096346,
+              "passed": false
+            },
+            {
+              "name": "reverse_bits64",
+              "prompt_tokens": 60,
+              "prompt_sha256": "266b37263758ca7bfd289c7d70e01ff37501470aa917e35606b87a7f85ee9179",
+              "output_tokens": 588,
+              "tokens_sha256": "6c8c93cc9f8684e6f23b5058f8cd7919b142e2dd9d0894166b32a31502656823",
+              "wall_seconds": 30.393728045979515,
+              "passed": false
+            },
+            {
+              "name": "gcd_u64",
+              "prompt_tokens": 70,
+              "prompt_sha256": "0cbc70cea6f05214a72f529e4bf717c53d81ce53331f55b3aa65266b5ce5d45a",
+              "output_tokens": 60,
+              "tokens_sha256": "7e9f145d77ec613b3fb850ec01228d2a56388e47946de09aeeff2ebb2ba27d1b",
+              "wall_seconds": 7.061966964043677,
+              "passed": true
+            },
+            {
+              "name": "median_three",
+              "prompt_tokens": 62,
+              "prompt_sha256": "2abda837100d7a4a00cfe2c6e627eda2567191eed74c27f6b54f09371e52fce6",
+              "output_tokens": 456,
+              "tokens_sha256": "34dde5d30eeb560c94543c61af8cad310aea30960407bf8d8a5e1d3d8b850dff",
+              "wall_seconds": 23.251618519076146,
+              "passed": false
+            },
+            {
+              "name": "ceil_div_u64",
+              "prompt_tokens": 78,
+              "prompt_sha256": "8c4da3d8108474dc00b9813f8b4afbfe134169780242c1b7aeb644ba7a62ecb9",
+              "output_tokens": 211,
+              "tokens_sha256": "25e9eb97c21151eea1ccdf83bf06124eb4a37ef799fe8550547b8e66c105b832",
+              "wall_seconds": 12.258262278977782,
+              "passed": true
+            },
+            {
+              "name": "ceil_power_two",
+              "prompt_tokens": 82,
+              "prompt_sha256": "481edcef5c76530ab69cf853baddedf6bc4808c604cc27bd25488df9357b0197",
+              "output_tokens": 229,
+              "tokens_sha256": "59c5071b8e6ef3131948ef304d906ed4bb2066f52e68e60394050864fe2d9dd9",
+              "wall_seconds": 12.66624851198867,
+              "passed": true
+            },
+            {
+              "name": "byte_swap64",
+              "prompt_tokens": 62,
+              "prompt_sha256": "b54502c7d294499f2a028d7ddcd17e15b8f5e53c6095aeb010e5be5edb64cc7d",
+              "output_tokens": 88,
+              "tokens_sha256": "4b22a6e48c4d17605f1cf5a64b0a3bac67cfb595d27e8f2fa72ff613f05d5640",
+              "wall_seconds": 7.124893611995503,
+              "passed": true
+            },
+            {
+              "name": "hamming_bytes",
+              "prompt_tokens": 71,
+              "prompt_sha256": "c5d574f37b64586db800c01c3090ef0e0cdcaa149609fd45ede1843be6bd2565",
+              "output_tokens": 113,
+              "tokens_sha256": "50f2b0fb82281eaea155bf1cf91883a9ade06d5beafe21886bff6cf5abdc92c6",
+              "wall_seconds": 8.48537817900069,
+              "passed": true
+            },
+            {
+              "name": "stable_negative_first",
+              "prompt_tokens": 76,
+              "prompt_sha256": "db7b07df8cd4eeb900fb756cd3502ead922ca2f7c137a864548f391ff41176e5",
+              "output_tokens": 90,
+              "tokens_sha256": "e81be2dd9c41d2e272c3898c92d1f64c54759a64d4855754fa88b6e542505006",
+              "wall_seconds": 7.586567508988082,
+              "passed": true
+            },
+            {
+              "name": "longest_equal_run",
+              "prompt_tokens": 70,
+              "prompt_sha256": "ccddfa0aef5dc58406588d1d252235a2cb25713d98bfcb291c780c1f55a55b0d",
+              "output_tokens": 197,
+              "tokens_sha256": "1a7bcca5ec39bd729cb0e5c7287291261aae1a0827396e76c415c22a72045080",
+              "wall_seconds": 11.422053691931069,
+              "passed": true
+            },
+            {
+              "name": "interleave_vectors",
+              "prompt_tokens": 90,
+              "prompt_sha256": "201ef423e73c945c0853bd997b10bb1e7317819ea9cc7c277a317b107da48fba",
+              "output_tokens": 147,
+              "tokens_sha256": "0ec5f1d40e611858d661d9e85c200190926ada3ef3319a77bae841894aa6d1b2",
+              "wall_seconds": 10.609293801011518,
+              "passed": true
+            },
+            {
+              "name": "transpose_rect",
+              "prompt_tokens": 89,
+              "prompt_sha256": "b6e721be80dd74b35d16f80e7291e0ecd481cf9bf8973b6ee70a6fc8af193ad0",
+              "output_tokens": 350,
+              "tokens_sha256": "e8d824f8db5006ed1e035de72e67ef48400b3404827f87b9c40fde828d75720a",
+              "wall_seconds": 16.65475870599039,
+              "passed": true
+            },
+            {
+              "name": "delta_decode",
+              "prompt_tokens": 76,
+              "prompt_sha256": "3b3fd4fa9bc134a1009a6417d722008a35808b2664e8843573ef450885dc5f26",
+              "output_tokens": 152,
+              "tokens_sha256": "9268d0ed7a5f62c2bfe005acd56515d0aada8171cb1e0200eb0cb83e190eec7b",
+              "wall_seconds": 9.766799036995508,
+              "passed": true
+            },
+            {
+              "name": "rotate_bits",
+              "prompt_tokens": 71,
+              "prompt_sha256": "483e2954fe59c61293651ea3c5541b80e44913d90055e7be60e6270a41535cae",
+              "output_tokens": 63,
+              "tokens_sha256": "6a4b84f75f71289f063e8caf3ccf6be300d614510d9e357ddd7e29d060b7dd53",
+              "wall_seconds": 6.5448683390859514,
+              "passed": true
+            },
+            {
+              "name": "is_subsequence",
+              "prompt_tokens": 75,
+              "prompt_sha256": "795d51ad9dcb9edcf670424851e23a670e476e31539b3f0b20e4cf9acce1fbbf",
+              "output_tokens": 117,
+              "tokens_sha256": "080d0f23560e9fffa3e3943053cd49821c765135f4e945560d80c91e705c16dd",
+              "wall_seconds": 8.869427378987893,
+              "passed": true
+            },
+            {
+              "name": "common_prefix_bytes",
+              "prompt_tokens": 67,
+              "prompt_sha256": "ac629d0cc3da6c6c29b8c60daa5dc394d4062c6db945df6d1d7a4858d5f97c69",
+              "output_tokens": 87,
+              "tokens_sha256": "e04c04fc4f08c5052a5c1b3f736ec4a866e20681c52dc40e821c07dd3dc80d5c",
+              "wall_seconds": 7.108247039956041,
+              "passed": true
+            },
+            {
+              "name": "flatten_rows",
+              "prompt_tokens": 68,
+              "prompt_sha256": "bd9c3d8cea6ae2383c39974d2524c11b0a16d0ec8583b3da1f1f9f06893630d6",
+              "output_tokens": 71,
+              "tokens_sha256": "c806312fff0f8e94cdfa34b2f117940d77906479c7ccefa8ad3195cf69b3582a",
+              "wall_seconds": 6.486724151065573,
+              "passed": true
+            },
+            {
+              "name": "count_inversions_small",
+              "prompt_tokens": 75,
+              "prompt_sha256": "55410a6830f59ed1ba8602456a76a2d40c2c9bd919eeef1bb551a55f9cc9a368",
+              "output_tokens": 123,
+              "tokens_sha256": "940234f0678d961e2c5eee47a7e4b17edc433a20ce67f0ea54f3c1d52f989465",
+              "wall_seconds": 8.652560111018829,
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "quality-reduce-training",
+          "complete": true,
+          "passed": 8,
+          "decoder_sha256": "252e052c64c1c04757c42212eba946db0e6149ebef6626ecaa7201302a77b172",
+          "oracle_sha256": "cd4fb2c59b9c53c4d07576da11431d9a118f76cd69ff568df196ccc3c6fc8c68",
+          "raw_sha256": "276f6847b781aafeb117817be1f3e637037568fa2e1c4e3fc4528e7938fc7018",
+          "decoder_returncode": 0,
+          "tasks": [
+            {
+              "name": "sum_small",
+              "prompt_tokens": 63,
+              "prompt_sha256": "11bc686981d516bd310035b018d7642680fc667ce4aae622722e7b25a8faf5da",
+              "output_tokens": 58,
+              "tokens_sha256": "d2a38328bded8e2742767d9c85d04d471e036d52b52993950f282ff0d71c6559",
+              "wall_seconds": 12.257514660945162,
+              "passed": true
+            },
+            {
+              "name": "count_byte",
+              "prompt_tokens": 68,
+              "prompt_sha256": "09d781d5fe434c6283d4bc609636f9e6163f47fff6413e9f238cba40608b3294",
+              "output_tokens": 85,
+              "tokens_sha256": "1bc2b381a50d6c9d78769381072222ce2434a5e2c0143f8491f3ee9dae9643de",
+              "wall_seconds": 9.75155157991685,
+              "passed": true
+            },
+            {
+              "name": "ascii_upper",
+              "prompt_tokens": 63,
+              "prompt_sha256": "88a8c6206a59d98a61b10f12c7dd899bc917e454697f0503e0621030cf1d8573",
+              "output_tokens": 113,
+              "tokens_sha256": "02c36ad2fb3c40a4d0cde6ce8622f3e36636a103547dbd820a997c485cdd505b",
+              "wall_seconds": 10.67569472908508,
+              "passed": true
+            },
+            {
+              "name": "suffix_match",
+              "prompt_tokens": 68,
+              "prompt_sha256": "33cb4eddd23811c7a3011054485402af6a0371beff5484f547aaf4cd8d7cc93a",
+              "output_tokens": 112,
+              "tokens_sha256": "331d23bc14483bad4d08ed5777b2742b85915b03ac00cb7e46408f4e2e761200",
+              "wall_seconds": 10.31467502110172,
+              "passed": true
+            },
+            {
+              "name": "argmin_first",
+              "prompt_tokens": 66,
+              "prompt_sha256": "8d0a2d102db2ca544a671f34638c95d0c70ff2409c33ae8487978c524e8ed1ba",
+              "output_tokens": 89,
+              "tokens_sha256": "21a8429698cf3d63f1a8bcc7ceddaf2ab9a162c76d66641762f50d4a8f0b33f9",
+              "wall_seconds": 8.877260165987536,
+              "passed": true
+            },
+            {
+              "name": "clamp_int",
+              "prompt_tokens": 66,
+              "prompt_sha256": "de3dc6cfce96ed3472a4121e9b7d6e50d38e8c6b7c79a76ea3ba0e196e9eeaa6",
+              "output_tokens": 185,
+              "tokens_sha256": "680bf90e4cb44670284ea7735e75c34b8adc0860fc3280cbece29dd044db9386",
+              "wall_seconds": 14.664290431886911,
+              "passed": true
+            },
+            {
+              "name": "adjacent_changes",
+              "prompt_tokens": 62,
+              "prompt_sha256": "506345250778cac52ecf79c2f310d25ba1d0b1d983f10ecf1ddf58e055ac1292",
+              "output_tokens": 85,
+              "tokens_sha256": "d572334e4b773b90271c4495794ff5db740d8063a554e6944a35affb65cec508",
+              "wall_seconds": 7.609305473044515,
+              "passed": true
+            },
+            {
+              "name": "zip_sum",
+              "prompt_tokens": 76,
+              "prompt_sha256": "6b81a8c2f9d83c10fc8a25867a21509ac0e94dc7d0857bc1c133a8eb4fa48c0e",
+              "output_tokens": 121,
+              "tokens_sha256": "79a2232e372c98fcecfbb0904b89bab09a4f91a7780e4171a88fe44f4c0356d3",
+              "wall_seconds": 9.837649940047413,
+              "passed": true
+            }
+          ]
+        },
+        {
+          "name": "quality-reuse-reduce-training",
+          "complete": true,
+          "passed": 8,
+          "decoder_sha256": "252e052c64c1c04757c42212eba946db0e6149ebef6626ecaa7201302a77b172",
+          "oracle_sha256": "cd4fb2c59b9c53c4d07576da11431d9a118f76cd69ff568df196ccc3c6fc8c68",
+          "raw_sha256": "fc60801fc7706e4e268e434c01210994859bba3b43bc0befcfdc3cec145fcd7e",
+          "decoder_returncode": 0,
+          "tasks": [
+            {
+              "name": "sum_small",
+              "prompt_tokens": 63,
+              "prompt_sha256": "11bc686981d516bd310035b018d7642680fc667ce4aae622722e7b25a8faf5da",
+              "output_tokens": 58,
+              "tokens_sha256": "d2a38328bded8e2742767d9c85d04d471e036d52b52993950f282ff0d71c6559",
+              "wall_seconds": 12.318309511989355,
+              "passed": true
+            },
+            {
+              "name": "count_byte",
+              "prompt_tokens": 68,
+              "prompt_sha256": "09d781d5fe434c6283d4bc609636f9e6163f47fff6413e9f238cba40608b3294",
+              "output_tokens": 85,
+              "tokens_sha256": "1bc2b381a50d6c9d78769381072222ce2434a5e2c0143f8491f3ee9dae9643de",
+              "wall_seconds": 9.786585608962923,
+              "passed": true
+            },
+            {
+              "name": "ascii_upper",
+              "prompt_tokens": 63,
+              "prompt_sha256": "88a8c6206a59d98a61b10f12c7dd899bc917e454697f0503e0621030cf1d8573",
+              "output_tokens": 113,
+              "tokens_sha256": "02c36ad2fb3c40a4d0cde6ce8622f3e36636a103547dbd820a997c485cdd505b",
+              "wall_seconds": 10.735494697000831,
+              "passed": true
+            },
+            {
+              "name": "suffix_match",
+              "prompt_tokens": 68,
+              "prompt_sha256": "33cb4eddd23811c7a3011054485402af6a0371beff5484f547aaf4cd8d7cc93a",
+              "output_tokens": 112,
+              "tokens_sha256": "331d23bc14483bad4d08ed5777b2742b85915b03ac00cb7e46408f4e2e761200",
+              "wall_seconds": 10.404206690960564,
+              "passed": true
+            },
+            {
+              "name": "argmin_first",
+              "prompt_tokens": 66,
+              "prompt_sha256": "8d0a2d102db2ca544a671f34638c95d0c70ff2409c33ae8487978c524e8ed1ba",
+              "output_tokens": 89,
+              "tokens_sha256": "21a8429698cf3d63f1a8bcc7ceddaf2ab9a162c76d66641762f50d4a8f0b33f9",
+              "wall_seconds": 8.985001900000498,
+              "passed": true
+            },
+            {
+              "name": "clamp_int",
+              "prompt_tokens": 66,
+              "prompt_sha256": "de3dc6cfce96ed3472a4121e9b7d6e50d38e8c6b7c79a76ea3ba0e196e9eeaa6",
+              "output_tokens": 185,
+              "tokens_sha256": "680bf90e4cb44670284ea7735e75c34b8adc0860fc3280cbece29dd044db9386",
+              "wall_seconds": 14.698820605990477,
+              "passed": true
+            },
+            {
+              "name": "adjacent_changes",
+              "prompt_tokens": 62,
+              "prompt_sha256": "506345250778cac52ecf79c2f310d25ba1d0b1d983f10ecf1ddf58e055ac1292",
+              "output_tokens": 85,
+              "tokens_sha256": "d572334e4b773b90271c4495794ff5db740d8063a554e6944a35affb65cec508",
+              "wall_seconds": 7.622854602988809,
+              "passed": true
+            },
+            {
+              "name": "zip_sum",
+              "prompt_tokens": 76,
+              "prompt_sha256": "6b81a8c2f9d83c10fc8a25867a21509ac0e94dc7d0857bc1c133a8eb4fa48c0e",
+              "output_tokens": 121,
+              "tokens_sha256": "79a2232e372c98fcecfbb0904b89bab09a4f91a7780e4171a88fe44f4c0356d3",
+              "wall_seconds": 9.876630089944229,
+              "passed": true
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "baseline_passed": 17,
+        "selected_passed": 17,
+        "total": 20,
+        "all_token_hashes_identical": true,
+        "failed_tasks": [
+          "popcount64",
+          "reverse_bits64",
+          "median_three"
+        ],
+        "scope": "Fresh small C++17 coding fixtures; not a general quality or perplexity measurement."
+      }
+    }
+  },
+  "prefill_traffic_proxy": {
+    "scope": "Delta around the discarded one-token request after two full warmups; includes 56 CPU groups and an internal two-token MTP statistic. Same prompt/settings, not an exact timed-prefill wire trace.",
+    "devices": [
+      {
+        "device": 0,
+        "expanded_gpu_bytes": 73256140800,
+        "expert_uploads": 5175
+      },
+      {
+        "device": 1,
+        "expanded_gpu_bytes": 56127651840,
+        "expert_uploads": 3965
+      }
+    ],
+    "cpu_expert_groups": 56,
+    "native_counters_before": [
+      {
+        "device": 0,
+        "uploaded_bytes": 171808513024,
+        "misses": 11505
+      },
+      {
+        "device": 1,
+        "uploaded_bytes": 143596191744,
+        "misses": 10144
+      }
+    ],
+    "native_counters_after": [
+      {
+        "device": 0,
+        "uploaded_bytes": 245064653824,
+        "misses": 16680
+      },
+      {
+        "device": 1,
+        "uploaded_bytes": 199723843584,
+        "misses": 14109
+      }
+    ]
+  },
+  "findings": [
+    "GPU reduction avoids host summation and activation/result round trips; all prefill routes remain intact.",
+    "All switches are opt-in. Original greedy and fast profiles are frozen. MTP depth remains three; route-drop and approximate-acceptance bounds are unchanged.",
+    "The drop bound limits original routing mass, not expert count or output error; it is never used as a compute speedup multiplier.",
+    "The CPU read probe measured 117.816 GB/s, but excludes sparse scale decoding, Q8 dot instructions and scheduling.",
+    "Expanded scale metadata improved isolated kernels but lost in full-model screens through cache construction, eviction and memory pressure.",
+    "Wider MTP verification, CPU row tiles, expert teams, deeper queues and grouped prefill GEMMs did not win the measured screening workload.",
+    "CUDA event intervals include host enqueue gaps and overlap across streams; they are not additive pure kernel durations.",
+    "Full-model qualification and fresh coding results are recorded separately from single-screen observations. No held-out tuning."
+  ],
+  "limitations": [
+    "Conditional resource roofs are optimistic workload bounds, not forecasts or fitted timing predictions.",
+    "CPU roof counts code bytes once per expert group, omitting metadata, activation traffic, integer unpack/dot throughput and scheduling; the separate read-only probe is not sustained expert bandwidth.",
+    "Installed DIMM speed is unknown and clocks were not locked. Huge pages were disabled.",
+    "Exact matrix DMA counters omit activation transfers and end their prefill phase at compact. The older discarded-request traffic proxy is retained separately for comparison.",
+    "Ideal projection FLOPs omit attention contractions, KDA, normalization, mHC, reconstruction and launches. Independent resources are optimistically overlapped.",
+    "One performance prompt and twenty small coding holdouts do not establish general throughput, perplexity or production quality. HIP was compile-only; no SYCL engine change."
+  ],
+  "prefill_transfer": {
+    "before": [
+      {
+        "device": 0,
+        "startup_bytes": 8558132224,
+        "prefill_bytes": 290802702152,
+        "decode_bytes": 3679141704
+      },
+      {
+        "device": 1,
+        "startup_bytes": 0,
+        "prefill_bytes": 240884291668,
+        "decode_bytes": 2106333848
+      }
+    ],
+    "after": [
+      {
+        "device": 0,
+        "startup_bytes": 8558132224,
+        "prefill_bytes": 360979842888,
+        "decode_bytes": 4115813356
+      },
+      {
+        "device": 1,
+        "startup_bytes": 0,
+        "prefill_bytes": 294158883284,
+        "decode_bytes": 2106333848
+      }
+    ],
+    "scope": "Exact submitted matrix H2D bytes between request diagnostics; prefill phase ends at compact, before post-compact cache preparation. Excludes activations, D2H and expanded GPU allocation bytes."
+  },
+  "diagnostic_activity": {
+    "source": "docs/glm_fp4_v100_activity_measurement.json",
+    "capture": {
+      "request_1based": 6,
+      "full_warmups": 2,
+      "discarded_one_token_request": true,
+      "preceding_timed_requests": 2,
+      "input_tokens": 8192,
+      "generated_tokens": 512,
+      "decode_advances": 511,
+      "cpu_scale_metadata_misses": 0,
+      "decoder_sha256": "052782a551b47a923d23a5f377d2ec8bf273f206b02229a970a7f2e324943b2e",
+      "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+      "result_sha256": "5384a193a4f2cb66e44e5bf0c29b37e0dc898ea2e40b9dcef24359b4cff4fcb5",
+      "sqlite_sha256": "baf0cdcb8c0b6f1b690e9fc8dfd8d18c727b01528ee549a658dff64c14a12923",
+      "statistics_sha256": "36a8242fc7bcace87b910246950d6046b2e9debc63a37fcd2c45bce195b515a9",
+      "complete": true,
+      "instrumented": true,
+      "performance_anchor": false,
+      "residency_qualification": false,
+      "monitor_scope": "Benchmark monitors the profiler launcher, not the model child."
+    },
+    "prefill_ms": 18543.5,
+    "decode_ms": 17118.0,
+    "devices": [
+      {
+        "phase": "decode",
+        "device": 0,
+        "kernel_union_ms": 8975.065721,
+        "copy_union_ms": 571.028087,
+        "all_activity_union_ms": 9544.534636,
+        "idle_ms": 7573.465364,
+        "top_kernels": [
+          {
+            "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)6, (int)8, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+            "calls": 27487,
+            "sum_ms": 2810.030701999988
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)2, (int)8, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+            "calls": 23373,
+            "sum_ms": 1254.6300780000045
+          },
+          {
+            "name": "std::enable_if<!T7, void>::type internal::gemvx::kernel<int, int, float, float, float, float, (bool)0, (bool)1, (bool)1, (bool)0, (int)7, (bool)0, cublasGemvParamsEx<int, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<const float>, cublasGemvTensorStridedBatched<float>, float>>(T13)",
+            "calls": 15348,
+            "sum_ms": 751.3420050000024
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::kda_chunk<(int)128, (bool)0>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, float *, long long, int, const float *)",
+            "calls": 4998,
+            "sum_ms": 578.2880799999994
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)1>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+            "calls": 41268,
+            "sum_ms": 450.64078600001153
+          },
+          {
+            "name": "strata::kernels::<unnamed>::selection(const float *, int *, int *, int, int, int, int, int, const int *, int)",
+            "calls": 7674,
+            "sum_ms": 387.18167200000016
+          },
+          {
+            "name": "strata::kernels::<unnamed>::norm(const float *, const float *, const float *, float *, int, float, bool)",
+            "calls": 37850,
+            "sum_ms": 289.83263599999833
+          },
+          {
+            "name": "volta_sgemm_64x32_sliced1x4_tn",
+            "calls": 15348,
+            "sum_ms": 273.7183880000022
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)0>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+            "calls": 20634,
+            "sum_ms": 258.67643400000304
+          },
+          {
+            "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+            "calls": 128767,
+            "sum_ms": 218.09571600014849
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::scaled_qpn<(strata::kernels::GlmPackedFormat)5, (int)8, (int)1>(const void *, const void *, const __half *, float *, int, int, int)",
+            "calls": 12412,
+            "sum_ms": 217.26975700000014
+          },
+          {
+            "name": "strata::kernels::<unnamed>::conv(const float *, const float *, float *, float *, int, int)",
+            "calls": 63750,
+            "sum_ms": 159.2214659999583
+          }
+        ]
+      },
+      {
+        "phase": "decode",
+        "device": 1,
+        "kernel_union_ms": 1460.807526,
+        "copy_union_ms": 75.278637,
+        "all_activity_union_ms": 1546.557135,
+        "idle_ms": 15571.442865,
+        "top_kernels": [
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)1>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+            "calls": 72832,
+            "sum_ms": 767.6489890000645
+          },
+          {
+            "name": "void strata::kernels::<unnamed>::fp4_qpn<(int)8, (int)2, (bool)0>(const unsigned char *, const unsigned char *, const __half *, float *, int, int, int, float)",
+            "calls": 36416,
+            "sum_ms": 451.7689830000038
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_scatter(const float *, const int *, const float *, float *, int, int, int)",
+            "calls": 36416,
+            "sum_ms": 67.44095399998974
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_gather(const float *, const int *, __half *, int, int, int)",
+            "calls": 36416,
+            "sum_ms": 67.05920399999809
+          },
+          {
+            "name": "strata::kernels::<unnamed>::swiglu(const float *, const float *, float *, int, float)",
+            "calls": 36416,
+            "sum_ms": 54.73682899997544
+          },
+          {
+            "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+            "calls": 36416,
+            "sum_ms": 52.152567000002
+          }
+        ]
+      },
+      {
+        "phase": "prefill",
+        "device": 0,
+        "kernel_union_ms": 11907.690267,
+        "copy_union_ms": 6783.541729,
+        "all_activity_union_ms": 16813.391174,
+        "idle_ms": 1730.1088259999997,
+        "top_kernels": [
+          {
+            "name": "void strata::kernels::<unnamed>::kda_chunk<(int)128, (bool)0>(float *, const float *, const float *, const float *, const float *, const float *, float *, int, int, float *, long long, int, const float *)",
+            "calls": 4352,
+            "sum_ms": 3355.6609110000004
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8>(T1::Params)",
+            "calls": 1767,
+            "sum_ms": 1019.355985
+          },
+          {
+            "name": "volta_s884gemm_fp16_256x128_ldg8_tn",
+            "calls": 4086,
+            "sum_ms": 971.4504119999996
+          },
+          {
+            "name": "strata::kernels::<unnamed>::fp4_sm70_operands(const uint2 *, const unsigned char *, float, __half *, int, int)",
+            "calls": 17664,
+            "sum_ms": 859.5527430000027
+          },
+          {
+            "name": "strata::kernels::<unnamed>::prepack_kernel(const unsigned char *, const unsigned char *, unsigned char *, unsigned char *, int, int)",
+            "calls": 15669,
+            "sum_ms": 711.5209490000007
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x64_tn_align2>(T1::Params)",
+            "calls": 1408,
+            "sum_ms": 605.1015970000003
+          },
+          {
+            "name": "volta_s884gemm_fp16_128x64_ldg8_tn",
+            "calls": 6753,
+            "sum_ms": 598.6609180000024
+          },
+          {
+            "name": "strata::kernels::<unnamed>::gather_vector_half8(const float *, const int *, const int *, unsigned short *, int, int)",
+            "calls": 1408,
+            "sum_ms": 512.3400150000004
+          },
+          {
+            "name": "strata::kernels::<unnamed>::half_cast(const float *, unsigned short *, long)",
+            "calls": 12335,
+            "sum_ms": 470.41257600000125
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x64_nn_align2>(T1::Params)",
+            "calls": 1408,
+            "sum_ms": 417.3077409999999
+          },
+          {
+            "name": "strata::kernels::<unnamed>::norm(const float *, const float *, const float *, float *, int, float, bool)",
+            "calls": 219,
+            "sum_ms": 240.005534
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+            "calls": 3030,
+            "sum_ms": 226.89927000000006
+          }
+        ]
+      },
+      {
+        "phase": "prefill",
+        "device": 1,
+        "kernel_union_ms": 3450.380873,
+        "copy_union_ms": 5203.686947,
+        "all_activity_union_ms": 7267.534275,
+        "idle_ms": 11275.965725,
+        "top_kernels": [
+          {
+            "name": "strata::kernels::<unnamed>::fp4_sm70_operands(const uint2 *, const unsigned char *, float, __half *, int, int)",
+            "calls": 17736,
+            "sum_ms": 852.3371389999988
+          },
+          {
+            "name": "volta_s884gemm_fp16_128x64_ldg8_tn",
+            "calls": 6845,
+            "sum_ms": 622.9038209999987
+          },
+          {
+            "name": "strata::kernels::<unnamed>::prepack_kernel(const unsigned char *, const unsigned char *, unsigned char *, unsigned char *, int, int)",
+            "calls": 11895,
+            "sum_ms": 531.8499690000048
+          },
+          {
+            "name": "volta_s884gemm_fp16_256x128_ldg8_tn",
+            "calls": 3830,
+            "sum_ms": 408.5134030000013
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_128x128_tn_align8>(T1::Params)",
+            "calls": 1699,
+            "sum_ms": 234.015488
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_wmma_tensorop_s161616gemm_f16_32x32_64x2_tn_align8>(T1::Params)",
+            "calls": 2852,
+            "sum_ms": 173.46006100000008
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_scatter(const float *, const int *, const float *, float *, int, int, int)",
+            "calls": 6023,
+            "sum_ms": 110.34324299999962
+          },
+          {
+            "name": "volta_s884gemm_fp16_64x128_ldg8_tn",
+            "calls": 700,
+            "sum_ms": 109.28354199999984
+          },
+          {
+            "name": "strata::kernels::<unnamed>::csf32_kernel(const unsigned char *, const unsigned char *, const unsigned short *, const unsigned int *, const unsigned short *, unsigned char *, int *, int)",
+            "calls": 11895,
+            "sum_ms": 87.62216899999956
+          },
+          {
+            "name": "strata::kernels::<unnamed>::route_gather(const float *, const int *, __half *, int, int, int)",
+            "calls": 6023,
+            "sum_ms": 80.97614600000014
+          },
+          {
+            "name": "void cutlass::Kernel2<cutlass_70_tensorop_s884gemm_f16_64x64_tn_align8>(T1::Params)",
+            "calls": 1111,
+            "sum_ms": 79.01121099999982
+          },
+          {
+            "name": "strata::kernels::<unnamed>::swiglu(const float *, const float *, float *, int, float)",
+            "calls": 6023,
+            "sum_ms": 51.389593000000204
+          }
+        ]
+      }
+    ],
+    "limitations": [
+      "Single instrumented request with unlocked clocks.",
+      "Phase split inferred from engine wall time and cuProfilerStart end; it is not an NVTX marker.",
+      "GPU idle time includes CPU work, scheduling, synchronization and dependencies; it is not all removable overhead.",
+      "Kernel and copy durations overlap. They must not be summed into request latency.",
+      "Retaining observed kernel durations while removing waiting is a conditional scenario, not a hardware roofline."
+    ]
+  }
+}

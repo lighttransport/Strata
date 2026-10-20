@@ -7,7 +7,8 @@
  *   udp : reliable UDP (sliding window, SACK, retransmit) for machines without an HCA.
  *
  * Model:
- *   - One context per process, one rank per process. All ranks call ucomm_init with the same world size and
+ *   - One rank per context. Independent contexts may coexist (e.g. one per relay port), driven by one thread.
+ *     All ranks in each context call ucomm_init with the same world size and
  *     the same root address; rank 0 listens there for a short TCP bootstrap.
  *   - Two-sided tagged messages. Messages between one pair of ranks with the same tag are matched in order.
  *     User tags must be below UCOMM_TAG_RESERVED.
@@ -79,9 +80,12 @@ void ucomm_mr_dereg(ucomm_mr_t *mr);
 /* Point to point. peer may equal own rank. */
 ucomm_status ucomm_isend(ucomm_t *c, int peer, uint32_t tag, const void *buf, size_t len, ucomm_req_t **req);
 ucomm_status ucomm_irecv(ucomm_t *c, int peer, uint32_t tag, void *buf, size_t cap, ucomm_req_t **req);
-/* nbytes (optional) receives the message size for receives. Releases req on completion. */
+/* nbytes (optional) receives the message size for receives. Releases req on completion.
+ * test: done=0 on a backend progress error; req remains valid. */
 ucomm_status ucomm_test(ucomm_req_t *req, int *done, size_t *nbytes);
 ucomm_status ucomm_wait(ucomm_req_t *req, size_t *nbytes);
+/* Completed entries are released and set to NULL. On a progress error or timeout,
+ * the current entry and remaining entries stay valid for retry/session teardown. */
 ucomm_status ucomm_waitall(int n, ucomm_req_t **reqs);
 ucomm_status ucomm_send(ucomm_t *c, int peer, uint32_t tag, const void *buf, size_t len);
 ucomm_status ucomm_recv(ucomm_t *c, int peer, uint32_t tag, void *buf, size_t cap, size_t *nbytes);

@@ -1,0 +1,30 @@
+{
+  "settings": {
+    "bytes": 8,
+    "iterations": 10000,
+    "inline_bytes": 64,
+    "port": 2,
+    "cpu": 2
+  },
+  "binary_sha256": {
+    "left": "777a56c13fe848f50cf2350a77ee3d2636bdffd0e2609dc6281ac5ce93503d72",
+    "right": "6a303303bedd2045475d9c4a035bcc5fa9fae4bf50e78fc81c83347a015e41ce"
+  },
+  "runs": [
+    {
+      "rtt_mean_us": 3.5,
+      "rtt_p50_us": 3.0,
+      "rtt_p99_us": 10.4
+    },
+    {
+      "rtt_mean_us": 3.4,
+      "rtt_p50_us": 3.0,
+      "rtt_p99_us": 10.4
+    },
+    {
+      "rtt_mean_us": 3.4,
+      "rtt_p50_us": 3.0,
+      "rtt_p99_us": 10.4
+    }
+  ]
+}

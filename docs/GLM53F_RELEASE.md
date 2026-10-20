@@ -17,6 +17,7 @@ a separate GLM-5.3-Flash engine that also started from Strata. The ideas taken f
 | B550 | Ryzen 9 3950X (16 cores, one node), 64 GB DDR4-2133 | RX 9070 XT 16 GB (ROCm) | [B550 REAP-50](GLM_B550_REAP50.md), [B550 simulator](GLM_B550_SIM.md) |
 | zen5 | Ryzen 9 3950X, 64 GB DDR4-2666 (ASUS TUF B550-PLUS) | RTX 3070 8 GB (CUDA 12.4, SM86) | measurement records `docs/benchmarks/glm_rtx3070_*_20261011.json`, presets `configs/glm53f-reap50-q23-64g-rtx3070-*.json` |
 | V100 server | 2x Xeon Gold 6240, 160 GiB | 2x Tesla V100 PCIe 32 GB | [V100](GLM53_V100.md), [V100 decode](GLM53_V100_DECODE_20261003.md) |
+| V100 FP4 allocation | 2x Xeon Gold 6240, 181 GiB allocation | 2x Tesla V100 PCIe 32 GB | [native FP4 measurements and setup](GLM_FP4_V100.md#current-measured-profile), [prefill experiments](GLM_FP4_V100_PREFILL.md) |
 
 ## Measured speed and quality
 
@@ -41,13 +42,24 @@ fork's expert requantization (Q2_K gate/up, Q3_K down) assembled into the Unslot
 | 32 GB RAM, 8 GB VRAM budget | full experts ([GLM_32G_8G.md](GLM_32G_8G.md)) | 0.3 | 0.6 | not usable |
 | V100 server, two V100s | full UD-Q2_K_XL, 4K prompt | 28.9 greedy, 29.1 MTP depth 1 | 790 (16K) | logit parity, memcheck, 400,532 C++ oracle cases; no HumanEval |
 | V100 server, 16 GiB per card cap | same | 18.1 (one GPU), 21.9 (two) | | |
+| V100 FP4 allocation, two V100s | full native ModelOpt FP4/FP8, opt-in [grouped profile](../configs/experimental/glm53f-fp4-dual-v100-grouped.json), MTP depth 3, approximate CPU Q8 and bounded decode routing | **41.24 (8K, 512 outputs)** | **519.34 (8K)** | 8/8 long-context and 8/8 natural-length reused coding cases; Fresh20 unscored; no HumanEval |
+
+The native FP4 row measures both phases with the same working profile: three full
+warmups and three timed 8,192-input / 512-output requests with 32 CPU workers.
+Timed requests had zero major faults or swap; clocks were unlocked and RAM speed
+was not measured. Decode tuning is paused at this user-settled experimental
+profile; its original absolute speed-selection gate remains failed. Soft MTP
+acceptance and routing approximations remain opt-in, and the 800 prefill tok/s
+target remains unmet. The [FP4 guide](GLM_FP4_V100.md#current-measured-profile)
+links the timing and quality evidence; the original 5.26 tok/s reference and
+installer defaults remain unchanged.
 
 The RTX 3070 rows come from the four `docs/benchmarks/glm_rtx3070_*_20261011.json` records (medians of three
 trials, 128 generated tokens, 56 GiB cgroup, no swap, 512 MiB VRAM reserve); the presets they name
 (`configs/glm53f-reap50-q23-64g-rtx3070-*.json`) and their engine switches came in with the merge of that machine's
 branch; build with `CMAKE_CUDA_ARCHITECTURES=86` and set the preset's model path.
 
-**The two-GPU decode configuration does not pass the agreed quality gate.** It passes the corpus gate, but
+**The TR16 two-GPU decode configuration does not pass the agreed quality gate.** It passes the corpus gate, but
 HumanEval scored 146/164 (18 test failures, no timeouts) against the 152/164 floor; an earlier run of the same
 settings without the fused publish and tier cap was stopped at 127 of 144 passes, which also caps it below the
 floor. It is published as an experimental speed result. The highest-scoring configurations remain the single-GPU
@@ -60,7 +72,7 @@ the 400,532-case oracle (two of three at 0.14). Its HumanEval score is 145/164, 
 affinity alone does not qualify a configuration; the next candidate is the strict draft acceptance of the
 qualified profile (margin 4, top-k 6).
 
-Notes on the two-GPU rows. The decode and prefill configurations have opposite primaries and cannot run in one
+Notes on the TR16 two-GPU rows. The decode and prefill configurations have opposite primaries and cannot run in one
 process at these speeds; a server picks one. The decode row's quality gate is the one agreed for this work
 (perplexity within +6%, KL within +0.08, top-1 within 3 pp of the unpruned Q23 run, plus HumanEval at or above
 152/164); affinity 0.20 and 0.30 fail it. Removing every lossy setting from the two-GPU stack gives 20 tok/s,

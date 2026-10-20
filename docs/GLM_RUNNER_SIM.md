@@ -12,6 +12,11 @@ Every number comes from `tools/sim/data/glm_kernels_tr16.json` (measured kernel 
 the fitted ones), `tools/sim/data/hw_tr16_runner.json` (link, RAM and NVMe rates) and
 `tools/sim/data/glm_runner_params_tr16.json` (the fit). It predicts speed only; it makes no quality claim.
 
+Native ModelOpt FP4 uses a separate [V100 workload and roofline analysis](GLM_FP4_V100_ROOFLINE.md):
+`python3 tools/glm_runner_sim.py native-fp4`. It imports the measured 31.02 tok/s
+decode and 390.70 tok/s prefill and keeps conditional ceilings separate from
+fitted predictions. The GGUF/RPC profiles and defaults below are unchanged.
+
 ## What it models
 
 A decode step is a dependency graph scheduled on these resources: the primary GPU's compute stream, the

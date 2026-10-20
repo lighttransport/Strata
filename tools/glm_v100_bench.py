@@ -9,9 +9,62 @@ import statistics
 import subprocess
 import time
 import sys
+import threading
 
 from glm_generate import metadata_shard
 from strata_tokenizer import Tokenizer
+
+
+def workload_tokenizer(model):
+    if model.is_dir():
+        from glm_artifact import NativeTokenizer
+        return NativeTokenizer(model)
+    return Tokenizer.from_gguf(metadata_shard(model))
+
+
+def native_identity(model):
+    """Hash the small files that select and describe the indexed weight set."""
+    if not model.is_dir():
+        return None
+    index = json.loads((model / "model.safetensors.index.json").read_text())
+    files = ("config.json", "model.safetensors.index.json", "tokenizer.json", "chat_template.jinja")
+    return dict(files_sha256={name: hashlib.sha256((model / name).read_bytes()).hexdigest()
+                              for name in files},
+                indexed_file_bytes=sum((model / shard).stat().st_size for shard in set(index["weight_map"].values())),
+                indexed_tensors=len(index["weight_map"]),
+                scope="metadata hashes and indexed file lengths; weight payloads are not hashed")
+
+
+def native_process_sample(pid):
+    """Cheap status/fault counters; never walk weight page tables during timing."""
+    try:
+        root = pathlib.Path(f"/proc/{pid}")
+        status = dict(line.split(":", 1) for line in (root / "status").read_text().splitlines() if ":" in line)
+        fields = (root / "stat").read_text().rsplit(")", 1)[1].split()
+        return dict(rss_bytes=int(status["VmRSS"].split()[0])*1024,
+                    swap_bytes=int(status["VmSwap"].split()[0])*1024,
+                    minor_faults=int(fields[7]), major_faults=int(fields[9]))
+    except (OSError, ValueError, KeyError, IndexError):
+        return {}
+
+
+def native_worker_samples(pid):
+    """Direct persistent draft children; read cheap status/fault counters only."""
+    try:
+        children = pathlib.Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+    except OSError:
+        return {}
+    return {int(child): sample for child in children if child.isdigit()
+            if (sample := native_process_sample(int(child)))}
+
+
+def worker_residency(before, after):
+    if len(before) != 1 or before.keys() != after.keys():
+        raise RuntimeError("DFlash2 worker residency counters unavailable or worker changed")
+    return dict(major_faults=sum(after[p]['major_faults']-before[p]['major_faults'] for p in before),
+                minor_faults=sum(after[p]['minor_faults']-before[p]['minor_faults'] for p in before),
+                rss_bytes=sum(v['rss_bytes'] for v in after.values()),
+                swap_bytes=sum(v['swap_bytes'] for v in after.values()))
 
 
 def prompt_ids(path):
@@ -41,6 +94,8 @@ def diagnostic_environment(environment=None):
              "STRATA_GLM_ROUTING_EVENTS", "STRATA_GLM_STATE_TRACE_DIR", "STRATA_GLM_CHECK_RESIDENT_ROWS",
              "STRATA_GLM_MIXED_PROFILE", "STRATA_GLM_MIXED_DECODE_PROFILE",
              "STRATA_GLM_MIXED_PROFILE_DECODE", "STRATA_GLM_MTP_TIMING",
+             "STRATA_GLM_FP4_PROFILE",
+             "STRATA_GLM_CUDA_PROFILE_REQUEST",
              "STRATA_GLM_LAYER_VERIFY_CACHE")
     values = os.environ if environment is None else environment
     return [name for name in names if name in values]
@@ -100,6 +155,23 @@ def request_diagnostics(log):
             row["prefill_repairs"] = [dict(device=int(d), groups=int(g), checked_groups=int(c), wait_ms=float(t))
                                        for d, g, c, t in repairs]
         row.update(cpu_diagnostics(section))
+        native = re.findall(r"FP4_ROUTES device=(\d+) hits=(\d+) misses=(\d+) uploaded_bytes=(\d+) "
+                            r"cache_bytes=(\d+) mma=(\d+) reference=(\d+) prefill=(\d+)", section)
+        if native:
+            keys = ("device", "hits", "misses", "uploaded_bytes", "cache_bytes", "mma", "reference", "prefill")
+            row["native_devices"] = [dict(zip(keys, map(int, values))) for values in native]
+            row["native_counter_scope"] = "cumulative since model load"
+        transfers = re.findall(r"FP4_TRANSFER device=(\d+) startup_bytes=(\d+) prefill_bytes=(\d+) decode_bytes=(\d+)", section)
+        if transfers:
+            keys = ("device", "startup_bytes", "prefill_bytes", "decode_bytes")
+            row["native_transfer_bytes"] = [dict(zip(keys, map(int, values))) for values in transfers]
+            row["native_transfer_scope"] = "cumulative submitted matrix H2D bytes by execution phase; excludes activations and D2H"
+        cpu = re.findall(r"FP4_CPU expert_groups=(\d+)", section)
+        if cpu: row["native_cpu_expert_groups"] = int(cpu[-1])
+        scales = re.findall(r"FP4_CPU_SCALES hits=(\d+) misses=(\d+) bytes=(\d+)", section)
+        if scales:
+            row["native_cpu_scale_cache"] = dict(zip(("hits", "misses", "bytes"), map(int, scales[-1])))
+            row["native_cpu_scale_cache_scope"] = "cumulative since model load"
         hits = re.search(r"resident expert entries=(\d+)/(\d+)", section)
         if hits:
             row["gpu_expert_hits"], row["expert_entries"] = map(int, hits.groups())
@@ -109,6 +181,15 @@ def request_diagnostics(log):
             proposed, accepted, depth = map(int, mtp.groups())
             row["layer_mtp"] = dict(proposed=proposed, accepted=accepted, rejected=proposed-accepted,
                                     depth=depth, acceptance_fraction=accepted/proposed if proposed else None)
+        speculative = re.search(r"SPECULATIVE source=(\w+) generated=(\d+) rounds=(\d+) proposed=(\d+) accepted=(\d+) replayed=(\d+)", section)
+        if speculative:
+            source, generated, rounds, proposed, accepted, replayed = speculative.groups()
+            row["speculative"] = dict(source=source, generated=int(generated), rounds=int(rounds),
+                                      proposed=int(proposed), accepted=int(accepted), replayed=int(replayed))
+        timing = re.search(r"DRAFT_TIMING prepare_ms=([\d.]+) draft_ms=([\d.]+) verify_ms=([\d.]+) restore_ms=([\d.]+) proposal_calls=(\d+)", section)
+        if timing:
+            row["draft_timing"] = dict(zip(("prepare_ms","draft_ms","verify_ms","restore_ms"), map(float,timing.groups()[:4])))
+            row["draft_timing"]["proposal_calls"] = int(timing[5])
         layer_work = []
         for stage, device, count, wall, draft, detail in re.findall(
                 r"LAYER_WORK stage=(\d+) device=(\d+) decode_rows=(\d+) decode_wall_ms=([\d.]+) "
@@ -164,6 +245,8 @@ def main():
     ap.add_argument("model", type=pathlib.Path)
     ap.add_argument("text", type=pathlib.Path)
     ap.add_argument("--decoder", default="build-glm-v100/strata-glm-decode")
+    ap.add_argument("--fp4-kernel", choices=("reference", "sm70"),
+                    help="opt-in native ModelOpt FP4 implementation")
     ap.add_argument("--compute-sanitizer", action="store_true", help="instrument the decoder for memory validation")
     ap.add_argument("--prompt-tokens", type=int, default=4096)
     ap.add_argument("--prompt-ids", action="store_true", help="the prompt file contains frozen token IDs")
@@ -195,8 +278,9 @@ def main():
     ap.add_argument("--validation-repetitions", type=int, default=3)
     ap.add_argument("--prefill-text", type=pathlib.Path, help="additional long raw-text prefill workload")
     ap.add_argument("--prefill-tokens", type=int, default=8192)
-    ap.add_argument("--speculative", choices=("none", "mtp"), default="none")
+    ap.add_argument("--speculative", choices=("none", "mtp", "dflash2"), default="none")
     ap.add_argument("--draft-depth", type=int, default=1)
+    ap.add_argument("--dflash2-worker-config", type=pathlib.Path)
     ap.add_argument("--worker-decoder", type=pathlib.Path, help="opt-in CUDA+CUDA expert worker binary")
     ap.add_argument("--primary-device", type=int, default=0)
     ap.add_argument("--worker-device", type=int, default=1)
@@ -208,10 +292,29 @@ def main():
     ap.add_argument("--stop-ids", default="-1", help="real stop IDs; -1 retains fixed-length diagnostic timing")
     ap.add_argument("--output", type=pathlib.Path, required=True)
     args = ap.parse_args()
+    if (args.speculative == "dflash2") != (args.dflash2_worker_config is not None):
+        ap.error("DFlash2 requires --dflash2-worker-config")
+    if args.speculative == "dflash2" and args.gpu_layout == "layer":
+        ap.error("DFlash2 currently requires the legacy single-sequence GPU layout")
+    modelopt = False
+    if args.model.is_dir():
+        from glm_artifact import load_metadata
+        modelopt = load_metadata(args.model).get("strata.native_codec") == "modelopt"
+    if args.fp4_kernel and not modelopt:
+        ap.error("--fp4-kernel requires a native ModelOpt checkpoint")
+    if modelopt:
+        if args.gpu_layout != "legacy" or args.worker_decoder:
+            ap.error("native ModelOpt uses its own compressed expert cache across --gpu-devices")
+        if (args.decode_prefill_cache or args.decode_cache_mib != "0" or args.decode_cache_adapt or
+                args.prefill_expert_cache_mib not in ("0", "auto")):
+            ap.error("native ModelOpt requires the native cache without GGUF cache overrides")
+        # The native cache is owned by the FP4 executor; the GGUF cache's auto
+        # setting has no meaning here. All existing GGUF defaults stay intact.
+        args.prefill_expert_cache_mib = "0"
     if args.gpu_layout!="layer" and (args.layer_workers or args.layer_cache_mib or args.layer_pin_coordinator):
         ap.error("per-stage budgets and coordinator affinity require --gpu-layout=layer")
     ids = (prompt_ids(args.text) if args.prompt_ids else
-           Tokenizer.from_gguf(metadata_shard(args.model)).encode(args.text.read_text(), parse_special=True))
+           workload_tokenizer(args.model).encode(args.text.read_text(), parse_special=True))
     if not 0 < args.prompt_tokens <= len(ids) or args.generated_tokens < 2 or args.repetitions < 1 or args.threads < 1:
         ap.error("invalid prompt, generated token count, or repetitions")
     ids = ids[:args.prompt_tokens]
@@ -220,7 +323,7 @@ def main():
     encoded = ",".join(map(str, ids))
     extra_ids = None
     if args.prefill_text:
-        extra_ids = Tokenizer.from_gguf(metadata_shard(args.model)).encode(args.prefill_text.read_text(), parse_special=True)
+        extra_ids = workload_tokenizer(args.model).encode(args.prefill_text.read_text(), parse_special=True)
         if not 0 < args.prefill_tokens <= len(extra_ids) or args.prefill_tokens + 2 > args.context:
             ap.error("invalid additional prefill length")
         extra_ids = extra_ids[:args.prefill_tokens]
@@ -232,8 +335,11 @@ def main():
                str(args.context), "4096", str(args.threads), "0", str(args.prefill_batch), args.stop_ids,
                str(args.gpu_budget_mib), "0", "0", args.speculative, str(args.draft_depth), args.cpu_affinity, "0", args.gpu_devices,
                args.prefill_expert_cache_mib, "1"]
+    if args.dflash2_worker_config:
+        command.append(f"--dflash2-worker-config={args.dflash2_worker_config.resolve()}")
     command.extend((str(int(args.decode_prefill_cache)), args.decode_cache_mib, str(int(args.decode_graphs)), str(args.decode_cache_window), str(int(args.decode_cache_adapt))))
     command.append(args.prefill_experts)
+    if modelopt: command.append(f"--fp4-kernel={args.fp4_kernel or 'reference'}")
     if args.gpu_layout == "layer":
         if args.prefill_expert_cache_mib != "0" or args.decode_prefill_cache or args.decode_cache_mib in ("auto", "extend") or args.prefill_experts != "mmq":
             ap.error("layer benchmark requires fixed decode cache, mmq prefill and no legacy prefill cache")
@@ -291,7 +397,7 @@ def main():
                              if line.startswith("model name")), "") if cpuinfo.exists() else ""
     hardware["node"] = os.uname().nodename if hasattr(os, "uname") else ""
     hardware["job_id"] = os.environ.get("SLURM_JOB_ID", "")
-    result = dict(hardware=hardware, configuration={k: str(v) if isinstance(v, pathlib.Path) else v for k, v in vars(args).items()},
+    result = dict(hardware=hardware, native_model=native_identity(args.model), configuration={k: str(v) if isinstance(v, pathlib.Path) else v for k, v in vars(args).items()},
                   command=command, decoder_sha256=decoder_sha256, decoder_fnv64=executable_fingerprint(args.decoder), worker_sha256=worker_sha256, startup_seconds=None,
                   prompt_sha256=hashlib.sha256(encoded.encode()).hexdigest(), trials=rows,
                   validation=None, additional_prefill_trials=prefill_rows, complete=False,
@@ -319,15 +425,39 @@ def main():
     started = time.monotonic()
     with log_path.open("w") as log, subprocess.Popen(command, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1) as process:
+        monitor_stop = threading.Event()
+        memory = dict(peak_rss_bytes=0, peak_swap_bytes=0, samples=0)
+        worker_memory = dict(peak_rss_bytes=0, peak_swap_bytes=0, samples=0)
+        def monitor_memory():
+            while not monitor_stop.is_set():
+                sample = native_process_sample(process.pid)
+                if sample:
+                    memory["samples"] += 1
+                    memory["peak_rss_bytes"] = max(memory["peak_rss_bytes"], sample["rss_bytes"])
+                    memory["peak_swap_bytes"] = max(memory["peak_swap_bytes"], sample["swap_bytes"])
+                if args.speculative == "dflash2":
+                    samples = native_worker_samples(process.pid)
+                    if samples:
+                        worker_memory["samples"] += 1
+                        worker_memory["peak_rss_bytes"] = max(worker_memory["peak_rss_bytes"],sum(x["rss_bytes"] for x in samples.values()))
+                        worker_memory["peak_swap_bytes"] = max(worker_memory["peak_swap_bytes"],sum(x["swap_bytes"] for x in samples.values()))
+                monitor_stop.wait(0.5)
+        monitor = threading.Thread(target=monitor_memory, daemon=True) if modelopt else None
+        if monitor:
+            result["native_memory"] = memory
+            if args.speculative == "dflash2":result["native_draft_memory"] = worker_memory
+            monitor.start()
         def read():
             line = process.stdout.readline().strip()
             if not line:
-                raise RuntimeError(f"decoder exited; see {log_path}")
+                raise RuntimeError(f"decoder exited (code {process.poll()}); see {log_path}")
             if line.startswith("ERR "):
                 raise RuntimeError(line)
             return line
 
         def request(count, prompt_ids):
+            before = native_process_sample(process.pid) if modelopt else {}
+            worker_before = native_worker_samples(process.pid) if args.speculative == "dflash2" else {}
             process.stdin.write(f"GEN {count} {','.join(map(str, prompt_ids))}\n")
             process.stdin.flush()
             generated = []
@@ -342,11 +472,19 @@ def main():
                             (actual != count and args.stop_ids == "-1")):
                         raise RuntimeError(f"unexpected response: {line}")
                     prefill, decode = map(float, fields[3:5])
-                    return dict(prefill_ms=prefill, decode_ms=decode,
+                    row = dict(prefill_ms=prefill, decode_ms=decode,
                                 prefill_tok_s=len(prompt_ids) * 1000 / prefill,
                                 decode_tok_s=(actual - 1) * 1000 / decode if decode > 0 else 0,
                                 generated_tokens=actual, requested_tokens=count, stop_reason=fields[5] if len(fields)>5 else None,
                                 response_ms=prefill + decode, token_ids=generated)
+                    if modelopt:
+                        after = native_process_sample(process.pid)
+                        row["native_memory_after"] = after
+                        row["major_faults"] = after.get("major_faults", 0)-before.get("major_faults", 0)
+                        row["minor_faults"] = after.get("minor_faults", 0)-before.get("minor_faults", 0)
+                    if args.speculative == "dflash2":
+                        row["draft_worker_residency"] = worker_residency(worker_before,native_worker_samples(process.pid))
+                    return row
 
         try:
             while True:
@@ -397,7 +535,9 @@ def main():
                     print(f"PREFILL_TRIAL {trial} tokens={len(extra_ids)} tok_s={row['prefill_tok_s']:.3f}", flush=True)
             process.stdin.write("QUIT\n")
             process.stdin.flush()
-            process.wait(timeout=30)
+            # Releasing a registered full checkpoint can unpin tens of
+            # millions of pages. It is outside the timed request interval.
+            process.wait(timeout=180 if modelopt and os.environ.get("STRATA_GLM_FP4_REGISTER_WEIGHTS")=="1" else 30)
             if process.returncode:
                 raise RuntimeError(f"decoder failed; see {log_path}")
             if sanitizer_path:
@@ -409,13 +549,21 @@ def main():
                     raise RuntimeError(f"missing clean sanitizer summary; see {sanitizer_path}")
             if not result["repetitions_identical"]:
                 raise RuntimeError("repeated requests produced different token IDs")
+            if modelopt and (memory["peak_swap_bytes"] or any(row.get("major_faults", 0) for row in rows)):
+                raise RuntimeError("native FP4 timed requests swapped or faulted weight pages; residency qualification failed")
+            if args.speculative == "dflash2" and (worker_memory["peak_swap_bytes"] or any(
+                    row["draft_worker_residency"]["major_faults"] or row["draft_worker_residency"]["swap_bytes"] for row in rows)):
+                raise RuntimeError("DFlash2 worker timed requests swapped or faulted; residency qualification failed")
             if validation and validation["token_ids"][:args.generated_tokens] != rows[0]["token_ids"][:args.validation_tokens]:
                 raise RuntimeError("validation prefix differs from repeated requests")
         except BaseException as error:
             result["error"] = str(error)
+            result["decoder_returncode"] = process.poll()
             save()
             raise
         finally:
+            monitor_stop.set()
+            if monitor: monitor.join(timeout=2)
             stop_process(process)
     result["complete"] = True
     save()

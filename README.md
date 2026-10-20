@@ -29,13 +29,18 @@ evidence for every row are in the [release notes](docs/GLM53F_RELEASE.md)):
 | Ryzen 9 3950X, 64 GB, **RX 9070 XT 16 GB** | REAP-50 Q23 | 10-16 | 230-250 | coding-task review only; perplexity +30% vs the 2-bit original |
 | Ryzen 9 3950X, 64 GB, **RTX 3070 8 GB** | REAP-50 Q23 | 10-20 | 210-510 | matched perplexity within +10% and a 30-task HumanEval subset |
 | 2x Xeon Gold 6240, 160 GB, **2x Tesla V100 32 GB** | full UD-Q2_K_XL | 29 | 790 (16K) | logit parity and 400k C++ oracle cases |
+| 2x Xeon Gold 6240, 181 GiB allocation, **2x Tesla V100 32 GB** | full ModelOpt FP4/FP8, experimental grouped profile | **41.24** | **519.34 (8K)** | 8/8 long + 8/8 natural-length reused coding cases; Fresh20 unscored |
 | Ryzen 9 3950X, 64 GB, **RX 570 16 GB**, experimental Vulkan runner | REAP-50 Q23 | 3.6 strict, 15.8 fast engine (short prompt) | 34 | not gated: the fast engine fails the numerical gate against strict |
 
 Decode numbers are at 1K-8K context with 256-512 generated tokens; prompt numbers at 2K-16K prompts. The
-two-GPU decode and prompt rates come from two different primary cards and are not available in one process. The
+TR16 two-GPU decode and prompt rates come from two different primary cards and are not available in one process. The
 Vulkan row is a separate experimental runner ([GLM_VULKAN.md](docs/GLM_VULKAN.md)) that needs no CUDA or ROCm.
 With the fastest (ungated) two-GPU settings the desktop reaches 49 tok/s at 1K; that configuration fails the
 quality gate and is not shipped. Removing every approximation leaves 20 tok/s.
+
+The [native FP4 result](docs/GLM_FP4_V100.md#current-measured-profile) measures both phases with the same opt-in
+profile: three full warmups and three timed 8,192-input / 512-output requests. It uses approximate CPU Q8,
+bounded decode routing and soft MTP acceptance; it has no HumanEval score. The 800 prefill tok/s target remains unmet.
 
 - **[Release notes: measurements, weights on Hugging Face, setup for one and two GPUs](docs/GLM53F_RELEASE.md)**
 - **[Running and benchmarking it on your own hardware](docs/GLM53F_NEW_HARDWARE.md)**

@@ -315,7 +315,13 @@ ucomm_status ucomm_irecv(ucomm_t *c, int peer, uint32_t tag, void *buf, size_t c
 
 ucomm_status ucomm_test(ucomm_req_t *r, int *done, size_t *nbytes) {
   if (!r) return UCOMM_ERR_ARG;
-  if (!r->done) r->c->ops->progress(r->c, 0);
+  if (!r->done) {
+    ucomm_status s = r->c->ops->progress(r->c, 0);
+    if (s != UCOMM_OK) {
+      if (done) *done = 0; /* Progress errors do not release the request. */
+      return s;
+    }
+  }
   if (done) *done = r->done;
   if (!r->done) return UCOMM_OK;
   ucomm_status s = r->status;
@@ -324,7 +330,8 @@ ucomm_status ucomm_test(ucomm_req_t *r, int *done, size_t *nbytes) {
   return s;
 }
 
-ucomm_status ucomm_wait(ucomm_req_t *r, size_t *nbytes) {
+static ucomm_status wait_request(ucomm_req_t *r, size_t *nbytes, int *released) {
+  *released = 0;
   if (!r) return UCOMM_ERR_ARG;
   ucomm_t *c = r->c;
   uint64_t deadline = c->cfg.timeout_ms > 0 ? uc_now_us() + (uint64_t)c->cfg.timeout_ms * 1000 : 0;
@@ -336,15 +343,23 @@ ucomm_status ucomm_wait(ucomm_req_t *r, size_t *nbytes) {
   ucomm_status s = r->status;
   if (nbytes) *nbytes = r->nbytes;
   free(r);
+  *released = 1;
   return s;
 }
 
+ucomm_status ucomm_wait(ucomm_req_t *r, size_t *nbytes) {
+  int released;
+  return wait_request(r, nbytes, &released);
+}
+
 ucomm_status ucomm_waitall(int n, ucomm_req_t **reqs) {
+  if (n < 0 || (n && !reqs)) return UCOMM_ERR_ARG;
   ucomm_status first = UCOMM_OK;
   for (int i = 0; i < n; i++) {
     if (!reqs[i]) continue;
-    ucomm_status s = ucomm_wait(reqs[i], NULL);
-    if (s == UCOMM_ERR_TIMEOUT) return s; /* remaining requests stay valid */
+    int released;
+    ucomm_status s = wait_request(reqs[i], NULL, &released);
+    if (!released) return s; /* timeout/progress error: keep this and remaining requests valid */
     reqs[i] = NULL;
     if (s != UCOMM_OK && first == UCOMM_OK) first = s;
   }

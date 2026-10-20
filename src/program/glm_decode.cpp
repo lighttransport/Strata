@@ -20,8 +20,12 @@
 #include "strata/host/glm_expert_replay.h"
 #include "strata/host/glm_env.h"
 #include "strata/kernels/cpu/input_quant_ready.hpp"
+#include "strata/host/glm_route_drop.h"
+#include "strata/host/glm_fp4_cache.h"
+#include "strata/host/glm_draft.h"
 #include "strata/core/device.hpp"
 #include "strata/core/runtime_memory.hpp"
+#include "strata/core/ram_executable.hpp"
 #include "strata/artifact/expert_calibration.hpp"
 #include "strata/artifact/expert_block_screen.hpp"
 #include "strata/artifact/json.hpp"
@@ -40,6 +44,8 @@
 #include "strata/kernels/glm_q23.hpp"
 #include "strata/kernels/canon_expert.hpp"
 #include "strata/kernels/glm_q8.hpp"
+#include "strata/kernels/glm_fp4.hpp"
+#include "strata/kernels/cpu/glm_fp4.hpp"
 #include "strata/kernels/dequant_bf16.hpp"
 #include "strata/prefill/gemm.hpp"
 #include "strata/prefill/partition.hpp"
@@ -423,6 +429,7 @@ struct GpuLocality {
 #endif
     }
 };
+#include "glm_fp4_native.inc"
 class ExpertStager {
     std::mutex mutex;
     std::condition_variable work, finished;
@@ -709,6 +716,12 @@ struct GpuPrefill {
         arena = std::make_unique<Device>(experts_only ? (size_t)width * 320 * 1024 + 192 * MiB
                                                      : arena_bytes(width, capacity) + (native_exl ? 128 * MiB : 0));
         if(native_exl) {
+            if(strata_env_is_one("STRATA_GLM_FP4_TENSOR_ATTENTION")) {
+                blas_workspace=std::make_unique<Device>(4*MiB);
+                gemm=std::make_unique<strata::prefill::Gemm>();std::string error;
+                if(!gemm->init_external(stream,nullptr,0,blas_workspace->p,blas_workspace->bytes,error))
+                    throw std::runtime_error(error);
+            }
             std::cerr<<"EXL3 GPU prefill chunk="<<chunk<<" scratch_MiB="<<arena->bytes/double(MiB)<<'\n';
             return;
         }
@@ -2025,6 +2038,9 @@ class Decoder {
     std::map<int, MoePrefix> moe_prefixes;
     int prepared_moe_layer = -1;
     std::unique_ptr<ResidentExecutor> cached_decode, cached_decode_b;
+#ifndef STRATA_USE_HIP
+    std::unique_ptr<Fp4NativeExecutor> modelopt_gpu;
+#endif
     std::unique_ptr<SecondaryPrefill> secondary;
     PrefillGroupCache prefill_cache;
     std::map<std::string, std::unique_ptr<Device>> phase;
@@ -2036,11 +2052,17 @@ class Decoder {
                !std::getenv("STRATA_GLM_CHECK_MLA");
     }
     bool verify_graphs=std::getenv("STRATA_GLM_VERIFY_GRAPHS")!=nullptr;
+    const int verify_graph_max_tokens=[] {
+        const auto value=strata_env_value_ll("STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS",4);
+        if(value<4||value>8)
+            throw std::invalid_argument("GLM: VERIFY_GRAPH_MAX_TOKENS must be4..8");
+        return int(value);
+    }();
     int graph_key(int layer)const {return layer+10000*(batch_tokens-1)+(capturing_history?100000:0)+(pipelining?200000:0)+(pipeline_residents?400000:0)+(defer_active?(defer_routes?1600000:800000):0);}
     std::map<int, std::unique_ptr<DecodeGraph>> mixer_graphs;
     template<class F> void decode_graph(int layer, F &&enqueue, int key = -1) {
         if (!decode_graphs || !gpu || fast || !row_sequences.empty() || ((batch_tokens!=1 || capturing_history) &&
-            !(verify_graphs && !artifact.is_exl3() && batch_tokens<=4))) {
+            !(verify_graphs && (!artifact.is_exl3() || artifact.is_modelopt()) && batch_tokens<=verify_graph_max_tokens))) {
             enqueue(); return;
         }
         auto &entry = mixer_graphs[key >= 0 ? key : graph_key(layer)];
@@ -2768,6 +2790,144 @@ class Decoder {
     std::vector<std::vector<uint8_t>> host_quant;
     std::vector<cpu::ExpertJobMulti> host_jobs;
     bool capture_hidden = false;
+    bool dflash_enabled = false;
+    bool dflash_gpu_top16 = false;
+    bool dflash_adaptive_depth = false;
+    int dflash_minimum_depth = 1;
+    float dflash_depth_gap = 1;
+    std::unique_ptr<Device> dflash_allowed_tokens;
+    std::vector<float> dflash_features;
+    std::unique_ptr<Device> dflash_capture_buffer;
+    static constexpr std::array<int,5> dflash_layers{5,14,24,33,42};
+public:
+    int dflash_position() const {return position;}
+    void enable_dflash_capture() {
+        if (!artifact.is_modelopt() || m.hidden!=4096 || m.vocab!=154880 || m.layers.size()!=45 ||
+            capture_hidden || defer_experts || split_verify || !row_sequences.empty())
+            throw std::invalid_argument("DFlash2 requires native GLM FP4, no MTP, deferred experts, or split verification");
+        dflash_enabled=true;
+        dflash_adaptive_depth=strata_env_is_one("STRATA_GLM_DFLASH_ADAPTIVE_DEPTH");
+        if(dflash_adaptive_depth) {
+            const auto minimum=strata_env_value_ll("STRATA_GLM_DFLASH_MIN_DEPTH",1);
+            const auto gap=strata_env_value_double("STRATA_GLM_DFLASH_DEPTH_GAP",1);
+            if(minimum<1 || minimum>7 || !std::isfinite(gap) || gap<0 || gap>32)
+                throw std::invalid_argument("DFlash2 adaptive minimum must be1..7 and gap0..32");
+            dflash_minimum_depth=int(minimum);dflash_depth_gap=float(gap);
+            std::cerr<<"DFLASH_ADAPTIVE min_depth="<<minimum<<" gap="<<gap
+                     <<" confidence=selected_unary_minus_best_other\n";
+        }
+        dflash_gpu_top16=strata_env_is_one("STRATA_GLM_DFLASH_GPU_TOP16");
+        if(dflash_gpu_top16) {
+            std::vector<uint8_t> allowed(m.vocab);
+            for(int id=0;id<m.vocab;++id)allowed[id]=artifact.exl3().token_ids[id];
+            dflash_allowed_tokens=std::make_unique<Device>(allowed.size());
+            dflash_allowed_tokens->put(allowed.data(),allowed.size());
+        }
+    }
+    void prepare_dflash(strata::spec::ExternalWorker& worker) {
+        const int first=std::max(0,position-2048);
+        const auto reply=worker.exchange("\"op\":\"prepare\",\"start\":"+std::to_string(first)+
+            ",\"end\":"+std::to_string(position),dflash_features.data()+size_t(first)*20480,
+            size_t(position-first)*20480,nullptr,true);
+        if(!reply.at("prepared").flag())throw std::runtime_error("DFlash2 context preparation failed");
+    }
+    std::vector<int> dflash_propose(strata::spec::ExternalWorker& worker,int& sent,int anchor,int limit) {
+        if(!dflash_enabled || limit<1 || limit>7 || position<sent || position-sent>2048)
+            throw std::runtime_error("DFlash2 committed context bounds");
+        std::vector<float> frame;
+        frame.insert(frame.end(),dflash_features.begin()+size_t(sent)*20480,
+                     dflash_features.begin()+size_t(position)*20480);
+        const auto& embedding=artifact.at("token_embd.weight");
+        const auto* traits=ggml_get_type_traits((ggml_type)embedding.tensor->type);
+        const size_t base=frame.size();frame.resize(base+8*4096);
+        for(int row=0;row<8;++row) {
+            const int id=row?154856:anchor;
+            const auto* data=embedding.data()+size_t(id)*(embedding.bytes/m.vocab);
+            if(embedding.tensor->type==GGML_TYPE_F32)std::memcpy(frame.data()+base+row*4096,data,4096*4);
+            else if(traits && traits->to_float)traits->to_float(data,frame.data()+base+row*4096,4096);
+            else throw std::runtime_error("DFlash2 unsupported embedding");
+        }
+        std::vector<float> hidden;
+        worker.exchange("\"op\":\"draft\",\"start\":"+std::to_string(sent)+",\"end\":"+
+                        std::to_string(position),frame.data(),frame.size(),&hidden);
+        sent=position;
+        // Use the target's resident compressed head, with its usual skinny arithmetic.
+        // These named buffers do not alias the target's saved recurrent state.
+        const int saved_batch=batch_tokens;const bool saved_fast=fast;
+        batch_tokens=7;fast=false;reset_phase();
+        auto& input=buf("dflash_head_input",7*4096);input.put(hidden.data(),hidden.size()*4);
+        auto& output=buf("dflash_head_output",size_t(7)*m.vocab);
+        std::vector<k::GlmLogitCandidate> candidates(7*16);
+        try {
+            mat("output.weight",input.f(),output.f(),false,7);
+            if(dflash_gpu_top16) {
+                auto& work=buf("dflash_top16_work",k::glm_top16_scratch_bytes(m.vocab,7)/4);
+                auto& selected=buf("dflash_top16",candidates.size()*sizeof(k::GlmLogitCandidate)/4);
+                k::glm_top16(output.f(),static_cast<const uint8_t*>(dflash_allowed_tokens->p),m.vocab,7,
+                    work.p,static_cast<k::GlmLogitCandidate*>(selected.p),stream);
+                check(cudaMemcpyAsync(candidates.data(),selected.p,candidates.size()*sizeof(k::GlmLogitCandidate),
+                    cudaMemcpyDeviceToHost,stream));
+            }
+            check(cudaStreamSynchronize(stream));
+        }
+        catch(...) {batch_tokens=saved_batch;fast=saved_fast;throw;}
+        batch_tokens=saved_batch;fast=saved_fast;
+        if(!dflash_gpu_top16) {
+          const auto values=output.floats(size_t(7)*m.vocab);
+          for(int row=0;row<7;++row) {
+            std::array<std::pair<float,int>,16> top;
+            top.fill({-std::numeric_limits<float>::infinity(),-1});
+            for(int id=0;id<m.vocab;++id) {
+                const float value=values[size_t(row)*m.vocab+id];
+                if(!artifact.exl3().token_ids[id] || !std::isfinite(value) || value<=top.back().first)continue;
+                int at=15;
+                while(at && value>top[at-1].first){top[at]=top[at-1];--at;}
+                top[at]={value,id};
+            }
+            for(int i=0;i<16;++i)candidates[row*16+i]={top[i].first,top[i].second};
+          }
+        }
+        std::ostringstream ids,scores;ids<<'[';scores<<'[';scores<<std::setprecision(9);
+        for(int row=0;row<7;++row) {
+            if(candidates[row*16+15].token<0)throw std::runtime_error("DFlash2 insufficient finite head candidates");
+            if(row){ids<<',';scores<<',';}ids<<'[';scores<<'[';
+            for(int i=0;i<16;++i){if(i){ids<<',';scores<<',';}const auto& value=candidates[row*16+i];ids<<value.token;scores<<value.logit;}
+            ids<<']';scores<<']';
+        }
+        ids<<']';scores<<']';
+        auto reply=worker.exchange("\"op\":\"select\",\"anchor\":"+std::to_string(anchor)+
+            ",\"ids\":"+ids.str()+",\"logits\":"+scores.str());
+        const auto& tokens=reply.at("tokens");
+        if(tokens.kind!=strata::artifact::Json::Array || tokens.array.size()!=7)
+            throw std::runtime_error("DFlash2 proposal shape mismatch");
+        std::vector<int> result;
+        std::array<float,7> confidence{};
+        int row=0;
+        for(const auto& token:tokens.array) {
+            const auto id=token.integer();if(id>=size_t(m.vocab)||!artifact.exl3().token_ids[id])
+                throw std::runtime_error("DFlash2 proposal token invalid");
+            if(dflash_adaptive_depth) {
+                float selected=-std::numeric_limits<float>::infinity(),other=selected;
+                int found=0;
+                for(int i=0;i<16;++i) {
+                    const auto& candidate=candidates[row*16+i];
+                    if(candidate.token==int(id)){selected=candidate.logit;++found;}
+                    else other=std::max(other,candidate.logit);
+                }
+                if(found!=1)throw std::runtime_error("DFlash2 selected token missing from head candidates");
+                confidence[row]=selected-other;
+            }
+            if(result.size()<size_t(limit))result.push_back(int(id));
+            ++row;
+        }
+        if(dflash_adaptive_depth) {
+            const int retained=strata_glm_draft_depth(confidence.data(),limit,dflash_minimum_depth,dflash_depth_gap);
+            if(retained<1)throw std::runtime_error("DFlash2 adaptive confidence invalid");
+            result.resize(retained);
+        }
+        return result;
+    }
+private:
     int mtp_position = 0, prefill_width_saved = 0;
     std::vector<float> target_hidden, mtp_hidden;
     std::unique_ptr<Device> mtp_experts;
@@ -3219,7 +3379,7 @@ class Decoder {
         }
         // Verification can grow a one-token buffer after layer graphs captured
         // its address. Reserve the whole verification window before first replay.
-        if (gpu && main && batch_tokens <= cpu::MAXT && (batched_resident || !artifact.is_exl3())) {
+        if (gpu && main && batch_tokens <= cpu::MAXT && (batched_resident || !artifact.is_exl3() || artifact.is_modelopt())) {
             const size_t row = name == "streams" ? 4 * m.hidden :
                                name == "hc_coeff" ? 24 : name == "output" ? m.vocab :
                                name == "moe_ids" || name == "moe_weights" ? m.top_k : m.hidden;
@@ -3468,6 +3628,12 @@ class Decoder {
         if (t.shape.size() != 2)
             throw std::runtime_error("GLM: matrix must have two dimensions: " + name);
         const int in = (int)t.shape[0], out = (int)t.shape[1];
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {
+            if(!modelopt_gpu)throw std::runtime_error("GLM FP4: configure GPU execution before matrix products");
+            modelopt_gpu->dense(name,x,y,nt,stream);return;
+        }
+#endif
         if(artifact.is_exl3() && t.type==GGML_TYPE_BF16) {
             if(native_dense_q8) {
                 const auto it=native_q8_weights.find(name);
@@ -4012,6 +4178,9 @@ class Decoder {
     }
     void moe_gpu(const std::string &p, const float *x, float *out,
                  const strata::core::LayerDescriptor &layer) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {moe(p,std::stoi(p.substr(4)),x,out,layer);return;}
+#endif
         const int nt = batch_tokens, H = m.hidden, E = m.experts, K = m.top_k;
         auto &logits = buf("router_logits", nt * E);
         auto &ids = buf("router_ids", nt * K), &rw = buf("router_weights", nt * K);
@@ -4466,6 +4635,9 @@ class Decoder {
     }
     void moe_mtp(const std::string &p, const float *x, float *out,
                  const strata::core::LayerDescriptor &layer) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {moe(p,45,x,out,layer);return;}
+#endif
         const int H = m.hidden, K = m.top_k;
         auto &logits = buf("mtp_router", m.experts), &ids = buf("mtp_ids", K);
         auto &routing = buf("mtp_routing", K);
@@ -4612,6 +4784,34 @@ class Decoder {
     }
     void moe(const std::string &p, int l, const float *x, float *out,
              const strata::core::LayerDescriptor &layer) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {
+            const int nt=batch_tokens;
+            auto& logits=buf("fp4_router",m.experts*nt);
+            auto& ids=buf("fp4_ids",m.top_k*nt);
+            auto& routing=buf("fp4_routing",m.top_k*nt);
+            mat(p+"ffn_gate_inp.weight",x,logits.f());
+            auto& bias=weight(p+"exp_probs_b.bias");
+            k::glm_router_tokens(logits.f(),bias.f(),static_cast<int*>(ids.p),routing.f(),m.experts,m.top_k,m.expert_scale,nt,stream,
+                modelopt_gpu->routing_bonus(l,nt));
+            if(routing_trace.is_open()) {
+                std::vector<int> selected(size_t(nt)*m.top_k);
+                check(cudaMemcpyAsync(selected.data(),ids.p,selected.size()*sizeof(int),cudaMemcpyDeviceToHost,stream));
+                check(cudaStreamSynchronize(stream));trace_routes(l,position,nt,m.top_k,selected.data());
+            }
+            const bool early_inputs=modelopt_gpu->prepare_routed_inputs(x,static_cast<const int*>(ids.p),routing.f(),nt,stream,moe_ready);
+            struct DrainEarlyFailure {
+                cudaStream_t stream;bool active;int exceptions;
+                ~DrainEarlyFailure(){if(active&&std::uncaught_exceptions()>exceptions)cudaStreamSynchronize(stream);}
+            } drain{stream,early_inputs,early_inputs?std::uncaught_exceptions():0};
+            ffn(p,x,out,"_shexp",m.shared_intermediate,layer.shared_swiglu_limit);
+            // The final routed sum remains on this stream, after the shared
+            // FFN. Only the independent expert inputs cross the earlier fence.
+            modelopt_gpu->routed(l,x,static_cast<const int*>(ids.p),routing.f(),out,nt,layer.swiglu_limit,stream,
+                                 early_inputs?moe_ready:nullptr);
+            return;
+        }
+#endif
         if(artifact.is_fp8() && !fast)throw std::invalid_argument("FP8 reference: routed experts run only in GPU prefill (corpus evaluation)");
         if(artifact.is_exl3()) {if(fast)moe_exl3_gpu(p,l,x,out,layer);else moe_exl3(p,l,x,out,layer);return;}
         if (l == (int)m.layers.size() && mtp_ready) {
@@ -6452,11 +6652,26 @@ class Decoder {
             mat(p + "attn_output.weight", q.f(), out);
             return;
         }
+        std::array<const float*,3> projected{};
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu && modelopt_gpu->kda_qkv_batch_enabled()) {
+            const std::array<std::string,3> qkv_names={p+"attn_q.weight",p+"attn_k.weight",p+"attn_v.weight"};
+            if(std::none_of(qkv_names.begin(),qkv_names.end(),
+                [&](const auto& name){return prepared_projections.contains(name);}) &&
+               modelopt_gpu->can_batch_kda_qkv(qkv_names,n,m.hidden,batch_tokens)) {
+                std::array<float*,3> outputs;
+                for(int i=0;i<3;++i)outputs[i]=buf("linear_raw_"+names[i],size_t(8)*n).f();
+                modelopt_gpu->batch_kda_qkv(qkv_names,x,outputs,batch_tokens,stream);
+                std::copy(outputs.begin(),outputs.end(),projected.begin());
+            }
+        }
+#endif
         for (int i = 0; i < 3; ++i) {
-            mat(p + "attn_" + names[i] + ".weight", x, tmp.f());
+            if(!projected[i])mat(p + "attn_" + names[i] + ".weight", x, tmp.f());
+            const float* raw=projected[i]?projected[i]:tmp.f();
             auto &W = weight(p + "ssm_conv1d_" + names[i] + ".weight");
             if (fast)
-                k::glm_conv_batch(tmp.f(), W.f(), hist[i]->f(), dest[i], n, m.conv_kernel, batch_tokens,
+                k::glm_conv_batch(raw, W.f(), hist[i]->f(), dest[i], n, m.conv_kernel, batch_tokens,
                                   stream);
             else if (conv_batch_history && batch_tokens > 1 && row_sequences.empty()) {
                 float *snapshots = nullptr;
@@ -6467,7 +6682,7 @@ class Decoder {
                                               (size_t)history_token_offset * history_stride);
                         count = std::min(batch_tokens, history_slots - history_token_offset);
                     }
-                k::glm_conv_batch_history(tmp.f(), W.f(), hist[i]->f(), dest[i], n, m.conv_kernel,
+                k::glm_conv_batch_history(raw, W.f(), hist[i]->f(), dest[i], n, m.conv_kernel,
                     batch_tokens, snapshots, history_stride / sizeof(float), count, stream);
             }
             else
@@ -6477,7 +6692,7 @@ class Decoder {
                         auto &rs = row_state(t, l);
                         history = i == 0 ? rs.conv_q.get() : i == 1 ? rs.conv_k.get() : rs.conv_v.get();
                     }
-                    k::glm_conv(tmp.f(t * n), W.f(), history->f(), dest[i] + t * n, n, m.conv_kernel, stream);
+                    k::glm_conv(raw+size_t(t)*n, W.f(), history->f(), dest[i] + t * n, n, m.conv_kernel, stream);
                     capture_state(history, t);
                 }
         }
@@ -6528,7 +6743,9 @@ class Decoder {
             } else {
             // A verify window's rollback history comes straight from the recurrence kernel.
             float *snapshots = nullptr;
-            if (capturing_history && !prepared && row_parts == 1 && batch_tokens <= 64)
+            const bool snapshot_rows = row_parts == 1 || ((row_parts == 2 || row_parts == 4) &&
+                columns == 128 && strata_env_is_one("STRATA_GLM_KDA_ORDERED_ROWS"));
+            if (capturing_history && !prepared && snapshot_rows && batch_tokens <= 64)
                 if (auto it = history_offsets.find(state.recurrent.get()); it != history_offsets.end())
                     snapshots = (float *)((char *)verify_history->p + it->second);
             if (snapshots && history_token_offset >= history_slots) {
@@ -6689,7 +6906,7 @@ class Decoder {
         auto &counts = buf("index_counts", ntile);
         auto &aq = buf("mla_absorbed_q", ntile * heads * latent);
         auto &av = buf("mla_absorbed_v", ntile * heads * latent);
-        const bool halves = tensor_mla && fast && gpu && gpu->gemm;
+        const bool halves = tensor_mla && fast && gpu && gpu->gemm && (!artifact.is_modelopt()||lossy_prefill());
         // Before top-k truncation every causal key is selected. A shared FP16
         // key matrix avoids one gathered copy per query. Key order and GEMM
         // shape change, so this remains an opt-in numerical experiment.
@@ -7383,17 +7600,26 @@ class Decoder {
         check(cudaGetDevice(&primary_device));
         if (m.architecture != "glm5next" || ctx < 1 || ctx > (size_t)m.context || budget < 64 * 1024 * 1024)
             throw std::invalid_argument("GLM: invalid architecture, context, or cache budget");
+#ifndef STRATA_USE_HIP
+        if(fp4_kernel_selected&&!artifact.is_modelopt())throw std::invalid_argument("--fp4-kernel requires a native ModelOpt checkpoint");
+#endif
         validate();
         if(artifact.is_exl3()) {
+#ifdef STRATA_USE_HIP
+            if(artifact.is_modelopt())throw std::invalid_argument("GLM ModelOpt FP4 currently requires the CUDA backend");
+#endif
             if(ctx>65536)throw std::invalid_argument("EXL3: context above 64K requires host KV offload, which is deferred");
 #ifdef __linux__
-            const uint64_t ram=uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
+            const uint64_t ram=artifact.is_modelopt()?strata::core::host_memory_allowance_bytes():uint64_t(sysconf(_SC_PHYS_PAGES))*uint64_t(sysconf(_SC_PAGESIZE));
             const auto census=artifact.census();
-            const uint64_t resident=(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;   // FP8: experts streamed from disk
-            if(resident+6ULL*1024*MiB>ram)throw std::runtime_error("EXL3: main weights plus 6 GiB host reserve exceed system RAM");
+            const uint64_t resident=artifact.is_modelopt()?artifact.exl3().tensors.file_bytes():(artifact.is_fp8()?0:census.main_experts)+census.main_fixed;
+            const uint64_t host_reserve=artifact.is_modelopt()?strata::core::glm_fp4_host_reserve_bytes():6ULL*1024*MiB;
+            if(artifact.is_modelopt())std::cerr<<"FP4_HOST_BUDGET weights_bytes="<<resident<<" reserve_bytes="<<host_reserve<<" limit_bytes="<<ram<<'\n';
+            if(resident>ram || host_reserve>ram-resident)throw std::runtime_error(artifact.is_modelopt()?"GLM FP4: indexed files plus runtime reserve exceed the memory allowance":"EXL3: main weights plus 6 GiB host reserve exceed system RAM");
 #endif
             if(expert_bytes)throw std::invalid_argument("EXL3: GGUF expert cache is unsupported");
-            exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu);
+            exl_pool=std::make_unique<strata::cpu::exl3::Pool>(threads,pin_cpu,
+                artifact.is_modelopt()&&strata_env_is_one("STRATA_GLM_FP4_CPU_SPIN"));
         }
         if (!artifact.is_exl3() && GpuPrefill::prefetch_groups() && prefetch_geometry_supported())
             for (size_t l = 0; l < m.layers.size(); ++l) {
@@ -7611,7 +7837,7 @@ class Decoder {
                              tokens.size() != 1 || !row_sequences.empty() || capturing_history ||
                              !gpu || !greedy_scratch || !greedy_pick))
             throw std::invalid_argument("GLM: compact greedy requires one ordinary GGUF decode row");
-        if (consume_logits && (!all_logits || artifact.is_exl3()))
+        if (consume_logits && (!all_logits || (artifact.is_exl3()&&!artifact.is_modelopt())))
             throw std::invalid_argument("GLM: streamed logits require all GGUF rows");
         if (!prefill && tensor_mla_decode) prepare_mla_decode();
         if (!prefill && streaming_dense) compact_decode();
@@ -7634,6 +7860,12 @@ class Decoder {
             if (token < 0 || token >= m.vocab || (artifact.is_exl3()&&!artifact.exl3().token_ids[token]))
                 throw std::out_of_range("GLM: token or context out of range");
         batch_tokens = nt;
+        if(dflash_enabled) {
+            const size_t bytes=size_t(5)*std::min(nt,2048)*m.hidden*4;
+            if(!dflash_capture_buffer || dflash_capture_buffer->bytes<bytes)
+                dflash_capture_buffer=std::make_unique<Device>(bytes);
+            dflash_features.resize(std::max(dflash_features.size(),size_t(position+nt)*20480));
+        }
         if (!layer_stage) {
             strata::prefill::Gemm::lossy_allowed = lossy_prefill();
             k::glm_set_prefill_lossy(lossy_prefill());
@@ -7811,8 +8043,8 @@ class Decoder {
                 else
                     k::glm_mhc_write_tokens(r.f(), c.f(), y.f(), r.f(), m.hidden, nt, stream);
             };
-            const bool combined = row_sequences.empty() && layer_graphs && decode_graphs && !fast &&
-                ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=4)) &&
+            const bool combined = !artifact.is_modelopt() && row_sequences.empty() && layer_graphs && decode_graphs && !fast &&
+                ((nt==1 && !capturing_history) || (verify_graphs && !artifact.is_exl3() && nt<=verify_graph_max_tokens)) &&
                 (layer.mixer == strata::core::MixerKind::Kda || graph_mla()) && layer.ffn == strata::core::FfnKind::Moe && !tp_active();
             if (combined && pipelining) {
                 // Graph replays skip this lambda: the deferred slot is fixed per layer and tracked outside it.
@@ -7919,6 +8151,14 @@ class Decoder {
                     check(cudaMemcpyAsync(defer_coefficients->p, c.f(), 24 * sizeof(float), cudaMemcpyDeviceToDevice, stream));
                 deferred_slot = deferred_target((int)l);
                 if (defer_experts == 2) flush_deferred(nullptr);
+            }
+            if(dflash_enabled) {
+                const auto found=std::find(dflash_layers.begin(),dflash_layers.end(),int(l));
+                if(found!=dflash_layers.end()) {
+                    const int rows=std::min(nt,2048),first=nt-rows;
+                    const size_t offset=size_t(found-dflash_layers.begin())*rows*m.hidden;
+                    k::glm_hyper_head_tokens(r.f(size_t(first)*4*m.hidden),dflash_capture_buffer->f(offset),m.hidden,rows,stream);
+                }
             }
             if (profile) {
                 check(cudaStreamSynchronize(stream));
@@ -8178,6 +8418,11 @@ class Decoder {
                 auto panel = logits.floats((size_t)m.vocab * count);
                 for (float value : panel)
                     if (!std::isfinite(value)) throw std::runtime_error("GLM: non-finite streamed logits");
+                if(artifact.is_modelopt() && exl3_mask_padding) {
+                    const auto& ids=artifact.exl3().token_ids;
+                    for(int t=0;t<count;++t)for(size_t id=0;id<ids.size();++id)
+                        if(!ids[id])panel[size_t(t)*m.vocab+id]=-std::numeric_limits<float>::infinity();
+                }
                 consume_logits(panel.data(), first, count);
             }
         }
@@ -8204,6 +8449,13 @@ class Decoder {
         }
         ram_plan();
         tail_part(trace.plan_ms);
+        if(dflash_enabled) {
+            const int rows=std::min(nt,2048),first=nt-rows;
+            const auto captured=dflash_capture_buffer->floats(size_t(5)*rows*m.hidden);
+            for(int row=0;row<rows;++row)for(size_t layer=0;layer<5;++layer)
+                std::copy_n(captured.data()+(layer*rows+row)*m.hidden,m.hidden,
+                    dflash_features.data()+size_t(position+first+row)*20480+layer*m.hidden);
+        }
         position += nt;
         batch_tokens = 1;
         auto result = (consume_logits || greedy_result) ? std::vector<float>{} : logits.floats((size_t)m.vocab * head_tokens);
@@ -8217,7 +8469,7 @@ class Decoder {
             if (!std::isfinite(v))
                 throw std::runtime_error("GLM: non-finite logits");
         tail_part(trace.copy_ms);
-        if(artifact.is_exl3() && exl3_mask_padding) {
+        if(artifact.is_exl3() && exl3_mask_padding && !consume_logits) {
             const auto& ids=artifact.exl3().token_ids;
             for(int t=0;t<head_tokens;++t)for(size_t id=0;id<ids.size();++id)
                 if(!ids[id])result[t*m.vocab+id]=-std::numeric_limits<float>::infinity();
@@ -8733,6 +8985,7 @@ class Decoder {
     void enable_mtp_capture(bool enabled = true) {
         capture_hidden = enabled;
         if (!enabled) return;
+        if(artifact.is_modelopt())mtp_batched=true;
         ensure_draft_state();
     }
     // The NextN draft block keeps its own latent cache and indexer state behind the main layers.
@@ -8795,13 +9048,16 @@ class Decoder {
         mat(p + "nextn.eh_proj.weight", joined.f(), cur.f());
         reset_phase();
         norm(p + "attn_norm.weight", cur.f(), x.f(), H);
-        mla_gpu(p, m.layers.size(), x.f(), y.f());
+        const bool state_only=artifact.is_modelopt();
+        mla_gpu(p, m.layers.size(), x.f(), y.f(),state_only);
         const float one = 1;
-        check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
-        reset_phase();
-        norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
-        moe_gpu(p, x.f(), y.f(), layer);
-        check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
+        if(!state_only) {
+            check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
+            reset_phase();
+            norm(p + "ffn_norm.weight", cur.f(), x.f(), H);
+            moe_gpu(p, x.f(), y.f(), layer);
+            check(cublasSaxpy(blas, count * H, &one, y.f(), 1, cur.f(), 1));
+        }
         check(cudaStreamSynchronize(stream));
         mtp_position += count;
         mtp_primed = true;
@@ -9001,7 +9257,22 @@ class Decoder {
         }
     }
     void set_verify_graphs(bool enabled) {verify_graphs=enabled;}
-    void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
+    int verification_graph_width() const {return verify_graph_max_tokens;}
+    bool set_fp4_decode_routing(bool enabled) {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)return modelopt_gpu->set_decode_device_routing(enabled);
+#endif
+        (void)enabled;return false;
+    }
+    size_t captured_mixer_graphs(int width,bool history) const {
+        size_t count=0;
+        // graph_key reserves the ten-thousands digit for width and the low
+        // hundred-thousands bit for history; the other flags use higher bits.
+        for(const auto& [key,graph]:mixer_graphs)
+            if(graph->executable && (key%100000)/10000==width-1 && (key/100000)%2==int(history))++count;
+        return count;
+    }
+    void set_decode_graphs(bool enabled) {if(artifact.is_exl3()&&!artifact.is_modelopt()&&enabled)throw std::invalid_argument("EXL3: CUDA graphs are not qualified");decode_graphs = enabled; }
     // Connects to strata-glm-tp-worker (rank 1) and hands it every MoE layer's expert geometry. `share` is the
     // fraction of each expert's FFN rows computed here, rounded to whole quantization blocks.
     // STRATA_GLM_REMOTE_TP_CHECK=1: the same routes' whole experts again from the file mapping (unfused, unsplit),
@@ -9190,7 +9461,8 @@ class Decoder {
     }
     bool uses_device_experts() const { return device_resident_experts; }
     void prepare_mtp_history(int depth) {
-        if (batched_resident || tier_owned_reserve) enable_verify_history(std::max(depth, mtp_lookup_depth()));
+        if (batched_resident || tier_owned_reserve || artifact.is_modelopt())
+            enable_verify_history(std::max(depth, mtp_lookup_depth()));
     }
     void set_device_experts(bool enabled) { device_resident_experts = enabled; }
     void set_bench_mode(bool device, bool reduction, bool active_pools, bool split, int tasks, bool profiling,
@@ -9372,6 +9644,9 @@ class Decoder {
                       std::chrono::steady_clock::now() - start).count() << '\n';
     }
     void prepare_decode_cache() {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu){compact_decode();return;}
+#endif
         if (kv_stage) {   // host KV: the prefill staging copy is not used by decode; give its VRAM to the tier
             check(cudaStreamSynchronize(stream));
             kv_stage.reset();
@@ -9721,8 +9996,12 @@ class Decoder {
         mixer_graphs.clear();
         if (secondary && secondary->tp) secondary->tp->graphs.clear();
         prefill_width_saved = gpu->chunk;
+        if(dflash_enabled)dflash_capture_buffer.reset();
         phase.clear(); scratch.clear(); gpu.reset();
         gpu = std::make_unique<GpuPrefill>(cpu::MAXT, stream, true);
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)modelopt_gpu->compact();
+#endif
         fast = false;
         if (streaming_dense) {
             active_dense_prefix.clear();
@@ -9784,9 +10063,10 @@ class Decoder {
         const auto &layer = m.draft_layers.at(0);
         if (layer.mixer != strata::core::MixerKind::SparseMla)
             throw std::invalid_argument("GLM: MTP requires a NoPE MLA draft block");
-        for (const auto &[name, tensor] : artifact.tensors())
+        if(!artifact.is_modelopt()) for (const auto &[name, tensor] : artifact.tensors())
             if (name.starts_with("blk.45.") && !name.ends_with("_exps.weight"))
                 weight(name, (name.ends_with("attn_k_b.weight") || name.ends_with("attn_v_b.weight")) && !floating_q8_weight(name));
+        if(!artifact.is_modelopt()) {
         const auto &G = artifact.at("blk.45.ffn_gate_exps.weight");
         const auto &U = artifact.at("blk.45.ffn_up_exps.weight");
         const auto &D = artifact.at("blk.45.ffn_down_exps.weight");
@@ -9810,6 +10090,7 @@ class Decoder {
             for (int e = 0; e < m.experts; ++e) lookup[e] = (unsigned long long)mtp_experts->p + e * mtp_expert_bytes;
             mtp_lookup = std::make_unique<Device>(lookup.size() * 8);
             mtp_lookup->put(lookup.data(), lookup.size() * 8);
+        }
         }
         ensure_draft_state();
         mtp_ready = true;
@@ -10118,6 +10399,13 @@ class Decoder {
     }
     int enable_gpu(int requested, size_t total_budget, bool reserve_checkpoint = false,
                    bool tensor_experts = false) {
+        if(artifact.is_modelopt()) {
+            if(gpu)return gpu->chunk;
+            const int width=requested?requested:8192;
+            if(width<1||width>8192)throw std::invalid_argument("GLM FP4: prefill batch must be 1..8192");
+            gpu=std::make_unique<GpuPrefill>(width,stream,false,capacity,false,false,false,true);
+            return width;
+        }
         if(artifact.is_exl3()) {
             if(gpu)return gpu->chunk;
             int width=requested?requested:256;
@@ -10281,6 +10569,15 @@ class Decoder {
     void configure_prefill(const std::vector<int> &devices, size_t total_budget,
                            size_t cache_bytes, bool automatic, bool reserve_mtp, bool tensor_experts = false,
                            bool tensor_batches = false, bool tensor_bf16 = false) {
+#ifndef STRATA_USE_HIP
+        if(artifact.is_modelopt()) {
+            if(cache_bytes||automatic||tensor_bf16||direct_upload_enabled())
+                throw std::invalid_argument("GLM FP4: native cache admission requires no GGUF prefill cache or direct-upload overrides");
+            if(!gpu)enable_gpu(8192,total_budget);
+            modelopt_gpu=std::make_unique<Fp4NativeExecutor>(artifact,*exl_pool,devices,total_budget,gpu->chunk,reserve_mtp);
+            return;
+        }
+#endif
         if (registered_prefill_upload_enabled() &&
             (devices.size() != 1 || artifact.is_exl3() || capture_hidden || reserve_mtp))
             throw std::invalid_argument("GLM: registered prefill upload requires single-GPU GGUF without MTP");
@@ -10417,6 +10714,7 @@ class Decoder {
         }
     }
     void set_secondary_enabled(bool value) {
+        if(artifact.is_modelopt())throw std::invalid_argument("GLM FP4: compare GPU counts in separate invocations");
         if (secondary_enabled == value) return;
         secondary_enabled = value;
         device_lookup_ready = false;
@@ -10427,6 +10725,9 @@ class Decoder {
     }
     void warm_weights(bool lock = false, const std::vector<int> &upload_devices = {}, bool include_draft = false,
                       const std::function<bool(const std::string &)> &selected = {}) {
+        if(artifact.is_modelopt()) {
+            artifact.exl3().tensors.warm(lock);return;
+        }
         if (registered_prefill_upload_enabled() &&
             (lock || !gpu || secondary || remote_tp || !numa_experts.empty() || !prepared_experts.empty() ||
              artifact.is_exl3()))
@@ -10532,7 +10833,7 @@ class Decoder {
         pool.multi_bytes = 0;
     }
     void set_native_dense_q8(bool enabled,bool cpu_reference=false) {
-        if(!artifact.is_exl3())throw std::invalid_argument("EXL3 Q8 requires a native artifact");
+        if(!artifact.is_exl3()||artifact.is_modelopt())throw std::invalid_argument("EXL3 Q8 requires a native EXL3 or FP8 artifact");
         native_dense_q8=enabled;native_cpu_dense=cpu_reference;
         if(enabled && !native_q8_weights.empty()) {
             // A BF16 quality-reference pass may have cached duplicate dense matrices.
@@ -10563,6 +10864,9 @@ class Decoder {
     }
     void set_cancel(std::function<bool()> fn) { cancelled = std::move(fn); }
     void report_gpu() const {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)modelopt_gpu->report();
+#endif
         if (ram_tier)
             std::cerr << "RAM_TIER_STATE resident_MiB=" << ram_tier->resident_bytes / double(MiB) << " reads=" << ram_tier->loads
                       << " evictions=" << ram_tier->evictions << " rebalances=" << ram_rebalances << " misses=" << ram_misses
@@ -10634,6 +10938,9 @@ class Decoder {
         };
         report(primary_device, gpu.get(), prefill_cache);
         if (secondary) report(secondary->device, secondary->gpu.get(), secondary->cache);
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)for(int device:modelopt_gpu->devices())if(device!=primary_device)report(device,nullptr,prefill_cache);
+#endif
     }
     void check_exact_cache(const std::vector<float>& logits) {
         if (std::getenv("STRATA_GLM_EXACT_CACHE_CHECK")) {
@@ -10657,6 +10964,9 @@ class Decoder {
     // keep_routes keeps the prefill route counts of the prefix being resumed (decode-cache admission).
     void reset() { begin_request(false); zero_slot(); }
     void begin_request(bool keep_routes) {
+#ifndef STRATA_USE_HIP
+        if(modelopt_gpu)modelopt_gpu->begin_request();
+#endif
         ++routing_request; routing_round = -1; routing_phase = "target";
         report_exact_cache(position);
         exact_cache.reset();
@@ -10716,6 +11026,9 @@ class Decoder {
         }
         if (prefill_width_saved) {
             phase.clear(); scratch.clear(); gpu.reset(); mtp_experts.reset(); mtp_lookup.reset();
+#ifndef STRATA_USE_HIP
+            if(modelopt_gpu)modelopt_gpu->begin_prefill(GpuPrefill::arena_bytes(prefill_width_saved,capacity)+128*MiB);
+#endif
             if (prefill_dense_budget) begin_streaming_dense();
             for (auto it = weights.begin(); it != weights.end();) {
                 if (it->first.starts_with("blk.45.")) {
@@ -10724,12 +11037,14 @@ class Decoder {
                     it = weights.erase(it);
                 } else ++it;
             }
-            // The draft block's state is kept (zero_slot() clears it): a resumed prefix continues it.
+            // GGUF prefix resumes keep the draft state. Native ModelOpt cannot
+            // resume prefixes and must release it before rebuilding the arena.
             std::optional<LayerState> draft;
-            if (states.size() > m.layers.size()) draft = std::move(states[m.layers.size()]);
+            if (!artifact.is_modelopt() && states.size() > m.layers.size())
+                draft = std::move(states[m.layers.size()]);
             states.resize(m.layers.size());
             gpu = std::make_unique<GpuPrefill>(prefill_width_saved, stream, false, capacity, false,
-                                              tensor_prefill_experts, tensor_batched_experts);
+                                              tensor_prefill_experts, tensor_batched_experts, artifact.is_modelopt());
             prefill_width_saved = 0;
             if (draft) states.push_back(std::move(*draft));
             else if (capture_hidden) ensure_draft_state();
@@ -11118,6 +11433,118 @@ static LookupStats generate_lookup(Decoder &decoder, std::vector<float> &logits,
     for (int i=0;report&&i<depth;++i)
         std::cerr << "LOOKUP_POSITION index=" << i << " proposed=" << proposed_at[i]
                   << " opportunities=" << opportunities[i] << " accepted=" << accepted_at[i] << '\n';
+    return stats;
+}
+static LookupStats generate_dflash2(Decoder& decoder,std::vector<float>& logits,int max_new,
+    const std::vector<int>& stops,int depth,const std::function<void(int)>& emit,
+    strata::spec::ExternalWorker& worker,const std::vector<int>& prompt) {
+    const auto start=std::chrono::steady_clock::now();
+    auto ms=[](auto at){return std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-at).count();};
+    LookupStats stats;
+    // Independent opt-in bound; the MTP preset does not enable DFlash loss.
+    const double margin=strata_env_value_double("STRATA_GLM_DFLASH_ACCEPT_MARGIN",0);
+    if(!std::isfinite(margin) || margin<0 || margin>3)
+        throw std::invalid_argument("DFlash2 acceptance margin must be 0..3");
+    const long long max_soft=strata_env_value_ll("STRATA_GLM_DFLASH_ACCEPT_MAX_SOFT",3);
+    if(max_soft<1 || max_soft>7)throw std::invalid_argument("DFlash2 max soft accepts must be 1..7");
+    const strata::spec::BoundedAcceptPolicy acceptance{float(margin),8,int(max_soft)};
+    const long long lookup_depth=strata_env_value_ll("STRATA_GLM_DFLASH_LOOKUP_DEPTH",0);
+    const long long minimum_match=strata_env_value_ll("STRATA_GLM_DFLASH_LOOKUP_MIN_MATCH",24);
+    if(lookup_depth<0||lookup_depth>7||minimum_match<3||minimum_match>32)
+        throw std::invalid_argument("DFlash2 lookup depth must be0..7 and minimum match3..32");
+    std::unique_ptr<strata::spec::SuffixDrafter> lookup;
+    if(lookup_depth) {
+        lookup=std::make_unique<strata::spec::SuffixDrafter>(int(minimum_match),32,prompt.size()+max_new);
+        lookup->append(prompt.data(),prompt.size());
+    }
+    int lookup_rounds=0,lookup_proposed=0,lookup_accepted=0;
+    std::array<int,7> proposed_at{},opportunities{},accepted_at{};
+    std::vector<int> protected_stops=stops;
+    protected_stops.insert(protected_stops.end(),{154820,154827,154829});
+    std::vector<int> history;
+    int soft_accepted=0,repeat_blocked=0;
+    double regret=0;
+    double draft_ms=0,verify_ms=0,restore_ms=0;
+    const int retained_depth=std::max(depth,int(lookup_depth));
+    decoder.compact_decode();decoder.enable_verify_history(retained_depth);
+    auto checkpoint=decoder.checkpoint();
+    int sent=decoder.dflash_position();
+    auto output=[&](int token){
+        emit(token);++stats.generated;
+        if(lookup)lookup->append(token);
+        if(margin>0){history.push_back(token);if(history.size()>128)history.erase(history.begin());}
+        stats.stopped=std::find(stops.begin(),stops.end(),token)!=stops.end();
+    };
+    while(stats.generated<max_new && !stats.stopped) {
+        const int anchor=greedy(logits);output(anchor);
+        if(stats.stopped || stats.generated==max_new)break;
+        const int remaining=max_new-stats.generated-1;
+        if(remaining<1){logits=decoder.step(anchor);continue;}
+        auto begin=std::chrono::steady_clock::now();
+        int32_t lookup_tokens[7];
+        const int copied=lookup?lookup->propose(std::min(int(lookup_depth),remaining),lookup_tokens):0;
+        const bool use_lookup=copied>=2;
+        std::vector<int> proposals;
+        if(use_lookup) {
+            proposals.assign(lookup_tokens,lookup_tokens+copied);++lookup_rounds;lookup_proposed+=copied;
+        } else {
+            // A long series of exact lookup rounds may outlive the worker's
+            // window. Re-prime it from committed rows before a neural draft.
+            if(decoder.dflash_position()-sent>2048) {
+                decoder.prepare_dflash(worker);sent=decoder.dflash_position();
+            }
+            proposals=decoder.dflash_propose(worker,sent,anchor,std::min(depth,remaining));
+        }
+        draft_ms+=ms(begin);
+        std::vector<int> window{anchor};window.insert(window.end(),proposals.begin(),proposals.end());
+        decoder.save(checkpoint);begin=std::chrono::steady_clock::now();
+        auto all=decoder.verify(window);verify_ms+=ms(begin);++stats.rounds;stats.proposed+=proposals.size();
+        for(size_t i=0;i<proposals.size();++i)++proposed_at[i];
+        int accepted=0,soft_in_window=0;
+        while(accepted<int(proposals.size())) {
+            ++opportunities[accepted];
+            const size_t offset=size_t(accepted)*decoder.vocabulary();
+            const int target=greedy(all,offset,decoder.vocabulary());
+            if(proposals[accepted]!=target) {
+                if(use_lookup)break; // Copied tokens always require exact target acceptance.
+                const auto decision=strata::spec::bounded_accept(
+                    std::span<const float>(all.data()+offset,decoder.vocabulary()),
+                    proposals[accepted],target,acceptance,soft_in_window,protected_stops);
+                if(!decision.accepted)break;
+                if(strata::spec::repeats_ngram(history,proposals[accepted],4)){++repeat_blocked;break;}
+                ++soft_in_window;++soft_accepted;regret+=decision.regret;
+            }
+            ++accepted_at[accepted];output(proposals[accepted++]);if(stats.stopped)break;
+        }
+        stats.accepted+=accepted;begin=std::chrono::steady_clock::now();
+        if(use_lookup)lookup_accepted+=accepted;
+        const int keep=1+accepted-int(stats.stopped);
+        if(keep!=int(window.size())) {
+            if(!decoder.restore_verified(keep)) {
+                decoder.restore(checkpoint);window.resize(keep);
+                if(!window.empty()){logits=decoder.batch(window,false);stats.replayed+=keep;}
+            } else {
+                const size_t offset=size_t(keep-1)*decoder.vocabulary();
+                logits.assign(all.begin()+offset,all.begin()+offset+decoder.vocabulary());
+            }
+        } else logits.assign(all.end()-decoder.vocabulary(),all.end());
+        restore_ms+=ms(begin);
+    }
+    stats.milliseconds=ms(start);
+    std::cerr<<"SPECULATIVE source=dflash2 generated="<<stats.generated<<" rounds="<<stats.rounds
+        <<" proposed="<<stats.proposed<<" accepted="<<stats.accepted<<" replayed="<<stats.replayed
+        <<" ms="<<stats.milliseconds<<" tok_s="<<std::max(0,stats.generated-1)*1000/stats.milliseconds
+        <<" verification=batched acceptance="<<(margin>0?"bounded":"greedy")<<'\n';
+    if(margin>0)std::cerr<<"DFLASH_APPROX margin="<<margin<<" top_k=8 max_soft_per_window="<<max_soft
+        <<" repeat_ngram=4 history=128 soft_accepted="<<soft_accepted<<" sum_logit_regret="<<regret
+        <<" repeat_blocked="<<repeat_blocked<<'\n';
+    std::cerr<<"DRAFT_TIMING prepare_ms=0 draft_ms="<<draft_ms<<" verify_ms="<<verify_ms
+        <<" restore_ms="<<restore_ms<<" proposal_calls="<<stats.rounds<<'\n';
+    if(lookup_depth)std::cerr<<"DFLASH_LOOKUP depth="<<lookup_depth<<" minimum_match="<<minimum_match
+        <<" rounds="<<lookup_rounds<<" proposed="<<lookup_proposed<<" accepted="<<lookup_accepted
+        <<" acceptance=greedy\n";
+    for(int i=0;i<retained_depth;++i)std::cerr<<"DFLASH_POSITION index="<<i<<" proposed="<<proposed_at[i]
+        <<" opportunities="<<opportunities[i]<<" accepted="<<accepted_at[i]<<'\n';
     return stats;
 }
 static LookupStats generate_mtp(Decoder &decoder, std::vector<float> &logits, int max_new,
@@ -11550,7 +11977,7 @@ static void configure_state_cache(ServeStateCache &cache, int argc, char **argv,
 }
 #include "glm_batch_serve.inc"
 
-static int serve(int argc, char **argv) {
+static int serve(int argc, char **argv, const std::string& dflash_config) {
     if (argc < 6)
         throw std::invalid_argument(
             "usage: strata-glm-decode --serve <shard> <context> <dense-MiB> <threads> "
@@ -11600,6 +12027,13 @@ static int serve(int argc, char **argv) {
     if(std::filesystem::is_directory(argv[2])&&lookup_depth)throw std::invalid_argument("EXL3: lookup speculation is not qualified");
     const bool stream_decode = argc > 11 && std::stoi(argv[11]) != 0;
     const bool use_mtp = argc > 12 && std::string(argv[12]) == "mtp";
+    const bool use_dflash=argc>12 && std::string(argv[12])=="dflash2";
+    if(use_dflash!=!dflash_config.empty() || (use_dflash && (lookup_depth || stream_decode || parallel)))
+        throw std::invalid_argument("DFlash2 requires worker config and single-sequence CPU-expert mode");
+    std::unique_ptr<strata::spec::ExternalWorker> dflash_worker;
+    if(use_dflash)dflash_worker=std::make_unique<strata::spec::ExternalWorker>(dflash_config,true);
+    const long long cuda_profile_request=strata_env_value_ll("STRATA_GLM_CUDA_PROFILE_REQUEST",0);
+    if(cuda_profile_request<0)throw std::invalid_argument("GLM: CUDA_PROFILE_REQUEST must be nonnegative");
     const int draft_depth = argc > 13 ? std::stoi(argv[13]) : 3;
     if(argc>25) {
         std::string pages=argv[25];if(pages!="4k"&&pages!="huge")throw std::invalid_argument("weight_pages must be 4k or huge");
@@ -11619,12 +12053,13 @@ static int serve(int argc, char **argv) {
         throw std::invalid_argument("invalid serve settings");
     if (direct_upload_enabled() && (!(argc > 18 && std::string(argv[18]) == "1") || cpu_prepack_mib))
         throw std::invalid_argument("GLM: direct weight upload requires locked original serve weights");
-    if (width == 0 || width > cpu::MAXT || stream_decode || use_mtp)
+    if (width == 0 || width > cpu::MAXT || stream_decode || use_mtp || use_dflash)
         preflight_gpu_budget(gpu_budget);
-    if ((width == 0 || width > cpu::MAXT || stream_decode || use_mtp) && experts)
+    if ((width == 0 || width > cpu::MAXT || stream_decode || use_mtp || use_dflash) && experts)
         throw std::invalid_argument("GPU prefill/decode requires expert-cache-MiB=0");
     Decoder decoder(argv[2], ctx, (size_t)dense * 1024 * 1024, threads, (size_t)experts * 1024 * 1024, pin_cpu,
                     argc>26?argv[26]:"",argc>27?argv[27]:"",argc>28?argv[28]:"auto");
+    if(use_dflash)decoder.enable_dflash_capture();
     if (use_mtp) decoder.enable_mtp_capture();
     if (parallel) {
         if (devices.size() != 1 || lookup_depth || stream_decode || experts || cpu_prepack_mib ||
@@ -11637,7 +12072,7 @@ static int serve(int argc, char **argv) {
     const bool tensor_experts = tensor_batches || (argc > 24 && std::string(argv[24]) == "f16");
     if (argc > 24 && !tensor_experts && std::string(argv[24]) != "mmq")
         throw std::invalid_argument("GLM: prefill experts must be mmq, f16, f16-batched or bf16-batched");
-    if (width == 0 || width > cpu::MAXT || stream_decode || use_mtp || parallel)
+    if (width == 0 || width > cpu::MAXT || stream_decode || use_mtp || use_dflash || parallel)
         width = decoder.enable_gpu(width, gpu_budget, lookup_depth > 0, tensor_experts);
     if (direct_upload_enabled()) decoder.warm_weights(true, devices);
     // A decode cache keeps the draft experts on the CPU: no device reserve for them, only the draft state,
@@ -11674,7 +12109,7 @@ static int serve(int argc, char **argv) {
             throw std::invalid_argument("STRATA_GLM_REMOTE_TP_REPLY must be f16 or f32");
         decoder.enable_remote_tp(address, fraction, !reply || std::string(reply) != "f32", true);
     }
-    const bool compact_greedy = !parallel && !use_mtp && !lookup_depth && decoder.prepare_device_greedy();
+    const bool compact_greedy = !parallel && !use_mtp && !use_dflash && !lookup_depth && decoder.prepare_device_greedy();
     decoder.prepare_numa_weights();
     if (argc > 18 && std::string(argv[18]) == "1" && !direct_upload_enabled()) decoder.warm_weights(true);
     else if (const char *active = std::getenv("STRATA_GLM_WARM_ACTIVE_ONLY"); active && std::string(active) == "1")
@@ -11734,6 +12169,7 @@ static int serve(int argc, char **argv) {
     auto millis = [](auto begin, auto end) {
         return std::chrono::duration<double, std::milli>(end - begin).count();
     };
+    long long request_number=0;
     for (;;) {
         Request request;
         {
@@ -11858,6 +12294,17 @@ static int serve(int argc, char **argv) {
             const auto tokens = token_ids(words.back());
             if (tokens.empty() || count < 1 || tokens.size() + (size_t)count > (size_t)ctx)
                 throw std::invalid_argument("request exceeds context or has invalid token counts");
+            if(cuda_profile_request>0)++request_number;
+            struct CudaProfileRange {
+                bool active;long long request;
+                CudaProfileRange(bool enabled,long long number):active(enabled),request(number) {
+                    if(active){check(cudaProfilerStart());std::cerr<<"CUDA_PROFILE request="<<request<<" range=start\n";}
+                }
+                ~CudaProfileRange() {
+                    if(active){const auto status=cudaProfilerStop();std::cerr<<"CUDA_PROFILE request="<<request
+                        <<" range=stop status="<<int(status)<<'\n';}
+                }
+            } cuda_range(cuda_profile_request>0&&request_number==cuda_profile_request,request_number);
             request_prompt = tokens.size();
             auto start = Clock::now();
             // Resume from the latest checkpoint inside the prompt's common prefix with the slot's tokens; with MTP
@@ -11992,13 +12439,22 @@ static int serve(int argc, char **argv) {
             }
             decoder.freeze_cache();
             if (!*request.cancel) decoder.prepare_cpu(cpu_prepack_mib * MiB);
+            if(use_dflash && !*request.cancel) {
+                decoder.compact_decode();decoder.prepare_dflash(*dflash_worker);
+            }
             if (!*request.cancel) lock_small_runtime_mappings();
             const auto prefilled = Clock::now();
             decoder.reset_decode_stats();
             std::vector<int> emitted;
             int generated = 0, compact_next = -1;
             std::string finish = "length";
-            if (use_mtp && !*request.cancel) {
+            if(use_dflash && !*request.cancel) {
+                auto result=generate_dflash2(decoder,logits,count,stops,draft_depth,[&](int token){
+                    if(*request.cancel)throw std::runtime_error("cancelled");
+                    ++sent;std::cout<<"T "<<token<<'\n'<<std::flush;
+                },*dflash_worker,tokens);
+                generated=result.generated;if(result.stopped)finish="stop";
+            } else if (use_mtp && !*request.cancel) {
                 auto result = generate_mtp(decoder, logits, count, stops, draft_depth, [&](int token) {
                     if (*request.cancel) throw std::runtime_error("cancelled");
                     ++sent;
@@ -12094,6 +12550,8 @@ static int serve(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
+    try { strata::core::glm_ram_executable(argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 2; }
     if (argc==2 && std::string(argv[1])=="--device-info") {
         try { report_gpu_devices(std::cout); return 0; }
         catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 2; }
@@ -12117,6 +12575,7 @@ int main(int argc, char **argv) {
                      "[dense-cache-MiB=4096] [threads=6] [--prefill-batch=1..8192|auto] "
                      "[--gpu-budget-mib=12288] [--check-prefill] [--check-native-dense] "
                      "[--speculative=external --draft-worker-config=worker.json --draft-depth=1..7] "
+                     "[--speculative=dflash2 --dflash2-worker-config=worker.json --draft-depth=1..7] "
                      "[--gpu-devices=0|0,1] [--prefill-expert-cache-mib=auto|N] [--lock-weights] [--check-gpu-split] "
                      "[--decode-prefill-cache] [--decode-bench=3] [--decode-mode-sweep[=mtp]] [--check-verify-graphs] [--profile-decode] [--profile-prefill] "
                      "[--expert-pack=sidecar.gguf] [--expert-pack-profile=retain.json] [--cpu-expert-backend=auto|native|packed-dot|packed-lut] "
@@ -12128,9 +12587,34 @@ int main(int argc, char **argv) {
         // DeepSeek-V4.1-Flash GGUFs take their own decoder (src/program/ds41_decode.cpp)
         if (strata::ds41::is_ds41(argv[1])) return strata::ds41::run(argc, argv);
         capture_allocation();
+#ifndef STRATA_USE_HIP
+        // Strip the optional named setting before the legacy serve positional
+        // parser. No existing invocation changes its argument positions.
+        for(int i=1;i<argc;++i)if(std::string(argv[i]).starts_with("--fp4-kernel=")) {
+            if(fp4_kernel_selected)throw std::invalid_argument("--fp4-kernel may be supplied once");
+            const std::string mode=std::string(argv[i]).substr(13);
+            if(mode!="reference"&&mode!="sm70")throw std::invalid_argument("--fp4-kernel must be reference or sm70");
+            fp4_sm70_kernel=mode=="sm70";
+            fp4_kernel_selected=true;
+            for(int j=i;j+1<argc;++j)argv[j]=argv[j+1];
+            --argc;argv[argc]=nullptr;--i;
+        }
+        if(argc<3)throw std::invalid_argument("expected a model and prompt after --fp4-kernel");
+#endif
+        std::string dflash_config;
+        for(int i=1;i<argc;++i)if(std::string(argv[i]).starts_with("--dflash2-worker-config=")) {
+            if(!dflash_config.empty())throw std::invalid_argument("duplicate DFlash2 worker config");
+            dflash_config=std::string(argv[i]).substr(24);
+            if(dflash_config.empty())throw std::invalid_argument("empty DFlash2 worker config");
+            for(int j=i;j+1<argc;++j)argv[j]=argv[j+1];
+            --argc;argv[argc]=nullptr;--i;
+        }
+        if(!dflash_config.empty())for(int i=1;i<argc;++i)
+            if(std::string(argv[i])=="--gpu-layout=layer")
+                throw std::invalid_argument("DFlash2 currently requires the legacy single-sequence GPU layout");
         if (auto result = layer_entry(argc, argv); result.first) return result.second;
         if (std::string(argv[1]) == "--serve")
-            return serve(argc, argv);
+            return serve(argc, argv, dflash_config);
         std::string ids_text = argv[2];
         if (ids_text.starts_with("@")) {
             std::ifstream f(ids_text.substr(1));
@@ -12173,7 +12657,7 @@ int main(int argc, char **argv) {
         std::string remote_tp_weights = "send";
         std::string dump, dump_prefill, routing_trace_path;
         std::string external_worker_config;
-        bool external_speculation = false;
+        bool external_speculation = false, use_dflash = false;
         std::vector<int> stops;
         for (int i = 6; i < argc; ++i) {
             const std::string flag = argv[i];
@@ -12222,6 +12706,7 @@ int main(int argc, char **argv) {
                 force_gpu = true;
             } else if (flag == "--decode-experts=cpu")
                 stream_decode = false;
+            else if (flag == "--speculative=dflash2") { use_dflash=true;force_gpu=true; }
             else if (flag == "--speculative=external") { external_speculation = true; force_gpu = true; }
             else if (flag.starts_with("--draft-worker-config=")) external_worker_config = flag.substr(22);
             else if (flag == "--speculative=mtp") { use_mtp = true; force_gpu = true; }
@@ -12288,6 +12773,11 @@ int main(int argc, char **argv) {
             else
                 throw std::invalid_argument("unknown option: " + flag);
         }
+        if(use_dflash!=!dflash_config.empty() || (use_dflash && (use_mtp || lookup_depth || external_speculation ||
+            replay || stream_decode || !eval_corpus.empty() || check_sequence_count || decode_mode_sweep)))
+            throw std::invalid_argument("DFlash2 requires worker config and ordinary single-sequence mode");
+        std::unique_ptr<strata::spec::ExternalWorker> dflash_worker;
+        if(use_dflash)dflash_worker=std::make_unique<strata::spec::ExternalWorker>(dflash_config,true);
         std::unique_ptr<strata::spec::ExternalWorker> external_worker;
         if (external_speculation) {
             if (external_worker_config.empty() || use_mtp || lookup_depth || decode_mode_sweep ||
@@ -12380,6 +12870,7 @@ int main(int argc, char **argv) {
         Decoder decoder(argv[1], context ? context : tokens.size() + steps, (size_t)mib * 1024 * 1024,
                         threads, (size_t)expert_mib * 1024 * 1024, pin_cpu,expert_pack_path,expert_pack_profile,cpu_expert_backend);
         task_trace("model_load_complete", 0, (int)tokens.size());
+        if(use_dflash)decoder.enable_dflash_capture();
         if (check_sequence_count) decoder.enable_sequences(check_sequence_count);
         if(check_native_dense_q8) {
             if((context ? size_t(context) : tokens.size()+steps)<tokens.size()+8)
@@ -12422,7 +12913,7 @@ int main(int argc, char **argv) {
         if (use_mtp) decoder.enable_mtp_capture();
         if (warm_weights && !direct_upload_enabled())
             decoder.warm_weights(lock_weights);
-        const bool compact_greedy = !use_mtp && !lookup_depth && !external_speculation && !replay &&
+        const bool compact_greedy = !use_mtp && !use_dflash && !lookup_depth && !external_speculation && !replay &&
             dump.empty() && eval_corpus.empty() && !decode_mode_sweep && !check_verify &&
             !check_decode_graphs && !check_verify_graphs && !check_prefill && !check_gpu_split &&
             !check_eval_stream && !check_native_dense_q8 && !profile &&
@@ -12652,8 +13143,17 @@ int main(int argc, char **argv) {
             // residency-biased routing or deferred CPU experts, moving resident
             // experts to the CPU changes the target, independently of graphs.
             decoder.set_decode_graphs(false);
+            const bool fp4_device_routes=decoder.set_fp4_decode_routing(false);
             for (int token : window) expected.push_back(decoder.step(token));
             decoder.restore(cp);
+            if(fp4_device_routes) {
+                decoder.set_fp4_decode_routing(true);
+                for(size_t i=0;i<window.size();++i)
+                    if(decoder.step(window[i])!=expected[i])
+                        throw std::runtime_error("GLM FP4: device routing changed decode logits");
+                decoder.restore(cp);
+                std::cerr<<"FP4_DECODE_ROUTING_PARITY steps=8 all_logits=bitwise_equal\n";
+            }
             decoder.set_decode_graphs(true);
             for (size_t i = 0; i < window.size(); ++i) {
                 const auto actual = decoder.step(window[i]);
@@ -12720,10 +13220,14 @@ int main(int argc, char **argv) {
         }
         if(check_verify_graphs) {
             auto cp=decoder.checkpoint();decoder.save(cp);
+            const int max_width=decoder.verification_graph_width();
+            std::vector<int> widths{1,2,3,4,1,2,4,3};
+            for(int width=5;width<=max_width;++width)widths.push_back(width);
+            for(int width=max_width;width>=5;--width)widths.push_back(width);
             for(int allocation=0;allocation<2;++allocation) {
-                decoder.enable_verify_history(3);
-                for(int width:{1,2,3,4,1,2,4,3})for(bool history:{false,true}) {
-                    std::vector<int> window{greedy(logits),11,9647,0};window.resize(width);
+                decoder.enable_verify_history(max_width-1);
+                for(int width:widths)for(bool history:{false,true}) {
+                    std::vector<int> window{greedy(logits),11,9647,0,1,2,3,4};window.resize(width);
                     decoder.restore(cp);decoder.set_decode_graphs(false);
                     auto expected=history?decoder.verify(window):decoder.batch(window,false,true);
                     decoder.set_decode_graphs(true);
@@ -12740,11 +13244,15 @@ int main(int argc, char **argv) {
                             decoder.restore(cp);decoder.verify(window);
                         }
                     }
+                    const auto captures=decoder.captured_mixer_graphs(width,history);
+                    if(!captures)throw std::runtime_error("GLM: verification graph check did not capture the requested width/history");
+                    std::cerr<<"VERIFY_GRAPH_CAPTURE width="<<width<<" history="<<history<<" graphs="<<captures<<'\n';
                 }
                 decoder.clear_verify_history();
             }
             decoder.restore(cp);decoder.set_decode_graphs(decode_graphs);
-            std::cerr<<"VERIFY_GRAPHS widths=1,2,3,4 mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal\n";
+            std::cerr<<"VERIFY_GRAPHS widths=1.."<<max_width
+                <<" mixed_width_warm_capture_replay_history_reallocation_and_rollback bitwise_equal\n";
         }
         if (check_verify) {
             auto cp = decoder.checkpoint();
@@ -12887,6 +13395,7 @@ int main(int argc, char **argv) {
             std::cerr << "MTP_PRIME ms=" << std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - start).count() << '\n';
         }
+        if(use_dflash){decoder.compact_decode();decoder.prepare_dflash(*dflash_worker);}
         if (mtp_greedy_control) std::cerr << "MTP_CONTROL prepared_target_and_draft ordinary_greedy=1\n";
         std::unique_ptr<Decoder::Snapshot> decode_start_state;
         const auto decode_start_logits = logits;
@@ -12927,7 +13436,10 @@ int main(int argc, char **argv) {
 #endif
         if (profile_decode) check(cudaProfilerStart());
         decoder.reset_decode_stats();
-        if (trial_mtp) {
+        if(use_dflash) {
+            if(trial)decoder.prepare_dflash(*dflash_worker);
+            generate_dflash2(decoder,logits,steps,stops,draft_depth,[](int token){std::cout<<token<<'\n'<<std::flush;},*dflash_worker,tokens);
+        } else if (trial_mtp) {
             generate_mtp(decoder, logits, steps, stops, trial_depth, [](int token) {
                 std::cout << token << '\n' << std::flush;
             }, &tokens);

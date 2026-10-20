@@ -139,7 +139,7 @@ go on the `pjsub` command line and live only in the untracked private notes.
    validates the hooks (64 tokens sequential vs batched), runs 32,768-token prompt files from `tools/ds41f_calib_corpus.py`
    until the deadline (~330-520k tokens per job at the batched prefill rate), and merges every finished launch into
    `imatrix.gguf` (`ds41f_imatrix_merge`: llama.cpp layout, counts `{1, 384}`, which the pack tool accepts).
-5. **Transfer** the IQ packs to TR16 with `tools/ds41f_transfer.sh` as above; the 197 GB q23 pack stays on the cluster.
+5. **Transfer** the IQ packs to the destination node with `tools/ds41f_transfer.sh` as above; the 197 GB q23 pack stays on the cluster.
 
 ### Node-local staging: strata-pfetch
 

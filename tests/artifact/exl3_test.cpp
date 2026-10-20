@@ -12,6 +12,22 @@ void explicit_had(std::vector<float>& x) {
 }
 int main(int argc,char** argv) {
  try {
+    // Dispatch visibility, exception propagation and reuse in both wait modes.
+    for(bool spin:{false,true})for(size_t workers:{1u,4u}) {
+        Pool pool(workers,false,spin);std::vector<size_t> values(workers);
+        for(size_t generation=1;generation<=257;++generation) {
+            pool.run([&](size_t rank){values[rank]=generation*(rank+1);});
+            for(size_t rank=0;rank<workers;++rank)require(values[rank]==generation*(rank+1),"pool dispatch visibility");
+        }
+        bool failed=false;
+        try{pool.run([](size_t rank){if(rank==0)throw std::runtime_error("expected pool failure");});}
+        catch(const std::runtime_error& error){failed=std::string(error.what())=="expected pool failure";}
+        require(failed,"pool error propagation");
+        pool.run([&](size_t rank){values[rank]=rank;});
+        for(size_t rank=0;rank<workers;++rank)require(values[rank]==rank,"pool reuse after failure");
+        pool.run([counter=size_t(0),&values](size_t rank)mutable{values[rank]=++counter;});
+        for(size_t value:values)require(value==1,"pool gives each worker its own callable");
+    }
     for(unsigned i=0;i<65536;++i) {
         float f=half_value(i);if(std::isfinite(f))require(half_round(f)==i,"FP16 round trip");
         unsigned r=i%16,c=(i/16)%16;

@@ -41,7 +41,9 @@ inline BoundedAcceptResult bounded_accept(std::span<const float> logits, int dra
     if (!std::isfinite(gap) || gap < 0 || gap > policy.margin) return {};
     int rank = 1;
     for (std::size_t i = 0; i < logits.size(); ++i) {
-        if (!std::isfinite(logits[i])) return {};
+        // Negative infinity masks unused vocabulary slots. It contributes no
+        // probability or rank; NaNs and positive infinity remain invalid.
+        if (std::isnan(logits[i]) || logits[i] == INFINITY) return {};
         // Deterministic rank: lower token ID wins equal-logit ties.
         if (logits[i] > logits[draft] || (logits[i] == logits[draft] && i < static_cast<std::size_t>(draft)))
             if (++rank > policy.top_k) return {};

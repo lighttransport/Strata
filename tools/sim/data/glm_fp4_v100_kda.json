@@ -1,0 +1,790 @@
+{
+  "schema": "strata.glm.native_fp4.v1",
+  "name": "dual-v100-native-fp4-kda-20261019",
+  "scope": "Frozen native ModelOpt FP4 workload and conditional resource rooflines; no timing fit or unseen-prompt accuracy claim.",
+  "sources": [
+    {
+      "path": "docs/glm_fp4_v100_decode20_measurement.json",
+      "sha256": "10f06e80885f68517c5c439412da33ad2ccb836bb918a3615d3100748432902e"
+    },
+    {
+      "path": "docs/glm_fp4_v100_model_measurement.json",
+      "sha256": "24d7dc6debf12006abba62fe017ef38e8a0ea4fd47e20d23d28ea3ef9ccf9cfa"
+    },
+    {
+      "path": "docs/glm_fp4_v100_core_measurement.json",
+      "sha256": "a5471e67c68345956219e4856d6366cd67458e6b7ae378d181447b9214fce8c0"
+    },
+    {
+      "path": "docs/glm_fp4_v100_cpu_width_measurement.json",
+      "sha256": "38dfee05cc0b64c131f23a0957f9f3bad8043b94e429ce215fe77c109638cd49"
+    },
+    {
+      "path": "docs/glm_fp4_v100_optimization_measurement.json",
+      "sha256": "66cd43f41a4b9430989b3dd96b9486c1d737c1c3f7d52a60c53f57082fdf431a"
+    },
+    {
+      "path": "docs/glm_fp4_v100_kda_measurement.json",
+      "sha256": "fb56f07adbb62f6161aee8a738b944f8f1f89d71611f5124f112aafd8d784c48"
+    }
+  ],
+  "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
+  "raw_log_sha256": "7b429e95061b3ffc77a649e8571be28e5e2672943efb114f7c4a2de5890a603a",
+  "checkpoint_config_sha256": "dbf6aaf0d3651a5a297e6672bed57979c20528e2aa7475b80df5ba63d5402ba8",
+  "checkpoint_headers_sha256": "3fe45a6a6c274c502a0ba5c90a8d425c604225bec279f530cfea2b5f736595c3",
+  "hardware": {
+    "gpu": "Tesla V100-PCIE-32GB",
+    "gpus": 2,
+    "cpu": "2 x Xeon Gold 6240",
+    "sockets": 2,
+    "cpu_workers": 32,
+    "memory_gib": 181,
+    "cuda": "12.9",
+    "driver": "580.178.04",
+    "ram_speed_mt_s": null,
+    "hbm_gbps_per_gpu": 900,
+    "tensor_tflops_per_gpu": 112,
+    "cpu_memory_channels_per_socket": 6,
+    "cpu_max_supported_mt_s": 2933,
+    "h2d_gbps_per_gpu": [
+      12.3075,
+      12.3355
+    ],
+    "h2d_probe_raw_sha256": "2c390c159ae681580b145b00a27f92d3a155e8ca79ee29ffc62554ee1e92a793",
+    "h2d_gbps_aggregate": 24.615,
+    "h2d_scope": "Concurrent 256 MiB registered-RAM DMA probe; not sustained inference bandwidth.",
+    "specifications": [
+      {
+        "url": "https://www.nvidia.com/en-gb/data-center/tesla-v100/",
+        "scope": "V100 PCIe 900 GB/s HBM and 112 TFLOP/s tensor peak; not the V100S."
+      },
+      {
+        "url": "https://www.intel.com/content/www/us/en/products/sku/192443/intel-xeon-gold-6240-processor-24-75m-cache-2-60-ghz/specifications.html",
+        "scope": "Six DDR4-2933 channels per socket; installed DIMM speed and population were not measured."
+      }
+    ],
+    "cpu_stream_gbps": 117.816,
+    "peer_access": true,
+    "peer_transport_scope": "Peer access available on the measured dual-V100 node; no peer-bandwidth probe. Non-peer pinned-host fallback compiled but not exercised.",
+    "cpu_stream_scope": "4 GiB read-only AVX-512 probe, 32 pinned workers, 15 passes per sample, two warmups and five timed samples; excludes FP4 arithmetic and scale lookup.",
+    "cpu_stream_raw_sha256": "f1930a4a6c9bc67e5692790856d2f0146b56ae0fdd3cea7a6ea745bbe89bca1c"
+  },
+  "geometry": {
+    "layers": 45,
+    "dense_layers": 3,
+    "moe_layers": 42,
+    "experts": 288,
+    "top_k": 8,
+    "hidden": 4096,
+    "expert_ff": 2048,
+    "draft_moe_layers": 1
+  },
+  "census": {
+    "draft_fixed": {
+      "matrices": 13,
+      "elements": 184287232,
+      "weight_bytes": 219021312,
+      "gpu_bytes": 228368384,
+      "checkpoint_bytes": 223694848,
+      "formats": {
+        "BF16": 2,
+        "MXFP8": 11
+      }
+    },
+    "draft_experts": {
+      "matrices": 864,
+      "elements": 7247757312,
+      "weight_bytes": 3623878656,
+      "gpu_bytes": 4076863488,
+      "checkpoint_bytes": 4076866944,
+      "formats": {
+        "NVFP4": 864
+      }
+    },
+    "embedding": {
+      "matrices": 1,
+      "elements": 634388480,
+      "weight_bytes": 1268776960,
+      "gpu_bytes": 1268776960,
+      "checkpoint_bytes": 1268776960,
+      "formats": {
+        "BF16": 1
+      }
+    },
+    "main_fixed": {
+      "matrices": 661,
+      "elements": 7642415104,
+      "weight_bytes": 8104181760,
+      "gpu_bytes": 8418234368,
+      "checkpoint_bytes": 8261472256,
+      "formats": {
+        "BF16": 346,
+        "MXFP8": 145,
+        "block_FP8": 170
+      }
+    },
+    "head": {
+      "matrices": 1,
+      "elements": 634388480,
+      "weight_bytes": 634388480,
+      "gpu_bytes": 674037760,
+      "checkpoint_bytes": 654213120,
+      "formats": {
+        "MXFP8": 1
+      }
+    },
+    "main_experts": {
+      "matrices": 36288,
+      "elements": 304405807104,
+      "weight_bytes": 152202903552,
+      "gpu_bytes": 171228266496,
+      "checkpoint_bytes": 162524103840,
+      "formats": {
+        "NVFP4": 36288
+      }
+    }
+  },
+  "mandatory_main_matrix_bytes": 2311647232,
+  "mandatory_main_matrix_elements": 2193883136,
+  "head_bytes": 674037760,
+  "expert_gpu_bytes": 14155776,
+  "expert_code_bytes": 12582912,
+  "expert_transfer_sizes": [
+    {
+      "device": 0,
+      "source_bytes_min": 13434836,
+      "source_bytes_max": 14155776,
+      "source_bytes_mean": 13452897.191860465
+    },
+    {
+      "device": 1,
+      "source_bytes_min": 13434566,
+      "source_bytes_max": 14155776,
+      "source_bytes_mean": 13452920.343023255
+    }
+  ],
+  "observations": [
+    {
+      "name": "preserved-greedy",
+      "decode_tok_s": 5.260860433799639,
+      "prefill_tok_s": 393.8045014469623,
+      "fit": false,
+      "protocol": "8192 to 512, one full warmup, three clean timed requests; 35 CPU workers."
+    },
+    {
+      "name": "q8-drop-greedy",
+      "decode_tok_s": 19.084610931635265,
+      "prefill_tok_s": 394.7400122392533,
+      "fit": false,
+      "protocol": "8192 to 512, one full warmup, three clean timed requests; 32 CPU workers."
+    },
+    {
+      "name": "q8-drop-mtp-lookup",
+      "decode_tok_s": 31.01951619267308,
+      "prefill_tok_s": 390.7017560594065,
+      "fit": false,
+      "protocol": {
+        "prompt": "Same frozen 8192 token IDs as the reference; SHA256 recorded per run.",
+        "generation": "512 token IDs, fixed length with stop IDs disabled. Decode times 511 advances after the prefill token.",
+        "warmup": "Two complete requests, then a discarded prefill request; three timed requests in one process.",
+        "residency": "All timed major faults and observed swap must be zero. Decoder must exit successfully.",
+        "cgroup_scope": "before/after numeric memory-controller records; peaks include the whole allocation, not only the selected run.",
+        "quality_selection": "Select using throughput and three training tasks, then evaluate the frozen twenty held-out tasks once. No held-out tuning."
+      }
+    },
+    {
+      "name": "v4-qualified-reduce",
+      "decode_tok_s": 32.666994828258545,
+      "prefill_tok_s": 454.2908637182864,
+      "fit": false,
+      "protocol": "8192 to 512; two full warmups, discarded one-token request, three timed requests; all timed major faults/swap zero."
+    },
+    {
+      "name": "qualified-control-v2",
+      "decode_tok_s": 31.871565698461307,
+      "prefill_tok_s": 454.2203345661009,
+      "fit": false,
+      "protocol": "8192 to 512, two full warmups, discarded prefill request, three clean timed requests; all output IDs match frozen fast 512."
+    },
+    {
+      "name": "qualified-kda4-v2",
+      "decode_tok_s": 31.886680602789305,
+      "prefill_tok_s": 490.582986495793,
+      "fit": false,
+      "protocol": "8192 to 512, two full warmups, discarded prefill request, three clean timed requests; all output IDs match frozen fast 512."
+    },
+    {
+      "name": "qualified-kda-prepare4-v2",
+      "decode_tok_s": 32.09879645217217,
+      "prefill_tok_s": 520.894269654348,
+      "fit": false,
+      "protocol": "8192 to 512, two full warmups, discarded prefill request, three clean timed requests; all output IDs match frozen fast 512."
+    }
+  ],
+  "selected": {
+    "configuration": {
+      "fp4_kernel": "sm70",
+      "prompt_tokens": 8192,
+      "generated_tokens": 512,
+      "threads": 32,
+      "context": 12288,
+      "prefill_batch": 8192,
+      "speculative": "mtp",
+      "draft_depth": 3,
+      "decode_graphs": false,
+      "full_warmups": 2,
+      "repetitions": 3,
+      "cpu_affinity": "auto",
+      "gpu_devices": "0,1",
+      "gpu_budget_mib": 32768,
+      "stop_ids": "-1"
+    },
+    "environment": {
+      "STRATA_GLM_KDA_PREPARE": "1",
+      "STRATA_NATIVE_NUMA_LOCAL": "0",
+      "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+      "STRATA_GLM_FP4_CPU_BORROW": "1",
+      "STRATA_GLM_FP4_CPU_CSF32": "1",
+      "STRATA_GLM_FP4_CPU_FUSED": "1",
+      "STRATA_GLM_FP4_CPU_Q8": "1",
+      "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+      "STRATA_GLM_FP4_CPU_SPARSE": "1",
+      "STRATA_GLM_FP4_CPU_SPIN": "1",
+      "STRATA_GLM_FP4_DECODE_RESERVE_MIB": "-1",
+      "STRATA_GLM_FP4_DECODE_ROUTING": "1",
+      "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+      "STRATA_GLM_FP4_GPU_REDUCE": "1",
+      "STRATA_GLM_FP4_RAM_FDS": "1",
+      "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+      "STRATA_GLM_FP4_ROUTE_DROP": "0.5",
+      "STRATA_GLM_FP4_ROUTE_DROP_MAX": "7",
+      "STRATA_GLM_FP4_ROUTE_RENORM": "1",
+      "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+      "STRATA_GLM_KDA_ORDERED_ROWS": "1",
+      "STRATA_GLM_MLA_ABSORB_F16": "1",
+      "STRATA_GLM_MLA_F16": "1",
+      "STRATA_GLM_MTP_ACCEPT_MARGIN": "3",
+      "STRATA_GLM_MTP_ACCEPT_MAX_SOFT": "3",
+      "STRATA_GLM_MTP_ACCEPT_TOP_K": "8",
+      "STRATA_GLM_MTP_LOOKUP_CHAIN": "1",
+      "STRATA_GLM_MTP_LOOKUP_DEPTH": "7",
+      "STRATA_GLM_MTP_LOOKUP_MIN_MATCH": "6",
+      "STRATA_GLM_MTP_LOOKUP_POLICY": "cost",
+      "STRATA_GLM_MTP_REPEAT_GUARD": "4",
+      "STRATA_GLM_MTP_SKIP_ANCHOR": "1",
+      "STRATA_GLM_PREFILL_KDA_ROW_PARTS": "4",
+      "STRATA_GLM_VRAM_PREALLOC": "1",
+      "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+    },
+    "binary_sha256": "052782a551b47a923d23a5f377d2ec8bf273f206b02229a970a7f2e324943b2e",
+    "requests": [
+      {
+        "trial": {
+          "prefill_ms": 15690.0,
+          "decode_ms": 17817.9,
+          "prefill_tok_s": 522.1159974506055,
+          "decode_tok_s": 28.67902502539581,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 218407,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null
+        },
+        "speculative": {
+          "generated": 512.0,
+          "rounds": 146.0,
+          "proposed": 478.0,
+          "accepted": 364.0,
+          "replayed": 0.0,
+          "ms": 17817.2,
+          "tok_s": 28.6802
+        },
+        "timing": {
+          "prepare_ms": 0.678626,
+          "draft_ms": 1233.31,
+          "verify_ms": 15738.3,
+          "resync_ms": 518.173
+        },
+        "lookup": {
+          "rounds": 10.0,
+          "proposed": 46.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        },
+        "main_target_rows": 625.0,
+        "cpu_retained_route_rows": 32351.0,
+        "cpu_expert_groups": 27590,
+        "native_counters_before": [
+          {
+            "device": 0,
+            "hits": 40583,
+            "misses": 16680,
+            "uploaded_bytes": 245064653824,
+            "cache_bytes": 13915127808,
+            "mma": 334965,
+            "reference": 0,
+            "prefill": 54987
+          },
+          {
+            "device": 1,
+            "hits": 79238,
+            "misses": 14109,
+            "uploaded_bytes": 199723843584,
+            "cache_bytes": 31114395648,
+            "mma": 226833,
+            "reference": 0,
+            "prefill": 53208
+          }
+        ],
+        "native_counters_after": [
+          {
+            "device": 0,
+            "hits": 62018,
+            "misses": 21894,
+            "uploaded_bytes": 318872869888,
+            "cache_bytes": 14467203072,
+            "mma": 505382,
+            "reference": 0,
+            "prefill": 73316
+          },
+          {
+            "device": 1,
+            "hits": 117709,
+            "misses": 18077,
+            "uploaded_bytes": 255893962752,
+            "cache_bytes": 31114395648,
+            "mma": 336414,
+            "reference": 0,
+            "prefill": 70944
+          }
+        ],
+        "transfer_before": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 221270505370,
+            "decode_bytes": 3155133458
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 187609700052,
+            "decode_bytes": 2063866520
+          }
+        ],
+        "transfer_after": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 290802702152,
+            "decode_bytes": 3679141704
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 240884291668,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "scale_cache_before": {
+          "hits": 46950,
+          "misses": 5759,
+          "bytes": 315888880
+        },
+        "scale_cache_after": {
+          "hits": 74207,
+          "misses": 6092,
+          "bytes": 334157452
+        }
+      },
+      {
+        "trial": {
+          "prefill_ms": 15728.6,
+          "decode_ms": 15919.6,
+          "prefill_tok_s": 520.8346578843635,
+          "decode_tok_s": 32.09879645217217,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null
+        },
+        "speculative": {
+          "generated": 512.0,
+          "rounds": 146.0,
+          "proposed": 478.0,
+          "accepted": 364.0,
+          "replayed": 0.0,
+          "ms": 15918.9,
+          "tok_s": 32.1003
+        },
+        "timing": {
+          "prepare_ms": 0.665032,
+          "draft_ms": 1284.97,
+          "verify_ms": 13767.9,
+          "resync_ms": 542.473
+        },
+        "lookup": {
+          "rounds": 10.0,
+          "proposed": 46.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        },
+        "main_target_rows": 625.0,
+        "cpu_retained_route_rows": 32351.0,
+        "cpu_expert_groups": 27590,
+        "native_counters_before": [
+          {
+            "device": 0,
+            "hits": 62018,
+            "misses": 21894,
+            "uploaded_bytes": 318872869888,
+            "cache_bytes": 14467203072,
+            "mma": 505382,
+            "reference": 0,
+            "prefill": 73316
+          },
+          {
+            "device": 1,
+            "hits": 117709,
+            "misses": 18077,
+            "uploaded_bytes": 255893962752,
+            "cache_bytes": 31114395648,
+            "mma": 336414,
+            "reference": 0,
+            "prefill": 70944
+          }
+        ],
+        "native_counters_after": [
+          {
+            "device": 0,
+            "hits": 83413,
+            "misses": 27148,
+            "uploaded_bytes": 393247316992,
+            "cache_bytes": 14410579968,
+            "mma": 675799,
+            "reference": 0,
+            "prefill": 91645
+          },
+          {
+            "device": 1,
+            "hits": 156183,
+            "misses": 22042,
+            "uploaded_bytes": 312021614592,
+            "cache_bytes": 31114395648,
+            "mma": 445995,
+            "reference": 0,
+            "prefill": 88680
+          }
+        ],
+        "transfer_before": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 290802702152,
+            "decode_bytes": 3679141704
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 240884291668,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "transfer_after": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 360979842888,
+            "decode_bytes": 4115813356
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 294158883284,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "scale_cache_before": {
+          "hits": 74207,
+          "misses": 6092,
+          "bytes": 334157452
+        },
+        "scale_cache_after": {
+          "hits": 101797,
+          "misses": 6092,
+          "bytes": 334157452
+        }
+      },
+      {
+        "trial": {
+          "prefill_ms": 15726.8,
+          "decode_ms": 15919.3,
+          "prefill_tok_s": 520.894269654348,
+          "decode_tok_s": 32.09940135558725,
+          "generated_tokens": 512,
+          "requested_tokens": 512,
+          "stop_reason": "length",
+          "major_faults": 0,
+          "minor_faults": 212990,
+          "tokens_sha256": "6b12286983b9dfbb205cb8f1cbdb4b4140dc0f7d4a3366e91dd9962239ed72d8",
+          "first_eos_position_1based": null
+        },
+        "speculative": {
+          "generated": 512.0,
+          "rounds": 146.0,
+          "proposed": 478.0,
+          "accepted": 364.0,
+          "replayed": 0.0,
+          "ms": 15918.6,
+          "tok_s": 32.1008
+        },
+        "timing": {
+          "prepare_ms": 0.66276,
+          "draft_ms": 1285.88,
+          "verify_ms": 13763.7,
+          "resync_ms": 544.162
+        },
+        "lookup": {
+          "rounds": 10.0,
+          "proposed": 46.0,
+          "accepted": 26.0,
+          "max_depth": 7.0
+        },
+        "main_target_rows": 625.0,
+        "cpu_retained_route_rows": 32351.0,
+        "cpu_expert_groups": 27590,
+        "native_counters_before": [
+          {
+            "device": 0,
+            "hits": 83413,
+            "misses": 27148,
+            "uploaded_bytes": 393247316992,
+            "cache_bytes": 14410579968,
+            "mma": 675799,
+            "reference": 0,
+            "prefill": 91645
+          },
+          {
+            "device": 1,
+            "hits": 156183,
+            "misses": 22042,
+            "uploaded_bytes": 312021614592,
+            "cache_bytes": 31114395648,
+            "mma": 445995,
+            "reference": 0,
+            "prefill": 88680
+          }
+        ],
+        "native_counters_after": [
+          {
+            "device": 0,
+            "hits": 104808,
+            "misses": 32402,
+            "uploaded_bytes": 467621764096,
+            "cache_bytes": 14410579968,
+            "mma": 846216,
+            "reference": 0,
+            "prefill": 109974
+          },
+          {
+            "device": 1,
+            "hits": 194657,
+            "misses": 26007,
+            "uploaded_bytes": 368149266432,
+            "cache_bytes": 31114395648,
+            "mma": 555576,
+            "reference": 0,
+            "prefill": 106416
+          },
+          {
+            "device": 0,
+            "hits": 104808,
+            "misses": 32402,
+            "uploaded_bytes": 467621764096,
+            "cache_bytes": 14410579968,
+            "mma": 846216,
+            "reference": 0,
+            "prefill": 109974
+          },
+          {
+            "device": 1,
+            "hits": 194657,
+            "misses": 26007,
+            "uploaded_bytes": 368149266432,
+            "cache_bytes": 31114395648,
+            "mma": 555576,
+            "reference": 0,
+            "prefill": 106416
+          }
+        ],
+        "transfer_before": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 360979842888,
+            "decode_bytes": 4115813356
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 294158883284,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "transfer_after": [
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 431156983624,
+            "decode_bytes": 4552485008
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 347433474900,
+            "decode_bytes": 2106333848
+          },
+          {
+            "device": 0,
+            "startup_bytes": 8558132224,
+            "prefill_bytes": 431156983624,
+            "decode_bytes": 4552485008
+          },
+          {
+            "device": 1,
+            "startup_bytes": 0,
+            "prefill_bytes": 347433474900,
+            "decode_bytes": 2106333848
+          }
+        ],
+        "scale_cache_before": {
+          "hits": 101797,
+          "misses": 6092,
+          "bytes": 334157452
+        },
+        "scale_cache_after": {
+          "hits": 129387,
+          "misses": 6092,
+          "bytes": 334157452
+        }
+      }
+    ]
+  },
+  "prefill_traffic_proxy": {
+    "scope": "Delta around the discarded one-token request after two full warmups; includes 56 CPU groups and an internal two-token MTP statistic. Same prompt/settings, not an exact timed-prefill wire trace.",
+    "devices": [
+      {
+        "device": 0,
+        "expanded_gpu_bytes": 73256140800,
+        "expert_uploads": 5175
+      },
+      {
+        "device": 1,
+        "expanded_gpu_bytes": 56127651840,
+        "expert_uploads": 3965
+      }
+    ],
+    "cpu_expert_groups": 56,
+    "native_counters_before": [
+      {
+        "device": 0,
+        "hits": 39705,
+        "misses": 11505,
+        "uploaded_bytes": 171808513024,
+        "cache_bytes": 13915127808,
+        "mma": 333794,
+        "reference": 0,
+        "prefill": 36658
+      },
+      {
+        "device": 1,
+        "hits": 77112,
+        "misses": 10144,
+        "uploaded_bytes": 143596191744,
+        "cache_bytes": 31114395648,
+        "mma": 226296,
+        "reference": 0,
+        "prefill": 35472
+      }
+    ],
+    "native_counters_after": [
+      {
+        "device": 0,
+        "hits": 40583,
+        "misses": 16680,
+        "uploaded_bytes": 245064653824,
+        "cache_bytes": 13915127808,
+        "mma": 334965,
+        "reference": 0,
+        "prefill": 54987
+      },
+      {
+        "device": 1,
+        "hits": 79238,
+        "misses": 14109,
+        "uploaded_bytes": 199723843584,
+        "cache_bytes": 31114395648,
+        "mma": 226833,
+        "reference": 0,
+        "prefill": 53208
+      }
+    ]
+  },
+  "findings": [
+    "GPU reduction avoids host summation and activation/result round trips; all prefill routes remain intact.",
+    "All switches are opt-in. Original greedy and fast profiles are frozen. MTP depth remains three; route-drop and approximate-acceptance bounds are unchanged.",
+    "The drop bound limits original routing mass, not expert count or output error; it is never used as a compute speedup multiplier.",
+    "The CPU read probe measured 117.816 GB/s, but excludes sparse scale decoding, Q8 dot instructions and scheduling.",
+    "Expanded scale metadata improved isolated kernels but lost in full-model screens through cache construction, eviction and memory pressure.",
+    "Wider MTP verification, CPU row tiles, expert teams, deeper queues and grouped prefill GEMMs did not win the measured screening workload.",
+    "CUDA event intervals include host enqueue gaps and overlap across streams; they are not additive pure kernel durations.",
+    "Full-model qualification and fresh coding results are recorded separately from single-screen observations. No held-out tuning.",
+    "Prepared ordered four-part KDA prefill measured 520.894 tok/s against the same-binary 454.220 tok/s control, 14.68% faster. Decode 32.099 tok/s versus 31.872 tok/s is not claimed as a general gain.",
+    "Three timed512-ID outputs and eight reused training outputs are identical to the matched control. Newly frozen 20 holdouts remain unscored.",
+    "The separate old activity profile retains the original measured capture. Its KDA durations are not copied to this optimized profile."
+  ],
+  "limitations": [
+    "Conditional resource roofs are optimistic workload bounds, not forecasts or fitted timing predictions.",
+    "CPU roof counts code bytes once per expert group, omitting metadata, activation traffic, integer unpack/dot throughput and scheduling; the separate read-only probe is not sustained expert bandwidth.",
+    "Installed DIMM speed is unknown and clocks were not locked. Huge pages were disabled.",
+    "Exact matrix DMA counters omit activation transfers and end their prefill phase at compact. The older discarded-request traffic proxy is retained separately for comparison.",
+    "Ideal projection FLOPs omit attention contractions, KDA, normalization, mHC, reconstruction and launches. Independent resources are optimistically overlapped.",
+    "One performance prompt and eight reused training checks do not establish general quality or throughput. New holdouts are unscored; HIP is compile-only."
+  ],
+  "prefill_transfer": {
+    "before": [
+      {
+        "device": 0,
+        "startup_bytes": 8558132224,
+        "prefill_bytes": 290802702152,
+        "decode_bytes": 3679141704
+      },
+      {
+        "device": 1,
+        "startup_bytes": 0,
+        "prefill_bytes": 240884291668,
+        "decode_bytes": 2106333848
+      }
+    ],
+    "after": [
+      {
+        "device": 0,
+        "startup_bytes": 8558132224,
+        "prefill_bytes": 360979842888,
+        "decode_bytes": 4115813356
+      },
+      {
+        "device": 1,
+        "startup_bytes": 0,
+        "prefill_bytes": 294158883284,
+        "decode_bytes": 2106333848
+      }
+    ],
+    "scope": "Exact submitted matrix H2D bytes between request diagnostics; prefill phase ends at compact, before post-compact cache preparation. Excludes activations, D2H and expanded GPU allocation bytes."
+  }
+}

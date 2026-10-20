@@ -1,0 +1,1131 @@
+{
+  "date": "2026-10-18",
+  "timezone": "Asia/Tokyo",
+  "scope": "Experimental native W4A16; full-model quality gate remains open; no target qualification.",
+  "hardware": {
+    "gpus": [
+      "Tesla V100-PCIE-32GB",
+      "Tesla V100-PCIE-32GB"
+    ],
+    "cpu": "2 x Intel Xeon Gold 6240",
+    "cpu_workers": 35,
+    "slurm_memory_GiB": 181,
+    "weight_numa_policy": "interleave=all",
+    "cuda": "12.9",
+    "compiler": "GCC 12.2.1",
+    "clocks_locked": false,
+    "ram_speed": "not recorded",
+    "job_memory_controller": {
+      "step_to_root_rows": [
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "178306232320",
+          "memory.max_usage_in_bytes": "191174488064",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 2"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178307039232",
+          "memory.max_usage_in_bytes": "191175294976",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178316255232",
+          "memory.max_usage_in_bytes": "191178063872",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "178316509184",
+          "memory.max_usage_in_bytes": "191178317824",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "178329407488",
+          "memory.max_usage_in_bytes": "191204278272",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "9223372036854771712",
+          "memory.usage_in_bytes": "178830499840",
+          "memory.max_usage_in_bytes": "192871321600",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        }
+      ],
+      "matching_181_GiB_rows": [
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178307039232",
+          "memory.max_usage_in_bytes": "191175294976",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        },
+        {
+          "memory.limit_in_bytes": "194347270144",
+          "memory.usage_in_bytes": "178316255232",
+          "memory.max_usage_in_bytes": "191178063872",
+          "memory.failcnt": "0",
+          "memory.oom_control": "oom_kill_disable 0\nunder_oom 0\noom_kill 0"
+        }
+      ],
+      "raw_sha256": "575402cceffb15001a837a83d7f447b7913594afff46d0c38b82995246d37d83",
+      "scope": "whole job including all candidate processes, not one benchmark"
+    }
+  },
+  "checkpoint": {
+    "indexed_files": 42,
+    "indexed_file_bytes": 177463841024,
+    "indexed_payload_bytes": 177421592008,
+    "full_shards_sha256_verified": true,
+    "verification": "source SHA256 equals sealed-copy readback SHA256 for every indexed shard",
+    "canonical_manifest_sha256": "b1389a9ecaee05ba182687bce9bb217e1f99d21ffe84bb1a5c7fbacc5257039f",
+    "ram_cache_load_seconds": 337.70226452400675,
+    "canonical_manifest_definition": "sorted weight records from sealed cache report; JSON sort_keys=True, separators=(comma,colon), no newline",
+    "metadata": {
+      "files_sha256": {
+        "config.json": "dbf6aaf0d3651a5a297e6672bed57979c20528e2aa7475b80df5ba63d5402ba8",
+        "model.safetensors.index.json": "1981941b2fabb9271ae3a3cb76be6ea41927f730b6633471d3c147106703aeea",
+        "tokenizer.json": "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d",
+        "chat_template.jinja": "0c4099f3382d6c92700dfb99725025360966fd73032f0ecf32377c0d9e6309c5"
+      },
+      "indexed_file_bytes": 177463841024,
+      "indexed_tensors": 295041,
+      "scope": "metadata hashes and indexed file lengths; weight payloads are not hashed"
+    }
+  },
+  "dma_probe": {
+    "bytes_per_gpu": 268435456,
+    "copies_per_sample_per_gpu": 8,
+    "concurrent_gpus": 2,
+    "samples_aggregate_GB_s": [
+      24.6142,
+      24.615,
+      24.6183
+    ],
+    "byte_check": "pass",
+    "gpu_link": "SYS, different NUMA roots",
+    "raw_sha256": "2c390c159ae681580b145b00a27f92d3a155e8ca79ee29ffc62554ee1e92a793"
+  },
+  "runs": [
+    {
+      "name": "pooled_scale8_width_fixed",
+      "raw_report_sha256": "4acf1a70f8b645ef56b766775a0648cdd99d0f680c19d503ab1e9de618485518",
+      "complete": true,
+      "binary_sha256": "1837cde73b77e5e3abc0f30fcec0d5dd34ac7d29e4e16fb31173a954d0eb4217",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 64,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "8192",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 155.09012531024652,
+      "median_decode_tok_s": 9.140847400081832,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 185924239360,
+        "peak_swap_bytes": 0,
+        "samples": 487
+      },
+      "trials": [
+        {
+          "prefill_ms": 52820.9,
+          "decode_ms": 6892.14,
+          "prefill_tok_s": 155.09012531024652,
+          "decode_tok_s": 9.140847400081832,
+          "generated_tokens": 64,
+          "major_faults": 0,
+          "minor_faults": 587153,
+          "stop_reason": "length",
+          "tokens_sha256": "0e1a8361134d817cc404a3d238cebdb7d4e36ca0f416cf635899eec40d7c119a"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 22417,
+        "misses": 3977,
+        "bytes": 6305931200
+      }
+    },
+    {
+      "name": "device_routing",
+      "raw_report_sha256": "b1fef1eabc6bea1845fe3cad88514e7f652bb1e052f6ac700e97bc1d1a792079",
+      "complete": true,
+      "binary_sha256": "61f96d89d659a400071d690f20d95698913e258640c80642ff64a504c3e2d879",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 64,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "8192",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 226.44784816494868,
+      "median_decode_tok_s": 9.586735610005508,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 185678036992,
+        "peak_swap_bytes": 0,
+        "samples": 385
+      },
+      "trials": [
+        {
+          "prefill_ms": 36176.1,
+          "decode_ms": 6571.58,
+          "prefill_tok_s": 226.44784816494868,
+          "decode_tok_s": 9.586735610005508,
+          "generated_tokens": 64,
+          "major_faults": 0,
+          "minor_faults": 163841,
+          "stop_reason": "length",
+          "tokens_sha256": "0e1a8361134d817cc404a3d238cebdb7d4e36ca0f416cf635899eec40d7c119a"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 22417,
+        "misses": 3977,
+        "bytes": 6305931200
+      }
+    },
+    {
+      "name": "ordinary_workers17",
+      "raw_report_sha256": "d10fff74fc95440431d8986fc0c1f2ec11d9390be843166a3dcf6d0924c23792",
+      "complete": true,
+      "binary_sha256": "61f96d89d659a400071d690f20d95698913e258640c80642ff64a504c3e2d879",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 64,
+        "threads": 17,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "8192",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "0",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 225.4556863435832,
+      "median_decode_tok_s": 8.959260960518101,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 185673555968,
+        "peak_swap_bytes": 0,
+        "samples": 387
+      },
+      "trials": [
+        {
+          "prefill_ms": 36335.3,
+          "decode_ms": 7031.83,
+          "prefill_tok_s": 225.4556863435832,
+          "decode_tok_s": 8.959260960518101,
+          "generated_tokens": 64,
+          "major_faults": 0,
+          "minor_faults": 163842,
+          "stop_reason": "length",
+          "tokens_sha256": "0e1a8361134d817cc404a3d238cebdb7d4e36ca0f416cf635899eec40d7c119a"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 22417,
+        "misses": 3977,
+        "bytes": 6305931200
+      }
+    },
+    {
+      "name": "mtp3_128_tokens",
+      "raw_report_sha256": "e6f979dd0f976a02433966f958467f9e214de4a755c4eeb3f3c754845e95387a",
+      "complete": true,
+      "binary_sha256": "61f96d89d659a400071d690f20d95698913e258640c80642ff64a504c3e2d879",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 128,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "mtp",
+        "draft_depth": 3,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "8192",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_MTP_ACCEPT_MARGIN": "0",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 228.92081385373322,
+      "median_decode_tok_s": 6.7514047706383,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 188296441856,
+        "peak_swap_bytes": 0,
+        "samples": 426
+      },
+      "trials": [
+        {
+          "prefill_ms": 35785.3,
+          "decode_ms": 18810.9,
+          "prefill_tok_s": 228.92081385373322,
+          "decode_tok_s": 6.7514047706383,
+          "generated_tokens": 128,
+          "major_faults": 0,
+          "minor_faults": 240051,
+          "stop_reason": "length",
+          "tokens_sha256": "9e988f9e094398fb27b53e9e162da2728eb44bcf03d3eb97be18191425def406"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 66654,
+        "misses": 8368,
+        "bytes": 8589195200
+      }
+    },
+    {
+      "name": "operand_control",
+      "raw_report_sha256": "415d88998bc0d94cdec9b12a987210cc0d9306fb3bea0852c657b70192bdd717",
+      "complete": true,
+      "binary_sha256": "350cf4a82f4087b23245793f201b6bada795b9a645c8d3b626d3772810814c06",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 64,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "0",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "8192",
+        "STRATA_GLM_FP4_CPU_SPIN": "0",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_TIGHT_CACHE": "0",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 236.3163269427152,
+      "median_decode_tok_s": 9.138460735080375,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 185816211456,
+        "peak_swap_bytes": 0,
+        "samples": 373
+      },
+      "trials": [
+        {
+          "prefill_ms": 34665.4,
+          "decode_ms": 6893.94,
+          "prefill_tok_s": 236.3163269427152,
+          "decode_tok_s": 9.138460735080375,
+          "generated_tokens": 64,
+          "major_faults": 0,
+          "minor_faults": 163841,
+          "stop_reason": "length",
+          "tokens_sha256": "9c2bcc9e86dd72b7b5e8d5d477954b145de51ad1380ce3f93519109de48cd8dd"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 22060,
+        "misses": 4063,
+        "bytes": 6442292800
+      }
+    },
+    {
+      "name": "row_scales_registered",
+      "raw_report_sha256": "f0d13ab6bdf0fe31f4c80cd41aa47674126e56750b932f5e37cec718a7e73164",
+      "complete": true,
+      "binary_sha256": "d342c4e0b224c8cfe3ca640f01d8dd05191c4a3085e1adb993f1b43a50d8f729",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 64,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "10240",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_F32_PROTECTED": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 276.69693039342843,
+      "median_decode_tok_s": 7.908750593156295,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 183888666624,
+        "peak_swap_bytes": 0,
+        "samples": 429
+      },
+      "trials": [
+        {
+          "prefill_ms": 29606.4,
+          "decode_ms": 7965.86,
+          "prefill_tok_s": 276.69693039342843,
+          "decode_tok_s": 7.908750593156295,
+          "generated_tokens": 64,
+          "major_faults": 0,
+          "minor_faults": 180228,
+          "stop_reason": "length",
+          "tokens_sha256": "9c2bcc9e86dd72b7b5e8d5d477954b145de51ad1380ce3f93519109de48cd8dd"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 22060,
+        "misses": 4063,
+        "bytes": 4471674608
+      }
+    },
+    {
+      "name": "tensor_attention_short",
+      "raw_report_sha256": "8afc4b7546032ff136141729457042d8ca4c7db5a8fb3be25d96ccf6a4239b1c",
+      "complete": true,
+      "binary_sha256": "b53854585f1afb23b204b10938aa2abb1e3666f2bb6469d33045baa8e8dc5dd5",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 64,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 1,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "10240",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_F32_PROTECTED": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 388.3863382071267,
+      "median_decode_tok_s": 7.743543666826044,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 183789953024,
+        "peak_swap_bytes": 0,
+        "samples": 338
+      },
+      "trials": [
+        {
+          "prefill_ms": 21092.4,
+          "decode_ms": 8135.81,
+          "prefill_tok_s": 388.3863382071267,
+          "decode_tok_s": 7.743543666826044,
+          "generated_tokens": 64,
+          "major_faults": 0,
+          "minor_faults": 180227,
+          "stop_reason": "length",
+          "tokens_sha256": "0e1a8361134d817cc404a3d238cebdb7d4e36ca0f416cf635899eec40d7c119a"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 22367,
+        "misses": 3970,
+        "bytes": 4369312288
+      }
+    },
+    {
+      "name": "failed_cache10_long",
+      "raw_report_sha256": "dc07652a0e222164ca81cfc8c8dc9c9f699f23ce015c0056fea5e94680a01d5e",
+      "complete": false,
+      "binary_sha256": "4fc4db759cb033bc1cdcbad7e86610d4f493a997725dfdcbc21c9d4e43654eca",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "10240",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": null,
+      "median_decode_tok_s": null,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": null,
+      "memory": {
+        "peak_rss_bytes": 187113631744,
+        "peak_swap_bytes": 0,
+        "samples": 365
+      },
+      "trials": [],
+      "failure": "decoder exited during next prefill",
+      "last_cpu_scale_cache": {
+        "hits": 91902,
+        "misses": 7498,
+        "bytes": 8314122368
+      }
+    },
+    {
+      "name": "final_cache6_long",
+      "raw_report_sha256": "f328722ceca2cb089ae47d0b8c4fcffb7e74ab9da83eedc8697d789d34cb793c",
+      "complete": true,
+      "binary_sha256": "7ed82e75f54e543612fb0d0c158f71c15597c2997079a9e2a753b0e7a2e31868",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "6144",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": 393.8045014469623,
+      "median_decode_tok_s": 5.260860433799639,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": true,
+      "memory": {
+        "peak_rss_bytes": 186315800576,
+        "peak_swap_bytes": 0,
+        "samples": 1186
+      },
+      "trials": [
+        {
+          "prefill_ms": 21097.9,
+          "decode_ms": 97626.0,
+          "prefill_tok_s": 388.28508998525916,
+          "decode_tok_s": 5.234261364800361,
+          "generated_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 213701,
+          "stop_reason": "length",
+          "tokens_sha256": "54e4e84b75d48b36841fdd406a397a502b25694fcb5c873d1e313e1944d89078"
+        },
+        {
+          "prefill_ms": 20802.2,
+          "decode_ms": 96659.5,
+          "prefill_tok_s": 393.8045014469623,
+          "decode_tok_s": 5.28659883405149,
+          "generated_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 183812,
+          "stop_reason": "length",
+          "tokens_sha256": "54e4e84b75d48b36841fdd406a397a502b25694fcb5c873d1e313e1944d89078"
+        },
+        {
+          "prefill_ms": 20777.6,
+          "decode_ms": 97132.4,
+          "prefill_tok_s": 394.2707531187433,
+          "decode_tok_s": 5.260860433799639,
+          "generated_tokens": 512,
+          "major_faults": 0,
+          "minor_faults": 181898,
+          "stop_reason": "length",
+          "tokens_sha256": "54e4e84b75d48b36841fdd406a397a502b25694fcb5c873d1e313e1944d89078"
+        }
+      ],
+      "last_cpu_scale_cache": {
+        "hits": 369124,
+        "misses": 28709,
+        "bytes": 6442362496
+      }
+    },
+    {
+      "name": "final_cache8_long",
+      "raw_report_sha256": "93569b06118ad8b9d135d090dcd64235afedb8636fa712479a190116c6a2279c",
+      "complete": false,
+      "binary_sha256": "7ed82e75f54e543612fb0d0c158f71c15597c2997079a9e2a753b0e7a2e31868",
+      "prompt_sha256": "4a8c414a388deb066002d647721b16e8471c67ca9fb6f6984065a46ead9d6fb5",
+      "configuration": {
+        "fp4_kernel": "sm70",
+        "prompt_tokens": 8192,
+        "generated_tokens": 512,
+        "threads": 35,
+        "context": 12288,
+        "prefill_batch": 8192,
+        "speculative": "none",
+        "draft_depth": 1,
+        "full_warmups": 1,
+        "repetitions": 3,
+        "cpu_affinity": "auto",
+        "gpu_devices": "0,1",
+        "gpu_budget_mib": 32768,
+        "prefill_expert_cache_mib": "0",
+        "stop_ids": "-1"
+      },
+      "environment": {
+        "STRATA_NATIVE_NUMA_LOCAL": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "1",
+        "STRATA_GLM_FP4_CPU_CSF32": "1",
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "8192",
+        "STRATA_GLM_FP4_DEVICE_ROUTING": "1",
+        "STRATA_GLM_FP4_RAM_FDS": "1",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "1",
+        "STRATA_GLM_FP4_TENSOR_ATTENTION": "1",
+        "STRATA_GLM_MLA_ABSORB_F16": "1",
+        "STRATA_GLM_MLA_F16": "1",
+        "STRATA_GLM_VRAM_PREALLOC": "1",
+        "STRATA_GLM_VRAM_PREALLOC_MARGIN_MIB": "1024"
+      },
+      "median_prefill_tok_s": null,
+      "median_decode_tok_s": null,
+      "timing_scope": "warm resident requests; prefill includes CPU preparation; decode advances generated_tokens-1 steps; excludes startup and warmup",
+      "instrumented": false,
+      "repetitions_identical": null,
+      "memory": {
+        "peak_rss_bytes": 187116847104,
+        "peak_swap_bytes": 0,
+        "samples": 360
+      },
+      "trials": [],
+      "decoder_returncode": null,
+      "failure": "decoder exited during next prefill",
+      "last_cpu_scale_cache": {
+        "hits": 91902,
+        "misses": 7498,
+        "bytes": 8314122368
+      }
+    }
+  ],
+  "validation": {
+    "cpu": "FP64 references, widths 1..8, AVX-512/AVX2/scalar; compact/logical scale outputs bitwise equal; copied scale inputs may be overwritten",
+    "gpu": "synthetic formats and real gate/down operands; exact SM70 prefill operand bytes; component Compute Sanitizer zero errors",
+    "gpu_memcheck_scope": "components, not the full 181G model",
+    "verification": "reference and SM70 sequential/batched logits and rollback bitwise equal, including retained prefixes",
+    "prefill": "FAIL: sequential versus batched 64-token prefill exceeds existing relative-L2 0.02 tolerance in both kernel modes; first greedy tokens agree",
+    "fullmodel_gguf_exl3_regression": "not run",
+    "cache_size_token_check": "6, 8 and 10 GiB runs have identical 512-token warmup outputs; all three timed 6 GiB outputs match those warmups.",
+    "builds": {
+      "target": "CUDA 12.9, GCC 12.2.1, sm_70 build and V100 execution",
+      "additional_compile_only": [
+        "CUDA 13.2, sm_86",
+        "HIP, gfx1201"
+      ],
+      "SYCL": "separate build does not include these engine files",
+      "python_tests": {
+        "ram_cache": 3,
+        "v100_benchmark": 26
+      }
+    },
+    "tensor_attention_paired_logits": {
+      "prompt_tokens": 8192,
+      "kernel": "sm70",
+      "logit_count": 154880,
+      "valid_logits": 154856,
+      "KL_fp32_to_fp16": 0.021707414019160428,
+      "relative_L2": 0.08124766534450722,
+      "max_abs": 0.8267116546630859,
+      "top1": [
+        785,
+        785
+      ],
+      "raw_sha256": {
+        "fp32_attention.f32": "d5497c13abb702fb143e4785c79209f8b628164cbc919ebe47726e576eb99baa",
+        "fp16_attention.f32": "75ae8aec444a885a0b8da1f3f1214b49835bcbe3041502baf593ae7c17dc83e0"
+      },
+      "scope": "one frozen prompt, final prefill row; not a corpus perplexity result",
+      "comparison_sha256": "4da84e541199f2e4dc62521b867cc23e22e57fbdee7d6ccc257160261c4a046e"
+    },
+    "prefill_controls": {
+      "sm70": {
+        "prompt_tokens": 64,
+        "logit_relative_L2": 0.0415962,
+        "tolerance": 0.02,
+        "exit_status": 1,
+        "raw_log_sha256": "b90ef7aa6d0e61d122bcca140e28d0dc981d6cd3c9f002586e74cec8428be936",
+        "first_greedy_token_matches": true
+      },
+      "reference": {
+        "prompt_tokens": 64,
+        "logit_relative_L2": 0.0318686,
+        "tolerance": 0.02,
+        "exit_status": 1,
+        "raw_log_sha256": "b68431695a370bd5f4ba1caa99d0ef434180eaf7b2be04a21a116955d3d3e309",
+        "first_greedy_token_matches": true
+      }
+    }
+  },
+  "failures": {
+    "cache10_long": "Warmup completed at 512 output tokens, then decoder exited during next prefill; peak sampled RSS 187113631744 bytes; job controller peak 189836554240 bytes, limit 194347270144, no recorded OOM or limit failures. Exit cause unconfirmed. This is not a qualified speed result. The later final step-controller capture records two OOM kills across the job; the earlier check covered ancestors only. Individual kill attribution remains unconfirmed.",
+    "rejected_experiments": [
+      "35-worker spin dispatch: no model speed improvement; removed",
+      "tighter GPU cache admission: repeated-prefill allocation failures; removed",
+      "row tiling on CPU: no consistent model-relevant improvement; not adopted",
+      "initial staging pipeline: slower and timed major faults; not qualified"
+    ],
+    "cache8_long": "512-token warmup completed, then decoder output ended during next prefill; no timed samples. Peak sampled RSS 187116847104 bytes. Decoder poll returned null at EOF; natural exit status was not captured. Final step controller records two OOM kills across the job, while 181 GiB ancestors record none and zero limit failures. Individual kill attribution remains unconfirmed."
+  },
+  "coding": {
+    "sm70-greedy-training": {
+      "complete": true,
+      "passed": 2,
+      "attempted": 3,
+      "binary_sha256": "4fc4db759cb033bc1cdcbad7e86610d4f493a997725dfdcbc21c9d4e43654eca",
+      "oracle_sha256": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "raw_report_sha256": "5a03839b4e2d908bebb014ca1d0cf7688982a5e10e03ca5dcd23a6185c74d2d2",
+      "tasks": [
+        {
+          "name": "parse_u64",
+          "passed": true,
+          "prompt_tokens": 163,
+          "output_tokens": 137,
+          "tokens_sha256": "8487df6faaa02ff63c6c43044d01a8f7f09df5da7728ca26f3642647f95cfdeb",
+          "prompt_ids_sha256": "84326a4a328b739cd35a63491c629d0084a2e4a33f14304403b257f6396d8efa"
+        },
+        {
+          "name": "checked_slice",
+          "passed": false,
+          "prompt_tokens": 151,
+          "output_tokens": 133,
+          "tokens_sha256": "6836bdcfc5877167ef3860c49f2a7fc61584ef5a6c0f63bdcedec2b88edc9fa2",
+          "prompt_ids_sha256": "b75a07974afebe89309d230f6dbde602318ca5b9440b24b14d11f2a00d0bd427"
+        },
+        {
+          "name": "reduce_routed",
+          "passed": true,
+          "prompt_tokens": 162,
+          "output_tokens": 201,
+          "tokens_sha256": "592782176f4e29aa874656965f95ccbfa76639a3c913fad546b04b79e428c7ff",
+          "prompt_ids_sha256": "388ec65a2e5a0e807261aa124e4c8bb73161b230a5e68208de762e4b0d290ca6"
+        }
+      ]
+    },
+    "sm70-greedy-holdout": {
+      "complete": true,
+      "passed": 19,
+      "attempted": 20,
+      "binary_sha256": "4fc4db759cb033bc1cdcbad7e86610d4f493a997725dfdcbc21c9d4e43654eca",
+      "oracle_sha256": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "raw_report_sha256": "cef24ff0f6e9c1f253f76f3218a09437d38f5623480a171dc53edc0772edc5a3",
+      "tasks": [
+        {
+          "name": "add_i64",
+          "passed": true,
+          "prompt_tokens": 83,
+          "output_tokens": 101,
+          "tokens_sha256": "4d05ee54c3de426187349f3256eb05991b8d061c13edd3fcc88ed8a0970fe3dd",
+          "prompt_ids_sha256": "f45064f9388bfc85e58fa002ad419cb614698567eaf365fcc02afa67b3c8671d"
+        },
+        {
+          "name": "add_u64",
+          "passed": true,
+          "prompt_tokens": 83,
+          "output_tokens": 82,
+          "tokens_sha256": "8091d432b8387274836769d2687bb4a53dbc32b287075d47575ca6a057891b16",
+          "prompt_ids_sha256": "952ae0143b39ae220fbcd50e1d423a96d914addfe2b1c5407983129a76ee501f"
+        },
+        {
+          "name": "mul_i64",
+          "passed": false,
+          "prompt_tokens": 83,
+          "output_tokens": 786,
+          "tokens_sha256": "c009f3312fc5957a679b31dd8cd3ff62b26ef43769ad1893ceb1d739f8c50a26",
+          "prompt_ids_sha256": "9cda83ff56d96200ba9d7968bdecb1a60df42f33f618efb876b2ae407b2dad78"
+        },
+        {
+          "name": "mul_u64",
+          "passed": true,
+          "prompt_tokens": 83,
+          "output_tokens": 387,
+          "tokens_sha256": "b26147f5f1dbee7a411321fc33da23ce3ead07ffab0e9e6aaa3a10a3f8eebddc",
+          "prompt_ids_sha256": "b4add884dbc274c316845b21901ce0e5ca5f44aa2be2b640bbaec08a48425e54"
+        },
+        {
+          "name": "parse_i64",
+          "passed": true,
+          "prompt_tokens": 93,
+          "output_tokens": 352,
+          "tokens_sha256": "a2f769f0acde6dcc8de6e08cb47295f510c286b4081d22f3064789044c714c29",
+          "prompt_ids_sha256": "e452822a7139d37d317be98c7b5e61f3c8553a59594dd6dbac1222e07cafac28"
+        },
+        {
+          "name": "parse_hex",
+          "passed": true,
+          "prompt_tokens": 91,
+          "output_tokens": 208,
+          "tokens_sha256": "52e89988bd9823781e25f40dc94730be6d916ef25fc287f818c4e9b8c336c874",
+          "prompt_ids_sha256": "78aad77802d85d6f2378bf3fa768ec36689daa1190bf890bf7b12741d059486b"
+        },
+        {
+          "name": "lower_index",
+          "passed": true,
+          "prompt_tokens": 79,
+          "output_tokens": 74,
+          "tokens_sha256": "35337e8e2b60eb37403168762fa1ba7758f8015863e9174de041170a81e39424",
+          "prompt_ids_sha256": "c10575c25a2b4bfca2ca9cdd626cbbecbdb1fbc52d283fa8176f36777737237a"
+        },
+        {
+          "name": "upper_index",
+          "passed": true,
+          "prompt_tokens": 79,
+          "output_tokens": 74,
+          "tokens_sha256": "15c9bb030413ad72fa4aa004d0cd15ab375ff178e0794d3baba7da5602533453",
+          "prompt_ids_sha256": "b68f5ffd076f6bf8dc95fae9f0a7d6f7d3275638bfd38f5556811ea27bf5d500"
+        },
+        {
+          "name": "stable_unique",
+          "passed": true,
+          "prompt_tokens": 68,
+          "output_tokens": 88,
+          "tokens_sha256": "ae29f264ac672dfa9fc2318ebed0bc7981305ebe72b7bee766bc57d4aa58958f",
+          "prompt_ids_sha256": "a1228dc610a2b8ff69e26f82815abcc1724336cec410f33b21b6897ba8059148"
+        },
+        {
+          "name": "sorted_unique",
+          "passed": true,
+          "prompt_tokens": 67,
+          "output_tokens": 69,
+          "tokens_sha256": "6d30bf8c08214659923c4673abda9c151d3728f77279c15c1fe7dcae71f83055",
+          "prompt_ids_sha256": "480b6f31a86f60420e484f0710e9061bb22878805876090420875783473876d2"
+        },
+        {
+          "name": "rotate_left",
+          "passed": true,
+          "prompt_tokens": 77,
+          "output_tokens": 140,
+          "tokens_sha256": "c3ee1fb7b2d6512315c47c01fc0aa00bb52487dbb9dcb894f164a4337ba05998",
+          "prompt_ids_sha256": "ed0dd434bbddd8261800406c2ff2be2726f56b38e18324c49176f03b7679748f"
+        },
+        {
+          "name": "rotate_right",
+          "passed": true,
+          "prompt_tokens": 77,
+          "output_tokens": 130,
+          "tokens_sha256": "5848ce742eb11f66fd3566b7f4802cedb1fd6f98cb6dd2226179673f2fd76607",
+          "prompt_ids_sha256": "1196cd1be6a285135c45a7467c46dd360956a9072a1424c747e234be65a24f12"
+        },
+        {
+          "name": "replace_all",
+          "passed": true,
+          "prompt_tokens": 94,
+          "output_tokens": 154,
+          "tokens_sha256": "0d19dada46f6c70e580435c23f6697629c900f817e9a1b64c303c3bf28614540",
+          "prompt_ids_sha256": "ed41912a11cd01b14e2517c8f1a3b44be259793a543d748eaf99e99238583223"
+        },
+        {
+          "name": "remove_all",
+          "passed": true,
+          "prompt_tokens": 88,
+          "output_tokens": 157,
+          "tokens_sha256": "1cd533e99ca3bd0b8464a573a0cead600272216b4ffd9c9a46e629bde6c3da62",
+          "prompt_ids_sha256": "45794b735b00d7a614b5183e1a92d000b37ba6bb81250b1f3a1b2df8bf7c6321"
+        },
+        {
+          "name": "merge_overlap",
+          "passed": true,
+          "prompt_tokens": 92,
+          "output_tokens": 187,
+          "tokens_sha256": "1f62c78a221548a269c1f75d6288e687237db04fd6d4b44b418cc593b8ec8c9e",
+          "prompt_ids_sha256": "410350ef02f3caf91e2dd0b0228948aa1338253ceabe62bad5700ad7fbbdb8f7"
+        },
+        {
+          "name": "merge_touching",
+          "passed": true,
+          "prompt_tokens": 89,
+          "output_tokens": 188,
+          "tokens_sha256": "5085cc9bcf5dff45c4c7a1d40549a9beed236ec3b1c3ea5119cce1aa5ad18af7",
+          "prompt_ids_sha256": "fbfb278ace93429e13d03569cd8fb7b5b4de5a0cade1fdff3fb3041b46f6a097"
+        },
+        {
+          "name": "hex_lower",
+          "passed": true,
+          "prompt_tokens": 70,
+          "output_tokens": 100,
+          "tokens_sha256": "b33a81127a12ac7fbc45084d3bf05bb5fb365ab06abf62543bc0f77ab905c510",
+          "prompt_ids_sha256": "d9133b16ed8baed2fa06ebfd9a3b23f83198602fc55b18ceee59dc47fc9d9c2b"
+        },
+        {
+          "name": "hex_upper",
+          "passed": true,
+          "prompt_tokens": 70,
+          "output_tokens": 105,
+          "tokens_sha256": "12ad08a04df7f560e87678a7957148caed2cbf16ef42df4ea0606cf927b720fe",
+          "prompt_ids_sha256": "02db11bb38121e430e4adb67f1f0a09ed5963a040e55937c0e80da39c4a220c2"
+        },
+        {
+          "name": "fnv1a32",
+          "passed": true,
+          "prompt_tokens": 99,
+          "output_tokens": 94,
+          "tokens_sha256": "8a63ce184d714a7c394495f0d438a08222b5e83ace60aaf48d0f325619ad5a3a",
+          "prompt_ids_sha256": "1e57a8c9a5e1b9b7f410595773af331b03c8024898fd336031c0e121ea23a7db"
+        },
+        {
+          "name": "adler32",
+          "passed": true,
+          "prompt_tokens": 104,
+          "output_tokens": 101,
+          "tokens_sha256": "a39f83d068d6c9fb9485975bc02d23b9998719b2ea10b6fee9375b567166860f",
+          "prompt_ids_sha256": "76fe5745276faffd8dd20a3a597179ad50eac1331e94d00d51253abf88bcc8df"
+        }
+      ]
+    },
+    "reference-greedy-training": {
+      "complete": true,
+      "passed": 2,
+      "attempted": 3,
+      "binary_sha256": "4fc4db759cb033bc1cdcbad7e86610d4f493a997725dfdcbc21c9d4e43654eca",
+      "oracle_sha256": "bb3a511d96e9a710b0bdfdf9989a15a2ea53604107b12e38f2c441ccfdc9a9bb",
+      "raw_report_sha256": "bf2f5a0355301220ed8a84b0f809b380249699b838424456983ce55b3a4550b5",
+      "tasks": [
+        {
+          "name": "parse_u64",
+          "passed": true,
+          "prompt_tokens": 163,
+          "output_tokens": 137,
+          "tokens_sha256": "8487df6faaa02ff63c6c43044d01a8f7f09df5da7728ca26f3642647f95cfdeb",
+          "prompt_ids_sha256": "84326a4a328b739cd35a63491c629d0084a2e4a33f14304403b257f6396d8efa"
+        },
+        {
+          "name": "checked_slice",
+          "passed": false,
+          "prompt_tokens": 151,
+          "output_tokens": 150,
+          "tokens_sha256": "fdbec2b8117f3de9552b4a09855cda81c7d4c8c3c24f212deed74e9294ae7356",
+          "prompt_ids_sha256": "b75a07974afebe89309d230f6dbde602318ca5b9440b24b14d11f2a00d0bd427"
+        },
+        {
+          "name": "reduce_routed",
+          "passed": true,
+          "prompt_tokens": 162,
+          "output_tokens": 201,
+          "tokens_sha256": "592782176f4e29aa874656965f95ccbfa76639a3c913fad546b04b79e428c7ff",
+          "prompt_ids_sha256": "388ec65a2e5a0e807261aa124e4c8bb73161b230a5e68208de762e4b0d290ca6"
+        }
+      ]
+    },
+    "protocol": {
+      "generation": "greedy, temperature 0, maximum 1536 output tokens including stop",
+      "reasoning_effort": "low",
+      "context": 12288,
+      "prefill_batch": 8192,
+      "gpu_devices": [
+        0,
+        1
+      ],
+      "cpu_workers": 35,
+      "runner_sha256": "7d53924548ffa8582a8331bafaa1a2416dd30331c3f340893519d0116482a5eb",
+      "oracle_source": "tools/glm_coding_quality.py",
+      "environment_overrides_from_final_performance": {
+        "STRATA_GLM_FP4_CPU_SCALE_CACHE_MIB": "10240",
+        "STRATA_GLM_FP4_REGISTER_WEIGHTS": "0",
+        "STRATA_GLM_FP4_ASYNC_UPLOAD": "0"
+      },
+      "scope": "short coding prompts; long-prompt FP16 attention is disabled by its token threshold; no reference holdout or corpus perplexity run"
+    }
+  },
+  "targets": {
+    "decode_tok_s": 30,
+    "prefill_tok_s": 800,
+    "achieved": false
+  },
+  "source": {
+    "base_commit": "df3f0443",
+    "local_sha256": {
+      "src/program/glm_decode.cpp": "97e8dcda3bcd451ab7f2cdcadbe6c9fd0bee22a42c572cb78e90e49015e48adc",
+      "src/program/glm_fp4_native.inc": "1fc9e50e4561116108456018fd20e5d0a911dd45ea4ddd43680f44c28dbb4ecb",
+      "src/kernels/cpu/glm_fp4.cpp": "a9ee4d80261162d540cd58e10bf661a67ba0cf8e49c3272afc1512c24d3d2f87",
+      "src/kernels/cuda/glm_fp4.cu": "68fe36ca70a3ff95251103c5509e3155d794c9b33103f6b0b07d1a9bb2778971",
+      "include/strata/kernels/cpu/glm_fp4.hpp": "fe01759aae6533d23c2bfdde7e2d70187c1db1af18816065182ff4d37f4c0ead",
+      "include/strata/kernels/glm_fp4.hpp": "b5b8a51fa0b8d2e8476733aea7c8545da8e198f7ee86ad05659aeb88101b717b",
+      "include/strata/artifact/safetensors.hpp": "374894e33ad7ff6f0e175bf40bd013cc59e6a17552ad356fefbf13811516e386",
+      "include/strata/artifact/glm_exl3.hpp": "08d0a93bd35fddbd70d5564fb161225615d084492d5831a13bd8c4e7a204ffbb",
+      "include/strata/core/runtime_memory.hpp": "0a3e921c8ca291309eda6f40d7cd79c65f9093aa6197b294c927d12ec1edc145",
+      "tools/glm_ram_cache.py": "31cae0611d809b0bccd4ee8e93bfb53d6f985947b8983f0cbe326e61605d2ef1",
+      "tools/glm_v100_bench.py": "7e3b37d6a7c3aa27c0c720d220c36248c63faa3b6f64b1ce3f8cac28e5552d26"
+    },
+    "remote_sm70_source_snapshots": "Retained privately with per-build hashes; exact final build recorded with final run.",
+    "exact_target_build": {
+      "binary_sha256": "7ed82e75f54e543612fb0d0c158f71c15597c2997079a9e2a753b0e7a2e31868",
+      "cmake_cache_sha256": "f92ca2a8764e15fca9d7dc11f15e79a9ccc13bf093972ecffc7c782601315f1e",
+      "snapshot_sha256": {
+        "include/strata/artifact/glm_exl3.hpp": "08d0a93bd35fddbd70d5564fb161225615d084492d5831a13bd8c4e7a204ffbb",
+        "include/strata/artifact/safetensors.hpp": "374894e33ad7ff6f0e175bf40bd013cc59e6a17552ad356fefbf13811516e386",
+        "include/strata/core/runtime_memory.hpp": "0a3e921c8ca291309eda6f40d7cd79c65f9093aa6197b294c927d12ec1edc145",
+        "include/strata/kernels/cpu/glm_fp4.hpp": "fe01759aae6533d23c2bfdde7e2d70187c1db1af18816065182ff4d37f4c0ead",
+        "include/strata/kernels/glm_fp4.hpp": "b5b8a51fa0b8d2e8476733aea7c8545da8e198f7ee86ad05659aeb88101b717b",
+        "src/kernels/cpu/glm_fp4.cpp": "a9ee4d80261162d540cd58e10bf661a67ba0cf8e49c3272afc1512c24d3d2f87",
+        "src/kernels/cuda/glm_fp4.cu": "68fe36ca70a3ff95251103c5509e3155d794c9b33103f6b0b07d1a9bb2778971",
+        "src/program/glm_decode.cpp": "97e8dcda3bcd451ab7f2cdcadbe6c9fd0bee22a42c572cb78e90e49015e48adc",
+        "src/program/glm_fp4_native.inc": "1fc9e50e4561116108456018fd20e5d0a911dd45ea4ddd43680f44c28dbb4ecb",
+        "src/program/glm_gpu_buffers.hpp": "0b4d9e134addd2d8a5d4a047ddf5c84e9eca7846a7ad73898cf3b5d68ae57fd9",
+        "tools/glm_ram_cache.py": "31cae0611d809b0bccd4ee8e93bfb53d6f985947b8983f0cbe326e61605d2ef1",
+        "tools/glm_v100_bench.py": "7e3b37d6a7c3aa27c0c720d220c36248c63faa3b6f64b1ce3f8cac28e5552d26"
+      },
+      "local_source_matches_snapshot": true,
+      "compiler": "GCC 12.2.1",
+      "cuda": "12.9",
+      "architecture": "sm_70"
+    }
+  },
+  "measured_configuration": {
+    "run": "final_cache6_long",
+    "cpu_scale_cache_MiB": 6144,
+    "reason": "Only completed full-protocol candidate; 8 and 10 GiB attempts failed before timed samples.",
+    "throughput_residency_checks_passed": true,
+    "quality_qualified": false
+  }
+}

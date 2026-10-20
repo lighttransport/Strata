@@ -649,11 +649,13 @@ template <int parts, bool prepared = false, int cols = 32, bool ordered = false>
 __global__ void __launch_bounds__(cols *parts, 1)
     kda_rows_columns(float *state, const float *q, const float *k, const float *v, const float *g,
                      const float *beta, float *out, int heads, int tokens,
-                     const float *prepared_qi = nullptr) {
+                     const float *prepared_qi = nullptr, float *snapshots = nullptr,
+                     long long snapshot_stride = 0, int snapshot_tokens = 0) {
     constexpr int dim = 128, rows = dim / parts;
     const int h = blockIdx.x, lane = threadIdx.x % cols;
     const int j = blockIdx.y * cols + lane, part = threadIdx.x / cols;
     state += (size_t)h * dim * dim;
+    if (snapshots) snapshots += (size_t)h * dim * dim + j;
     float values[rows];
 #pragma unroll
     for (int i = 0; i < rows; ++i)
@@ -763,6 +765,13 @@ __global__ void __launch_bounds__(cols *parts, 1)
                 total += partial[p * cols + lane];
             }
             out[offset + j] = total;
+        }
+        // Each partition owns disjoint state rows. Preserve every requested
+        // prefix directly in the serial kernel's layout and stride.
+        if (snapshots && t < snapshot_tokens) {
+#pragma unroll
+            for (int i = 0; i < rows; ++i)
+                snapshots[(size_t)t * snapshot_stride + (size_t)(part * rows + i) * dim] = values[i];
         }
         __syncthreads();
     }
@@ -1393,8 +1402,10 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
                    int snapshot_tokens) {
     if (dim != 128 || tokens < 1 || tokens > 2048)
         throw std::invalid_argument("GLM: invalid KDA chunk");
-    if (snapshots && (row_parts != 1 || prepared_qi))
-        throw std::invalid_argument("GLM: KDA snapshots need the column kernel");
+    if (snapshots && (prepared_qi || (row_parts != 1 &&
+        !((row_parts == 2 || row_parts == 4) && columns == 128 &&
+          strata_env_is_one("STRATA_GLM_KDA_ORDERED_ROWS")))))
+        throw std::invalid_argument("GLM: KDA snapshots need unprepared serial or ordered rows");
     if (row_parts != 1) {
         if (columns != 128 || (row_parts != 2 && row_parts != 4 && row_parts != 8))
             throw std::invalid_argument("GLM: parallel KDA needs 128 columns and 2, 4 or 8 row parts");
@@ -1407,13 +1418,13 @@ void glm_kda_chunk(float *state, const float *q, const float *k, const float *v,
                 if (prepared_qi)
                     kda_rows_columns<2, true, 32, true><<<grid, 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, prepared_qi);
                 else
-                    kda_rows_columns<2, false, 32, true><<<grid, 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+                    kda_rows_columns<2, false, 32, true><<<grid, 64, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, nullptr, snapshots, snapshot_stride, snapshot_tokens);
                 check(); return;
             }
             if (prepared_qi)
                 kda_rows_columns<4, true, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, prepared_qi);
             else
-                kda_rows_columns<4, false, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens);
+                kda_rows_columns<4, false, 32, true><<<grid, 128, 0, (cudaStream_t)s>>>(state, q, k, v, g, b, out, heads, tokens, nullptr, snapshots, snapshot_stride, snapshot_tokens);
             check(); return;
         }
         if (row_parts == 2)

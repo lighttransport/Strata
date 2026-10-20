@@ -55,6 +55,45 @@ __global__ void greedy_finish(const GreedyPartial *partials, int count, GlmGreed
     best = greedy_reduce(best, shared);
     if (!threadIdx.x) *result = GlmGreedyPick{best.token, best.nonfinite};
 }
+// A hierarchy of 256-to-16 sorts keeps the entire vocabulary on device.
+// Integer keys implement CPU finite/tie semantics even with FP32 FTZ enabled.
+__global__ void top16_blocks(const float *logits, const uint8_t *allowed,
+                             const uint64_t *input, uint64_t *output,
+                             int vocabulary, int columns) {
+    __shared__ uint64_t keys[256];
+    const int t=threadIdx.x, row=blockIdx.y, column=int(blockIdx.x)*256+t;
+    uint64_t key=0;
+    if(column<columns) {
+        if(input)key=input[size_t(row)*columns+column];
+        else if(!allowed || allowed[column]) {
+            uint32_t bits=__float_as_uint(logits[size_t(row)*vocabulary+column]);
+            if((bits&0x7f800000u)!=0x7f800000u) {
+                if((bits&0x7fffffffu)==0)bits=0;
+                const uint32_t rank=bits&0x80000000u?~bits:bits^0x80000000u;
+                key=(uint64_t(rank)<<32)|uint32_t(~uint32_t(column));
+            }
+        }
+    }
+    keys[t]=key;__syncthreads();
+    for(int span=2;span<=256;span*=2)for(int distance=span/2;distance;distance/=2) {
+        const int other=t^distance;
+        if(other>t) {
+            const auto a=keys[t],b=keys[other];
+            if(((t&span)==0)?a<b:a>b){keys[t]=b;keys[other]=a;}
+        }
+        __syncthreads();
+    }
+    if(t<16)output[(size_t(row)*gridDim.x+blockIdx.x)*16+t]=keys[t];
+}
+__global__ void top16_finish(const float *logits, const uint64_t *keys,
+                             GlmLogitCandidate *output, int vocabulary) {
+    const int index=int(blockIdx.x)*16+threadIdx.x;
+    if(threadIdx.x<16) {
+        const uint64_t key=keys[index];
+        const int token=key?int(~uint32_t(key)):-1;
+        output[index]={token<0?-INFINITY:logits[size_t(blockIdx.x)*vocabulary+token],token};
+    }
+}
 __device__ float sig(float x) {
     return 1.f / (1.f + expf(-x));
 }
@@ -486,6 +525,14 @@ __global__ void hyper_head(const float *r, float *out, int n) {
     if (d < n)
         out[d] = (r[d] + r[n + d] + r[2 * n + d] + r[3 * n + d]) * .25f;
 }
+__global__ void hyper_head_tokens(const float *r, float *out, int n) {
+    const int d=blockIdx.x*blockDim.x+threadIdx.x;
+    const size_t row=blockIdx.y;
+    if(d<n) {
+        r+=row*4*n;
+        out[row*n+d]=(r[d]+r[n+d]+r[2*n+d]+r[3*n+d])*.25f;
+    }
+}
 __global__ void conv(const float *x, const float *w, float *history, float *y, int n, int k) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
@@ -702,6 +749,27 @@ void glm_greedy_pick(const float *logits, int vocabulary, void *scratch,
     greedy_finish<<<1, 256, 0, (cudaStream_t)s>>>((const GreedyPartial *)scratch, blocks, result);
     check();
 }
+uint64_t glm_top16_scratch_bytes(int vocabulary,int tokens) {
+    width(vocabulary);
+    if(tokens<1 || tokens>8)throw std::invalid_argument("GLM: top16 rows must be1..8");
+    return 2*((uint64_t(vocabulary)+255)/256)*16*tokens*sizeof(uint64_t);
+}
+void glm_top16(const float *logits,const uint8_t *allowed,int vocabulary,int tokens,
+               void *scratch,GlmLogitCandidate *result,void *s) {
+    const uint64_t bytes=glm_top16_scratch_bytes(vocabulary,tokens);
+    if(!logits || !scratch || !result)throw std::invalid_argument("GLM: null top16 buffer");
+    auto *first=static_cast<uint64_t*>(scratch),*second=first+bytes/(2*sizeof(uint64_t));
+    const uint64_t *input=nullptr;auto *output=first;
+    int columns=vocabulary;
+    while(true) {
+        const int blocks=int((uint64_t(columns)+255)/256);
+        top16_blocks<<<dim3(blocks,tokens),256,0,(cudaStream_t)s>>>(logits,allowed,input,output,vocabulary,columns);
+        check();
+        if(blocks==1)break;
+        columns=blocks*16;input=output;output=output==first?second:first;
+    }
+    top16_finish<<<tokens,32,0,(cudaStream_t)s>>>(logits,output,result,vocabulary);check();
+}
 void glm_rms_norm(const float *x, const float *w, float *y, int n, int tokens, float eps, void *s) {
     width(n);
     width(tokens);
@@ -832,6 +900,12 @@ void glm_router_tokens(const float *l, const float *b, int *ids, float *w, int n
 void glm_hyper_head(const float *r, float *out, int n, void *s) {
     width(n);
     hyper_head<<<(n + 255) / 256, 256, 0, (cudaStream_t)s>>>(r, out, n);
+    check();
+}
+void glm_hyper_head_tokens(const float *r,float *out,int n,int tokens,void *s) {
+    width(n);
+    if(tokens<1||tokens>16384)throw std::invalid_argument("GLM: invalid hyper-head rows");
+    hyper_head_tokens<<<dim3((n+255)/256,tokens),256,0,(cudaStream_t)s>>>(r,out,n);
     check();
 }
 void glm_conv(const float *x, const float *w, float *history, float *y, int n, int k, void *s) {

@@ -13,6 +13,7 @@
 #include "ibvew.h"
 #include "ucomm_internal.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -49,6 +50,7 @@ typedef struct {
   uint64_t sent, reposted, credit_sent_at;
   int free_slot[SLOTS], nfree;
   int sq_used;
+  uint32_t inline_max; /* opt-in UCOMM_IB_INLINE, capped by the provider */
   ucomm_req_t *sq, *sq_tail; /* sends waiting for a slot / credit */
   ucomm_req_t *rq, *rq_tail; /* rendezvous receives with reads left to post */
   uint64_t finq[FINQ];
@@ -156,6 +158,7 @@ static int post_msg(ib_be *b, int pi, const mhdr *h, const void *payload, size_t
   wr.num_sge = 1;
   wr.opcode = IBV_WR_SEND;
   wr.send_flags = IBV_SEND_SIGNALED;
+  if (MHDR + plen <= p->inline_max) wr.send_flags |= IBV_SEND_INLINE;
   if (ibvew_post_send(p->qp, &wr, &bad) != 0) {
     p->free_slot[p->nfree++] = slot;
     return -1;
@@ -188,6 +191,7 @@ static int write_credit(ib_be *b, int pi) {
   wr.num_sge = 1;
   wr.opcode = IBV_WR_RDMA_WRITE;
   wr.send_flags = IBV_SEND_SIGNALED;
+  if (8 <= p->inline_max) wr.send_flags |= IBV_SEND_INLINE;
   wr.wr.rdma.remote_addr = p->r_credit_addr;
   wr.wr.rdma.rkey = p->r_rkey;
   if (ibvew_post_send(p->qp, &wr, &bad) != 0) return -1;
@@ -515,6 +519,17 @@ static int qp_connect(ucomm_t *c, ib_be *b, int pi, const ib_info *mine, const i
 }
 
 ucomm_status uc_ib_init(ucomm_t *c) {
+  unsigned long requested_inline = 0;
+  const char *inline_env = getenv("UCOMM_IB_INLINE");
+  if (inline_env && *inline_env) {
+    char *end;
+    errno = 0;
+    requested_inline = strtoul(inline_env, &end, 10);
+    if (errno || *end || *inline_env == '-' || requested_inline > 256) {
+      fprintf(stderr, "[ucomm %d] UCOMM_IB_INLINE must be 0..256 bytes\n", c->rank);
+      return UCOMM_ERR_ARG;
+    }
+  }
   ib_be *b = calloc(1, sizeof *b);
   if (!b) return UCOMM_ERR_NOMEM;
   c->be = b;
@@ -554,9 +569,12 @@ ucomm_status uc_ib_init(ucomm_t *c) {
     qa.cap.max_recv_wr = SLOTS;
     qa.cap.max_send_sge = 1;
     qa.cap.max_recv_sge = 1;
+    qa.cap.max_inline_data = (uint32_t)requested_inline;
     qa.qp_type = IBV_QPT_RC;
     p->qp = b->api.create_qp(b->pd, &qa);
     if (!p->qp) goto fail;
+    p->inline_max = qa.cap.max_inline_data < requested_inline ? qa.cap.max_inline_data : (uint32_t)requested_inline;
+    if (requested_inline) UC_LOG(c, "ib peer %d inline limit %u bytes", pi, p->inline_max);
     struct ibv_qp_attr a;
     memset(&a, 0, sizeof a);
     a.qp_state = IBV_QPS_INIT;
