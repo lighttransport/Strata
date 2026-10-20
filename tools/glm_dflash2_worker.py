@@ -343,6 +343,28 @@ def warm_protocol(model):
     model.select(ids, unary, 0).tolist()
 
 
+@torch.inference_mode()
+def warm_incremental(model):
+    """Materialize each accepted-prefix append shape without committing rows."""
+    if not model.cache or model.last_hidden is None:
+        raise ValueError('incremental warmup requires prepared context and hidden rows')
+    cache, start, end, hidden = model.cache, model.start, model.end, model.last_hidden
+    embedding = (model.graph_embedding.clone() if model.graph is not None else
+                 torch.zeros((8, model.h), device=model.device, dtype=model.dtype))
+    succeeded = False
+    try:
+        for rows in range(1, 8):
+            features = torch.zeros((rows, model.h*5), device=model.device, dtype=model.dtype)
+            model.append(features, model.end, model.end+rows)
+            model.forward(embedding)
+        succeeded = True
+    finally:
+        model.cache, model.start, model.end = cache, start, end
+        if succeeded and model.graph is not None:
+            model.replay(embedding)
+        model.last_hidden = hidden
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--model', type=Path, required=True)
@@ -355,12 +377,15 @@ def main():
     p.add_argument('--fc-adapter', type=Path, help='optional checksummed target-feature bridge calibration')
     p.add_argument('--linear-adapters', type=Path, help='optional checksummed FC and MLP output calibration')
     p.add_argument('--warm-protocol', action='store_true', help='materialize binary export and selector work before readiness; requires --gemm-f32')
+    p.add_argument('--warm-incremental', action='store_true', help='warm accepted-prefix append widths one through seven before readiness; requires --warm-protocol')
     p.add_argument('--trace-protocol', type=int, default=0, help='log timings for the first N protocol requests (0..64)')
     a = p.parse_args()
     if a.fc_adapter and a.linear_adapters:
         p.error('choose FC-only or FC/MLP adapters')
     if a.warm_protocol and not a.gemm_f32:
         p.error('--warm-protocol requires --gemm-f32')
+    if a.warm_incremental and not a.warm_protocol:
+        p.error('--warm-incremental requires --warm-protocol')
     if not 0 <= a.trace_protocol <= 64:
         p.error('--trace-protocol must be 0..64')
     if not 0 <= a.selector_scale <= 2:
@@ -407,6 +432,8 @@ def main():
             model.enable_cuda_graph(torch.zeros((8,4096),device=a.device,dtype=activation_dtype))
         if a.warm_protocol:
             warm_protocol(model)
+        if a.warm_incremental:
+            warm_incremental(model)
         model.cache=[];model.end=model.start=0;model.last_hidden=None
     torch.cuda.synchronize()
     reserved = torch.cuda.max_memory_reserved() / 2**20

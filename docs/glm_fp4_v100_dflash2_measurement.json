@@ -26756,7 +26756,8 @@
       "151": "CPU and V100 synthetic checks passed",
       "185": "FC/MLP adapters passed24CPU and real-weight V100 checks; native sources unchanged",
       "205": "CPU30 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged",
-      "212": "CPU31 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged"
+      "212": "CPU31 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged",
+      "238": "CPU32 and real-weight V100 selector/gradient/serving/graph checks passed; native sources unchanged"
     },
     "adaptive_depth": {
       "passed": true,
@@ -26887,6 +26888,37 @@
         "raw_sha256": "4798c3739dfba80ad46779e2aa3bd06ab05d566c189298b874ea328dbca5db90",
         "evaluate_before_training_checked": true,
         "scope": "Seven residual adapters; real-weight V100 synthetic forward/gradient/selector/graph check. No trained TPS or coding result. Source205 missed evaluate-before-training, which failed the real208training run; source212 adds that regression check."
+      },
+      {
+        "passed": true,
+        "gpu": "Tesla V100-PCIE-32GB",
+        "adapter_targets": "fc-mlp-down-selector",
+        "zero_adapter_context_rows": [
+          8,
+          2048
+        ],
+        "zero_adapter_max_abs_errors": [
+          0.0,
+          0.0
+        ],
+        "nonzero_adapter_serving_equal": true,
+        "gradient_norms": [
+          0.9136819839477539,
+          0.8480291366577148
+        ],
+        "base_weights_unchanged": true,
+        "skinny_relative_l2_error": 0.002759495284408331,
+        "peak_reserved_bytes": 10661920768,
+        "fit": false,
+        "performance_anchor": false,
+        "checkpoint_sha256": "b038e1d9d1e7833fa3880c2c0135ba9b673013f03da1b29fb831931584759dac",
+        "source_manifest_sha256": "b519785f85da6ba12dba9ccfc65ba62e6a1805fd634bfd2d3b0ee6c8ebacc534",
+        "source_version": 238,
+        "cpu_tests": 32,
+        "raw_sha256": "1f9bf2c4e2d2fd782c3c52e24b4246c1321203dd4260c50e52b34575236c2aba",
+        "evaluate_before_training_checked": true,
+        "scope": "Seven residual adapters; real-weight V100 synthetic forward/gradient/selector/graph check. No trained TPS or coding result. Source205 missed evaluate-before-training, which failed the real208training run; source212 adds that regression check.",
+        "incremental_warmup_checked": true
       }
     ],
     "protocol_smokes": [
@@ -27003,6 +27035,131 @@
         "all_requests_returned": true,
         "worker_returncode": 0,
         "raw_sha256": "9e2b8a2ca5eda753198f68eaacfdd597aa2a4712b96b71d4c56859b1106436e8"
+      },
+      {
+        "complete": true,
+        "fit": false,
+        "performance_anchor": false,
+        "fresh_holdout_scored": false,
+        "worker_config_sha256": "61eeae28d666223ccf7fee9da386b97f2380df7437eac425195cfbe4b1b69a24",
+        "source_manifest_sha256": "b519785f85da6ba12dba9ccfc65ba62e6a1805fd634bfd2d3b0ee6c8ebacc534",
+        "requests": [
+          {
+            "op": "prepare",
+            "roundtrip_ms": 170.71346298325807,
+            "deadline_seconds": 30,
+            "append_rows": 2048
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 15.851238975301385,
+            "deadline_seconds": 1,
+            "append_rows": 0
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.9198310328647494,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.940702933818102,
+            "deadline_seconds": 1,
+            "append_rows": 1
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.722065033391118,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.959599003195763,
+            "deadline_seconds": 1,
+            "append_rows": 2
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.6352619277313352,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.68760799150914,
+            "deadline_seconds": 1,
+            "append_rows": 3
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.6125180991366506,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.681636933237314,
+            "deadline_seconds": 1,
+            "append_rows": 4
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.6116059850901365,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.6571579342708,
+            "deadline_seconds": 1,
+            "append_rows": 5
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.6103220405057073,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.75777895655483,
+            "deadline_seconds": 1,
+            "append_rows": 6
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.6016389708966017,
+            "deadline_seconds": 1,
+            "append_rows": null
+          },
+          {
+            "op": "draft",
+            "roundtrip_ms": 9.780760970897973,
+            "deadline_seconds": 1,
+            "append_rows": 7
+          },
+          {
+            "op": "select",
+            "roundtrip_ms": 1.596985966898501,
+            "deadline_seconds": 1,
+            "append_rows": null
+          }
+        ],
+        "scope": "Real V100 worker/socket smoke with synthetic committed features and candidate IDs. Frozenrank32FCadapter,incrementalwidths1through7afteroptionalpre-readywarmup;1s draft/selectorand30spreparedeadlines. No target-model TPS or coding result.",
+        "readiness": {
+          "protocol": 2,
+          "ready": true,
+          "vram_mib": 3046.0,
+          "hidden_size": 4096,
+          "vocab_size": 154880,
+          "block_size": 8,
+          "mask_token_id": 154856
+        },
+        "all_requests_returned": true,
+        "worker_returncode": 0,
+        "raw_sha256": "29535913594ced6fed96106ad57e878e1b8f572540b3e1746c23cf72dec9bec2"
       }
     ],
     "combined_pair_library_pin_checks": [

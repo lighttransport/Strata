@@ -138,11 +138,15 @@ def main():
         if not torch.isfinite(narrow).all() or skinny_relative_error > .005:
             raise ValueError('skinny serving core diverges from calibrated reference')
         if a.adapter_targets == 'fc-mlp-down-selector':
-            from glm_dflash2_worker import warm_protocol
+            from glm_dflash2_worker import warm_protocol, warm_incremental
             reference.enable_cuda_graph(embedding)
             warm_protocol(reference)
+            cache, first, end = reference.cache, reference.start, reference.end
+            warm_incremental(reference)
+            if reference.cache is not cache or (reference.start, reference.end) != (first, end):
+                raise ValueError('incremental warmup committed synthetic context rows')
             if not torch.equal(narrow, reference.replay(embedding)):
-                raise ValueError('protocol warmup changed packed CUDA graph outputs')
+                raise ValueError('protocol or incremental warmup changed packed CUDA graph outputs')
     print(json.dumps(dict(passed=True, gpu=torch.cuda.get_device_name(a.device), adapter_targets=a.adapter_targets,
                           zero_adapter_context_rows=[8, 2048], zero_adapter_max_abs_errors=errors,
                           nonzero_adapter_serving_equal=True, gradient_norms=gradient_norms,

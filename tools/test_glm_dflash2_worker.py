@@ -12,6 +12,35 @@ except ImportError:
 
 @unittest.skipIf(torch is None, 'PyTorch not installed')
 class DFlash2Test(unittest.TestCase):
+    def test_incremental_warmup_preserves_serving_state_and_visits_all_widths(self):
+        from glm_dflash2_worker import warm_incremental
+        model = self.tiny()
+        features, embedding = torch.randn(8, 80), torch.randn(8, 16)
+        model.append(features, 0, 8)
+        expected = model.forward(embedding).clone()
+        cache, hidden = model.cache, model.last_hidden
+        cached_values = [(k.clone(), v.clone()) for k, v in cache]
+        weights = {name: value.clone() for name, value in model.w.items()}
+        original_append, widths = model.append, []
+        def append(features, start, end):
+            widths.append(end-start)
+            return original_append(features, start, end)
+        model.append = append
+        warm_incremental(model)
+        self.assertEqual(widths, list(range(1, 8)))
+        self.assertIs(model.cache, cache)
+        self.assertIs(model.last_hidden, hidden)
+        self.assertEqual((model.start, model.end), (0, 8))
+        for (k, v), (a, b) in zip(model.cache, cached_values):
+            torch.testing.assert_close(k, a, rtol=0, atol=0)
+            torch.testing.assert_close(v, b, rtol=0, atol=0)
+        torch.testing.assert_close(model.forward(embedding), expected, rtol=0, atol=0)
+        for name, value in model.w.items():
+            torch.testing.assert_close(value, weights[name], rtol=0, atol=0)
+        model.cache = []
+        with self.assertRaisesRegex(ValueError, 'prepared context'):
+            warm_incremental(model)
+
     def test_protocol_warmup_preserves_hidden_and_parameters(self):
         from glm_dflash2_worker import warm_protocol
         model = self.tiny()

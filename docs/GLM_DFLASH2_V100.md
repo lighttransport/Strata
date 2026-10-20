@@ -38,6 +38,10 @@ A later rank 32 FC adapter measured 30.06 / 33.39 decode tok/s for base /
 calibrated workers on the same hardware, after three full warmups and one timed
 512-output request per side. Both passed residency checks. This 11.05% screen
 gain has no repeated timing or coding qualification.
+For that measured proposal stream, removing all work outside verification
+would reach only 39.53 tok/s. Reaching 50 tok/s with the other phases held fixed
+requires a 1.65× verification speedup. These are conditional phase calculations,
+not forecasts for a changed drafter or routing policy.
 
 The combined CPU-scale/KDA-projection candidate still failed residency checks
 after executable and library pages were pinned during discarded warmup.
@@ -71,6 +75,16 @@ worker arguments. Add `--cuda-graph` to replay the five-layer forward pass for
 complete 2,048-row windows; shorter windows use eager execution. Graph inputs
 receive the current committed K/V, embeddings and absolute position on every
 replay. Neither option changes the checkpoint on disk.
+
+The optional worker flags `--warm-protocol --warm-incremental` materialize
+binary export, selector work and accepted-prefix append widths one through
+seven before readiness. They require `--gemm-f32` and restore the committed
+cache, positions and hidden state afterward. Both are off by default.
+On V100, 32 CPU tests and real-weight graph-output equality checks passed.
+One 17-operation socket smoke with the rank 32 FC adapter used 3,046 MiB;
+incremental append-and-draft calls took 9.66–9.96 ms and every operation met its
+deadline. This is worker validation, not full-model throughput or evidence
+that later paging cannot recur.
 
 The target's KDA mixers can also use verification graphs. Add `--decode-graphs`
 and set `STRATA_GLM_VERIFY_GRAPHS=1` with
