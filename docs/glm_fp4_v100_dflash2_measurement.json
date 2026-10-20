@@ -23565,6 +23565,36 @@
       "raw_sha256": "db8c4327ef4a76e6cc0f1ca2a243ea1cf75edcf108d7192a4c659e2da2918e5a"
     },
     {
+      "name": "default-v234-disk-parity128",
+      "ram_executable": false,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "29ae5fe8d9f73c9e4717ea386bbf0adab2777c9ad598366b29854cb47e7150b2",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "cd1c0ac166dfa9c434e5863811d23a215268ad9dba96e0b0751e513d96ef9efe",
+      "scope": "Frozen default numerical settings; executable placement is recorded by ram_executable. Output parity only; no throughput qualification.",
+      "raw_sha256": "0d3c271e4b6a089c47f09fee7b8546f258ab45cd7a19589aeed33c383bfe9022"
+    },
+    {
+      "name": "default-v234-ram-parity128",
+      "ram_executable": true,
+      "passed": true,
+      "tokens": 128,
+      "output_sha256": "53492534f0e19192b27073135e86f63c8582bfb2b86d29962cbe8b567ce8ab2d",
+      "candidate_sha256": "29ae5fe8d9f73c9e4717ea386bbf0adab2777c9ad598366b29854cb47e7150b2",
+      "decoder_returncode": 0,
+      "timing_qualified": false,
+      "timed_major_faults": 0,
+      "benchmark_error": null,
+      "result_sha256": "cf2c1f038f6e7f96b928dc1783b91c2a1c0d0b107f4d250b6ad9c3d30777442e",
+      "scope": "Frozen default numerical settings; executable placement is recorded by ram_executable. Output parity only; no throughput qualification.",
+      "raw_sha256": "f635e4e4cd1c44d4df8b3e217229fedb4c6ad4bfcfc9f881fd30456eec2d0b37"
+    },
+    {
       "name": "default-v24-parity128",
       "passed": true,
       "tokens": 128,
@@ -26790,6 +26820,43 @@
         "source-audit.json": "bac8c030c64f06b97092e437b709dd11b2b21acb423a64ea740518c0b61444b8",
         "ctest.log": "ff5ac0501359f4f62d16194b3622786c5d2ac2b19cac098a3a3fbbc4ab6803a8"
       }
+    },
+    "ram_executable": {
+      "passed": true,
+      "source_manifest_sha256": "07233ed0ab751c563386e74544a78adef6ff2e848be8b52a041aa2f51c782db0",
+      "compiled_source_sha256": {
+        "CMakeLists.txt": "e7b5b6e0a3ea305b3716018b5a96ff61b9901348c364001640d0d48fb90cf970",
+        "include/strata/core/ram_executable.hpp": "8d63cc788de5edf83ff3966d7ad0ac7296051632d6b5624fc5a2d3f822f14e24",
+        "src/program/glm_decode.cpp": "b29f1180a5973522701d679e4c01fb7fcf14e8014be6924a97349c26315eb9b2",
+        "tests/host/glm_ram_executable_test.cpp": "f0005e92b15df3cc6d6d16e441f17027b616b77a6f9551b46d264c044d658c83"
+      },
+      "hip_compile_only": true,
+      "hip_decoder_sha256": "af84bafd559dbedf3031a5ebeb1fddbd102cb2f1013ebf04465ac09206c37694",
+      "host_tests": 6,
+      "pid_preserved": true,
+      "self_image_bytes_identical": true,
+      "seals_checked": true,
+      "disabled_path_inode_preserved": true,
+      "hip_ram_backend_query": true,
+      "hip_image_bytes": 27957640,
+      "hip_gpu_execution": false,
+      "cuda_validation": "CUDA native decoder, six host tests and RAM-image backend query passed",
+      "fit": false,
+      "performance_anchor": false,
+      "host_record_sha256": "3d86c645e43eb2d84a8f5c49b71b55504199d0185b704741740b2bc447bcc4e0",
+      "cuda_decoder_sha256": "29ae5fe8d9f73c9e4717ea386bbf0adab2777c9ad598366b29854cb47e7150b2",
+      "cuda_ram_image_bytes": 82545320,
+      "cuda_build_raw_sha256": {
+        "config.log": "093a2eade4d87ed676934eae0731942c5efae65feae1f7dac90de24e2fe3656c",
+        "host.log": "0ca3269075c67c0bb02d6ef3a045870270fd02cb0b4216e4c1656e3142b886f2",
+        "ready": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "identity.sha256": "9e2ad7ce9f26477c4b61bf1db09bdc2b5185e014a4bffd7c8288f34bece599df",
+        "ram-image.log": "87a577aa5d8ee8fa1e5afa3579526ef40176f3f5545e0da649049a54d47d6715",
+        "build.log": "f13650ae3554a1df5dfc1e96ee26ff88ee40981ee4f5553b1fe3e4fad182a444",
+        "source-audit.json": "dd25c2d6868a5c106ba7b8d43200707a510a232d50f4db849f453cb3a3d8da17",
+        "ctest.log": "373f2f353f0058104ead94f31b28997b90b7a0351df46f77859a1685184f7c4c"
+      },
+      "scope": "Opt-in sealed memfd execution before engine initialization; same PID, arguments and transport descriptors. Only executable bytes copied; no weight copy or allocation increase. HIP compiled and backend queried without model/GPU execution; CUDA default output parity recorded separately. No speed gain is implied by validation."
     },
     "linear_adapter_gradients": {
       "passed": true,

@@ -16,6 +16,7 @@
 #include "strata/host/glm_draft.h"
 #include "strata/core/device.hpp"
 #include "strata/core/runtime_memory.hpp"
+#include "strata/core/ram_executable.hpp"
 #include "strata/artifact/expert_calibration.hpp"
 #include "strata/artifact/expert_block_screen.hpp"
 #include "strata/artifact/json.hpp"
@@ -11528,6 +11529,8 @@ static int serve(int argc, char **argv, const std::string& dflash_config) {
 }
 
 int main(int argc, char **argv) {
+    try { strata::core::glm_ram_executable(argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 2; }
     if (argc==2 && std::string(argv[1])=="--device-info") {
         try { report_gpu_devices(std::cout); return 0; }
         catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 2; }

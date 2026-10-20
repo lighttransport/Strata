@@ -59,6 +59,15 @@ cases. An optional RAM executable is being tested as a mitigation.
 
 ## Execution
 
+On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a
+sealed RAM file and executes it before engine initialization, preserving its
+PID, arguments and transport descriptors. The copy is capped at 128 MiB; the
+tested CUDA image was 82,545,320 bytes and used the same 181 GiB allocation.
+The option is off by default. CUDA and HIP builds and six host tests per build
+passed. Both the disk and RAM CUDA paths matched all 128 frozen default token
+IDs. HIP model execution was not tested. These are build and output checks;
+paired full-model timing is separate.
+
 Install a CUDA PyTorch build supporting SM70, NumPy, safetensors and Ninja in a separate
 Python environment. The initial V100 environment uses PyTorch 2.5.1+cu121 and
 safetensors 0.6.2. Build the helper on the GPU node with the CUDA toolkit and a
