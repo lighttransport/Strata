@@ -375,6 +375,7 @@ def main():
     p.add_argument('--cuda-graph', action='store_true', help='replay fixed-window draft forward on CUDA; shorter windows use eager mode')
     p.add_argument('--round-bf16', action='store_true', help='software BF16 activation rounding with FP16 tensor operands')
     p.add_argument('--selector-scale', type=float, default=1.0, help='candidate transition scale; zero tests unary proposals')
+    p.add_argument('--selector-lookahead', type=float, default=0., help='discounted candidate-path lookahead (0..1; zero keeps sequential selection)')
     p.add_argument('--fc-adapter', type=Path, help='optional checksummed target-feature bridge calibration')
     p.add_argument('--linear-adapters', type=Path, help='optional checksummed FC and MLP output calibration')
     p.add_argument('--warm-protocol', action='store_true', help='materialize binary export and selector work before readiness; requires --gemm-f32')
@@ -391,6 +392,8 @@ def main():
         p.error('--trace-protocol must be 0..64')
     if not 0 <= a.selector_scale <= 2:
         p.error('selector scale must be finite and in 0..2')
+    if not 0 <= a.selector_lookahead <= 1:
+        p.error('selector lookahead must be finite and in 0..1')
     config = validate_config(json.loads((a.model / 'config.json').read_text()))
     if sys.byteorder != 'little' or not a.device.startswith('cuda:'):
         p.error('little-endian CUDA host required')
@@ -417,6 +420,9 @@ def main():
         from glm_dflash2_linear_adapter import load_linear_adapters
         adapter = load_linear_adapters(a.linear_adapters, model, a.model / 'model.safetensors')
         print(f'DFLASH_LINEAR_ADAPTERS rank={adapter["rank"]} weights_sha256={adapter["weights_sha256"]}', file=sys.stderr, flush=True)
+    if a.selector_lookahead:
+        from glm_dflash2_selector_lookahead import install_lookahead
+        install_lookahead(model, a.selector_lookahead)
     if a.skinny_library:
         model.enable_skinny(a.skinny_library.resolve())
         torch.cuda.synchronize()

@@ -147,10 +147,23 @@ def main():
                 raise ValueError('incremental warmup committed synthetic context rows')
             if not torch.equal(narrow, reference.replay(embedding)):
                 raise ValueError('protocol or incremental warmup changed packed CUDA graph outputs')
+            from glm_dflash2_selector_lookahead import transition_tables, path_indices, install_lookahead
+            candidates = torch.arange(7*16, device=a.device).reshape(7, 16)
+            unary = torch.zeros((7, 16), device=a.device)
+            original = reference.select(candidates, unary, 42)
+            tables = transition_tables(reference, candidates, unary, 42)
+            if not torch.equal(original, candidates.gather(1, path_indices(tables, 0.)[:, None])[:, 0]):
+                raise ValueError('zero-discount lookahead changed sequential selection')
+            install_lookahead(reference, .25)
+            selected = reference.select(candidates, unary, 42)
+            expected = candidates.gather(1, path_indices(tables, .25)[:, None])[:, 0]
+            if not torch.equal(selected, expected) or not torch.equal(narrow, reference.replay(embedding)):
+                raise ValueError('lookahead selector or graph state differs')
     print(json.dumps(dict(passed=True, gpu=torch.cuda.get_device_name(a.device), adapter_targets=a.adapter_targets,
                           zero_adapter_context_rows=[8, 2048], zero_adapter_max_abs_errors=errors,
                           nonzero_adapter_serving_equal=True, gradient_norms=gradient_norms,
                           base_weights_unchanged=True, skinny_relative_l2_error=skinny_relative_error,
+                          selector_lookahead_checked=a.adapter_targets == 'fc-mlp-down-selector',
                           peak_reserved_bytes=torch.cuda.max_memory_reserved(), fit=False,
                           performance_anchor=False, checkpoint_sha256=BASE_SHA)))
     return 0

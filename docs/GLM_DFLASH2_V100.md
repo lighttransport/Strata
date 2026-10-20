@@ -215,6 +215,24 @@ transition scores (default 1, range 0–2, zero tests unary candidates). These
 change draft proposals, while target verification and its configured acceptance
 policy remain responsible for emitted tokens. They are not selected presets.
 
+`--selector-lookahead D` optionally scores whole candidate paths using the
+learned transition codebooks and discounted future scores. `D` ranges from
+zero to one; zero is the default and keeps the existing sequential selector.
+The option uses the same seven slots and sixteen head candidates per slot.
+
+With the frozen rank 32 FC adapter, discount 0.25 raised mean correct strict
+teacher-prefix length from 2.16 to 2.69 tokens across 32 independent capture
+windows. First-token agreement rose from 23/32 to 24/32. Zero-discount paths
+matched serving selection on every base and FC-adapter window. These are
+calibration proxies. The matched depth-three native screen measured 34.79 /
+31.50 decode tok/s for control / lookahead after three full warmups and one
+timed 512-output request per side. Both passed residency checks; lookahead was
+9.46% slower. Both depth-seven cases failed before timing on worker deadlines.
+No lookahead preset is selected, and coding quality remains unscored.
+All 37 CPU tests passed, along with real-weight V100 selector/graph checks and
+a 19-operation socket check of the enabled option. The default `Draft` class
+stays unchanged; no target or checkpoint weights are updated by this option.
+
 The target verifies anchor plus proposals in a window of at most eight rows.
 Only the matching greedy prefix is accepted; target state is restored to its
 committed length after a rejection. This acceptance rule does not use the

@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "6515d0c13e3f45de6c6c6280cd8a3fa4097126e8ba692cf9bfbd34061691e50f"
+      "sha256": "a9680cc6fdcb67f1289462891a60371bdc12fc7dca6f69fc2fe534fbb8ceeb9a"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6978,6 +6978,26 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-lookahead-control-depth3-v257",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 34.78675244222063,
+      "prefill_tok_s": 503.8843132792461,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-lookahead-lookahead-depth3-v257",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 31.49713074082977,
+      "prefill_tok_s": 505.14891780230624,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-lookup24-drop05-v39",
       "experiment_family": "dflash2",
       "decode_tok_s": 31.544252612336038,
@@ -7973,6 +7993,9 @@
     "DFlash2: same-build confidence-depth single-request512output screens: fixed7=22.70, minimum2=28.93. Qualified fixed3control=False, raw512IDequality=True. Separate repeated timing and coding gates remain required; variable-depth phase analysis omits a fixed full-block perfect-acceptance scenario. No capacity or selected preset changed.",
     "DFlash2: same-build confidence-depth single-request512output screens: fixed3=34.31, minimum3=31.27. Qualified fixed3control=True, raw512IDequality=True. Separate repeated timing and coding gates remain required; variable-depth phase analysis omits a fixed full-block perfect-acceptance scenario. No capacity or selected preset changed.",
     "DFlash2: selector-aware training213 selected step320 with mean correct prefix3.875 versus3.375 on8calibration windows. This proxy does not establish native speed or coding quality and changes no selected preset or capacity.",
+    "DFlash2: offline discounted selector lookahead0.25 onfc32 raised mean correct teacher-prefix length2.15625to2.6875 across32independent windows. Zero-discount paths matched existing serving selection on every base/FC32window. This calibration proxy is separate from native TPS and coding quality; no selected preset or resource capacity changed.",
+    "DFlash2: native discounted-selector depth3 control/lookahead measured 34.79/31.50 decode tok/s after three full warmups and one timed512 request per side. The proxy improvement did not translate to native speed; no lookahead preset is selected and coding quality remains unscored.",
+    "DFlash2: discounted-selector depth7 control and candidate failed before timing with an unavailable external draft. Pre-readiness append-width warmup did not ensure the later target-loaded protocol met its one-second deadline; these failures provide no throughput measurement. Fault counters do not identify their backing file.",
     "DFlash2: offline selector evaluation of training178 chose step0 and transition scale1.5 with mean correct prefix3.75 on8synthetic windows. Packed graph/eager outputs matched. This calibration proxy is not native TPS, coding quality or a hardware capacity.",
     "DFlash2: offline selector evaluation of training186 chose step320 and transition scale1.0 with mean correct prefix3.875 on8synthetic windows. Packed graph/eager outputs matched. This calibration proxy is not native TPS, coding quality or a hardware capacity.",
     "DFlash2: selector-aware training208failed before its first update because evaluation cached an inference-only operand. The failed run is retained; the fix passed31CPU tests and real-weight V100 evaluate-before-training, gradient, selector and graph checks in source212. No trained speed gain is claimed.",
@@ -8854,6 +8877,30 @@
       "advances": 511,
       "decode_ms": 14052.4,
       "verify_ms": 12086.3
+    },
+    {
+      "name": "dflash2-lookahead-control-depth3-v257",
+      "advances": 511,
+      "decode_ms": 14689.5,
+      "verify_ms": 12271.4,
+      "draft_ms": 2112.93,
+      "restore_ms": 38.5726,
+      "rounds": 147,
+      "verification_rows": 588,
+      "single_tail_steps": 1,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-lookahead-lookahead-depth3-v257",
+      "advances": 511,
+      "decode_ms": 16223.7,
+      "verify_ms": 13512.8,
+      "draft_ms": 2422.94,
+      "restore_ms": 58.6473,
+      "rounds": 167,
+      "verification_rows": 666,
+      "single_tail_steps": 0,
+      "block_size": 4
     },
     {
       "name": "dflash2-lookup24-drop05-v39",
