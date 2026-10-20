@@ -113,6 +113,17 @@ incremental append-and-draft calls took 9.75–10.12 ms and every operation met 
 deadline. This is worker validation, not full-model throughput or evidence
 that later paging cannot recur.
 
+`--warm-first-prepare` optionally repeats protocol and append warmup after the
+first real context arrives, after target loading. It requires both warmup
+flags above and uses the existing 30-second prepare allowance. Draft and
+selector deadlines remain one second. The warmup restores the committed
+context and leaves no draft output; short contexts retain eager execution.
+All 41 CPU tests passed. Real-weight V100 checks preserved subsequent output
+bits at context lengths 8 and 2,048 with an existing captured graph. A separate
+19-operation socket check passed with 3,046 MiB at readiness, a 282.14 ms
+prepare and 9.74–10.33 ms incremental calls. Full-target mitigation and
+throughput are separate checks; no speed gain is claimed from this validation.
+
 The target's KDA mixers can also use verification graphs. Add `--decode-graphs`
 and set `STRATA_GLM_VERIFY_GRAPHS=1` with
 `STRATA_GLM_VERIFY_GRAPH_MAX_TOKENS=8` to cover complete DFlash2 windows. The
@@ -232,6 +243,16 @@ No lookahead preset is selected, and coding quality remains unscored.
 All 37 CPU tests passed, along with real-weight V100 selector/graph checks and
 a 19-operation socket check of the enabled option. The default `Draft` class
 stays unchanged; no target or checkpoint weights are updated by this option.
+
+A broader calibration trained seven rank eight residual adapters on 7,833
+samples from 64 synthetic prompts, selecting step 896 by the independent
+32-window prefix check. Mean correct prefix rose from 2.22 to 2.38 tokens.
+Its depth-seven native screen measured 24.88 / 24.33 decode and
+503.14 / 504.32 prefill tok/s for control / adapter, after three full warmups
+and one timed 512-output request per side. Both passed residency checks; the
+candidate was 2.21% slower. At depth three, the adapter measured 31.01 decode
+tok/s, but the control failed residency with 179 worker major faults. No
+repeated timing or coding panel qualified this calibration, and no preset changes.
 
 The target verifies anchor plus proposals in a window of at most eight rows.
 Only the matching greedy prefix is accepted; target state is restored to its

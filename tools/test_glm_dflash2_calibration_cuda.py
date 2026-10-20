@@ -147,6 +147,19 @@ def main():
                 raise ValueError('incremental warmup committed synthetic context rows')
             if not torch.equal(narrow, reference.replay(embedding)):
                 raise ValueError('protocol or incremental warmup changed packed CUDA graph outputs')
+            from glm_dflash2_worker import warm_prepared_context
+            prepared_rows = []
+            for rows in (8, 2048):
+                reference.append(features[:rows], 0, rows)
+                expected_prepared = reference.forward(embedding).clone()
+                cache, first, end = reference.cache, reference.start, reference.end
+                reference.last_hidden = None
+                warm_prepared_context(reference)
+                if reference.cache is not cache or (reference.start, reference.end) != (first, end) or reference.last_hidden is not None:
+                    raise ValueError('first-prepare warmup changed committed context or hidden state')
+                if not torch.equal(expected_prepared, reference.forward(embedding)):
+                    raise ValueError('first-prepare warmup changed a subsequent draft')
+                prepared_rows.append(rows)
             from glm_dflash2_selector_lookahead import transition_tables, path_indices, install_lookahead
             candidates = torch.arange(7*16, device=a.device).reshape(7, 16)
             unary = torch.zeros((7, 16), device=a.device)
@@ -164,6 +177,7 @@ def main():
                           nonzero_adapter_serving_equal=True, gradient_norms=gradient_norms,
                           base_weights_unchanged=True, skinny_relative_l2_error=skinny_relative_error,
                           selector_lookahead_checked=a.adapter_targets == 'fc-mlp-down-selector',
+                          first_prepare_warmup_context_rows=prepared_rows if a.skinny_library and a.adapter_targets == 'fc-mlp-down-selector' else [],
                           peak_reserved_bytes=torch.cuda.max_memory_reserved(), fit=False,
                           performance_anchor=False, checkpoint_sha256=BASE_SHA)))
     return 0

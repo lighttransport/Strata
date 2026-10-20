@@ -333,7 +333,7 @@ def tensor_frame(stream, rows, columns, device, dtype=torch.float16):
 
 def warm_protocol(model):
     """Materialize binary export and selector work before protocol deadlines."""
-    if model.graph is not None:
+    if model.graph is not None and all(len(k) == model.window for k, v in model.cache):
         model.replay(model.graph_embedding)
     if not torch.isfinite(model.last_hidden).all():
         raise ValueError('protocol warmup has nonfinite hidden values')
@@ -344,26 +344,45 @@ def warm_protocol(model):
 
 
 @torch.inference_mode()
-def warm_incremental(model):
+def warm_incremental(model, *, normal_inputs=False):
     """Materialize each accepted-prefix append shape without committing rows."""
     if not model.cache or model.last_hidden is None:
         raise ValueError('incremental warmup requires prepared context and hidden rows')
     cache, start, end, hidden = model.cache, model.start, model.end, model.last_hidden
-    embedding = (model.graph_embedding.clone() if model.graph is not None else
-                 torch.zeros((8, model.h), device=model.device, dtype=model.dtype))
+    # Protocol input tensors are created outside inference mode. The optional
+    # post-prepare warmup also visits that dispatch path after target loading.
+    with torch.inference_mode(not normal_inputs), torch.no_grad():
+        embedding = (model.graph_embedding.clone() if model.graph is not None else
+                     torch.zeros((8, model.h), device=model.device, dtype=model.dtype))
     succeeded = False
     try:
         # Complete acceptance commits the anchor plus seven proposals.
         for rows in range(1, len(embedding)+1):
-            features = torch.zeros((rows, model.h*5), device=model.device, dtype=model.dtype)
+            with torch.inference_mode(not normal_inputs), torch.no_grad():
+                features = torch.zeros((rows, model.h*5), device=model.device, dtype=model.dtype)
             model.append(features, model.end, model.end+rows)
             model.forward(embedding)
         succeeded = True
     finally:
         model.cache, model.start, model.end = cache, start, end
-        if succeeded and model.graph is not None:
+        if succeeded and model.graph is not None and all(len(k) == model.window for k, v in cache):
             model.replay(embedding)
         model.last_hidden = hidden
+
+
+@torch.inference_mode()
+def warm_prepared_context(model):
+    """Warm the first real context without committing synthetic rows or output."""
+    if not model.cache or model.last_hidden is not None:
+        raise ValueError('first-prepare warmup requires context before the first draft')
+    try:
+        with torch.inference_mode(False), torch.no_grad():
+            embedding = torch.zeros((8, model.h), device=model.device, dtype=model.dtype)
+        model.forward(embedding)
+        warm_protocol(model)
+        warm_incremental(model, normal_inputs=True)
+    finally:
+        model.last_hidden = None
 
 
 def main():
@@ -380,6 +399,7 @@ def main():
     p.add_argument('--linear-adapters', type=Path, help='optional checksummed FC and MLP output calibration')
     p.add_argument('--warm-protocol', action='store_true', help='materialize binary export and selector work before readiness; requires --gemm-f32')
     p.add_argument('--warm-incremental', action='store_true', help='warm committed-prefix append widths one through eight before readiness; requires --warm-protocol')
+    p.add_argument('--warm-first-prepare', action='store_true', help='repeat protocol and append warmup on the first real prepared context; requires --warm-incremental')
     p.add_argument('--trace-protocol', type=int, default=0, help='log timings for the first N protocol requests (0..64)')
     a = p.parse_args()
     if a.fc_adapter and a.linear_adapters:
@@ -388,6 +408,8 @@ def main():
         p.error('--warm-protocol requires --gemm-f32')
     if a.warm_incremental and not a.warm_protocol:
         p.error('--warm-incremental requires --warm-protocol')
+    if a.warm_first_prepare and not a.warm_incremental:
+        p.error('--warm-first-prepare requires --warm-incremental')
     if not 0 <= a.trace_protocol <= 64:
         p.error('--trace-protocol must be 0..64')
     if not 0 <= a.selector_scale <= 2:
@@ -448,6 +470,7 @@ def main():
                           vocab_size=154880, block_size=8, mask_token_id=154856)), flush=True)
     last_id = 0
     waiting_select = False
+    prepared_warmed = False
     source, destination = sys.stdin.buffer, sys.stdout.buffer
     if a.trace_protocol:
         import resource
@@ -489,6 +512,10 @@ def main():
             model.append(features, start, end)
             if traced: trace('context_appended', identity, op)
             if op == 'prepare':
+                if a.warm_first_prepare and not prepared_warmed:
+                    warm_prepared_context(model)
+                    prepared_warmed = True
+                    if traced: trace('prepared_warmed', identity, op)
                 print(json.dumps(dict(protocol=2, request_id=identity, prepared=True)), flush=True)
                 if traced: trace('reply_sent', identity, op)
                 continue

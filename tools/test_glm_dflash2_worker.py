@@ -12,6 +12,88 @@ except ImportError:
 
 @unittest.skipIf(torch is None, 'PyTorch not installed')
 class DFlash2Test(unittest.TestCase):
+    def test_first_prepare_warmup_preserves_context_weights_and_future_output(self):
+        from glm_dflash2_worker import warm_prepared_context
+        model = self.tiny()
+        model.w['candidate_selector.hidden_projection.weight'] = torch.randn(8, 16)*.1
+        model.w['candidate_selector.predecessor_codebook'] = torch.randn(64, 8)*.1
+        model.w['candidate_selector.successor_codebook'] = torch.randn(64, 8)*.1
+        features, embedding = torch.randn(8, 80), torch.randn(8, 16)
+        model.append(features, 0, 8)
+        expected = model.forward(embedding).clone()
+        model.last_hidden = None
+        cache = model.cache
+        values = [(k.clone(), v.clone()) for k, v in cache]
+        weights = {name: value.clone() for name, value in model.w.items()}
+        original_append, inference_inputs = model.append, []
+        def append(features, start, end):
+            inference_inputs.append(features.is_inference())
+            return original_append(features, start, end)
+        model.append = append
+        warm_prepared_context(model)
+        self.assertEqual(inference_inputs, [False]*8)
+        self.assertIs(model.cache, cache)
+        self.assertIsNone(model.last_hidden)
+        self.assertEqual((model.start, model.end), (0, 8))
+        for (k, v), (a, b) in zip(model.cache, values):
+            torch.testing.assert_close(k, a, rtol=0, atol=0)
+            torch.testing.assert_close(v, b, rtol=0, atol=0)
+        torch.testing.assert_close(model.forward(embedding), expected, rtol=0, atol=0)
+        for name, value in model.w.items():
+            torch.testing.assert_close(value, weights[name], rtol=0, atol=0)
+
+    def test_first_prepare_warmup_short_context_does_not_replay_full_graph(self):
+        from glm_dflash2_worker import warm_prepared_context
+        model = self.tiny()
+        model.window = 128
+        model.w['candidate_selector.hidden_projection.weight'] = torch.randn(8, 16)*.1
+        model.w['candidate_selector.predecessor_codebook'] = torch.randn(64, 8)*.1
+        model.w['candidate_selector.successor_codebook'] = torch.randn(64, 8)*.1
+        model.append(torch.randn(2, 80), 0, 2)
+        embedding = torch.randn(8, 16)
+        expected = model.forward(embedding).clone()
+        model.last_hidden = None
+        cache = model.cache
+        model.graph, model.graph_embedding = object(), embedding.clone()
+        def invalid_replay(*args):
+            self.fail('short context replayed a full-window graph')
+        model.replay = invalid_replay
+        warm_prepared_context(model)
+        self.assertIs(model.cache, cache)
+        self.assertIsNone(model.last_hidden)
+        self.assertEqual((model.start, model.end), (0, 2))
+        torch.testing.assert_close(model.forward(embedding), expected, rtol=0, atol=0)
+
+    def test_first_prepare_warmup_rejects_missing_context_or_existing_draft(self):
+        from glm_dflash2_worker import warm_prepared_context
+        model = self.tiny()
+        with self.assertRaisesRegex(ValueError, 'before the first draft'):
+            warm_prepared_context(model)
+        model.append(torch.randn(8, 80), 0, 8)
+        model.forward(torch.randn(8, 16))
+        hidden = model.last_hidden
+        with self.assertRaisesRegex(ValueError, 'before the first draft'):
+            warm_prepared_context(model)
+        self.assertIs(model.last_hidden, hidden)
+
+    def test_first_prepare_failure_restores_committed_context(self):
+        from glm_dflash2_worker import warm_prepared_context
+        model = self.tiny()
+        model.w['candidate_selector.hidden_projection.weight'] = torch.randn(8, 16)*.1
+        model.w['candidate_selector.predecessor_codebook'] = torch.randn(64, 8)*.1
+        model.w['candidate_selector.successor_codebook'] = torch.randn(64, 8)*.1
+        model.append(torch.randn(8, 80), 0, 8)
+        cache, original_append = model.cache, model.append
+        def append(features, start, end):
+            original_append(features, start, end)
+            raise RuntimeError('injected append failure')
+        model.append = append
+        with self.assertRaisesRegex(RuntimeError, 'injected append failure'):
+            warm_prepared_context(model)
+        self.assertIs(model.cache, cache)
+        self.assertEqual((model.start, model.end), (0, 8))
+        self.assertIsNone(model.last_hidden)
+
     def test_incremental_warmup_preserves_serving_state_and_visits_all_widths(self):
         from glm_dflash2_worker import warm_incremental
         model = self.tiny()
