@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "519edd87cc4a8d888fda6e4883766532f4c5693b62f1bc26e0c3e428f43f6312"
+      "sha256": "0e9e7fa85acd7f6cec0f250f039e67f4caf91ea8b7f2f8d832a6ebecff019622"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -6688,10 +6688,50 @@
       "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-fc-adapter-depth3-v187",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 30.028088897246345,
+      "prefill_tok_s": 504.03622760385906,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-fc-adapter-depth7-v168",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 24.968240007817844,
+      "prefill_tok_s": 503.24665352033077,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-fc-control-depth3-v168",
       "experiment_family": "dflash2",
       "decode_tok_s": 30.353790956827524,
       "prefill_tok_s": 503.65506513947037,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-fc-control-depth3-v187",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 30.275740304060857,
+      "prefill_tok_s": 503.65196862012147,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": true,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-fc-control-depth7-v168",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 23.947100807453126,
+      "prefill_tok_s": 504.0114190087119,
       "fit": false,
       "performance_anchor": false,
       "worker_residency_checked": true,
@@ -7086,6 +7126,16 @@
       "performance_anchor": false,
       "worker_residency_checked": false,
       "protocol": "8192 frozen input IDs / 128 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-pinned-local-m1-qkv-0-full-v175",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 36.039212920516256,
+      "prefill_tok_s": 518.0908050265939,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
     },
     {
       "name": "dflash2-quartet-cache-control-full-v81",
@@ -7788,8 +7838,14 @@
     "DFlash2: MTP calibration measured 36.39 / 39.41 decode tok/s with three full warmups and three timed512 requests per side. Candidate passed only2/8 reused long coding checks and is rejected as a usable preset; short quality was skipped. No fitted capacity or selected anchor changed.",
     "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment143, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 42]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
     "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment155, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 0, 7]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
+    "DFlash2: combined CPU one-token scales and KDA Q/K/V batching, experiment175, failed repeated timing qualification; timed target major faults per side were[[0, 0, 0], [0, 39, 1]]. Raw medians are not a repeated gain or a selected anchor. The fault counter does not identify its backing file.",
     "DFlash2: native head operand export passed valid output bit checks at widths1/8. FC-adapter calibration passed20CPU tests and a real-weight V100 synthetic gradient/serving-forward probe; skinny relativeL2 differed by0.00254. These are validation results, not a trained speed or coding result, and fit no capacity.",
-    "DFlash2: rank 8 FC calibration has a depth 3 single-request native pair of 30.35 / 32.02 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
+    "DFlash2: rank 8 fc calibration has a depth 3 single-request native pair of 30.35 / 32.02 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
+    "DFlash2: rank 8 fc calibration has a depth 7 single-request native pair of 23.95 / 24.97 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
+    "DFlash2: rank 8 fc-mlp-down calibration has a depth 3 single-request native pair of 30.28 / 30.03 decode tok/s after three full warmups per side. Separate repeated timing and coding quality remain unqualified; no selected anchor or capacity changed.",
+    "DFlash2: offline selector evaluation of training178 chose step0 and transition scale1.5 with mean correct prefix3.75 on8synthetic windows. Packed graph/eager outputs matched. This calibration proxy is not native TPS, coding quality or a hardware capacity.",
+    "DFlash2: offline selector evaluation of training186 chose step320 and transition scale1.0 with mean correct prefix3.875 on8synthetic windows. Packed graph/eager outputs matched. This calibration proxy is not native TPS, coding quality or a hardware capacity.",
+    "DFlash2: selector-aware training208failed before its first update because evaluation cached an inference-only operand. The failed run is retained; the fix passed31CPU tests and real-weight V100 evaluate-before-training, gradient, selector and graph checks in source212. No trained speed gain is claimed.",
     "DFlash2: named fixed-projection profiling separates target prefill from decode/preparation. Attention projections are the largest fixed narrow GPU groups; timing endpoints include input conversion and host enqueue gaps and overlap broader product timers. These diagnostics do not change a throughput anchor or hardware capacity.",
     "DFlash2: the separately instrumented hot512-output request had zero new CPU metadata entries; target CPU setup totaled271ms, fused CPU products4147ms, and routing/input preparation plus coordinator waiting4857ms. Profiling synchronizes streams, phase sums overlap and must not be added, used as model timing, or fitted to capacities.",
     "DFlash2: the later CPU microbenchmark gives variants identical activation/scales storage. Earlier copies changed storage as well as kernels; the apparent eight-token gain did not persist in the controlled comparison. CPU component rows remain diagnostic, not model forecasts or fitted resource capacities.",
@@ -8190,6 +8246,30 @@
       "block_size": 4
     },
     {
+      "name": "dflash2-fc-adapter-depth3-v187",
+      "advances": 511,
+      "decode_ms": 17017.4,
+      "verify_ms": 14299.9,
+      "draft_ms": 2416.96,
+      "restore_ms": 60.7316,
+      "rounds": 169,
+      "verification_rows": 675,
+      "single_tail_steps": 0,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-fc-adapter-depth7-v168",
+      "advances": 511,
+      "decode_ms": 20466.0,
+      "verify_ms": 18039.0,
+      "draft_ms": 2063.35,
+      "restore_ms": 81.2045,
+      "rounds": 143,
+      "verification_rows": 1140,
+      "single_tail_steps": 1,
+      "block_size": 8
+    },
+    {
       "name": "dflash2-fc-control-depth3-v168",
       "advances": 511,
       "decode_ms": 16834.8,
@@ -8200,6 +8280,30 @@
       "verification_rows": 671,
       "single_tail_steps": 0,
       "block_size": 4
+    },
+    {
+      "name": "dflash2-fc-control-depth3-v187",
+      "advances": 511,
+      "decode_ms": 16878.2,
+      "verify_ms": 14257.1,
+      "draft_ms": 2328.8,
+      "restore_ms": 58.9112,
+      "rounds": 168,
+      "verification_rows": 671,
+      "single_tail_steps": 0,
+      "block_size": 4
+    },
+    {
+      "name": "dflash2-fc-control-depth7-v168",
+      "advances": 511,
+      "decode_ms": 21338.7,
+      "verify_ms": 18924.1,
+      "draft_ms": 2088.55,
+      "restore_ms": 85.3125,
+      "rounds": 147,
+      "verification_rows": 1173,
+      "single_tail_steps": 0,
+      "block_size": 8
     },
     {
       "name": "dflash2-fusion-full-0-v109-trial0",
@@ -8788,6 +8892,24 @@
       "advances": 127,
       "decode_ms": 4658.44,
       "verify_ms": 4146.17
+    },
+    {
+      "name": "dflash2-pinned-local-m1-qkv-0-full-v175-trial0",
+      "advances": 511,
+      "decode_ms": 14179.0,
+      "verify_ms": 12200.6
+    },
+    {
+      "name": "dflash2-pinned-local-m1-qkv-0-full-v175-trial1",
+      "advances": 511,
+      "decode_ms": 14172.3,
+      "verify_ms": 12197.1
+    },
+    {
+      "name": "dflash2-pinned-local-m1-qkv-0-full-v175-trial2",
+      "advances": 511,
+      "decode_ms": 14238.5,
+      "verify_ms": 12257.1
     },
     {
       "name": "dflash2-quartet-cache-control-full-v81-trial0",

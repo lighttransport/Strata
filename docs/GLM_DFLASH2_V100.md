@@ -29,6 +29,17 @@ synthetic evaluation windows. Its depth-three screen measured 30.35 / 32.02 deco
 base / calibrated workers after three warmups and one timed 512-output request
 per side. Both passed residency checks; repeated gain and coding quality
 remain unqualified. The selected preset stays unchanged.
+The corresponding depth-seven pair measured 23.95 / 24.97 tok/s. The base
+depth-seven request accepted 364 draft tokens versus 343 at depth three, while
+verification time rose from 14.19 to 18.92 seconds. The longer block reduced
+rounds from 168 to 147 but increased total decode time.
+
+The combined CPU-scale/KDA-projection candidate still failed residency checks
+after executable and library pages were pinned during discarded warmup.
+Its raw median was 37.59 tok/s, with timed target major faults `[0, 39, 1]`;
+the control measured 36.04 tok/s with none. The candidate is unqualified.
+These counters do not identify the faulting mapping. Selected presets and
+the original 5.26 tok/s reference remain unchanged.
 
 ## Execution
 
