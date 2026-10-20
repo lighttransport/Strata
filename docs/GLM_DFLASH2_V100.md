@@ -34,12 +34,24 @@ depth-seven request accepted 364 draft tokens versus 343 at depth three, while
 verification time rose from 14.19 to 18.92 seconds. The longer block reduced
 rounds from 168 to 147 but increased total decode time.
 
+A later rank 32 FC adapter measured 30.06 / 33.39 decode tok/s for base /
+calibrated workers on the same hardware, after three full warmups and one timed
+512-output request per side. Both passed residency checks. This 11.05% screen
+gain has no repeated timing or coding qualification.
+
 The combined CPU-scale/KDA-projection candidate still failed residency checks
 after executable and library pages were pinned during discarded warmup.
 Its raw median was 37.59 tok/s, with timed target major faults `[0, 39, 1]`;
 the control measured 36.04 tok/s with none. The candidate is unqualified.
 These counters do not identify the faulting mapping. Selected presets and
 the original 5.26 tok/s reference remain unchanged.
+
+A separate externally sampled confidence-depth case captured 466 user major
+faults across 40 target tasks, with no lost samples: 464 addresses mapped to the
+decoder executable and two to cuBLAS. Most occurred during discarded warmups;
+the case's timed request recorded zero major faults. Its instrumented timing
+is excluded. These samples do not identify the backing file of faults in other
+cases. An optional RAM executable is being tested as a mitigation.
 
 ## Execution
 
@@ -85,8 +97,19 @@ candidates already copied to the host. Each retained proposal still receives
 target verification. The C11 rule lives in `glm_draft.h` and has GPU-free tests.
 The option is off by default. CUDA and HIP builds and four host tests passed.
 With new options off, a two-V100 run matched all 128 generated token IDs against
-the frozen default reference. Its cold timing was not qualified. Matched
-adaptive timing and coding qualification are still pending.
+the frozen default reference. Its cold timing was not qualified.
+
+With the rank 32 FC adapter, the fixed-seven and adaptive minimum-two cases
+measured 22.70 and 28.93 decode tok/s after three full warmups and one timed
+512-output request each. Both passed residency checks, but neither beat the
+earlier calibrated fixed-three screen at 33.39 tok/s. The new fixed-three
+control measured a raw 34.00 tok/s and failed qualification with 119 timed
+target major faults; all 512 IDs still matched the earlier fixed-three result.
+The minimum-one case was externally profiled and is excluded from qualified
+timing. Minimum three failed before timing: its first incremental worker call
+took 1.80 seconds and recorded 206 major faults, exceeding its one-second
+deadline. No adaptive preset is selected, and repeated timing and coding
+qualification remain unestablished.
 
 Download the checkpoint revision above to a local directory.
 Create the worker configuration inside the ignored build directory, with paths
