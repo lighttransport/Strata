@@ -33,7 +33,7 @@
     },
     {
       "path": "docs/glm_fp4_v100_dflash2_measurement.json",
-      "sha256": "9e70aea09e1b8e340400bf948008d6aec00f1edb610c0ac5b3ca98b1650b30a5"
+      "sha256": "b10d990f30c5744c45353fbfbe26eb81fde271c7d1ccbdfedee73a994957a64c"
     }
   ],
   "raw_report_sha256": "6acece0b851a15eaca273473c24dae8853effc231f5ddc7c7f5cc0875249569b",
@@ -7248,6 +7248,26 @@
       "protocol": "8192 frozen input IDs / 128 outputs; 2 full warmups, discarded two-output request, 1 timed requests. Not a selected performance anchor."
     },
     {
+      "name": "dflash2-ordered-history-mtp-candidate-full-v305",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 40.47877438826353,
+      "prefill_tok_s": 518.7141057057286,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
+      "name": "dflash2-ordered-history-mtp-control-full-v305",
+      "experiment_family": "dflash2",
+      "decode_tok_s": 40.508295877032346,
+      "prefill_tok_s": 520.4508201928819,
+      "fit": false,
+      "performance_anchor": false,
+      "worker_residency_checked": false,
+      "protocol": "8192 frozen input IDs / 512 outputs; 3 full warmups, discarded two-output request, 3 timed requests. Not a selected performance anchor."
+    },
+    {
       "name": "dflash2-pinned-local-m1-qkv-0-full-v175",
       "experiment_family": "dflash2",
       "decode_tok_s": 36.039212920516256,
@@ -8092,8 +8112,11 @@
     "DFlash2: a V100 KDA recurrence component compared serial32/64/128 columns and ordered2/4 rows, with and without rollback snapshots. All180 state/output/history checks matched bitwise. At64heads/four tokens without snapshots, serial128/ordered4 medians were75.728/31.6795microseconds. Grouped CUDA-event samples include host enqueue gaps; these diagnostics are not a full-model speedup or a capacity fit.",
     "DFlash2: native fixed-prefix/shared-FFN CUDA graphs passed real-target bitwise logit and retained-prefix rollback checks at widths1..4, both history modes and history reallocation. The readback-ready event stays outside capture. Functional validation does not establish model speed or coding quality.",
     "DFlash2: native fixed-prefix/shared-FFN CUDA graphs passed real-target bitwise logit and retained-prefix rollback checks at widths1..4, both history modes and history reallocation. The readback-ready event stays outside capture. Functional validation does not establish model speed or coding quality.",
-    "DFlash2: cleaned ordered KDA snapshot build repeated564bitwise checks including24graphreplays and clean CUDA memcheck/racecheck. CUDA and HIP builds plus six host checks per backend passed; HIP GPU execution was not tested. Only unused parameters on an unrelated legacy kernel were removed from the initial snapshot prototype. Full-model parity/timing for the cleaned binary remain separate queued gates; component timing is not model TPS or a capacity fit.",
+    "DFlash2: cleaned ordered KDA snapshot build repeated564bitwise checks including24graphreplays and clean CUDA memcheck/racecheck. CUDA and HIP builds plus six host checks per backend passed; HIP GPU execution was not tested. Only unused parameters on an unrelated legacy kernel were removed from the initial snapshot prototype. Default/mixed-width model checks and full-model timing are recorded separately; component timing is not model TPS or a capacity fit.",
     "DFlash2: standalone ordered KDA full-prefix snapshots passed real-target bitwise logit, rollback and history-reallocation checks at widths1..4. The default original128output also matched. CUDA component tests checked564state/output/prefix/guard cases including24graphreplays, with clean memcheck/racecheck; HIP kernel/decoder/test compiled and linked, six host checks passed, but HIP GPU execution was not tested. Full-model throughput remains separate from functional validation; no selected preset/capacity changed.",
+    "DFlash2: the private FP4 active-output-row reduction prototype passed96bitwise/36graphcases and clean CUDA memcheck/racecheck. Its matched component geometric mean ratio was0.999901 across eight expert-shape/width cases, with identical weight/input/output storage and five alternating event samples. It failed the3percent component gate, so no native model timing or coding runs were selected and the original kernel remains in public source. No capacity fit or preset change.",
+    "DFlash2: compiler resource reporting for the frozen KDA source found255registers and nonzero spills in serial128 versus95registers and zero spills in ordered4. These static compiler properties support the component result, but are not measured runtime memory traffic and do not establish a model speedup. No hardware capacity changed.",
+    "DFlash2: ordered KDA retained-prefix snapshots with serial1/ordered4 row partitions measured 40.51/40.48decode and 520.45/518.71prefill tok/s after three full warmups and three timed512requests each. All six streams match the mild reference with zero timed faults/swap. Same standalone native build and mild policy, larger prefix-graph prototype excluded. Separate reused coding checks have not qualified this combination. Fresh20 remain unscored. No selected preset/capacity changed.",
     "DFlash2: earlier narrow router/input readback control/candidate measured 37.78/40.26 decode and 519.18/519.34 prefill tok/s, three full warmups and three timed512 requests per side. All six streams match the mild reference with zero timed target faults/swap. Same native build, CPU_M1/QKV1 and lossy policy; only scheduling differs. Both sides passed eight reused long and eight reused natural-length coding checks; fresh20remain unscored. No selected preset/capacity changed.",
     "DFlash2: optional first-real-prepare warmup depth7control/candidate measured 24.08/24.17 decode tok/s, three full warmups and one timed512 request per side. Both passed unchanged deadlines/residency and matched all512reference IDs. The 0.36percent difference is below the speed gate; no throughput gain or causal elimination of intermittent paging is established. No selected preset/capacity changed.",
     "DFlash2: native discounted-selector depth3 control/lookahead measured 34.79/31.50 decode tok/s after three full warmups and one timed512 request per side. The proxy improvement did not translate to native speed; no lookahead preset is selected and coding quality remains unscored.",
@@ -9303,6 +9326,42 @@
       "advances": 127,
       "decode_ms": 4658.44,
       "verify_ms": 4146.17
+    },
+    {
+      "name": "dflash2-ordered-history-mtp-candidate-full-v305-trial0",
+      "advances": 511,
+      "decode_ms": 12544.1,
+      "verify_ms": 10663.1
+    },
+    {
+      "name": "dflash2-ordered-history-mtp-candidate-full-v305-trial1",
+      "advances": 511,
+      "decode_ms": 12643.7,
+      "verify_ms": 10725.8
+    },
+    {
+      "name": "dflash2-ordered-history-mtp-candidate-full-v305-trial2",
+      "advances": 511,
+      "decode_ms": 12623.9,
+      "verify_ms": 10742.0
+    },
+    {
+      "name": "dflash2-ordered-history-mtp-control-full-v305-trial0",
+      "advances": 511,
+      "decode_ms": 12614.7,
+      "verify_ms": 10739.8
+    },
+    {
+      "name": "dflash2-ordered-history-mtp-control-full-v305-trial1",
+      "advances": 511,
+      "decode_ms": 12605.0,
+      "verify_ms": 10730.8
+    },
+    {
+      "name": "dflash2-ordered-history-mtp-control-full-v305-trial2",
+      "advances": 511,
+      "decode_ms": 12685.0,
+      "verify_ms": 10802.0
     },
     {
       "name": "dflash2-pinned-local-m1-qkv-0-full-v175-trial0",

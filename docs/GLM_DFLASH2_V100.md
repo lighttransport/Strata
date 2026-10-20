@@ -130,9 +130,24 @@ builds and six host checks per backend passed; HIP GPU execution was not tested.
 With four tokens, 64 heads and rollback snapshots, the separate component
 medians in the cleaned build were 116.93 microseconds for serial-128 and
 46.34 for ordered-four. All 180 component comparisons matched bitwise. These grouped event samples
-include host enqueue gaps. The cleaned build repeats all bitwise and sanitizer
-checks. Its model parity and matched throughput checks are queued; selected
-profiles remain unchanged.
+include host enqueue gaps. The cleaned build repeated the model parity checks.
+Compiler resource reporting found 255 registers and nonzero spills for the
+serial kernel, versus 95 registers and no spills for ordered-four; these are
+static compiler properties, not measured runtime traffic.
+
+The matched model pair measured **40.51 / 40.48 decode** and **520.45 / 518.71
+prefill tok/s**, after three full warmups and three timed 512-output requests
+per side. All six streams matched the mild reference, with zero timed major
+faults or swap. The 0.07% lower decode median supplies no model gain; coding
+panels were skipped and selected profiles remain unchanged. The component
+speedup does not predict full-model throughput.
+
+A separate private FP4 kernel prototype omitted output reductions for unused
+rows. It passed 96 bitwise cases, 36 graph replays and clean CUDA memcheck and
+racecheck. With identical weight/input/output storage and five alternating
+128-call samples per variant, its geometric mean speed ratio was 0.999901
+across eight expert-shape/width cases. It failed the 3% component gate; no model
+timing or coding checks were started, and the original FP4 kernel is unchanged.
 
 ## Execution
 
