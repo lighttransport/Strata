@@ -109,6 +109,10 @@ class Fp4NativeExecutor {
         std::map<std::pair<int,int>,Expert> experts;
         std::unique_ptr<Expert> temporary;
         std::unique_ptr<Pinned> result_host;size_t result_host_bytes=0;
+        std::unique_ptr<Pinned> route_ids_host;
+        std::unique_ptr<Pinned> grouped_host;
+        uint64_t grouped_calls=0,grouped_experts=0,grouped_rows=0,grouped_scatters=0;
+        uint64_t route_id_uploads=0,route_id_groups=0,route_id_entries=0;
         std::map<int,std::set<int>> keep;
         std::map<int,std::vector<uint64_t>> frequency;
         std::map<std::string,Matrix> dense;
@@ -269,6 +273,9 @@ class Fp4NativeExecutor {
     const bool gpu_reduce_enabled=strata_env_is_one("STRATA_GLM_FP4_GPU_REDUCE");
     const bool expert_fusion=strata_env_is_one("STRATA_GLM_FP4_EXPERT_FUSION");
     const bool early_readback=strata_env_is_one("STRATA_GLM_FP4_EARLY_READBACK");
+    const bool route_id_batch=strata_env_is_one("STRATA_GLM_FP4_ROUTE_ID_BATCH");
+    const bool resident_grouped=strata_env_is_one("STRATA_GLM_FP4_RESIDENT_GROUPED");
+    const bool grouped_scatter=strata_env_is_one("STRATA_GLM_FP4_GROUPED_SCATTER");
     const bool head_tp_enabled=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP");
     const bool head_tp_borrow=strata_env_is_one("STRATA_GLM_FP4_HEAD_TP_BORROW");
     const long long fixed_half_mask=strata_env_value_ll("STRATA_GLM_FP4_FIXED_HALF",0);
@@ -1025,6 +1032,7 @@ public:
             throw std::invalid_argument("GLM FP4: CPU_TEAM_SIZE must be 0, 2, 4 or 8");
         if(expert_fusion)std::cerr<<"FP4_EXPERT_FUSION enabled=1 sm70="<<sm70<<" narrow_only=1\n";
         if(early_readback)std::cerr<<"FP4_EARLY_READBACK enabled=1 narrow_only=1\n";
+        if(route_id_batch)std::cerr<<"FP4_ROUTE_ID_BATCH enabled=1 maximum_ids=64 host_bytes_per_device=256\n";
         if(cpu_row_tile!=1&&cpu_row_tile!=2&&cpu_row_tile!=4)
             throw std::invalid_argument("GLM FP4: CPU_ROW_TILE must be 1, 2 or 4");
         if(cpu_q8_bias&&!cpu_q8_enabled)throw std::invalid_argument("GLM FP4: CPU_Q8_BIAS requires CPU_Q8=1");
@@ -1645,6 +1653,12 @@ public:
                 Context& c;
                 ~Drain(){if(c.copy_stream||!c.protected_experts.empty())cudaStreamSynchronize(c.stream);if(c.copy_stream)cudaStreamSynchronize(c.copy_stream);c.protected_experts.clear();}
             } drain{c};
+            const bool batch_routes=route_id_batch&&decode&&device_routing&&(!c.bank||c.bank->layer!=layer);
+            struct DrainRouteFailure {
+                cudaStream_t stream;bool active;int exceptions;
+                ~DrainRouteFailure(){if(active&&std::uncaught_exceptions()>exceptions)cudaStreamSynchronize(stream);}
+            } route_failure{c.stream,batch_routes||resident_grouped,
+                            (batch_routes||resident_grouped)?std::uncaught_exceptions():0};
             const size_t sum_count=size_t(nt)*4096;auto& sum=sums[rank];
             if(gpu_reduce)sum.clear();else sum.assign(sum_count,0);
             std::vector<float> input,result;
@@ -1676,17 +1690,112 @@ public:
                 if(decode&&!c.keep.at(layer).count(id))continue;
                 jobs.push_back(id);
             }
-            auto execute=[&](Expert& e,const std::vector<int>& routes,const uint16_t* operands=nullptr) {
+            // Do not admit or upload new weights in this path. Protect every
+            // resident operand before allocating bounded scratch, which can evict.
+            bool group_ready=resident_grouped&&sm70&&decode&&device_routing&&gpu_reduce&&peer_enabled&&
+                !expert_fusion&&nt<=8&&jobs.size()>1&&(!c.bank||c.bank->layer!=layer);
+            size_t total_rows=0;
+            if(group_ready)for(int id:jobs) {
+                const auto it=c.experts.find({layer,id});
+                const auto& rows=grouped.at(id);
+                if(it==c.experts.end()||rows.empty()||rows.size()>8||rows.size()>64-total_rows){group_ready=false;break;}
+                for(int row:rows)if(row<0||row>=nt*8)group_ready=false;
+                for(int p=0;p<3;++p) {
+                    const auto& w=it->second.projection[p];
+                    if(w.format!=k::GlmPackedFormat::Nvfp4||w.rows!=(p==2?4096:2048)||w.columns!=(p==2?2048:4096))group_ready=false;
+                }
+                total_rows+=rows.size();
+            }
+            if(group_ready) {
+                for(int id:jobs)c.protected_experts.insert({layer,id});
+                constexpr size_t descriptor_bytes=64*sizeof(k::GlmFp4ExpertGroup),metadata_bytes=descriptor_bytes+64*sizeof(int);
+                size_t bytes=metadata_bytes;
+                auto reserve=[&](size_t n){const size_t at=(bytes+255)/256*256;bytes=at+n;return at;};
+                const size_t xo=reserve(total_rows*4096*2),go=reserve(total_rows*2048*4),
+                    uo=reserve(total_rows*2048*4),ho=reserve(total_rows*2048*2),yo=reserve(total_rows*4096*4);
+                auto* base=static_cast<uint8_t*>(c.buffer("decode_grouped_workspace",bytes).p);
+                if(!c.grouped_host)c.grouped_host=std::make_unique<Pinned>(metadata_bytes,true);
+                // The previous call's final stream synchronization retires this
+                // portable pinned source before reuse. Drain also covers exceptions.
+                std::memset(c.grouped_host->p,0,metadata_bytes);
+                auto* desc=static_cast<k::GlmFp4ExpertGroup*>(c.grouped_host->p);
+                auto* routes=reinterpret_cast<int*>(static_cast<uint8_t*>(c.grouped_host->p)+descriptor_bytes);
+                size_t offset=0;
+                for(size_t i=0;i<jobs.size();++i) {
+                    const int id=jobs[i];auto& e=c.experts.at({layer,id});const auto& rows=grouped.at(id);
+                    ++c.hits;e.use=++c.clock;
+                    desc[i]={};desc[i].count=int(rows.size());desc[i].offset=int(offset);
+                    for(int p=0;p<3;++p) {
+                        const auto& w=e.projection[p];desc[i].weights[p]=static_cast<const uint8_t*>(w.data->p);
+                        desc[i].scales[p]=static_cast<const uint8_t*>(w.scales());desc[i].global[p]=w.global;
+                    }
+                    std::copy(rows.begin(),rows.end(),routes+offset);offset+=rows.size();
+                }
+                check(cudaMemcpyAsync(base,c.grouped_host->p,metadata_bytes,cudaMemcpyHostToDevice,c.stream));
+                auto* dg=reinterpret_cast<const k::GlmFp4ExpertGroup*>(base);
+                auto* dr=reinterpret_cast<const int*>(base+descriptor_bytes);
+                auto* hx=reinterpret_cast<uint16_t*>(base+xo);auto* gate=reinterpret_cast<float*>(base+go);
+                auto* up=reinterpret_cast<float*>(base+uo);auto* hidden=reinterpret_cast<uint16_t*>(base+ho);
+                auto* result=reinterpret_cast<float*>(base+yo);
+                k::glm_fp4_route_gather(device_input,dr,hx,int(total_rows),4096,8,c.stream);
+                k::glm_fp4_expert_group_products(dg,int(jobs.size()),false,hx,gate,up,c.stream);
+                k::glm_swiglu(gate,up,gate,int(total_rows)*2048,limit,c.stream);
+                k::glm_f16(gate,hidden,total_rows*2048,c.stream);
+                k::glm_fp4_expert_group_products(dg,int(jobs.size()),true,hidden,result,nullptr,c.stream);
+                if(grouped_scatter) {
+                    k::glm_fp4_expert_group_scatter(dg,int(jobs.size()),dr,device_weights,result,device_sum,nt,c.stream);
+                    ++c.grouped_scatters;
+                }else {
+                offset=0;
+                // Retain the existing scatter kernel, once per original expert,
+                // so multiply/add rounding and accumulation order stay identical.
+                for(int id:jobs) {
+                    const int count=int(grouped.at(id).size());
+                    k::glm_fp4_route_scatter(result+offset*4096,dr+offset,device_weights,device_sum,count,4096,8,c.stream);
+                    offset+=count;
+                }
+                }
+                check(cudaGetLastError());check(cudaStreamSynchronize(c.stream));
+                ++c.grouped_calls;c.grouped_experts+=jobs.size();c.grouped_rows+=total_rows;c.mma_calls+=3*jobs.size();
+                return;
+            }
+            const int* batched_device_routes=nullptr;
+            std::array<int,288> route_offsets;
+            if(batch_routes&&!jobs.empty()) {
+                route_offsets.fill(-1);
+                if(!c.route_ids_host)c.route_ids_host=std::make_unique<Pinned>(64*sizeof(int),true);
+                auto* packed=static_cast<int*>(c.route_ids_host->p);size_t count=0;
+                for(int id:jobs) {
+                    const auto& rows=grouped.at(id);
+                    if(id<0||id>=288||rows.size()>size_t(nt)*8-count)
+                        throw std::logic_error("GLM FP4: route ID batch exceeds narrow bounds");
+                    route_offsets[id]=int(count);
+                    for(int row:rows) {
+                        if(row<0||row>=nt*8)throw std::logic_error("GLM FP4: invalid batched route ID");
+                        packed[count++]=row;
+                    }
+                }
+                // This buffer is not resized by execute while the batch is active.
+                // The pinned source remains owned by this context until its stream retires.
+                auto* target=static_cast<int*>(c.buffer("expert_route_ids",64*sizeof(int)).p);
+                check(cudaMemcpyAsync(target,packed,count*sizeof(int),cudaMemcpyHostToDevice,c.stream));
+                batched_device_routes=target;++c.route_id_uploads;c.route_id_groups+=jobs.size();c.route_id_entries+=count;
+            }
+            auto execute=[&](Expert& e,const std::vector<int>& routes,const uint16_t* operands=nullptr,
+                             const int* uploaded_routes=nullptr) {
                 const int count=int(routes.size());
                 auto& hx=c.buffer("expert_x_half",size_t(count)*4096*2);
                 auto& gate=c.buffer("expert_gate",size_t(count)*2048*4);
                 auto& up=c.buffer("expert_up",size_t(count)*2048*4);
                 auto& hidden=c.buffer("expert_hidden_half",size_t(count)*2048*2);
                 auto& dy=c.buffer("expert_result",size_t(count)*4096*4);
-                int* device_routes=nullptr;
+                const int* device_routes=uploaded_routes;
                 if(device_routing) {
-                    device_routes=static_cast<int*>(c.buffer("expert_route_ids",size_t(count)*4).p);
-                    check(cudaMemcpyAsync(device_routes,routes.data(),size_t(count)*4,cudaMemcpyHostToDevice,c.stream));
+                    if(!device_routes) {
+                        auto* target=static_cast<int*>(c.buffer("expert_route_ids",size_t(count)*4).p);
+                        check(cudaMemcpyAsync(target,routes.data(),size_t(count)*4,cudaMemcpyHostToDevice,c.stream));
+                        device_routes=target;
+                    }
                     k::glm_fp4_route_gather(device_input,device_routes,static_cast<uint16_t*>(hx.p),count,4096,8,c.stream);
                 }else {
                     auto& dx=c.buffer("expert_x",input.size()*4);
@@ -1988,7 +2097,7 @@ public:
                 }
                 if(profile)times[rank].gather+=elapsed(begin);
                 begin=tick();
-                execute(e,routes);
+                execute(e,routes,nullptr,batched_device_routes?batched_device_routes+route_offsets[id]:nullptr);
                 PendingExpert next;
                 if(pipeline&&job+1<jobs.size())next=prepare_expert(c,layer,jobs[job+1]);
                 if(!decode||!device_routing)check(cudaStreamSynchronize(c.stream));
@@ -2073,7 +2182,13 @@ public:
         }
     }
     void report(bool flush_profile=true)const {
+        if(grouped_scatter)for(const auto& c:contexts)std::cerr<<"FP4_GROUPED_SCATTER_STATS device="<<c->device
+            <<" calls="<<c->grouped_scatters<<'\n';
+        if(resident_grouped)for(const auto& c:contexts)std::cerr<<"FP4_RESIDENT_GROUPED_STATS device="<<c->device
+            <<" calls="<<c->grouped_calls<<" experts="<<c->grouped_experts<<" rows="<<c->grouped_rows<<'\n';
         if(early_readback)std::cerr<<"FP4_EARLY_READBACK_STATS calls="<<early_readback_calls<<'\n';
+        if(route_id_batch)for(const auto& c:contexts)std::cerr<<"FP4_ROUTE_ID_BATCH_STATS device="<<c->device
+            <<" uploads="<<c->route_id_uploads<<" groups="<<c->route_id_groups<<" ids="<<c->route_id_entries<<'\n';
         if(profile&&flush_profile)for(const auto& c:contexts) {
             DeviceScope scope(c->device);c->trace_report(-1,0);
         }

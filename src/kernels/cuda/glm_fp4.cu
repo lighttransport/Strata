@@ -127,6 +127,103 @@ __global__ void fp4_qpn(const uint8_t *__restrict__ bcodes,
   }
 }
 
+// Only batch/grid and operand selection differ from fp4_qpn. Every expert's
+// MMA chains, K partitions and final FP32 reduction retain their original order.
+template <int SPLITK, int NACC, bool NARROW, bool DOWN>
+__global__ void fp4_qpn_grouped(const GlmFp4ExpertGroup* groups,
+                                const half* input,float* output,float* up,int N,int K) {
+  const auto* group=groups+blockIdx.y/(DOWN?1:2);
+  const int projection=DOWN?2:int(blockIdx.y%2);
+  const int M=group->count;
+  const uint8_t* bcodes=group->weights[projection];
+  const uint8_t* bscales=group->scales[projection];
+  const float gscale=group->global[projection];
+  const half* x=input+size_t(group->offset)*K;
+  float* y=(projection==1?up:output)+size_t(group->offset)*N;
+  __shared__ float cs[SPLITK > 1 ? SPLITK : 1][SPLITK > 1 ? 256 : 1];
+
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+  const int tile = NARROW ? blockIdx.x / 4 : blockIdx.x;
+  const int qp = (lane >> 2) & 3;
+  const int r = (lane & 3) + ((lane & 16) ? 4 : 0);
+  const int G = K >> 4;
+  const int part = NARROW ? warp * 4 + qp : warp;
+  const int parts = SPLITK * (NARROW ? 4 : 1);
+  const int g0 = part * G / parts, g1 = (part + 1) * G / parts;
+  const int weight_lane = NARROW ? (lane & 19) + (blockIdx.x % 4) * 4 : lane;
+  const uint2 *cb = reinterpret_cast<const uint2 *>(bcodes) +
+                    (size_t)tile * G * 32 + weight_lane;
+  const uint8_t *sb = bscales + (size_t)tile * G * 32 + weight_lane;
+
+  const half2 gm2 = __float2half2_rn(gscale * 16384.f);
+  float c[NACC][8];
+#pragma unroll
+  for (int a = 0; a < NACC; a++)
+#pragma unroll
+    for (int i = 0; i < 8; i++) c[a][i] = 0.f;
+
+#pragma unroll 4
+  for (int g = g0; g < g1; g++) {
+    const uint2 q2 = __ldcs(cb + (size_t)g * 32);
+    const half2 sc2 =
+        __hmul2(fp8e4m3_to_half2(__ldg(sb + (size_t)g * 32)), gm2);
+    half2 b[8];
+    dequant8_tm(q2.x, sc2, b + 0);
+    dequant8_tm(q2.y, sc2, b + 4);
+    const unsigned *B = reinterpret_cast<const unsigned *>(b);
+    uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
+    if (r < M) {
+      const half *xrow = x + (size_t)r * K;
+      a01 = *reinterpret_cast<const uint4 *>(xrow + g * 16);
+      a23 = *reinterpret_cast<const uint4 *>(xrow + g * 16 + 8);
+    }
+    const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
+    const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
+    MMA_8N8K4(c[0], A0[0], A0[1], B[0], B[1]);
+    MMA_8N8K4(c[1 % NACC], A0[2], A0[3], B[2], B[3]);
+    MMA_8N8K4(c[2 % NACC], A1[0], A1[1], B[4], B[5]);
+    MMA_8N8K4(c[3 % NACC], A1[2], A1[3], B[6], B[7]);
+  }
+
+#pragma unroll
+  for (int a = 1; a < NACC; a++)
+#pragma unroll
+    for (int i = 0; i < 8; i++) c[0][i] += c[a][i];
+
+  if (SPLITK == 1 && !NARROW) {
+#pragma unroll
+    for (int i = 0; i < 8; i++) {
+      const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+      const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+      if (row < M)
+        y[(size_t)row * N + (size_t)tile * 32 + qp * 8 + col] =
+            c[0][i];
+    }
+    return;
+  }
+
+#pragma unroll
+  for (int i = 0; i < 8; i++) {
+    const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+    const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+    cs[warp][row * 32 + qp * 8 + col] = c[0][i];
+  }
+  __syncthreads();
+  for (int e = threadIdx.x; e < (NARROW ? 64 : 256); e += blockDim.x) {
+    const int row = NARROW ? e / 8 : e / 32, col = NARROW ? e % 8 : e % 32;
+    float v = 0.f;
+#pragma unroll
+    for (int w = 0; w < SPLITK; w++) {
+      if constexpr(NARROW) {
+#pragma unroll
+        for(int q = 0; q < 4; ++q) v += cs[w][row * 32 + q * 8 + col];
+      } else v += cs[w][e];
+    }
+    if (row < M)
+      y[(size_t)row * N + (size_t)blockIdx.x * (NARROW ? 8 : 32) + col] = v;
+  }
+}
+
 // Keep each projection's MMA chains and shared-memory reduction identical to
 // fp4_qpn<8,2>. Only activation loads and the final pointwise epilogue are shared.
 template<bool NARROW>
@@ -636,6 +733,33 @@ __global__ void route_gather(const float* x,const int* routes,half* out,int coun
     for(int row=blockIdx.y;row<count;row+=gridDim.y)
         out[size_t(row)*K+column]=__float2half_rn(x[size_t(routes[row]/stride)*K+column]);
 }
+// Resolve the one row for each expert/token in parallel, then retain the
+// exact expert order in a single per-column accumulation. No atomics or tree.
+__global__ void grouped_route_scatter(const GlmFp4ExpertGroup* __restrict__ groups,int count,
+                                      const int* __restrict__ routes,const float* __restrict__ weights,
+                                      const float* __restrict__ values,float* __restrict__ sum) {
+    __shared__ int rows[64];
+    __shared__ float coefficients[64];
+    const int token=blockIdx.y,g=threadIdx.x;
+    if(g<count) {
+        const auto* group=groups+g;
+        int selected=-1;float coefficient=0;
+        for(int j=0;j<group->count;++j) {
+            const int row=group->offset+j,route=routes[row];
+            if(route/8==token){selected=row;coefficient=weights[route];break;}
+        }
+        rows[g]=selected;coefficients[g]=coefficient;
+    }
+    __syncthreads();
+    const int col=blockIdx.x*blockDim.x+threadIdx.x;
+    const size_t target=size_t(token)*4096+col;
+    float value=sum[target];
+    for(int j=0;j<count;++j) {
+        const int row=rows[j];
+        if(row>=0)value=__fadd_rn(value,__fmul_rn(coefficients[j],values[size_t(row)*4096+col]));
+    }
+    sum[target]=value;
+}
 __global__ void route_scatter(const float* x,const int* routes,const float* weights,float* sum,int count,int K,int stride) {
     const int column=blockIdx.x*blockDim.x+threadIdx.x;
     if(column>=K)return;
@@ -709,6 +833,14 @@ void glm_mxfp8_gemm_three(GlmFp8Projection a,GlmFp8Projection b,GlmFp8Projection
     mxfp8_qpn_three<<<dim3(N/32,1,3),256,0,static_cast<cudaStream_t>(stream)>>>(
         a,b,c,reinterpret_cast<const half*>(x),N,K,M);
 }
+void glm_fp4_expert_group_products(const GlmFp4ExpertGroup* groups,int count,bool down,
+                                   const uint16_t* input,float* output,float* up,void* stream) {
+    if(count<1||count>64||!groups||!input||!output||(!down&&!up))
+        throw std::invalid_argument("GLM FP4: invalid resident expert batch");
+    const auto s=static_cast<cudaStream_t>(stream);
+    if(down)fp4_qpn_grouped<8,2,false,true><<<dim3(4096/32,count),256,0,s>>>(groups,reinterpret_cast<const half*>(input),output,nullptr,4096,2048);
+    else fp4_qpn_grouped<8,2,true,false><<<dim3(2048/8,2*count),256,0,s>>>(groups,reinterpret_cast<const half*>(input),output,up,2048,4096);
+}
 void glm_fp4_gate_up_f16(const uint8_t* gate,const uint8_t* gate_scales,float gate_global,
                          const uint8_t* up,const uint8_t* up_scales,float up_global,
                          const uint16_t* x,uint16_t* hidden,int N,int K,int M,float limit,void* stream) {
@@ -779,6 +911,13 @@ void glm_f16_prepack_qpn(const uint16_t* w,uint16_t* out,int N,int K,void* strea
 void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* out,int count,int K,int stride,void* stream) {
     if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route gather extent");
     if(count)route_gather<<<dim3((K+255)/256,std::min(count,65535)),256,0,static_cast<cudaStream_t>(stream)>>>(x,routes,reinterpret_cast<half*>(out),count,K,stride);
+}
+void glm_fp4_expert_group_scatter(const GlmFp4ExpertGroup* groups,int count,
+                                 const int* routes,const float* weights,const float* values,
+                                 float* sum,int tokens,void* stream) {
+    if(count<1||count>64||tokens<1||tokens>8||!groups||!routes||!weights||!values||!sum)
+        throw std::invalid_argument("GLM FP4: invalid grouped ordered scatter");
+    grouped_route_scatter<<<dim3(4096/256,tokens),256,0,static_cast<cudaStream_t>(stream)>>>(groups,count,routes,weights,values,sum);
 }
 void glm_fp4_route_scatter(const float* x,const int* routes,const float* weights,float* sum,int count,int K,int stride,void* stream) {
     if(count<0 || K<1 || stride<1)throw std::invalid_argument("GLM FP4: invalid route scatter extent");

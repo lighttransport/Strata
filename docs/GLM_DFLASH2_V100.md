@@ -7,6 +7,9 @@ decode / 520.89 prefill tok/s on two V100 PCIe 32 GB GPUs and a dual Xeon Gold
 6240 host with 181 GiB RAM. A later experimental MTP configuration measured
 40.26 decode / 519.34 prefill tok/s and passed eight reused long and eight
 reused natural-length coding checks; Fresh20 remain unscored.
+A grouped target core later measured 41.24 decode / 519.34 prefill tok/s and
+passed the same reused panels in separate functional validation. It missed
+the predeclared speed-selection threshold, so the reference remains unchanged.
 The fastest repeated DFlash2 trial measured
 38.56 decode / 515.68 prefill tok/s, but failed all eight reused coding checks.
 Its route-drop cap of 0.75 is rejected. A less aggressive DFlash2 trial passed
@@ -179,8 +182,8 @@ prefill tok/s**, with three full warmups and three timed 512-output requests per
 side. All six streams matched the mild reference, with zero timed major faults
 or swap. Its 3.43% paired decode gain missed the predeclared threshold of 3%
 above the historical 40.26 reference, so coding panels were skipped. The
-prototype stays private; 40.26 remains the best result with both reused panels
-passed. Default 128-output and real-model width/history/rollback checks passed,
+timing did not select a preset. Default 128-output and real-model
+width/history/rollback checks passed,
 as did CUDA and fresh HIP builds with six host tests each. HIP GPU execution
 was not tested. An initial launcher budget typo failed before model startup;
 the corrected launcher used the same binary, and the raw failure is retained.
@@ -208,7 +211,7 @@ request, while speculative rounds rose from 134 to 137. These counters do not
 establish the cause of the slowdown. Coding was skipped after the 5.28% decode
 regression; the option stays disabled in the experimental profile.
 
-A follow-up private kernel folds the grouped experts' scatter calls into one
+A follow-up kernel folds the grouped experts' scatter calls into one
 launch, preserving each token's expert order and separate FP32 multiply/add
 rounding. It passed 88 bitwise cases and 88 graph checks, including nonzero
 initial sums, with clean CUDA memcheck/racecheck. With grouped products active
@@ -238,10 +241,45 @@ but were repeatable and passed length, EOS and repetition checks. The 3.14%
 decode regression failed the speed gate; coding was skipped. The depth-three
 control's 41.79 timing and the separate pair's 41.24 timing use the same core
 configuration; neither establishes a new recommended preset. These are MTP
-results. The best result with both reused coding panels passed remains 40.26
-tok/s, and Fresh20 remain unscored.
+results. Separate functional validation subsequently passed all eight long and
+eight natural-length coding checks on both sides of the 41.24 pair. This does
+not change the original failed speed-selection gate or select a new preset.
+The experimental reference remains 40.26 tok/s, and Fresh20 remain unscored.
+
+A compact CPU scale lookup prototype passed 1,920 bitwise checks on native
+AVX512 VNNI, with the same count on each AVX2 and scalar fallback. With 32
+workers, scalar lookup reached a **1.052376×** component speed ratio across
+the gate/up and down matrix shapes. Each shape used five cyclic timing samples
+and sixteen rotating 4 MiB code buffers, with shared activation storage across
+variants. Single-worker ratios were 1.024051× and 1.026193×. A four-lane gather
+variant regressed to a 0.531222× geometric mean ratio at 32 workers and was
+rejected. These are CPU product timings, not model throughput. The full-model
+scalar experiment includes the original zero-scale sentinel and charges its
+padded tables against the existing CPU cache budget.
 
 ## Execution
+
+The native CUDA executor has three optional narrow decode switches:
+
+- `STRATA_GLM_FP4_ROUTE_ID_BATCH=1` uploads a layer's route IDs together.
+- `STRATA_GLM_FP4_RESIDENT_GROUPED=1` groups resident NVFP4 expert products.
+- `STRATA_GLM_FP4_GROUPED_SCATTER=1` combines their ordered scatter calls.
+
+All are off by default. Grouping requires the SM70 kernel, device routing,
+GPU reduction and peer access, with more than one resident expert and at most
+eight input rows. Other cases use the existing path. It allocates less than
+3 MiB of device scratch and 5,376 bytes of pinned metadata per participating
+GPU; separate route batching uses another 256 pinned bytes. It preserves the
+original MMA chains, K partitions and FP32 expert addition order. These switches
+do not change a selected profile. The component and model measurements above
+used an earlier private version; the source also drains pending copies on
+exceptions when grouping is enabled without separate route batching.
+The current source passed CUDA and HIP builds and six host tests per backend.
+Its CUDA kernel passed 88 bitwise cases, 88 graph checks and clean memcheck and
+racecheck. The disabled default matched all 128 frozen output IDs. Real-model
+widths 1–4, both history modes, graph replay, rollback and reallocation matched
+bitwise with separate route batching disabled and enabled. HIP GPU execution
+was not tested; the rebuilt HIP binary was unchanged.
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a
 sealed RAM file and executes it before engine initialization, preserving its
