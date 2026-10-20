@@ -104,6 +104,7 @@ class CalibrationData:
                         if stop+7 < len(tokens) and stop-window >= first:
                             self.samples.append(dict(prompt=row['index'], root=root, first=first,
                                                      end=stop, embedding_offset=frame['embedding_byte_offset'],
+                                                     anchor=frame['anchor'],
                                                      labels=tokens[stop+1:stop+8]))
                 if position != end or features.read(1) or embeddings.read(1):
                     raise ValueError('capture contains unexplained tensor bytes')
@@ -148,10 +149,15 @@ def main():
     p.add_argument('--learning-rate', type=float, default=.0003)
     p.add_argument('--seed', type=int, default=140)
     p.add_argument('--device', default='cuda:1')
-    p.add_argument('--adapter-targets', choices=('fc', 'fc-mlp-down'), default='fc')
+    p.add_argument('--adapter-targets', choices=('fc', 'fc-mlp-down', 'fc-mlp-down-selector'), default='fc')
+    p.add_argument('--selector-loss-weight', type=float, default=0.)
+    p.add_argument('--prefix-decay', type=float, default=1.)
+    p.add_argument('--selection-metric', choices=('token-agreement', 'selector-prefix'), default='token-agreement')
     a = p.parse_args()
     if not 1 <= a.steps <= 4096 or not 0 < a.learning_rate <= .01 or not a.device.startswith('cuda:'):
         p.error('invalid calibration limits or device')
+    if not 0 <= a.selector_loss_weight <= 4 or not 0 < a.prefix_decay <= 1:
+        p.error('invalid selector loss weight or prefix decay')
     if list(a.dataset.parent.parent.glob('fresh20-frozen-policy-*.json')):
         raise ValueError('final evaluation policy already frozen; no further calibration')
     checkpoint = a.model/'model.safetensors'
@@ -189,6 +195,9 @@ def main():
         temp.write_text(json.dumps(summary, indent=2)+'\n')
         temp.replace(a.output/'training.json')
     save()
+    if a.selector_loss_weight or a.prefix_decay != 1 or a.selection_metric != 'token-agreement':
+        summary.update(selector_loss_weight=a.selector_loss_weight, prefix_decay=a.prefix_decay,
+                       selection_metric=a.selection_metric)
     torch.set_num_threads(1)
     torch.manual_seed(a.seed)
     torch.cuda.set_device(a.device)
@@ -208,7 +217,7 @@ def main():
     else:
         from glm_dflash2_linear_adapter import LinearAdapters, SCHEMA as LINEAR_SCHEMA, target_shapes
         from glm_dflash2_training import LinearTrainingDraft
-        shapes = target_shapes(config, weights)
+        shapes = target_shapes(config, weights, include_selector=a.adapter_targets == 'fc-mlp-down-selector')
         adapter = LinearAdapters(shapes, a.rank, a.alpha, device=a.device)
         model = LinearTrainingDraft(config, weights, a.device, adapter, cuda_helper=True)
         adapter_file, adapter_schema = 'linear.safetensors', LINEAR_SCHEMA
@@ -249,16 +258,24 @@ def main():
         return logits, labels
     def evaluate(step):
         from safetensors.torch import save_file
-        losses, correct = [], []
+        losses, correct, selector_correct = [], [], []
         with torch.no_grad():
             for item in evaluation:
                 logits, labels = prediction(item)
                 losses.append(F.cross_entropy(logits, labels).item())
                 correct.append((logits.argmax(-1) == labels).float().cpu().tolist())
+                if a.selection_metric == 'selector-prefix':
+                    ids = torch.argsort(logits, dim=-1, descending=True, stable=True)[:, :16]
+                    selected = model.select(ids, logits.gather(1, ids), item['anchor'])
+                    selector_correct.append((selected == labels).cpu().tolist())
         record = dict(step=step, evaluation_loss=sum(losses)/len(losses),
                       evaluation_agreement=sum(sum(row) for row in correct)/(7*len(correct)),
                       position_agreement=[sum(row[i] for row in correct)/len(correct) for i in range(7)],
                       peak_reserved_bytes=torch.cuda.max_memory_reserved())
+        if selector_correct:
+            from glm_dflash2_selector_training import correct_prefix
+            record.update(selector_mean_prefix=sum(correct_prefix(row) for row in selector_correct)/len(selector_correct),
+                          selector_agreement=sum(map(sum, selector_correct))/(7*len(selector_correct)))
         dest = a.output/('step-%06d' % step)
         dest.mkdir(exist_ok=False)
         state = {n: w.detach().cpu().contiguous() for n, w in adapter.state_dict().items()}
@@ -274,20 +291,23 @@ def main():
         return record
     started = time.monotonic()
     best = evaluate(0)
+    from glm_dflash2_selector_training import calibration_loss, selection_key
     for step in range(1, a.steps+1):
         optimizer.zero_grad(set_to_none=True)
-        logits, labels = prediction(rng.choice(train))
-        loss = F.cross_entropy(logits, labels)
+        sample = rng.choice(train)
+        logits, labels = prediction(sample)
+        loss, loss_diagnostics = calibration_loss(logits, labels, model=model, anchor=sample['anchor'],
+                                                selector_weight=a.selector_loss_weight, prefix_decay=a.prefix_decay)
         if not torch.isfinite(loss):
             raise ValueError('nonfinite calibration loss')
         loss.backward()
         grad = torch.nn.utils.clip_grad_norm_(adapter.parameters(), 1, error_if_nonfinite=True)
         optimizer.step()
         if step % 16 == 0:
-            print(json.dumps(dict(step=step, training_loss=loss.item(), gradient_norm=float(grad))), flush=True)
+            print(json.dumps(dict(step=step, training_loss=loss.item(), gradient_norm=float(grad), **loss_diagnostics)), flush=True)
         if step % 64 == 0 or step == a.steps:
             record = evaluate(step)
-            if (record['evaluation_agreement'], -record['evaluation_loss']) > (best['evaluation_agreement'], -best['evaluation_loss']):
+            if selection_key(record, a.selection_metric) > selection_key(best, a.selection_metric):
                 best = record
     summary.update(complete=True, selected_step=best['step'], training_seconds=time.monotonic()-started,
                    peak_reserved_bytes=torch.cuda.max_memory_reserved(),

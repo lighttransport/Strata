@@ -18,6 +18,22 @@ base matrices before allocating adapters and checks the `linear.safetensors`
 checksum, FP32 dtype and finite values. The two modes use separate manifest
 schemas. Neither changes the base checkpoint files.
 
+The opt-in `fc-mlp-down-selector` mode also adapts the selector's hidden
+projection. `--selector-loss-weight 1 --prefix-decay 0.8` adds a teacher-forced
+loss over the current top 16 candidates and gives earlier positions more
+weight. Labels outside those candidates still train the unary head.
+`--selection-metric selector-prefix` selects by the mean correct prefix from
+the serving selector, then selector agreement and cross entropy. Evaluation
+uses its own preceding choices; the selector loss uses preceding teacher IDs.
+The default loss and its gradients remain ordinary cross entropy.
+
+The worker's optional `--warm-protocol` materializes binary export and selector
+work before readiness; it requires `--gemm-f32`. `--trace-protocol N` logs the
+first N operations to stderr, with N limited to 64. Both are off by default.
+On one V100, the source205 synthetic socket probe returned prepare, draft and
+select in 171.55, 16.12 and 1.89 ms after warmup. This does not establish native
+inference throughput or resolve the earlier native worker timeout.
+
 ## Head operands
 
 Build the CUDA-only `strata-glm-fp4-export-head` target, then run:
@@ -102,6 +118,24 @@ base / calibrated drafter. Each used three full warmups and one timed
 The 5.47% decode increase is a single-request screen; separate repeated timing
 and coding checks remain required. It is below the earlier 36.33 tok/s
 candidate that passed both reused coding panels, and below the 50 tok/s goal.
+At depth seven, the same protocol measured 23.95 / 24.97 decode and
+504.01 / 503.25 prefill tok/s. This longer draft was slower than depth three.
+
+Larger calibration runs on the same eight evaluation windows reached 34/56
+unary agreement with rank-32 FC and 35/56 with rank-8 FC/MLP adapters. An
+offline packed-worker selector check instead preferred FC/MLP step 320, with
+mean correct prefix 3.875 versus 3.375 for the base worker. These small proxy
+results do not establish a native speed increase.
+
+The source205 seven-adapter synthetic GPU probe passed, but its first real
+selector-aware training run failed before an optimizer update: evaluation
+cached an inference-only frozen operand that autograd could not reuse.
+The fix creates a normal frozen operand even when evaluation initializes it.
+All 31 CPU tests pass, including evaluation followed by training. The revised
+real-weight V100 check also passed that transition, serving equality, finite
+gradients for every adapter and unchanged base weights. Packed skinny relative
+L2 error was 0.00276; peak reserved memory was 10,661,920,768 bytes.
+The failed source and artifacts are retained.
 
 Each adapter still needs repeated native inference timing, target and worker
 residency checks, and separate coding checks. Freeze a final policy before

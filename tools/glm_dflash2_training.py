@@ -57,7 +57,7 @@ class TrainingDraft(Draft):
     def __init__(self, config, weights, device, adapter, *, cuda_helper=False):
         for weight in weights.values():
             weight.requires_grad_(False)
-        super().__init__(config, weights, device, torch.float32)
+        super().__init__(config, weights, device, torch.float32, gemm_f32=True)
         self.adapter = adapter
         self.cuda_helper = cuda_helper
         self.backward_weights = {}
@@ -67,7 +67,11 @@ class TrainingDraft(Draft):
             raise ValueError('calibration needs row-major frozen weights')
         key = (weight.data_ptr(), tuple(weight.shape), tuple(weight.stride()))
         if key not in self.backward_weights:
-            self.backward_weights[key] = weight.float()
+            # select() also calls this projection under inference_mode during
+            # evaluation. Its cached frozen operand must remain usable by the
+            # next differentiated training step.
+            with torch.inference_mode(False), torch.no_grad():
+                self.backward_weights[key] = weight.to(dtype=torch.float32, copy=True)
         return Linear.apply(x.float(), weight, self.backward_weights[key], self.cuda_helper)
 
     def linear(self, x, name):

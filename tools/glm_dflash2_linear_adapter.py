@@ -12,8 +12,10 @@ from glm_dflash2_adapter import file_sha
 SCHEMA = 'strata.dflash2.linear_adapters.v1'
 
 
-def target_shapes(config, weights):
+def target_shapes(config, weights, *, include_selector=False):
     names = ['fc'] + [f'layers.{i}.mlp.down_proj' for i in range(config['num_hidden_layers'])]
+    if include_selector:
+        names.append('candidate_selector.hidden_projection')
     shapes = []
     for name in names:
         weight = weights[name + '.weight']
@@ -22,6 +24,13 @@ def target_shapes(config, weights):
         output, inputs = weight.shape
         shapes.append(dict(name=name, inputs=inputs, outputs=output))
     return shapes
+
+
+def matching_targets(draft, shapes):
+    if shapes == target_shapes(draft.c, draft.w):
+        return True
+    return ('candidate_selector.hidden_projection.weight' in draft.w and
+            shapes == target_shapes(draft.c, draft.w, include_selector=True))
 
 
 class LinearAdapters(nn.Module):
@@ -60,7 +69,7 @@ class LinearAdapters(nn.Module):
 
 
 def apply_linear_adapters(draft, adapters):
-    if draft.skinny or adapters.shapes != target_shapes(draft.c, draft.w):
+    if draft.skinny or not matching_targets(draft, adapters.shapes):
         raise ValueError('linear adapters do not match unpacked draft projections')
     if getattr(draft, 'fc_adapter', None) is not None or getattr(draft, 'linear_adapters', None) is not None:
         raise ValueError('draft already has residual adapters')
@@ -81,7 +90,7 @@ def load_linear_adapters(directory, draft, checkpoint):
         raise ValueError('linear adapter checkpoint identity or manifest is invalid')
     # Resolve targets from the actual base matrices before allocating any
     # adapter. Manifest dimensions cannot request arbitrary device memory.
-    if draft.skinny or metadata.get('targets') != target_shapes(draft.c, draft.w):
+    if draft.skinny or not matching_targets(draft, metadata.get('targets')):
         raise ValueError('linear adapter targets do not match the base draft')
     weights = directory / 'linear.safetensors'
     if weights.stat().st_size > 65 * 1024**2 or file_sha(weights) != metadata.get('weights_sha256'):
