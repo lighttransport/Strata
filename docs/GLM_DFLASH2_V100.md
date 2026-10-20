@@ -149,6 +149,22 @@ racecheck. With identical weight/input/output storage and five alternating
 across eight expert-shape/width cases. It failed the 3% component gate; no model
 timing or coding checks were started, and the original FP4 kernel is unchanged.
 
+Two further private prototypes kept the expert order and arithmetic intact.
+Uploading one pinned route-index table per GPU/layer measured **39.60 / 40.12
+decode** and **518.96 / 519.27 prefill tok/s**, with three full warmups and three
+timed 512-output requests per side. All six streams matched the mild reference,
+with zero timed major faults or swap. Its 1.32% decode gain fell below the 3%
+selection gate and the 40.26 reference, so coding checks were skipped.
+
+A shared-memory address swizzle passed 96 bitwise cases, 36 graph replays,
+clean CUDA memcheck/racecheck, the original 128-output check and real-model
+width/history/rollback checks. Its component geometric mean speed ratio was
+0.999586 across eight expert-shape/width cases, using the same allocations and
+five alternating 128-call samples. It failed the component gate; no model
+throughput or coding trial was selected. The scalar address-bank analysis was
+not a measurement of GPU memory transactions. Neither prototype changed a
+selected profile or a simulator capacity.
+
 ## Execution
 
 On Linux, `STRATA_GLM_RAM_EXECUTABLE=1` copies the decoder executable into a
