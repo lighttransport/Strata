@@ -101,6 +101,9 @@ void glm_f16_prepack_qpn(const uint16_t* weights,uint16_t* output,
 // and round multiply and add separately, matching the host accumulation.
 void glm_fp4_route_gather(const float* x,const int* routes,uint16_t* output,
                            int count,int columns,int route_stride,void* stream);
+// The same rows from activations already rounded to FP16 with glm_f16.
+void glm_fp4_route_gather_half(const uint16_t* x,const int* routes,uint16_t* output,
+                                int count,int columns,int route_stride,void* stream);
 void glm_fp4_route_scatter(const float* x,const int* routes,const float* weights,float* sum,
                             int count,int columns,int route_stride,void* stream);
 }

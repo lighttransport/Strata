@@ -2719,6 +2719,50 @@ private:
     bool mtp_batched = std::getenv("STRATA_GLM_MTP_BATCHED") != nullptr;
     bool mtp_primed = false;
     std::unique_ptr<Device> mtp_prev_hidden;
+    // STRATA_GLM_PREFILL_LEAN_HOST=1: a prefill dequantizes each token's embedding row once, on several threads,
+    // into pinned memory. The GPU replicates the rows into the four residual streams, and the batched draft
+    // priming uploads the same rows instead of dequantizing them again. The output head collapses all rows in one
+    // launch, and the target hidden rows reach the host while the draft priming runs. The values are the default
+    // path's.
+    const bool lean_host_prefill = strata_env_truthy_one("STRATA_GLM_PREFILL_LEAN_HOST");
+    std::unique_ptr<Pinned> embedding_rows;
+    // The prefill's target hidden rows, staged for target_hidden (see batch()).
+    std::unique_ptr<Pinned> hidden_rows;
+    size_t hidden_rows_bytes = 0;
+    cudaStream_t hidden_stream = nullptr;
+    cudaEvent_t hidden_ready = nullptr;
+    size_t embedding_rows_bytes = 0;
+    std::vector<int> embedding_row_tokens;
+    const float *lean_embedding(const std::vector<int> &tokens) {
+        const auto &embedding = artifact.at("token_embd.weight");
+        const auto *traits = ggml_get_type_traits((ggml_type)embedding.tensor->type);
+        const int nt = tokens.size();
+        const size_t H = m.hidden, bytes = (size_t)nt * H * 4, row_bytes = embedding.bytes / m.vocab;
+        if (bytes > embedding_rows_bytes) {
+            embedding_rows.reset();
+            GpuLocality locality;
+            embedding_rows = std::make_unique<Pinned>(bytes);
+            embedding_rows_bytes = bytes;
+            std::cerr << "PREFILL_LEAN_HOST embedding_rows_MiB=" << bytes / double(MiB) << '\n';
+        }
+        auto *rows = static_cast<float *>(embedding_rows->p);
+        embedding_row_tokens.clear();
+        auto convert = [&](int begin, int end) {
+            for (int t = begin; t < end; ++t) {
+                const auto *data = embedding.data() + (size_t)tokens[t] * row_bytes;
+                if (embedding.tensor->type == GGML_TYPE_F32) std::memcpy(rows + t * H, data, H * sizeof(float));
+                else traits->to_float(data, rows + t * H, H);
+            }
+        };
+        const int workers = nt < 256 ? 1 : (int)std::clamp<unsigned>(std::thread::hardware_concurrency(), 1, 16);
+        if (workers == 1) convert(0, nt);
+        else {
+            std::vector<std::jthread> pool;
+            for (int w = 0; w < workers; ++w) pool.emplace_back(convert, nt * w / workers, nt * (w + 1) / workers);
+        }
+        embedding_row_tokens = tokens;
+        return rows;
+    }
     k::NativeExpertLayout mtp_layout;
     size_t mtp_expert_bytes = 0;
     uint64_t cache_hits = 0, cache_entries = 0, pruned_routes = 0;
@@ -4570,6 +4614,7 @@ private:
             auto& logits=buf("fp4_router",m.experts*nt);
             auto& ids=buf("fp4_ids",m.top_k*nt);
             auto& routing=buf("fp4_routing",m.top_k*nt);
+            modelopt_gpu->prefetch_routed_input(l,x,nt,stream);
             mat(p+"ffn_gate_inp.weight",x,logits.f());
             auto& bias=weight(p+"exp_probs_b.bias");
             k::glm_router_tokens(logits.f(),bias.f(),static_cast<int*>(ids.p),routing.f(),m.experts,m.top_k,m.expert_scale,nt,stream,
@@ -7691,9 +7736,10 @@ private:
         const auto *traits = ggml_get_type_traits((ggml_type)embedding.tensor->type);
         if (embedding.tensor->type != GGML_TYPE_F32 && (!traits || !traits->to_float))
             throw std::runtime_error("GLM: unsupported embedding quantization");
-        std::vector<float> emb(stage_input ? 0 : m.hidden * 4 * nt);
+        const bool lean_rows = lean_host_prefill && fast && !stage_input;
+        std::vector<float> emb(stage_input || lean_rows ? 0 : m.hidden * 4 * nt);
         if (owned_layer_first > 0 && !stage_input) throw std::runtime_error("GLM: layer batch without residual input");
-        if (!stage_input) for (int t = 0; t < nt; ++t) {
+        if (!stage_input && !lean_rows) for (int t = 0; t < nt; ++t) {
             auto *row = emb.data() + t * m.hidden * 4;
             const auto *data = embedding.data() + (size_t)tokens[t] * (embedding.bytes / m.vocab);
             if (embedding.tensor->type == GGML_TYPE_F32)
@@ -7704,7 +7750,14 @@ private:
                 std::copy_n(row, m.hidden, row + i * m.hidden);
         }
         auto &r = buf("streams", m.hidden * 4 * nt);
-        r.put(stage_input ? stage_input : emb.data(), (size_t)m.hidden * 4 * nt * sizeof(float));
+        if (lean_rows) {
+            // `y` is first written by layer 0's mixer.
+            auto &rows = buf("y", m.hidden * nt);
+            check(cudaMemcpyAsync(rows.p, lean_embedding(tokens), (size_t)nt * m.hidden * 4, cudaMemcpyHostToDevice, stream));
+            for (int i = 0; i < 4; ++i)
+                check(cudaMemcpy2DAsync(r.f((size_t)i * m.hidden), (size_t)4 * m.hidden * 4, rows.p, (size_t)m.hidden * 4,
+                                        (size_t)m.hidden * 4, nt, cudaMemcpyDeviceToDevice, stream));
+        } else r.put(stage_input ? stage_input : emb.data(), (size_t)m.hidden * 4 * nt * sizeof(float));
         auto &collapsed = buf("collapsed", m.hidden * nt);
         auto &x = buf("x", m.hidden * nt);
         auto &y = buf("y", m.hidden * nt);
@@ -7910,7 +7963,9 @@ private:
         else if (!tp_active()) tp_stale = true; // primary-only states advanced without the secondary halves
         reset_phase();
         if (!stage_output) {
-            for (int t = 0; t < nt; ++t)
+            // The token-batched kernel computes each row exactly as the per-token one.
+            if (lean_host_prefill && nt > 1 && nt <= 16384) k::glm_hyper_head_tokens(r.f(), collapsed.f(), m.hidden, nt, stream);
+            else for (int t = 0; t < nt; ++t)
                 k::glm_hyper_head(r.f(t * 4 * m.hidden), collapsed.f(t * m.hidden), m.hidden, stream);
             norm("output_norm.weight", collapsed.f(), x.f(), m.hidden);
         }
@@ -8118,6 +8173,44 @@ private:
                 check(cudaMemcpy(hidden.data() + (size_t)row_positions[t] * m.hidden, x.f((size_t)t * m.hidden),
                                  (size_t)m.hidden * 4, cudaMemcpyDeviceToHost));
             }
+        } else if (capture_hidden && lean_host_prefill && fast && nt >= 256) {
+            // The rows go to pinned memory on a side stream and into target_hidden on a helper thread while
+            // the draft priming runs; the priming does not write `x`.
+            const size_t bytes = (size_t)nt * m.hidden * 4, offset = (size_t)position * m.hidden;
+            if (!hidden_stream) {
+                check(cudaStreamCreateWithFlags(&hidden_stream, cudaStreamNonBlocking));
+                check(cudaEventCreateWithFlags(&hidden_ready, cudaEventDisableTiming));
+            }
+            if (bytes > hidden_rows_bytes) {
+                hidden_rows.reset();
+                GpuLocality locality;
+                hidden_rows = std::make_unique<Pinned>(bytes);
+                hidden_rows_bytes = bytes;
+            }
+            check(cudaEventRecord(hidden_ready, stream));
+            check(cudaStreamWaitEvent(hidden_stream, hidden_ready, 0));
+            check(cudaMemcpyAsync(hidden_rows->p, x.p, bytes, cudaMemcpyDeviceToHost, hidden_stream));
+            std::exception_ptr failure;
+            std::thread copier([&] {
+                try {
+                    target_hidden.resize(offset + (size_t)nt * m.hidden);
+                    check(cudaStreamSynchronize(hidden_stream));
+                    const auto *rows = static_cast<const char *>(hidden_rows->p);
+                    auto *out = reinterpret_cast<char *>(target_hidden.data() + offset);
+                    std::vector<std::jthread> pool;
+                    constexpr int workers = 8;
+                    for (int w = 0; w < workers; ++w)
+                        pool.emplace_back([=] {
+                            const size_t begin = bytes * w / workers, end = bytes * (w + 1) / workers;
+                            std::memcpy(out + begin, rows + begin, end - begin);
+                        });
+                } catch (...) { failure = std::current_exception(); }
+            });
+            try {
+                if (mtp_batched) mtp_prime_batch(tokens, x.f());
+            } catch (...) { copier.join(); throw; }
+            copier.join();
+            if (failure) std::rethrow_exception(failure);
         } else if (capture_hidden) {
             target_hidden.resize((position + nt) * m.hidden);
             check(cudaMemcpy(target_hidden.data() + position * m.hidden, x.p, (size_t)nt * m.hidden * 4,
@@ -8700,8 +8793,10 @@ private:
         reset_phase();
         const auto &embedding = artifact.at("token_embd.weight");
         const auto *traits = ggml_get_type_traits((ggml_type)embedding.tensor->type);
-        std::vector<float> rows((size_t)count * H);
-        for (int t = 0; t < count; ++t) {
+        // The prefill's own rows: row t + skip holds tokens[t + skip].
+        const bool lean_rows = lean_host_prefill && embedding_rows && embedding_row_tokens == tokens;
+        std::vector<float> rows(lean_rows ? 0 : (size_t)count * H);
+        if (!lean_rows) for (int t = 0; t < count; ++t) {
             const auto *data = embedding.data() + (size_t)tokens[t + skip] * (embedding.bytes / m.vocab);
             if (embedding.tensor->type == GGML_TYPE_F32) std::memcpy(rows.data() + (size_t)t * H, data, H * 4);
             else traits->to_float(data, rows.data() + (size_t)t * H, H);
@@ -8711,7 +8806,8 @@ private:
         auto &xd = buf("streams", (size_t)count * H), &cur = buf("collapsed", (size_t)count * H);
         auto &y = buf("y", (size_t)count * H);
         auto &emb = buf("mtp_embedding", (size_t)count * H), &prev = buf("mtp_previous", (size_t)count * H);
-        emb.put(rows.data(), rows.size() * 4);
+        if (lean_rows) emb.put_async(static_cast<const float *>(embedding_rows->p) + (size_t)skip * H, (size_t)count * H * 4, stream);
+        else emb.put(rows.data(), rows.size() * 4);
         if (skip) check(cudaMemcpyAsync(prev.p, hidden, (size_t)count * H * 4, cudaMemcpyDeviceToDevice, stream));
         else {
             check(cudaMemcpyAsync(prev.p, mtp_prev_hidden->p, (size_t)H * 4, cudaMemcpyDeviceToDevice, stream));
