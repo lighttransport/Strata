@@ -95,6 +95,14 @@ __device__ __forceinline__ float vec_dot_q2_0_q8_1(const void* __restrict__ vbq,
     return d2 * d8 * sumi;
 }
 
+// IQ2_XXS sub-block scale: llama.cpp's CUDA dot divides sumi * (2 scale + 1) by 8 in integers, truncating toward
+// zero in every 32-weight group (a bias toward smaller outputs); its CPU dot and MMQ scale in floats. Opt-in exact
+// float scaling (native_mmvq_set_iq2xxs_exact, the DeepSeek-V4.1 runner): +2.5 % PPL vs the CPU reference without.
+__device__ int g_iq2xxs_exact = 0;
+__device__ __forceinline__ float iq2xxs_scaled(int sumi, int ls) {
+    return g_iq2xxs_exact ? float(sumi * ls) * 0.125f : float(sumi * ls / 8);
+}
+
 __device__ __forceinline__ float vec_dot_iq2_xxs_q8_1(const void* __restrict__ vbq, const block_q8_1* __restrict__ bq8_1,
                                                       const int& kbx, const int& iqs) {
     const block_iq2_xxs* bq2 = (const block_iq2_xxs*) vbq + kbx;
@@ -116,9 +124,8 @@ __device__ __forceinline__ float vec_dot_iq2_xxs_q8_1(const void* __restrict__ v
         sumi = ggml_cuda_dp4a(grid1, u1, sumi);
     }
     const int ls = aux32 >> 27 | 1;
-    sumi = sumi * ls / 8;
     const float d = __half2float(bq2->d) * __low2float(bq8_1[iqs / 2].ds);
-    return d * sumi;
+    return d * iq2xxs_scaled(sumi, ls);
 }
 
 __device__ __forceinline__ float vec_dot_iq2_xs_q8_1(const void* __restrict__ vbq, const block_q8_1* __restrict__ bq8_1,
@@ -792,9 +799,8 @@ template<> struct Split<16> {   // IQ2_XXS
         int sumi = 0;
 #pragma unroll
         for (int j = 0; j < 8; ++j) sumi = ggml_cuda_dp4a(r.g[j], get_int_b4(bq8_1[iqs / 2].qs, j), sumi);
-        sumi = sumi * r.ls / 8;
         const float d = r.dw * __low2float(bq8_1[iqs / 2].ds);
-        return d * sumi;
+        return d * iq2xxs_scaled(sumi, r.ls);
     }
 };
 // IQ2_XS and IQ2_S share the apply: two half sums, two 4-bit scales
@@ -3425,9 +3431,8 @@ template<int SG> struct DotG<16, SG> { __device__ static __forceinline__ float f
         }
     }
     const int ls = aux32 >> 27 | 1;
-    sumi = sumi * ls / 8;
     const float d = __half2float(bq2->d) * __low2float(bq8_1[iqs / 2].ds);
-    return d * sumi;
+    return d * iq2xxs_scaled(sumi, ls);
 } };
 
 template<int SG> struct DotG<23, SG> { __device__ static __forceinline__ float f(const void* vbq, const block_q8_1* bq8_1, int kbx, int iqs,
@@ -3928,4 +3933,11 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     check("native_expert_grouped/down");
 }
 
+}  // namespace strata::kernels
+
+namespace strata::kernels {
+void native_mmvq_set_iq2xxs_exact(bool exact) {
+    const int v = exact ? 1 : 0;
+    cudaMemcpyToSymbol(g_iq2xxs_exact, &v, sizeof v);
+}
 }  // namespace strata::kernels

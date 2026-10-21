@@ -83,6 +83,7 @@ struct Dev {
     float* f(size_t at = 0) const { return static_cast<float*>(p) + at; }
     int* i() const { return static_cast<int*>(p); }
     uint16_t* h() const { return static_cast<uint16_t*>(p); }
+    uint8_t* b(size_t at = 0) const { return static_cast<uint8_t*>(p) + at; }
 };
 
 struct Weight {
@@ -254,10 +255,174 @@ struct Remote {
     }
 };
 
+// A second GPU holding whole experts (STRATA_DS41_RAM_COPY's residency, STRATA_DS41_PEER_GPU=1): per layer, its experts
+// contiguous at a block-aligned stride; decode routes to them run MMVQ there, prompt passes MMQ, and the partial sums
+// come back through pinned host memory. Every call selects its device and restores device 0.
+struct PeerGpu {
+    int dev = 1, hidden = 0, ff = 0;
+    cudaStream_t stream = nullptr;
+    std::vector<uint8_t*> base;       // [layer] the layer's resident experts
+    std::vector<size_t> stride;       // [layer]
+    std::vector<std::vector<int>> pos;   // [layer][expert] -> position in base, or -1
+    std::vector<int> gu_type, d_type;
+    std::vector<float> clamp;
+    Dev arena, x, xq8, g_gate, g_up, g_h, g_hq, g_out, out, xq, gu, hf, hq, dout, idx, w, bound, iota;
+    std::unique_ptr<strata::prefill::mmq::Context> mmq;
+    float* host_out = nullptr;        // pinned [maxT][hidden]
+    int rcap = 8192, maxT = 0;
+    bool busy = false;
+    struct Guard { Guard(int d) { cudaSetDevice(d); } ~Guard() { cudaSetDevice(0); } };
+
+    void init(int maxT_, int rcap_) {
+        Guard g(dev);
+        maxT = maxT_;
+        rcap = rcap_;
+        ck(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), "peer stream");
+        x = Dev(size_t(maxT) * hidden * 4);
+        out = Dev(size_t(maxT) * hidden * 4);
+        xq8 = Dev(k::native_q8_1_bytes(hidden, 1));
+        g_gate = Dev(size_t(ff) * 4); g_up = Dev(size_t(ff) * 4); g_h = Dev(size_t(ff) * 4);
+        g_hq = Dev(k::native_q8_1_bytes(ff, 1));
+        g_out = Dev(size_t(hidden) * 4);
+        namespace mq = strata::prefill::mmq;
+        if (mq::built()) {
+            xq = Dev(mq::q8_bytes(rcap, hidden));
+            gu = Dev(size_t(rcap) * 2 * ff * 4);
+            hf = Dev(size_t(rcap) * ff * 4);
+            hq = Dev(mq::q8_bytes(rcap, ff));
+            dout = Dev(size_t(rcap) * hidden * 4);
+            idx = Dev(size_t(maxT) * 16 * 4);
+            w = Dev(size_t(maxT) * 16 * 4);
+            bound = Dev(size_t(4096) * 4);
+            iota = Dev((size_t(rcap) + 128) * 4);
+            mq::iota(iota.i(), rcap + 128, stream);
+            mmq = std::make_unique<mq::Context>();
+        }
+        void* h = nullptr;
+        ck(cudaHostAlloc(&h, size_t(maxT) * hidden * 4, cudaHostAllocPortable), "peer output");
+        host_out = static_cast<float*>(h);
+        ck(cudaStreamSynchronize(stream), "peer init");
+    }
+    size_t free_bytes() const {
+        Guard g(dev);
+        size_t f = 0, t = 0;
+        cudaMemGetInfo(&f, &t);
+        return f;
+    }
+    // decode: the routes resident here (ids[t K + k] with pos >= 0), z host [nt][hidden]; result into host_out (zeroed
+    // first); returns whether any ran (then `collect` waits)
+    bool decode(int l, int nt, int K, const int* ids, const float* wts, const float* z) {
+        Guard g(dev);
+        bool any = false;
+        for (int t = 0; t < nt; ++t) {
+            bool quantized = false;
+            for (int kk = 0; kk < K; ++kk) {
+                const int e = ids[t * K + kk];
+                if (e < 0 || pos[size_t(l)][size_t(e)] < 0) continue;
+                if (!any) {
+                    ck(cudaMemcpyAsync(x.p, z, size_t(nt) * hidden * 4, cudaMemcpyHostToDevice, stream), "peer z");
+                    ck(cudaMemsetAsync(out.p, 0, size_t(nt) * hidden * 4, stream), "peer sum");
+                    any = true;
+                }
+                if (!quantized) { k::native_quantize_q8_1(x.f(size_t(t) * hidden), xq8.p, hidden, 1, stream); quantized = true; }
+                const uint8_t* b = base[size_t(l)] + size_t(pos[size_t(l)][size_t(e)]) * stride[size_t(l)];
+                const size_t gb = ggml_row_size(ggml_type(gu_type[size_t(l)]), hidden) * size_t(ff);
+                k::native_mmvq(gu_type[size_t(l)], b, xq8.p, g_gate.f(), hidden, ff, 1, stream);
+                k::native_mmvq(gu_type[size_t(l)], b + gb, xq8.p, g_up.f(), hidden, ff, 1, stream);
+                k::glm_swiglu(g_gate.f(), g_up.f(), g_h.f(), ff, clamp[size_t(l)], stream);
+                k::native_quantize_q8_1(g_h.f(), g_hq.p, ff, 1, stream);
+                k::native_mmvq(d_type[size_t(l)], b + 2 * gb, g_hq.p, g_out.f(), ff, hidden, 1, stream);
+                k::ds41_axpy(g_out.f(), wts[t * K + kk], out.f(size_t(t) * hidden), hidden, stream);
+            }
+        }
+        if (any) ck(cudaMemcpyAsync(host_out, out.p, size_t(nt) * hidden * 4, cudaMemcpyDeviceToHost, stream), "peer result");
+        busy = any;
+        return any;
+    }
+    // a prompt pass: every route of layer l resident here, by MMQ; result into host_out
+    bool prefill(int l, int nt, int K, const int* ids, const float* wts, const float* z) {
+        namespace mq = strata::prefill::mmq;
+        Guard g(dev);
+        const int E = int(pos[size_t(l)].size());
+        std::vector<std::vector<int>> tok(static_cast<size_t>(E));
+        std::vector<std::vector<float>> wt(static_cast<size_t>(E));
+        std::vector<int> order;   // experts resident here, by position
+        for (int e = 0; e < E; ++e) if (pos[size_t(l)][size_t(e)] >= 0) order.push_back(e);
+        std::sort(order.begin(), order.end(), [&](int a, int b2) { return pos[size_t(l)][size_t(a)] < pos[size_t(l)][size_t(b2)]; });
+        int routes = 0;
+        for (int i = 0; i < nt * K; ++i) {
+            const int e = ids[i];
+            if (e < 0 || pos[size_t(l)][size_t(e)] < 0) continue;
+            tok[size_t(e)].push_back(i / K);
+            wt[size_t(e)].push_back(wts[i]);
+            ++routes;
+        }
+        busy = routes > 0;
+        if (!busy) return false;
+        // positions are contiguous from 0 in `order`: one product per run within the row cap
+        std::vector<int> hidx, hb;
+        std::vector<float> hw;
+        std::vector<int> row0(order.size() + 1, 0);
+        for (size_t q = 0; q < order.size(); ++q) {
+            row0[q + 1] = row0[q] + int(tok[size_t(order[q])].size());
+            hidx.insert(hidx.end(), tok[size_t(order[q])].begin(), tok[size_t(order[q])].end());
+            hw.insert(hw.end(), wt[size_t(order[q])].begin(), wt[size_t(order[q])].end());
+        }
+        struct Prod { int j0, j1, first, rows, b0, mx; };
+        std::vector<Prod> prods;
+        for (int j0 = 0; j0 < int(order.size());) {
+            int j1 = j0, r = 0, mx = 0;
+            while (j1 < int(order.size()) && (j1 == j0 || r + int(tok[size_t(order[size_t(j1)])].size()) <= rcap)) {
+                r += int(tok[size_t(order[size_t(j1)])].size());
+                mx = std::max(mx, int(tok[size_t(order[size_t(j1)])].size()));
+                ++j1;
+            }
+            Prod pr{j0, j1, row0[size_t(j0)], r, int(hb.size()), mx};
+            for (int j = j0; j <= j1; ++j) hb.push_back(row0[size_t(j)] - pr.first);
+            prods.push_back(pr);
+            j0 = j1;
+        }
+        if (hb.size() * 4 > bound.bytes) bound = Dev(hb.size() * 4);
+        ck(cudaMemcpyAsync(x.p, z, size_t(nt) * hidden * 4, cudaMemcpyHostToDevice, stream), "peer z");
+        ck(cudaMemcpyAsync(idx.p, hidx.data(), hidx.size() * 4, cudaMemcpyHostToDevice, stream), "peer rows");
+        ck(cudaMemcpyAsync(w.p, hw.data(), hw.size() * 4, cudaMemcpyHostToDevice, stream), "peer weights");
+        ck(cudaMemcpyAsync(bound.p, hb.data(), hb.size() * 4, cudaMemcpyHostToDevice, stream), "peer bounds");
+        ck(cudaMemsetAsync(out.p, 0, size_t(nt) * hidden * 4, stream), "peer sum");
+        const size_t gb = ggml_row_size(ggml_type(gu_type[size_t(l)]), hidden) * size_t(ff);
+        for (const Prod& p : prods) {
+            if (!p.rows) continue;
+            const uint8_t* st = base[size_t(l)] + size_t(p.j0) * stride[size_t(l)];
+            const int32_t* rtok = idx.i() + p.first;
+            mq::quantize(x.f(), rtok, xq.p, gu_type[size_t(l)], hidden, hidden, p.rows, stream);
+            mq::Product a;
+            a.w = st; a.type = gu_type[size_t(l)]; a.w_rows = 2 * ff; a.w_cols = hidden; a.expert_bytes = stride[size_t(l)];
+            a.n = p.j1 - p.j0; a.xq = xq.p; a.bounds = bound.i() + p.b0; a.ids = iota.i(); a.total_rows = p.rows; a.max_rows = p.mx;
+            a.dst = gu.f(); a.ld_dst = 2 * ff;
+            mmq->run(a, stream);
+            mq::swiglu(gu.f(), hf.f(), p.rows, ff, false, stream, clamp[size_t(l)]);
+            mq::quantize(hf.f(), nullptr, hq.p, d_type[size_t(l)], ff, ff, p.rows, stream);
+            mq::Product d = a;
+            d.w = st + 2 * gb; d.type = d_type[size_t(l)]; d.w_rows = hidden; d.w_cols = ff; d.xq = hq.p; d.dst = dout.f(); d.ld_dst = hidden;
+            mmq->run(d, stream);
+            k::ds41_scatter_axpy(dout.f(), rtok, w.f(p.first), p.rows, hidden, out.f(), stream);
+        }
+        ck(cudaMemcpyAsync(host_out, out.p, size_t(nt) * hidden * 4, cudaMemcpyDeviceToHost, stream), "peer result");
+        return true;
+    }
+    void collect() {   // the last call's result is in host_out
+        if (!busy) return;
+        Guard g(dev);
+        ck(cudaStreamSynchronize(stream), "peer");
+        busy = false;
+    }
+};
+
 class Decoder {
 public:
     Decoder(const std::string& path, int context, int threads, int chunk = 0)
-        : art_(path), cfg_(Config::read(*art_.metadata(), art_.descriptor())), context_(context) {
+        : art_(path), cfg_(Config::read(*art_.metadata(), art_.descriptor(), [this](const std::string& n) {
+              try { art_.at(n); return true; } catch (...) { return false; }
+          })), context_(context) {
         if (chunk > 0) chunk_ = chunk;
         const auto& c = cfg_;
         if (context_ < 1) throw std::invalid_argument("ds41: context must be positive");
@@ -265,9 +430,13 @@ public:
         if (const char* v = std::getenv("STRATA_DS41_PREFILL_CHUNK"); v && chunk <= 0) chunk_ = std::max(1, std::atoi(v));
         ring_ = c.window + chunk_;
         stream_ = make_stream(0);   // the default (blocking) flags
+        // STRATA_DS41_IQ2XXS_EXACT (1): IQ2_XXS GPU dots scale in floats like the CPU reference (the truncating
+        // integer scale cost +2.5 % PPL on the IQ2_XXSE4 pack)
+        k::native_mmvq_set_iq2xxs_exact(!(std::getenv("STRATA_DS41_IQ2XXS_EXACT") && std::string(std::getenv("STRATA_DS41_IQ2XXS_EXACT")) == "0"));
         // STRATA_DS41_REMOTE_TP=HOST:PORT (this node's address the worker connects to): the worker takes FFN rows
         // [fl_, ff) of every routed expert, STRATA_DS41_REMOTE_SHARE of them (default 2/9, whole 256-row blocks)
         fl_ = c.ff;
+        ram_copy_ = std::getenv("STRATA_DS41_RAM_COPY") && std::string(std::getenv("STRATA_DS41_RAM_COPY")) == "1";
         if (const char* addr = std::getenv("STRATA_DS41_REMOTE_TP")) {
             remote_addr_ = addr;
             const char* v = std::getenv("STRATA_DS41_REMOTE_SHARE");
@@ -297,7 +466,18 @@ public:
             if (c.topk_src[size_t(l)] == l)
                 for (const char* n : {"indexer.attn_q_b.weight", "indexer.proj.weight"}) bytes += upload(p + n);
             if (c.engram_index(l) >= 0)
-                for (const char* n : {"engram_kv.weight", "engram_gate.weight"}) bytes += upload(p + n);
+                if (!c.engram_per_layer) {
+                    for (const char* n : {"engram_kv.weight", "engram_gate.weight"}) bytes += upload(p + n);
+                } else {   // #28696: engram_wkv is engram_kv; the gate is engram_q * engram_k (only their product is used)
+                    bytes += upload(p + "engram_wkv.weight", p + "engram_kv.weight");
+                    const auto &q = art_.at(p + "engram_q.weight"), &kk = art_.at(p + "engram_k.weight");
+                    const int64_t n = int64_t(c.hidden) * c.streams;
+                    if (int64_t(q.tensor->shape[0]) * int64_t(q.tensor->shape[1]) != n || q.tensor->shape != kk.tensor->shape)
+                        throw std::runtime_error("ds41: Engram q/k geometry");
+                    auto gq = to_float(int(q.tensor->type), q.data(), n), gk = to_float(int(kk.tensor->type), kk.data(), n);
+                    for (int64_t i = 0; i < n; ++i) gq[size_t(i)] *= gk[size_t(i)];
+                    bytes += upload_f32(p + "engram_gate.weight", gq, c.hidden, c.streams);
+                }
             // the router bias stays on the host: the top-k runs there
             const auto& b = art_.at(p + "exp_probs_b.bias");
             bias_.push_back(to_float(int(b.tensor->type), b.data(), c.experts));
@@ -323,7 +503,7 @@ public:
             // loader's private mapping (11.8 vs 20.4 GB/s on TR16), for the streamed prompt experts and the lane
             static const bool lane_shared = !(std::getenv("STRATA_DS41_LANE_SHARED") && std::string(std::getenv("STRATA_DS41_LANE_SHARED")) == "0");
             const bool split = fl_ != c.ff;
-            const uint8_t *G = shared(g, !split), *U = shared(u, !split), *D = shared(d);
+            const uint8_t *G = shared(g, !split && !ram_copy_), *U = shared(u, !split && !ram_copy_), *D = shared(d, !ram_copy_);
             if (split) {   // populate only this node's gate/up rows of each expert
                 const uintptr_t pg = uintptr_t(sysconf(_SC_PAGESIZE));
                 for (const uint8_t* base : {G, U})
@@ -374,15 +554,30 @@ public:
         attn_scores_ = Dev(k::ds41_attention_scratch(c.heads));
         comp_ = Dev(size_t(c.head_dim) * 4);
         ik_ = Dev(size_t(c.index_dim) * 4);
-        if (!c.engram_layers.empty()) {
-            const auto& t = art_.at("per_layer_token_embd.weight");
-            engram_table_ = &t;
-            engram_fd_ = ::open(t.file->path().c_str(), O_RDONLY | O_DIRECT);
-            if (engram_fd_ < 0) throw std::runtime_error("ds41: cannot open the Engram table with O_DIRECT: " + t.file->path());
-            if (const char* v = std::getenv("STRATA_DS41_ENGRAM_THREADS")) engram_threads_ = std::max(1, std::atoi(v));
+        // the Engram tables (one shared, or one per Engram layer), read with O_DIRECT
+        for (size_t e = 0; e < c.engram_layers.size(); ++e) {
+            const auto& t = art_.at(c.engram_per_layer ? "blk." + std::to_string(c.engram_layers[e]) + ".engram_embd.weight"
+                                                       : std::string("per_layer_token_embd.weight"));
+            int fd = -1;
+            for (size_t j = 0; j < engram_tables_.size(); ++j)
+                if (engram_tables_[j]->file->path() == t.file->path()) fd = engram_fds_[j];
+            // STRATA_DS41_ENGRAM_DIRECT (1): O_DIRECT, so the table never fills the page cache the experts live in.
+            // 0: buffered reads - on a shared filesystem (Lustre) many buffered readers reach ~13x the O_DIRECT
+            // rate of random 4 KiB rows (raise STRATA_DS41_ENGRAM_THREADS to 128-256 there)
+            static const bool direct = !(std::getenv("STRATA_DS41_ENGRAM_DIRECT") && std::string(std::getenv("STRATA_DS41_ENGRAM_DIRECT")) == "0");
+            if (fd < 0) {
+                fd = ::open(t.file->path().c_str(), O_RDONLY | (direct ? O_DIRECT : 0));
+                if (fd < 0) throw std::runtime_error("ds41: cannot open the Engram table: " + t.file->path());
+                owned_fds_.push_back(fd);
+            }
+            engram_tables_.push_back(&t);
+            engram_fds_.push_back(fd);
             // the loader's mapping may have pulled table pages in: drop them from the page cache
-            posix_fadvise(engram_fd_, off_t(t.file->data_start() + t.tensor->offset), off_t(t.bytes), POSIX_FADV_DONTNEED);
+            if (direct) posix_fadvise(fd, off_t(t.file->data_start() + t.tensor->offset), off_t(t.bytes), POSIX_FADV_DONTNEED);
+            else posix_fadvise(fd, off_t(t.file->data_start() + t.tensor->offset), off_t(t.bytes), POSIX_FADV_RANDOM);
         }
+        if (const char* v = std::getenv("STRATA_DS41_ENGRAM_THREADS")) engram_threads_ = std::max(1, std::atoi(v));
+        if (const char* v = std::getenv("STRATA_DS41_ENGRAM_RAM_GIB")) load_engram_ram(std::atof(v));
         (void)process_cpus();   // before the lane pins this thread
         lane_ = std::make_unique<ExpertLane>(c.hidden, fl_, threads, true);
         // STRATA_DS41_GEMM_MIN (32): passes of at least this many tokens take GEMMs for the trunk
@@ -412,8 +607,17 @@ public:
         (void)H;
         score_.assign(size_t(c.layers) * c.experts, 0.0f);
         if (!remote_addr_.empty()) connect_remote();
+        order_.assign(size_t(c.layers), {});
+        n_stream_.assign(size_t(c.layers), c.experts);
+        for (auto& o : order_) { o.resize(size_t(c.experts)); std::iota(o.begin(), o.end(), 0); }
         resize(chunk_);
         // a long first prompt borrows the tier's VRAM; prefill_done() shrinks the buffers and loads the tier
+        if (ram_copy_) {
+            if (!remote_addr_.empty()) throw std::runtime_error("ds41: STRATA_DS41_RAM_COPY with a remote worker is not supported");
+            residency();
+            tier_lent_ = false;
+            return;
+        }
         tier_lent_ = chunk_ >= stream_min_;
         if (!tier_lent_) load_tier();
         else pin_experts();   // at load, not in the first prompt's time
@@ -542,6 +746,220 @@ public:
                   << " GiB=" << sent / double(1ull << 30) << " s="
                   << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
         remote_ = std::move(r);
+    }
+
+    // ---- STRATA_DS41_RAM_COPY=1: every expert in VRAM or in this process's memory (a shared filesystem such as
+    // Lustre keeps little page cache). The most-routed experts (STRATA_DS41_EXPERT_PROFILE, else spread by index over
+    // the layers) fill GPU0's free VRAM less STRATA_DS41_GPU_RESERVE_MIB (1024), then a second GPU's
+    // (STRATA_DS41_PEER_GPU, default on with two devices); they are read from the files straight to the GPU, laid out
+    // per layer at the MMQ stride. The rest are read into anonymous memory (STRATA_DS41_RAM_THREADS, 16) and dropped
+    // from the page cache. The tier is static then (no promotions; nothing could be promoted from).
+    void residency() {
+        const auto& c = cfg_;
+        auto env = [](const char* name, double fallback) { const char* v = std::getenv(name); return v ? std::stod(v) : fallback; };
+        const auto t0 = std::chrono::steady_clock::now();
+        promote_ = 0;
+        pinned_tried_ = true;
+        pinned_layer_.assign(size_t(c.layers), 0);
+        gu_pin_ = down_pin_ = pinned_layer_;
+        slot_.assign(size_t(c.layers), std::vector<int>(size_t(c.experts), -1));
+        if (score_.size() != size_t(c.layers) * c.experts) score_.assign(size_t(c.layers) * c.experts, 0.0f);
+        gx_q8_ = Dev(k::native_q8_1_bytes(c.hidden, 1));
+        g_gate_ = Dev(size_t(c.ff) * 4);
+        g_up_ = Dev(size_t(c.ff) * 4);
+        g_h_ = Dev(size_t(c.ff) * 4);
+        g_h_q8_ = Dev(k::native_q8_1_bytes(c.ff, 1));
+        g_out_ = Dev(size_t(c.hidden) * 4);
+        const size_t keep = size_t(env("STRATA_DS41_GPU_RESERVE_MIB", 1024)) << 20;
+        size_t free0 = 0, total0 = 0;
+        ck(cudaMemGetInfo(&free0, &total0), "memory info");
+        size_t budget0 = free0 > keep ? free0 - keep : 0, budget1 = 0;
+        if (std::getenv("STRATA_DS41_GPU_EXPERT_MIB")) budget0 = std::min(budget0, size_t(env("STRATA_DS41_GPU_EXPERT_MIB", 0)) << 20);
+        int devices = 0;
+        cudaGetDeviceCount(&devices);
+        if (devices > 1 && env("STRATA_DS41_PEER_GPU", 1) != 0) {
+            peer_ = std::make_unique<PeerGpu>();
+            peer_->hidden = c.hidden;
+            peer_->ff = c.ff;
+            peer_->init(chunk_, rcap_);
+            const size_t f1 = peer_->free_bytes();
+            budget1 = f1 > keep ? f1 - keep : 0;
+        }
+        // ranking: profile counts, ties by expert index then layer (spread over the layers)
+        std::vector<double> count(size_t(c.layers) * c.experts, 0);
+        if (const char* profile = std::getenv("STRATA_DS41_EXPERT_PROFILE")) {
+            std::ifstream g(profile, std::ios::binary);
+            if (!g) throw std::runtime_error("ds41: cannot read the expert profile " + std::string(profile));
+            std::vector<int32_t> v(size_t(c.layers) * c.top_k);
+            while (g.read(reinterpret_cast<char*>(v.data()), std::streamsize(v.size() * 4)))
+                for (int l = 0; l < c.layers; ++l)
+                    for (int kk = 0; kk < c.top_k; ++kk) {
+                        const int e = v[size_t(l) * c.top_k + kk];
+                        if (e >= 0 && e < c.experts) count[size_t(l) * c.experts + e] += 1;
+                    }
+        }
+        std::vector<int> order(count.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+            if (count[size_t(a)] != count[size_t(b)]) return count[size_t(a)] > count[size_t(b)];
+            return a % c.experts != b % c.experts ? a % c.experts < b % c.experts : a < b;
+        });
+        where_.assign(size_t(c.layers), std::vector<char>(size_t(c.experts), 0));
+        std::vector<size_t> stride(size_t(c.layers));
+        for (int l = 0; l < c.layers; ++l) stride[size_t(l)] = stream_stride(l);
+        size_t used0 = 0, used1 = 0, ram = 0;
+        for (int i : order) {
+            const int l = i / c.experts, e = i % c.experts;
+            const size_t b = stride[size_t(l)];
+            if (used0 + b <= budget0) { where_[size_t(l)][size_t(e)] = 1; used0 += b; }
+            else if (peer_ && used1 + b <= budget1) { where_[size_t(l)][size_t(e)] = 2; used1 += b; }
+            else ram += expert_bytes(l);
+        }
+        // layout: per layer, GPU0's experts contiguous (positions after the streamed ones), the peer's contiguous
+        if (used0) {
+            void* p = nullptr;
+            ck(cudaMalloc(&p, used0), "resident experts");
+            arena_.p = p;
+            arena_.bytes = used0;
+        }
+        res0_base_.assign(size_t(c.layers), nullptr);
+        res0_stride_ = stride;
+        order_.assign(size_t(c.layers), {});
+        n_stream_.assign(size_t(c.layers), 0);
+        size_t off0 = 0, off1 = 0;
+        Dev peer_arena;
+        if (peer_ && used1) {
+            PeerGpu::Guard gd(peer_->dev);
+            peer_arena = Dev(used1);
+        }
+        if (peer_) {
+            peer_->base.assign(size_t(c.layers), nullptr);
+            peer_->stride = stride;
+            peer_->pos.assign(size_t(c.layers), std::vector<int>(size_t(c.experts), -1));
+            for (int l = 0; l < c.layers; ++l) {
+                peer_->gu_type.push_back(full_[size_t(l)].gu_type);
+                peer_->d_type.push_back(full_[size_t(l)].d_type);
+                peer_->clamp.push_back(c.clamp[size_t(l)]);
+            }
+        }
+        struct Task { int l, e, where; uint8_t* dst; };
+        std::vector<Task> uploads;
+        for (int l = 0; l < c.layers; ++l) {
+            auto& ord = order_[size_t(l)];
+            for (int e = 0; e < c.experts; ++e) if (where_[size_t(l)][size_t(e)] == 0) ord.push_back(e);
+            n_stream_[size_t(l)] = int(ord.size());
+            res0_base_[size_t(l)] = static_cast<uint8_t*>(arena_.p) + off0;
+            int n1 = 0;
+            if (peer_) peer_->base[size_t(l)] = peer_arena.b(off1);
+            for (int e = 0; e < c.experts; ++e) {
+                if (where_[size_t(l)][size_t(e)] == 1) {
+                    uint8_t* dst = static_cast<uint8_t*>(arena_.p) + off0;
+                    slot_[size_t(l)][size_t(e)] = int(slots_.size());
+                    slots_.push_back({dst, expert_bytes(l), l * c.experts + e, false, nullptr});
+                    ord.push_back(e);
+                    uploads.push_back({l, e, 1, dst});
+                    off0 += stride[size_t(l)];
+                } else if (where_[size_t(l)][size_t(e)] == 2) {
+                    peer_->pos[size_t(l)][size_t(e)] = n1++;
+                    uploads.push_back({l, e, 2, peer_arena.b(off1)});
+                    off1 += stride[size_t(l)];
+                }
+            }
+        }
+        if (peer_) peer_->arena = std::move(peer_arena);
+        // file reads: resident experts to their GPU, the others into anonymous memory
+        std::map<std::string, int> fds;
+        auto fd_of = [&](const core::ArtifactTensor& t) {
+            auto it = fds.find(t.file->path());
+            if (it == fds.end()) {
+                const int fd = ::open(t.file->path().c_str(), O_RDONLY);
+                if (fd < 0) throw std::runtime_error("ds41: cannot open " + t.file->path());
+                it = fds.emplace(t.file->path(), fd).first;
+            }
+            return it->second;
+        };
+        auto read_at = [](int fd, uint8_t* dst, size_t n, uint64_t off) {
+            for (size_t got = 0; got < n;) {
+                const ssize_t r = pread(fd, dst + got, n - got, off_t(off + got));
+                if (r <= 0) throw std::runtime_error("ds41: expert read failed");
+                got += size_t(r);
+            }
+        };
+        struct Part { int fd; uint64_t off; size_t bytes; };   // gate, up, down of layer l
+        std::vector<std::array<Part, 3>> parts(size_t(c.layers));
+        for (int l = 0; l < c.layers; ++l) {
+            const std::string p = "blk." + std::to_string(l) + ".";
+            int j = 0;
+            for (const char* n : {"ffn_gate_exps.weight", "ffn_up_exps.weight", "ffn_down_exps.weight"}) {
+                const auto& t = art_.at(p + n);
+                parts[size_t(l)][size_t(j++)] = {fd_of(t), t.file->data_start() + t.tensor->offset, t.bytes};
+            }
+        }
+        // anonymous copies, laid out as the tensors (untouched pages of resident experts cost nothing)
+        for (int l = 0; l < c.layers; ++l) {
+            auto& L = experts_[size_t(l)];
+            uint8_t* region[3];
+            for (int j = 0; j < 3; ++j) {
+                void* m = mmap(nullptr, parts[size_t(l)][size_t(j)].bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                if (m == MAP_FAILED) throw std::runtime_error("ds41: cannot allocate the expert copy");
+                madvise(m, parts[size_t(l)][size_t(j)].bytes, MADV_HUGEPAGE);
+                ram_maps_.push_back({m, parts[size_t(l)][size_t(j)].bytes});
+                region[j] = static_cast<uint8_t*>(m);
+            }
+            L.gate = region[0];
+            L.up = region[1];
+            L.down = region[2];
+            stream_src_[size_t(l)] = {region[0], region[1], region[2]};
+        }
+        const int threads = int(env("STRATA_DS41_RAM_THREADS", 16));
+        std::atomic<size_t> next_up{0};
+        std::atomic<int> next_layer{0};
+        std::atomic<bool> failed{false};
+        std::string error;
+        std::mutex error_m;
+        std::vector<std::thread> workers;
+        for (int w = 0; w < threads; ++w)
+            workers.emplace_back([&] {
+                unpin_helper();
+                try {
+                    std::vector<uint8_t> buf;
+                    for (size_t i; !failed && (i = next_up++) < uploads.size();) {   // resident experts
+                        const Task& tk = uploads[i];
+                        const auto& L = experts_[size_t(tk.l)];
+                        const size_t g = L.f.gu_row * size_t(c.ff), d = L.f.d_row * size_t(c.hidden);
+                        buf.resize(2 * g + d);
+                        const auto& P = parts[size_t(tk.l)];
+                        read_at(P[0].fd, buf.data(), g, P[0].off + size_t(tk.e) * g);
+                        read_at(P[1].fd, buf.data() + g, g, P[1].off + size_t(tk.e) * g);
+                        read_at(P[2].fd, buf.data() + 2 * g, d, P[2].off + size_t(tk.e) * d);
+                        cudaSetDevice(tk.where == 2 ? peer_->dev : 0);
+                        ck(cudaMemcpy(tk.dst, buf.data(), buf.size(), cudaMemcpyHostToDevice), "resident upload");
+                    }
+                    cudaSetDevice(0);
+                    for (int l; !failed && (l = next_layer++) < c.layers;) {   // the others, per layer
+                        const auto& L = experts_[size_t(l)];
+                        const auto& P = parts[size_t(l)];
+                        const size_t g = L.f.gu_row * size_t(c.ff), d = L.f.d_row * size_t(c.hidden);
+                        for (int e = 0; e < c.experts; ++e) {
+                            if (where_[size_t(l)][size_t(e)]) continue;
+                            read_at(P[0].fd, const_cast<uint8_t*>(L.gate) + size_t(e) * g, g, P[0].off + size_t(e) * g);
+                            read_at(P[1].fd, const_cast<uint8_t*>(L.up) + size_t(e) * g, g, P[1].off + size_t(e) * g);
+                            read_at(P[2].fd, const_cast<uint8_t*>(L.down) + size_t(e) * d, d, P[2].off + size_t(e) * d);
+                        }
+                        for (const auto& q : P) posix_fadvise(q.fd, off_t(q.off), off_t(q.bytes), POSIX_FADV_DONTNEED);
+                    }
+                } catch (const std::exception& ex) {
+                    std::lock_guard<std::mutex> lock(error_m);
+                    error = ex.what();
+                    failed = true;
+                }
+            });
+        for (auto& w : workers) w.join();
+        for (const auto& [path, fd] : fds) ::close(fd);
+        if (failed) throw std::runtime_error(error);
+        std::cerr << "DS41 residency gpu0_GiB=" << used0 / double(1ull << 30) << " gpu1_GiB=" << used1 / double(1ull << 30)
+                  << " ram_GiB=" << ram / double(1ull << 30) << " s=" << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()
+                  << (std::getenv("STRATA_DS41_EXPERT_PROFILE") ? " (profile)" : " (no profile: spread by index)") << "\n";
     }
 
     /// After a long prompt: the chunk buffers shrink to STRATA_DS41_DECODE_CHUNK (64) and the GPU expert tier takes
@@ -737,11 +1155,13 @@ public:
         return static_cast<float*>(h);
     }
     ~Decoder() {
+        if (engram_later_.joinable()) engram_later_.join();
         stream_end();
         for (auto* r : rbuf_regions_) ucomm_mr_dereg(r);
+        for (const auto& [m, n] : ram_maps_) munmap(m, n);
         for (void* r : registered_) cudaHostUnregister(r);
         for (const auto& [file, m] : shared_maps_) munmap(m.first, m.second);
-        if (engram_fd_ >= 0) ::close(engram_fd_);
+        for (int fd : owned_fds_) ::close(fd);
         if (uploader_.joinable()) {
             { std::lock_guard<std::mutex> lock(jobs_mutex_); stop_uploads_ = true; }
             jobs_cv_.notify_all();
@@ -804,11 +1224,24 @@ public:
             const auto g0 = std::chrono::steady_clock::now();
             for (size_t e = 0; e < c.engram_layers.size(); ++e)
                 for (int i = 0; i < T; ++i) gather_engram(int(e), i, pos + i);
-            read_engram_rows();
+            // STRATA_DS41_ENGRAM_ASYNC (1): the first Engram layer's rows now, the later layers' rows on a background
+            // thread that the layer waits for (their reads overlap the layers before it)
+            static const bool async = !(std::getenv("STRATA_DS41_ENGRAM_ASYNC") && std::string(std::getenv("STRATA_DS41_ENGRAM_ASYNC")) == "0");
+            if (async && c.engram_layers.size() > 1) {
+                std::vector<EngramReq> later;
+                std::vector<EngramReq> first;
+                for (const auto& r : engram_reqs_) (r.table == 0 ? first : later).push_back(r);
+                engram_reqs_ = std::move(first);
+                read_engram_rows();
+                engram_later_ = std::thread([this, later = std::move(later)]() mutable { engram_reqs_bg_ = std::move(later); read_rows(engram_reqs_bg_); });
+                upload_engram(0);
+            } else {
+                read_engram_rows();
+                if (!c.engram_layers.empty())
+                    ck(cudaMemcpyAsync(engram_rows_.p, engram_host_.data(), engram_host_.size() * 4, cudaMemcpyHostToDevice, stream_),
+                       "engram rows");
+            }
             prof_[4] += std::chrono::duration<double>(std::chrono::steady_clock::now() - g0).count();
-            if (!c.engram_layers.empty())
-                ck(cudaMemcpyAsync(engram_rows_.p, engram_host_.data(), engram_host_.size() * 4, cudaMemcpyHostToDevice, stream_),
-                   "engram rows");
         }
         if (hook && observe) observe("hc_init", -1, h_.f(), size_t(4) * c.hidden);
         route_log_.assign(size_t(T) * c.layers * c.top_k, -1);
@@ -830,6 +1263,13 @@ public:
             const std::string p = "blk." + std::to_string(l) + ".";
             if (gpu_timing_ && producer_.joinable()) mark(0);
             if (const int e = c.engram_index(l); e >= 0) {
+                if (e > 0 && engram_later_.joinable()) {   // the background rows
+                    const auto w0 = std::chrono::steady_clock::now();
+                    engram_later_.join();
+                    if (engram_failed_) throw std::runtime_error("ds41: Engram row read failed");
+                    for (size_t j = 1; j < c.engram_layers.size(); ++j) upload_engram(int(j));
+                    prof_[4] += std::chrono::duration<double>(std::chrono::steady_clock::now() - w0).count();
+                }
                 engram(l, e);
                 if (hook && observe) observe("engram_out", l, h_.f(), size_t(4) * c.hidden);
             }
@@ -917,7 +1357,19 @@ private:
         return static_cast<const uint8_t*>(it->second.first) + t.file->data_start() + t.tensor->offset;
     }
 
-    size_t upload(const std::string& name) {
+    // a host-made F32 matrix [out][in] as weight `name`
+    size_t upload_f32(const std::string& name, const std::vector<float>& v, int in, int out) {
+        Weight W;
+        W.type = GGML_TYPE_F32;
+        W.in = in;
+        W.out = out;
+        W.row_bytes = size_t(in) * 4;
+        W.data = Dev(v.size() * 4);
+        ck(cudaMemcpy(W.data.p, v.data(), v.size() * 4, cudaMemcpyHostToDevice), "upload");
+        weights_.emplace(name, std::move(W));
+        return v.size() * 4;
+    }
+    size_t upload(const std::string& name, const std::string& as = {}) {
         const auto& t = art_.at(name);
         Weight W;
         W.type = int(t.tensor->type);
@@ -929,7 +1381,7 @@ private:
         ck(cudaMemcpy(W.data.p, t.data(), t.bytes, cudaMemcpyHostToDevice), "upload");
         // the GPU copy is the only one used: its host pages leave the page cache to the experts
         t.file->discard_tensor_pages(*t.tensor, t.bytes);
-        weights_.emplace(name, std::move(W));
+        weights_.emplace(as.empty() ? name : as, std::move(W));
         return t.bytes;
     }
     const Weight& weight(const std::string& name) const {
@@ -1000,7 +1452,7 @@ private:
         const uint64_t* mult = c.multipliers.data() + size_t(e) * n;
         const uint64_t* primes = c.primes.data() + size_t(e) * cols;
         const uint64_t* offs = c.offsets.data() + size_t(e) * cols;
-        const int64_t pad = c.token_map[size_t(c.engram_pad)];
+        const int64_t pad = c.engram_pad_mapped ? c.engram_pad : c.token_map[size_t(c.engram_pad)];
         auto cid = [&](int64_t t) -> int64_t {
             return t < 0 || t >= int64_t(c.token_map.size()) ? -1 : c.token_map[size_t(t)];
         };
@@ -1024,17 +1476,99 @@ private:
         }
         const size_t per_token = size_t(cols) * c.engram_dim;
         float* v = engram_host_.data() + (size_t(e) * chunk_ + size_t(i)) * per_token;
-        for (int j = 0; j < cols; ++j) engram_reqs_.push_back({rows[size_t(j)], v + size_t(j) * c.engram_dim});
+        for (int j = 0; j < cols; ++j) engram_reqs_.push_back({rows[size_t(j)], v + size_t(j) * c.engram_dim, e});
     }
 
     // The queued Engram rows, read with O_DIRECT preads (the 110 GB table must not fill the page cache the experts
     // live in) by STRATA_DS41_ENGRAM_THREADS (16) threads, each row's 4 KiB page(s), then dequantized.
+    // STRATA_DS41_ENGRAM_RAM_GIB=G: up to G GiB of the Engram tables read into this process's memory, table by table
+    // in layer order: the first Engram layer's table (read synchronously before layer 1) whole, the later ones' leading
+    // rows (read in the background, under the layers before them). The rows past it are still read from the file.
+    void load_engram_ram(double gib) {
+        const auto t0 = std::chrono::steady_clock::now();
+        double total = 0;
+        for (const auto* t : engram_tables_) total += double(t->bytes);
+        double left = gib * double(1ull << 30);
+        const double share = std::min(1.0, left / std::max(1.0, total));
+        engram_ram_.assign(engram_tables_.size(), nullptr);
+        engram_ram_rows_.assign(engram_tables_.size(), 0);
+        if (left <= 0) return;
+        std::vector<std::thread> workers;
+        std::atomic<bool> failed{false};
+        size_t bytes = 0;
+        for (size_t e = 0; e < engram_tables_.size(); ++e) {
+            bool dup = false;   // a shared table (#30817) is read once
+            for (size_t j = 0; j < e; ++j) if (engram_tables_[j] == engram_tables_[e]) { engram_ram_[e] = engram_ram_[j]; engram_ram_rows_[e] = engram_ram_rows_[j]; dup = true; }
+            if (dup) continue;
+            const auto& t = *engram_tables_[e];
+            const size_t row = ggml_row_size(ggml_type(t.tensor->type), cfg_.engram_dim);
+            const int64_t rows = int64_t(t.bytes / row), keep = std::min<int64_t>(rows, int64_t(std::max(0.0, left) / double(row)));
+            left -= double(keep) * double(row);
+            const size_t n = size_t(keep) * row;
+            void* m = mmap(nullptr, std::max<size_t>(n, 4096), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (m == MAP_FAILED) throw std::runtime_error("ds41: cannot allocate the Engram copy");
+            madvise(m, n, MADV_HUGEPAGE);
+            ram_maps_.push_back({m, std::max<size_t>(n, 4096)});
+            engram_ram_[e] = static_cast<uint8_t*>(m);
+            engram_ram_rows_[e] = keep;
+            bytes += n;
+            const int fd = ::open(t.file->path().c_str(), O_RDONLY);
+            if (fd < 0) throw std::runtime_error("ds41: cannot open " + t.file->path());
+            const uint64_t base = t.file->data_start() + t.tensor->offset;
+            const size_t piece = size_t(64) << 20;
+            const int nt = 16;
+            for (int w = 0; w < nt; ++w)
+                workers.emplace_back([&, fd, base, n, m, w] {
+                    unpin_helper();
+                    for (size_t o = size_t(w) * piece; o < n && !failed; o += size_t(nt) * piece) {
+                        const size_t len = std::min(piece, n - o);
+                        for (size_t got = 0; got < len;) {
+                            const ssize_t r = pread(fd, static_cast<uint8_t*>(m) + o + got, len - got, off_t(base + o + got));
+                            if (r <= 0) { failed = true; break; }
+                            got += size_t(r);
+                        }
+                        posix_fadvise(fd, off_t(base + o), off_t(len), POSIX_FADV_DONTNEED);
+                    }
+                });
+            for (auto& w : workers) w.join();
+            workers.clear();
+            ::close(fd);
+        }
+        if (failed) throw std::runtime_error("ds41: Engram table read failed");
+        std::cerr << "DS41 engram in memory GiB=" << bytes / double(1ull << 30) << " share=" << share << " s="
+                  << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
+    }
+
+    void upload_engram(int e) {
+        const size_t per = size_t(chunk_) * cfg_.engram_cols() * cfg_.engram_dim;
+        ck(cudaMemcpyAsync(engram_rows_.f(size_t(e) * per), engram_host_.data() + size_t(e) * per, per * 4, cudaMemcpyHostToDevice, stream_),
+           "engram rows");
+    }
     void read_engram_rows() {
-        if (engram_reqs_.empty()) return;
-        const auto& t = *engram_table_;
-        const int type = int(t.tensor->type), dim = cfg_.engram_dim;
-        const size_t row_bytes = ggml_row_size(ggml_type(type), dim);
-        const uint64_t base = t.file->data_start() + t.tensor->offset;
+        read_rows(engram_reqs_);
+        if (engram_failed_) throw std::runtime_error("ds41: Engram row read failed");
+    }
+    template <class Reqs> void read_rows(Reqs& reqs) {   // (EngramReq is declared below)
+        engram_failed_ = false;
+        if (reqs.empty()) return;
+        const int dim = cfg_.engram_dim;
+        // rows in memory now, on this thread; threads only for the rows read from the files
+        std::remove_reference_t<Reqs> misses;
+        if (!engram_ram_.empty()) {
+            for (const auto& r : reqs) {
+                const auto& t = *engram_tables_[size_t(r.table)];
+                if (r.row < engram_ram_rows_[size_t(r.table)]) {
+                    const int type = int(t.tensor->type);
+                    const size_t row_bytes = ggml_row_size(ggml_type(type), dim);
+                    ggml_get_type_traits(ggml_type(type))->to_float(engram_ram_[size_t(r.table)] + size_t(r.row) * row_bytes, r.dst, dim);
+                } else {
+                    misses.push_back(r);
+                }
+            }
+            reqs.clear();
+            if (misses.empty()) return;
+        }
+        auto& engram_reqs_ = engram_ram_.empty() ? reqs : misses;
         const int nt = std::min<int>(engram_threads_, int(engram_reqs_.size()));
         std::vector<std::thread> workers;
         std::atomic<bool> failed{false};
@@ -1043,16 +1577,25 @@ private:
                 unpin_helper();
                 alignas(4096) static thread_local uint8_t buf[3 * 4096];
                 for (size_t q = size_t(w); q < engram_reqs_.size(); q += size_t(nt)) {
-                    const uint64_t off = base + uint64_t(engram_reqs_[q].row) * row_bytes;
+                    const auto& t = *engram_tables_[size_t(engram_reqs_[q].table)];
+                    const int type = int(t.tensor->type);
+                    const size_t row_bytes = ggml_row_size(ggml_type(type), dim);
+                    if (!engram_ram_.empty() && engram_reqs_[q].row < engram_ram_rows_[size_t(engram_reqs_[q].table)]) {   // in memory
+                        ggml_get_type_traits(ggml_type(type))->to_float(engram_ram_[size_t(engram_reqs_[q].table)] + size_t(engram_reqs_[q].row) * row_bytes,
+                                                                        engram_reqs_[q].dst, dim);
+                        continue;
+                    }
+                    const uint64_t off = t.file->data_start() + t.tensor->offset + uint64_t(engram_reqs_[q].row) * row_bytes;
                     const uint64_t page = off & ~uint64_t(4095);
                     const size_t len = (off + row_bytes - page + 4095) & ~size_t(4095);
-                    if (pread(engram_fd_, buf, len, off_t(page)) != ssize_t(len)) { failed = true; continue; }
+                    if (pread(engram_fds_[size_t(engram_reqs_[q].table)], buf, len, off_t(page)) != ssize_t(len)) { failed = true; continue; }
                     ggml_get_type_traits(ggml_type(type))->to_float(buf + (off - page), engram_reqs_[q].dst, dim);
                 }
             });
         for (auto& w : workers) w.join();
         engram_reqs_.clear();
-        if (failed) throw std::runtime_error("ds41: Engram row read failed");
+        reqs.clear();
+        if (failed) engram_failed_ = true;
     }
 
     // layer l's Engram (the e-th): rows already on the GPU
@@ -1614,7 +2157,8 @@ private:
         for (int l = 0; l < c.layers; ++l) {
             item0_[size_t(l)] = int(items_.size());
             const size_t b = stream_stride(l), per = std::max<size_t>(1, slot_bytes_ / b);
-            for (int e = 0; e < c.experts; e += int(per)) items_.push_back({l, e, int(std::min<size_t>(per, size_t(c.experts - e))), b});
+            const int S = n_stream_[size_t(l)];   // positions of order_[l] streamed from host memory
+            for (int e = 0; e < S; e += int(per)) items_.push_back({l, e, int(std::min<size_t>(per, size_t(S - e))), b});
         }
         item0_[size_t(c.layers)] = int(items_.size());
         produced_ = 0;
@@ -1796,7 +2340,7 @@ private:
                     const size_t gl = L.f.gu_row * size_t(fl_);   // this node's gate/up rows (all of them alone)
                     const bool gu = !gu_pin_[size_t(it.layer)], dn = !down_pin_[size_t(it.layer)];   // the parts not DMAed from the mapping
                     for (int j = t; j < it.n; j += nt) {
-                        const int e = it.first + j;
+                        const int e = order_[size_t(it.layer)][size_t(it.first + j)];
                         if (gu) {
                             copy_nt(host + size_t(j) * it.stride, src.gate + size_t(e) * g, gl);
                             copy_nt(host + size_t(j) * it.stride + g, src.up + size_t(e) * g, gl);
@@ -1928,6 +2472,30 @@ private:
         }
     }
 
+    // MMQ over experts resident on this GPU (res0 area of layer l, positions [j0, j1) of it), rows from the pass's tables
+    void resident_product(int l, int j0, int j1, int row_first, int rows, int bound0, int max_rows, int) {
+        const auto& c = cfg_;
+        namespace mq = strata::prefill::mmq;
+        const auto& L = experts_[size_t(l)];
+        const size_t g = L.f.gu_row * size_t(c.ff), stride = res0_stride_[size_t(l)];
+        const uint8_t* stage = res0_base_[size_t(l)] + size_t(j0) * stride;
+        const int32_t* rtok = s_idx_.i() + row_first;
+        const float* rw = s_w_.f(row_first);
+        mq::quantize(xn_.f(), rtok, m_xq_.p, L.f.gu_type, c.hidden, c.hidden, rows, stream_);
+        mq::Product gu;
+        gu.w = stage; gu.type = L.f.gu_type; gu.w_rows = 2 * c.ff; gu.w_cols = c.hidden; gu.expert_bytes = stride;
+        gu.n = j1 - j0; gu.xq = m_xq_.p; gu.bounds = s_bound_.i() + bound0; gu.ids = s_iota_.i(); gu.total_rows = rows;
+        gu.max_rows = max_rows; gu.dst = s_gu_.f(); gu.ld_dst = 2 * c.ff;
+        mmq_->run(gu, stream_);
+        mq::swiglu(s_gu_.f(), s_hf_.f(), rows, c.ff, false, stream_, c.clamp[size_t(l)]);
+        mq::quantize(s_hf_.f(), nullptr, m_hq_.p, L.f.d_type, c.ff, c.ff, rows, stream_);
+        mq::Product dn = gu;
+        dn.w = stage + 2 * g; dn.type = L.f.d_type; dn.w_rows = c.hidden; dn.w_cols = c.ff; dn.xq = m_hq_.p;
+        dn.dst = s_dout_.f(); dn.ld_dst = c.hidden;
+        mmq_->run(dn, stream_);
+        k::ds41_scatter_axpy(s_dout_.f(), rtok, rw, rows, c.hidden, g_sum_.f(), stream_);
+    }
+
     void stream_experts(int l, const std::vector<int>& ids, const std::vector<float>& wts) {
         const auto& c = cfg_;
         namespace mq = strata::prefill::mmq;
@@ -1942,38 +2510,46 @@ private:
         for (int i = 0; i < T; ++i)
             for (int k = 0; k < K; ++k) {
                 const int e = ids[size_t(i) * K + k];
+                used_.push_back(l * c.experts + e);
+                if (!where_.empty() && where_[size_t(l)][size_t(e)] == 2) continue;   // the peer GPU's
                 tok[size_t(e)].push_back(i);
                 wt[size_t(e)].push_back(wts[size_t(i) * K + k]);
-                used_.push_back(l * c.experts + e);
             }
-        std::vector<int> row0(size_t(c.experts) + 1, 0);
-        for (int e = 0; e < c.experts; ++e) {
-            row0[size_t(e) + 1] = row0[size_t(e)] + int(tok[size_t(e)].size());
-            std::copy(tok[size_t(e)].begin(), tok[size_t(e)].end(), s_hidx_ + row0[size_t(e)]);
-            std::copy(wt[size_t(e)].begin(), wt[size_t(e)].end(), s_hw_ + row0[size_t(e)]);
+        // rows laid out by position: order_[l] lists the streamed experts (positions [0, S)), then those resident on
+        // this GPU (the experts on the peer GPU are not here)
+        const auto& ord = order_[size_t(l)];
+        const int P = int(ord.size()), S = n_stream_[size_t(l)];
+        std::vector<int> row0(size_t(P) + 1, 0);
+        for (int q = 0; q < P; ++q) {
+            const int e = ord[size_t(q)];
+            row0[size_t(q) + 1] = row0[size_t(q)] + int(tok[size_t(e)].size());
+            std::copy(tok[size_t(e)].begin(), tok[size_t(e)].end(), s_hidx_ + row0[size_t(q)]);
+            std::copy(wt[size_t(e)].begin(), wt[size_t(e)].end(), s_hw_ + row0[size_t(q)]);
             tier_all_ += double(tok[size_t(e)].size());
         }
-        // bounds of every product: per item, sub-products within the row cap; relative to the product's first row
+        // bounds of every product: per item, sub-products within the row cap; relative to the product's first row.
+        // item -1: positions [j0, j1) resident on this GPU (one area per layer at res0_stride_)
         struct Product { int item, j0, j1, row_first, rows, bound0, max_rows; };
         std::vector<Product> prods;
         int nb = 0;
-        for (int idx = item0_[size_t(l)]; idx < item0_[size_t(l) + 1]; ++idx) {
-            const StreamItem& it = items_[size_t(idx)];
-            for (int j0 = 0; j0 < it.n;) {
+        auto group = [&](int item, int base, int count) {   // positions base + [0, count)
+            for (int j0 = 0; j0 < count;) {
                 int j1 = j0, rows = 0, mx = 0;
-                while (j1 < it.n && (j1 == j0 || rows + int(tok[size_t(it.first + j1)].size()) <= rcap_)) {
-                    const int n = int(tok[size_t(it.first + j1)].size());
+                while (j1 < count && (j1 == j0 || rows + int(tok[size_t(ord[size_t(base + j1)])].size()) <= rcap_)) {
+                    const int n = int(tok[size_t(ord[size_t(base + j1)])].size());
                     rows += n;
                     mx = std::max(mx, n);
                     ++j1;
                 }
-                Product pr{idx, j0, j1, row0[size_t(it.first + j0)], rows, nb, mx};
-                for (int j = j0; j <= j1; ++j) s_hbound_[nb++] = row0[size_t(it.first + j)] - pr.row_first;
+                Product pr{item, j0, j1, row0[size_t(base + j0)], rows, nb, mx};
+                for (int j = j0; j <= j1; ++j) s_hbound_[nb++] = row0[size_t(base + j)] - pr.row_first;
                 prods.push_back(pr);
                 j0 = j1;
             }
-        }
-        const int rows = row0[size_t(c.experts)];
+        };
+        for (int idx = item0_[size_t(l)]; idx < item0_[size_t(l) + 1]; ++idx) group(idx, items_[size_t(idx)].first, items_[size_t(idx)].n);
+        if (P > S) group(-1, S, P - S);
+        const int rows = row0[size_t(P)];
         ck(cudaMemcpyAsync(s_idx_.p, s_hidx_, size_t(rows) * 4, cudaMemcpyHostToDevice, stream_), "expert tokens");
         ck(cudaMemcpyAsync(s_w_.p, s_hw_, size_t(rows) * 4, cudaMemcpyHostToDevice, stream_), "expert weights");
         ck(cudaMemcpyAsync(s_bound_.p, s_hbound_, size_t(nb) * 4, cudaMemcpyHostToDevice, stream_), "expert bounds");
@@ -1986,6 +2562,12 @@ private:
         };
         for (size_t q = 0; q < prods.size(); ++q) {
             const Product& pr = prods[q];
+            if (pr.item < 0) {   // resident on this GPU: no wait
+                if (waited >= 0) { finish(waited); waited = -1; }
+                if (pr.rows == 0) continue;
+                resident_product(l, pr.j0 + (S - S), pr.j1, pr.row_first, pr.rows, pr.bound0, pr.max_rows, S);
+                continue;
+            }
             const StreamItem& it = items_[size_t(pr.item)];
             if (pr.item != waited) {
                 if (waited >= 0) finish(waited);
@@ -2053,7 +2635,7 @@ private:
         std::vector<float> logits(size_t(T) * c.experts);
         ck(cudaMemcpyAsync(logits.data(), logits_.p, logits.size() * 4, cudaMemcpyDeviceToHost, stream_), "router");
         float* host_y = pinned_[1 + (l & 1)];
-        if (!producer_.joinable() || (remote_ && remote_gpu_))   // the CPU lane's or the worker's input
+        if (!producer_.joinable() || (remote_ && remote_gpu_) || peer_)   // the CPU lane's, the worker's or the peer GPU's input
             ck(cudaMemcpyAsync(pinned_[0], xn_.p, size_t(T) * H * 4, cudaMemcpyDeviceToHost, stream_), "expert input");
         ck(cudaStreamSynchronize(stream_), "router sync");
         std::vector<int> ids(size_t(T) * K);
@@ -2111,7 +2693,14 @@ private:
         mat(p + "ffn_down_shexp.weight", sh_h_.f(), y_.f(), T);
         if (producer_.joinable()) {   // a streamed pass: every routed expert on the GPU, the others streamed in
             if (gpu_timing_) mark(1);
+            const bool peer = peer_ && peer_->prefill(l, T, K, ids.data(), wts.data(), pinned_[0]);
             stream_experts(l, ids, wts);
+            if (peer) {   // the peer GPU's partial sums join the routed sum
+                peer_->collect();
+                if (peer_sum_.bytes < size_t(T) * H * 4) peer_sum_ = Dev(size_t(T) * H * 4);
+                ck(cudaMemcpyAsync(peer_sum_.p, peer_->host_out, size_t(T) * H * 4, cudaMemcpyHostToDevice, stream_), "peer sums");
+                k::ds41_add(g_sum_.f(), peer_sum_.f(), g_sum_.f(), int(size_t(T) * H), stream_);
+            }
             if (remote) {   // the worker's partial sums join the routed sum
                 remote_->finish_raw(T);
                 ck(cudaMemcpyAsync(remote_sum_.p, remote_->reply.data(), size_t(T) * H * 4, cudaMemcpyHostToDevice, stream_), "worker sums");
@@ -2135,6 +2724,12 @@ private:
                 const int e = ids[size_t(i) * K + k];
                 const bool on_gpu = !slot_.empty() && slot_[size_t(l)][size_t(e)] >= 0;
                 used_.push_back(l * c.experts + e);
+                if (!where_.empty() && where_[size_t(l)][size_t(e)] == 2) {   // the peer GPU's
+                    cpu_ids[size_t(i) * K + k] = -1;
+                    tier_hits_ += 1;
+                    tier_all_ += 1;
+                    continue;
+                }
                 if (!on_gpu) { missed_.push_back(l * c.experts + e); continue; }
                 gid[n] = e;
                 gw[n++] = wts[size_t(i) * K + k];
@@ -2145,8 +2740,13 @@ private:
             tier_hits_ += n;
             tier_all_ += K;
         }
+        const bool peer = peer_ && peer_->decode(l, T, K, ids.data(), wts.data(), pinned_[0]);
         lane_->run(experts_[size_t(l)], pinned_[0], T, cpu_ids.data(), wts.data(), K, host_y);
         if (remote) remote_->finish(host_y, T);
+        if (peer) {
+            peer_->collect();
+            for (size_t i = 0; i < size_t(T) * H; ++i) host_y[i] += peer_->host_out[i];
+        }
         prof_[2] += std::chrono::duration<double>(std::chrono::steady_clock::now() - e0).count();
         ck(cudaMemcpyAsync(moe_.p, host_y, size_t(T) * H * 4, cudaMemcpyHostToDevice, stream_), "experts");
         if (any_gpu) k::ds41_add(moe_.f(), g_sum_.f(), moe_.f(), int(size_t(T) * H), stream_);
@@ -2189,10 +2789,15 @@ private:
     Dev comp_v_, comp_s_, comp_, ik_, iq_, iw_, logits_, sh_gate_, sh_up_, sh_h_, moe_, scores_, engram_rows_, engram_kv_;
     std::vector<Dev> windows_, caches_, stash_v_, stash_s_, sel_;
     std::vector<std::vector<int>> sel_count_, candidates_;
-    const core::ArtifactTensor* engram_table_ = nullptr;
-    struct EngramReq { int64_t row; float* dst; };
-    std::vector<EngramReq> engram_reqs_;
-    int engram_fd_ = -1, engram_threads_ = 16;
+    std::vector<const core::ArtifactTensor*> engram_tables_;   // per Engram layer (the same table when shared)
+    std::vector<int> engram_fds_, owned_fds_;
+    struct EngramReq { int64_t row; float* dst; int table; };
+    std::vector<EngramReq> engram_reqs_, engram_reqs_bg_;
+    std::thread engram_later_;
+    std::vector<uint8_t*> engram_ram_;      // STRATA_DS41_ENGRAM_RAM_GIB: the leading rows of each table in memory
+    std::vector<int64_t> engram_ram_rows_;
+    std::atomic<bool> engram_failed_{false};
+    int engram_threads_ = 16;
     std::vector<int32_t> history_, route_log_;
     std::vector<float> logits_host_;
     float* pinned_[3] = {nullptr, nullptr, nullptr};   // the CPU lane's input (and the embeddings) and its two outputs
@@ -2262,6 +2867,16 @@ private:
     std::string remote_addr_;
     std::unique_ptr<Remote> remote_;
     bool remote_gpu_ = false;   // the worker runs its rows of streamed passes (else they are fetched back)
+    // STRATA_DS41_RAM_COPY residency
+    bool ram_copy_ = false;
+    std::vector<std::vector<char>> where_;   // [layer][expert]: 0 host memory, 1 GPU0, 2 the peer GPU (empty: no residency)
+    std::vector<std::vector<int>> order_;    // [layer] positions -> expert: streamed experts first, then GPU0-resident
+    std::vector<int> n_stream_;              // [layer] streamed positions
+    std::vector<uint8_t*> res0_base_;
+    std::vector<size_t> res0_stride_;
+    std::unique_ptr<PeerGpu> peer_;
+    Dev peer_sum_;
+    std::vector<std::pair<void*, size_t>> ram_maps_;
     Dev remote_sum_;            // its partial sums of a streamed pass, uploaded
     std::vector<void*> registered_;
     std::vector<char> pinned_layer_, gu_pin_, down_pin_;   // pinned_layer_: both parts (no host copy)
@@ -2475,6 +3090,11 @@ int run(int argc, char** argv) {
         last.assign(out.end() - std::ptrdiff_t(V), out.end());
     }
     const auto t2 = std::chrono::steady_clock::now();
+    // the prompt's own profile, then the counters restart so the final profile is decode alone
+    std::cerr << "DS41 profile_prompt_s step=" << d.prof_[0] << " gpu_to_router=" << d.prof_[1] << " cpu_experts=" << d.prof_[2]
+              << " engram=" << d.prof_[4] << " index_host=" << d.prof_[5] << " head=" << d.prof_[6] << "\n";
+    std::fill(std::begin(d.prof_), std::end(d.prof_), 0.0);
+    d.tier_hits_ = d.tier_all_ = 0;
     d.prefill_done();
     const auto t2b = std::chrono::steady_clock::now();
     std::cerr << "DS41 prefill_done_s=" << std::chrono::duration<double>(t2b - t2).count() << "\n";

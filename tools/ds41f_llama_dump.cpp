@@ -81,8 +81,20 @@ int main(int argc, char** argv) {
     }
     std::filesystem::create_directories(out);
     llama_backend_init();
+    // builds with GGML_BACKEND_DL load the CPU backend at run time, from beside this program or DS41F_GGML_BACKEND_DIR
+    if (const char* dir = std::getenv("DS41F_GGML_BACKEND_DIR")) ggml_backend_load_all_from_path(dir);
+    else ggml_backend_load_all();
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers = 0;
+    // DS41F_DUMP_NO_MMAP=1: read the weights into memory (a shared filesystem may not keep mapped pages)
+    // (-DDS41F_LOAD_MODE_API for a llama.cpp whose model params carry load_mode instead of use_mmap)
+    if (const char* v = std::getenv("DS41F_DUMP_NO_MMAP"); v && std::strcmp(v, "1") == 0) {
+#ifdef DS41F_LOAD_MODE_API
+        mp.load_mode = LLAMA_LOAD_MODE_NONE;
+#else
+        mp.use_mmap = false;
+#endif
+    }
     llama_model* model = llama_model_load_from_file(argv[1], mp);
     if (!model) return 1;
     const llama_vocab* vocab = llama_model_get_vocab(model);

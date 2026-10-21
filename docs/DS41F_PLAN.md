@@ -476,6 +476,67 @@ Above 2/9 the B550's CPU lane is the bound. Larger shares pay only with the B550
 of its slices, which is the next step. That GPU would also take its share of the streamed prompt, instead of
 fetching the rows back.
 
+## 8d. The runner on the x64 GPU node: 2x Tesla V100 PCIe 32 GB, 2x Xeon Gold 6240, 181 GiB (measured 2026-10-21)
+
+**Packs.** The cluster packs come from the llama.cpp PR #28696 converter (Q8_0 staging, imatrix). The runner reads
+them as well as Unsloth's #30817 files:
+- **Source layers:** kv/index sources are found from the compressor and indexer tensors.
+- **Engram:** one table per Engram layer (`blk.L.engram_embd`). `engram_wkv` serves as `engram_kv`, and the gate
+  is the product `engram_q ⊙ engram_k`, as llama.cpp's `build_engram` uses it.
+
+**Fit.** Q23 (KL 0.214, the best measured) has 183 GiB of experts and 195 GiB of Engram (Q8_0). Only the experts
+fit, with 55 GiB of them in the two GPUs.
+
+Engram on the shared Lustre filesystem is then the limit:
+- random 4 KiB reads reach ~120/s with O_DIRECT and ~1,550/s buffered with 256 threads
+- each token needs 48 rows
+
+Q23 reached 9.2 tok/s decode and 16.9 tok/s for a 600-token prompt (`STRATA_DS41_ENGRAM_DIRECT=0`, 256 threads,
+`STRATA_DS41_ENGRAM_ASYNC`). Engram was still most of the time.
+
+**IQ2_XXSE4** (IQ2_XXS gate/up, Q2_K down, Engram Q4_K; KL 0.289): 142.4 GiB of experts and 103 GiB of Engram.
+- With `STRATA_DS41_ENGRAM_RAM_GIB=80`, 78 % of each table's rows are in memory, beside 87 GiB of experts in RAM
+  and 55 GiB in VRAM. Peak RSS is 168-172 GiB.
+- The pack's files are striped over one Lustre OST each, which made a load take 16 min.
+- A copy striped over 8 OSTs (`lfs setstripe -c 8 -S 4M`, 2 min to copy) loads in 260 s and serves the remaining
+  random rows fast.
+
+**Residency** (`STRATA_DS41_RAM_COPY=1`):
+- The most-routed experts go to GPU0 (25.3 GiB) and to GPU1 (30.0 GiB). GPU1 runs its routes itself: MMVQ for
+  decode, MMQ for prompt passes.
+- The rest are read into anonymous memory, because Lustre keeps little page cache.
+
+| UD/cluster pack on 2x V100 | load | prompt | decode |
+|---|---|---|---|
+| Q23, Engram O_DIRECT from Lustre | 277 s | 2.7 tok/s (600) | 3.0 tok/s |
+| Q23, buffered Engram, 256 threads, async | 4.5 min | 16.9 tok/s (600), 23.9 (2048) | 9.2 tok/s (6.3 after 2K) |
+| IQ2_XXSE4, 80 GiB Engram in RAM, 1-OST files | 948 s | 25.8 tok/s (600) | 11.3 tok/s |
+| IQ2_XXSE4, the same from the 8-OST copy | 260 s | 37.3 tok/s (1008), 131 tok/s (4096) | 10.2 tok/s at 1K, 8.1 at 4K |
+
+**Quality vs llama.cpp on the same pack** (1,008 wikitext tokens, all logits, `tools/ds41f_llama_dump.cpp` built
+against llama.cpp-ds41 on a CPU node):
+- **Q23:** mean KL 0.036, top-1 95.2 %, PPL 3.371 vs 3.369.
+- **IQ2_XXSE4:** PPL 3.446 vs 3.363 at first (+2.5 %).
+  - With every expert on the CPU lane: 3.390 (+0.8 %). The gap was in the GPU tiers.
+  - The IQ2_XXS MMVQ dot (as in llama.cpp's CUDA code) scales each 32-weight group with an integer division by 8,
+    which truncates toward zero. ggml-cpu and MMQ scale in floats.
+  - With `native_mmvq_set_iq2xxs_exact` (on in the DS4.1 runner, `STRATA_DS41_IQ2XXS_EXACT`; off by default for the
+    existing models): PPL 3.406 (+1.3 %), mean KL 0.024, top-1 94.5 %.
+  - What remains is the GPU's Q8_1 activation rounding vs the CPU's Q8_K.
+
+**Decode tuning on IQ2_XXSE4** (1,008-token prompt + 128 tokens; the final profile is now decode alone):
+
+| change | decode tok/s | per token: Engram / CPU experts / GPU to router |
+|---|---|---|
+| baseline (78 % of each Engram table in RAM) | 10.0 | 48.9 / 21.9 / 14.4 ms |
+| Engram RAM filled table by table: layer 1's table whole, layer 14's 55 % (read in the background) | 11.8 | 32.7 / 22.7 / 14.1 |
+| + in-memory rows served inline (threads only for file reads) + an 8K-token routing profile from this pack | 13.6 | 20.2 / 21.4 / 17.4 |
+| + 36 CPU lane threads (of 36 cores) | 14.2 | 18.7 / 20.2 / 17.4 |
+
+- `STRATA_GLM_IQ512_CLAMP=1` (AVX-512 IQ rows) was no faster here and moved KL from 0.024 to 0.030.
+- What remains of Engram is the second table's file reads, which are latency bound (~50 ms per row).
+- A pack with a Q3_K Engram, IQ2_XXSE3 (~79 GiB, both tables in memory), is being quantized for the gate.
+
 ## 9. Next steps (in order)
 
 1. GPU node: probe storage (sequential MB/s, random 4 KiB latency) and the download path; fetch the non-Engram shards;

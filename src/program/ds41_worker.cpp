@@ -8,8 +8,8 @@
 //     and is refilled from the scores after each prompt pass;
 //   prompt passes: every route on the GPU with MMQ, the layer's blobs uploaded while the previous layer computes.
 // TpReady.ok = 2 tells the decoder it may send prompt passes instead of fetching the rows.
-//   strata-ds41-worker --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm] [--reserve-gib=16] [--gpu-reserve-mib=1024]
-//                      [--backend=auto|ib|udp]
+//   strata-ds41-worker --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm | --rows=pinned|anon] [--reserve-gib=16]
+//                      [--gpu-reserve-mib=1024] [--backend=auto|ib|udp]
 #include "ggml.h"
 #include "strata/ds41/expert_lane.hpp"
 #include "strata/kernels/cpu/native_expert.hpp"
@@ -78,7 +78,7 @@ double since(std::chrono::steady_clock::time_point t) {
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string root, backend = "auto", weights_dir;
+    std::string root, backend = "auto", weights_dir, rows_mode = "pinned";
     int threads = 0;
     // --reserve-gib (16): RAM left after the rows; the 62 GB B550 OOM-killed a worker at 42 GB of rows (2026-10-21)
     double reserve_gib = 16, gpu_reserve_mib = 1024;
@@ -91,6 +91,7 @@ int main(int argc, char** argv) {
         else if (a.starts_with("--weights-dir=")) weights_dir = a.substr(14);
         else if (a.starts_with("--reserve-gib=")) reserve_gib = std::stod(a.substr(14));
         else if (a.starts_with("--gpu-reserve-mib=")) gpu_reserve_mib = std::stod(a.substr(18));
+        else if (a.starts_with("--rows=")) rows_mode = a.substr(7);   // pinned (default without --weights-dir) or anon
         else {
             std::fprintf(stderr, "usage: %s --root HOST:PORT [--threads=N] [--weights-dir=/dev/shm] [--reserve-gib=6] "
                                  "[--gpu-reserve-mib=1024] [--backend=auto|ib|udp]\n", argv[0]);
@@ -191,16 +192,45 @@ int main(int argc, char** argv) {
                               total / net::kGiB, where.c_str(), reserve_gib, accept.available_bytes / net::kGiB);
             }
         }
+        // Without --weights-dir the rows live in this process: by default page-locked host memory (cudaHostAlloc),
+        // one buffer per layer, all allocated before the decoder is told to send. A shortfall then refuses the setup
+        // instead of the OOM killer ending the transfer at 40+ GB, and the GPU and IB read the buffers without a
+        // later 40 GB registration. --rows=anon keeps lazily faulted anonymous memory (the earlier behaviour).
+        const bool pinned_rows = store.path.empty() && rows_mode != "anon";
+        std::vector<uint8_t*> pinned_layers;
+        auto free_pinned = [&] { for (auto* p : pinned_layers) cudaFreeHost(p); pinned_layers.clear(); };
+        if (accept.ok && pinned_rows) {
+            const auto a0 = std::chrono::steady_clock::now();
+            size_t got = 0;
+            for (const auto& L : layers) {
+                void* p = nullptr;
+                if (cudaHostAlloc(&p, size_t(L.experts) * L.slot_bytes, cudaHostAllocPortable) != cudaSuccess) {
+                    (void)cudaGetLastError();
+                    accept.ok = 0;
+                    std::snprintf(accept.reason, sizeof accept.reason,
+                                  "page-locked rows: allocation failed after %.2f of %.2f GiB (MemAvailable %.2f GiB)", got / net::kGiB,
+                                  total / net::kGiB, net::mem_available() / net::kGiB);
+                    free_pinned();
+                    break;
+                }
+                pinned_layers.push_back(static_cast<uint8_t*>(p));
+                got += size_t(L.experts) * L.slot_bytes;
+            }
+            if (accept.ok)
+                std::fprintf(stderr, "DS41_WORKER rows page-locked GiB=%.2f in %zu buffers (%.1f s)\n", got / net::kGiB, pinned_layers.size(),
+                             since(a0) / 1e3);
+        }
         ok(ucomm_send(c, 0, net::kTagAccept, &accept, sizeof accept), "accept");
         if (!accept.ok) throw std::runtime_error(accept.reason);
         const auto fill0 = std::chrono::steady_clock::now();
-        if (!accept.have) {
+        if (!accept.have && !pinned_rows) {
             if (store.path.empty()) store.map_anonymous();
             else store.map_file(store.path + ".partial", true);
         }
         size_t off = 0;
-        for (auto& L : layers) {
-            L.base = store.data + off;
+        for (size_t li = 0; li < layers.size(); ++li) {
+            auto& L = layers[li];
+            L.base = pinned_rows ? pinned_layers[li] : store.data + off;
             off += size_t(L.experts) * L.slot_bytes;
             if (accept.have) continue;
             ucomm_mr_t* region = nullptr;
@@ -220,10 +250,11 @@ int main(int argc, char** argv) {
         ck(cudaStreamCreate(&stream), "stream");
         ck(cudaStreamCreateWithFlags(&copy, cudaStreamNonBlocking), "copy stream");
         const auto r0 = std::chrono::steady_clock::now();
-        const bool registered = cudaHostRegister(store.data, store.bytes, cudaHostRegisterPortable) == cudaSuccess;
+        const bool registered = pinned_rows || cudaHostRegister(store.data, store.bytes, cudaHostRegisterPortable) == cudaSuccess;
         if (!registered) (void)cudaGetLastError();
-        std::fprintf(stderr, "DS41_WORKER rows GiB=%.2f %s fill_s=%.1f registered=%d (%.1f s)\n", total / net::kGiB,
-                     accept.have ? "kept" : "received", fill_ms / 1e3, int(registered), since(r0) / 1e3);
+        std::fprintf(stderr, "DS41_WORKER rows GiB=%.2f %s storage=%s fill_s=%.1f registered=%d (%.1f s)\n", total / net::kGiB,
+                     accept.have ? "kept" : "received", pinned_rows ? "page-locked" : store.path.empty() ? "anonymous" : store.path.c_str(),
+                     fill_ms / 1e3, int(registered), since(r0) / 1e3);
         const int K_max = 16, maxT = 4096;
         // prompt-pass buffers: two layers of blobs (double-buffered), the routes' rows
         size_t layer_bytes = 0;
@@ -501,7 +532,8 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "DS41_WORKER done requests=%lld decode_ms=%.1f prompt_layers=%lld prompt_ms=%.1f tier_hit=%.3f fetch_s=%.2f\n",
                      (long long)requests, busy_ms, (long long)prompt_layers, prompt_ms, routes > 0 ? hits / routes : 0.0, fetch_ms / 1e3);
         for (auto* region : regions) ucomm_mr_dereg(region);
-        if (registered) cudaHostUnregister(store.data);
+        if (registered && !pinned_rows) cudaHostUnregister(store.data);
+        free_pinned();
         ucomm_finalize(c);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "DS41_WORKER error: %s\n", e.what());

@@ -5,6 +5,9 @@
 // index-source layer; layer `candidate_source` also picks candidate blocks that later index sources score inside.
 // Engram: one hash state per Engram layer, n-grams 2..ngram with `heads` heads each, rows of one shared table
 // (per_layer_token_embd) at offsets[col] + hash % primes[col].
+// Also reads PR #28696's files (llama.cpp ds41 branch; same architecture name): no kv/index source keys - the source
+// layers are those that carry the compressor / indexer tensors - and `engram.*` keys with one table per Engram layer
+// (blk.L.engram_embd) and a pad id already through the token map.
 #pragma once
 
 #include "strata/artifact/gguf_reader.hpp"
@@ -13,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -41,6 +45,8 @@ struct Config {
     std::vector<uint64_t> multipliers, primes, offsets;   // [engram][ngram], [engram][cols], [engram][cols]
     std::vector<int64_t> token_map;
     int64_t engram_pad = 0;
+    bool engram_pad_mapped = false;    // #28696: engram_pad is a compressed id already
+    bool engram_per_layer = false;     // #28696: blk.L.engram_embd per Engram layer (else per_layer_token_embd)
     int engram_cols() const { return (ngram - 1) * engram_heads; }
     int engram_index(int layer) const {
         for (size_t e = 0; e < engram_layers.size(); ++e)
@@ -49,7 +55,8 @@ struct Config {
     }
     const Rope& rope(int layer) const { return ratio[size_t(layer)] ? rope_compressed : rope_plain; }
 
-    static Config read(const GgufFile& file, const core::ModelDescriptor& m) {
+    /// has(name): whether the artifact holds a tensor (#28696 files: the source layers are found by their tensors).
+    static Config read(const GgufFile& file, const core::ModelDescriptor& m, const std::function<bool(const std::string&)>& has = {}) {
         const std::string p = "deepseek41.";
         auto get = [&](const std::string& k) -> const MetaValue& {
             const auto* v = file.get(p + k);
@@ -91,7 +98,18 @@ struct Config {
         for (uint64_t r : array("attention.compress_ratios")) c.ratio.push_back(int(r));
         if (int(c.ratio.size()) < c.layers) throw std::runtime_error("ds41: compress_ratios is shorter than block_count");
         c.ratio.resize(size_t(c.layers));
-        const auto kv = array("attention.kv_source_layers"), idx = array("attention.indexer.source_layers");
+        std::vector<uint64_t> kv, idx;
+        if (file.get(p + "attention.kv_source_layers")) {
+            kv = array("attention.kv_source_layers");
+            idx = array("attention.indexer.source_layers");
+        } else {
+            if (!has) throw std::runtime_error("ds41: no kv source keys, and no tensor list to find the source layers");
+            for (int l = 0; l < c.layers; ++l) {
+                const std::string b = "blk." + std::to_string(l) + ".";
+                if (has(b + "attn_compressor_kv.weight")) kv.push_back(uint64_t(l));
+                if (has(b + "indexer.attn_q_b.weight")) idx.push_back(uint64_t(l));
+            }
+        }
         c.kv_src.assign(size_t(c.layers), -1);
         c.topk_src.assign(size_t(c.layers), -1);
         int last_kv = -1, last_idx = -1;
@@ -144,6 +162,25 @@ struct Config {
             const size_t n = c.engram_layers.size(), cols = size_t(c.engram_cols());
             if (c.ngram < 2 || c.engram_heads < 1 || c.engram_dim < 1 || c.multipliers.size() != n * size_t(c.ngram) ||
                 c.primes.size() != n * cols || c.offsets.size() != n * cols || size_t(c.engram_pad) >= c.token_map.size())
+                throw std::runtime_error("ds41: inconsistent Engram metadata");
+            for (size_t i = 0; i < n * cols; ++i)
+                if (c.primes[i] < 2 || c.offsets[i] + c.primes[i] > uint64_t(INT32_MAX))
+                    throw std::runtime_error("ds41: Engram bucket range out of range");
+        } else if (file.get(p + "engram.layer_ids")) {   // #28696
+            for (uint64_t l : array("engram.layer_ids")) c.engram_layers.push_back(int(l));
+            c.ngram = int(integer("engram.max_ngram_size"));
+            c.engram_heads = int(integer("engram.head_count"));
+            c.engram_dim = int(integer("engram.key_length"));
+            c.multipliers = array("engram.multipliers");
+            c.primes = array("engram.primes");
+            c.offsets = array("engram.offsets");
+            c.engram_pad = integer("engram.pad_id");
+            c.engram_pad_mapped = c.engram_per_layer = true;
+            get("engram.token_map");
+            c.token_map = file.int_array(p + "engram.token_map");
+            const size_t n = c.engram_layers.size(), cols = size_t(c.engram_cols());
+            if (c.ngram < 2 || c.engram_heads < 1 || c.engram_dim < 1 || c.multipliers.size() != n * size_t(c.ngram) ||
+                c.primes.size() != n * cols || c.offsets.size() != n * cols)
                 throw std::runtime_error("ds41: inconsistent Engram metadata");
             for (size_t i = 0; i < n * cols; ++i)
                 if (c.primes[i] < 2 || c.offsets[i] + c.primes[i] > uint64_t(INT32_MAX))

@@ -30,6 +30,9 @@ std::size_t native_q8_1_bytes(int n_in, int ncols = 1);
 // single-column call. Set before
 // graph capture; captured graphs keep the kernels they captured.
 void native_mmvq_set_multi_exact(bool exact);
+/// IQ2_XXS dots scale each 32-weight group in floats (as ggml-cpu) instead of llama.cpp CUDA's truncating integer
+/// division by 8. Off by default (the existing models' results stay bit for bit); the DeepSeek-V4.1 runner sets it.
+void native_mmvq_set_iq2xxs_exact(bool exact);
 bool native_mmvq_multi_exact();
 // Rows per block (1, 2 or 4) for the exact ncols > 1 layout; every value keeps bitwise single-column equality.
 void native_mmvq_set_multi_rows(int rows);
